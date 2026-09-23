@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
+import { mergeChatMessages, nextMessagePageCursor } from '../lib/mobile-chat-state'
 
 export interface MessageDto {
   id: string
@@ -56,40 +57,40 @@ function friendlyMessageErrorText(status: number, fallback: string, forbiddenTex
   return `${fallback} (${status})`
 }
 
+interface MessagePage {
+  messages: MessageDto[]
+  hasMore: boolean
+}
+
+async function fetchMessagePage(channelId: string, before: string | null): Promise<MessagePage> {
+  const suffix = before ? `?before=${encodeURIComponent(before)}` : ''
+  const res = await apiFetch(`/api/channels/${channelId}/messages${suffix}`)
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new ChannelMessagesError(
+      data.error ?? `メッセージの取得に失敗しました (${res.status})`,
+      res.status,
+    )
+  }
+  return {
+    messages: (await res.json()) as MessageDto[],
+    hasMore: res.headers.get('X-Cairn-Has-More') === 'true',
+  }
+}
+
 export function useMessages(channelId: string | null) {
-  return useQuery<MessageDto[]>({
+  return useInfiniteQuery({
     queryKey: ['messages', channelId],
-    queryFn: async () => {
-      const res = await apiFetch(`/api/channels/${channelId}/messages`)
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new ChannelMessagesError(
-          data.error ?? `メッセージの取得に失敗しました (${res.status})`,
-          res.status,
-        )
-      }
-      return res.json() as Promise<MessageDto[]>
-    },
+    queryFn: ({ pageParam }) => fetchMessagePage(channelId!, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: nextMessagePageCursor,
+    select: (data) => mergeChatMessages(...data.pages.map((page) => page.messages)),
     enabled: !!channelId,
     // 新着・編集・削除・リアクションは RealtimeProvider が invalidate するためポーリングしない。
     // スレッドを開くたびに未読化判定の基準を最新化する。
     // staleTime 内のキャッシュに任せると、直近の新着を取得しないまま既読化してしまう
     refetchOnMount: 'always',
   })
-}
-
-export async function fetchMessagesBefore(channelId: string, messageId: string) {
-  const res = await apiFetch(
-    `/api/channels/${channelId}/messages?before=${encodeURIComponent(messageId)}`,
-  )
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `過去のメッセージの取得に失敗しました (${res.status})`)
-  }
-  return {
-    messages: (await res.json()) as MessageDto[],
-    hasMore: res.headers.get('X-Cairn-Has-More') === 'true',
-  }
 }
 
 export function useSendMessage(channelId: string) {
@@ -153,14 +154,8 @@ export function useEditMessage(channelId: string) {
       }
       return res.json() as Promise<{ id: string; content: string }>
     },
-    onSuccess: (updated) => {
-      qc.setQueryData<MessageDto[]>(['messages', channelId], (current) =>
-        (current ?? []).map((message) =>
-          message.id === updated.id
-            ? { ...message, content: updated.content, isEdited: true }
-            : message,
-        ),
-      )
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['messages', channelId] })
     },
   })
 }
@@ -183,10 +178,8 @@ export function useDeleteMessage(channelId: string) {
       }
       return messageId
     },
-    onSuccess: (messageId) => {
-      qc.setQueryData<MessageDto[]>(['messages', channelId], (current) =>
-        (current ?? []).filter((message) => message.id !== messageId),
-      )
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['messages', channelId] })
     },
   })
 }
@@ -207,12 +200,8 @@ export function useToggleMessageBookmark(channelId: string) {
       const result = (await res.json()) as { bookmarked: boolean }
       return { messageId, bookmarked: result.bookmarked }
     },
-    onSuccess: ({ messageId, bookmarked }) => {
-      qc.setQueryData<MessageDto[]>(['messages', channelId], (current) =>
-        (current ?? []).map((message) =>
-          message.id === messageId ? { ...message, bookmarked } : message,
-        ),
-      )
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['messages', channelId] })
       void qc.invalidateQueries({ queryKey: ['bookmarks'] })
     },
   })

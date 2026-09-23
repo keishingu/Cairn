@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractMentionIdsByName,
+  filterProjectMentionMembers,
   findMentionQuery,
   hasFailedUploads,
   insertMention,
   mergeChatMessages,
+  nextMessagePageCursor,
+  resolveInternalAppPath,
   resolveMobileMarkdownLink,
   serializeMentions,
   shouldRetryRealtime,
@@ -76,6 +79,20 @@ describe('モバイルチャット状態', () => {
       { id: '3', createdAt: '2026-01-03T00:00:00Z' },
     ]
     expect(mergeChatMessages(old, latest).map((message) => message.id)).toEqual(['1', '2', '3'])
+    expect(nextMessagePageCursor({ messages: old, hasMore: true })).toBe('1')
+    expect(nextMessagePageCursor({ messages: old, hasMore: false })).toBeUndefined()
+  })
+
+  it('プロジェクトでは非guest全員と参加guestだけをメンション候補にする', () => {
+    const members = [
+      { userId: 'member-1', role: 'member' as const },
+      { userId: 'guest-1', role: 'guest' as const },
+      { userId: 'guest-2', role: 'guest' as const },
+    ]
+    expect(filterProjectMentionMembers(members, [{ userId: 'guest-1' }])).toEqual([
+      members[0],
+      members[1],
+    ])
   })
 
   it('MarkdownリンクはCairn内導線と安全な外部URLだけを許可する', () => {
@@ -93,5 +110,9 @@ describe('モバイルチャット状態', () => {
     })
     expect(resolveMobileMarkdownLink('javascript:alert(1)', baseUrl)).toBeNull()
     expect(resolveMobileMarkdownLink('//example.com/guide', baseUrl)).toBeNull()
+    expect(resolveMobileMarkdownLink('/chats/../auth/mobile-signout', baseUrl)).toBeNull()
+    expect(resolveInternalAppPath('/projects/../chats/channel-1', baseUrl)).toBe(
+      '/chats/channel-1',
+    )
   })
 })

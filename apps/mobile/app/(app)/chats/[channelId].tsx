@@ -23,7 +23,6 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ChannelMessagesError,
-  fetchMessagesBefore,
   parseMentions,
   useMarkChannelRead,
   useDeleteMessage,
@@ -45,9 +44,9 @@ import { useOfflineMessageQueue } from '../../../components/offline-message-queu
 import { apiFetch } from '../../../lib/api-fetch'
 import {
   extractMentionIdsByName,
+  filterProjectMentionMembers,
   findMentionQuery,
   insertMention,
-  mergeChatMessages,
   resolveMobileMarkdownLink,
   serializeMentions,
 } from '../../../lib/mobile-chat-state'
@@ -466,18 +465,10 @@ export default function ChatThreadScreen() {
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
-  const [olderMessages, setOlderMessages] = React.useState<MessageDto[]>([])
-  const [hasMoreMessages, setHasMoreMessages] = React.useState(true)
-  const [isLoadingOlder, setIsLoadingOlder] = React.useState(false)
-  const loadingOlderRef = React.useRef(false)
-  const [olderMessagesError, setOlderMessagesError] = React.useState<string | null>(null)
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   // ponytail: 表示名をキーにした最小実装。同名ユーザーを区別する必要が出たら選択範囲ごとのIDを保持する。
   const mentionIdsByNameRef = React.useRef(new Map<string, string>())
-  const messages = React.useMemo(
-    () => mergeChatMessages(olderMessages, messagesQuery.data ?? []),
-    [messagesQuery.data, olderMessages],
-  )
+  const messages = messagesQuery.data ?? []
   const queuedMessages = offlineQueue.messages.filter((message) => message.channelId === channelId)
   const mentionRange = React.useMemo(
     () => findMentionQuery(draft, selection.start),
@@ -485,17 +476,26 @@ export default function ChatThreadScreen() {
   )
   const mentionMembers = React.useMemo(() => {
     if (channelType === 'dm') return []
-    const candidates = projectId
-      ? (projectMembers.data ?? [])
-      : isPrivate === '1'
-        ? (channelMembers.data ?? [])
+    const candidates = isPrivate === '1'
+      ? (channelMembers.data ?? [])
+      : projectId
+        ? filterProjectMentionMembers(workspaceMembers.data ?? [], projectMembers.data ?? [])
         : (workspaceMembers.data ?? [])
     const query = mentionRange?.query.toLocaleLowerCase() ?? ''
     return candidates
       .filter((member) => member.userId !== me?.id)
       .filter((member) => member.displayName.toLocaleLowerCase().includes(query))
       .slice(0, 6)
-  }, [channelMembers.data, channelType, isPrivate, me?.id, mentionRange?.query, projectId, projectMembers.data, workspaceMembers.data])
+  }, [
+    channelMembers.data,
+    channelType,
+    isPrivate,
+    me?.id,
+    mentionRange?.query,
+    projectId,
+    projectMembers.data,
+    workspaceMembers.data,
+  ])
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
   channelIdRef.current = channelId
@@ -557,11 +557,6 @@ export default function ChatThreadScreen() {
     setEditingMessage(null)
     setActionTarget(null)
     setReactionTarget(null)
-    setOlderMessages([])
-    setHasMoreMessages(true)
-    loadingOlderRef.current = false
-    setIsLoadingOlder(false)
-    setOlderMessagesError(null)
     setSelection({ start: 0, end: 0 })
     mentionIdsByNameRef.current.clear()
     upload.clearUploads()
@@ -770,29 +765,9 @@ export default function ChatThreadScreen() {
     ...reversedMessages.map((message) => ({ kind: 'server' as const, message })),
   ]
 
-  const loadOlderMessages = async () => {
-    const oldestMessage = messages[0]
-    if (!channelId || !oldestMessage || !hasMoreMessages || loadingOlderRef.current) return
-    const loadingChannelId = channelId
-    loadingOlderRef.current = true
-    setIsLoadingOlder(true)
-    setOlderMessagesError(null)
-    try {
-      const page = await fetchMessagesBefore(loadingChannelId, oldestMessage.id)
-      if (channelIdRef.current !== loadingChannelId) return
-      setOlderMessages((current) => mergeChatMessages(page.messages, current))
-      setHasMoreMessages(page.hasMore)
-    } catch (loadError) {
-      if (channelIdRef.current !== loadingChannelId) return
-      setOlderMessagesError(
-        loadError instanceof Error ? loadError.message : '過去のメッセージを取得できませんでした',
-      )
-    } finally {
-      if (channelIdRef.current === loadingChannelId) {
-        loadingOlderRef.current = false
-        setIsLoadingOlder(false)
-      }
-    }
+  const loadOlderMessages = () => {
+    if (!channelId || !messagesQuery.hasNextPage || messagesQuery.isFetchingNextPage) return
+    void messagesQuery.fetchNextPage()
   }
 
   const openSearch = () => {
@@ -994,9 +969,9 @@ export default function ChatThreadScreen() {
             onEndReached={() => void loadOlderMessages()}
             onEndReachedThreshold={0.25}
             ListFooterComponent={
-              isLoadingOlder ? (
+              messagesQuery.isFetchingNextPage ? (
                 <ActivityIndicator style={styles.olderLoading} size="small" color={palette.accent} />
-              ) : olderMessagesError ? (
+              ) : messagesQuery.isFetchNextPageError ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="過去のメッセージを再読み込み"
@@ -1004,7 +979,8 @@ export default function ChatThreadScreen() {
                   style={styles.olderError}
                 >
                   <Text style={[styles.olderErrorText, { color: palette.redText }]}>
-                    {olderMessagesError}　再試行
+                    {messagesQuery.error?.message ?? '過去のメッセージを取得できませんでした'}
+                    　再試行
                   </Text>
                 </Pressable>
               ) : null

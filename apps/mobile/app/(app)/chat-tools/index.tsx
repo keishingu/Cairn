@@ -4,16 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { AppWebView } from '../../../components/app-webview'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { NativeAppHeader } from '../../../components/native-app-header'
+import { API_BASE_URL } from '../../../lib/env'
+import { resolveInternalAppPath } from '../../../lib/mobile-chat-state'
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
-}
-
-const SAFE_APP_PATHS = ['/api/attachments', '/chats', '/files', '/members', '/projects', '/tasks']
-
-function isSafeAppPath(path: string) {
-  const pathname = path.split(/[?#]/, 1)[0] ?? ''
-  return SAFE_APP_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
 export default function ChatToolsScreen() {
@@ -29,8 +24,9 @@ export default function ChatToolsScreen() {
   const router = useRouter()
   const { palette } = useAppAppearance()
   const requestedPath = firstParam(params.path)
-  const path = requestedPath && isSafeAppPath(requestedPath)
-    ? requestedPath
+  const safePath = requestedPath ? resolveInternalAppPath(requestedPath, API_BASE_URL) : null
+  const path = safePath
+    ? safePath
     : '/chats?nativeAux=1&panel=global-search'
   const title = firstParam(params.title) ?? 'チャット'
   const returnChannelId = firstParam(params.returnChannelId)

@@ -28,6 +28,7 @@ export interface WorkspaceMemberDto {
   displayName: string
   email: string | null
   avatarUrl: string | null
+  role: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export interface ChannelMemberDto {
