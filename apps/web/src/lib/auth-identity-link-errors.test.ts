@@ -28,6 +28,10 @@ describe('auth-identity-link-errors', () => {
       isLoginLinkFlow: true,
       provider: 'apple',
     })
+    expect(parseLoginLinkContext('/settings/account')).toEqual({
+      isLoginLinkFlow: false,
+      provider: null,
+    })
     expect(parseLoginLinkContext('/projects')).toEqual({
       isLoginLinkFlow: false,
       provider: null,

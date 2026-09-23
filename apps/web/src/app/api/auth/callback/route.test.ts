@@ -67,4 +67,16 @@ describe('GET /api/auth/callback', () => {
       'https://oss-cairn.com/settings/account?loginLinkError=identity_already_exists&loginLinkProvider=google',
     )
   })
+
+  test('nextが設定アカウントでもloginLinkedが無い通常OAuth失敗はログイン画面へ戻す', async () => {
+    const response = await GET(
+      new Request(
+        'https://oss-cairn.com/api/auth/callback?error=access_denied&error_description=User+denied&next=%2Fsettings%2Faccount',
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'https://oss-cairn.com/auth/login?error=callback&next=%2Fsettings%2Faccount',
+    )
+  })
 })

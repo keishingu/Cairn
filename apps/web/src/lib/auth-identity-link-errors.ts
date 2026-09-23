@@ -70,9 +70,10 @@ export function parseLoginLinkContext(safeNextPath: string | null): {
   try {
     const url = new URL(safeNextPath, 'https://cairn.local')
     const linked = url.searchParams.get('loginLinked')
+    // 通常ログインの next=/settings/account とは区別する。loginLinked があるときだけ連携フロー。
     const provider = linked === 'apple' || linked === 'google' ? linked : null
-    return { isLoginLinkFlow: true, provider }
+    return { isLoginLinkFlow: provider !== null, provider }
   } catch {
-    return { isLoginLinkFlow: true, provider: null }
+    return { isLoginLinkFlow: false, provider: null }
   }
 }
