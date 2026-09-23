@@ -1207,25 +1207,46 @@ function eventCoversDay(e: { day: number; span: number }, col: number): boolean 
   return col >= e.day && col < e.day + e.span
 }
 
+type MobilePackedBar =
+  | { kind: 'project'; row: number; day: number; span: number; week: number; project: ProjectDto }
+  | { kind: 'milestone'; row: number; day: number; span: number; week: number; milestone: WorkspaceMilestoneDto; project: ProjectDto | null }
+
+/** モバイル月表示はプロジェクトとマイルストーンを同一レーンに詰め、週の別日の予定で空きレーンを潰さない */
+export function packMobileMonthBars(
+  events: CalEvent[],
+  milestoneEvents: MilestoneDisplayEvent[],
+  week: number,
+): MobilePackedBar[] {
+  const segments: Omit<MobilePackedBar, 'row'>[] = [
+    ...events.filter(e => e.week === week).map(e => ({
+      kind: 'project' as const, day: e.day, span: e.span, week: e.week, project: e.project,
+    })),
+    ...milestoneEvents.filter(e => e.week === week).map(e => ({
+      kind: 'milestone' as const, day: e.day, span: e.span, week: e.week, milestone: e.milestone, project: e.project,
+    })),
+  ].sort((a, b) => (
+    a.day - b.day
+    || b.span - a.span
+    || (a.kind === b.kind ? 0 : a.kind === 'project' ? -1 : 1)
+  ))
+
+  const occupiedUntil: number[] = []
+  return segments.map(segment => {
+    let row = 0
+    while ((occupiedUntil[row] ?? -1) >= segment.day) row++
+    occupiedUntil[row] = segment.day + segment.span - 1
+    return { ...segment, row }
+  })
+}
+
 /** 日付セルの +N は、見えているバー本数ではなくその日の最下段レーンの直下に置く */
-export function mobileOverflowLane(args: {
-  coveringProjectRows: number[]
-  coveringMilestoneRows: number[]
-  maxEventRows: number
-  usedProjectRows: number
-  remainingRows: number
-}): { overflow: number; lane: number } | null {
-  const visibleProjectRows = args.coveringProjectRows.filter(row => row < args.maxEventRows)
-  const visibleMilestoneRows = args.coveringMilestoneRows
-    .filter(row => row < args.remainingRows)
-    .map(row => args.usedProjectRows + row)
-  const overflow =
-    args.coveringProjectRows.length + args.coveringMilestoneRows.length
-    - visibleProjectRows.length - visibleMilestoneRows.length
+export function mobileOverflowLane(coveringRows: number[], maxEventRows: number): { overflow: number; lane: number } | null {
+  const visibleRows = coveringRows.filter(row => row < maxEventRows)
+  const overflow = coveringRows.length - visibleRows.length
   if (overflow <= 0) return null
   return {
     overflow,
-    lane: Math.max(-1, ...visibleProjectRows, ...visibleMilestoneRows) + 1,
+    lane: Math.max(-1, ...visibleRows) + 1,
   }
 }
 
@@ -1249,12 +1270,8 @@ const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate
       {/* Grid rows: PC と同じく週単位の span バーを日付セルの上に重ねる */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {cells.map((row, week) => {
-        const weekProjects = events.filter(e => e.week === week)
-        const weekMilestones = milestoneEvents.filter(e => e.week === week)
-        const visibleProjects = weekProjects.filter(e => e.row < MOBILE_MAX_EVENT_ROWS)
-        const usedProjectRows = Math.max(-1, ...visibleProjects.map(e => e.row)) + 1
-        const remainingRows = MOBILE_MAX_EVENT_ROWS - usedProjectRows
-        const visibleMilestones = weekMilestones.filter(e => e.row < remainingRows)
+        const packed = packMobileMonthBars(events, milestoneEvents, week)
+        const visibleBars = packed.filter(e => e.row < MOBILE_MAX_EVENT_ROWS)
 
         return (
           <div key={week} style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -1305,40 +1322,37 @@ const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate
               )
             })}
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-              {visibleProjects.map(e => {
-                const barColor = e.project.statusColor ?? '#9CA3AF'
+              {visibleBars.map(e => {
                 const left = `calc(${e.day * colW}% + 1px)`
                 const width = `calc(${e.span * colW}% - 2px)`
                 const top = MOBILE_DATE_AREA + e.row * (MOBILE_EVENT_H + MOBILE_EVENT_GAP)
-                return (
-                  <button
-                    key={`c-${e.project.id}-${e.week}-${e.day}`}
-                    type="button"
-                    onClick={ev => { ev.stopPropagation(); onProjectClick(e.project) }}
-                    style={{
-                      position: 'absolute', left, top, width,
-                      height: MOBILE_EVENT_H, borderRadius: 2,
-                      background: barColor + '18', color: barColor,
-                      border: 'none',
-                      fontSize: 9, fontWeight: 600,
-                      padding: '0 2px', textAlign: 'left',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
-                      lineHeight: `${MOBILE_EVENT_H}px`,
-                    }}
-                    title={e.project.title}
-                  >
-                    {e.project.title}
-                  </button>
-                )
-              })}
-              {visibleMilestones.map(e => {
+                if (e.kind === 'project') {
+                  const barColor = e.project.statusColor ?? '#9CA3AF'
+                  return (
+                    <button
+                      key={`c-${e.project.id}-${e.week}-${e.day}`}
+                      type="button"
+                      onClick={ev => { ev.stopPropagation(); onProjectClick(e.project) }}
+                      style={{
+                        position: 'absolute', left, top, width,
+                        height: MOBILE_EVENT_H, borderRadius: 2,
+                        background: barColor + '18', color: barColor,
+                        border: 'none',
+                        fontSize: 9, fontWeight: 600,
+                        padding: '0 2px', textAlign: 'left',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                        lineHeight: `${MOBILE_EVENT_H}px`,
+                      }}
+                      title={e.project.title}
+                    >
+                      {e.project.title}
+                    </button>
+                  )
+                }
                 const barColor = e.project?.statusColor ?? '#64748B'
                 const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
                 const label = formatMilestoneLabel(e.milestone)
-                const left = `calc(${e.day * colW}% + 1px)`
-                const width = `calc(${e.span * colW}% - 2px)`
-                const top = MOBILE_DATE_AREA + (usedProjectRows + e.row) * (MOBILE_EVENT_H + MOBILE_EVENT_GAP)
                 return (
                   <button
                     key={`m-${e.milestone.id}-${e.week}-${e.day}`}
@@ -1364,15 +1378,10 @@ const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate
                 )
               })}
               {row.map((_, col) => {
-                const coveringProjects = weekProjects.filter(e => eventCoversDay(e, col))
-                const coveringMilestones = weekMilestones.filter(e => eventCoversDay(e, col))
-                const overflowInfo = mobileOverflowLane({
-                  coveringProjectRows: coveringProjects.map(e => e.row),
-                  coveringMilestoneRows: coveringMilestones.map(e => e.row),
-                  maxEventRows: MOBILE_MAX_EVENT_ROWS,
-                  usedProjectRows,
-                  remainingRows,
-                })
+                const overflowInfo = mobileOverflowLane(
+                  packed.filter(e => eventCoversDay(e, col)).map(e => e.row),
+                  MOBILE_MAX_EVENT_ROWS,
+                )
                 if (!overflowInfo) return null
                 return (
                   <div
