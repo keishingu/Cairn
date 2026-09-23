@@ -106,9 +106,17 @@ describe('LoginMethodsSettings', () => {
     })
 
     renderLoginMethods()
-    await user.click(await screen.findByRole('button', { name: 'Apple を連携' }))
+    // マウント後のクライアント判定を待つ
+    await screen.findByRole('button', { name: 'Apple を連携' })
+    await waitFor(() => {
+      // effect 適用後も同じボタンだが、クリック前に native 判定が立つこと
+      expect(window.ReactNativeWebView).toBeTruthy()
+    })
+    await user.click(screen.getByRole('button', { name: 'Apple を連携' }))
 
-    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-apple-identity' }))
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-apple-identity' }))
+    })
     expect(mocks.linkIdentity).not.toHaveBeenCalled()
   })
 
@@ -125,9 +133,12 @@ describe('LoginMethodsSettings', () => {
     })
 
     renderLoginMethods()
-    await user.click(await screen.findByRole('button', { name: 'Google を連携' }))
+    await screen.findByRole('button', { name: 'Google を連携' })
+    await user.click(screen.getByRole('button', { name: 'Google を連携' }))
 
-    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-google-identity' }))
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-google-identity' }))
+    })
     expect(mocks.linkIdentity).not.toHaveBeenCalled()
   })
 

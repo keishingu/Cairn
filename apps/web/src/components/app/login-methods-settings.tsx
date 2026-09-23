@@ -33,6 +33,7 @@ type NativeLinkDetail = {
 }
 
 function hasReactNativeWebView(): boolean {
+  if (typeof window === 'undefined') return false
   return Boolean(
     (window as typeof window & { ReactNativeWebView?: { postMessage: (message: string) => void } })
       .ReactNativeWebView,
@@ -40,15 +41,22 @@ function hasReactNativeWebView(): boolean {
 }
 
 function isExpoIosWebView(): boolean {
+  if (typeof navigator === 'undefined') return false
   return hasReactNativeWebView() && /iPhone|iPad|iPod/i.test(navigator.userAgent)
 }
 
 function isExpoAndroidWebView(): boolean {
+  if (typeof navigator === 'undefined') return false
   return hasReactNativeWebView() && /Android/i.test(navigator.userAgent)
 }
 
 function requestNativeOAuthLink(provider: LinkableOAuthProvider): Promise<NativeLinkDetail> {
   return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve({ ok: false, message: 'ネイティブ連携を開始できませんでした' })
+      return
+    }
+
     const nativeBridge = (
       window as typeof window & {
         ReactNativeWebView?: { postMessage: (message: string) => void }
@@ -160,13 +168,27 @@ export function LoginMethodsSettings() {
   const [message, setMessage] = React.useState<{ text: string; ok: boolean } | null>(null)
   const [unlinkTarget, setUnlinkTarget] = React.useState<UserIdentity | null>(null)
   const [linkingProvider, setLinkingProvider] = React.useState<LinkableOAuthProvider | null>(null)
+  // SSR / 初回描画では window を読まず、マウント後にだけネイティブ判定する。
+  const [clientRuntime, setClientRuntime] = React.useState({
+    nativeWebView: false,
+    expoIos: false,
+    expoAndroid: false,
+  })
+
+  React.useEffect(() => {
+    setClientRuntime({
+      nativeWebView: hasReactNativeWebView(),
+      expoIos: isExpoIosWebView(),
+      expoAndroid: isExpoAndroidWebView(),
+    })
+  }, [])
 
   const appleIdentity = findIdentity(identities, 'apple')
   const googleIdentity = findIdentity(identities, 'google')
   const canUnlink = (identities?.length ?? 0) >= 2
-  const showAndroidAppleHint = isExpoAndroidWebView() && !appleIdentity
-  const useNativeGoogleLink = hasReactNativeWebView()
-  const useNativeAppleLink = isExpoIosWebView()
+  const showAndroidAppleHint = clientRuntime.expoAndroid && !appleIdentity
+  const useNativeGoogleLink = clientRuntime.nativeWebView
+  const useNativeAppleLink = clientRuntime.expoIos
 
   React.useEffect(() => {
     const linked = searchParams.get('loginLinked')
