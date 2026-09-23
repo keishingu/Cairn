@@ -39,9 +39,9 @@ ExpoアプリはiOSのログイン・新規登録画面にApple公式の「Sign 
 4. PreviewとProductionのSupabase DashboardでAuth → Providers → Appleを有効化する。Client IDsはWeb OAuth用Services IDを先頭に置き、続けて各native App IDを登録する。Apple Keyから生成したclient secretをDashboardだけに設定する。開発環境はローカルSupabaseでApple providerを有効化して試す場合だけ同等の値を安全に投入する。
 5. 「メールを非公開」を選ぶ利用者に確認・リセットメール等を送る場合は、Apple DeveloperのPrivate Email RelayへSupabase Authの実送信ドメイン／送信元を登録する。relay emailは通常の認証済みemailとして保存・利用し、アプリ側で変換しない。
 6. Associated DomainsはこのID token方式のApple認証には不要である（Universal Linksを追加する場合だけ別途設定する）。既存のSupabase Redirect URLsはメールリンク・Google OAuth用として維持する。
-7. PreviewとProductionのSupabase Dashboardで Auth → Providers（または Authentication の設定）から **Manual Linking** を有効化する。ローカルは `supabase/config.toml` の `enable_manual_linking = true`。これにより設定 → アカウント → ログイン方法から、既存のメール／パスワードアカウントへ Apple identity を明示連携できる。
+7. PreviewとProductionのSupabase Dashboardで Auth → Providers（または Authentication の設定）から **Manual Linking** を有効化する。ローカルは `supabase/config.toml` の `enable_manual_linking = true`。これにより設定 → アカウント → ログイン方法から、既存のメール／パスワードアカウントへ Apple / Google identity を明示連携できる。
 
-Supabase Authは検証済みで同じメールアドレスのOAuth identityを既存userへ自動紐付けする。Apple relay emailは実メールアドレスとは別のため、自動紐付けだけでは既存アカウントへは入らない。その場合はログイン後に設定 → アカウント → ログイン方法で「Apple を連携」する（Webは OAuth `linkIdentity`、Expo iOS の設定 WebView はネイティブ ID token の `linkIdentity`）。PreviewとProductionで、同一メールの自動紐付け・手動連携・relay emailの挙動を実機で確認する。
+Supabase Authは検証済みで同じメールアドレスのOAuth identityを既存userへ自動紐付けする。Apple relay emailは実メールアドレスとは別のため、自動紐付けだけでは既存アカウントへは入らない。その場合はログイン後に設定 → アカウント → ログイン方法で「Apple を連携」または「Google を連携」する（Webは OAuth `linkIdentity`、Expo の設定 WebView はネイティブ bridge）。PreviewとProductionで、同一メールの自動紐付け・手動連携・relay emailの挙動を実機で確認する。
 
 ### Appleログインの確認状況
 
@@ -141,7 +141,7 @@ EAS SubmitはApp Store Connect / TestFlightへのアップロードまでを行�
 - 新規インストール、メールアドレスログイン、Googleログイン、Appleログイン、サインアウト
 - Appleログインで初回だけ返る氏名が表示名に反映され、再ログインで既存表示名を空値で上書きしないこと
 - Appleの「メールを非公開」を選ぶ場合にrelay emailでログインでき、同一実メールの既存アカウントとは別アカウントになること。検証済み同一メールの既存アカウントはSupabase Authでidentityが自動紐付けされること
-- メール／パスワードで作成したアカウントに、設定 → アカウント → ログイン方法から Apple を手動連携でき、その後 Apple ログインでも同じアカウントへ入れること（relay emailでも可）。連携解除は別のログイン方法が残っているときだけ可能なこと
+- メール／パスワードで作成したアカウントに、設定 → アカウント → ログイン方法から Apple / Google を手動連携でき、その後それぞれのログインでも同じアカウントへ入れること（Apple relay emailでも可）。連携解除は別のログイン方法が残っているときだけ可能なこと
 - プロジェクト・チャット・タスク・カレンダー・ファイル・ギャラリーの主要導線
 - 写真権限を許可／拒否した場合の添付操作
 - 通知権限を許可／拒否した場合、およびバックグラウンドでのPush通知

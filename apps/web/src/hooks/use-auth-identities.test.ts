@@ -7,8 +7,8 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   useAuthIdentities,
-  useLinkAppleIdentity,
-  useUnlinkAppleIdentity,
+  useLinkOAuthIdentity,
+  useUnlinkOAuthIdentity,
   findIdentity,
   providerLabel,
 } from './use-auth-identities'
@@ -65,7 +65,7 @@ describe('useAuthIdentities', () => {
   it('Apple連携は設定画面へ戻るコールバック付きで開始する', async () => {
     mocks.linkIdentity.mockResolvedValue({ data: { provider: 'apple', url: 'https://apple' }, error: null })
     const { wrapper } = makeWrapper()
-    const { result } = renderHook(() => useLinkAppleIdentity(), { wrapper })
+    const { result } = renderHook(() => useLinkOAuthIdentity('apple'), { wrapper })
 
     await act(async () => {
       await result.current.mutateAsync()
@@ -74,40 +74,60 @@ describe('useAuthIdentities', () => {
     expect(mocks.linkIdentity).toHaveBeenCalledWith({
       provider: 'apple',
       options: {
-        redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3D1`,
+        redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3Dapple`,
       },
     })
   })
 
-  it('既に別アカウントへ紐付いているApple IDは日本語エラーにする', async () => {
+  it('Google連携は設定画面へ戻るコールバック付きで開始する', async () => {
+    mocks.linkIdentity.mockResolvedValue({
+      data: { provider: 'google', url: 'https://google' },
+      error: null,
+    })
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useLinkOAuthIdentity('google'), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(mocks.linkIdentity).toHaveBeenCalledWith({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3Dgoogle`,
+      },
+    })
+  })
+
+  it('既に別アカウントへ紐付いているIDは日本語エラーにする', async () => {
     mocks.linkIdentity.mockResolvedValue({
       data: null,
       error: { message: 'Identity is already linked', code: 'identity_already_exists' },
     })
     const { wrapper } = makeWrapper()
-    const { result } = renderHook(() => useLinkAppleIdentity(), { wrapper })
+    const { result } = renderHook(() => useLinkOAuthIdentity('apple'), { wrapper })
 
     await act(async () => {
-      await expect(result.current.mutateAsync()).rejects.toThrow(/別のアカウントに連携済み/)
+      await expect(result.current.mutateAsync()).rejects.toThrow(/別の Cairn アカウントに連携済み/)
     })
   })
 
-  it('Apple連携解除を呼び出す', async () => {
+  it('OAuth連携解除を呼び出す', async () => {
     mocks.unlinkIdentity.mockResolvedValue({ data: {}, error: null })
     const { wrapper } = makeWrapper()
-    const { result } = renderHook(() => useUnlinkAppleIdentity(), { wrapper })
-    const apple = {
-      identity_id: '2',
-      provider: 'apple',
-      id: '2',
+    const { result } = renderHook(() => useUnlinkOAuthIdentity(), { wrapper })
+    const google = {
+      identity_id: '3',
+      provider: 'google' as const,
+      id: '3',
       user_id: 'u1',
     }
 
     await act(async () => {
-      await result.current.mutateAsync(apple)
+      await result.current.mutateAsync(google)
     })
 
-    expect(mocks.unlinkIdentity).toHaveBeenCalledWith(apple)
+    expect(mocks.unlinkIdentity).toHaveBeenCalledWith(google)
   })
 
   it('providerLabelは主要プロバイダを日本語化する', () => {

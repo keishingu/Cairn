@@ -47,6 +47,7 @@ describe('LoginMethodsSettings', () => {
     mocks.unlinkIdentity.mockReset()
     mocks.searchParamsGet.mockReset()
     mocks.searchParamsGet.mockReturnValue(null)
+    delete (window as typeof window & { ReactNativeWebView?: unknown }).ReactNativeWebView
     mocks.getUserIdentities.mockResolvedValue({
       data: {
         identities: [
@@ -64,7 +65,7 @@ describe('LoginMethodsSettings', () => {
     mocks.linkIdentity.mockResolvedValue({ data: { provider: 'apple', url: null }, error: null })
   })
 
-  it('未連携時にApple連携ボタンを表示しOAuth連携を開始する', async () => {
+  it('未連携時にAppleとGoogleの連携ボタンを表示する', async () => {
     const user = userEvent.setup()
     renderLoginMethods()
 
@@ -75,13 +76,24 @@ describe('LoginMethodsSettings', () => {
       expect(mocks.linkIdentity).toHaveBeenCalledWith({
         provider: 'apple',
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3D1`,
+          redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3Dapple`,
+        },
+      })
+    })
+
+    mocks.linkIdentity.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Google を連携' }))
+    await waitFor(() => {
+      expect(mocks.linkIdentity).toHaveBeenCalledWith({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback?next=%2Fsettings%2Faccount%3FloginLinked%3Dgoogle`,
         },
       })
     })
   })
 
-  it('Expo iOS WebViewではネイティブへ連携メッセージを送る', async () => {
+  it('Expo iOS WebViewではApple連携をネイティブへ送る', async () => {
     const user = userEvent.setup()
     const postMessage = vi.fn()
     Object.defineProperty(window, 'ReactNativeWebView', {
@@ -98,11 +110,28 @@ describe('LoginMethodsSettings', () => {
 
     expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-apple-identity' }))
     expect(mocks.linkIdentity).not.toHaveBeenCalled()
-
-    delete (window as typeof window & { ReactNativeWebView?: unknown }).ReactNativeWebView
   })
 
-  it('Apple連携済みなら解除できる', async () => {
+  it('Expo WebViewではGoogle連携をネイティブへ送る', async () => {
+    const user = userEvent.setup()
+    const postMessage = vi.fn()
+    Object.defineProperty(window, 'ReactNativeWebView', {
+      configurable: true,
+      value: { postMessage },
+    })
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 14)',
+    })
+
+    renderLoginMethods()
+    await user.click(await screen.findByRole('button', { name: 'Google を連携' }))
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'link-google-identity' }))
+    expect(mocks.linkIdentity).not.toHaveBeenCalled()
+  })
+
+  it('Google連携済みなら解除できる', async () => {
     const user = userEvent.setup()
     mocks.getUserIdentities.mockResolvedValue({
       data: {
@@ -115,11 +144,11 @@ describe('LoginMethodsSettings', () => {
             identity_data: { email: 'taro@example.com' },
           },
           {
-            identity_id: 'apple-1',
-            provider: 'apple',
-            id: 'apple-1',
+            identity_id: 'google-1',
+            provider: 'google',
+            id: 'google-1',
             user_id: 'u1',
-            identity_data: { email: 'relay@privaterelay.appleid.com' },
+            identity_data: { email: 'taro@gmail.com' },
           },
         ],
       },
@@ -133,9 +162,9 @@ describe('LoginMethodsSettings', () => {
 
     await waitFor(() => {
       expect(mocks.unlinkIdentity).toHaveBeenCalledWith(
-        expect.objectContaining({ identity_id: 'apple-1', provider: 'apple' }),
+        expect.objectContaining({ identity_id: 'google-1', provider: 'google' }),
       )
     })
-    expect(await screen.findByText('Apple 連携を解除しました')).toBeInTheDocument()
+    expect(await screen.findByText('Google 連携を解除しました')).toBeInTheDocument()
   })
 })

@@ -11,13 +11,22 @@ import {
   findIdentity,
   providerLabel,
   useAuthIdentities,
-  useLinkAppleIdentity,
-  useUnlinkAppleIdentity,
+  useLinkOAuthIdentity,
+  useUnlinkOAuthIdentity,
+  type LinkableOAuthProvider,
 } from '@/hooks/use-auth-identities'
 
-const APPLE_IDENTITY_LINKED_EVENT = 'cairn:apple-identity-linked'
+const NATIVE_LINK_EVENTS: Record<LinkableOAuthProvider, string> = {
+  apple: 'cairn:apple-identity-linked',
+  google: 'cairn:google-identity-linked',
+}
 
-type NativeAppleLinkDetail = {
+const NATIVE_LINK_MESSAGE_TYPES: Record<LinkableOAuthProvider, string> = {
+  apple: 'link-apple-identity',
+  google: 'link-google-identity',
+}
+
+type NativeLinkDetail = {
   ok?: boolean
   cancelled?: boolean
   message?: string
@@ -38,7 +47,7 @@ function isExpoAndroidWebView(): boolean {
   return hasReactNativeWebView() && /Android/i.test(navigator.userAgent)
 }
 
-function requestNativeAppleLink(): Promise<NativeAppleLinkDetail> {
+function requestNativeOAuthLink(provider: LinkableOAuthProvider): Promise<NativeLinkDetail> {
   return new Promise((resolve) => {
     const nativeBridge = (
       window as typeof window & {
@@ -51,23 +60,24 @@ function requestNativeAppleLink(): Promise<NativeAppleLinkDetail> {
       return
     }
 
+    const eventName = NATIVE_LINK_EVENTS[provider]
     const timeout = window.setTimeout(() => {
-      window.removeEventListener(APPLE_IDENTITY_LINKED_EVENT, onResult as EventListener)
+      window.removeEventListener(eventName, onResult as EventListener)
       resolve({
         ok: false,
-        message: 'Apple 連携がタイムアウトしました。もう一度お試しください。',
+        message: `${providerLabel(provider)} 連携がタイムアウトしました。もう一度お試しください。`,
       })
     }, 120_000)
 
     function onResult(event: Event) {
       window.clearTimeout(timeout)
-      window.removeEventListener(APPLE_IDENTITY_LINKED_EVENT, onResult as EventListener)
-      const detail = (event as CustomEvent<NativeAppleLinkDetail>).detail ?? {}
+      window.removeEventListener(eventName, onResult as EventListener)
+      const detail = (event as CustomEvent<NativeLinkDetail>).detail ?? {}
       resolve(detail)
     }
 
-    window.addEventListener(APPLE_IDENTITY_LINKED_EVENT, onResult as EventListener)
-    nativeBridge.postMessage(JSON.stringify({ type: 'link-apple-identity' }))
+    window.addEventListener(eventName, onResult as EventListener)
+    nativeBridge.postMessage(JSON.stringify({ type: NATIVE_LINK_MESSAGE_TYPES[provider] }))
   })
 }
 
@@ -101,23 +111,70 @@ function IdentityRow({
   )
 }
 
+function UnlinkedProviderRow({
+  provider,
+  busy,
+  onLink,
+}: {
+  provider: LinkableOAuthProvider
+  busy: boolean
+  onLink: () => void
+}) {
+  const label = providerLabel(provider)
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '14px 16px',
+        borderBottom: '1px solid var(--divider)',
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+          未連携。連携すると次回から {label} でも同じアカウントに入れます。
+        </div>
+      </div>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        style={{ height: 30, fontSize: 12, padding: '0 12px', flexShrink: 0 }}
+        disabled={busy}
+        onClick={onLink}
+      >
+        {busy ? '連携中…' : `${label} を連携`}
+      </button>
+    </div>
+  )
+}
+
 export function LoginMethodsSettings() {
   const searchParams = useSearchParams()
   const { data: identities, isLoading, isError, error, refetch } = useAuthIdentities()
-  const linkApple = useLinkAppleIdentity()
-  const unlinkApple = useUnlinkAppleIdentity()
+  const linkApple = useLinkOAuthIdentity('apple')
+  const linkGoogle = useLinkOAuthIdentity('google')
+  const unlinkIdentity = useUnlinkOAuthIdentity()
 
   const [message, setMessage] = React.useState<{ text: string; ok: boolean } | null>(null)
-  const [unlinkOpen, setUnlinkOpen] = React.useState(false)
-  const [linking, setLinking] = React.useState(false)
+  const [unlinkTarget, setUnlinkTarget] = React.useState<UserIdentity | null>(null)
+  const [linkingProvider, setLinkingProvider] = React.useState<LinkableOAuthProvider | null>(null)
 
   const appleIdentity = findIdentity(identities, 'apple')
-  const canUnlinkApple = Boolean(appleIdentity && (identities?.length ?? 0) >= 2)
+  const googleIdentity = findIdentity(identities, 'google')
+  const canUnlink = (identities?.length ?? 0) >= 2
   const showAndroidAppleHint = isExpoAndroidWebView() && !appleIdentity
+  const useNativeGoogleLink = hasReactNativeWebView()
+  const useNativeAppleLink = isExpoIosWebView()
 
   React.useEffect(() => {
-    if (searchParams.get('loginLinked') !== '1') return
-    setMessage({ text: 'Apple をログイン方法として連携しました', ok: true })
+    const linked = searchParams.get('loginLinked')
+    if (linked !== 'apple' && linked !== 'google' && linked !== '1') return
+    const label =
+      linked === 'google' ? 'Google' : linked === 'apple' || linked === '1' ? 'Apple' : null
+    if (!label) return
+    setMessage({ text: `${label} をログイン方法として連携しました`, ok: true })
     const url = new URL(window.location.href)
     url.searchParams.delete('loginLinked')
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
@@ -126,45 +183,54 @@ export function LoginMethodsSettings() {
     return () => window.clearTimeout(timer)
   }, [searchParams, refetch])
 
-  const handleLinkApple = async () => {
+  const handleLink = async (provider: LinkableOAuthProvider) => {
     setMessage(null)
-    setLinking(true)
+    setLinkingProvider(provider)
+    const label = providerLabel(provider)
     try {
-      if (isExpoIosWebView()) {
-        const result = await requestNativeAppleLink()
+      const useNative =
+        provider === 'apple' ? useNativeAppleLink : provider === 'google' ? useNativeGoogleLink : false
+
+      if (useNative) {
+        const result = await requestNativeOAuthLink(provider)
         if (result.cancelled) {
-          setMessage({ text: 'Apple 連携をキャンセルしました', ok: false })
+          setMessage({ text: `${label} 連携をキャンセルしました`, ok: false })
           return
         }
         if (!result.ok) {
           setMessage({
-            text: result.message ?? 'Apple との連携に失敗しました',
+            text: result.message ?? `${label} との連携に失敗しました`,
             ok: false,
           })
           return
         }
-        setMessage({ text: 'Apple をログイン方法として連携しました', ok: true })
+        setMessage({ text: `${label} をログイン方法として連携しました`, ok: true })
         void refetch()
         return
       }
 
-      await linkApple.mutateAsync()
+      if (provider === 'apple') await linkApple.mutateAsync()
+      else await linkGoogle.mutateAsync()
     } catch (err) {
       setMessage({
-        text: err instanceof Error ? err.message : 'Apple との連携に失敗しました',
+        text: err instanceof Error ? err.message : `${label} との連携に失敗しました`,
         ok: false,
       })
     } finally {
-      setLinking(false)
+      setLinkingProvider(null)
     }
   }
 
-  const handleUnlinkApple = async () => {
-    if (!appleIdentity) return
-    await unlinkApple.mutateAsync(appleIdentity)
-    setUnlinkOpen(false)
-    setMessage({ text: 'Apple 連携を解除しました', ok: true })
+  const handleUnlink = async () => {
+    if (!unlinkTarget) return
+    const label = providerLabel(unlinkTarget.provider)
+    await unlinkIdentity.mutateAsync(unlinkTarget)
+    setUnlinkTarget(null)
+    setMessage({ text: `${label} 連携を解除しました`, ok: true })
   }
+
+  const busy =
+    linkingProvider !== null || linkApple.isPending || linkGoogle.isPending || unlinkIdentity.isPending
 
   return (
     <section style={{ marginBottom: 24 }}>
@@ -181,55 +247,54 @@ export function LoginMethodsSettings() {
           </div>
         ) : (
           <>
-            {(identities ?? []).map((identity) => (
-              <IdentityRow
-                key={identity.identity_id}
-                identity={identity}
-                action={
-                  identity.provider === 'apple' ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ height: 30, fontSize: 12, padding: '0 12px' }}
-                      disabled={!canUnlinkApple || unlinkApple.isPending}
-                      onClick={() => setUnlinkOpen(true)}
-                    >
-                      解除
-                    </button>
-                  ) : undefined
-                }
-              />
-            ))}
+            {(identities ?? []).map((identity) => {
+              const isOAuth = identity.provider === 'apple' || identity.provider === 'google'
+              return (
+                <IdentityRow
+                  key={identity.identity_id}
+                  identity={identity}
+                  action={
+                    isOAuth ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ height: 30, fontSize: 12, padding: '0 12px' }}
+                        disabled={!canUnlink || unlinkIdentity.isPending}
+                        onClick={() => setUnlinkTarget(identity)}
+                      >
+                        解除
+                      </button>
+                    ) : undefined
+                  }
+                />
+              )
+            })}
 
             {!appleIdentity && !showAndroidAppleHint && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  padding: '14px 16px',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>Apple</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                    未連携。連携すると次回から Apple でも同じアカウントに入れます。
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  style={{ height: 30, fontSize: 12, padding: '0 12px', flexShrink: 0 }}
-                  disabled={linking || linkApple.isPending}
-                  onClick={() => void handleLinkApple()}
-                >
-                  {linking || linkApple.isPending ? '連携中…' : 'Apple を連携'}
-                </button>
-              </div>
+              <UnlinkedProviderRow
+                provider="apple"
+                busy={busy}
+                onLink={() => void handleLink('apple')}
+              />
+            )}
+
+            {!googleIdentity && (
+              <UnlinkedProviderRow
+                provider="google"
+                busy={busy}
+                onLink={() => void handleLink('google')}
+              />
             )}
 
             {showAndroidAppleHint && (
-              <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--text-3)' }}>
+              <div
+                style={{
+                  padding: '14px 16px',
+                  fontSize: 12,
+                  color: 'var(--text-3)',
+                  borderBottom: googleIdentity ? undefined : '1px solid var(--divider)',
+                }}
+              >
                 Android アプリでは Apple ログインを提供していないため、ここでは連携できません。Web
                 または iOS から連携してください。
               </div>
@@ -250,21 +315,21 @@ export function LoginMethodsSettings() {
           </div>
         )}
 
-        {unlinkApple.isError && (
+        {unlinkIdentity.isError && (
           <div style={{ padding: '0 16px 12px', fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(unlinkApple.error as Error).message}
+            ⚠ {(unlinkIdentity.error as Error).message}
           </div>
         )}
       </div>
 
       <ConfirmDialog
-        open={unlinkOpen}
-        title="Apple 連携を解除しますか？"
+        open={unlinkTarget !== null}
+        title={`${providerLabel(unlinkTarget?.provider ?? '')} 連携を解除しますか？`}
         confirmLabel="解除する"
         busyLabel="解除中…"
-        onClose={() => setUnlinkOpen(false)}
-        onConfirm={handleUnlinkApple}
-        message="解除すると、このアカウントでは Apple でサインインできなくなります。メールなど別のログイン方法は残ります。"
+        onClose={() => setUnlinkTarget(null)}
+        onConfirm={handleUnlink}
+        message={`解除すると、このアカウントでは ${providerLabel(unlinkTarget?.provider ?? '')} でサインインできなくなります。メールなど別のログイン方法は残ります。`}
       />
     </section>
   )
