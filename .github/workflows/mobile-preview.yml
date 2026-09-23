@@ -12,11 +12,6 @@ on:
   issue_comment:
     types: [created]
 
-# 同じ PR の古い実行だけを止める。異なる PR は EAS 同期直前の FIFO ゲートで直列化する。
-concurrency:
-  group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
-
 jobs:
   preview:
     name: Publish Mobile EAS Update preview
@@ -28,6 +23,10 @@ jobs:
       (github.event.issue.pull_request &&
        github.event.comment.body == '@eas update' &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    # jobの対象外コメントはconcurrencyへ参加させず、正規の更新実行を中断させない。
+    concurrency:
+      group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
     permissions:
       actions: read
       contents: read
@@ -84,6 +83,16 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.sha }}
 
+      # issue_commentではworkflowはdefault branchから読まれる一方、上のcheckout先は
+      # PR headになる。キュー判定だけはworkflowと同じ信頼済みrevisionから読み込む。
+      - name: Checkout trusted Mobile Preview helpers
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-mobile-preview
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -107,7 +116,7 @@ jobs:
         with:
           script: |
             const { findEarlierActiveRuns } = require(
-              `${process.env.GITHUB_WORKSPACE}/.github/scripts/mobile-preview-queue.cjs`,
+              `${process.env.GITHUB_WORKSPACE}/trusted-mobile-preview/.github/scripts/mobile-preview-queue.cjs`,
             )
             const deadline = Date.now() + 60 * 60 * 1000
 

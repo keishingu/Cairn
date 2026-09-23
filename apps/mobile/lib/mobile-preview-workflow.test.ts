@@ -37,8 +37,9 @@ describe('モバイルプレビューの環境同期', () => {
 
   it('PRの接続先をEAS preview環境へ作成または上書きする', () => {
     expect(workflow).toContain(
-      'group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}',
+      '    concurrency:\n      group: mobile-preview-pr-${{ github.event.pull_request.number || github.event.issue.number }}',
     )
+    expect(workflow).not.toContain('\nconcurrency:\n')
     expect(workflow).toContain('cancel-in-progress: true')
     expect(workflow).toContain('--name EXPO_PUBLIC_API_BASE_URL')
     expect(workflow).toContain('--name EXPO_PUBLIC_SUPABASE_URL')
@@ -70,6 +71,9 @@ describe('モバイルプレビューの環境同期', () => {
     expect(workflow).toContain('actions: read')
     expect(workflow).toContain('Wait for earlier Mobile Preview runs')
     expect(workflow).toContain('findEarlierActiveRuns')
+    expect(workflow).toContain('ref: ${{ github.workflow_sha }}')
+    expect(workflow).toContain('path: trusted-mobile-preview')
+    expect(workflow).toContain('trusted-mobile-preview/.github/scripts/mobile-preview-queue.cjs')
     expect(workflow).not.toContain('group: mobile-preview-eas-environment')
   })
 })
