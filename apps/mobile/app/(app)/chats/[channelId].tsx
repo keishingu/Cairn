@@ -19,8 +19,6 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import type * as FileSystemTypes from 'expo-file-system/build/legacy/index'
-import * as Sharing from 'expo-sharing'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -37,11 +35,14 @@ import {
 import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
+import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { chatProjectRoleLabel } from '@cairn/shared'
+import { shareCachedAttachment } from '../../../lib/attachment-cache'
+import { isImageMime } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -61,11 +62,6 @@ import {
   useProjectMembers,
   useWorkspaceMembers,
 } from '../../../hooks/use-chat-channels'
-
-// SDK 54 の legacy download API は安定した進捗不要ダウンロードに使える。
-// 型定義だけ build 配下から参照し、アプリコード側の exactOptionalPropertyTypes の影響を避ける。
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -93,17 +89,18 @@ function attachmentUrl(fileId: string): string {
 async function openAttachmentFile(
   fileId: string,
   fileName: string,
+  mimeType: string | null,
   accessToken: string,
 ): Promise<void> {
   try {
-    const safeName = fileName.replace(/[^\w.\-]/g, '_')
-    const target = `${FileSystem.cacheDirectory}${fileId}_${safeName}`
-    const result = await FileSystem.downloadAsync(attachmentUrl(fileId), target, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    await shareCachedAttachment({
+      fileUrl: attachmentUrl(fileId),
+      fileId,
+      fileName,
+      accessToken,
+      mimeType,
+      dialogTitle: 'ファイルを開く',
     })
-    if (result.status !== 200) throw new Error(`ダウンロードに失敗しました (${result.status})`)
-    if (!(await Sharing.isAvailableAsync())) throw new Error('この端末ではファイルを開けません')
-    await Sharing.shareAsync(result.uri)
   } catch (error) {
     console.error('[chat] 添付ファイルを開けませんでした:', error)
     Alert.alert(
@@ -117,20 +114,33 @@ function AttachmentChip({
   attachment,
   palette,
   accessToken,
+  onOpenImage,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
   accessToken?: string
+  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
 }) {
-  const isImage = attachment.mimeType?.startsWith('image/') === true
+  const isImage = isImageMime(attachment.mimeType)
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${attachment.fileName}を開く`}
+      accessibilityLabel={
+        isImage ? `${attachment.fileName}を表示` : `${attachment.fileName}を開く`
+      }
       disabled={!accessToken}
       onPress={() => {
-        if (accessToken)
-          void openAttachmentFile(attachment.fileId, attachment.fileName, accessToken)
+        if (!accessToken) return
+        if (isImage) {
+          onOpenImage(attachment)
+          return
+        }
+        void openAttachmentFile(
+          attachment.fileId,
+          attachment.fileName,
+          attachment.mimeType,
+          accessToken,
+        )
       }}
       style={({ pressed }) => [
         styles.attachmentChip,
@@ -164,6 +174,7 @@ function ChatMessageRow({
   onShowReactors,
   onLinkPress,
   onOpenActions,
+  onOpenImage,
 }: {
   message: MessageDto
   palette: Palette
@@ -173,6 +184,7 @@ function ChatMessageRow({
   onShowReactors: (emoji: string, userNames: string[]) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
+  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const projectRoleLabelText = chatProjectRoleLabel({
     legacyRole: message.senderProjectRole,
@@ -295,6 +307,7 @@ function ChatMessageRow({
                   key={attachment.id}
                   attachment={attachment}
                   palette={palette}
+                  onOpenImage={onOpenImage}
                   {...(accessToken ? { accessToken } : {})}
                 />
               ))}
@@ -497,6 +510,9 @@ export default function ChatThreadScreen() {
     emoji: string
     userNames: string[]
   } | null>(null)
+  const [imagePreview, setImagePreview] = React.useState<MessageDto['attachments'][number] | null>(
+    null,
+  )
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
@@ -594,7 +610,8 @@ export default function ChatThreadScreen() {
   React.useEffect(() => {
     if (!isFocused) return
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (reactionPeople || reactionTarget || actionTarget) {
+      if (imagePreview || reactionPeople || reactionTarget || actionTarget) {
+        setImagePreview(null)
         setReactionPeople(null)
         setReactionTarget(null)
         setActionTarget(null)
@@ -604,7 +621,7 @@ export default function ChatThreadScreen() {
       return true
     })
     return () => subscription.remove()
-  }, [actionTarget, goBackToList, isFocused, reactionPeople, reactionTarget])
+  }, [actionTarget, goBackToList, imagePreview, isFocused, reactionPeople, reactionTarget])
 
   // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
   // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
@@ -648,6 +665,7 @@ export default function ChatThreadScreen() {
     setEditingMessage(null)
     setActionTarget(null)
     setReactionTarget(null)
+    setImagePreview(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
     upload.clearUploads()
@@ -1104,6 +1122,7 @@ export default function ChatThreadScreen() {
                     onShowReactors={(emoji, userNames) => setReactionPeople({ emoji, userNames })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
+                    onOpenImage={setImagePreview}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1583,6 +1602,16 @@ export default function ChatThreadScreen() {
             )}
           </View>
         </Modal>
+        {imagePreview && session?.access_token && (
+          <ChatImageViewer
+            fileUrl={attachmentUrl(imagePreview.fileId)}
+            fileId={imagePreview.fileId}
+            fileName={imagePreview.fileName}
+            mimeType={imagePreview.mimeType}
+            accessToken={session.access_token}
+            onClose={() => setImagePreview(null)}
+          />
+        )}
       </Animated.View>
     </KeyboardAvoidingView>
   )
