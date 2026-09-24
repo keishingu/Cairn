@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -78,6 +78,7 @@ const mockUseWorkspacePermissions = vi.fn(() => ({
 
 vi.mock('@/hooks/use-current-user', () => ({
   useWorkspacePermissions: () => mockUseWorkspacePermissions(),
+  useCurrentUser: () => ({ data: undefined }),
 }))
 
 vi.mock('@/lib/use-workspace-settings', () => ({
@@ -169,6 +170,7 @@ function renderPage(openPanel = vi.fn()) {
 
 describe('PageCalendar (モバイル)', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals()
     window.localStorage.clear()
     mockFetchWithAuth.mockReset()
     mockUseWorkspacePermissions.mockReset()
@@ -288,6 +290,95 @@ describe('PageCalendar (モバイル)', () => {
     expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toEqual([
       expect.objectContaining({ id: 'created-project', title: '新規予定' }),
     ])
+  })
+
+  it('上スワイプで次の月、下スワイプで前の月に移る', async () => {
+    renderPage()
+    const today = new Date()
+    const label = (offset: number) => {
+      const d = new Date(today.getFullYear(), today.getMonth() + offset, 1)
+      return `${d.getFullYear()}年${d.getMonth() + 1}月`
+    }
+    expect(await screen.findByText(label(0))).toBeInTheDocument()
+    const grid = screen.getByTestId('month-calendar')
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 220 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 80 }] })
+    expect(screen.getByText(label(1))).toBeInTheDocument()
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 80 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 220 }] })
+    expect(screen.getByText(label(0))).toBeInTheDocument()
+  })
+
+  it('短い縦移動では月を変えない', async () => {
+    renderPage()
+    const today = new Date()
+    const label = `${today.getFullYear()}年${today.getMonth() + 1}月`
+    expect(await screen.findByText(label)).toBeInTheDocument()
+    const grid = screen.getByTestId('month-calendar')
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 120 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 100 }] })
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    expect(screen.queryByText(`${next.getFullYear()}年${next.getMonth() + 1}月`)).not.toBeInTheDocument()
+  })
+
+  it('月曜始まりでは曜日見出しが月曜から並ぶ', () => {
+    window.localStorage.setItem('cairn:calendar_week_start', 'monday')
+    renderPage()
+
+    expect(screen.getAllByTestId('weekday-label').map((node) => node.textContent)).toEqual([
+      '月', '火', '水', '木', '金', '土', '日',
+    ])
+  })
+
+  it('PCの月表示ではホイールで次の月へ移る', async () => {
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    const today = new Date()
+    const current = `${today.getFullYear()}年${today.getMonth() + 1}月`
+    const nextDate = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const next = `${nextDate.getFullYear()}年${nextDate.getMonth() + 1}月`
+    expect(await screen.findByText(current)).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByTestId('month-calendar').dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(screen.getByText(next)).toBeInTheDocument()
+  })
+
+  it('週表示のホイールでは表示中の週を変えない', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const user = userEvent.setup()
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    await user.click(screen.getByRole('button', { name: '週' }))
+    const label = screen.getByText(/–/)
+    const before = label.textContent
+    const event = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
+    await act(async () => {
+      label.dispatchEvent(event)
+    })
+    expect(label).toHaveTextContent(before ?? '')
+    expect(event.defaultPrevented).toBe(false)
   })
 
   it('月表示では同一週の連続日付を1本の矩形で表示する', async () => {

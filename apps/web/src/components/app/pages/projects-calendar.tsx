@@ -7,7 +7,10 @@ import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { PageToolbar, SegmentedControl } from './page-toolbar'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
+import { readStoredCalendarWeekStart, writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
+import { useMonthSwipeNavigation, useMonthWheelNavigation } from '@/lib/use-month-navigation'
+import { isCalendarWeekStart, type CalendarWeekStart } from '@cairn/shared'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -22,9 +25,33 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
-function getCalendarStart(year: number, month: number): Date {
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const
+
+/** 週の左端を 0 とした列。Date#getDay は日曜が 0。 */
+export function weekdayColumn(date: Date, weekStartsOn: CalendarWeekStart): number {
+  const sundayBased = date.getDay()
+  return weekStartsOn === 'monday' ? (sundayBased + 6) % 7 : sundayBased
+}
+
+export function weekdayLabels(weekStartsOn: CalendarWeekStart): string[] {
+  return weekStartsOn === 'monday'
+    ? [...WEEKDAY_LABELS.slice(1), WEEKDAY_LABELS[0]]
+    : [...WEEKDAY_LABELS]
+}
+
+function columnWeekday(column: number, weekStartsOn: CalendarWeekStart): number {
+  return weekStartsOn === 'monday' ? (column + 1) % 7 : column
+}
+
+function weekdayColor(dow: number, neutral: string): string {
+  if (dow === 0) return 'var(--red)'
+  if (dow === 6) return 'var(--blue)'
+  return neutral
+}
+
+function getCalendarStart(year: number, month: number, weekStartsOn: CalendarWeekStart = 'sunday'): Date {
   const d = new Date(year, month, 1)
-  d.setDate(d.getDate() - d.getDay()) // back to Sunday
+  d.setDate(d.getDate() - weekdayColumn(d, weekStartsOn))
   return d
 }
 
@@ -43,9 +70,9 @@ function parseLocalDate(s: string): Date {
   return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
 }
 
-function getWeekStart(d: Date): Date {
+function getWeekStart(d: Date, weekStartsOn: CalendarWeekStart = 'sunday'): Date {
   const result = new Date(d)
-  result.setDate(d.getDate() - d.getDay())
+  result.setDate(d.getDate() - weekdayColumn(d, weekStartsOn))
   result.setHours(0, 0, 0, 0)
   return result
 }
@@ -68,9 +95,9 @@ interface CalCell {
   isToday: boolean
 }
 
-function buildCells(year: number, month: number): CalCell[][] {
+function buildCells(year: number, month: number, weekStartsOn: CalendarWeekStart = 'sunday'): CalCell[][] {
   const today = new Date()
-  const calStart = getCalendarStart(year, month)
+  const calStart = getCalendarStart(year, month, weekStartsOn)
   return Array.from({ length: 6 }, (_, week) =>
     Array.from({ length: 7 }, (_, day) => {
       const d = new Date(calStart)
@@ -115,8 +142,13 @@ interface MilestoneDisplayEvent {
   row: number
 }
 
-export function buildGcalEvents(events: GcalEventDto[], year: number, month: number): GcalDisplayEvent[] {
-  const calStart = getCalendarStart(year, month)
+export function buildGcalEvents(
+  events: GcalEventDto[],
+  year: number,
+  month: number,
+  weekStartsOn: CalendarWeekStart = 'sunday',
+): GcalDisplayEvent[] {
+  const calStart = getCalendarStart(year, month, weekStartsOn)
   const calEnd = new Date(calStart)
   calEnd.setDate(calEnd.getDate() + 41)
 
@@ -134,7 +166,7 @@ export function buildGcalEvents(events: GcalEventDto[], year: number, month: num
     let cur = new Date(visStart)
     while (cur <= visEnd) {
       const week = Math.floor(daysBetween(calStart, cur) / 7)
-      const day = cur.getDay()
+      const day = weekdayColumn(cur, weekStartsOn)
       const weekEnd = new Date(cur)
       weekEnd.setDate(weekEnd.getDate() + (6 - day))
       const segEnd = weekEnd < visEnd ? weekEnd : visEnd
@@ -159,8 +191,13 @@ export function buildGcalEvents(events: GcalEventDto[], year: number, month: num
   return result
 }
 
-function buildEvents(projects: ProjectDto[], year: number, month: number): CalEvent[] {
-  const calStart = getCalendarStart(year, month)
+function buildEvents(
+  projects: ProjectDto[],
+  year: number,
+  month: number,
+  weekStartsOn: CalendarWeekStart = 'sunday',
+): CalEvent[] {
+  const calStart = getCalendarStart(year, month, weekStartsOn)
   const calEnd = new Date(calStart)
   calEnd.setDate(calEnd.getDate() + 41)
 
@@ -180,7 +217,7 @@ function buildEvents(projects: ProjectDto[], year: number, month: number): CalEv
     let cur = new Date(visStart)
     while (cur <= visEnd) {
       const week = Math.floor(daysBetween(calStart, cur) / 7)
-      const day = cur.getDay()
+      const day = weekdayColumn(cur, weekStartsOn)
       const weekEnd = new Date(cur)
       weekEnd.setDate(weekEnd.getDate() + (6 - day))
       const segEnd = weekEnd < visEnd ? weekEnd : visEnd
@@ -217,8 +254,9 @@ export function buildMilestoneEvents(
   projectMap: Map<string, ProjectDto>,
   year: number,
   month: number,
+  weekStartsOn: CalendarWeekStart = 'sunday',
 ): MilestoneDisplayEvent[] {
-  const calStart = getCalendarStart(year, month)
+  const calStart = getCalendarStart(year, month, weekStartsOn)
   const calEnd = new Date(calStart)
   calEnd.setDate(calEnd.getDate() + 41)
 
@@ -235,7 +273,7 @@ export function buildMilestoneEvents(
     let cur = new Date(visStart)
     while (cur <= visEnd) {
       const week = Math.floor(daysBetween(calStart, cur) / 7)
-      const day = cur.getDay()
+      const day = weekdayColumn(cur, weekStartsOn)
       const weekEnd = new Date(cur)
       weekEnd.setDate(weekEnd.getDate() + (6 - day))
       const segEnd = weekEnd < visEnd ? weekEnd : visEnd
@@ -453,6 +491,7 @@ const MAX_MILESTONE_ROWS = 2
 interface CalendarGridProps {
   year: number
   month: number
+  weekStartsOn?: CalendarWeekStart
   events: CalEvent[]
   gcalEvents?: GcalDisplayEvent[]
   milestoneEvents?: MilestoneDisplayEvent[]
@@ -526,9 +565,9 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
   )
 }
 
-const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarGridProps) => {
-  const days = ['日', '月', '火', '水', '木', '金', '土']
-  const cells = buildCells(year, month)
+const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents = [], milestoneEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarGridProps) => {
+  const days = weekdayLabels(weekStartsOn)
+  const cells = buildCells(year, month, weekStartsOn)
   const flatCells = cells.flat()
   const allDayRowsByWeek = Array.from({ length: 6 }, (_, week) => (
     Math.max(
@@ -604,12 +643,12 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
   }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div data-testid="month-calendar" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
-          <div key={d} style={{
+          <div key={d} data-testid="weekday-label" style={{
             padding: '8px 12px', fontSize: 11, fontWeight: 600,
-            color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
+            color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
             textAlign: 'left', letterSpacing: '0.04em', textTransform: 'uppercase',
           }}>{d}</div>
         ))}
@@ -650,11 +689,7 @@ const CalendarGrid = ({ year, month, events, gcalEvents = [], milestoneEvents = 
                     ? 'var(--on-accent)'
                     : cell.isOther
                       ? 'var(--text-4)'
-                      : day === 0
-                        ? 'var(--red)'
-                        : day === 6
-                          ? 'var(--blue)'
-                          : 'var(--text-2)',
+                      : weekdayColor(cell.fullDate.getDay(), 'var(--text-2)'),
                 }}>{cell.date}</span>
               </div>
             )
@@ -820,7 +855,6 @@ interface CalendarWeekGridProps {
 }
 
 const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents = [], timedEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
-  const days = ['日', '月', '火', '水', '木', '金', '土']
   const today = new Date()
   const cells = Array.from({ length: 7 }, (_, day) => {
     const d = new Date(weekStart)
@@ -914,11 +948,11 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
         {cells.map((cell, i) => (
           <div key={i} style={{
             padding: '8px 12px', fontSize: 11, fontWeight: 600,
-            color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
+            color: weekdayColor(cell.fullDate.getDay(), 'var(--text-3)'),
             textAlign: 'left', letterSpacing: '0.04em', textTransform: 'uppercase',
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
-            {days[i]}
+            {WEEKDAY_LABELS[cell.fullDate.getDay()]}
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12.5, fontWeight: cell.isToday ? 700 : 500,
@@ -1145,10 +1179,8 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
 
 // ─── Mobile Calendar ───────────────────────────────────────────────
 
-const DOW_JP = ['日', '月', '火', '水', '木', '金', '土']
-
 function formatDateLabel(d: Date): string {
-  return `${d.getMonth() + 1}月${d.getDate()}日(${DOW_JP[d.getDay()]})`
+  return `${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAY_LABELS[d.getDay()]})`
 }
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -1190,12 +1222,14 @@ export function formatMilestoneLabel(milestone: Pick<WorkspaceMilestoneDto, 'pro
 interface MobileCalendarGridProps {
   year: number
   month: number
+  weekStartsOn?: CalendarWeekStart
   events: CalEvent[]
   milestoneEvents: MilestoneDisplayEvent[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
   onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
+  onMonthStep?: (step: -1 | 1) => void
 }
 
 const MOBILE_DATE_AREA = 26
@@ -1261,19 +1295,26 @@ export function mobileOverflowLane(coveringRows: number[], maxEventRows: number)
   }
 }
 
-const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
-  const days = ['日', '月', '火', '水', '木', '金', '土']
-  const cells = buildCells(year, month)
+const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, milestoneEvents, selectedDate, onSelectDate, onCreateDate, onProjectClick, onMonthStep }: MobileCalendarGridProps) => {
+  const days = weekdayLabels(weekStartsOn)
+  const cells = buildCells(year, month, weekStartsOn)
   const colW = 100 / 7
+  const swipe = useMonthSwipeNavigation(onMonthStep)
 
   return (
-    <div style={{ background: 'var(--card)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div
+      data-testid="month-calendar"
+      onTouchStart={swipe.onTouchStart}
+      onTouchEnd={swipe.onTouchEnd}
+      onClickCapture={swipe.onClickCapture}
+      style={{ background: 'var(--card)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', touchAction: 'none' }}
+    >
       {/* Day headers */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
-          <div key={d} style={{
+          <div key={d} data-testid="weekday-label" style={{
             padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
-            color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)',
+            color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
           }}>{d}</div>
         ))}
       </div>
@@ -1320,11 +1361,7 @@ const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate
                       ? 'var(--on-accent)'
                       : cell.isOther
                         ? 'var(--text-4)'
-                        : col === 0
-                          ? 'var(--red)'
-                          : col === 6
-                            ? 'var(--blue)'
-                            : 'var(--text)',
+                        : weekdayColor(cell.fullDate.getDay(), 'var(--text)'),
                     lineHeight: 1, flexShrink: 0,
                   }}>
                     {cell.date}
@@ -1565,8 +1602,8 @@ const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selected
   return (
     <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', padding: '6px 0 8px', flexShrink: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
-        {DOW_JP.map((d, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text-3)' }}>{d}</div>
+        {days.map((day, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: weekdayColor(day.getDay(), 'var(--text-3)') }}>{WEEKDAY_LABELS[day.getDay()]}</div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
@@ -1589,7 +1626,7 @@ const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selected
                 width: 34, height: 34, borderRadius: '50%', fontSize: 15,
                 fontWeight: isSelected || isToday ? 700 : 400,
                 background: isSelected ? 'var(--accent)' : isToday ? 'var(--accent-soft)' : 'transparent',
-                color: isSelected ? 'var(--on-accent)' : i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : 'var(--text)',
+                color: isSelected ? 'var(--on-accent)' : weekdayColor(day.getDay(), 'var(--text)'),
               }}>
                 {day.getDate()}
               </span>
@@ -1939,6 +1976,13 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const queryClient = useQueryClient()
+  const { data: me } = useCurrentUser()
+  const [weekStartsOn, setWeekStartsOn] = React.useState<CalendarWeekStart>(readStoredCalendarWeekStart)
+  React.useEffect(() => {
+    if (!isCalendarWeekStart(me?.calendarWeekStart)) return
+    setWeekStartsOn(me.calendarWeekStart)
+    writeStoredCalendarWeekStart(me.calendarWeekStart)
+  }, [me?.calendarWeekStart])
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
@@ -2055,8 +2099,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const gcalDisplayEvents = React.useMemo(
-    () => (gcalConnected ? buildGcalEvents(visibleGcalEvents, year, month) : []),
-    [visibleGcalEvents, year, month, gcalConnected],
+    () => (gcalConnected ? buildGcalEvents(visibleGcalEvents, year, month, weekStartsOn) : []),
+    [visibleGcalEvents, year, month, gcalConnected, weekStartsOn],
   )
 
   const allMembers = React.useMemo(
@@ -2082,16 +2126,16 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const events = React.useMemo(
-    () => buildEvents(visibleProjects, year, month),
-    [visibleProjects, year, month],
+    () => buildEvents(visibleProjects, year, month, weekStartsOn),
+    [visibleProjects, year, month, weekStartsOn],
   )
 
   const milestoneEvents = React.useMemo(
-    () => buildMilestoneEvents(visibleMilestones, projectMap, year, month),
-    [visibleMilestones, projectMap, year, month],
+    () => buildMilestoneEvents(visibleMilestones, projectMap, year, month, weekStartsOn),
+    [visibleMilestones, projectMap, year, month, weekStartsOn],
   )
 
-  const weekStart = getWeekStart(selectedDate)
+  const weekStart = getWeekStart(selectedDate, weekStartsOn)
 
   const weekEvents = React.useMemo(
     () => buildWeekEvents(visibleProjects, weekStart),
@@ -2155,8 +2199,15 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   })
 
   const isCurrentPeriod = calView === 'week'
-    ? weekStart.toDateString() === getWeekStart(today).toDateString()
+    ? weekStart.toDateString() === getWeekStart(today, weekStartsOn).toDateString()
     : year === today.getFullYear() && month === today.getMonth()
+
+  const shiftMonth = (step: -1 | 1) => {
+    if (step < 0) goPrev()
+    else goNext()
+  }
+  const pcPageRef = React.useRef<HTMLDivElement>(null)
+  useMonthWheelNavigation(pcPageRef, shiftMonth, !isMobile && calView === 'month')
 
   const periodLabel = calView === 'week' ? formatWeekRange(weekStart) : formatYM(year, month)
 
@@ -2246,11 +2297,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
+            weekStartsOn={weekStartsOn}
             events={events}
             milestoneEvents={milestoneEvents}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
+            onMonthStep={shiftMonth}
             {...(canCreateProject ? { onCreateDate: openCreateForDate } : {})}
           />
         )}
@@ -2292,7 +2345,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
 
   // ── PC layout ──────────────────────────────────────────────────
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '12px 24px 20px', overflow: 'hidden' }}>
+    <div ref={pcPageRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '12px 24px 20px', overflow: 'hidden' }}>
       {showCreate && createDates && (
         <CreateProjectModal
           onClose={closeCreate}
@@ -2450,6 +2503,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <CalendarGrid
             year={year}
             month={month}
+            weekStartsOn={weekStartsOn}
             events={events}
             gcalEvents={gcalDisplayEvents}
             milestoneEvents={milestoneEvents}

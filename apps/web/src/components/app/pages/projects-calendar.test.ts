@@ -119,6 +119,21 @@ describe('buildGcalEvents', () => {
     expect(result[0]).toMatchObject({ span: 1, row: 0 })
   })
 
+  test('月曜始まりでは週の区切りが日曜になる', () => {
+    const result = buildGcalEvents(
+      [makeEvent({ startDate: '2026-06-10', endDate: '2026-06-16' })],
+      YEAR,
+      MONTH,
+      'monday',
+    )
+
+    expect(result).toHaveLength(2)
+    const [first, second] = result.sort((a, b) => a.week - b.week)
+    // 6/10(水)〜6/14(日) = 5日、6/15(月)〜6/16(火) = 2日
+    expect(first).toMatchObject({ day: 2, span: 5 })
+    expect(second).toMatchObject({ day: 0, span: 2 })
+  })
+
   test('週をまたぐイベントは週ごとに分割され、各セグメントの span が正しく計算される', () => {
     // 6/10(水)〜6/16(火) は週をまたぐ（6/13(土)で区切られる）
     const result = buildGcalEvents([makeEvent({ startDate: '2026-06-10', endDate: '2026-06-16' })], YEAR, MONTH)
