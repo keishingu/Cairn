@@ -40,6 +40,7 @@ export const profiles = pgTable(
     aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
     theme: text('theme').notNull().default('system'),
     accentId: text('accent_id').notNull().default('emerald'),
+    locale: text('locale').notNull().default('system'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -49,6 +50,7 @@ export const profiles = pgTable(
       'profiles_accent_id_check',
       sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
     ),
+    check('profiles_locale_check', sql`${t.locale} in ('ja', 'en', 'system')`),
   ],
 )
 

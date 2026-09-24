@@ -8,6 +8,7 @@ import { Modal } from './primitives'
 import { COMMANDS } from '@/lib/commands'
 import { isMac, formatCommandKeys } from '@/lib/command-keys'
 import { useCommandRegistry } from '@/lib/command-registry'
+import { useT } from '@/components/locale-provider'
 import type { PageId } from './sidebar'
 
 /**
@@ -15,6 +16,7 @@ import type { PageId } from './sidebar'
  * ハンドラ登録済み」のコマンドを並べる。表示も実行も単一の真実から派生する。
  */
 export function CommandPalette({ onClose, page }: { onClose: () => void; page: PageId }) {
+  const t = useT()
   const { invoke, has, version } = useCommandRegistry()
   const mac = isMac()
   const [query, setQuery] = React.useState('')
@@ -31,8 +33,8 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return commands
-    return commands.filter(c => c.title.toLowerCase().includes(q))
-  }, [query, commands])
+    return commands.filter((c) => t(c.title).toLowerCase().includes(q) || c.title.toLowerCase().includes(q))
+  }, [query, commands, t])
 
   React.useEffect(() => { setIndex(0) }, [query])
   React.useEffect(() => { inputRef.current?.focus() }, [])
@@ -56,12 +58,12 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="コマンドを検索…"
+          placeholder={t('Search commands…')}
           style={{ border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', padding: '14px 16px', fontSize: 15, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
         />
         <div style={{ overflowY: 'auto', padding: 6 }}>
           {filtered.length === 0 && (
-            <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-4)', textAlign: 'center' }}>該当なし</div>
+            <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-4)', textAlign: 'center' }}>{t('No matches')}</div>
           )}
           {filtered.map((c, i) => (
             <button
@@ -75,7 +77,7 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
                 fontSize: 13.5, color: 'var(--text)', fontFamily: 'inherit',
               }}
             >
-              <span>{c.title}</span>
+              <span>{t(c.title)}</span>
               <kbd style={{ fontFamily: 'inherit', fontSize: 11, padding: '2px 6px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
                 {formatCommandKeys(c, mac)}
               </kbd>

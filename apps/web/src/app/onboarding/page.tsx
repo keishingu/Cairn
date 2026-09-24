@@ -5,8 +5,10 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { useT } from '@/components/locale-provider'
 
 export default function OnboardingPage() {
+  const t = useT()
   const router = useRouter()
   const [workspaceName, setWorkspaceName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -27,7 +29,7 @@ export default function OnboardingPage() {
     const body = await res.json().catch(() => ({})) as { ok?: boolean; workspaceId?: string; error?: string }
 
     if (!res.ok) {
-      setError(body.error ?? 'ワークスペースの作成に失敗しました')
+      setError(body.error ?? t('Could not create the workspace.'))
       setLoading(false)
       return
     }
@@ -63,12 +65,11 @@ export default function OnboardingPage() {
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            ワークスペースを作成
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('Create workspace')}</div>
           <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            チームや組織の名前でワークスペースを作成します。<br />
-            メンバーはあとから招待できます。
+            {t('Create a workspace with your team or organization name.')}
+            <br />
+            {t('You can invite members later.')}
           </div>
         </div>
 
@@ -81,16 +82,14 @@ export default function OnboardingPage() {
         }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-                ワークスペース名
-              </label>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
               <input
                 type="text"
                 value={workspaceName}
                 onChange={e => setWorkspaceName(e.target.value)}
                 required
                 autoFocus
-                placeholder="例: 山岳部、開発チーム、ABC株式会社"
+                placeholder={t('e.g. Alpine club, product team')}
                 maxLength={100}
                 style={{
                   padding: '9px 12px',
@@ -103,9 +102,7 @@ export default function OnboardingPage() {
                   fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
-                あとで変更できます
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('You can change this later')}</div>
             </div>
 
             {error && (
@@ -137,7 +134,7 @@ export default function OnboardingPage() {
                 marginTop: 4,
               }}
             >
-              {loading ? '作成中...' : 'ワークスペースを作成'}
+              {loading ? t('Creating...') : t('Create workspace')}
             </button>
           </form>
         </div>

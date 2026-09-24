@@ -7,6 +7,7 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/locale-provider'
 import { SocialAuthButtons } from '../_components/social-auth-buttons'
 
 export default function SignupPage() {
@@ -18,6 +19,7 @@ export default function SignupPage() {
 }
 
 function SignupForm() {
+  const t = useT()
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('invite')
@@ -30,7 +32,7 @@ function SignupForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (password.length < 8) {
-      setError('パスワードは8文字以上で入力してください')
+      setError(t('Password must be at least 8 characters.'))
       return
     }
     setLoading(true)
@@ -83,9 +85,7 @@ function SignupForm() {
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>
-          {inviteToken ? 'アカウントを作成して参加' : '新しいワークスペースを作成'}
-        </div>
+        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{inviteToken ? t('Create an account and join') : t('Create a new workspace')}</div>
       </div>
 
       <div style={{
@@ -99,15 +99,13 @@ function SignupForm() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>またはメールで続ける</span>
+          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{t('or continue with email')}</span>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              表示名
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Display name')}</label>
             <input
               type="text"
               value={displayName}
@@ -129,9 +127,7 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              メールアドレス
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -153,16 +149,14 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              パスワード
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
               autoComplete="new-password"
-              placeholder="8文字以上"
+              placeholder={t('At least 8 characters')}
               style={{
                 padding: '9px 12px',
                 border: '1px solid var(--border-2)',
@@ -205,19 +199,22 @@ function SignupForm() {
               marginTop: 4,
             }}
           >
-            {loading ? '作成中...' : inviteToken ? 'アカウントを作成して参加' : 'アカウントを作成'}
+            {loading ? t('Creating...') : inviteToken ? t('Create an account and join') : t('Create account')}
           </button>
         </form>
       </div>
 
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
-        <div style={{ marginBottom: 12, fontSize: 12 }}><Link href="/terms">利用規約</Link>{' ・ '}<Link href="/privacy">プライバシーポリシー</Link></div>
-        すでにアカウントをお持ちの方は{' '}
+        <div style={{ marginBottom: 12, fontSize: 12 }}>
+          <Link href="/terms">{t('Terms')}</Link>
+          {' ・ '}
+          <Link href="/privacy">{t('Privacy policy')}</Link>
+        </div>
+        {t('Already have an account?')}{' '}
         <Link
           href={inviteToken ? `/auth/login?invite=${inviteToken}` : '/auth/login'}
-          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
-        >
-          サインイン
+          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
+          {t('Sign in')}
         </Link>
       </div>
     </div>

@@ -550,6 +550,39 @@ describe('クレジットパック購入後の確認', () => {
   })
 })
 
+describe('外観の言語設定', () => {
+  it('英語を選ぶとプロフィールへ言語設定を保存する', async () => {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({}) }
+      }
+      return { ok: true, json: async () => ({ id: 'user-1', locale: 'system' }) }
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'English' }))
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ locale: 'en' }),
+        }),
+      )
+    })
+  })
+})
+
 describe('モバイル設定のセクション', () => {
   it('請求を公開せず、決済を含まないケルン画面だけを公開する', () => {
     const ids = getSettingsNavGroups(false, { isMobile: true }).flatMap((group) =>

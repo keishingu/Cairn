@@ -70,6 +70,7 @@ const STUB_ME: CurrentUserDto = {
   aiNudgesEnabled: true,
   theme: 'system',
   accentId: 'emerald',
+  locale: 'system',
 }
 
 describe('useSidebar data hooks', () => {

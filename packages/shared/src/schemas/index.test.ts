@@ -18,6 +18,12 @@ describe('patchMeSchema', () => {
   it('未定義のハイライトカラーを拒否する', () => {
     expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
   })
+
+  it('言語設定の許可値を受け入れ、未知の値を拒否する', () => {
+    expect(patchMeSchema.safeParse({ locale: 'en' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ locale: 'system' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ locale: 'fr' }).success).toBe(false)
+  })
 })
 
 describe('patchProfileAttributesSchema', () => {

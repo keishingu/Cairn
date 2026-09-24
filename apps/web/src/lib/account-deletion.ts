@@ -379,6 +379,7 @@ async function anonymizeAndRevoke(
         aiNudgesEnabled: false,
         theme: 'system',
         accentId: 'emerald',
+        locale: 'system',
         updatedAt: now,
       })
       .where(eq(profiles.id, userId))

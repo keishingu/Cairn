@@ -32,6 +32,7 @@ const user: CurrentUserDto = {
   aiNudgesEnabled: true,
   theme: 'system',
   accentId: 'emerald',
+  locale: 'system',
 }
 
 describe('PostHogUserIdentity', () => {

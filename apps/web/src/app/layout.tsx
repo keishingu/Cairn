@@ -5,6 +5,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Noto_Sans_JP } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AccentColorProvider } from '@/components/accent-color-provider'
+import { LocaleProvider } from '@/components/locale-provider'
 import { QueryProvider } from '@/components/query-provider'
 import { Toaster } from '@/components/app/toaster'
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
@@ -12,14 +13,17 @@ import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { PostHogProvider } from '@/components/posthog-provider'
+import { readRequestLocale } from '@/lib/i18n/request-locale'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const notoSansJP = Noto_Sans_JP({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], variable: '--font-noto' })
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
+  const { locale } = await readRequestLocale()
+  return {
   title: 'Cairn',
-  description: 'プロジェクト管理・チャット・カレンダー・ギャラリー・AIを統合したコラボレーションアプリ',
+  description: locale === 'en' ? 'Chat, projects, calendar, files, gallery, and AI in one place.' : 'プロジェクト管理・チャット・カレンダー・ギャラリー・AIを統合したコラボレーションアプリ',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -28,6 +32,7 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon.ico',
   },
+  }
 }
 
 export const viewport: Viewport = {
@@ -42,18 +47,21 @@ export const viewport: Viewport = {
   maximumScale: 1,
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const { locale, preference } = await readRequestLocale()
   return (
-    <html lang="ja" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansJP.variable}`} style={{ margin: 0, padding: 0, height: '100%' }}>
         <ThemeProvider attribute={['class', 'data-theme']} defaultTheme="system" enableSystem disableTransitionOnChange>
           <PostHogProvider>
             <AccentColorProvider>
+              <LocaleProvider initialLocale={locale} initialPreference={preference}>
               <QueryProvider>{children}</QueryProvider>
+              </LocaleProvider>
               <ThemeCookieSync />
               <DynamicAppleTouchIcon />
               <DynamicFavicon />

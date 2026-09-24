@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { AccentId, AppearanceTheme } from '@cairn/shared'
+import type { AccentId, AppearanceTheme, LocalePreference } from '@cairn/shared'
 import { fetchApiJson } from '../lib/fetch-api-json'
 import {
   fetchWorkspaceMemberships,
@@ -14,6 +14,7 @@ export interface MeDto {
   avatarUrl: string | null
   theme: AppearanceTheme
   accentId: AccentId
+  locale: LocalePreference
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
@@ -25,11 +26,12 @@ export interface WorkspaceDto {
 
 export type WorkspaceListItemDto = WorkspaceMembership
 
-export function useMe() {
+export function useMe(enabled = true) {
   return useQuery({
     queryKey: ['me'],
     queryFn: () => fetchApiJson<MeDto>('/api/me', 'ユーザー情報'),
     staleTime: 60_000,
+    enabled,
   })
 }
 

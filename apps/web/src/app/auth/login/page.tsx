@@ -7,6 +7,7 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/locale-provider'
 import { SocialAuthButtons } from '../_components/social-auth-buttons'
 
 export default function LoginPage() {
@@ -18,6 +19,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const t = useT()
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('invite')
@@ -40,7 +42,7 @@ function LoginForm() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
-      setError('メールアドレスまたはパスワードが正しくありません')
+      setError(t('Email or password is incorrect.'))
       setLoading(false)
       return
     }
@@ -74,7 +76,7 @@ function LoginForm() {
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>アカウントにサインイン</div>
+        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('Sign in to your account')}</div>
       </div>
 
       <div style={{
@@ -96,7 +98,7 @@ function LoginForm() {
               fontSize: 12.5,
             }}
           >
-            アカウントを削除しました。
+            {t('Your account has been deleted.')}
           </div>
         )}
         {callbackError && (
@@ -112,22 +114,20 @@ function LoginForm() {
               fontSize: 12.5,
             }}
           >
-            サインインを完了できませんでした。もう一度お試しください。
+            {t('Could not finish signing in. Please try again.')}
           </div>
         )}
         <SocialAuthButtons inviteToken={inviteToken} nextPath={safeNextPath} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>またはメールで続ける</span>
+          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{t('or continue with email')}</span>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              メールアドレス
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -149,9 +149,7 @@ function LoginForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              パスワード
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
@@ -201,7 +199,7 @@ function LoginForm() {
               marginTop: 4,
             }}
           >
-            {loading ? 'サインイン中...' : 'サインイン'}
+            {loading ? t('Signing in...') : t('Sign in')}
           </button>
         </form>
       </div>
@@ -209,9 +207,8 @@ function LoginForm() {
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
         <Link
           href={inviteToken ? `/auth/signup?invite=${inviteToken}` : '/auth/signup'}
-          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
-        >
-          新しいワークスペースを作成する →
+          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
+          {t('Create a new workspace →')}
         </Link>
       </div>
     </div>

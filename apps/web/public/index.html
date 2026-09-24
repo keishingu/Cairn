@@ -23,6 +23,25 @@
 <meta name="twitter:description" content="メッセージ・履歴・メンバー数は無制限で無料。タスク・カレンダー・ファイルも同じ場所で管理できるチャット＆プロジェクト管理ツール。Slack や Backlog などの無料プランを組み合わせているチーム・団体向け。有料は必要な人だけ月 ¥300。">
 <meta name="twitter:image" content="https://oss-cairn.com/og-image.png">
 
+<script>
+(function () {
+  var lang = 'ja';
+  try {
+    var saved = localStorage.getItem('cairn-lp-lang');
+    if (saved === 'ja' || saved === 'en') lang = saved;
+    else {
+      var match = document.cookie.match(/(?:^|; )cairn-locale-preference=(ja|en)(?:;|$)/);
+      if (match) lang = match[1];
+      else if ((navigator.language || '').toLowerCase().indexOf('en') === 0) lang = 'en';
+    }
+  } catch (e) {}
+  document.documentElement.lang = lang;
+  document.documentElement.setAttribute('data-lang', lang);
+  document.title = lang === 'en'
+    ? 'Cairn — Chat and project management, free.'
+    : 'Cairn — 無料でチャットも、プロジェクト管理も。';
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">

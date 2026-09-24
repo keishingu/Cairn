@@ -6,6 +6,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
+import { LocaleProvider } from '../components/locale-provider'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -62,7 +63,9 @@ export default function RootLayout() {
       <SQLiteProvider databaseName={OFFLINE_DATABASE_NAME} onInit={initializeOfflineDatabase}>
         <QueryClientProvider client={queryClient}>
           <AuthGuard>
-            <Slot />
+            <LocaleProvider>
+              <Slot />
+            </LocaleProvider>
           </AuthGuard>
         </QueryClientProvider>
       </SQLiteProvider>
