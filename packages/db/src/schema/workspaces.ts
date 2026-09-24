@@ -40,6 +40,7 @@ export const profiles = pgTable(
     aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
     theme: text('theme').notNull().default('system'),
     accentId: text('accent_id').notNull().default('emerald'),
+    calendarWeekStart: text('calendar_week_start').notNull().default('sunday'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -48,6 +49,10 @@ export const profiles = pgTable(
     check(
       'profiles_accent_id_check',
       sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
+    ),
+    check(
+      'profiles_calendar_week_start_check',
+      sql`${t.calendarWeekStart} in ('sunday', 'monday')`,
     ),
   ],
 )

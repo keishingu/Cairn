@@ -28,8 +28,14 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
-import type { AccentId } from '@cairn/shared'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import {
+  DEFAULT_CALENDAR_WEEK_START,
+  FEATURE_FLAGS,
+  isCalendarWeekStart,
+  type AccentId,
+  type CalendarWeekStart,
+} from '@cairn/shared'
+import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
@@ -649,15 +655,24 @@ const SettingsAccount = () => {
   )
 }
 
+const WEEK_START_OPTIONS: { value: CalendarWeekStart; label: string }[] = [
+  { value: 'sunday', label: '日曜' },
+  { value: 'monday', label: '月曜' },
+]
+
 const SettingsAppearance = () => {
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
+  const { data: me, isSuccess: meLoaded } = useCurrentUser()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
+  const weekStart = isCalendarWeekStart(me?.calendarWeekStart)
+    ? me.calendarWeekStart
+    : DEFAULT_CALENDAR_WEEK_START
 
   const appearanceMutation = useMutation({
-    mutationFn: async (patch: { theme?: ThemeValue; accentId?: AccentId }) => {
+    mutationFn: async (patch: { theme?: ThemeValue; accentId?: AccentId; calendarWeekStart?: CalendarWeekStart }) => {
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -699,13 +714,29 @@ const SettingsAppearance = () => {
     appearanceMutation.mutate({ accentId: value }, { onError: () => setAccentId(previous) })
   }
 
+  const changeWeekStart = (value: CalendarWeekStart) => {
+    if (!meLoaded || appearanceMutation.isPending || value === weekStart) return
+    const previous = weekStart
+    patchCurrentUserCache(queryClient, { calendarWeekStart: value })
+    writeStoredCalendarWeekStart(value)
+    appearanceMutation.mutate(
+      { calendarWeekStart: value },
+      {
+        onError: () => {
+          patchCurrentUserCache(queryClient, { calendarWeekStart: previous })
+          writeStoredCalendarWeekStart(previous)
+        },
+      },
+    )
+  }
+
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
         外観
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        テーマやカラーなど、表示に関する個人設定です。
+        テーマ、カラー、カレンダーなど、表示に関する個人設定です。
       </p>
 
       <section style={{ marginBottom: 24 }}>
@@ -812,6 +843,56 @@ const SettingsAppearance = () => {
               外観設定を保存できませんでした。通信状態を確認して再度お試しください。
             </div>
           )}
+        </div>
+      </section>
+
+      <section>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>カレンダー</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>週の始まり</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                月表示と週表示の左端を日曜または月曜にします
+              </div>
+            </div>
+            {mounted && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-elev)',
+                  borderRadius: 10,
+                  padding: 4,
+                }}
+              >
+                {WEEK_START_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={weekStart === opt.value}
+                    onClick={() => changeWeekStart(opt.value)}
+                    disabled={!meLoaded || appearanceMutation.isPending}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: 'none',
+                      background: weekStart === opt.value ? 'var(--card)' : 'transparent',
+                      color: weekStart === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: weekStart === opt.value ? 600 : 500,
+                      fontSize: 12.5,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      boxShadow: weekStart === opt.value ? 'var(--shadow-sm)' : 'none',
+                      transition: 'all .12s',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { AccentId, AppearanceTheme } from '@cairn/shared'
+import type { AccentId, AppearanceTheme, CalendarWeekStart } from '@cairn/shared'
 import { fetchApiJson } from '../lib/fetch-api-json'
 import {
   fetchWorkspaceMemberships,
@@ -14,6 +14,7 @@ export interface MeDto {
   avatarUrl: string | null
   theme: AppearanceTheme
   accentId: AccentId
+  calendarWeekStart: CalendarWeekStart
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 

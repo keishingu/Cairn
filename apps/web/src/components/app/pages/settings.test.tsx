@@ -605,6 +605,51 @@ describe('クレジットパック購入後の確認', () => {
   })
 })
 
+describe('外観の週の始まり', () => {
+  it('月曜を選ぶとプロフィールへ保存する', async () => {
+    const user = userEvent.setup()
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            displayName: '山田 太郎',
+            email: 'taro@example.com',
+            avatarUrl: null,
+            theme: 'system',
+            accentId: 'emerald',
+            calendarWeekStart: 'sunday',
+          }),
+        }
+      }
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({ id: 'user-1', calendarWeekStart: 'monday' }) }
+      }
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    const monday = await screen.findByRole('button', { name: '月曜' })
+    await waitFor(() => expect(monday).toBeEnabled())
+    await user.click(monday)
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith('/api/me', expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ calendarWeekStart: 'monday' }),
+      }))
+    })
+    expect(window.localStorage.getItem('cairn:calendar_week_start')).toBe('monday')
+  })
+})
+
 describe('モバイル設定のセクション', () => {
   it('請求を公開せず、決済を含まないケルン画面だけを公開する', () => {
     const ids = getSettingsNavGroups(false, { isMobile: true }).flatMap((group) =>

@@ -32,6 +32,7 @@ const user: CurrentUserDto = {
   aiNudgesEnabled: true,
   theme: 'system',
   accentId: 'emerald',
+  calendarWeekStart: 'sunday',
 }
 
 describe('PostHogUserIdentity', () => {

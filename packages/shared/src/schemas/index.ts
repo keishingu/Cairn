@@ -3,6 +3,7 @@
 
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
+import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
 
 const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
@@ -123,6 +124,7 @@ export const patchMeSchema = z.object({
   aiNudgesEnabled: z.boolean().optional(),
   theme: z.enum(APPEARANCE_THEMES).optional(),
   accentId: z.enum(ACCENT_IDS).optional(),
+  calendarWeekStart: z.enum(CALENDAR_WEEK_STARTS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },

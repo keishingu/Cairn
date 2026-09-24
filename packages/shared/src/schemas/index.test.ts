@@ -18,6 +18,11 @@ describe('patchMeSchema', () => {
   it('未定義のハイライトカラーを拒否する', () => {
     expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
   })
+
+  it('カレンダーの週の始まりは日曜と月曜だけ受け入れる', () => {
+    expect(patchMeSchema.safeParse({ calendarWeekStart: 'monday' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ calendarWeekStart: 'friday' }).success).toBe(false)
+  })
 })
 
 describe('patchProfileAttributesSchema', () => {
