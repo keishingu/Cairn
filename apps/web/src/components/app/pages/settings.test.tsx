@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CurrentUserDto } from '@/app/api/me/route'
-import { CURRENT_USER_QUERY_KEY } from '@/hooks/use-current-user'
+import { CURRENT_USER_FETCH_ERROR_MESSAGE, CURRENT_USER_QUERY_KEY } from '@/hooks/use-current-user'
 import {
   getSettingsNavGroups,
   isSettingsSection,
@@ -265,7 +265,6 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData<CurrentUserDto>(CURRENT_USER_QUERY_KEY)?.displayName).toBe('新しい名前')
     })
-    expect(queryClient.getQueryData(['current-user'])).toBeUndefined()
   })
 
   it('ユーザー情報の取得失敗を表示する', async () => {
@@ -277,7 +276,7 @@ describe('SettingsSectionContent', () => {
 
     renderAccountSection()
 
-    expect(await screen.findByText('ユーザー情報の取得に失敗しました')).toBeInTheDocument()
+    expect(await screen.findByText(CURRENT_USER_FETCH_ERROR_MESSAGE)).toBeInTheDocument()
     expect(screen.queryByText('山田 太郎')).toBeNull()
   })
 

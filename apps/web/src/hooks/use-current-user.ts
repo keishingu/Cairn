@@ -5,11 +5,13 @@ import type { CurrentUserDto } from '@/app/api/me/route'
 /** Web 内の GET /api/me はすべてこのキーを使う。チャット用の別キーは持たない。 */
 export const CURRENT_USER_QUERY_KEY = ['me'] as const
 
+export const CURRENT_USER_FETCH_ERROR_MESSAGE = 'ユーザー情報の取得に失敗しました'
+
 const CURRENT_USER_STALE_TIME_MS = 60_000
 
 export async function fetchCurrentUser(): Promise<CurrentUserDto> {
   const res = await fetchWithAuth('/api/me')
-  if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました')
+  if (!res.ok) throw new Error(CURRENT_USER_FETCH_ERROR_MESSAGE)
   return res.json()
 }
 

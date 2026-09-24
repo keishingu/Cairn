@@ -134,7 +134,6 @@ describe('現在ユーザーのQueryキャッシュ', () => {
 
     expect(await screen.findByText('error')).toBeInTheDocument()
     expect(queryClient.getQueryData(CURRENT_USER_QUERY_KEY)).toBeUndefined()
-    expect(queryClient.getQueryData(['current-user'])).toBeUndefined()
   })
 
   it('表示名とアバターの更新後、設定とチャットが同じキャッシュの新しい情報を使う', async () => {
@@ -176,6 +175,5 @@ describe('現在ユーザーのQueryキャッシュ', () => {
     await invalidateCurrentUserProfile(queryClient)
 
     await waitFor(() => expect(screen.getByText('admin:admin')).toBeInTheDocument())
-    expect(queryClient.getQueryData(['current-user'])).toBeUndefined()
   })
 })

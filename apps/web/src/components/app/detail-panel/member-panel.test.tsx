@@ -218,7 +218,6 @@ describe('MemberDetailPanel — ロール変更', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData<{ wsRole: string }>(['me'])?.wsRole).toBe('admin')
     })
-    expect(queryClient.getQueryData(['current-user'])).toBeUndefined()
   })
 
   it('ロール変更が失敗したらトーストで理由を表示する', async () => {

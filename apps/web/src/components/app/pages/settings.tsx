@@ -13,6 +13,7 @@ import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import {
+  CURRENT_USER_FETCH_ERROR_MESSAGE,
   invalidateCurrentUserProfile,
   patchCurrentUserCache,
   useCurrentUser,
@@ -377,7 +378,7 @@ const SettingsAccount = () => {
   if (isError)
     return (
       <div style={{ padding: 40, color: 'var(--red-text)', fontSize: 13 }}>
-        ユーザー情報の取得に失敗しました
+        {CURRENT_USER_FETCH_ERROR_MESSAGE}
       </div>
     )
 
