@@ -21,4 +21,4 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 
 - FEATURE_FLAGS は市場投入判断のためのもので、インフラの環境差には使わない
 - AI 機能は Vercel AI SDK + OpenAI（gpt-5 / gpt-5-mini）。AI PMO Phase 2 の判定だけ Vercel AI Gateway の `typesafe-ai/jev` を HTTP で直接呼ぶ（AI SDK v4 に Evaluation API がないため）
-- 機能・UI 導線を変えたら `/ai` のプロダクトヘルプ（`src/lib/ai/product-help.ts` と `docs/product-help/`）も更新する
+- **機能・UI 導線・権限を変えたら、同じ変更で `/ai` のプロダクトヘルプ `src/lib/ai/product-help.ts`（`PRODUCT_HELP_CONTEXT`）も更新する**。`/ai` が製品の使い方に答える唯一の情報源で、古いままだと利用者に誤った手順を案内する

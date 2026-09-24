@@ -8,3 +8,4 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - 共通ヘッダーと通知スライドインは React Native が所有する。WebView モードでは Web の `MobileHeader` を描画しない
 - EAS の build profile は同名の EAS Environment に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update に使わない
 - チャットを変えるときは Web の `/chats` にも同じ変更が要るか確認する
+- アプリだけの機能・導線を変えたときも、`/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）の更新が要るか確認する
