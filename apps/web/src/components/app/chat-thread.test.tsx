@@ -23,6 +23,8 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
     workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' }>,
+    projectChannels: [] as Array<{ channelId: string; projectId: string }>,
+    projectMembers: [] as Array<{ userId: string }>,
   },
 }))
 
@@ -51,7 +53,7 @@ vi.mock('@/lib/chat/client', () => ({
   useEnsureMessageLoaded: () => vi.fn(),
   useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
-  useProjectChannels: () => ({ data: [] }),
+  useProjectChannels: () => ({ data: chatThreadState.projectChannels }),
   useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
@@ -63,7 +65,7 @@ vi.mock('@/hooks/use-ai-nudges', () => ({
   useAiNudgeFeedback: () => ({ mutate: vi.fn(), isPending: false }),
   useAiNudges: () => ({ data: [], isError: false }),
 }))
-vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: [] }) }))
+vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: chatThreadState.projectMembers }) }))
 vi.mock('@/hooks/use-profile-attributes', () => ({ useProfileAttributes: () => ({ data: [] }) }))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
@@ -366,6 +368,8 @@ describe('ChatThreadのメンション候補', () => {
     chatThreadState.initialMessageId = null
     chatThreadState.historyMessages = undefined
     chatThreadState.historyIsError = false
+    chatThreadState.projectChannels = []
+    chatThreadState.projectMembers = []
     chatThreadState.workspaceMembers = [
       ...Array.from({ length: 6 }, (_, index) => ({
         userId: `user-${index + 2}`,
@@ -375,6 +379,38 @@ describe('ChatThreadのメンション候補', () => {
       { userId: 'user-8', displayName: '鈴木', role: 'member' },
     ]
     localStorage.clear()
+  })
+
+  it('全候補をスクロール表示し、プロジェクトメンバー取得後は選択を先頭へ戻す', () => {
+    chatThreadState.projectChannels = [{ channelId: 'channel-1', projectId: 'project-1' }]
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '@' } })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    chatThreadState.projectMembers = [{ userId: 'user-8' }]
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+
+    const projectMemberButton = screen.getByRole('button', { name: /@鈴木/ })
+    const picker = projectMemberButton.parentElement!
+    expect([...picker.querySelectorAll('button')].map(button => button.lastElementChild?.textContent)).toEqual([
+      '@all全員',
+      '@project_membersプロジェクトメンバー',
+      '@鈴木',
+      ...Array.from({ length: 6 }, (_, index) => `@候補${index + 1}`),
+    ])
+    expect(picker).toHaveStyle({ maxHeight: '240px', overflowY: 'auto' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.value).toBe('@all ')
   })
 
   it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {
@@ -392,7 +428,8 @@ describe('ChatThreadのメンション候補', () => {
     expect(input.value).toBe('@')
 
     fireEvent.change(input, { target: { value: '@鈴木', selectionStart: 1 } })
-    expect(screen.queryByRole('button', { name: /@鈴木/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /@候補1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /@鈴木/ })).toBeInTheDocument()
 
     input.setSelectionRange(3, 3)
     fireEvent.compositionEnd(input)
