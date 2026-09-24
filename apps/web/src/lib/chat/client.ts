@@ -22,8 +22,10 @@ export const chatQueryKeys = {
   messagesRoot: ['messages'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
   messageHistory: (channelId: string | null, messageId: string | null) => ['message-history', channelId, messageId] as const,
+  messageSearch: (channelId: string, query: string) => ['message-search', channelId, query] as const,
+  globalMessageSearch: (query: string) => ['global-message-search', query] as const,
+  bookmarks: ['bookmarks'] as const,
   initialMessage: (channelId: string | null) => ['channel-initial-message', channelId] as const,
-  currentUser: ['current-user'] as const,
 }
 
 const CHANNEL_LISTS = [
@@ -249,12 +251,6 @@ async function toggleMessageReaction(messageId: string, emoji: string): Promise<
   if (!res.ok) throw new Error('リアクションの更新に失敗しました')
 }
 
-async function fetchCurrentUser(): Promise<CurrentUserDto> {
-  const res = await fetchWithAuth('/api/me')
-  if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました')
-  return res.json()
-}
-
 // 未読バッジの更新は RealtimeProvider 経由（messages / channel_read_states の購読）。
 // 配線は apps/web/src/components/realtime/realtime-provider.tsx を参照
 export function useProjectChannels() {
@@ -359,14 +355,6 @@ export function useCreateDm() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: chatQueryKeys.dms })
     },
-  })
-}
-
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: chatQueryKeys.currentUser,
-    queryFn: fetchCurrentUser,
-    staleTime: Infinity,
   })
 }
 
@@ -677,14 +665,14 @@ export function useToggleBookmark(channelId: string | null) {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bookmarks'] })
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.bookmarks })
     },
   })
 }
 
 export function useBookmarks(enabled: boolean) {
   return useQuery({
-    queryKey: ['bookmarks'] as const,
+    queryKey: chatQueryKeys.bookmarks,
     queryFn: fetchBookmarks,
     enabled,
   })
