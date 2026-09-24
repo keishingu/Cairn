@@ -29,7 +29,7 @@ function isValidView(v: string | null | undefined): v is ProjectsView {
 }
 
 // PageId から遷移先パスへの対応。calendar / kanban は一覧と同じ /projects で、
-// ビューの出し分けは localStorage で行う（AGENTS.md「プロジェクトビューは localStorage で管理」）。
+// ビューの出し分けは localStorage で行う（apps/web/AGENTS.md「プロジェクトビューは localStorage のみで永続化」）。
 // navigate と prefetch で同じ対応表を使うために切り出す。
 function pagePath(p: PageId): string {
   if (p === 'calendar' || p === 'kanban' || p === 'projects') return '/projects'

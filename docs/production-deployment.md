@@ -95,7 +95,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 - **Feature Flag を使うもの**: 実装と運用準備は完了しているが、Go-to-Market、段階公開、契約・届出、ユーザーセグメント等の理由で公開を制御する機能
 - **併用する場合**: 外部サービスへの接続可否は環境変数、ユーザーへの機能公開可否は Feature Flag と、責務を分ける。接続情報の有無を Feature Flag で代用しない
 
-PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。
+PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。ページビューは History API の変化を自動捕捉し、認証後は Supabase の user ID を distinct ID として `identify`、サインアウト時に `reset` する。
 
 ## リリース手順（develop → main）
 
