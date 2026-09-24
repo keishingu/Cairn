@@ -48,7 +48,6 @@ vi.mock('@/lib/chat/client', () => ({
     isSuccess: true,
     error: null,
   }),
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Kei', avatarUrl: null } }),
   useDeleteMessage: () => ({ mutate: vi.fn() }),
   useEditMessage: () => ({ mutate: vi.fn() }),
   useEnsureMessageLoaded: () => vi.fn(),
@@ -59,6 +58,10 @@ vi.mock('@/lib/chat/client', () => ({
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
   useWorkspaceMembers: () => ({ data: chatThreadState.workspaceMembers }),
+}))
+
+vi.mock('@/hooks/use-current-user', () => ({
+  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Kei', avatarUrl: null } }),
 }))
 
 vi.mock('@/hooks/use-ai-nudges', () => ({

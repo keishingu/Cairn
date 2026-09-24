@@ -12,9 +12,13 @@ import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import {
+  invalidateCurrentUserProfile,
+  patchCurrentUserCache,
+  useCurrentUser,
+  useWorkspacePermissions,
+} from '@/hooks/use-current-user'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { processImageForUpload } from '@/lib/process-image'
@@ -229,10 +233,7 @@ async function isAnimatedAvatarImage(file: File): Promise<boolean> {
 const SettingsAccount = () => {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { data: user, isLoading } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then((r) => r.json()),
-  })
+  const { data: user, isLoading, isError } = useCurrentUser()
 
   const [displayName, setDisplayName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
@@ -246,19 +247,21 @@ const SettingsAccount = () => {
 
   const nameMutation = useMutation({
     mutationFn: async () => {
+      const nextName = displayName.trim()
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName }),
+        body: JSON.stringify({ displayName: nextName }),
       })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(d.error ?? '更新に失敗しました')
       }
+      return nextName
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (nextName) => {
+      patchCurrentUserCache(queryClient, { displayName: nextName })
+      void invalidateCurrentUserProfile(queryClient)
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
     },
@@ -286,10 +289,12 @@ const SettingsAccount = () => {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(d.error ?? 'アップロードに失敗しました')
       }
+      const body = (await res.json().catch(() => ({}))) as { avatarUrl?: string }
+      return body.avatarUrl ?? null
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (avatarUrl) => {
+      if (avatarUrl) patchCurrentUserCache(queryClient, { avatarUrl })
+      void invalidateCurrentUserProfile(queryClient)
     },
   })
 
@@ -307,9 +312,7 @@ const SettingsAccount = () => {
       return enabled
     },
     onSuccess: (enabled) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], (current) =>
-        current ? { ...current, aiNudgesEnabled: enabled } : current,
-      )
+      patchCurrentUserCache(queryClient, { aiNudgesEnabled: enabled })
       void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
       void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
@@ -371,6 +374,12 @@ const SettingsAccount = () => {
 
   if (isLoading)
     return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+  if (isError)
+    return (
+      <div style={{ padding: 40, color: 'var(--red-text)', fontSize: 13 }}>
+        ユーザー情報の取得に失敗しました
+      </div>
+    )
 
   return (
     <div style={{ maxWidth: 780 }}>
@@ -657,9 +666,7 @@ const SettingsAppearance = () => {
       return patch
     },
     onSuccess: (patch) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], (current) =>
-        current ? { ...current, ...patch } : current,
-      )
+      patchCurrentUserCache(queryClient, patch)
 
       // WebView内で変更したときは、再読込を待たずネイティブの配色も更新する。
       const nativeBridge = (

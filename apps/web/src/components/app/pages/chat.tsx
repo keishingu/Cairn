@@ -18,7 +18,6 @@ import {
   useWorkspaceDms,
   useChannelMembers,
   useCreateDm,
-  useCurrentUser,
   useBookmarks,
   chatQueryKeys,
 } from '@/lib/chat/client'
@@ -41,7 +40,7 @@ import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
 import { toast } from '@/lib/toast'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   getLastVisitedChatChannelId,
   resolveInitialChatChannelId,

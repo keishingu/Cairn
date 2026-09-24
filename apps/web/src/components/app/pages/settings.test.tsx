@@ -6,6 +6,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CurrentUserDto } from '@/app/api/me/route'
+import { CURRENT_USER_QUERY_KEY } from '@/hooks/use-current-user'
 import {
   getSettingsNavGroups,
   isSettingsSection,
@@ -70,11 +72,14 @@ function renderAccountSection() {
     },
   })
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <SettingsSectionContent section="account" />
-    </QueryClientProvider>,
-  )
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="account" />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 function renderIntegrationsSection() {
@@ -223,6 +228,57 @@ describe('SettingsSectionContent', () => {
       expect(supabaseSignOut).toHaveBeenCalledWith({ scope: 'local' })
       expect(routerReplace).toHaveBeenCalledWith('/auth/login?accountDeleted=1')
     })
+  })
+
+  it('表示名の保存後に共有キャッシュへ新しい名前を反映する', async () => {
+    const user = userEvent.setup()
+    let displayName = '山田 太郎'
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            displayName,
+            email: 'taro@example.com',
+            avatarUrl: null,
+            wsRole: 'member',
+          }),
+        }
+      }
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        displayName = (JSON.parse(String(init.body)) as { displayName: string }).displayName
+        return { ok: true, json: async () => ({}) }
+      }
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    const { queryClient } = renderAccountSection()
+    await screen.findByDisplayValue('山田 太郎')
+
+    const input = screen.getByDisplayValue('山田 太郎')
+    await user.clear(input)
+    await user.type(input, '新しい名前')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await screen.findByText('新しい名前')
+    await waitFor(() => {
+      expect(queryClient.getQueryData<CurrentUserDto>(CURRENT_USER_QUERY_KEY)?.displayName).toBe('新しい名前')
+    })
+    expect(queryClient.getQueryData(['current-user'])).toBeUndefined()
+  })
+
+  it('ユーザー情報の取得失敗を表示する', async () => {
+    fetchWithAuth.mockImplementation(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'failed' }),
+    }))
+
+    renderAccountSection()
+
+    expect(await screen.findByText('ユーザー情報の取得に失敗しました')).toBeInTheDocument()
+    expect(screen.queryByText('山田 太郎')).toBeNull()
   })
 
   it('アバター画像を縮小後のファイルでアップロードする', async () => {

@@ -42,6 +42,10 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: mockCreateClient,
 }))
 
+vi.mock('@/hooks/use-current-user', () => ({
+  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
+}))
+
 vi.mock('@/lib/chat/client', () => ({
   chatQueryKeys: {
     projectChannels: ['project-channels'],
@@ -49,7 +53,6 @@ vi.mock('@/lib/chat/client', () => ({
     dms: ['dms'],
     messages: (id: string) => ['messages', id],
   },
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
   useProjectChannels: () => ({ data: [] }),
   useWorkspaceChannels: () => ({ data: workspaceChannels }),
   useWorkspaceDms: () => ({ data: [] }),

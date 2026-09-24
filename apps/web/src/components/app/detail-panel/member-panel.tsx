@@ -6,8 +6,12 @@ import { projectRoleLabel } from '@cairn/shared'
 import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import {
+  CURRENT_USER_QUERY_KEY,
+  patchCurrentUserCache,
+  useCurrentUser,
+} from '@/hooks/use-current-user'
 import { toast } from '@/lib/toast'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
 import {
@@ -176,10 +180,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     return () => document.removeEventListener('mousedown', handle)
   }, [showRoleMenu])
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-  })
+  const { data: me } = useCurrentUser()
   const { data: allMembers = [] } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
@@ -215,8 +216,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+      if (result.userId === me?.id) {
+        patchCurrentUserCache(queryClient, { wsRole: result.role })
+        void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
+      }
     },
   })
 
