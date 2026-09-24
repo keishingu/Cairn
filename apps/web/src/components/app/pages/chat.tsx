@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { FEATURE_FLAGS, workspaceChannelDeleteCopy } from '@cairn/shared'
+import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared, workspaceChannelDeleteCopy } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -395,10 +395,25 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [channelId])
 
-  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
-  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
+  const {
+    data: projectChannels = [],
+    isFetched: isProjectChannelsFetched,
+    isSuccess: projectChannelsLoaded,
+    isFetching: projectChannelsFetching,
+  } = useProjectChannels()
+  const {
+    data: workspaceChannels = [],
+    isFetched: isWorkspaceChannelsFetched,
+    isSuccess: workspaceChannelsLoaded,
+    isFetching: workspaceChannelsFetching,
+  } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
+  const {
+    data: dms = [],
+    isFetched: isDmsFetched,
+    isSuccess: dmsLoaded,
+    isFetching: dmsFetching,
+  } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
 
   React.useEffect(() => {
@@ -424,10 +439,39 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     [projectChannels, workspaceChannels, dms],
   )
   const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
+  const channelListsSettled = projectChannelsLoaded && !projectChannelsFetching
+    && workspaceChannelsLoaded && !workspaceChannelsFetching
+    && (!FEATURE_FLAGS.dm || (dmsLoaded && !dmsFetching))
+  const previousVisibleChannelIdsRef = React.useRef<string[] | null>(null)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
   }, [channelId])
+
+  // 他クライアントの削除は一覧の再取得で ID が消える。作成直後の未反映と区別し、見えていた会話が消えたときだけ移す。
+  React.useEffect(() => {
+    if (!channelListsSettled) return
+    const visibleIds = availableChannelIds
+    const disappeared = openChannelDisappeared(channelId, previousVisibleChannelIdsRef.current, visibleIds)
+    previousVisibleChannelIdsRef.current = visibleIds
+    if (!disappeared || !channelId) return
+    const nextId = nextChatChannelAfterRemoval({
+      projectChannels: projectChannels.map(channel => ({ id: channel.channelId, archived: channel.archived })),
+      workspaceChannelIds: workspaceChannels.map(channel => channel.id),
+      dmIds: dms.map(channel => channel.id),
+    })
+    if (nextId) {
+      setChannelId(nextId)
+      setSearchOpen(false)
+      setGlobalSearchOpen(false)
+      setBookmarksOpen(false)
+      setTargetMessage(null)
+      router.replace('/chats/' + nextId)
+      return
+    }
+    setChannelId(null)
+    router.replace('/chats')
+  }, [availableChannelIds, channelId, channelListsSettled, dms, projectChannels, router, workspaceChannels])
 
   // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
   React.useEffect(() => {
@@ -669,24 +713,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     />
   )
 
-  const leaveDeletedWorkspaceChannel = (target: WorkspaceChannelDto) => {
-    const removedIds = new Set([
-      target.id,
-      ...workspaceChannels.filter(channel => channel.parentChannelId === target.id).map(channel => channel.id),
-    ])
-    if (!channelId || !removedIds.has(channelId)) return
-    const nextId = projectChannels.find(channel => !channel.archived)?.channelId
-      ?? workspaceChannels.find(channel => !removedIds.has(channel.id))?.id
-      ?? dms[0]?.id
-      ?? null
-    if (nextId) {
-      selectChannel(nextId)
-      return
-    }
-    setChannelId(null)
-    router.replace('/chats')
-  }
-
   const renameWorkspaceChannelUI = renamingWorkspaceChannel && (
     <RenameWorkspaceChannelModal
       channelId={renamingWorkspaceChannel.id}
@@ -713,7 +739,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         if (!deletingWorkspaceChannel) return
         const target = deletingWorkspaceChannel
         await deleteWorkspaceChannel.mutateAsync(target.id)
-        leaveDeletedWorkspaceChannel(target)
         toast.success(target.parentChannelId ? 'スレッドを削除しました' : 'チャンネルを削除しました')
       }}
       onClose={() => setDeletingWorkspaceChannel(null)}
