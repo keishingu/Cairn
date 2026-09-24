@@ -27,6 +27,7 @@
 | `/ai` 調査ワークベンチ・AIメンバー | `10_ai_member_design.md`（3つのAIサーフェスと責務境界） | `ai-self-improvement-loop.md`、`scheduled-jobs-design.md`（ユーザー定義cron。未実装） |
 | Cairn自体の使い方に関する`/ai`の回答（プロダクトヘルプ） | `product-help/README.md`（静的注入方式・更新ルール） | — |
 | AI常駐PMO・プライベートナッジ（Phase 1/2 実装済み） | `ai-pmo-design.md` | `ai-era-pm-strategy.md`（戦略背景）、`10_ai_member_design.md`（`/ai`・AIメンバーとの関係） |
+| FDEによる顧客別nudge設計 | `fde-nudge-customization-design.md`（未実装） | `ai-pmo-design.md`（共通配信基盤）、`09_product_strategy_notes.md`（業種別テンプレート戦略） |
 | MCP サーバ・外部エージェント連携 | `mcp-server-design.md`（リモート MCP + PAT / OAuth の現行仕様） | `ai-era-pm-strategy.md`（座取りの合意） |
 | LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
 
@@ -71,6 +72,7 @@
 | [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計。ワークスペース非活性化は実装済み、本人操作のアカウント削除はIssue #469で実装（main反映・TestFlight確認待ち） | 2026-08-12 |
 | [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |
 | [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査 → 人間 merge）の設計メモ（実装前） | 2026-07-03 |
+| [`fde-nudge-customization-design.md`](./fde-nudge-customization-design.md) | FDEが顧客固有の判断基準を宣言的なnudgeレシピへ落とし、会話内で本人へ届ける設計（未実装） | 2026-09-23 |
 | [`lp-soul-page-copy.md`](./lp-soul-page-copy.md) | Soul ページ（Open Soul Software / SOUL.md）のコピー案ドラフト（ページ未実装） | 2026-07-03 |
 
 ## 記録
