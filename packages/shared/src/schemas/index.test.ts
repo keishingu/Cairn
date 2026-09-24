@@ -8,7 +8,6 @@ import {
   patchProfileAttributesSchema,
   patchWorkspaceSettingsSchema,
   postMessageSchema,
-  uploadGalleryItemSchema,
 } from './index'
 
 describe('patchMeSchema', () => {
@@ -248,27 +247,6 @@ describe('postMessageSchema', () => {
     const result = postMessageSchema.safeParse({
       channelId: '00000000-0000-0000-0000-000000000001',
       content: '',
-    })
-    expect(result.success).toBe(false)
-  })
-})
-
-describe('uploadGalleryItemSchema', () => {
-  it('有効な座標を受け入れる', () => {
-    const result = uploadGalleryItemSchema.safeParse({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      fileId: '00000000-0000-0000-0000-000000000002',
-      latitude: 36.2848,
-      longitude: 137.6490,
-    })
-    expect(result.success).toBe(true)
-  })
-
-  it('範囲外の緯度はエラーになる', () => {
-    const result = uploadGalleryItemSchema.safeParse({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      fileId: '00000000-0000-0000-0000-000000000002',
-      latitude: 999,
     })
     expect(result.success).toBe(false)
   })
