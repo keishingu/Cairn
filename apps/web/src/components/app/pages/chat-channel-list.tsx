@@ -182,6 +182,7 @@ interface SidebarMenuAction {
   icon: string
   onSelect: () => void
   restoreFocus?: boolean
+  danger?: boolean
 }
 
 const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
@@ -295,7 +296,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
               }}
               style={{
                 width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
-                border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)',
+                border: 'none', borderRadius: 6, background: 'transparent', color: action.danger ? 'var(--red-text)' : 'var(--text-2)',
                 cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
                 whiteSpace: 'nowrap',
               }}
@@ -357,11 +358,55 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
   )
 }
 
-const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile }: {
+function workspaceRowActions({
+  channel,
+  isThread,
+  canManageParent,
+  onCreateThread,
+  onRename,
+  onDelete,
+}: {
+  channel: WorkspaceChannelDto
+  isThread: boolean
+  canManageParent: boolean
+  onCreateThread?: (target: { id: string; name: string }) => void
+  onRename?: (target: WorkspaceChannelDto) => void
+  onDelete?: (target: WorkspaceChannelDto) => void
+}): SidebarMenuAction[] {
+  const actions: SidebarMenuAction[] = []
+  if (!isThread && onCreateThread && channel.name) {
+    actions.push({
+      label: 'スレッドを作成',
+      icon: 'chat',
+      onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
+    })
+  }
+  if (isThread || canManageParent) {
+    if (onRename) {
+      actions.push({
+        label: '名前を変更',
+        icon: 'edit',
+        onSelect: () => onRename(channel),
+      })
+    }
+    if (onDelete) {
+      actions.push({
+        label: '削除',
+        icon: 'trash',
+        danger: true,
+        onSelect: () => onDelete(channel),
+      })
+    }
+  }
+  return actions
+}
+
+const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actions }: {
   channel: WorkspaceChannelDto
   active: boolean
   onSelectChannel: (id: string) => void
   isMobile: boolean
+  actions: SidebarMenuAction[]
 }) => (
   <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
     <ChatSidebarItem
@@ -373,6 +418,9 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile }: {
       mobile={isMobile}
       memberNames={channel.memberNames}
       memberCount={channel.memberCount}
+      action={actions.length > 0 ? (
+        <SidebarCreateMenu ownerLabel={channel.name ?? '名称未設定スレッド'} actions={actions} isMobile={isMobile} />
+      ) : undefined}
     />
   </div>
 )
@@ -526,12 +574,16 @@ export interface ChannelListProps {
   onEditMilestone?: (milestone: ProjectChannelDto) => void
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   onCreateThread?: (channel: { id: string; name: string }) => void
+  onRenameWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
+  onDeleteWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
+  canManageWorkspaceChannel?: boolean
 }
 
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onDeleteWorkspaceChannel,
+  canManageWorkspaceChannel = false,
 }: ChannelListProps) => {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
@@ -577,7 +629,16 @@ export const ChannelList = ({
       </ChatSidebarCollapsibleSection>
     )}
     <ChatSidebarSection title="チャンネル" {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
-      {workspaceChannelGroups.map(({ channel, threads }) => (
+      {workspaceChannelGroups.map(({ channel, threads }) => {
+        const channelActions = workspaceRowActions({
+          channel,
+          isThread: false,
+          canManageParent: canManageWorkspaceChannel,
+          ...(onCreateThread ? { onCreateThread } : {}),
+          ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+          ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+        })
+        return (
         <React.Fragment key={channel.id}>
           <ChatSidebarItem
             active={channelId === channel.id}
@@ -588,14 +649,10 @@ export const ChannelList = ({
             mobile={isMobile}
             memberNames={channel.memberNames}
             memberCount={channel.memberCount}
-            action={onCreateThread && channel.name ? (
+            action={channelActions.length > 0 ? (
               <SidebarCreateMenu
-                ownerLabel={channel.name}
-                actions={[{
-                  label: 'スレッドを作成',
-                  icon: 'chat',
-                  onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
-                }]}
+                ownerLabel={channel.name ?? '名称未設定チャンネル'}
+                actions={channelActions}
                 isMobile={isMobile}
               />
             ) : undefined}
@@ -607,10 +664,18 @@ export const ChannelList = ({
               active={channelId === thread.id}
               onSelectChannel={onSelectChannel}
               isMobile={isMobile}
+              actions={workspaceRowActions({
+                channel: thread,
+                isThread: true,
+                canManageParent: canManageWorkspaceChannel,
+                ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+                ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+              })}
             />
           ))}
         </React.Fragment>
-      ))}
+        )
+      })}
     </ChatSidebarSection>
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>

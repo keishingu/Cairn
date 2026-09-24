@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared, workspaceChannelDeleteCopy } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -20,6 +20,7 @@ import {
   useCreateDm,
   useCurrentUser,
   useBookmarks,
+  useDeleteWorkspaceChannel,
   chatQueryKeys,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
@@ -29,6 +30,8 @@ import { CreateChannelModal } from './create-channel-modal'
 import { CreateProjectModal } from './create-project-modal'
 import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
 import { CreateChannelThreadModal } from './create-channel-thread-modal'
+import { RenameWorkspaceChannelModal } from './rename-workspace-channel-modal'
+import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { ChannelList } from './chat-channel-list'
@@ -36,6 +39,7 @@ import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
+import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
 import { toast } from '@/lib/toast'
@@ -336,7 +340,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
   const [requestedEditingMilestoneId, setRequestedEditingMilestoneId] = React.useState<string | null>(null)
   const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
+  const [renamingWorkspaceChannel, setRenamingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
+  const [deletingWorkspaceChannel, setDeletingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const patchMilestone = usePatchProjectMilestone()
+  const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
@@ -388,10 +395,25 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [channelId])
 
-  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
-  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
+  const {
+    data: projectChannels = [],
+    isFetched: isProjectChannelsFetched,
+    isSuccess: projectChannelsLoaded,
+    isFetching: projectChannelsFetching,
+  } = useProjectChannels()
+  const {
+    data: workspaceChannels = [],
+    isFetched: isWorkspaceChannelsFetched,
+    isSuccess: workspaceChannelsLoaded,
+    isFetching: workspaceChannelsFetching,
+  } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
+  const {
+    data: dms = [],
+    isFetched: isDmsFetched,
+    isSuccess: dmsLoaded,
+    isFetching: dmsFetching,
+  } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
 
   React.useEffect(() => {
@@ -417,10 +439,39 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     [projectChannels, workspaceChannels, dms],
   )
   const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
+  const channelListsSettled = projectChannelsLoaded && !projectChannelsFetching
+    && workspaceChannelsLoaded && !workspaceChannelsFetching
+    && (!FEATURE_FLAGS.dm || (dmsLoaded && !dmsFetching))
+  const previousVisibleChannelIdsRef = React.useRef<string[] | null>(null)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
   }, [channelId])
+
+  // 他クライアントの削除は一覧の再取得で ID が消える。作成直後の未反映と区別し、見えていた会話が消えたときだけ移す。
+  React.useEffect(() => {
+    if (!channelListsSettled) return
+    const visibleIds = availableChannelIds
+    const disappeared = openChannelDisappeared(channelId, previousVisibleChannelIdsRef.current, visibleIds)
+    previousVisibleChannelIdsRef.current = visibleIds
+    if (!disappeared || !channelId) return
+    const nextId = nextChatChannelAfterRemoval({
+      projectChannels: projectChannels.map(channel => ({ id: channel.channelId, archived: channel.archived })),
+      workspaceChannelIds: workspaceChannels.map(channel => channel.id),
+      dmIds: dms.map(channel => channel.id),
+    })
+    if (nextId) {
+      setChannelId(nextId)
+      setSearchOpen(false)
+      setGlobalSearchOpen(false)
+      setBookmarksOpen(false)
+      setTargetMessage(null)
+      router.replace('/chats/' + nextId)
+      return
+    }
+    setChannelId(null)
+    router.replace('/chats')
+  }, [availableChannelIds, channelId, channelListsSettled, dms, projectChannels, router, workspaceChannels])
 
   // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
   React.useEffect(() => {
@@ -621,6 +672,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {...(canCreateChildChannel ? { onEditMilestone: setEditingMilestone } : {})}
       {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
       {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
+      {...(canCreateChildChannel ? { onRenameWorkspaceChannel: setRenamingWorkspaceChannel } : {})}
+      {...(canCreateChildChannel ? { onDeleteWorkspaceChannel: setDeletingWorkspaceChannel } : {})}
+      canManageWorkspaceChannel={canCreateWorkspaceChannel}
     />
   )
 
@@ -656,6 +710,38 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       channelName={threadChannel.name}
       onClose={() => setThreadChannel(null)}
       onCreated={selectChannel}
+    />
+  )
+
+  const renameWorkspaceChannelUI = renamingWorkspaceChannel && (
+    <RenameWorkspaceChannelModal
+      channelId={renamingWorkspaceChannel.id}
+      currentName={renamingWorkspaceChannel.name ?? ''}
+      isThread={renamingWorkspaceChannel.parentChannelId !== null}
+      onClose={() => setRenamingWorkspaceChannel(null)}
+    />
+  )
+
+  const deletingWorkspaceChannelCopy = deletingWorkspaceChannel
+    ? workspaceChannelDeleteCopy({
+        name: deletingWorkspaceChannel.name,
+        isThread: deletingWorkspaceChannel.parentChannelId !== null,
+        childThreadCount: workspaceChannels.filter(channel => channel.parentChannelId === deletingWorkspaceChannel.id).length,
+      })
+    : null
+
+  const deleteWorkspaceChannelUI = (
+    <ConfirmDialog
+      open={deletingWorkspaceChannel !== null}
+      title={deletingWorkspaceChannelCopy?.title ?? 'チャンネルを削除'}
+      message={deletingWorkspaceChannelCopy?.message ?? ''}
+      onConfirm={async () => {
+        if (!deletingWorkspaceChannel) return
+        const target = deletingWorkspaceChannel
+        await deleteWorkspaceChannel.mutateAsync(target.id)
+        toast.success(target.parentChannelId ? 'スレッドを削除しました' : 'チャンネルを削除しました')
+      }}
+      onClose={() => setDeletingWorkspaceChannel(null)}
     />
   )
 
@@ -698,6 +784,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           {createMilestoneUI}
           {editMilestoneUI}
           {createThreadUI}
+          {renameWorkspaceChannelUI}
+          {deleteWorkspaceChannelUI}
         </div>
       )
     }
@@ -762,6 +850,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {createMilestoneUI}
       {editMilestoneUI}
       {createThreadUI}
+      {renameWorkspaceChannelUI}
+      {deleteWorkspaceChannelUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>

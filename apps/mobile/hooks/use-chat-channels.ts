@@ -112,6 +112,48 @@ export function useCreateWorkspaceChannel() {
   })
 }
 
+export function useRenameWorkspaceChannel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ channelId, name }: { channelId: string; name: string }) => {
+      const res = await apiFetch(`/api/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? '名前の変更に失敗しました')
+      }
+      return res.json() as Promise<{ id: string; name: string }>
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
+        current?.map((channel) => (channel.id === updated.id ? { ...channel, name: updated.name } : channel)),
+      )
+    },
+  })
+}
+
+export function useDeleteWorkspaceChannel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (channelId: string) => {
+      const res = await apiFetch(`/api/channels/${channelId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? '削除に失敗しました')
+      }
+    },
+    onSuccess: (_result, channelId) => {
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
+        current?.filter((channel) => channel.id !== channelId && channel.parentChannelId !== channelId),
+      )
+      void qc.invalidateQueries({ queryKey: ['tasks'] })
+      void qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
 export function useCreateChannelThread() {
   const qc = useQueryClient()
   return useMutation({
