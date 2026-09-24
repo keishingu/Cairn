@@ -189,7 +189,7 @@ components/app/
 - **ファイル一覧**（`/files`）: `files.project_id` を第一階層に折りたたみ表示し、未所属ファイルは「プロジェクトなし」にまとめる。ストレージ実体の `storage_path` は表示上の分類に使わない。名前付きフィルター `saved_file_filters` は `workspace_id` / `user_id` を必須で保存し、別ワークスペース・別ユーザーへ共有しない
 - **設定**: `/settings` 単体は PC で `account`、モバイルで設定一覧（`MobileSettings`）を表示する。モバイルはタップで `/settings/[section]` へ遷移し、PC と同じ `SettingsSectionContent` を全画面表示する（`MobileSettingsDetail`）。`?tab=` 形式は廃止
 - **既定画面**: 通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先はすべて `/chats`。個別会話は `/chats/[channelId]`
-- 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクトする。`/projects/[id]` は `/projects?open={id}` にリダイレクトする
+- 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクトする。`/projects/[id]` は `/projects?open=project-{id}` にリダイレクトする（`use-detail-panel.ts` は `project-` 接頭辞付きの値しか認識しないため、リンクも必ず接頭辞を付ける）
 
 ## localStorage キー命名規則
 

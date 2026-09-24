@@ -124,8 +124,10 @@ stripe_events              Webhook 冪等性（Stripe event id）
 
 ## 10. UI
 
-- 設定 → **ケルン画面**（PC / モバイル共有）: 残高・ストレージ使用量、「石を積む」（Stripe Checkout へ外部遷移）、パック購入、貢献の記録（風化しても残る）
-- アップロード失敗・AI 残高不足のエラーから同画面へ誘導する
+- 設定 → **請求**（`billing`、PC のみ）: 残高・ストレージ使用量、「石を積む」（Stripe Checkout へ外部遷移）、パック購入
+- 設定 → **ケルン**（`contributions`、モバイルのみ）: 貢献の記録（`CreditPlacementBoard`。風化しても残る）だけを表示し、支払い操作は置かない
+- 出し分けは `getSettingsNavGroups()` のデバイス判定による
+- アップロード失敗・AI 残高不足のエラーからは請求画面（PC）へ誘導する方針
 - **入口は単純に保つ**: Free 利用時は石・ケルン・風化を見せず、容量・AI の限界に触れたときに初めて誘導する。Team / Expedition では定額の簡素な提示にする（[`pricing-plan-design.md`](./pricing-plan-design.md)「提示の二面化」）
 - Expo アプリは課金 UI を出さず Web へリンクアウト（IAP 審査回避）。セルフホスト（課金無効）ではケルン画面を出さない
 - 石積みミニゲーム（ランダム演出は見た目のみで残高は壊さない）は [`billing-minigame-design.md`](./billing-minigame-design.md)

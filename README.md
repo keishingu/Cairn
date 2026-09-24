@@ -181,7 +181,7 @@ pnpm --filter @cairn/db db:generate  # supabase/migrations/ に出力
 supabase migration up --local --include-all
 ```
 
-生成設定は [`packages/db/drizzle.config.ts`](packages/db/drizzle.config.ts)。ファイル名の timestamp を維持し、変更内容が分かる英語の snake_case 名にする（詳細は [`AGENTS.md`](AGENTS.md)）。Drizzle Studio は `pnpm --filter @cairn/db db:studio` で起動できる。
+生成設定は [`packages/db/drizzle.config.ts`](packages/db/drizzle.config.ts)。ファイル名の timestamp を維持し、変更内容が分かる英語の snake_case 名にする（詳細は [`packages/db/AGENTS.md`](packages/db/AGENTS.md)）。Drizzle Studio は `pnpm --filter @cairn/db db:studio` で起動できる。
 
 **初回の検証・CIなど、データを破棄して再構築する場合のみ**:
 
