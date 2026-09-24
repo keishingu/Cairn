@@ -23,6 +23,8 @@
 | キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
 | LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware） |
 | パフォーマンス | `performance-improvement-plan.md`（残作業） | — |
+| Web Push 通知（VAPID） | `web-push.md`（現行） | — |
+| Electron デスクトップ | `desktop-app.md`（現行） | — |
 | DM の法令対応 | `telecom-business-filing-research.md`（記録） | — |
 
 ## アーカイブ

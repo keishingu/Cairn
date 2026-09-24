@@ -191,6 +191,16 @@ components/app/
 - **既定画面**: 通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先はすべて `/chats`。個別会話は `/chats/[channelId]`
 - 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクトする。`/projects/[id]` は `/projects?open=project-{id}` にリダイレクトする（`use-detail-panel.ts` は `project-` 接頭辞付きの値しか認識しないため、リンクも必ず接頭辞を付ける）
 
+## PWA アイコンとアクセントカラー
+
+アクセントカラー（7色）× テーマ（ライト / ダーク）ごとに PWA アイコンを事前生成しており、設定でカラーやテーマを変えるとホーム画面アイコンに反映される。`node scripts/generate-icons.mjs` が `apps/web/public/` に `icon-{color}-{theme}-192.png` / `-512.png`、`apple-touch-icon-{color}-{theme}.png` と、cookie 未設定時のフォールバック（`icon-192.png` / `icon-512.png` / `apple-touch-icon.png`）を生成する。
+
+アクセントカラーを追加するときは次の順で行う。
+
+1. `apps/web/src/lib/accent-presets.ts` の `ACCENT_PRESETS` に追加する
+2. `scripts/generate-icons.mjs` の `ACCENT_PRESETS` にも同じ `id` と `swatch` 色を追加する
+3. `node scripts/generate-icons.mjs` を実行し、生成された PNG をコミットする
+
 ## localStorage キー命名規則
 
 キー定数は `apps/web/src/lib/storage-keys.ts` の `STORAGE_KEYS` オブジェクトで一元管理する。命名規則・登録済みキー一覧はそのファイルのコメントを参照。
