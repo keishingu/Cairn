@@ -38,7 +38,7 @@ export function parseMentions(content: string): string {
 }
 
 // status を保持し、403（アクセス権なし）を通常の取得失敗と区別して
-// 専用の案内を出すために使う（CLAUDE.md: フロントは生の 401/403 を出さない）
+// 専用の案内を出すために使う（AGENTS.md: フロントは生の 401/403 を出さない）
 export class ChannelMessagesError extends Error {
   status: number
   constructor(message: string, status: number) {

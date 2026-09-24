@@ -5,7 +5,7 @@
 
 従来のプロジェクト管理ツールは「**人間に記録させる装置**」だった——人がステータスを更新し、タスクを起票し、期限を入力することで、管理者向けのダッシュボードが成立する。その前提が AI 時代に3つの方向で逆転する、という認識と、それぞれに対する Cairn の座取りを合意した記録。
 
-関連: [`ai-pmo-design.md`](./ai-pmo-design.md)（逆転②の実装設計）/ [`10_ai_member_design.md`](./10_ai_member_design.md) / [`09_product_strategy_notes.md`](./09_product_strategy_notes.md)
+関連: [`ai-pmo-design.md`](./ai-pmo-design.md)（逆転②の実装設計）/ [`10_ai_member_design.md`](./10_ai_member_design.md) / [`09_product_strategy_notes.md`](./archive/09_product_strategy_notes.md)
 
 ---
 

@@ -295,7 +295,7 @@ Inngest 関数。各 `step.run` で冪等に分割する（既存 `functions.ts`
 5. **notify**: `message/created` イベントを送る → 既存の `on-message-created` がメンション通知・Push を処理。
 6. **bookkeeping**: `lastRunAt` 更新、`schedule` から次の `nextRunAt` を再計算、予約した run を `running → success` に更新。
 7. **失敗時**: 予約した run を `running → failed`（+ error）に更新し、**作成者へアプリ内通知でエラーを知らせる**
-   （CLAUDE.md「サイレントに fallback せずエラーを見せる」に準拠。投稿先に半端なメッセージは残さない）。
+   （AGENTS.md「サイレントに fallback せずエラーを見せる」に準拠。投稿先に半端なメッセージは残さない）。
 
 メンション解決の注意: NL の「@山田さん」→ userId 解決は**保存時**に行い `mentionUserIds` に固定する。
 発火時に名前で再解決しない（改名・同名で誤爆するため）。保存時に一意に解決できない名前はエラーにする。
@@ -304,7 +304,7 @@ Inngest 関数。各 `step.run` で冪等に分割する（既存 `functions.ts`
 
 ## 9. 設定 UI（/settings/scheduled-jobs）
 
-CLAUDE.md「設定セクションは URL 駆動」に従い、`/settings/scheduled-jobs` セクションを追加する
+AGENTS.md「設定セクションは URL 駆動」に従い、`/settings/scheduled-jobs` セクションを追加する
 （`SETTINGS_NAV_GROUPS` に項目追加 + `SettingsSectionContent` に本体を実装。PC/モバイル共有）。
 
 - **一覧**: 登録済みジョブ（rawInstruction の要約 / 次回実行 / on-off トグル / 直近の実行結果）。

@@ -117,19 +117,8 @@ PostHog は production の利用状況を収集するインフラ接続なので
 - **順序が命**: マージ前に Publish すると promote 前のコミットにタグが付く（Draft 本文の先頭にも同じ警告が出る）。
 - Draft 段階ではタグ ref を持たないため、やり直したい場合は同名タグで再実行してよい。
 
-## 完了済み（本番）
-
-- DB マイグレーション 0000〜0034（欠番だった 0030 も `--include-all` で適用済み）
-- pgvector 拡張・Storage バケット・Realtime（Broadcast from Database）トリガー/RLS（すべて migration 由来）
-- `DATABASE_URL` を Shared Pooler/IPv4 に修正し疎通確認
-- `SUPABASE_SERVICE_ROLE_KEY` を Legacy JWT にしてファイルアップロード成功
-- Inngest（メッセージ通知）動作
-- Google ログイン（Supabase Auth Provider）動作
-- 独自ドメイン `oss-cairn.com` を Vercel に接続（apex A レコード + www CNAME、Squarespace 既定値は削除済み）
-
 ## 短期 ToDo
 
-- [ ] **PR #142（pdf-parse の ENOENT 修正）を本番にマージ＆デプロイ** → PDF インデックスの動作確認
 - [ ] Auth → URL Configuration の Site URL / Redirect URLs が本番ドメインになっているか最終確認
 - [ ] Google カレンダー連携（`GOOGLE_CALENDAR_*`）を使うなら本番設定
   - Google Calendar API 有効化 / OAuth クライアントに `https://oss-cairn.com/api/calendar/google/callback` を登録 / Vercel に 3 変数設定

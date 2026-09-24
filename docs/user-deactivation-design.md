@@ -2,9 +2,9 @@
 
 - **ステータス**: 実装済み（§9 の #1〜#5 は [PR #328](https://github.com/keishingu/Cairn/pull/328) で develop にマージ済み。#6「本人操作のアカウント削除」は [Issue #469](https://github.com/keishingu/Cairn/issues/469) で実装、main反映・TestFlight確認待ち）
 - **作成**: 2026-06-22 / **実装完了**: 2026-07-09（PR #328 マージ）
-- **関連**: [`CLAUDE.md`](../CLAUDE.md) の権限モデル、[`packages/db/src/schema/workspaces.ts`](../packages/db/src/schema/workspaces.ts)（`workspace_members`）、[`apps/web/src/lib/access/membership.ts`](../apps/web/src/lib/access/membership.ts)、[`apps/web/src/lib/access/lifecycle.ts`](../apps/web/src/lib/access/lifecycle.ts)
+- **関連**: [`AGENTS.md`](../AGENTS.md) の権限モデル、[`packages/db/src/schema/workspaces.ts`](../packages/db/src/schema/workspaces.ts)（`workspace_members`）、[`apps/web/src/lib/access/membership.ts`](../apps/web/src/lib/access/membership.ts)、[`apps/web/src/lib/access/lifecycle.ts`](../apps/web/src/lib/access/lifecycle.ts)
 
-> 大原則: ドキュメントと実装が矛盾する場合、コードと CLAUDE.md を正とする。本書は §1〜§9 が設計時の記録、§10 が実装後の差分メモ。§6 の「権限モデル」節は CLAUDE.md にも要約が転記済み。
+> 大原則: ドキュメントと実装が矛盾する場合、コードと AGENTS.md を正とする。本書は §1〜§9 が設計時の記録、§10 が実装後の差分メモ。§6 の「権限モデル」節は AGENTS.md にも要約が転記済み。
 
 ## 1. 背景・課題
 
@@ -45,7 +45,7 @@ packages/db/src/schema/workspaces.ts  (workspace_members)
 
 ### マイグレーションは timestamp 方式に切り替える（→ 切替済み）
 
-> この切替は実施済み（`drizzle.config.ts` の `migrations.prefix = 'timestamp'`、CLAUDE.md にも記載）。以下は当時の判断の記録。
+> この切替は実施済み（`drizzle.config.ts` の `migrations.prefix = 'timestamp'`、AGENTS.md にも記載）。以下は当時の判断の記録。
 
 当時のマイグレーションは `0000_initial.sql`〜`0034_*.sql` の**連番方式**（Drizzle Kit の既定 `prefix: 'index'`）。複数ブランチが並行して `pnpm db:generate` すると同じ次番号（例: `0035_*`）を取り合い、**マージ時に番号衝突・適用順序の不定**が起きる。本機能のマイグレーションを作るこのタイミングで **timestamp 方式へ切り替える**:
 
@@ -58,12 +58,12 @@ export default defineConfig({
 ```
 
 - 既存の連番マイグレーションはリネームしない（適用済みのため）。以降の新規分のみ timestamp 形式になる。
-- 切り替え自体は本機能の最初のスキーマ issue（§9 の #1）に含める。CLAUDE.md のローカル開発手順にも一言追記する。
+- 切り替え自体は本機能の最初のスキーマ issue（§9 の #1）に含める。AGENTS.md のローカル開発手順にも一言追記する。
 
 
 ## 4. 認証・権限への影響（最重要）
 
-非活性メンバーは「メンバーではない」と同等に扱い、**サーバー側で必ず遮断**する。UI ガードは補助に過ぎない（CLAUDE.md の権限方針に準拠）。
+非活性メンバーは「メンバーではない」と同等に扱い、**サーバー側で必ず遮断**する。UI ガードは補助に過ぎない（AGENTS.md の権限方針に準拠）。
 
 - **`apps/web/src/lib/permissions.ts`**
   - `getWorkspaceRole` を「`status='active'` の行のみロールを返す」よう変更する。非活性は `null` を返す。

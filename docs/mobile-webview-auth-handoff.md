@@ -2,8 +2,8 @@
 
 ## ステータス
 
-- 状態: **実装済み・現行リファレンス**（`POST /api/auth/webview-handoff` + `apps/mobile/components/app-webview.tsx`。CLAUDE.md「決定済みの技術判断」にも記載）
-- 関連: [`docs/08_expo_roadmap.md`](08_expo_roadmap.md), [`docs/api-conventions.md`](api-conventions.md)
+- 状態: **実装済み・現行リファレンス**（`POST /api/auth/webview-handoff` + `apps/mobile/components/app-webview.tsx`。AGENTS.md「決定済みの技術判断」にも記載）
+- 関連: [`docs/mobile-app.md`](mobile-app.md), [`docs/api-conventions.md`](api-conventions.md)
 
 ## 背景・課題（設計当時の旧方式）
 
@@ -95,7 +95,7 @@ Supabase には公式の Native-to-Web SSO 機能がないため、
   - Admin API はメールを送信せず、リンク（`properties.hashed_token`）を返すだけ
 - レスポンス: `{ tokenHash: string }`
 - 失敗時は 401 / 500 を素直に返す（サイレントフォールバックしない。
-  CLAUDE.md「エラー表示」方針に従う）
+  AGENTS.md「エラー表示」方針に従う）
 
 注意: service role キーを使うのはこのルートのサーバー側処理のみ。
 キーがレスポンスやログに出ないことをレビュー観点とする。
@@ -173,7 +173,7 @@ URL 監視（`handleNavigationStateChange`）は、SPA 遷移で漏れる既知�
 3. `app-webview.tsx` をハンドオフ API 呼び出し + `path` 内部遷移 +
    `HANDOFF_FAILED` 復帰処理に変更
 4. 手動検証（下記）
-5. CLAUDE.md「決定済みの技術判断」に本方式を追記
+5. AGENTS.md「決定済みの技術判断」に本方式を追記
 
 ## 手動検証シナリオ
 
@@ -193,7 +193,7 @@ URL 監視（`handleNavigationStateChange`）は、SPA 遷移で漏れる既知�
 - **現方式の維持 + WebView 側 `autoRefreshToken: false`**: リフレッシュ所有者を
   ネイティブに一本化する案。実装は小さいが、トークン更新のたびにネイティブ →
   WebView への再ハンドオフ通知が必要で、タイミング依存の複雑さが残る
-- **wellnessMobile 方式（WebView セッションレス + postMessage でトークン貸出）**:
+- **WebView セッションレス方式（postMessage でトークン貸出）**:
   rotation 競合は消えるが、apps/web が Cookie/SSR 前提（middleware 認可・RSC）の
   ため、WebView 向けに認証経路を二重化する大改修になる
 - **Cookie 直接注入**: React Native WebView に Cookie を安全に注入する

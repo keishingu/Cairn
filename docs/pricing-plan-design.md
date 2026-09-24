@@ -1,7 +1,7 @@
 # 料金プラン設計
 
-> **ステータス**: 現行の設計合意（作成: 2026-06-12 / 改訂: 2026-06-16、実装未着手）
-> ホスティング版（Cairn Cloud）の課金設計。実装の詳細は [`billing-implementation-design.md`](./billing-implementation-design.md)。関連: [`09_product_strategy_notes.md`](./09_product_strategy_notes.md)（展開戦略）、[`10_ai_member_design.md`](./10_ai_member_design.md)（AIメンバー設計）
+> **ステータス**: 現行の設計合意（作成: 2026-06-12 / 改訂: 2026-06-16、Free / Solo は Phase 1 で実装済み、Team / Expedition は未実装）
+> ホスティング版（Cairn Cloud）の課金設計。実装の詳細は [`billing-implementation-design.md`](./billing-implementation-design.md)。関連: [`archive/09_product_strategy_notes.md`](./archive/09_product_strategy_notes.md)（展開戦略）、[`10_ai_member_design.md`](./10_ai_member_design.md)（AIメンバー設計）
 
 ---
 

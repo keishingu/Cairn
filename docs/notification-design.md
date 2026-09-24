@@ -1,7 +1,7 @@
 # 通知設計
 
 > **ステータス**: 現行リファレンス（実装に追従して更新する）
-> 設計時の検討記録は [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) を参照。
+> 設計時の検討記録は [`07_notifications_and_unread.md`](./archive/07_notifications_and_unread.md) を参照。
 
 ## メンション形式
 

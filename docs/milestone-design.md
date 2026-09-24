@@ -65,14 +65,14 @@
 | 領域 | 現実装 | 適合理由 |
 |---|---|---|
 | チャンネル基盤 | `channels` は `project_id` + `name`（nullable）を持ち、スキーマ上は1プロジェクト複数チャンネルを既に許容 | マイルストーンチャンネル = `channels` の追加行として表現できる |
-| 未読管理 | `channel_read_states` はチャンネルID単位で汎用動作 | マイルストーンチャンネルも自動で未読・メンションバッジが機能する（[`07_notifications_and_unread.md`](./07_notifications_and_unread.md) でも明記済み） |
+| 未読管理 | `channel_read_states` はチャンネルID単位で汎用動作 | マイルストーンチャンネルも自動で未読・メンションバッジが機能する（[`07_notifications_and_unread.md`](./archive/07_notifications_and_unread.md) でも明記済み） |
 | Realtime | topic は `channel:{id}`、認可は `can_access_channel()`（migration 0033/0034） | 新チャンネルのメッセージ配信は既存トリガーがそのまま動く（※認可関数にはゲスト制限の既存ギャップがあり Phase 1 で修正する。§3.9） |
 | メンション通知 | Inngest ジョブがチャンネル単位で受信者を解決（`mention-access.ts`） | `type='project'` チャンネルとして扱えば挙動は General と同一 |
 | タスク | `tasks.project_id` のみ（マイルストーン参照なし） | ドラフトの「Task belongs to Project」と完全一致。**変更ゼロ** |
 | ファイル・ギャラリー | `files.project_id` / `gallery_items` はプロジェクト直下 | 同上。**変更ゼロ** |
 | 日付の持ち方 | `projects.start_date / end_date` が `date` 型（`YYYY-MM-DD`）の前例 | マイルストーンも同じ型・同じフォーマット関数（`formatChannelPeriod` 等）を再利用できる |
 
-また、「エンティティ = チャンネル」の 1:1 対応という基本思想は [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) §1 に明文化されており、マイルストーンは当初から将来拡張として予定されていた（`channels.milestone_id` 追加案が記載済み）。本ドラフトはその路線の具体化である。
+また、「エンティティ = チャンネル」の 1:1 対応という基本思想は [`07_notifications_and_unread.md`](./archive/07_notifications_and_unread.md) §1 に明文化されており、マイルストーンは当初から将来拡張として予定されていた（`channels.milestone_id` 追加案が記載済み）。本ドラフトはその路線の具体化である。
 
 ---
 
@@ -93,7 +93,7 @@
 
 ### 3.2 channel_type の扱い — `'milestone'` 新設ではなく `'project'` 流用とする
 
-[`07_notifications_and_unread.md`](./07_notifications_and_unread.md) には `channel_type` enum への `'milestone'` 追加案が記載されているが、**本実装では追加せず、`type = 'project'` のまま `channels.milestone_id` の有無で識別する**。
+[`07_notifications_and_unread.md`](./archive/07_notifications_and_unread.md) には `channel_type` enum への `'milestone'` 追加案が記載されているが、**本実装では追加せず、`type = 'project'` のまま `channels.milestone_id` の有無で識別する**。
 
 理由:
 
@@ -124,7 +124,7 @@
 
 ### 3.6 権限（ドラフト未定義 → 本書で確定）
 
-ドラフトには権限の記載がない。CLAUDE.md の権限モデル（ワークスペースロールのみで決定）に従い:
+ドラフトには権限の記載がない。AGENTS.md の権限モデル（ワークスペースロールのみで決定）に従い:
 
 | 操作 | 権限 | 根拠 |
 |---|---|---|

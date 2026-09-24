@@ -5,7 +5,7 @@
 
 通知機能（Web / モバイル / デスクトップ）の不安定さ・UX 課題の調査結果と、Slack / Discord / Notion / Backlog / Google Calendar / TimeTree との比較に基づく再設計案。
 
-関連: [`docs/07_notifications_and_unread.md`](07_notifications_and_unread.md)（現行設計）、[`docs/notification-design.md`](notification-design.md)（現行の通知マトリクス）
+関連: [`docs/archive/07_notifications_and_unread.md`](archive/07_notifications_and_unread.md)（設計時の検討記録）、[`docs/notification-design.md`](notification-design.md)（現行の通知マトリクス）
 
 ---
 
@@ -122,14 +122,14 @@
 7. ✅ **チャンネル参加時に read state 行を作成**（参加時点を起点）→ 新規参加者の全履歴未読を解消。メンバー追加・DM 作成の両方
 8. ✅ **チャンネル既読時にメンション/DM 通知も既読化**（`notifications.data->>'channelId'` で連動）
 9. ✅ **DM のインボックス通知を追加**（`notification_type` に `dm` を追加。Push を逃しても回収できる）
-10. ◐ **Inngest 依存の可視化**: `inngest.send()` 失敗は warn ログ済み。ローカル開発で Inngest dev server が必要な旨を CLAUDE.md に明記。リトライ強化は今後
+10. ◐ **Inngest 依存の可視化**: `inngest.send()` 失敗は warn ログ済み。ローカル開発で Inngest dev server が必要な旨を AGENTS.md に明記。リトライ強化は今後
 11. ✅ チャンネル一覧クエリに `refetchInterval: 15_000` を付与（Phase 2 で Realtime に置換）
 
 付随修正: `GET /api/notifications` に `workspace_id` フィルタを追加（マルチ WS で他 WS の通知混入を防止）。
 
 ### Phase 2: 配信のリアルタイム化（Supabase Realtime へ移行）— スコープ改訂版
 
-CLAUDE.md の方針「ポーリングで実装し、必要に応じて Supabase Realtime へ移行する」をここで発動する。
+当時の方針「ポーリングで実装し、必要に応じて Supabase Realtime へ移行する」をここで発動した。
 当初案では「メッセージ本文は 5 秒ポーリング据え置き」としていたが、**メッセージ本文（新着・編集・削除・リアクション）も含めて Realtime 化する**ようスコープを拡張した。
 
 #### 配信方式: Broadcast from Database（postgres_changes からの変更）
@@ -190,7 +190,7 @@ private channel の join は **`realtime.messages` への RLS（Realtime Authori
 理由:
 
 - 二重経路は「更新が 1 秒で届くときと 15〜60 秒かかるときがある」という非決定的な挙動になり、どちらの経路で届いたか追えずデバッグ困難（Phase 1 で解消した「経路ごとに更新タイミングが違う」問題の再生産）
-- ポーリングが Realtime 側の設定ミス（RLS でイベントが落ちている等）を隠蔽し、障害に気づけない。CLAUDE.md の「サイレントに代替データへ fallback せず、エラーを見せる」方針にも反する
+- ポーリングが Realtime 側の設定ミス（RLS でイベントが落ちている等）を隠蔽し、障害に気づけない。AGENTS.md の「サイレントに代替データへ fallback せず、エラーを見せる」方針にも反する
 
 代わりに、接続障害は「隠す」のではなく「見せて回復する」:
 
@@ -204,7 +204,7 @@ private channel の join は **`realtime.messages` への RLS（Realtime Authori
 #### モバイルのスコープ
 
 - WebView ベースの画面（通知・チャット詳細ほか）は Web の実装がそのまま効く
-- ネイティブ画面（チャンネル一覧・タスク等）は当面ポーリング維持。supabase-js は React Native でも動作するため、必要になれば同じ「シグナル → invalidate」方式を移植する
+- ネイティブチャットも同じ private Broadcast（`user:{userId}` / `channel:{channelId}`）と「シグナル → invalidate」方式で更新し、ポーリングは使わない
 
 #### やらないこと / 将来の選択肢
 

@@ -12,7 +12,7 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 
 3つは同じデータ・権限基盤を利用できるが、発話先・起動条件・状態・課金・許される副作用が異なる。UIや実行状態まで一つに統合しない。
 
-[`docs/09_product_strategy_notes.md`](./09_product_strategy_notes.md) の優先課題 2（AGENTS.md カスタムAI）・4（AIをワークフローの中へ）・5（会話と構造の接続）を、この境界を守りながら段階的に回収する。
+[`docs/archive/09_product_strategy_notes.md`](./archive/09_product_strategy_notes.md) の優先課題 2（AGENTS.md カスタムAI）・4（AIをワークフローの中へ）・5（会話と構造の接続）を、この境界を守りながら段階的に回収する。
 
 ---
 
