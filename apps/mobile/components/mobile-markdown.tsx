@@ -22,7 +22,11 @@ type MarkdownState = {
 type MarkdownInlineState = {
   src: string
   pos: number
-  push: (type: string, tag: string, nesting: number) => {
+  push: (
+    type: string,
+    tag: string,
+    nesting: number,
+  ) => {
     meta: { userId: string; displayName?: string } | null
   }
 }
@@ -77,11 +81,26 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   const rules = React.useMemo<RenderRules>(
     () => ({
       cairn_mention: (node, _children, _parents, styles, inheritedStyles = {}) => {
-        const mention = (node as typeof node & {
-          sourceMeta: { userId: string; displayName?: string }
-        }).sourceMeta
+        const mention = (
+          node as typeof node & {
+            sourceMeta: { userId: string; displayName?: string }
+          }
+        ).sourceMeta
         return (
-          <Text key={node.key} style={[inheritedStyles, styles.text]}>
+          <Text
+            key={node.key}
+            style={[
+              inheritedStyles,
+              styles.text,
+              {
+                color: palette.accentText,
+                backgroundColor: palette.accentSoft,
+                fontWeight: '600',
+                borderRadius: 4,
+                paddingHorizontal: 4,
+              },
+            ]}
+          >
             @{mentionNames?.[mention.userId] ?? mention.displayName ?? 'メンバー'}
           </Text>
         )
@@ -89,7 +108,7 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
       // チャット画像は認証付き添付として別UIで描画する。外部URLを自動取得しない。
       image: () => null,
     }),
-    [mentionNames],
+    [mentionNames, palette.accentSoft, palette.accentText],
   )
   const markdownStyle = React.useMemo(
     () => ({
@@ -198,7 +217,12 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   )
 
   return (
-    <Markdown markdownit={markdownParser} onLinkPress={onLinkPress} rules={rules} style={markdownStyle}>
+    <Markdown
+      markdownit={markdownParser}
+      onLinkPress={onLinkPress}
+      rules={rules}
+      style={markdownStyle}
+    >
       {content}
     </Markdown>
   )

@@ -1,7 +1,6 @@
 # フロントエンドコンポーネント設計ガイドライン
 
 > **ステータス**: 現行リファレンス（実装に追従して更新する）
-> **規約整理**: 2026-09-07。Domain Hook に通信を集約する方針を維持し、page / container / 表示コンポーネントの適用範囲を明確化した。既存実装の移行状況は「既存実装への適用」を参照。
 
 ## コンポーネントの3層構造
 
@@ -28,8 +27,6 @@ page → organism/container（省略可）→ molecule/atom の3層を原則と�
 - API 通信・query・mutation は持たせず、データと操作コールバックを props で受ける。入力・開閉状態やフォーカス制御など表示に閉じた処理は持てる
 - 外側の余白や画面内での配置・幅は親が決める。ボタン高・アイコンサイズ・内側の余白など部品固有の寸法は [UI 統一ルール](../.interface-design/system.md) に従う。固定値を避けるためだけに寸法ごとの props を増やさない
 - 共通の表示部品を組み合わせてよい。表示部品から page やデータ取得用 container に依存させない
-
-従来の「UIマークアップを書かない」「コンポーネントがコンポーネントを呼び出すのは極力避ける」は、画面構成や共通部品の再利用まで妨げないよう、上記の責務分離へ置き換える。container のデータ取得可と表示層の通信禁止を区別し、通信の直接記述を許可する例外は追加しない。
 
 ---
 
@@ -87,14 +84,7 @@ const { data } = useQuery({
 
 ## 既存実装への適用
 
-本書は新規実装・改修時の規約であり、全画面の適合を保証するものではない。既存ページに直接 query や表示処理が残っていても、それを規約の例外とはしない。2026-09-07 時点で以下の移行 Issue は Open であり、本書の整理によって完了扱いにしたり、元の受け入れ条件を緩めたりしない。
-
-| 対象 | 既存 Issue と整理する責務 |
-|---|---|
-| Web 設定 | [#251](https://github.com/keishingu/Cairn/issues/251): データ取得・更新を Domain Hook に分離 |
-| Web チャット | [#252](https://github.com/keishingu/Cairn/issues/252): メッセージ等の Domain Hook 化と表示コンポーネント分割 |
-| Expo チャット | [#479](https://github.com/keishingu/Cairn/issues/479): 通信・購読・状態管理と表示を分離 |
-| カレンダー | [#501](https://github.com/keishingu/Cairn/issues/501): 日付・配置の純粋関数、Domain Hook、PC・モバイル表示に分離 |
+本書は新規実装・改修時の規約で、全画面の適合は保証しない。既存ページに直接 query が残っていても規約の例外とはしない（移行は GitHub Issue で追う）。
 
 改修では既存の Hook や [`TaskFormFields`](../apps/web/src/components/app/task-form-fields.tsx) などを再利用する。3層すべてを必須にするための中継コンポーネントや、個別フォームの共通化だけを目的とした汎用フォーム基盤は追加しない。
 
@@ -145,6 +135,13 @@ const { data } = useQuery({
 - アイコンに重ねる場合は `size="sm"` ＋ `style={{ position: 'absolute', ... , border: '2px solid var(--card)' }}` で配置する
 - 通知1件ごとの「未読マーカー」のような件数を持たない印は、従来どおり小さなドットでよい（件数バッジとは用途が異なる）
 
+### 未統一の UI（残課題）
+
+- **ボタン**: 共通クラス（`btn` / `btn-primary` / `btn-ghost` / `btn-danger`、`globals.css`）とインライン `style` 直書きが混在。新規は共通クラスを使う
+- **空状態**: 文言（「まだ〜がありません / はありません / 〜がいません」）とレイアウト（アイコン有無・padding）が揺れている
+- **ローディング**: Skeleton / loader アイコン+「取得中…」/ テキスト「読み込み中…」の3様式と、「…」「...」が混在
+- **チャンネル削除**: 未実装。設けるかどうか、設けるなら共通 `ConfirmDialog` に乗せるかは未決
+
 ---
 
 ## UIディレクトリ構成と PC / モバイルの使い分け
@@ -186,6 +183,23 @@ components/app/
 - 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC・モバイル共通、`isMobile` prop で切り替え）
 
 ---
+
+## 画面ごとの確定仕様
+
+- **ファイル一覧**（`/files`）: `files.project_id` を第一階層に折りたたみ表示し、未所属ファイルは「プロジェクトなし」にまとめる。ストレージ実体の `storage_path` は表示上の分類に使わない。名前付きフィルター `saved_file_filters` は `workspace_id` / `user_id` を必須で保存し、別ワークスペース・別ユーザーへ共有しない
+- **設定**: `/settings` 単体は PC で `account`、モバイルで設定一覧（`MobileSettings`）を表示する。モバイルはタップで `/settings/[section]` へ遷移し、PC と同じ `SettingsSectionContent` を全画面表示する（`MobileSettingsDetail`）。`?tab=` 形式は廃止
+- **既定画面**: 通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先はすべて `/chats`。個別会話は `/chats/[channelId]`
+- 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクトする。`/projects/[id]` は `/projects?open=project-{id}` にリダイレクトする（`use-detail-panel.ts` は `project-` 接頭辞付きの値しか認識しないため、リンクも必ず接頭辞を付ける）
+
+## PWA アイコンとアクセントカラー
+
+アクセントカラー（7色）× テーマ（ライト / ダーク）ごとに PWA アイコンを事前生成しており、設定でカラーやテーマを変えるとホーム画面アイコンに反映される。`node scripts/generate-icons.mjs` が `apps/web/public/` に `icon-{color}-{theme}-192.png` / `-512.png`、`apple-touch-icon-{color}-{theme}.png` と、cookie 未設定時のフォールバック（`icon-192.png` / `icon-512.png` / `apple-touch-icon.png`）を生成する。
+
+アクセントカラーを追加するときは次の順で行う。
+
+1. `apps/web/src/lib/accent-presets.ts` の `ACCENT_PRESETS` に追加する
+2. `scripts/generate-icons.mjs` の `ACCENT_PRESETS` にも同じ `id` と `swatch` 色を追加する
+3. `node scripts/generate-icons.mjs` を実行し、生成された PNG をコミットする
 
 ## localStorage キー命名規則
 

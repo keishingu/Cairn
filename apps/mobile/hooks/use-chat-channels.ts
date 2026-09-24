@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
+import {
+  fetchWorkspaceChannels,
+  fetchWorkspaceDms,
+  projectChannelsQueryKey,
+  workspaceChannelsQueryKey,
+  workspaceDmsQueryKey,
+} from '../lib/channel-list-queries'
+import { fetchApiJson } from '../lib/fetch-api-json'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -40,24 +48,20 @@ export interface ChannelMemberDto {
 }
 
 function fetchJson<T>(path: string, errorLabel: string) {
-  return async (): Promise<T> => {
-    const res = await apiFetch(path)
-    if (!res.ok) throw new Error(`${errorLabel}の取得に失敗しました (${res.status})`)
-    return res.json() as Promise<T>
-  }
+  return () => fetchApiJson<T>(path, errorLabel)
 }
 
 export function useWorkspaceChannels() {
   return useQuery<WorkspaceChannelDto[]>({
-    queryKey: ['workspace-channels'],
-    queryFn: fetchJson('/api/workspaces/channels', 'チャンネル'),
+    queryKey: workspaceChannelsQueryKey,
+    queryFn: () => fetchWorkspaceChannels<WorkspaceChannelDto[]>(),
   })
 }
 
 export function useWorkspaceDms() {
   return useQuery<DmChannelDto[]>({
-    queryKey: ['workspace-dms'],
-    queryFn: fetchJson('/api/workspaces/dms', 'ダイレクトメッセージ'),
+    queryKey: workspaceDmsQueryKey,
+    queryFn: () => fetchWorkspaceDms<DmChannelDto[]>(),
     enabled: FEATURE_FLAGS.dm,
   })
 }
@@ -100,10 +104,52 @@ export function useCreateWorkspaceChannel() {
       return res.json() as Promise<WorkspaceChannelDto>
     },
     onSuccess: (channel) => {
-      qc.setQueryData<WorkspaceChannelDto[]>(['workspace-channels'], (current) => [
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) => [
         ...(current ?? []),
         channel,
       ])
+    },
+  })
+}
+
+export function useRenameWorkspaceChannel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ channelId, name }: { channelId: string; name: string }) => {
+      const res = await apiFetch(`/api/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? '名前の変更に失敗しました')
+      }
+      return res.json() as Promise<{ id: string; name: string }>
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
+        current?.map((channel) => (channel.id === updated.id ? { ...channel, name: updated.name } : channel)),
+      )
+    },
+  })
+}
+
+export function useDeleteWorkspaceChannel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (channelId: string) => {
+      const res = await apiFetch(`/api/channels/${channelId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? '削除に失敗しました')
+      }
+    },
+    onSuccess: (_result, channelId) => {
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
+        current?.filter((channel) => channel.id !== channelId && channel.parentChannelId !== channelId),
+      )
+      void qc.invalidateQueries({ queryKey: ['tasks'] })
+      void qc.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 }
@@ -123,7 +169,7 @@ export function useCreateChannelThread() {
       return res.json() as Promise<{ id: string }>
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-channels'] })
+      void qc.invalidateQueries({ queryKey: workspaceChannelsQueryKey })
     },
   })
 }
@@ -150,7 +196,7 @@ export function usePatchProjectMilestone() {
       }
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-channels'] })
+      void qc.invalidateQueries({ queryKey: projectChannelsQueryKey })
     },
   })
 }
@@ -170,7 +216,7 @@ export function useCreateWorkspaceDm() {
       return res.json() as Promise<{ id: string }>
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-dms'] })
+      void qc.invalidateQueries({ queryKey: workspaceDmsQueryKey })
     },
   })
 }

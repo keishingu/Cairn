@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import type { AccentId, AppearanceTheme, CalendarWeekStart } from '@cairn/shared'
-import { apiFetch } from '../lib/api-fetch'
+import { fetchApiJson } from '../lib/fetch-api-json'
+import {
+  fetchWorkspaceMemberships,
+  workspaceListQueryKey,
+  type WorkspaceMembership,
+} from '../lib/workspace-queries'
 
 export interface MeDto {
   id: string
@@ -19,24 +24,12 @@ export interface WorkspaceDto {
   logoUrl: string | null
 }
 
-export interface WorkspaceListItemDto {
-  id: string
-  name: string
-  slug: string
-  logoUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
-}
-
-async function getJson<T>(path: string, label: string): Promise<T> {
-  const res = await apiFetch(path)
-  if (!res.ok) throw new Error(`${label}の取得に失敗しました (${res.status})`)
-  return res.json() as Promise<T>
-}
+export type WorkspaceListItemDto = WorkspaceMembership
 
 export function useMe() {
   return useQuery({
     queryKey: ['me'],
-    queryFn: () => getJson<MeDto>('/api/me', 'ユーザー情報'),
+    queryFn: () => fetchApiJson<MeDto>('/api/me', 'ユーザー情報'),
     staleTime: 60_000,
   })
 }
@@ -44,15 +37,15 @@ export function useMe() {
 export function useWorkspace() {
   return useQuery({
     queryKey: ['workspace'],
-    queryFn: () => getJson<WorkspaceDto>('/api/workspaces', 'ワークスペース情報'),
+    queryFn: () => fetchApiJson<WorkspaceDto>('/api/workspaces', 'ワークスペース情報'),
     staleTime: 60_000,
   })
 }
 
 export function useWorkspaceList(enabled = true) {
   return useQuery({
-    queryKey: ['workspace-list'],
-    queryFn: () => getJson<WorkspaceListItemDto[]>('/api/workspaces/list', 'ワークスペース一覧'),
+    queryKey: workspaceListQueryKey,
+    queryFn: fetchWorkspaceMemberships,
     staleTime: 60_000,
     enabled,
   })

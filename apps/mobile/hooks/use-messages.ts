@@ -1,6 +1,12 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
+import type {
+  AttachmentDto,
+  MessageType,
+  ProfileAttributeDto,
+  ProjectMemberRole,
+} from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
+import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { mergeChatMessages, nextMessagePageCursor } from '../lib/mobile-chat-state'
 
 export interface MessageDto {
@@ -38,7 +44,7 @@ export function parseMentions(content: string): string {
 }
 
 // status を保持し、403（アクセス権なし）を通常の取得失敗と区別して
-// 専用の案内を出すために使う（CLAUDE.md: フロントは生の 401/403 を出さない）
+// 専用の案内を出すために使う（AGENTS.md: フロントは生の 401/403 を出さない）
 export class ChannelMessagesError extends Error {
   status: number
   constructor(message: string, status: number) {
@@ -133,9 +139,7 @@ export function useSendMessage(channelId: string) {
       } catch (err) {
         console.error('[useSendMessage] 送信後の既読化に失敗:', err)
       }
-      await qc.invalidateQueries({ queryKey: ['project-channels'] })
-      await qc.invalidateQueries({ queryKey: ['workspace-channels'] })
-      await qc.invalidateQueries({ queryKey: ['workspace-dms'] })
+      await invalidateChannelListQueries(qc)
     },
   })
 }
@@ -221,11 +225,7 @@ export function useMarkChannelRead(channelId: string) {
       const res = await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
       if (!res.ok) throw new Error(`既読化に失敗しました (${res.status})`)
     },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['project-channels'] })
-      await qc.invalidateQueries({ queryKey: ['workspace-channels'] })
-      await qc.invalidateQueries({ queryKey: ['workspace-dms'] })
-    },
+    onSuccess: () => invalidateChannelListQueries(qc),
   })
 }
 

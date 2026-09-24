@@ -1,8 +1,8 @@
 # プロフィール属性機能 設計
 
-> **ステータス**: 実装済みの現行設計（作成・最終更新: 2026-09-01）
+> **ステータス**: 実装済み（Web・Expo のチャット表示まで）。本書は現行仕様（作成 2026-09-01、2026-09-24 に整理）
 >
-> 実装後に本書とコードが乖離した場合は、コードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
+> 実装後に本書とコードが乖離した場合は、コードと [`AGENTS.md`](../AGENTS.md) を正とする。
 
 ## 1. 目的
 
@@ -94,7 +94,7 @@ Zodスキーマと色IDを `packages/shared` に置き、Web・Expo・管理API�
 
 ### 5.1 管理API
 
-属性ID配列全体を置き換える専用エンドポイントを追加する。
+属性ID配列全体を置き換える専用エンドポイント。
 
 ```http
 PATCH /api/workspaces/members/:userId/profile-attributes
@@ -135,20 +135,16 @@ DELETE /api/workspaces/profile-attributes/:attributeId
 
 ### 5.2 メンバー取得
 
-`WorkspaceMemberDto` に追加する。
-
-```ts
-profileAttributes: string[]
-```
+`WorkspaceMemberDto` は `profileAttributes: ProfileAttributeDto[]`（`{ id, name, color }`）を返す。
 
 ゲストのメンバー可視範囲は既存仕様を変更しない。見えないメンバーの属性だけが新たに漏れないよう、既存のメンバー一覧・チャンネルアクセス境界の内側で返す。
 
 ### 5.3 チャットメッセージ取得
 
-`MessageDto` に次を追加する。
+`MessageDto` は次を返す。
 
 ```ts
-senderProfileAttributes?: string[]
+senderProfileAttributes?: ProfileAttributeDto[]
 senderProjectRole?: ProjectMemberRole | null
 ```
 
@@ -193,7 +189,7 @@ senderProjectRole?: ProjectMemberRole | null
 
 ### 6.3 管理導線
 
-メンバー詳細パネルに「プロフィール属性」セクションを追加する。
+メンバー詳細パネルの「プロフィール属性」セクション。
 
 - owner / admin にだけ「編集」を表示する。
 - 編集時は属性マスターをチェックボックス付き一覧で表示し、最大5件を選択する。
@@ -209,7 +205,7 @@ senderProjectRole?: ProjectMemberRole | null
 
 ### 7.1 Realtime
 
-初期実装ではプロフィール属性専用のBroadcastトピックを追加しない。
+プロフィール属性専用のBroadcastトピックは持たない。
 
 - 編集した管理者の画面はmutation成功後のQuery invalidateで即時更新する。
 - 他クライアントは次のREST再取得、画面再表示、メッセージ更新時に最新属性へ追従する。
@@ -228,52 +224,7 @@ senderProjectRole?: ProjectMemberRole | null
 
 属性による人物検索を実装する場合は、公開範囲・本人訂正・AI回答での利用可否を決めてから `member/upserted` のインデックス対象へ追加する。
 
-## 8. 実装対象
-
-### Phase 1: 保存・管理（実装済み）
-
-- 属性マスター・割当テーブルと既存JSON属性の移行migration
-- Zod入力スキーマ
-- 管理API
-- 属性マスター設定UI
-- `WorkspaceMemberDto` への追加
-- メンバー詳細の表示・管理UI
-- メンバーカードへの属性表示
-
-### Phase 2: チャット表示（実装済み）
-
-- Webのメッセージ取得・投稿DTO
-- Webチャットの属性表示
-- プロジェクトチャットでのプロジェクトロール取得・表示
-- ExpoのメッセージDTOとネイティブチャット表示
-
-DB変更は後方互換であり、Phase 1とPhase 2を同一リリースに含めなくても旧クライアントは動作する。ただしユーザーに見える完成条件は、Web・Expoのチャット表示まで含む。
-
-## 9. 検証項目
-
-### 自動テスト
-
-- 5件・属性ID形式・重複拒否の割当入力検証
-- 属性名20文字・色ID・同一ワークスペース内の名称重複拒否
-- owner / admin はactiveメンバーを更新できる
-- member / guest は更新できない
-- 別ワークスペースと非活性メンバーは更新できない
-- ワークスペースチャットとDMは属性を返し、プロジェクトロールを返さない
-- プロジェクトチャットはそのプロジェクトのロールと属性を返す
-- 別プロジェクトのロールを返さない
-- ワークスペースロールをチャット表示へ渡さない
-- 既定のプロジェクトロール `member` を表示しない
-- 属性のない既存メンバー・旧レスポンスでもチャットが壊れない
-
-### 手動確認
-
-- PCチャットで日本語5属性が折り返しても投稿時刻と本文が崩れない
-- WebモバイルとExpoで、属性が名前の下へ折り返される
-- プロジェクトを切り替えるとプロジェクトロールだけが切り替わり、属性は共通して残る
-- 属性更新後、メンバー詳細・カード・チャットに最新値が表示される
-- ダークテーマで固定パレット6色の背景・文字が読める
-
-## 10. 初期スコープ外
+## 8. スコープ外
 
 - 属性カテゴリ・キーと値の構造化
 - 属性ごとのアイコン
