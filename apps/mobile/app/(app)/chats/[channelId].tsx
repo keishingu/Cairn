@@ -2,12 +2,15 @@ import React from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   AppState,
+  BackHandler,
   FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   Share,
@@ -158,6 +161,7 @@ function ChatMessageRow({
   accessToken,
   onToggleReaction,
   onAddReaction,
+  onShowReactors,
   onLinkPress,
   onOpenActions,
 }: {
@@ -166,6 +170,7 @@ function ChatMessageRow({
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
+  onShowReactors: (emoji: string, userNames: string[]) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
 }) {
@@ -205,88 +210,97 @@ function ChatMessageRow({
         </View>
       )}
 
-      <Pressable
-        style={styles.messageBody}
-        onLongPress={() => onOpenActions(message)}
-        delayLongPress={350}
-      >
-        <View style={styles.messageMeta}>
-          <Text style={[styles.senderName, { color: palette.text }]}>
-            {message.senderName}
-          </Text>
-          {projectRoleLabelText && (
-            <Text style={[styles.projectRole, {
-              backgroundColor: projectRoleColor ? palette.card2 : palette.accentSoft,
-              color: projectRoleColor ?? palette.accentText,
-            }]}>
-              {projectRoleLabelText}
-            </Text>
-          )}
-          <Text style={[styles.messageTime, { color: palette.text4 }]}>
-            {formatTime(message.createdAt)}
-          </Text>
-          {message.isEdited && (
-            <Text style={[styles.edited, { color: palette.text4 }]}>編集済み</Text>
-          )}
-          {message.bookmarked && <Ionicons name="bookmark" size={12} color={palette.accent} />}
-        </View>
-
-        {(message.senderProfileAttributes?.length ?? 0) > 0 && (
-          <View style={styles.profileAttributes}>
-            {message.senderProfileAttributes?.map(attribute => (
+      <View style={styles.messageBody}>
+        <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
+          <View style={styles.messageMeta}>
+            <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            {projectRoleLabelText && (
               <Text
-                key={attribute.id}
                 style={[
-                  styles.profileAttribute,
+                  styles.projectRole,
                   {
-                    backgroundColor: palette.profileAttributeColors[attribute.color].background,
-                    color: palette.profileAttributeColors[attribute.color].text,
+                    backgroundColor: projectRoleColor ? palette.card2 : palette.accentSoft,
+                    color: projectRoleColor ?? palette.accentText,
                   },
                 ]}
               >
-                {attribute.name}
+                {projectRoleLabelText}
               </Text>
-            ))}
-          </View>
-        )}
-
-        {message.replyTo && (
-          <View style={[styles.replyPreview, { borderLeftColor: palette.accent }]}>
-            <Ionicons name="arrow-undo-outline" size={13} color={palette.text4} />
-            <Text style={[styles.replySender, { color: palette.text3 }]} numberOfLines={1}>
-              {message.replyTo.senderName}
+            )}
+            <Text style={[styles.messageTime, { color: palette.text4 }]}>
+              {formatTime(message.createdAt)}
             </Text>
-            <Text style={[styles.replyText, { color: palette.text4 }]} numberOfLines={1}>
-              {message.replyTo.isDeleted
-                ? '削除されたメッセージ'
-                : parseMentions(message.replyTo.content) || '（添付ファイル）'}
-            </Text>
+            {message.isEdited && (
+              <Text style={[styles.edited, { color: palette.text4 }]}>編集済み</Text>
+            )}
+            {message.bookmarked && <Ionicons name="bookmark" size={12} color={palette.accent} />}
           </View>
-        )}
 
-        {message.blocked ? (
-          <Text style={[styles.messageText, { color: palette.text3 }]}>ブロックしたユーザーのメッセージ（長押しメニューから表示できます）</Text>
-        ) : message.content.length > 0 && (
-          <MobileMarkdown content={message.content} palette={palette} onLinkPress={onLinkPress} />
-        )}
+          {(message.senderProfileAttributes?.length ?? 0) > 0 && (
+            <View style={styles.profileAttributes}>
+              {message.senderProfileAttributes?.map((attribute) => (
+                <Text
+                  key={attribute.id}
+                  style={[
+                    styles.profileAttribute,
+                    {
+                      backgroundColor: palette.profileAttributeColors[attribute.color].background,
+                      color: palette.profileAttributeColors[attribute.color].text,
+                    },
+                  ]}
+                >
+                  {attribute.name}
+                </Text>
+              ))}
+            </View>
+          )}
 
-        {message.attachments.length > 0 && (
-          <View
-            style={[
-              styles.attachments,
-              message.content.length > 0 && styles.attachmentsWithContent,
-            ]}
-          >
-            {message.attachments.map((attachment) => (
-              <AttachmentChip
-                key={attachment.id}
-                attachment={attachment}
+          {message.replyTo && (
+            <View style={[styles.replyPreview, { borderLeftColor: palette.accent }]}>
+              <Ionicons name="arrow-undo-outline" size={13} color={palette.text4} />
+              <Text style={[styles.replySender, { color: palette.text3 }]} numberOfLines={1}>
+                {message.replyTo.senderName}
+              </Text>
+              <Text style={[styles.replyText, { color: palette.text4 }]} numberOfLines={1}>
+                {message.replyTo.isDeleted
+                  ? '削除されたメッセージ'
+                  : parseMentions(message.replyTo.content) || '（添付ファイル）'}
+              </Text>
+            </View>
+          )}
+
+          {message.blocked ? (
+            <Text style={[styles.messageText, { color: palette.text3 }]}>
+              ブロックしたユーザーのメッセージ（長押しメニューから表示できます）
+            </Text>
+          ) : (
+            message.content.length > 0 && (
+              <MobileMarkdown
+                content={message.content}
                 palette={palette}
-                {...(accessToken ? { accessToken } : {})}
+                onLinkPress={onLinkPress}
               />
-            ))}
-          </View>
-        )}
+            )
+          )}
+
+          {message.attachments.length > 0 && (
+            <View
+              style={[
+                styles.attachments,
+                message.content.length > 0 && styles.attachmentsWithContent,
+              ]}
+            >
+              {message.attachments.map((attachment) => (
+                <AttachmentChip
+                  key={attachment.id}
+                  attachment={attachment}
+                  palette={palette}
+                  {...(accessToken ? { accessToken } : {})}
+                />
+              ))}
+            </View>
+          )}
+        </Pressable>
 
         {message.reactions.length > 0 && (
           <View style={styles.reactions}>
@@ -295,7 +309,10 @@ function ChatMessageRow({
                 key={reaction.emoji}
                 accessibilityRole="button"
                 accessibilityLabel={`${reaction.emoji} ${reaction.count}件のリアクション`}
+                accessibilityHint="長押しでリアクションした人を表示"
                 onPress={() => onToggleReaction(message.id, reaction.emoji)}
+                onLongPress={() => onShowReactors(reaction.emoji, reaction.userNames)}
+                delayLongPress={350}
                 style={({ pressed }) => [
                   styles.reaction,
                   {
@@ -343,7 +360,7 @@ function ChatMessageRow({
             <Ionicons name="add" size={10} color={palette.text3} />
           </Pressable>
         )}
-      </Pressable>
+      </View>
     </View>
   )
 }
@@ -476,6 +493,10 @@ export default function ChatThreadScreen() {
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
+  const [reactionPeople, setReactionPeople] = React.useState<{
+    emoji: string
+    userNames: string[]
+  } | null>(null)
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
@@ -486,11 +507,12 @@ export default function ChatThreadScreen() {
   )
   const mentionMembers = React.useMemo(() => {
     if (channelType === 'dm') return []
-    const candidates = isPrivate === '1'
-      ? (channelMembers.data ?? [])
-      : projectId
-        ? filterProjectMentionMembers(workspaceMembers.data ?? [], projectMembers.data ?? [])
-        : (workspaceMembers.data ?? [])
+    const candidates =
+      isPrivate === '1'
+        ? (channelMembers.data ?? [])
+        : projectId
+          ? filterProjectMentionMembers(workspaceMembers.data ?? [], projectMembers.data ?? [])
+          : (workspaceMembers.data ?? [])
     const query = mentionRange?.query.toLocaleLowerCase() ?? ''
     return candidates
       .filter((member) => member.userId !== me?.id)
@@ -511,7 +533,7 @@ export default function ChatThreadScreen() {
       ? null
       : isPrivate === '1'
         ? channelMembers.error
-        : workspaceMembers.error ?? (projectId ? projectMembers.error : null)
+        : (workspaceMembers.error ?? (projectId ? projectMembers.error : null))
   const isFetchingMentionMembers =
     channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching
 
@@ -530,14 +552,59 @@ export default function ChatThreadScreen() {
   // 他のタブへ切り替えても既定では画面がアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
+  const swipeX = React.useRef(new Animated.Value(0)).current
+  const goBackToList = React.useCallback(() => {
+    swipeX.setValue(0)
+    router.replace('/(app)/chats')
+  }, [router, swipeX])
+  const backSwipe = React.useMemo(
+    () =>
+      PanResponder.create({
+        // 左端から右へ動かしたときだけ一覧へ戻す。縦スクロールと戻るボタンのタップは奪わない。
+        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          gesture.x0 <= 28 && gesture.dx > 14 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+        onPanResponderMove: (_event, gesture) => {
+          swipeX.setValue(Math.max(0, gesture.dx))
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dx > 72 || gesture.vx > 0.75) {
+            goBackToList()
+            return
+          }
+          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
+        },
+        onPanResponderTerminate: () => {
+          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
+        },
+      }),
+    [goBackToList, swipeX],
+  )
   React.useEffect(() => {
     const unsubFocus = navigation.addListener('focus', () => setIsFocused(true))
-    const unsubBlur = navigation.addListener('blur', () => setIsFocused(false))
+    const unsubBlur = navigation.addListener('blur', () => {
+      setIsFocused(false)
+      swipeX.setValue(0)
+    })
     return () => {
       unsubFocus()
       unsubBlur()
     }
-  }, [navigation])
+  }, [navigation, swipeX])
+
+  React.useEffect(() => {
+    if (!isFocused) return
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (reactionPeople || reactionTarget || actionTarget) {
+        setReactionPeople(null)
+        setReactionTarget(null)
+        setActionTarget(null)
+        return true
+      }
+      goBackToList()
+      return true
+    })
+    return () => subscription.remove()
+  }, [actionTarget, goBackToList, isFocused, reactionPeople, reactionTarget])
 
   // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
   // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
@@ -663,7 +730,10 @@ export default function ChatThreadScreen() {
         ...(mentionSelectionsRef.current.length > 0
           ? {
               mentionNames: Object.fromEntries(
-                mentionSelectionsRef.current.map(({ userId, displayName }) => [userId, displayName]),
+                mentionSelectionsRef.current.map(({ userId, displayName }) => [
+                  userId,
+                  displayName,
+                ]),
               ),
             }
           : {}),
@@ -729,32 +799,52 @@ export default function ChatThreadScreen() {
     })
   }
 
-  const report = async (message: MessageDto, reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other', details?: string) => {
+  const report = async (
+    message: MessageDto,
+    reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other',
+    details?: string,
+  ) => {
     setActionTarget(null)
     const error = await apiActionError(
-      apiFetch(`/api/messages/${message.id}/report`, { method: 'POST', body: JSON.stringify({ reason, ...(details ? { details } : {}) }) }),
+      apiFetch(`/api/messages/${message.id}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, ...(details ? { details } : {}) }),
+      }),
       '報告に失敗しました',
     )
     if (error) setSendError(error)
     else Alert.alert('報告しました', '運営者が内容を確認します。')
   }
-  const reportMenu = (message: MessageDto) => Alert.alert('報告理由', '理由を選択してください', [
-    { text: '嫌がらせ・いじめ', onPress: () => void report(message, 'harassment') },
-    { text: '差別的または攻撃的', onPress: () => void report(message, 'discriminatory') },
-    { text: '性的または不適切', onPress: () => void report(message, 'sexual') },
-    { text: '暴力・脅迫', onPress: () => void report(message, 'violence') },
-    { text: 'スパム', onPress: () => void report(message, 'spam') },
-    { text: 'その他', onPress: () => Alert.prompt('補足説明', '報告内容を入力してください', text => { if (text.trim()) void report(message, 'other', text.trim()) }) },
-    { text: 'キャンセル', style: 'cancel' },
-  ])
+  const reportMenu = (message: MessageDto) =>
+    Alert.alert('報告理由', '理由を選択してください', [
+      { text: '嫌がらせ・いじめ', onPress: () => void report(message, 'harassment') },
+      { text: '差別的または攻撃的', onPress: () => void report(message, 'discriminatory') },
+      { text: '性的または不適切', onPress: () => void report(message, 'sexual') },
+      { text: '暴力・脅迫', onPress: () => void report(message, 'violence') },
+      { text: 'スパム', onPress: () => void report(message, 'spam') },
+      {
+        text: 'その他',
+        onPress: () =>
+          Alert.prompt('補足説明', '報告内容を入力してください', (text) => {
+            if (text.trim()) void report(message, 'other', text.trim())
+          }),
+      },
+      { text: 'キャンセル', style: 'cancel' },
+    ])
   const blockUser = async (message: MessageDto) => {
     setActionTarget(null)
     const error = await apiActionError(
-      apiFetch('/api/me/blocks', { method: 'POST', body: JSON.stringify({ userId: message.senderId }) }),
+      apiFetch('/api/me/blocks', {
+        method: 'POST',
+        body: JSON.stringify({ userId: message.senderId }),
+      }),
       'ブロックに失敗しました',
     )
     if (error) setSendError(error)
-    else { await messagesQuery.refetch(); Alert.alert('ブロックしました') }
+    else {
+      await messagesQuery.refetch()
+      Alert.alert('ブロックしました')
+    }
   }
 
   const canSubmit = editingMessage
@@ -893,514 +983,614 @@ export default function ChatThreadScreen() {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      {...backSwipe.panHandlers}
     >
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: palette.card, borderBottomColor: palette.border },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="チャット一覧へ戻る"
-          style={styles.backButton}
-          onPress={() => router.replace('/(app)/chats')}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={22} color={palette.accent} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: palette.text }]} numberOfLines={1}>
-          {channelName || 'チャット'}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="メッセージを検索"
-          style={styles.headerButton}
-          onPress={openSearch}
-          hitSlop={6}
-        >
-          <Ionicons name="search-outline" size={19} color={palette.text3} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="チャンネル情報"
-          style={styles.headerButton}
-          onPress={openInfo}
-          hitSlop={6}
-        >
-          <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
-        </Pressable>
-      </View>
-
-      {messagesQuery.isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={palette.accent} />
-        </View>
-      ) : isAccessDenied ? (
-        <View style={styles.center}>
-          <Ionicons name="lock-closed-outline" size={24} color={palette.text3} />
-          <Text style={[styles.errorTitle, { color: palette.text }]}>
-            このチャンネルは表示できません
-          </Text>
-          <Text style={[styles.errorBody, { color: palette.text3 }]}>
-            このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
-          </Text>
-        </View>
-      ) : isSessionExpired ? (
-        <View style={styles.center}>
-          <Ionicons name="log-in-outline" size={24} color={palette.text3} />
-          <Text style={[styles.errorTitle, { color: palette.text }]}>セッションが切れました</Text>
-          <Text style={[styles.errorBody, { color: palette.text3 }]}>
-            再度ログインしてください。
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.messageListContainer}>
-          {messagesQuery.error && (
-            <View
-              accessibilityRole="alert"
-              style={[
-                styles.refreshError,
-                { backgroundColor: palette.card2, borderColor: palette.redText },
-              ]}
-            >
-              <Ionicons name="cloud-offline-outline" size={16} color={palette.redText} />
-              <Text style={[styles.refreshErrorText, { color: palette.redText }]} numberOfLines={2}>
-                {messagesQuery.error.message}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="メッセージを再読み込み"
-                disabled={messagesQuery.isFetching}
-                onPress={() => void messagesQuery.refetch()}
-                hitSlop={6}
-              >
-                {messagesQuery.isFetching ? (
-                  <ActivityIndicator size="small" color={palette.redText} />
-                ) : (
-                  <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>再試行</Text>
-                )}
-              </Pressable>
-            </View>
-          )}
-          <FlatList
-            style={styles.messageList}
-            data={listItems}
-            inverted
-            keyExtractor={(item) => `${item.kind}:${item.message.id}`}
-            renderItem={({ item }) =>
-              item.kind === 'queued' ? (
-                <QueuedMessageRow
-                  message={item.message}
-                  palette={palette}
-                  senderName={me?.displayName ?? '自分'}
-                  onLinkPress={openMarkdownLink}
-                  onRetry={() => offlineQueue.retry(item.message.id)}
-                  onCancel={() => offlineQueue.cancel(item.message.id)}
-                />
-              ) : (
-                <ChatMessageRow
-                  message={item.message}
-                  palette={palette}
-                  onToggleReaction={handleToggleReaction}
-                  onAddReaction={setReactionTarget}
-                  onLinkPress={openMarkdownLink}
-                  onOpenActions={setActionTarget}
-                  {...(session?.access_token ? { accessToken: session.access_token } : {})}
-                />
-              )
-            }
-            contentContainerStyle={styles.list}
-            onEndReached={() => void loadOlderMessages()}
-            onEndReachedThreshold={0.25}
-            ListFooterComponent={
-              messagesQuery.isFetchingNextPage ? (
-                <ActivityIndicator style={styles.olderLoading} size="small" color={palette.accent} />
-              ) : messagesQuery.isFetchNextPageError ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="過去のメッセージを再読み込み"
-                  onPress={() => void loadOlderMessages()}
-                  style={styles.olderError}
-                >
-                  <Text style={[styles.olderErrorText, { color: palette.redText }]}>
-                    {messagesQuery.error?.message ?? '過去のメッセージを取得できませんでした'}
-                    　再試行
-                  </Text>
-                </Pressable>
-              ) : null
-            }
-            ListEmptyComponent={
-              messagesQuery.error ? null : (
-                <Text style={[styles.empty, { color: palette.text4 }]}>
-                  まだメッセージはありません。最初のメッセージを送ってみましょう！
-                </Text>
-              )
-            }
-          />
-        </View>
-      )}
-
-      {!isAccessDenied && !isSessionExpired && (
+      <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
         <View
           style={[
-            styles.composerArea,
-            {
-              backgroundColor: palette.card,
-              borderTopColor: palette.border,
-              paddingBottom: insets.bottom || 12,
-            },
+            styles.header,
+            { backgroundColor: palette.card, borderBottomColor: palette.border },
           ]}
         >
-          {sendError && (
-            <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>
-          )}
-          {offlineQueue.restoreError && (
-            <View style={styles.queueRestoreError} accessibilityRole="alert">
-              <Text style={[styles.queueRestoreErrorText, { color: palette.redText }]}>
-                {offlineQueue.restoreError}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="未送信メッセージを再読み込み"
-                onPress={offlineQueue.retryRestore}
-                hitSlop={6}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="チャット一覧へ戻る"
+            style={styles.backButton}
+            onPress={goBackToList}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={22} color={palette.accent} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: palette.text }]} numberOfLines={1}>
+            {channelName || 'チャット'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="メッセージを検索"
+            style={styles.headerButton}
+            onPress={openSearch}
+            hitSlop={6}
+          >
+            <Ionicons name="search-outline" size={19} color={palette.text3} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="チャンネル情報"
+            style={styles.headerButton}
+            onPress={openInfo}
+            hitSlop={6}
+          >
+            <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
+          </Pressable>
+        </View>
+
+        {messagesQuery.isLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={palette.accent} />
+          </View>
+        ) : isAccessDenied ? (
+          <View style={styles.center}>
+            <Ionicons name="lock-closed-outline" size={24} color={palette.text3} />
+            <Text style={[styles.errorTitle, { color: palette.text }]}>
+              このチャンネルは表示できません
+            </Text>
+            <Text style={[styles.errorBody, { color: palette.text3 }]}>
+              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+            </Text>
+          </View>
+        ) : isSessionExpired ? (
+          <View style={styles.center}>
+            <Ionicons name="log-in-outline" size={24} color={palette.text3} />
+            <Text style={[styles.errorTitle, { color: palette.text }]}>セッションが切れました</Text>
+            <Text style={[styles.errorBody, { color: palette.text3 }]}>
+              再度ログインしてください。
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.messageListContainer}>
+            {messagesQuery.error && (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.refreshError,
+                  { backgroundColor: palette.card2, borderColor: palette.redText },
+                ]}
               >
-                <Text style={[styles.queueRestoreRetry, { color: palette.redText }]}>再試行</Text>
-              </Pressable>
-            </View>
-          )}
-          {(replyTarget || editingMessage) && (
+                <Ionicons name="cloud-offline-outline" size={16} color={palette.redText} />
+                <Text
+                  style={[styles.refreshErrorText, { color: palette.redText }]}
+                  numberOfLines={2}
+                >
+                  {messagesQuery.error.message}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="メッセージを再読み込み"
+                  disabled={messagesQuery.isFetching}
+                  onPress={() => void messagesQuery.refetch()}
+                  hitSlop={6}
+                >
+                  {messagesQuery.isFetching ? (
+                    <ActivityIndicator size="small" color={palette.redText} />
+                  ) : (
+                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>
+                      再試行
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+            <FlatList
+              style={styles.messageList}
+              data={listItems}
+              inverted
+              keyExtractor={(item) => `${item.kind}:${item.message.id}`}
+              renderItem={({ item }) =>
+                item.kind === 'queued' ? (
+                  <QueuedMessageRow
+                    message={item.message}
+                    palette={palette}
+                    senderName={me?.displayName ?? '自分'}
+                    onLinkPress={openMarkdownLink}
+                    onRetry={() => offlineQueue.retry(item.message.id)}
+                    onCancel={() => offlineQueue.cancel(item.message.id)}
+                  />
+                ) : (
+                  <ChatMessageRow
+                    message={item.message}
+                    palette={palette}
+                    onToggleReaction={handleToggleReaction}
+                    onAddReaction={setReactionTarget}
+                    onShowReactors={(emoji, userNames) => setReactionPeople({ emoji, userNames })}
+                    onLinkPress={openMarkdownLink}
+                    onOpenActions={setActionTarget}
+                    {...(session?.access_token ? { accessToken: session.access_token } : {})}
+                  />
+                )
+              }
+              contentContainerStyle={styles.list}
+              onEndReached={() => void loadOlderMessages()}
+              onEndReachedThreshold={0.25}
+              ListFooterComponent={
+                messagesQuery.isFetchingNextPage ? (
+                  <ActivityIndicator
+                    style={styles.olderLoading}
+                    size="small"
+                    color={palette.accent}
+                  />
+                ) : messagesQuery.isFetchNextPageError ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="過去のメッセージを再読み込み"
+                    onPress={() => void loadOlderMessages()}
+                    style={styles.olderError}
+                  >
+                    <Text style={[styles.olderErrorText, { color: palette.redText }]}>
+                      {messagesQuery.error?.message ?? '過去のメッセージを取得できませんでした'}
+                      　再試行
+                    </Text>
+                  </Pressable>
+                ) : null
+              }
+              ListEmptyComponent={
+                messagesQuery.error ? null : (
+                  <Text style={[styles.empty, { color: palette.text4 }]}>
+                    まだメッセージはありません。最初のメッセージを送ってみましょう！
+                  </Text>
+                )
+              }
+            />
+          </View>
+        )}
+
+        {!isAccessDenied && !isSessionExpired && (
+          <View
+            style={[
+              styles.composerArea,
+              {
+                backgroundColor: palette.card,
+                borderTopColor: palette.border,
+                paddingBottom: insets.bottom || 12,
+              },
+            ]}
+          >
+            {sendError && (
+              <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>
+            )}
+            {offlineQueue.restoreError && (
+              <View style={styles.queueRestoreError} accessibilityRole="alert">
+                <Text style={[styles.queueRestoreErrorText, { color: palette.redText }]}>
+                  {offlineQueue.restoreError}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="未送信メッセージを再読み込み"
+                  onPress={offlineQueue.retryRestore}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.queueRestoreRetry, { color: palette.redText }]}>再試行</Text>
+                </Pressable>
+              </View>
+            )}
+            {(replyTarget || editingMessage) && (
+              <View
+                style={[
+                  styles.composerContext,
+                  { backgroundColor: palette.card2, borderColor: palette.border },
+                ]}
+              >
+                <Ionicons
+                  name={editingMessage ? 'create-outline' : 'arrow-undo-outline'}
+                  size={15}
+                  color={palette.accent}
+                />
+                <View style={styles.composerContextText}>
+                  <Text style={[styles.composerContextTitle, { color: palette.text3 }]}>
+                    {editingMessage
+                      ? 'メッセージを編集中'
+                      : `${replyTarget?.senderName ?? ''} に返信`}
+                  </Text>
+                  {!editingMessage && (
+                    <Text
+                      style={[styles.composerContextBody, { color: palette.text4 }]}
+                      numberOfLines={1}
+                    >
+                      {replyTarget ? parseMentions(replyTarget.content) || '（添付ファイル）' : ''}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="返信または編集をキャンセル"
+                  onPress={() => {
+                    if (editingMessage) setDraft('')
+                    setEditingMessage(null)
+                    setReplyTarget(null)
+                    mentionSelectionsRef.current = []
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close" size={18} color={palette.text4} />
+                </Pressable>
+              </View>
+            )}
+            {!editingMessage && (
+              <View style={styles.attachmentActions}>
+                <Pressable style={styles.attachmentAction} onPress={() => void upload.pickImage()}>
+                  <Ionicons name="image-outline" size={15} color={palette.text3} />
+                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>画像</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.attachmentAction}
+                  onPress={() => void upload.pickDocument()}
+                >
+                  <Ionicons name="attach-outline" size={15} color={palette.text3} />
+                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>
+                    ファイル
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {upload.uploads.length > 0 && !editingMessage && (
+              <View style={styles.uploads}>
+                {upload.uploads.map((pending) => (
+                  <View
+                    key={pending.id}
+                    style={[styles.uploadRow, { backgroundColor: palette.card2 }]}
+                  >
+                    {pending.status === 'uploading' && (
+                      <ActivityIndicator size="small" color={palette.accent} />
+                    )}
+                    {pending.status === 'done' && (
+                      <Ionicons name="checkmark-circle" size={16} color={palette.accent} />
+                    )}
+                    {pending.status === 'error' && (
+                      <Ionicons name="alert-circle" size={16} color={palette.redText} />
+                    )}
+                    <Text
+                      style={[
+                        styles.uploadName,
+                        { color: pending.status === 'error' ? palette.redText : palette.text2 },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {pending.status === 'error' && pending.error
+                        ? `${pending.fileName}: ${pending.error}`
+                        : pending.fileName}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${pending.fileName}を削除`}
+                      onPress={() => upload.removeUpload(pending.id)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close" size={16} color={palette.text4} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+            {mentionRange && mentionMembersError && (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.refreshError,
+                  {
+                    backgroundColor: palette.card2,
+                    borderColor: palette.redText,
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    marginBottom: 7,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.refreshErrorText, { color: palette.redText }]}
+                  numberOfLines={2}
+                >
+                  {mentionMembersError.message}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="メンション候補を再読み込み"
+                  disabled={isFetchingMentionMembers}
+                  onPress={() => void retryMentionMembers()}
+                  hitSlop={6}
+                >
+                  {isFetchingMentionMembers ? (
+                    <ActivityIndicator size="small" color={palette.redText} />
+                  ) : (
+                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>
+                      再試行
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+            {mentionRange && !mentionMembersError && mentionMembers.length > 0 && (
+              <View
+                style={[
+                  styles.mentionSuggestions,
+                  { backgroundColor: palette.card, borderColor: palette.border },
+                ]}
+              >
+                {mentionMembers.map((member) => (
+                  <Pressable
+                    key={member.userId}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${member.displayName}をメンション`}
+                    onPress={() => selectMention(member)}
+                    style={({ pressed }) => [
+                      styles.mentionSuggestion,
+                      { backgroundColor: pressed ? palette.card2 : palette.card },
+                    ]}
+                  >
+                    {member.avatarUrl ? (
+                      <Image source={{ uri: member.avatarUrl }} style={styles.mentionAvatar} />
+                    ) : (
+                      <View
+                        style={[
+                          styles.mentionAvatar,
+                          styles.avatarFallback,
+                          { backgroundColor: palette.accentSoft },
+                        ]}
+                      >
+                        <Text style={[styles.mentionInitial, { color: palette.accentText }]}>
+                          {initials(member.displayName)}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
+                      {member.displayName}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             <View
               style={[
-                styles.composerContext,
+                styles.composer,
                 { backgroundColor: palette.card2, borderColor: palette.border },
               ]}
             >
-              <Ionicons
-                name={editingMessage ? 'create-outline' : 'arrow-undo-outline'}
-                size={15}
-                color={palette.accent}
-              />
-              <View style={styles.composerContextText}>
-                <Text style={[styles.composerContextTitle, { color: palette.text3 }]}>
-                  {editingMessage
-                    ? 'メッセージを編集中'
-                    : `${replyTarget?.senderName ?? ''} に返信`}
-                </Text>
-                {!editingMessage && (
-                  <Text
-                    style={[styles.composerContextBody, { color: palette.text4 }]}
-                    numberOfLines={1}
-                  >
-                    {replyTarget ? parseMentions(replyTarget.content) || '（添付ファイル）' : ''}
-                  </Text>
-                )}
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="返信または編集をキャンセル"
-                onPress={() => {
-                  if (editingMessage) setDraft('')
-                  setEditingMessage(null)
-                  setReplyTarget(null)
-                  mentionSelectionsRef.current = []
+              <TextInput
+                accessibilityLabel="メッセージを入力"
+                style={[styles.input, { color: palette.text }]}
+                value={draft}
+                selection={selection}
+                onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
+                onChangeText={(value) => {
+                  mentionSelectionsRef.current = rebaseMentionSelections(
+                    draft,
+                    value,
+                    mentionSelectionsRef.current,
+                  )
+                  setDraft(value)
+                  if (sendError) setSendError(null)
                 }}
-                hitSlop={8}
-              >
-                <Ionicons name="close" size={18} color={palette.text4} />
-              </Pressable>
-            </View>
-          )}
-          {!editingMessage && (
-            <View style={styles.attachmentActions}>
-              <Pressable style={styles.attachmentAction} onPress={() => void upload.pickImage()}>
-                <Ionicons name="image-outline" size={15} color={palette.text3} />
-                <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>画像</Text>
-              </Pressable>
-              <Pressable style={styles.attachmentAction} onPress={() => void upload.pickDocument()}>
-                <Ionicons name="attach-outline" size={15} color={palette.text3} />
-                <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>
-                  ファイル
-                </Text>
-              </Pressable>
-            </View>
-          )}
-          {upload.uploads.length > 0 && !editingMessage && (
-            <View style={styles.uploads}>
-              {upload.uploads.map((pending) => (
-                <View
-                  key={pending.id}
-                  style={[styles.uploadRow, { backgroundColor: palette.card2 }]}
-                >
-                  {pending.status === 'uploading' && (
-                    <ActivityIndicator size="small" color={palette.accent} />
-                  )}
-                  {pending.status === 'done' && (
-                    <Ionicons name="checkmark-circle" size={16} color={palette.accent} />
-                  )}
-                  {pending.status === 'error' && (
-                    <Ionicons name="alert-circle" size={16} color={palette.redText} />
-                  )}
-                  <Text
-                    style={[
-                      styles.uploadName,
-                      { color: pending.status === 'error' ? palette.redText : palette.text2 },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {pending.status === 'error' && pending.error
-                      ? `${pending.fileName}: ${pending.error}`
-                      : pending.fileName}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${pending.fileName}を削除`}
-                    onPress={() => upload.removeUpload(pending.id)}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="close" size={16} color={palette.text4} />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )}
-          {mentionRange && mentionMembersError && (
-            <View
-              accessibilityRole="alert"
-              style={[
-                styles.refreshError,
-                {
-                  backgroundColor: palette.card2,
-                  borderColor: palette.redText,
-                  borderWidth: 1,
-                  borderRadius: 10,
-                  marginBottom: 7,
-                },
-              ]}
-            >
-              <Text style={[styles.refreshErrorText, { color: palette.redText }]} numberOfLines={2}>
-                {mentionMembersError.message}
-              </Text>
+                placeholder="メッセージを入力…"
+                placeholderTextColor={palette.text4}
+                multiline
+              />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="メンション候補を再読み込み"
-                disabled={isFetchingMentionMembers}
-                onPress={() => void retryMentionMembers()}
-                hitSlop={6}
+                accessibilityLabel="メッセージを送信"
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  {
+                    backgroundColor: palette.accent,
+                    opacity: !canSubmit ? 0.45 : pressed ? 0.75 : 1,
+                  },
+                ]}
+                onPress={() => void handleSend()}
+                disabled={!canSubmit}
               >
-                {isFetchingMentionMembers ? (
-                  <ActivityIndicator size="small" color={palette.redText} />
+                {isQueueing || editMessage.isPending ? (
+                  <ActivityIndicator size="small" color={palette.onAccent} />
                 ) : (
-                  <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>再試行</Text>
+                  <Ionicons
+                    name={editingMessage ? 'checkmark' : 'send'}
+                    size={17}
+                    color={palette.onAccent}
+                  />
                 )}
               </Pressable>
             </View>
-          )}
-          {mentionRange && !mentionMembersError && mentionMembers.length > 0 && (
-            <View
-              style={[
-                styles.mentionSuggestions,
-                { backgroundColor: palette.card, borderColor: palette.border },
-              ]}
-            >
-              {mentionMembers.map((member) => (
+          </View>
+        )}
+
+        <Modal
+          transparent
+          visible={actionTarget !== null}
+          animationType="fade"
+          onRequestClose={() => setActionTarget(null)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
+          <View
+            style={[
+              styles.actionSheet,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+                paddingBottom: insets.bottom + 12,
+              },
+            ]}
+          >
+            <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
+            <ActionButton
+              icon="arrow-undo-outline"
+              label="返信"
+              palette={palette}
+              onPress={() => actionTarget && beginReply(actionTarget)}
+            />
+            {actionTarget?.blocked && (
+              <ActionButton
+                icon="eye-outline"
+                label="メッセージを一時表示"
+                palette={palette}
+                onPress={() => {
+                  Alert.alert('ブロックしたユーザーのメッセージ', actionTarget.content)
+                  setActionTarget(null)
+                }}
+              />
+            )}
+            {actionTarget?.senderId !== me?.id && (
+              <>
+                <ActionButton
+                  icon="flag-outline"
+                  label="報告"
+                  palette={palette}
+                  onPress={() => actionTarget && reportMenu(actionTarget)}
+                />
+                <ActionButton
+                  icon="person-remove-outline"
+                  label="ブロック"
+                  palette={palette}
+                  destructive
+                  onPress={() =>
+                    actionTarget &&
+                    Alert.alert('ユーザーをブロックしますか？', '相手とのDMや通知も抑止します。', [
+                      { text: 'キャンセル', style: 'cancel' },
+                      {
+                        text: 'ブロック',
+                        style: 'destructive',
+                        onPress: () => void blockUser(actionTarget),
+                      },
+                    ])
+                  }
+                />
+              </>
+            )}
+            <ActionButton
+              icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
+              label={actionTarget?.bookmarked ? 'ブックマークを解除' : 'ブックマーク'}
+              palette={palette}
+              onPress={() => actionTarget && handleBookmark(actionTarget)}
+            />
+            <ActionButton
+              icon="happy-outline"
+              label="リアクションを追加"
+              palette={palette}
+              onPress={() => {
+                setReactionTarget(actionTarget)
+                setActionTarget(null)
+              }}
+            />
+            <ActionButton
+              icon="share-outline"
+              label="共有"
+              palette={palette}
+              onPress={() => actionTarget && void shareMessage(actionTarget)}
+            />
+            {actionTarget?.senderId === me?.id && (
+              <>
+                <ActionButton
+                  icon="create-outline"
+                  label="編集"
+                  palette={palette}
+                  onPress={() => actionTarget && beginEdit(actionTarget)}
+                />
+                <ActionButton
+                  icon="trash-outline"
+                  label="削除"
+                  palette={palette}
+                  destructive
+                  onPress={() => actionTarget && confirmDelete(actionTarget)}
+                />
+              </>
+            )}
+          </View>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={reactionTarget !== null}
+          animationType="fade"
+          onRequestClose={() => setReactionTarget(null)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setReactionTarget(null)} />
+          <View
+            style={[
+              styles.reactionSheet,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+                paddingBottom: insets.bottom + 16,
+              },
+            ]}
+          >
+            <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>リアクション</Text>
+            <View style={styles.reactionChoices}>
+              {['👍', '❤️', '😂', '🎉', '🙌', '👀'].map((emoji) => (
                 <Pressable
-                  key={member.userId}
+                  key={emoji}
                   accessibilityRole="button"
-                  accessibilityLabel={`${member.displayName}をメンション`}
-                  onPress={() => selectMention(member)}
-                  style={({ pressed }) => [
-                    styles.mentionSuggestion,
-                    { backgroundColor: pressed ? palette.card2 : palette.card },
-                  ]}
+                  accessibilityLabel={`${emoji}を追加`}
+                  onPress={() => {
+                    if (reactionTarget) handleToggleReaction(reactionTarget.id, emoji)
+                    setReactionTarget(null)
+                  }}
+                  style={[styles.reactionChoice, { backgroundColor: palette.card2 }]}
                 >
-                  {member.avatarUrl ? (
-                    <Image source={{ uri: member.avatarUrl }} style={styles.mentionAvatar} />
-                  ) : (
-                    <View
-                      style={[
-                        styles.mentionAvatar,
-                        styles.avatarFallback,
-                        { backgroundColor: palette.accentSoft },
-                      ]}
-                    >
-                      <Text style={[styles.mentionInitial, { color: palette.accentText }]}>
-                        {initials(member.displayName)}
-                      </Text>
-                    </View>
-                  )}
-                  <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
-                    {member.displayName}
-                  </Text>
+                  <Text style={styles.reactionChoiceText}>{emoji}</Text>
                 </Pressable>
               ))}
             </View>
-          )}
+          </View>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={reactionPeople !== null}
+          animationType="fade"
+          onRequestClose={() => setReactionPeople(null)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setReactionPeople(null)} />
           <View
             style={[
-              styles.composer,
-              { backgroundColor: palette.card2, borderColor: palette.border },
+              styles.reactionSheet,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+                paddingBottom: insets.bottom + 16,
+              },
             ]}
           >
-            <TextInput
-              accessibilityLabel="メッセージを入力"
-              style={[styles.input, { color: palette.text }]}
-              value={draft}
-              selection={selection}
-              onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
-              onChangeText={(value) => {
-                mentionSelectionsRef.current = rebaseMentionSelections(
-                  draft,
-                  value,
-                  mentionSelectionsRef.current,
-                )
-                setDraft(value)
-                if (sendError) setSendError(null)
-              }}
-              placeholder="メッセージを入力…"
-              placeholderTextColor={palette.text4}
-              multiline
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="メッセージを送信"
-              style={({ pressed }) => [
-                styles.sendButton,
-                {
-                  backgroundColor: palette.accent,
-                  opacity: !canSubmit ? 0.45 : pressed ? 0.75 : 1,
-                },
-              ]}
-              onPress={() => void handleSend()}
-              disabled={!canSubmit}
-            >
-              {isQueueing || editMessage.isPending ? (
-                <ActivityIndicator size="small" color={palette.onAccent} />
-              ) : (
-                <Ionicons
-                  name={editingMessage ? 'checkmark' : 'send'}
-                  size={17}
-                  color={palette.onAccent}
-                />
-              )}
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      <Modal
-        transparent
-        visible={actionTarget !== null}
-        animationType="fade"
-        onRequestClose={() => setActionTarget(null)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
-        <View
-          style={[
-            styles.actionSheet,
-            {
-              backgroundColor: palette.card,
-              borderColor: palette.border,
-              paddingBottom: insets.bottom + 12,
-            },
-          ]}
-        >
-          <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
-          <ActionButton
-            icon="arrow-undo-outline"
-            label="返信"
-            palette={palette}
-            onPress={() => actionTarget && beginReply(actionTarget)}
-          />
-          {actionTarget?.blocked && <ActionButton icon="eye-outline" label="メッセージを一時表示" palette={palette} onPress={() => { Alert.alert('ブロックしたユーザーのメッセージ', actionTarget.content); setActionTarget(null) }} />}
-          {actionTarget?.senderId !== me?.id && <>
-            <ActionButton icon="flag-outline" label="報告" palette={palette} onPress={() => actionTarget && reportMenu(actionTarget)} />
-            <ActionButton icon="person-remove-outline" label="ブロック" palette={palette} destructive onPress={() => actionTarget && Alert.alert('ユーザーをブロックしますか？', '相手とのDMや通知も抑止します。', [{ text: 'キャンセル', style: 'cancel' }, { text: 'ブロック', style: 'destructive', onPress: () => void blockUser(actionTarget) }])} />
-          </>}
-          <ActionButton
-            icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
-            label={actionTarget?.bookmarked ? 'ブックマークを解除' : 'ブックマーク'}
-            palette={palette}
-            onPress={() => actionTarget && handleBookmark(actionTarget)}
-          />
-          <ActionButton
-            icon="happy-outline"
-            label="リアクションを追加"
-            palette={palette}
-            onPress={() => {
-              setReactionTarget(actionTarget)
-              setActionTarget(null)
-            }}
-          />
-          <ActionButton
-            icon="share-outline"
-            label="共有"
-            palette={palette}
-            onPress={() => actionTarget && void shareMessage(actionTarget)}
-          />
-          {actionTarget?.senderId === me?.id && (
-            <>
-              <ActionButton
-                icon="create-outline"
-                label="編集"
-                palette={palette}
-                onPress={() => actionTarget && beginEdit(actionTarget)}
-              />
-              <ActionButton
-                icon="trash-outline"
-                label="削除"
-                palette={palette}
-                destructive
-                onPress={() => actionTarget && confirmDelete(actionTarget)}
-              />
-            </>
-          )}
-        </View>
-      </Modal>
-
-      <Modal
-        transparent
-        visible={reactionTarget !== null}
-        animationType="fade"
-        onRequestClose={() => setReactionTarget(null)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setReactionTarget(null)} />
-        <View
-          style={[
-            styles.reactionSheet,
-            {
-              backgroundColor: palette.card,
-              borderColor: palette.border,
-              paddingBottom: insets.bottom + 16,
-            },
-          ]}
-        >
-          <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>リアクション</Text>
-          <View style={styles.reactionChoices}>
-            {['👍', '❤️', '😂', '🎉', '🙌', '👀'].map((emoji) => (
-              <Pressable
-                key={emoji}
-                accessibilityRole="button"
-                accessibilityLabel={`${emoji}を追加`}
-                onPress={() => {
-                  if (reactionTarget) handleToggleReaction(reactionTarget.id, emoji)
-                  setReactionTarget(null)
-                }}
-                style={[styles.reactionChoice, { backgroundColor: palette.card2 }]}
+            <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>
+              {reactionPeople?.emoji} を付けた人
+            </Text>
+            {reactionPeople && reactionPeople.userNames.length > 0 ? (
+              reactionPeople.userNames.map((name, index) => (
+                <Text
+                  key={`${name}-${index}`}
+                  style={[
+                    styles.reactionPerson,
+                    { color: palette.text, borderTopColor: palette.divider },
+                  ]}
+                >
+                  {name}
+                </Text>
+              ))
+            ) : (
+              <Text
+                style={[
+                  styles.reactionPerson,
+                  { color: palette.text3, borderTopColor: palette.divider },
+                ]}
               >
-                <Text style={styles.reactionChoiceText}>{emoji}</Text>
-              </Pressable>
-            ))}
+                このリアクションを付けた人を表示できませんでした
+              </Text>
+            )}
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </Animated.View>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  swipeContent: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1429,13 +1619,33 @@ const styles = StyleSheet.create({
   avatar: { width: 36, height: 36, borderRadius: 18 },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { fontSize: 13, fontWeight: '700' },
-  messageMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginBottom: 3 },
+  messageMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginBottom: 3,
+  },
   senderName: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
-  projectRole: { fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' },
+  projectRole: {
+    fontSize: 10,
+    fontWeight: '700',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   messageTime: { fontSize: 11 },
   edited: { fontSize: 10, fontStyle: 'italic' },
   profileAttributes: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
-  profileAttribute: { fontSize: 10, fontWeight: '600', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' },
+  profileAttribute: {
+    fontSize: 10,
+    fontWeight: '600',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   messageText: { fontSize: 14, lineHeight: 22 },
   queueStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   queueStatus: { fontSize: 11.5, flexShrink: 1 },
@@ -1476,6 +1686,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
   },
   reactionText: { fontSize: 11, fontWeight: '600' },
+  reactionPerson: {
+    minHeight: 44,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   reactionAddStandalone: {
     alignSelf: 'flex-start',
     minHeight: 24,

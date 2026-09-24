@@ -21,6 +21,7 @@ import {
   useUnreadNotificationCount,
   type NotificationDto,
 } from '../hooks/use-notifications'
+import { followNotification } from '../lib/follow-notification'
 import { routeFromNotification } from '../lib/notification-routing'
 import { useAppAppearance } from './appearance-provider'
 
@@ -85,10 +86,19 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
     })
   }, [progress, reduceMotion])
 
+  const pendingNavigation = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleNotification = (item: NotificationDto) => {
     if (!item.readAt) markRead.mutate([item.id])
-    closeNotifications()
-    router.push(routeFromNotification(item))
+    const destination = routeFromNotification(item)
+    // Modal が開いたままでは下の画面遷移が捨てられる。閉じてから遷移する。
+    if (pendingNavigation.current) clearTimeout(pendingNavigation.current)
+    progress.setValue(1)
+    setVisible(false)
+    pendingNavigation.current = setTimeout(() => {
+      pendingNavigation.current = null
+      followNotification(router, destination)
+    }, 50)
   }
 
   const contextValue = React.useMemo(

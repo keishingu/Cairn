@@ -65,6 +65,7 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 - 本文は14px・行高22px・`palette.text2`を基準にする。見出しはh1が18px/24px、h2が16px/22px、h3が14px/20pxで、いずれも700。サイズ差を増やしすぎず、ウェイトと既存の`palette.text`で階層を作る。
 - 段落下4px、見出し前後2〜8px、リスト上下2px、区切り線上下8pxを基準とし、既存の4pxグリッドから外れる余白を増やさない。
 - 引用は`palette.card2`、左境界3px、角丸4px、左右10px・上下4px。インラインコードは角丸3px、コードブロックは角丸8px・左右10px・上下8pxとし、`palette.card2` / `palette.border`とOS標準の等幅フォントを使う。
+- メンションは Web と同じく `palette.accentSoft` の背景と `palette.accentText`、太字で本文から区別する。
 - リンクは`palette.accentText`と下線で本文から判別できるようにする。相対URLと同一originのCairn内リンクは、許可したパスだけを認証済み`AppWebView`で開く。外部の`http` / `https` / `mailto` / `tel`はOSへ渡し、`javascript:`、`data:`、protocol-relative URL、未許可の内部パスは開かない。
 - Markdown画像は外部URLを自動取得せず、既存の認証付き添付UIを使う。送信者が指定したURLへの意図しない通信と、添付権限制御の迂回を防ぐ。
 - タスクリストは`☐` / `☑`の読み取り専用表示とする。編集可能なチェック項目とMermaid図はWeb版の機能であり、ネイティブ対応を追加する場合は操作・アクセシビリティ・OTA互換性を別途設計する。

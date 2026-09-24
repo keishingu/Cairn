@@ -10,6 +10,8 @@ import { AppearanceProvider } from '../../components/appearance-provider'
 import { RealtimeProvider } from '../../components/realtime-provider'
 import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
+import { followNotification } from '../../lib/follow-notification'
+import { routeFromPushUrl } from '../../lib/notification-routing'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -48,18 +50,16 @@ async function registerPushToken() {
   }
 }
 
-// Push の data.url（Web ルート）をネイティブのトップレベルタブへマップする。
-// 個別チャンネルへのディープリンクは Phase 2 で対応予定。まずは該当セクションまで遷移させる
 function routeFromNotificationResponse(
   response: Notifications.NotificationResponse,
   router: ReturnType<typeof useRouter>,
 ) {
-  const data = response.notification.request.content.data as { url?: string } | undefined
-  const url = data?.url
-  if (!url) return
-  if (url.startsWith('/chat')) router.push('/(app)/chats')
-  else if (url.startsWith('/tasks')) router.push('/(app)/tasks')
-  else router.push('/(app)/notifications')
+  const data = response.notification.request.content.data
+  const rawUrl = data && typeof data === 'object' ? data['url'] : undefined
+  const url = typeof rawUrl === 'string' ? rawUrl : undefined
+  const destination = routeFromPushUrl(url)
+  if (!destination) return
+  followNotification(router, destination)
 }
 
 export default function AppLayout() {
