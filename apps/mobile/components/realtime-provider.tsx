@@ -50,11 +50,19 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (
             table === 'notifications' ||
             table === 'channel_read_states' ||
-            table === 'channel_members'
+            table === 'channel_members' ||
+            table === 'channels'
           ) {
             void invalidateChannelListQueries(queryClient)
-            if (table !== 'channel_members') {
+            if (table === 'notifications' || table === 'channel_read_states') {
               void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            }
+            if (table === 'channels') {
+              const operation = (message as { payload?: { operation?: unknown } }).payload?.operation
+              if (operation === 'DELETE') {
+                void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+                void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+              }
             }
           }
         })
