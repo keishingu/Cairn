@@ -329,4 +329,63 @@ describe('ChannelList', () => {
 
     expect(onCreateThread).toHaveBeenCalledWith({ id: 'workspace-channel-1', name: '雑談' })
   })
+
+  it('メンバーはスレッドだけ名称変更と削除ができる', () => {
+    const onRenameWorkspaceChannel = vi.fn()
+    const onDeleteWorkspaceChannel = vi.fn()
+    const thread = workspaceChannel({ id: 'thread-1', name: 'リリース準備', parentChannelId: 'workspace-channel-1' })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({}), thread]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onCreateThread={vi.fn()}
+        onRenameWorkspaceChannel={onRenameWorkspaceChannel}
+        onDeleteWorkspaceChannel={onDeleteWorkspaceChannel}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    expect(screen.getByRole('menuitem', { name: 'スレッドを作成' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '名前を変更' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '名前を変更' }))
+    expect(onRenameWorkspaceChannel).toHaveBeenCalledWith(thread)
+
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
+    expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(thread)
+  })
+
+  it('管理者はチャンネルの名称変更と削除もできる', () => {
+    const onRenameWorkspaceChannel = vi.fn()
+    const onDeleteWorkspaceChannel = vi.fn()
+    const channel = workspaceChannel({})
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[channel]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onRenameWorkspaceChannel={onRenameWorkspaceChannel}
+        onDeleteWorkspaceChannel={onDeleteWorkspaceChannel}
+        canManageWorkspaceChannel
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    expect(screen.getByRole('menuitem', { name: '名前を変更' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'スレッドを作成' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
+    expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(channel)
+  })
 })

@@ -99,6 +99,27 @@ async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }
   return res.json()
 }
 
+async function renameWorkspaceChannel(channelId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? '名前の変更に失敗しました')
+  }
+  return res.json()
+}
+
+async function deleteWorkspaceChannel(channelId: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? '削除に失敗しました')
+  }
+}
+
 async function createChannelThread(channelId: string, name: string): Promise<{ id: string }> {
   const res = await fetchWithAuth(`/api/channels/${channelId}/threads`, {
     method: 'POST',
@@ -291,6 +312,32 @@ export function useCreateChannel() {
         chatQueryKeys.workspaceChannels,
         (old) => [...(old ?? []), channel],
       )
+    },
+  })
+}
+
+export function useRenameWorkspaceChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, name }: { channelId: string; name: string }) => renameWorkspaceChannel(channelId, name),
+    onSuccess: updated => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.map(channel => channel.id === updated.id ? { ...channel, name: updated.name } : channel),
+      )
+    },
+  })
+}
+
+export function useDeleteWorkspaceChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (channelId: string) => deleteWorkspaceChannel(channelId),
+    onSuccess: (_result, channelId) => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.filter(channel => channel.id !== channelId && channel.parentChannelId !== channelId),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 }

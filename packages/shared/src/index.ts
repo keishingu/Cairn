@@ -3,6 +3,7 @@
 
 export * from './types/index'
 export * from './project-role-display'
+export * from './workspace-channel-copy'
 export * from './schemas/index'
 export * from './config/feature-flags'
 export * from './config/appearance'
