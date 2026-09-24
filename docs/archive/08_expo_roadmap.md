@@ -215,7 +215,7 @@ const { status } = await Notifications.requestPermissionsAsync()
 ### Phase 3（仕上げ・マイルストーン等）
 
 - マイルストーン機能（`channels` 拡張）→ `docs/archive/07_notifications_and_unread.md` 参照
-- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-ux-redesign.md`](../notification-ux-redesign.md) Phase 2。Broadcast from Database 方式）
+- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-design.md`](../notification-design.md) の「Realtime 配信」。Broadcast from Database 方式）
 - App Store / Google Play リリース対応（`app.json`, EAS Build）
 
 ---

@@ -17,5 +17,6 @@
 | `09_product_strategy_notes.md` | 展開戦略・優先課題の議論記録（2026-06-11） |
 | `ai-self-improvement-loop.md` | AI 自己改善ループの構想メモ（未実装） |
 | `lp-soul-page-copy.md` | Soul ページのコピー案（ページ未実装） |
+| `notification-ux-redesign.md` | 通知・未読・Push 再設計案（Phase 1〜3 実装済み、Phase 4〜5 構想）。現行は `notification-design.md` |
 | `mobile-chat-parity-checklist.md` | モバイル Web と Expo ネイティブチャットの同等性確認記録（2026-07） |
 | `prompts/` | Phase 2-B（Expo）実装時の作業指示書（実施済み） |

@@ -54,7 +54,9 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 3. 旧リポジトリ Secret（Settings → Secrets and variables → Actions）に同名のものが残っていれば削除する（残っていると Environment 未参照のジョブにも渡ってしまう）。
 4. `migrate.yml` は `environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}` で分岐、`release.yml` と `migration-dry-run.yml` は `environment: production` を参照する。`main` / `develop` 以外のブランチで `migrate.yml` / `release.yml` を動かそうとすると、Deployment branch policy 違反でジョブが失敗し Secret は渡らない。
 
-**`migration-dry-run.yml`（`pull_request` トリガー）は Environment のブランチ名ベースの制限が効かない**: GitHub は `pull_request` 系イベントでは Environment のブランチポリシーを `refs/pull/<番号>/merge`（PR の head/base どちらでもない合成 ref）に対して評価する。このジョブが Secret を受け取るには `production` Environment の許可リストに `refs/pull/*/merge` を含める必要があるが、このパターンは **PR の送信元ブランチを区別しない**（`main` 宛のどの PR でもマッチする）。そのため `migration-dry-run.yml` の実質的な防御は、前述の `github.head_ref == 'develop'` という `if` ガードのみになる。この `if` はワークフロー実行時の実際の PR メタデータを見ているため「develop 以外のブランチから何もしない PR を main に作る」ケースは防げるが、**同一リポジトリの書き込み権限を持つ人が、自分のブランチ上でこの `if` ガードごとワークフローファイルを改変した場合は防げない**（`pull_request` は fork でない限り secrets を渡すため）。これは GitHub Actions の `pull_request` イベント自体の制約であり、確実に防ぐには `pull_request_target`（常にデフォルトブランチのワークフロー定義で実行される）への変更や、書き込み権限を持つコラボレーターの信頼範囲の見直しが必要になる（未対応）。
+**`migration-dry-run.yml`（`pull_request` トリガー）には Environment のブランチ制限が効かない**: GitHub は `pull_request` では合成 ref `refs/pull/<番号>/merge` でブランチポリシーを評価するため、`production` の許可リストに `refs/pull/*/merge` を含めており、送信元ブランチを区別できない。
+実質の防御は `github.head_ref == 'develop'` の `if` ガードのみで、書き込み権限者が自分のブランチでワークフローごと改変する場合は防げない（fork 以外の `pull_request` は secrets を渡すため）。
+確実に防ぐには `pull_request_target` への変更か、コラボレーターの信頼範囲の見直しが必要（未対応）。
 
 - **必要な Secrets**: `SUPABASE_DB_URL_PRODUCTION`（`production` Environment）/ `SUPABASE_DB_URL_PREVIEW`（`preview` Environment）
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`

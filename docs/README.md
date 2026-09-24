@@ -9,20 +9,20 @@
 | 作業 | 最初に読む | 補助 |
 |---|---|---|
 | API ルート | `api-conventions.md`（現行） | — |
-| フロントエンド・UI | `frontend-guidelines.md`（現行）、`../.interface-design/system.md` | `ui-consistency-checklist.md`（統一の進捗） |
+| フロントエンド・UI | `frontend-guidelines.md`（現行）、`../.interface-design/system.md` | — |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行） | `archive/notification-ux-redesign.md`（再設計の経緯。Phase 4〜5 は構想） |
 | モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（ストア提出） |
 | デプロイ・リリース・本番設定 | `production-deployment.md`（現行） | `resend-email-provider.md`（認証メールの SMTP 配送） |
 | プロフィール属性・メンバー表示 | `profile-attributes-design.md`（現行） | `user-deactivation-design.md`（非活性メンバー。実装済み） |
-| マイルストーン | `milestone-design.md` 冒頭（実装状況・残課題） | 同文書 §1〜8（設計） |
+| マイルストーン | `milestone-design.md`（実装状況・設計判断・残課題） | — |
 | 課金 | `billing-implementation-design.md`（Phase 1/2 実装済み） | `pricing-plan-design.md`（プラン意図）、`billing-minigame-design.md`（Phase 3 構想）、`prototypes/stone-stacking-sandbox.html` |
 | `/ai`・AI メンバー | `10_ai_member_design.md`（3つの AI サーフェスの責務境界） | `scheduled-jobs-design.md`（ユーザー定義 cron・投票の構想） |
 | `/ai` のプロダクトヘルプ | `../apps/web/src/lib/ai/product-help.ts`（正本。方式と更新ルールは冒頭コメント） | — |
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
-| キーボードショートカット | `keyboard-shortcuts.md`（現行。Vim モードは構想） | — |
-| LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 化。実装済み） |
-| パフォーマンス | `performance-improvement-plan.md`（改善計画。P3 以降未着手） | — |
+| キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
+| LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware） |
+| パフォーマンス | `performance-improvement-plan.md`（残作業） | — |
 | DM の法令対応 | `telecom-business-filing-research.md`（記録） | — |
 
 ## アーカイブ

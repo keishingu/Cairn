@@ -1,11 +1,9 @@
 # 通知・未読・Push 再設計案
 
-> **ステータス**: 現行リファレンス（**Phase 1〜3 は実装済み**。現行の Realtime 方針 = Broadcast from Database は Phase 2 節が正。Phase 4〜5 は未実装の構想）
-> §1 の「現状の問題点」は調査時（Phase 1 着手前）のスナップショットであり、Phase 1〜3 で解消済み。
+> **ステータス**: 設計時の記録（アーカイブ）。Phase 1〜3 は実装済みで、現行仕様は [`notification-design.md`](../notification-design.md)（Realtime 配信は同「Realtime 配信」節）が正。Phase 4〜5 と §5 の未対応項目は未実装の構想。
+> §1 は Phase 1 着手前の調査スナップショット。
 
-通知機能（Web / モバイル / デスクトップ）の不安定さ・UX 課題の調査結果と、Slack / Discord / Notion / Backlog / Google Calendar / TimeTree との比較に基づく再設計案。
-
-関連: [`docs/archive/07_notifications_and_unread.md`](archive/07_notifications_and_unread.md)（設計時の検討記録）、[`docs/notification-design.md`](notification-design.md)（現行の通知マトリクス）
+通知機能の不安定さ・UX 課題の調査結果と、他社アプリとの比較に基づく再設計案。関連: [`07_notifications_and_unread.md`](./07_notifications_and_unread.md)
 
 ---
 
@@ -127,99 +125,9 @@
 
 付随修正: `GET /api/notifications` に `workspace_id` フィルタを追加（マルチ WS で他 WS の通知混入を防止）。
 
-### Phase 2: 配信のリアルタイム化（Supabase Realtime へ移行）— スコープ改訂版
+### Phase 2: 配信のリアルタイム化 — 実装済み
 
-当時の方針「ポーリングで実装し、必要に応じて Supabase Realtime へ移行する」をここで発動した。
-当初案では「メッセージ本文は 5 秒ポーリング据え置き」としていたが、**メッセージ本文（新着・編集・削除・リアクション）も含めて Realtime 化する**ようスコープを拡張した。
-
-#### 配信方式: Broadcast from Database（postgres_changes からの変更）
-
-当初は postgres_changes（WAL 購読）で実装したが、**本プロジェクトの Realtime サーバーは postgres_changes の購読要求を処理しない**ことが検証で判明した（join 応答に postgres_changes の確認が含まれず `realtime.subscription` に登録されない・Realtime ログでも Broadcast 用レプリケーションのみ起動・ダッシュボードにも有効化設定なし）。Supabase 公式も Broadcast を推奨方式としているため、**`realtime.broadcast_changes()` + DB トリガーの Broadcast from Database 方式**を採用する。
-
-トピック設計（いずれも private channel）:
-
-| トピック | 配信元トリガー | 用途 |
-|---|---|---|
-| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions` 全イベント | チャット本文・リアクションの更新シグナル |
-| `user:{userId}` | `notifications` INSERT、`channel_read_states` INSERT/UPDATE、`channel_members` INSERT/DELETE | ベル・インボックス更新、既読のデバイス間同期、非公開チャンネルの参加・離脱 |
-
-- メッセージの削除はソフトデリート（`deleted_at`）のため UPDATE トリガーで拾える
-- `message_reactions` は行に `channel_id` がないため、トリガー内で親メッセージから引く
-
-#### 設計原則: 「Realtime はシグナル、データは既存 API」
-
-Broadcast ペイロード（`record`）から直接メッセージを組み立てて描画は**しない**。
-
-- ペイロードは生の行データのみで、表示に必要な JOIN（送信者名・アバター・リアクション集計・添付ファイル）を再現できず、DTO 組み立てロジックが API と二重化する
-- 代わりに **イベント受信 → 該当する TanStack Query を invalidate → 既存 REST API から再取得**という構成にする（ペイロードは `table` の判別のみに使用）
-- 楽観的更新（送信・編集・削除・リアクション）は現行実装のまま変更しない
-- **ポーリング（`refetchInterval`）は廃止し、配信経路を Realtime に一本化する**（理由は後述）
-
-これにより、データの単一情報源は REST API のまま、配信レイテンシだけを 5〜30 秒 → 1 秒未満に短縮できる。
-
-#### 認可設計
-
-private channel の join は **`realtime.messages` への RLS（Realtime Authorization）**で認可する:
-
-- `user:{userId}` トピック: `realtime.topic() = 'user:' || auth.uid()`
-- `channel:{channelId}` トピック: `can_access_channel_topic()` → `can_access_channel()` で判定
-  - 非プライベートチャンネル（workspace / project）は同一 WS メンバー全員、プライベート / DM は `channel_members` 所属者のみ
-- 0033 で追加した public テーブル側の RLS SELECT ポリシーは、**Data API（PostgREST）経由の直接読み取りを防ぐ防御**としてそのまま残す（従来は RLS なし = publishable key で全行読めた）
-- **API レイヤー（Drizzle）への影響はない**: テーブルオーナー（postgres ロール）接続は RLS をバイパスする
-  - 本番反映時に `DATABASE_URL` のロールがテーブルオーナーであることを要確認
-
-#### クライアント購読構成（Web）
-
-アプリシェルに `RealtimeProvider` を 1 つ配置。**1 WebSocket** 上で `user:{me}` + 所属チャンネル分の `channel:{id}` トピックを購読する。チャンネル一覧クエリの結果に追従して join/leave を差分反映する。
-
-| 受信イベント | 動作 |
-|---|---|
-| `channel:{id}` の `messages` | 該当チャンネルの messages クエリを invalidate + チャンネル一覧 3 種を invalidate（デバウンス 0.8s） |
-| `channel:{id}` の `message_reactions` | 該当チャンネルの messages クエリを invalidate |
-| `user:{me}` の `notifications` | notifications を invalidate + 一覧 invalidate（未参加チャンネル・新規 DM の活動を回収） |
-| `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications を invalidate → **他デバイス既読の即時同期** |
-| `user:{me}` の `channel_members` | チャンネル一覧を invalidate → **非公開チャンネルの参加・離脱を一覧と購読へ反映** |
-
-- 認証: 購読前に `supabase.realtime.setAuth(accessToken)`。トークンリフレッシュ時に再設定。チャンネルトピックの join は `user:{me}` の接続成功後に行う（認可前 join を防ぐ）
-- **再接続時（`user:{me}` の再 SUBSCRIBED）に対象クエリを一括 invalidate**し、オフライン中の取りこぼしを回収する
-
-#### ポーリングは廃止する（フォールバックも持たない）
-
-当初案では「接続中は間隔を伸ばし、切断時は現行間隔に戻す」二重配信を検討したが、**ポーリング併存はやめ、配信経路を Realtime に一本化する**。
-
-理由:
-
-- 二重経路は「更新が 1 秒で届くときと 15〜60 秒かかるときがある」という非決定的な挙動になり、どちらの経路で届いたか追えずデバッグ困難（Phase 1 で解消した「経路ごとに更新タイミングが違う」問題の再生産）
-- ポーリングが Realtime 側の設定ミス（RLS でイベントが落ちている等）を隠蔽し、障害に気づけない。AGENTS.md の「サイレントに代替データへ fallback せず、エラーを見せる」方針にも反する
-
-代わりに、接続障害は「隠す」のではなく「見せて回復する」:
-
-1. **自動再接続 + キャッチアップ**: supabase-js の組み込み再接続（指数バックオフ + ハートビートによる死活検知）に任せ、再 SUBSCRIBED 時に対象クエリを一括 invalidate して切断中の取りこぼしを回収する
-2. **フォーカス時リフェッチ**: TanStack Query の `refetchOnWindowFocus`（既定で有効）で、スリープ復帰・タブ復帰時の取りこぼしをタイマーなしで回収する
-3. **切断の可視化**: 一定時間（例: 10 秒）再接続できない場合は「再接続中…」インジケータを表示する（Slack 方式）。ユーザーには「更新が止まっている」ではなく「接続が切れている」と見える
-4. 既存の `refetchInterval`（messages 5s / notifications 30s / チャンネル一覧 15s）は Realtime 配線と同時に削除する
-
-割り切り: Realtime サービス自体の長時間障害時は手動リロードに頼ることになるが、二重経路を常時抱えるコストよりも、障害を可視化して単一経路を信頼できる状態に保つことを優先する。
-
-#### モバイルのスコープ
-
-- WebView ベースの画面（通知・チャット詳細ほか）は Web の実装がそのまま効く
-- ネイティブチャットも同じ private Broadcast（`user:{userId}` / `channel:{channelId}`）と「シグナル → invalidate」方式で更新し、ポーリングは使わない
-
-#### やらないこと / 将来の選択肢
-
-- WS ペイロードからのメッセージ直接描画（上記の理由で不採用）
-- タイピングインジケータ・オンラインプレゼンス（Phase 3 以降で Realtime Presence を検討）
-- postgres_changes 方式（本プロジェクトの Realtime サーバーが処理しないため不採用。0033 の publication 登録は 0034 で撤去済み）
-
-#### 実装ステップ
-
-1. ✅ RLS 有効化 + SELECT ポリシー（`0033_realtime_rls.sql`。Data API 防御として存続） + Broadcast トリガー・`realtime.messages` 認可ポリシー（`0034_realtime_broadcast.sql`）
-2. ✅ `RealtimeProvider` + シグナル → invalidate 配線（`components/realtime/realtime-provider.tsx`。`(app)/layout.tsx` に 1 つ配置。`user:{me}` + 所属チャンネルトピックを購読）
-3. ✅ 既存 `refetchInterval` の削除（messages/通知/チャンネル一覧）+ `refetchOnWindowFocus` 有効化 + 切断インジケータ（`realtime-indicator.tsx`）
-4. ✅ 検証: 2 ブラウザ間でメッセージの即時反映を確認（Vercel preview + クラウド Supabase、0034 適用済み）
-
-> 本番反映時の注意: `DATABASE_URL` のロールが対象テーブルのオーナー（= RLS バイパス）であることを要確認。ローカル/標準 Supabase は `postgres` ロールのため問題ない。
+メッセージ本文を含めて Supabase Realtime（Broadcast from Database）へ移行し、ポーリングを廃止した。設計（トピック・認可・シグナル → invalidate・ポーリングを置かない理由）は [`notification-design.md`](../notification-design.md) の「Realtime 配信」節へ移した。
 
 ### Phase 3: 閲覧状態に応じた Push / バッジ制御 — 実装済み
 
@@ -230,7 +138,7 @@ Slack の「アクティブなら通知しない」に相当する体験を、�
 - **Push 送信だけを 10 秒の猶予後に実行**（Inngest `step.sleep`）し、猶予後に受信者の `channel_read_states` を再確認。対象メッセージの既読判定は `last_read_at >= created_at` または `last_read_message_id` 一致（クロックスキュー対策）で行う
 - Phase 1 の「閲覧中チャンネルの自動既読化」+ Phase 2 の Realtime 配信により、閲覧中（タブ表示中）のユーザーは数秒以内に既読が立つ。DM は従来どおり Push を送らず、メンションは Push を送りつつ Web のアプリアイコンバッジを更新しない。バックグラウンドタブの未読メンションは Push とバッジ更新の両方を行う
 - 猶予中に削除されたメッセージの Push も送らない
-- 対象: DM Push・メンション Push（実装: `onMessageCreated` の `classifyPushRecipients` + `lib/push/suppress.ts`）。タスク割り当て Push はチャンネル閲覧と無関係のため対象外
+- 対象: DM Push・メンション Push（実装: `lib/inngest/functions.ts` の `onMessageCreated` / `classifyPushRecipients`）。タスク割り当て Push はチャンネル閲覧と無関係のため対象外
 - トレードオフ: DM・メンションの Push が最大 10 秒遅延する。メンションは表示中でも通知する一方、既読化済みならバッジ更新を省く
 - 本格版（Realtime Presence で表示中チャンネルをトラックし送信前チェック）は、猶予方式で不足が出た場合の将来オプション
 
@@ -270,7 +178,7 @@ create table notification_preferences (
 
 | 論点 | 推奨 | 理由 |
 |---|---|---|
-| ファイル添付通知の扱い | 廃止（バッジのみ） | Slack/Discord/Notion いずれも添付だけでは通知しない。ノイズ源。**未対応**（現行はチャンネルメンバー全員に記録 → `notification-design.md`） |
+| ファイル添付通知の扱い | 廃止（バッジのみ） | Slack/Discord/Notion いずれも添付だけでは通知しない。ノイズ源。**未対応**（現行はチャンネルメンバー全員に記録 → [`notification-design.md`](../notification-design.md)） |
 | 通常未読バッジの表現 | 太字/ドットに格下げ、数字はメンション+DMのみ | Slack の2段階方式。数字の洪水を防ぐ |
 | ~~Realtime 移行の範囲~~ | ~~notifications / read_states / messages INSERT 通知のみ（本文取得はポーリング維持）~~ | **Phase 2 実装時にスコープ拡張で上書き**: メッセージ本文も含め全面 Realtime 化し、ポーリングは廃止（→ Phase 2 節） |
 | プレゼンス実装 | まず last_read_at ベースの簡易版 | Presence 基盤なしで Slack 的体験の 8 割を実現できる → **Phase 3 で猶予付き既読再確認方式として実装済み** |
