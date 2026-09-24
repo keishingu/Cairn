@@ -96,4 +96,4 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 - `apps/mobile/lib/mobile-chat-state.ts` — Markdownリンクの許可範囲と内部／外部遷移の判定。
 - `apps/mobile/app/(app)/chat-tools/index.tsx` — Cairn内リンクを開く認証済みWebView。
 
-現行の部品API・権限・プラットフォーム仕様はコードと `CLAUDE.md` を確認する。文書と実装に差があれば、意図的変更か不整合かを確認してから修正する。
+現行の部品API・権限・プラットフォーム仕様はコードと `AGENTS.md` を確認する。文書と実装に差があれば、意図的変更か不整合かを確認してから修正する。

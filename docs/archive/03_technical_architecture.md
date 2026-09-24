@@ -1,8 +1,8 @@
 # 技術要件定義書
 
 > **ステータス**: 設計時スナップショット（作成: 2026-05-22）
-> 設計フェーズの記録。確定済みの技術判断は [`CLAUDE.md`](../CLAUDE.md) の「決定済みの技術判断」が正。矛盾する場合はコードと CLAUDE.md を優先する。
-> 特に §2・§8 の「チャットはポーリングで実装」はその後変更され、現行は Supabase Realtime（Broadcast from Database）で配信する（→ [`notification-ux-redesign.md`](./notification-ux-redesign.md) Phase 2）。
+> 設計フェーズの記録。確定済みの技術判断は [`AGENTS.md`](../../AGENTS.md) の「決定済みの技術判断」が正。矛盾する場合はコードと CLAUDE.md を優先する。
+> 特に §2・§8 の「チャットはポーリングで実装」はその後変更され、現行は Supabase Realtime（Broadcast from Database）で配信する（→ [`notification-design.md`](../notification-design.md) の「Realtime 配信」）。
 
 ---
 
