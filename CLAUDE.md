@@ -12,7 +12,7 @@ pnpm Workspace + Turborepo のモノレポ。
 apps/web/          Next.js 15 (メインWebアプリ)
 apps/mobile/       Expo (WebView ラッパー + ネイティブチャット + Push通知)
 apps/desktop/      Electron (Web版を表示するデスクトップラッパー)
-packages/core/     ドメイン型・ユースケース・ポートインターフェース
+packages/core/     課金などの純粋なドメインロジック（Web は `@cairn/core/billing` を参照）
 packages/db/       Drizzle ORM スキーマ・クライアント (Supabase PostgreSQL)
 packages/shared/   共有型 (TypeScript) + Zod バリデーションスキーマ
 packages/config/   tsconfig / ESLint の共有設定
@@ -23,7 +23,7 @@ packages/config/   tsconfig / ESLint の共有設定
 ## 技術スタック
 
 - **フロントエンド**: Next.js 15, React 19, TypeScript, Tailwind CSS v3, shadcn/ui
-- **状態管理**: TanStack Query (サーバー状態), Zustand (グローバルUI), nuqs (URL状態)
+- **状態管理**: TanStack Query (サーバー状態)。グローバルUIは画面内の React state、テーマは `next-themes`、プロジェクトビューなど一部は localStorage。URL状態は App Router のパスと `useSearchParams` で持つ
 - **DB**: Supabase PostgreSQL + Drizzle ORM + pgvector
 - **認証・リアルタイム・ストレージ**: Supabase Auth / Realtime / Storage
 - チャット・通知・未読の同期は **Supabase Realtime（Broadcast from Database）** で配信。DB トリガー + `realtime.broadcast_changes()` → `RealtimeProvider` が該当クエリを invalidate → REST 再取得（ポーリング・フォールバックなし）。**postgres_changes は本プロジェクトの Realtime では動作しないため使用しない**。詳細は [`docs/notification-ux-redesign.md`](docs/notification-ux-redesign.md) の Phase 2
@@ -32,9 +32,7 @@ packages/config/   tsconfig / ESLint の共有設定
 
 ## アーキテクチャ方針
 
-- `packages/core` に業務ロジックを集約し、DB・フレームワークから分離する
-- ポートはインターフェース定義のみ。実装は `apps/web` 側に置く
-- CQRS をコード構造として軽量に採用（Command / Query を分けて命名する）
+- `packages/core` は DB・フレームワークに依存しない純粋なドメインロジックを置く。現行の公開入口は課金の `@cairn/core/billing` で、Web の課金・ストレージ・AI 経路から参照する
 - Write DB / Read DB は分離しない
 
 ## ローカル開発環境

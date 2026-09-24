@@ -199,7 +199,7 @@ cairn/
     web/          # Next.js 15 (メインWebアプリ + リモートMCP /api/mcp)
     desktop/      # Electron デスクトップアプリ (リモートシェル)
   packages/
-    core/         # ドメイン / ユースケース / ポート定義
+    core/         # 課金などの純粋なドメインロジック（Web は @cairn/core/billing）
     db/           # Drizzle ORM スキーマ・クライアント
     shared/       # 共有型・Zodスキーマ
     config/       # tsconfig・ESLint共有設定

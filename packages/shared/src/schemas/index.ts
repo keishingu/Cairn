@@ -201,15 +201,6 @@ export const patchProjectStatusSchema = z.object({
   { message: 'At least one field is required' },
 )
 
-export const uploadGalleryItemSchema = z.object({
-  projectId: z.string().uuid(),
-  fileId: z.string().uuid(),
-  caption: z.string().max(500).optional(),
-  takenAt: z.string().datetime().optional(),
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
-})
-
 export type EditMessageInput = z.infer<typeof editMessageSchema>
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
@@ -218,7 +209,6 @@ export type PatchMilestoneInput = z.infer<typeof patchMilestoneSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
-export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>
 export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
 export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
