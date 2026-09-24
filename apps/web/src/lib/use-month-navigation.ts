@@ -6,6 +6,7 @@ import {
   MONTH_WHEEL_THRESHOLD,
   monthStepFromSwipe,
   monthStepFromWheel,
+  wheelDeltaToPixels,
 } from './calendar-period-gesture'
 
 export function useMonthWheelNavigation(
@@ -22,14 +23,16 @@ export function useMonthWheelNavigation(
     let accum = 0
     let lockedUntil = 0
     const onWheel = (event: WheelEvent) => {
-      if (monthStepFromWheel(event.deltaX, event.deltaY) === 0) return
+      const deltaX = wheelDeltaToPixels(event.deltaX, event.deltaMode)
+      const deltaY = wheelDeltaToPixels(event.deltaY, event.deltaMode)
+      if (monthStepFromWheel(deltaX, deltaY) === 0) return
       event.preventDefault()
       const now = Date.now()
       if (now < lockedUntil) {
         accum = 0
         return
       }
-      accum += event.deltaY
+      accum += deltaY
       if (Math.abs(accum) < MONTH_WHEEL_THRESHOLD) return
       const step: -1 | 1 = accum > 0 ? 1 : -1
       accum = 0

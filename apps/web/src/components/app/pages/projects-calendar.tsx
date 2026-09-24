@@ -1963,6 +1963,21 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
 
 // ─── Page ──────────────────────────────────────────────────────────
 
+function CalendarLoadNotice({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div role="alert" style={{
+      marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
+      color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
+      ...style,
+    }}>
+      <Icon name="alertTriangle" size={15} />
+      {children}
+    </div>
+  )
+}
+
+const WEEK_START_LOAD_ERROR = '週の始まりの設定を読み込めませんでした。時間をおいて再読み込みしてください。'
+
 interface PageCalendarProps {
   openPanel: (project?: ProjectDto) => void
   isMobile?: boolean
@@ -1976,13 +1991,13 @@ const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
   const today = new Date()
   const queryClient = useQueryClient()
-  const { data: me } = useCurrentUser()
+  const { data: me, isError: weekStartError } = useCurrentUser()
   const [weekStartsOn, setWeekStartsOn] = React.useState<CalendarWeekStart>(readStoredCalendarWeekStart)
   React.useEffect(() => {
-    if (!isCalendarWeekStart(me?.calendarWeekStart)) return
+    if (weekStartError || !isCalendarWeekStart(me?.calendarWeekStart)) return
     setWeekStartsOn(me.calendarWeekStart)
     writeStoredCalendarWeekStart(me.calendarWeekStart)
-  }, [me?.calendarWeekStart])
+  }, [me?.calendarWeekStart, weekStartError])
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const projectLabel = useProjectLabel()
   const [year, setYear] = React.useState(today.getFullYear())
@@ -2293,6 +2308,11 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             マイルストーン
           </button>
         </div>
+        {weekStartError && (
+          <CalendarLoadNotice style={{ margin: '8px 12px 0' }}>
+            {WEEK_START_LOAD_ERROR}
+          </CalendarLoadNotice>
+        )}
         {calView === 'month' && (
           <MobileCalendarGrid
             year={year}
@@ -2455,23 +2475,18 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         }
       />
 
+      {weekStartError && (
+        <CalendarLoadNotice>{WEEK_START_LOAD_ERROR}</CalendarLoadNotice>
+      )}
       {gcalEventsError && (
-        <div style={{
-          marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
-          color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
-        }}>
-          <Icon name="alertTriangle" size={15} />
+        <CalendarLoadNotice>
           Googleカレンダーの予定の取得に失敗しました。時間をおいて再読み込みしてください。
-        </div>
+        </CalendarLoadNotice>
       )}
       {milestonesError && (
-        <div style={{
-          marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
-          color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
-        }}>
-          <Icon name="alertTriangle" size={15} />
+        <CalendarLoadNotice>
           マイルストーンの取得に失敗しました。時間をおいて再読み込みしてください。
-        </div>
+        </CalendarLoadNotice>
       )}
 
       {/* Calendar grid */}

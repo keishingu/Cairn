@@ -76,9 +76,11 @@ const mockUseWorkspacePermissions = vi.fn(() => ({
   isGuest: false,
 }))
 
+const mockUseCurrentUser = vi.fn(() => ({ data: undefined as { calendarWeekStart?: string } | undefined, isError: false }))
+
 vi.mock('@/hooks/use-current-user', () => ({
   useWorkspacePermissions: () => mockUseWorkspacePermissions(),
-  useCurrentUser: () => ({ data: undefined }),
+  useCurrentUser: () => mockUseCurrentUser(),
 }))
 
 vi.mock('@/lib/use-workspace-settings', () => ({
@@ -181,6 +183,8 @@ describe('PageCalendar (モバイル)', () => {
       isMember: true,
       isGuest: false,
     })
+    mockUseCurrentUser.mockReset()
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: false })
     mockCalendarApis()
   })
 
@@ -324,6 +328,29 @@ describe('PageCalendar (モバイル)', () => {
     expect(screen.getByText(label)).toBeInTheDocument()
     const next = new Date(today.getFullYear(), today.getMonth() + 1, 1)
     expect(screen.queryByText(`${next.getFullYear()}年${next.getMonth() + 1}月`)).not.toBeInTheDocument()
+  })
+
+  it('週の始まりの取得に失敗したらキャッシュのまま黙らずエラーを出す', () => {
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: true })
+    window.localStorage.setItem('cairn:calendar_week_start', 'monday')
+    renderPage()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('週の始まりの設定を読み込めませんでした')
+    expect(screen.getAllByTestId('weekday-label').map((node) => node.textContent)).toEqual([
+      '月', '火', '水', '木', '金', '土', '日',
+    ])
+  })
+
+  it('PCでも週の始まりの取得失敗を表示する', () => {
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: true })
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('週の始まりの設定を読み込めませんでした')
   })
 
   it('月曜始まりでは曜日見出しが月曜から並ぶ', () => {
