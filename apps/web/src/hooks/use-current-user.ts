@@ -34,17 +34,27 @@ export function patchCurrentUserCache(
 }
 
 /**
- * 表示名・アバター変更後に呼ぶ。
- * 設定画面と、発言者名・メンバー一覧として同じ情報を出すチャット側のキャッシュを揃える。
+ * 表示名・アバターは取得時に結合される。
+ * 最新メッセージだけでなく、履歴・ブックマーク・チャンネル内検索・横断検索も同じ結合結果を持つ。
+ * キーは文字列のままにする。この Hook はナビや設定からも使われ、チャットクライアント全体を引き込まない。
  */
+const PROFILE_DISPLAY_QUERY_KEYS = [
+  CURRENT_USER_QUERY_KEY,
+  ['workspace-members'],
+  ['project-members'],
+  ['channel-members'],
+  ['messages'],
+  ['message-history'],
+  ['bookmarks'],
+  ['message-search'],
+  ['global-message-search'],
+] as const
+
+/** 表示名・アバター変更後に、同じ情報を出しているキャッシュを揃える。 */
 export function invalidateCurrentUserProfile(queryClient: QueryClient) {
-  return Promise.all([
-    queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY }),
-    queryClient.invalidateQueries({ queryKey: ['workspace-members'] }),
-    queryClient.invalidateQueries({ queryKey: ['messages'] }),
-    queryClient.invalidateQueries({ queryKey: ['project-members'] }),
-    queryClient.invalidateQueries({ queryKey: ['channel-members'] }),
-  ])
+  return Promise.all(
+    PROFILE_DISPLAY_QUERY_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  )
 }
 
 // ワークスペースロールベースの権限ヘルパー。

@@ -22,6 +22,9 @@ export const chatQueryKeys = {
   messagesRoot: ['messages'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
   messageHistory: (channelId: string | null, messageId: string | null) => ['message-history', channelId, messageId] as const,
+  messageSearch: (channelId: string, query: string) => ['message-search', channelId, query] as const,
+  globalMessageSearch: (query: string) => ['global-message-search', query] as const,
+  bookmarks: ['bookmarks'] as const,
   initialMessage: (channelId: string | null) => ['channel-initial-message', channelId] as const,
 }
 
@@ -615,14 +618,14 @@ export function useToggleBookmark(channelId: string | null) {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bookmarks'] })
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.bookmarks })
     },
   })
 }
 
 export function useBookmarks(enabled: boolean) {
   return useQuery({
-    queryKey: ['bookmarks'] as const,
+    queryKey: chatQueryKeys.bookmarks,
     queryFn: fetchBookmarks,
     enabled,
   })

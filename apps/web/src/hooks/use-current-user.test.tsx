@@ -1,12 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useChannelMessages, useSendChannelMessage } from '@/lib/chat/client'
+import { chatQueryKeys, useBookmarks, useChannelMessageHistory, useChannelMessages, useSendChannelMessage } from '@/lib/chat/client'
 import {
   CURRENT_USER_QUERY_KEY,
   invalidateCurrentUserProfile,
@@ -70,6 +70,57 @@ function message(overrides: Partial<MessageDto> = {}): MessageDto {
 
 let profile = { ...STUB_USER }
 
+function applyUpdatedProfile(queryClient: QueryClient) {
+  profile = {
+    ...profile,
+    displayName: '新しい名前',
+    avatarUrl: 'https://cdn.example/avatar.png',
+  }
+  void invalidateCurrentUserProfile(queryClient)
+}
+
+function ProfileCaches() {
+  const queryClient = useQueryClient()
+  const history = useChannelMessageHistory('channel-1', 'message-1')
+  const bookmarks = useBookmarks(true)
+  const channelSearch = useQuery<MessageDto[]>({
+    queryKey: chatQueryKeys.messageSearch('channel-1', 'hello'),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/channels/channel-1/messages/search?q=hello')
+      if (!res.ok) throw new Error('search failed')
+      return res.json()
+    },
+  })
+  const globalSearch = useQuery<MessageDto[]>({
+    queryKey: chatQueryKeys.globalMessageSearch('hello'),
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/search/messages?q=hello')
+      if (!res.ok) throw new Error('search failed')
+      return res.json()
+    },
+  })
+
+  const label = (
+    name: string,
+    items: Array<{ senderName: string; senderAvatarUrl: string | null }> | undefined,
+  ) => `${name}: ${items?.[0]?.senderName ?? 'empty'} / ${items?.[0]?.senderAvatarUrl ?? 'no-avatar'}`
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => applyUpdatedProfile(queryClient)}
+      >
+        プロフィールを反映
+      </button>
+      <p>{label('history', history.data)}</p>
+      <p>{label('bookmarks', bookmarks.data)}</p>
+      <p>{label('search', channelSearch.data)}</p>
+      <p>{label('global', globalSearch.data)}</p>
+    </div>
+  )
+}
+
 function ProfileAndChat() {
   const queryClient = useQueryClient()
   const { data: user } = useCurrentUser()
@@ -81,14 +132,7 @@ function ProfileAndChat() {
       <p>{user?.displayName}</p>
       <button
         type="button"
-        onClick={() => {
-          profile = {
-            ...profile,
-            displayName: '新しい名前',
-            avatarUrl: 'https://cdn.example/avatar.png',
-          }
-          invalidateCurrentUserProfile(queryClient)
-        }}
+        onClick={() => applyUpdatedProfile(queryClient)}
       >
         プロフィールを反映
       </button>
@@ -157,6 +201,44 @@ describe('現在ユーザーのQueryキャッシュ', () => {
     expect(
       await screen.findByText('こんにちは / 新しい名前 / https://cdn.example/avatar.png'),
     ).toBeInTheDocument()
+  })
+
+  it('履歴・ブックマーク・検索も表示名とアバターの更新後に揃う', async () => {
+    mockFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/me') return jsonResponse(profile)
+      if (url === '/api/channels/channel-1/messages?around=message-1') return jsonResponse([message()])
+      if (url === '/api/me/bookmarks') {
+        return jsonResponse([{
+          id: 'message-1',
+          content: 'hello',
+          senderName: profile.displayName,
+          senderAvatarUrl: profile.avatarUrl,
+          createdAt: '2026-09-01T00:00:00.000Z',
+          channelId: 'channel-1',
+          channelName: '一般',
+          bookmarkedAt: '2026-09-01T00:00:00.000Z',
+        }])
+      }
+      if (url === '/api/channels/channel-1/messages/search?q=hello') return jsonResponse([message()])
+      if (url === '/api/search/messages?q=hello') return jsonResponse([message()])
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    renderWithClient(<ProfileCaches />)
+
+    expect(await screen.findByText('history: 山田 太郎 / no-avatar')).toBeInTheDocument()
+    expect(screen.getByText('bookmarks: 山田 太郎 / no-avatar')).toBeInTheDocument()
+    expect(screen.getByText('search: 山田 太郎 / no-avatar')).toBeInTheDocument()
+    expect(screen.getByText('global: 山田 太郎 / no-avatar')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'プロフィールを反映' }))
+
+    expect(await screen.findByText('history: 新しい名前 / https://cdn.example/avatar.png')).toBeInTheDocument()
+    expect(screen.getByText('bookmarks: 新しい名前 / https://cdn.example/avatar.png')).toBeInTheDocument()
+    expect(screen.getByText('search: 新しい名前 / https://cdn.example/avatar.png')).toBeInTheDocument()
+    expect(screen.getByText('global: 新しい名前 / https://cdn.example/avatar.png')).toBeInTheDocument()
   })
 
   it('ロール表示は同じキャッシュの wsRole に従う', async () => {
