@@ -22,9 +22,10 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
-    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' }>,
+    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' | 'guest' }>,
     projectChannels: [] as Array<{ channelId: string; projectId: string }>,
     projectMembers: [] as Array<{ userId: string }>,
+    profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
 }))
 
@@ -66,7 +67,9 @@ vi.mock('@/hooks/use-ai-nudges', () => ({
   useAiNudges: () => ({ data: [], isError: false }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: chatThreadState.projectMembers }) }))
-vi.mock('@/hooks/use-profile-attributes', () => ({ useProfileAttributes: () => ({ data: [] }) }))
+vi.mock('@/hooks/use-profile-attributes', () => ({
+  useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -370,6 +373,7 @@ describe('ChatThreadのメンション候補', () => {
     chatThreadState.historyIsError = false
     chatThreadState.projectChannels = []
     chatThreadState.projectMembers = []
+    chatThreadState.profileAttributes = []
     chatThreadState.workspaceMembers = [
       ...Array.from({ length: 6 }, (_, index) => ({
         userId: `user-${index + 2}`,
@@ -383,6 +387,10 @@ describe('ChatThreadのメンション候補', () => {
 
   it('全候補をスクロール表示し、プロジェクトメンバー取得後は選択を先頭へ戻す', () => {
     chatThreadState.projectChannels = [{ channelId: 'channel-1', projectId: 'project-1' }]
+    chatThreadState.profileAttributes = [
+      { id: 'attr-coach', name: 'コーチ', color: 'blue' },
+      { id: 'attr-grade', name: '3年生', color: 'emerald' },
+    ]
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -407,6 +415,8 @@ describe('ChatThreadのメンション候補', () => {
       '@project_membersプロジェクトメンバー',
       '@鈴木',
       ...Array.from({ length: 6 }, (_, index) => `@候補${index + 1}`),
+      '@コーチ属性',
+      '@3年生属性',
     ])
     expect(picker).toHaveStyle({ maxHeight: '240px', overflowY: 'auto' })
     fireEvent.keyDown(input, { key: 'Enter' })

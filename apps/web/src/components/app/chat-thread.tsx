@@ -617,32 +617,36 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     if (mentionQuery === null) return []
     const q = mentionQuery.toLowerCase()
     type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
-    const items: MentionPickerItem[] = []
+    // 優先度: @all → @project_members → ユーザー（プロジェクト参加者は呼び出し側で先頭）→ 属性
+    // 属性を先に出すと初見ビューポートが属性で埋まりユーザー名を選べないため末尾へ回す。
+    const specials: MentionPickerItem[] = []
+    const users: MentionPickerItem[] = []
+    const attributes: MentionPickerItem[] = []
     if (includeAllMention && ALL_MENTION_LABEL.startsWith(q)) {
-      items.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
+      specials.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
     }
     if (includeProjectMembersMention && PROJECT_MEMBERS_MENTION_LABEL.startsWith(q)) {
-      items.push({
+      specials.push({
         tokenId: PROJECT_MEMBERS_MENTION_ID,
         displayName: PROJECT_MEMBERS_MENTION_LABEL,
         kind: 'project_members',
       })
     }
+    for (const member of mentionMembers ?? []) {
+      if (member.displayName.toLowerCase().includes(q)) {
+        users.push({ tokenId: member.userId, displayName: member.displayName, kind: 'user' })
+      }
+    }
     for (const attribute of mentionAttributes ?? []) {
       if (attribute.name.toLowerCase().includes(q)) {
-        items.push({
+        attributes.push({
           tokenId: attributeMentionTokenId(attribute.id),
           displayName: attribute.name,
           kind: 'attr',
         })
       }
     }
-    for (const member of mentionMembers ?? []) {
-      if (member.displayName.toLowerCase().includes(q)) {
-        items.push({ tokenId: member.userId, displayName: member.displayName, kind: 'user' })
-      }
-    }
-    return items
+    return [...specials, ...users, ...attributes]
   }, [mentionQuery, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
@@ -1476,7 +1480,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           m.userId !== currentUser?.id &&
           (m.role !== 'guest' || projectMemberIds.has(m.userId)),
         )
-        .sort((a, b) => Number(projectMemberIds.has(b.userId)) - Number(projectMemberIds.has(a.userId)))
+        .sort((a, b) => {
+          const aIn = projectMemberIds.has(a.userId) ? 0 : 1
+          const bIn = projectMemberIds.has(b.userId) ? 0 : 1
+          if (aIn !== bIn) return aIn - bIn
+          return a.displayName.localeCompare(b.displayName, 'ja')
+        })
     }
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
