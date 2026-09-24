@@ -1,7 +1,7 @@
 # Expo ネイティブアプリ化 ロードマップ
 
 > **ステータス**: 設計時スナップショット（作成: 2026-05-27 / 最終更新: 2026-05-29）
-> 作成時点のロードマップ。一部は実施済み（`apps/mobile` の WebView ラッパー等、[`docs/archive/prompts/`](./archive/prompts/) の Phase 2-B 参照）。進捗はコードを正とする。
+> 作成時点のロードマップ。一部は実施済み（`apps/mobile` の WebView ラッパー等、[`docs/archive/prompts/`](./prompts/) の Phase 2-B 参照）。進捗はコードを正とする。
 
 ---
 
@@ -63,7 +63,7 @@ Next.js Route Handlers はブラウザ向けに Cookie 認証を前提として�
 
 Expo の主要価値である Push 通知を機能させるために、以下が先に完成している必要がある。
 
-- `channel_read_states` テーブル（→ `docs/07_notifications_and_unread.md`）
+- `channel_read_states` テーブル（→ `docs/archive/07_notifications_and_unread.md`）
 - `notifications` テーブル
 - `push_subscriptions` テーブル（Web Push との共用テーブル）
 - Inngest 通知生成ジョブ
@@ -209,13 +209,13 @@ const { status } = await Notifications.requestPermissionsAsync()
 | 2-1 | `apps/mobile/` 新設、Expo Router・Auth・API クライアント | ✅ 完了（PR #68） |
 | 2-2 | ネイティブ画面実装（projects / chats / tasks / notifications） | ✅ 完了（PR #68） |
 | 2-3 | Expo Push Notifications 統合 | ✅ 完了（PR #68） |
-| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | ✅ 完了（認証は [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) のワンタイムトークン方式） |
-| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → [`docs/archive/prompts/phase2b-5-native-chat.md`](./archive/prompts/phase2b-5-native-chat.md) |
+| 2-4 | WebView 化（projects / tasks / notifications）+ セッション橋渡し | ✅ 完了（認証は [`mobile-webview-auth-handoff.md`](../mobile-webview-auth-handoff.md) のワンタイムトークン方式） |
+| 2-5 | ネイティブチャット強化（オフライン送信キュー・バックグラウンドアップロード） | 未着手 → [`docs/archive/prompts/phase2b-5-native-chat.md`](./prompts/phase2b-5-native-chat.md) |
 
 ### Phase 3（仕上げ・マイルストーン等）
 
-- マイルストーン機能（`channels` 拡張）→ `docs/07_notifications_and_unread.md` 参照
-- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-ux-redesign.md`](./notification-ux-redesign.md) Phase 2。Broadcast from Database 方式）
+- マイルストーン機能（`channels` 拡張）→ `docs/archive/07_notifications_and_unread.md` 参照
+- Supabase Realtime 導入（ポーリングからの移行）→ ✅ Web 側は実施済み（[`notification-design.md`](../notification-design.md) の「Realtime 配信」。Broadcast from Database 方式）
 - App Store / Google Play リリース対応（`app.json`, EAS Build）
 
 ---

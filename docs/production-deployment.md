@@ -54,7 +54,9 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 3. 旧リポジトリ Secret（Settings → Secrets and variables → Actions）に同名のものが残っていれば削除する（残っていると Environment 未参照のジョブにも渡ってしまう）。
 4. `migrate.yml` は `environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}` で分岐、`release.yml` と `migration-dry-run.yml` は `environment: production` を参照する。`main` / `develop` 以外のブランチで `migrate.yml` / `release.yml` を動かそうとすると、Deployment branch policy 違反でジョブが失敗し Secret は渡らない。
 
-**`migration-dry-run.yml`（`pull_request` トリガー）は Environment のブランチ名ベースの制限が効かない**: GitHub は `pull_request` 系イベントでは Environment のブランチポリシーを `refs/pull/<番号>/merge`（PR の head/base どちらでもない合成 ref）に対して評価する。このジョブが Secret を受け取るには `production` Environment の許可リストに `refs/pull/*/merge` を含める必要があるが、このパターンは **PR の送信元ブランチを区別しない**（`main` 宛のどの PR でもマッチする）。そのため `migration-dry-run.yml` の実質的な防御は、前述の `github.head_ref == 'develop'` という `if` ガードのみになる。この `if` はワークフロー実行時の実際の PR メタデータを見ているため「develop 以外のブランチから何もしない PR を main に作る」ケースは防げるが、**同一リポジトリの書き込み権限を持つ人が、自分のブランチ上でこの `if` ガードごとワークフローファイルを改変した場合は防げない**（`pull_request` は fork でない限り secrets を渡すため）。これは GitHub Actions の `pull_request` イベント自体の制約であり、確実に防ぐには `pull_request_target`（常にデフォルトブランチのワークフロー定義で実行される）への変更や、書き込み権限を持つコラボレーターの信頼範囲の見直しが必要になる（未対応）。
+**`migration-dry-run.yml`（`pull_request` トリガー）には Environment のブランチ制限が効かない**: GitHub は `pull_request` では合成 ref `refs/pull/<番号>/merge` でブランチポリシーを評価するため、`production` の許可リストに `refs/pull/*/merge` を含めており、送信元ブランチを区別できない。
+実質の防御は `github.head_ref == 'develop'` の `if` ガードのみで、書き込み権限者が自分のブランチでワークフローごと改変する場合は防げない（fork 以外の `pull_request` は secrets を渡すため）。
+確実に防ぐには `pull_request_target` への変更か、コラボレーターの信頼範囲の見直しが必要（未対応）。
 
 - **必要な Secrets**: `SUPABASE_DB_URL_PRODUCTION`（`production` Environment）/ `SUPABASE_DB_URL_PREVIEW`（`preview` Environment）
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
@@ -95,7 +97,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 - **Feature Flag を使うもの**: 実装と運用準備は完了しているが、Go-to-Market、段階公開、契約・届出、ユーザーセグメント等の理由で公開を制御する機能
 - **併用する場合**: 外部サービスへの接続可否は環境変数、ユーザーへの機能公開可否は Feature Flag と、責務を分ける。接続情報の有無を Feature Flag で代用しない
 
-PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。
+PostHog は production の利用状況を収集するインフラ接続なので前者に該当する。Vercel Production のみに project token を設定し、独立した Feature Flag は設けない。ページビューは History API の変化を自動捕捉し、認証後は Supabase の user ID を distinct ID として `identify`、サインアウト時に `reset` する。
 
 ## リリース手順（develop → main）
 
@@ -117,19 +119,8 @@ PostHog は production の利用状況を収集するインフラ接続なので
 - **順序が命**: マージ前に Publish すると promote 前のコミットにタグが付く（Draft 本文の先頭にも同じ警告が出る）。
 - Draft 段階ではタグ ref を持たないため、やり直したい場合は同名タグで再実行してよい。
 
-## 完了済み（本番）
-
-- DB マイグレーション 0000〜0034（欠番だった 0030 も `--include-all` で適用済み）
-- pgvector 拡張・Storage バケット・Realtime（Broadcast from Database）トリガー/RLS（すべて migration 由来）
-- `DATABASE_URL` を Shared Pooler/IPv4 に修正し疎通確認
-- `SUPABASE_SERVICE_ROLE_KEY` を Legacy JWT にしてファイルアップロード成功
-- Inngest（メッセージ通知）動作
-- Google ログイン（Supabase Auth Provider）動作
-- 独自ドメイン `oss-cairn.com` を Vercel に接続（apex A レコード + www CNAME、Squarespace 既定値は削除済み）
-
 ## 短期 ToDo
 
-- [ ] **PR #142（pdf-parse の ENOENT 修正）を本番にマージ＆デプロイ** → PDF インデックスの動作確認
 - [ ] Auth → URL Configuration の Site URL / Redirect URLs が本番ドメインになっているか最終確認
 - [ ] Google カレンダー連携（`GOOGLE_CALENDAR_*`）を使うなら本番設定
   - Google Calendar API 有効化 / OAuth クライアントに `https://oss-cairn.com/api/calendar/google/callback` を登録 / Vercel に 3 変数設定
