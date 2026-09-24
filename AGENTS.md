@@ -1,6 +1,6 @@
 # AGENTS.md
 
-AI エージェント共通の指示（`CLAUDE.md` はこのファイルへのシンボリックリンク）。詳細は必要な作業のときだけ [`docs/README.md`](docs/README.md) から辿る。**ドキュメントと実装が矛盾する場合はコードと本ファイルを正とする。**
+AI エージェント共通の指示（`CLAUDE.md` は `@AGENTS.md` の import のみ。Windows でシンボリックリンクが壊れるため）。詳細は必要な作業のときだけ [`docs/README.md`](docs/README.md) から辿る。**ドキュメントと実装が矛盾する場合はコードと本ファイルを正とする。**
 
 ## 全般
 
