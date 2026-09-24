@@ -44,6 +44,7 @@ const STUB_USER: CurrentUserDto = {
   aiNudgesEnabled: true,
   theme: 'system',
   accentId: 'emerald',
+  calendarWeekStart: 'sunday',
 }
 
 let seenClient: QueryClient | undefined

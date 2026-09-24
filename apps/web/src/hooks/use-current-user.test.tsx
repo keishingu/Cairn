@@ -32,6 +32,7 @@ const STUB_USER: CurrentUserDto = {
   aiNudgesEnabled: true,
   theme: 'system',
   accentId: 'emerald',
+  calendarWeekStart: 'sunday',
 }
 
 function jsonResponse(data: unknown, status = 200) {
