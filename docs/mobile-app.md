@@ -13,9 +13,25 @@
 
 ## 開発
 
-- expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド、2回目以降は `pnpm dev` で Metro 起動のみ
-- ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。IP の手動設定は不要
-- 実機で WebView 画面を使う場合のみ `pnpm setup:mobile-lan` で `apps/web/.env.local` の `NEXT_PUBLIC_SUPABASE_URL` を LAN IP に書き換える
+Web 側（`pnpm dev` と Supabase）を先に起動しておく。Expo Go は使わず expo-dev-client を使う。
+
+```bash
+cp apps/mobile/.env.local.example apps/mobile/.env.local  # ANON_KEY のみ。IP の書き換えは不要
+cd apps/mobile
+pnpm ios       # iOS シミュレータ（初回はネイティブビルド）
+pnpm android   # Android エミュレータ
+pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ Metro 起動だけでよい
+```
+
+- ネイティブビルドのやり直しが要るのは、ネイティブモジュールの追加や `app.json` のネイティブ設定を変えたときだけ。JS の変更は Metro のホットリロードで反映される
+- 実機は `pnpm dev` の QR を、インストール済みの開発クライアントで読み込む。Xcode / Android Studio がないメンバーには EAS の `development`（シミュレータ）/ `development-device`（実機）プロファイルで開発クライアントを配布できる
+- `ios/` `android/` は `app.json` から再生成できる成果物なのでコミットしない。ネイティブプロジェクトがあると runtime version のポリシーが使えないため、`runtimeVersion` は固定文字列で管理し、**ネイティブモジュールを追加・更新したら手動で上げる**（古いネイティブビルドに非互換な EAS Update が届くのを防ぐ）
+- ネイティブ側の接続先 URL は `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_API_BASE_URL` が未設定なら Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`。シミュレータは `localhost`、実機は LAN IP、Android エミュレータは `10.0.2.2`）。固定 URL に向けたいときだけ `.env.local` で設定する
+
+### 実機で WebView が真っ白になるとき
+
+- **`pnpm setup:mobile-lan` を実行する**: WebView 内の Next.js バンドルに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から繋がらない。ミドルウェアの `getUser()` がタイムアウトして `/auth/login` へ飛び、それを検知したネイティブまでサインアウトする。このコマンドで `apps/web/.env.local` を LAN IP に書き換える（Wi-Fi 切替時は再実行）
+- **`allowedDevOrigins` を確認する**: Next.js 15 の開発サーバーは `localhost` 以外からの `/_next/*` をブロックする。`apps/web/next.config.ts` が LAN IP を自動設定しているが、ターミナルに `Cross origin request detected from <IP> to /_next/* resource` が出ていれば効いていない
 
 ## ビルド・配布
 
