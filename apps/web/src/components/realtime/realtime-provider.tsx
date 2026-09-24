@@ -9,11 +9,11 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
-  useCurrentUser,
   useProjectChannels,
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 

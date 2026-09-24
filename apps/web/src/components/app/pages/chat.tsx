@@ -18,7 +18,6 @@ import {
   useWorkspaceDms,
   useChannelMembers,
   useCreateDm,
-  useCurrentUser,
   useBookmarks,
   useDeleteWorkspaceChannel,
   chatQueryKeys,
@@ -45,7 +44,7 @@ import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
 import { toast } from '@/lib/toast'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   getLastVisitedChatChannelId,
   resolveInitialChatChannelId,
@@ -90,7 +89,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
   const { data: results = [], isFetching } = useQuery<MessageDto[]>({
-    queryKey: ['message-search', channelId, debouncedQuery],
+    queryKey: chatQueryKeys.messageSearch(channelId, debouncedQuery),
     queryFn: () => fetchWithAuth(`/api/channels/${channelId}/messages/search?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
     enabled: debouncedQuery.length >= 1,
   })
@@ -179,7 +178,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
   const { data: results = [], isFetching } = useQuery<MessageSearchResultDto[]>({
-    queryKey: ['global-message-search', debouncedQuery],
+    queryKey: chatQueryKeys.globalMessageSearch(debouncedQuery),
     queryFn: () => fetchWithAuth(`/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
     enabled: debouncedQuery.length >= 1,
   })
