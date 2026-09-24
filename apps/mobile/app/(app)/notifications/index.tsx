@@ -16,6 +16,7 @@ import {
   useUnreadNotificationCount,
   type NotificationDto,
 } from '../../../hooks/use-notifications'
+import { followNotification } from '../../../lib/follow-notification'
 import { routeFromNotification } from '../../../lib/notification-routing'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import type { ThemePalette } from '../../../lib/theme'
@@ -82,7 +83,7 @@ export default function NotificationsScreen() {
     if (!item.readAt) {
       markRead.mutate([item.id])
     }
-    router.push(routeFromNotification(item))
+    void followNotification(router, routeFromNotification(item))
   }
 
   if (notificationsQuery.isLoading) {

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useMe } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
+import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { isRealtimeUnauthorized, shouldRetryRealtime } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 
@@ -11,12 +12,6 @@ function tableOf(payload: unknown): string | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined
   const table = (payload as { table?: unknown }).table
   return typeof table === 'string' ? table : undefined
-}
-
-function invalidateChannelLists(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: ['project-channels'] })
-  void queryClient.invalidateQueries({ queryKey: ['workspace-channels'] })
-  void queryClient.invalidateQueries({ queryKey: ['workspace-dms'] })
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -52,8 +47,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`user:${me.id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'notifications' || table === 'channel_read_states' || table === 'channel_members') {
-            invalidateChannelLists(queryClient)
+          if (
+            table === 'notifications' ||
+            table === 'channel_read_states' ||
+            table === 'channel_members'
+          ) {
+            void invalidateChannelListQueries(queryClient)
             if (table !== 'channel_members') {
               void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             }
@@ -63,7 +62,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
-          invalidateChannelLists(queryClient)
+          void invalidateChannelListQueries(queryClient)
         } else if (shouldRetryRealtime(status, error)) {
           setAuthenticated(false)
           console.warn(
@@ -102,7 +101,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'messages' || table === 'message_reactions') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
-          if (table === 'messages') invalidateChannelLists(queryClient)
+          if (table === 'messages') void invalidateChannelListQueries(queryClient)
         })
       channel.subscribe((status, error) => {
         if (cancelled) return

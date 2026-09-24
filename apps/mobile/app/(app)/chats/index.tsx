@@ -66,6 +66,13 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           },
         })
       }
+      {...(onOpenActions
+        ? {
+            onLongPress: onOpenActions,
+            delayLongPress: 350,
+            accessibilityHint: '長押しでメニューを表示',
+          }
+        : {})}
       activeOpacity={0.7}
     >
       <View
@@ -100,22 +107,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           </Text>
         </View>
       )}
-      {onOpenActions ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${milestone ? channel.channelName : channel.projectTitle}の操作`}
-          hitSlop={8}
-          onPress={(event) => {
-            event.stopPropagation()
-            onOpenActions()
-          }}
-          style={styles.rowAction}
-        >
-          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
-        </Pressable>
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
-      )}
+      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
 }
@@ -134,7 +126,11 @@ function WorkspaceChannelItem({
   const privateChannel = channel.isPrivate
   return (
     <TouchableOpacity
-      style={[styles.channelRow, thread && styles.threadRow, { borderBottomColor: palette.divider }]}
+      style={[
+        styles.channelRow,
+        thread && styles.threadRow,
+        { borderBottomColor: palette.divider },
+      ]}
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
@@ -146,6 +142,13 @@ function WorkspaceChannelItem({
           },
         })
       }
+      {...(onOpenActions
+        ? {
+            onLongPress: onOpenActions,
+            delayLongPress: 350,
+            accessibilityHint: '長押しでメニューを表示',
+          }
+        : {})}
       activeOpacity={0.7}
     >
       <View
@@ -169,22 +172,7 @@ function WorkspaceChannelItem({
         {channel.name ?? '名称未設定チャンネル'}
       </Text>
       {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
-      {onOpenActions ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${channel.name ?? 'チャンネル'}の操作`}
-          hitSlop={8}
-          onPress={(event) => {
-            event.stopPropagation()
-            onOpenActions()
-          }}
-          style={styles.rowAction}
-        >
-          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
-        </Pressable>
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
-      )}
+      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
 }
@@ -267,7 +255,9 @@ export default function ChatsScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const { openNotifications } = useNotificationPanel()
-  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | null>(null)
+  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | null>(
+    null,
+  )
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
@@ -296,22 +286,22 @@ export default function ChatsScreen() {
     const active = (channels ?? []).filter((channel) => !channel.archived)
     return {
       projectGroups: active
-      .filter((channel) => channel.milestoneId === null)
-      .map((channel) => ({
-        channel,
-        activeMilestones: active.filter(
-          (candidate) =>
-            candidate.projectId === channel.projectId &&
-            candidate.milestoneId !== null &&
-            candidate.milestoneCompleted !== true,
-        ),
-        completedMilestones: active.filter(
-          (candidate) =>
-            candidate.projectId === channel.projectId &&
-            candidate.milestoneId !== null &&
-            candidate.milestoneCompleted === true,
-        ),
-      })),
+        .filter((channel) => channel.milestoneId === null)
+        .map((channel) => ({
+          channel,
+          activeMilestones: active.filter(
+            (candidate) =>
+              candidate.projectId === channel.projectId &&
+              candidate.milestoneId !== null &&
+              candidate.milestoneCompleted !== true,
+          ),
+          completedMilestones: active.filter(
+            (candidate) =>
+              candidate.projectId === channel.projectId &&
+              candidate.milestoneId !== null &&
+              candidate.milestoneCompleted === true,
+          ),
+        })),
       archivedProjects: (channels ?? []).filter(
         (channel) => channel.archived && channel.milestoneId === null,
       ),
@@ -506,7 +496,10 @@ export default function ChatsScreen() {
                 channel={milestone}
                 milestone
                 {...(canManageChildChats
-                  ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                  ? {
+                      onOpenActions: () =>
+                        setRowActionTarget({ type: 'milestone', channel: milestone }),
+                    }
                   : {})}
               />
             ))}
@@ -517,7 +510,10 @@ export default function ChatsScreen() {
                   channel={milestone}
                   milestone
                   {...(canManageChildChats
-                    ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                    ? {
+                        onOpenActions: () =>
+                          setRowActionTarget({ type: 'milestone', channel: milestone }),
+                      }
                     : {})}
                 />
               ))}
@@ -535,7 +531,11 @@ export default function ChatsScreen() {
               <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={showArchivedProjects ? 'アーカイブ済みプロジェクトを閉じる' : 'アーカイブ済みプロジェクトを開く'}
+                  accessibilityLabel={
+                    showArchivedProjects
+                      ? 'アーカイブ済みプロジェクトを閉じる'
+                      : 'アーカイブ済みプロジェクトを開く'
+                  }
                   accessibilityState={{ expanded: showArchivedProjects }}
                   onPress={() => setShowArchivedProjects((current) => !current)}
                   style={styles.collapsibleHeading}
@@ -545,8 +545,12 @@ export default function ChatsScreen() {
                     size={14}
                     color={palette.text4}
                   />
-                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>アーカイブ済み</Text>
-                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>{archivedProjects.length}</Text>
+                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>
+                    アーカイブ済み
+                  </Text>
+                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>
+                    {archivedProjects.length}
+                  </Text>
                 </Pressable>
                 {showArchivedProjects &&
                   archivedProjects.map((channel) => (
@@ -638,9 +642,9 @@ export default function ChatsScreen() {
                 ? 'チャンネルを作成'
                 : createMode === 'thread'
                   ? 'スレッドを作成'
-                : createMode === 'dm'
-                  ? 'DMを開始'
-                  : '新しいチャット'}
+                  : createMode === 'dm'
+                    ? 'DMを開始'
+                    : '新しいチャット'}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -987,7 +991,11 @@ export default function ChatsScreen() {
                 />
               )}
               <ActionSheetButton
-                icon={rowActionTarget.channel.milestoneCompleted ? 'refresh-outline' : 'checkmark-circle-outline'}
+                icon={
+                  rowActionTarget.channel.milestoneCompleted
+                    ? 'refresh-outline'
+                    : 'checkmark-circle-outline'
+                }
                 label={rowActionTarget.channel.milestoneCompleted ? '未完了にする' : '完了にする'}
                 palette={palette}
                 onPress={() =>
@@ -1118,13 +1126,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   channelIconText: { fontSize: 18, fontWeight: '600' },
-  rowAction: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
   channelCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { flex: 1 },
   channelName: { fontSize: 15, fontWeight: '600' },

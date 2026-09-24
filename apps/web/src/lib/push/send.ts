@@ -3,6 +3,7 @@
 
 import webpush from 'web-push'
 import { Expo } from 'expo-server-sdk'
+import { expoPushData } from './expo-push-data'
 
 const VAPID_PUBLIC_KEY = process.env['VAPID_PUBLIC_KEY']
 const VAPID_PRIVATE_KEY = process.env['VAPID_PRIVATE_KEY']
@@ -22,6 +23,8 @@ export interface PushPayload {
   title: string
   body: string
   url?: string
+  /** Expo が通知タップ時に切り替えるワークスペース。未所属の ID はクライアントが捨てる。 */
+  workspaceId?: string
 }
 
 export interface PushDeliveryOptions {
@@ -54,7 +57,7 @@ export async function sendPushToUser(
   const { db, pushSubscriptions } = await import('@cairn/db')
   const { eq } = await import('drizzle-orm')
 
-  const subs = await db
+  const subs = (await db
     .select({
       id: pushSubscriptions.id,
       deviceType: pushSubscriptions.deviceType,
@@ -63,14 +66,16 @@ export async function sendPushToUser(
       expoToken: pushSubscriptions.expoToken,
     })
     .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.userId, userId)) as Subscription[]
+    .where(eq(pushSubscriptions.userId, userId))) as Subscription[]
 
   if (subs.length === 0) return
 
   // Web Push
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     ensureVapid()
-    const webSubs = subs.filter(s => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth)
+    const webSubs = subs.filter(
+      (s) => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth,
+    )
     const expiredIds: string[] = []
 
     // ホーム画面 PWA のアイコンに出す未読バッジ数（badgeCount は Web Push 専用）。
@@ -82,10 +87,17 @@ export async function sendPushToUser(
         const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
         badgeCount = await getUnreadNotificationCount(userId)
       } catch (err) {
-        console.error('[sendPushToUser] badge count query failed', { message: (err as Error).message })
+        console.error('[sendPushToUser] badge count query failed', {
+          message: (err as Error).message,
+        })
       }
     }
-    const message: PushMessage = { ...payload, ...(badgeCount !== undefined ? { badgeCount } : {}) }
+    const message: PushMessage = {
+      title: payload.title,
+      body: payload.body,
+      ...(payload.url ? { url: payload.url } : {}),
+      ...(badgeCount !== undefined ? { badgeCount } : {}),
+    }
 
     await Promise.allSettled(
       webSubs.map(async (s) => {
@@ -99,7 +111,11 @@ export async function sendPushToUser(
           if (status === 404 || status === 410) {
             expiredIds.push(s.id)
           } else {
-            console.error('[sendPushToUser] webpush error', { status, subscriptionId: s.id, message: (err as Error).message })
+            console.error('[sendPushToUser] webpush error', {
+              status,
+              subscriptionId: s.id,
+              message: (err as Error).message,
+            })
           }
         }
       }),
@@ -115,19 +131,20 @@ export async function sendPushToUser(
   // 注: ネイティブ（Expo）アプリのランチャーバッジ（setBadgeCountAsync）は
   // 既読時に減算・クリアする同期経路が apps/mobile 側に必要になるため、本 PR では
   // 付与しない（Web PWA バッジに範囲を限定）。Expo バッジ対応は別ブランチで行う。
-  const expoSubs = subs.filter(s => s.deviceType === 'expo' && s.expoToken)
+  const expoSubs = subs.filter((s) => s.deviceType === 'expo' && s.expoToken)
   if (expoSubs.length > 0) {
-    const messages = expoSubs.map(s => {
+    const messages = expoSubs.map((s) => {
       const msg: Parameters<typeof expo.chunkPushNotifications>[0][number] = {
         to: s.expoToken!,
         title: payload.title,
         body: payload.body,
       }
-      if (payload.url) msg.data = { url: payload.url }
+      const data = expoPushData(payload)
+      if (data) msg.data = data
       return msg
     })
     const chunks = expo.chunkPushNotifications(messages)
-    await Promise.allSettled(chunks.map(chunk => expo.sendPushNotificationsAsync(chunk)))
+    await Promise.allSettled(chunks.map((chunk) => expo.sendPushNotificationsAsync(chunk)))
   }
 }
 
