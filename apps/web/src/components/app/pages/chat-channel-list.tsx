@@ -520,7 +520,7 @@ export interface ChannelListProps {
   members: WorkspaceMemberDto[]
   isMobile?: boolean
   onAddProject?: () => void
-  onAddChannel: () => void
+  onAddChannel?: () => void
   onStartDm: (userId: string) => void
   onCreateMilestone?: (project: { id: string; title: string }) => void
   onEditMilestone?: (milestone: ProjectChannelDto) => void
@@ -576,7 +576,7 @@ export const ChannelList = ({
         ))}
       </ChatSidebarCollapsibleSection>
     )}
-    <ChatSidebarSection title="チャンネル" onAdd={onAddChannel}>
+    <ChatSidebarSection title="チャンネル" {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
       {workspaceChannelGroups.map(({ channel, threads }) => (
         <React.Fragment key={channel.id}>
           <ChatSidebarItem

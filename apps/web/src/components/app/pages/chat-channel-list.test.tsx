@@ -68,6 +68,43 @@ describe('ChannelList', () => {
     expect(onAddProject).toHaveBeenCalledOnce()
   })
 
+  it('チャンネル見出しの追加ボタンから作成を開始する', () => {
+    const onAddChannel = vi.fn()
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onAddChannel={onAddChannel}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'チャンネルを追加' }))
+
+    expect(onAddChannel).toHaveBeenCalledOnce()
+  })
+
+  it('作成ハンドラーを受け取らない場合はプロジェクト・チャンネルの追加ボタンを表示しない', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'プロジェクトを追加' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'チャンネルを追加' })).toBeNull()
+  })
+
   it('未読があるチャンネル名を明確な太字で表示する', () => {
     render(
       <ChannelList

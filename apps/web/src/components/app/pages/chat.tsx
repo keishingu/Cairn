@@ -455,8 +455,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setTargetMessage({ id: messageId })
   }
 
+  // プロジェクト・ワークスペースチャンネルの作成は API 側で管理者以上に限定しているため、UI 導線も同じ条件で絞る
+  const { isAdmin } = useWorkspacePermissions()
+  const canCreateProject = isAdmin
+  const canCreateWorkspaceChannel = isAdmin
+
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
-  useCommand('ctx.create', () => setShowCreateChannel(true))
+  useCommand('ctx.create', () => { if (canCreateWorkspaceChannel) setShowCreateChannel(true) })
   useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
   useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
 
@@ -533,7 +538,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const currentChannelMemberCount = currentGeneral?.memberCount
 
   const { data: currentUser } = useCurrentUser()
-  const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
@@ -611,7 +615,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       members={members}
       isMobile={isMobile}
       {...(canCreateProject ? { onAddProject: () => setShowCreateProject(true) } : {})}
-      onAddChannel={() => setShowCreateChannel(true)}
+      {...(canCreateWorkspaceChannel ? { onAddChannel: () => setShowCreateChannel(true) } : {})}
       onStartDm={handleStartDm}
       {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
       {...(canCreateChildChannel ? { onEditMilestone: setEditingMilestone } : {})}
@@ -620,7 +624,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     />
   )
 
-  const createChannelUI = showCreateChannel && (
+  const createChannelUI = showCreateChannel && canCreateWorkspaceChannel && (
     isMobile
       ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
       : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
