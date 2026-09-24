@@ -6,46 +6,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UserIdentity } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import {
+  classifyLoginLinkError,
+  formatLoginLinkErrorMessage,
+  providerLabel,
+  type LinkableOAuthProvider,
+} from '@/lib/auth-identity-link-errors'
 
 export const AUTH_IDENTITIES_QUERY_KEY = ['auth-identities'] as const
 
-export type LinkableOAuthProvider = 'apple' | 'google'
+export type { LinkableOAuthProvider }
 export type AuthIdentityProvider = 'email' | LinkableOAuthProvider | string
+
+export { providerLabel }
 
 type AuthErrorLike = {
   message?: string | undefined
   code?: string | undefined
 } | null
 
-export function providerLabel(provider: string): string {
-  switch (provider) {
-    case 'email':
-      return 'メールアドレスとパスワード'
-    case 'apple':
-      return 'Apple'
-    case 'google':
-      return 'Google'
-    default:
-      return provider
-  }
-}
-
 function mapLinkError(provider: LinkableOAuthProvider, error: AuthErrorLike): Error {
-  const label = providerLabel(provider)
-  const message = error?.message ?? ''
-  const code = error?.code ?? ''
-  if (
-    code === 'identity_already_exists' ||
-    /already.*(linked|exists|registered)/i.test(message)
-  ) {
-    return new Error(
-      `この ${label} アカウントは別の Cairn アカウントに連携済みです。別のアカウントを使うか、先にそちらの連携を解除してください。`,
-    )
-  }
-  if (/manual.?linking/i.test(message) || /linking.?not.?enabled/i.test(message)) {
-    return new Error(`${label} 連携は現在この環境で無効です。しばらくしてから再度お試しください。`)
-  }
-  return new Error(`${label} との連携を開始できませんでした。しばらくしてからもう一度お試しください。`)
+  const key = classifyLoginLinkError(error?.code, error?.message)
+  return new Error(formatLoginLinkErrorMessage(key, provider))
 }
 
 function mapUnlinkError(provider: LinkableOAuthProvider, error: AuthErrorLike): Error {

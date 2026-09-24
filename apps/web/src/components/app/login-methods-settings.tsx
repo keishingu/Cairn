@@ -15,6 +15,7 @@ import {
   useUnlinkOAuthIdentity,
   type LinkableOAuthProvider,
 } from '@/hooks/use-auth-identities'
+import { formatLoginLinkErrorMessage } from '@/lib/auth-identity-link-errors'
 
 const NATIVE_LINK_EVENTS: Record<LinkableOAuthProvider, string> = {
   apple: 'cairn:apple-identity-linked',
@@ -190,12 +191,40 @@ export function LoginMethodsSettings() {
   const useNativeGoogleLink = clientRuntime.nativeWebView
   const useNativeAppleLink = clientRuntime.expoIos
 
+  const handledLinkFeedbackRef = React.useRef(false)
+
   React.useEffect(() => {
+    if (handledLinkFeedbackRef.current) return
+
     const linked = searchParams.get('loginLinked')
+    const linkError = searchParams.get('loginLinkError')
+    const linkProvider = searchParams.get('loginLinkProvider')
+
+    if (linkError) {
+      handledLinkFeedbackRef.current = true
+      const key =
+        linkError === 'identity_already_exists' ||
+        linkError === 'manual_linking_disabled' ||
+        linkError === 'callback'
+          ? linkError
+          : 'callback'
+      setMessage({
+        text: formatLoginLinkErrorMessage(key, linkProvider),
+        ok: false,
+      })
+      const url = new URL(window.location.href)
+      url.searchParams.delete('loginLinkError')
+      url.searchParams.delete('loginLinkProvider')
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+      const timer = window.setTimeout(() => setMessage(null), 8000)
+      return () => window.clearTimeout(timer)
+    }
+
     if (linked !== 'apple' && linked !== 'google' && linked !== '1') return
     const label =
       linked === 'google' ? 'Google' : linked === 'apple' || linked === '1' ? 'Apple' : null
     if (!label) return
+    handledLinkFeedbackRef.current = true
     setMessage({ text: `${label} をログイン方法として連携しました`, ok: true })
     const url = new URL(window.location.href)
     url.searchParams.delete('loginLinked')
