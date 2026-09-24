@@ -84,6 +84,25 @@ export function routeFromNotification(item: NotificationRouteInput): Notificatio
   return screen('/(app)/projects')
 }
 
+export interface PushNotificationData {
+  url?: string
+  workspaceId?: string
+}
+
+export function readPushNotificationData(data: unknown): PushNotificationData {
+  if (!data || typeof data !== 'object') return {}
+  const record = data as Record<string, unknown>
+  const url = typeof record['url'] === 'string' ? record['url'] : undefined
+  const workspaceId =
+    typeof record['workspaceId'] === 'string' && record['workspaceId']
+      ? record['workspaceId']
+      : undefined
+  return {
+    ...(url ? { url } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+  }
+}
+
 export function routeFromPushUrl(url: string | undefined): NotificationDestination | null {
   if (!url) return null
   const channelId = channelIdFromChatUrl(url)

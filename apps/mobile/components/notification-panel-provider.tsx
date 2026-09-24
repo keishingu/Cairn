@@ -97,7 +97,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
     setVisible(false)
     pendingNavigation.current = setTimeout(() => {
       pendingNavigation.current = null
-      followNotification(router, destination)
+      void followNotification(router, destination)
     }, 50)
   }
 

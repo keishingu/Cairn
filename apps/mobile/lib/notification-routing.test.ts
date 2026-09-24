@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { routeFromNotification, routeFromPushUrl } from './notification-routing'
+import {
+  readPushNotificationData,
+  routeFromNotification,
+  routeFromPushUrl,
+} from './notification-routing'
 
 function notification(
   overrides: Partial<{
@@ -85,6 +89,18 @@ describe('通知からの画面遷移', () => {
         }),
       ),
     ).toEqual({ kind: 'screen', path: '/(app)/settings' })
+  })
+
+  it('Push の data から url と workspaceId だけを読む', () => {
+    expect(readPushNotificationData({ url: '/chats/ch-1', workspaceId: 'ws-1', extra: 1 })).toEqual(
+      {
+        url: '/chats/ch-1',
+        workspaceId: 'ws-1',
+      },
+    )
+    expect(readPushNotificationData({ url: '/tasks' })).toEqual({ url: '/tasks' })
+    expect(readPushNotificationData(null)).toEqual({})
+    expect(readPushNotificationData({ workspaceId: '' })).toEqual({})
   })
 
   it('チャット URL は個別チャンネルを優先する', () => {

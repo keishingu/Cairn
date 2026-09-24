@@ -4,6 +4,7 @@ import { useNetworkState } from 'expo-network'
 import React from 'react'
 import { AppState } from 'react-native'
 import { apiFetch } from '../lib/api-fetch'
+import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
 import {
   isRetryableSendError,
@@ -125,11 +126,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
           }
           await updateMessages((current) => current.filter((message) => message.id !== item.id))
           await qc.invalidateQueries({ queryKey: ['messages', item.channelId] })
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: ['project-channels'] }),
-            qc.invalidateQueries({ queryKey: ['workspace-channels'] }),
-            qc.invalidateQueries({ queryKey: ['workspace-dms'] }),
-          ])
+          await invalidateChannelListQueries(qc)
         } catch (error) {
           const retryable = isRetryableSendError(error)
           await updateMessages((current) =>

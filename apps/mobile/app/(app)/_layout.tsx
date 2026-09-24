@@ -11,7 +11,7 @@ import { RealtimeProvider } from '../../components/realtime-provider'
 import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
 import { followNotification } from '../../lib/follow-notification'
-import { routeFromPushUrl } from '../../lib/notification-routing'
+import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
 const isExpoGo = Constants.appOwnership === 'expo'
@@ -54,12 +54,10 @@ function routeFromNotificationResponse(
   response: Notifications.NotificationResponse,
   router: ReturnType<typeof useRouter>,
 ) {
-  const data = response.notification.request.content.data
-  const rawUrl = data && typeof data === 'object' ? data['url'] : undefined
-  const url = typeof rawUrl === 'string' ? rawUrl : undefined
+  const { url, workspaceId } = readPushNotificationData(response.notification.request.content.data)
   const destination = routeFromPushUrl(url)
   if (!destination) return
-  followNotification(router, destination)
+  void followNotification(router, destination, workspaceId ? { workspaceId } : undefined)
 }
 
 export default function AppLayout() {

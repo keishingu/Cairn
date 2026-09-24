@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
+import {
+  fetchWorkspaceChannels,
+  fetchWorkspaceDms,
+  projectChannelsQueryKey,
+  workspaceChannelsQueryKey,
+  workspaceDmsQueryKey,
+} from '../lib/channel-list-queries'
+import { fetchApiJson } from '../lib/fetch-api-json'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -40,24 +48,20 @@ export interface ChannelMemberDto {
 }
 
 function fetchJson<T>(path: string, errorLabel: string) {
-  return async (): Promise<T> => {
-    const res = await apiFetch(path)
-    if (!res.ok) throw new Error(`${errorLabel}の取得に失敗しました (${res.status})`)
-    return res.json() as Promise<T>
-  }
+  return () => fetchApiJson<T>(path, errorLabel)
 }
 
 export function useWorkspaceChannels() {
   return useQuery<WorkspaceChannelDto[]>({
-    queryKey: ['workspace-channels'],
-    queryFn: fetchJson('/api/workspaces/channels', 'チャンネル'),
+    queryKey: workspaceChannelsQueryKey,
+    queryFn: () => fetchWorkspaceChannels<WorkspaceChannelDto[]>(),
   })
 }
 
 export function useWorkspaceDms() {
   return useQuery<DmChannelDto[]>({
-    queryKey: ['workspace-dms'],
-    queryFn: fetchJson('/api/workspaces/dms', 'ダイレクトメッセージ'),
+    queryKey: workspaceDmsQueryKey,
+    queryFn: () => fetchWorkspaceDms<DmChannelDto[]>(),
     enabled: FEATURE_FLAGS.dm,
   })
 }
@@ -100,7 +104,7 @@ export function useCreateWorkspaceChannel() {
       return res.json() as Promise<WorkspaceChannelDto>
     },
     onSuccess: (channel) => {
-      qc.setQueryData<WorkspaceChannelDto[]>(['workspace-channels'], (current) => [
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) => [
         ...(current ?? []),
         channel,
       ])
@@ -123,7 +127,7 @@ export function useCreateChannelThread() {
       return res.json() as Promise<{ id: string }>
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-channels'] })
+      void qc.invalidateQueries({ queryKey: workspaceChannelsQueryKey })
     },
   })
 }
@@ -150,7 +154,7 @@ export function usePatchProjectMilestone() {
       }
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project-channels'] })
+      void qc.invalidateQueries({ queryKey: projectChannelsQueryKey })
     },
   })
 }
@@ -170,7 +174,7 @@ export function useCreateWorkspaceDm() {
       return res.json() as Promise<{ id: string }>
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['workspace-dms'] })
+      void qc.invalidateQueries({ queryKey: workspaceDmsQueryKey })
     },
   })
 }

@@ -157,6 +157,7 @@ export const onMessageCreated = inngest.createFunction(
                 title: senderName,
                 body: dmBody.slice(0, 100),
                 url: `/chats/${channelId}`,
+                workspaceId,
               }),
             ),
           )
@@ -474,6 +475,7 @@ export const onMessageCreated = inngest.createFunction(
                 title: `${senderName} があなたをメンションしました`,
                 body: mentionBody.slice(0, 100),
                 url: `/chats/${channelId}`,
+                workspaceId,
               },
               { updateAppBadge },
             ),
@@ -510,6 +512,7 @@ export const onTaskAssigned = inngest.createFunction(
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         url: '/tasks',
+        workspaceId,
       })
     })
 

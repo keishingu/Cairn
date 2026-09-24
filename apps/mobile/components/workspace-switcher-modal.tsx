@@ -13,13 +13,9 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import {
-  useWorkspaceList,
-  type WorkspaceDto,
-  type WorkspaceListItemDto,
-} from '../hooks/use-account'
+import { useWorkspaceList, type WorkspaceListItemDto } from '../hooks/use-account'
 import { useSession } from '../lib/session-context'
-import { setSelectedWorkspaceId } from '../lib/workspace-selection'
+import { activateWorkspace } from '../lib/workspace-activation'
 import { useAppAppearance } from './appearance-provider'
 
 interface WorkspaceSwitcherModalProps {
@@ -65,16 +61,12 @@ export function WorkspaceSwitcherModal({
     setSwitchError(null)
     setSwitchingId(workspace.id)
     try {
-      await setSelectedWorkspaceId(session.user.id, workspace.id)
-      queryClient.setQueryData<WorkspaceDto>(['workspace'], {
-        id: workspace.id,
-        name: workspace.name,
-        logoUrl: workspace.logoUrl,
-      })
-      onClose()
-      await queryClient.resetQueries({
-        predicate: (query) => query.queryKey[0] !== 'workspace',
-      })
+      await activateWorkspace(
+        queryClient,
+        session.user.id,
+        { id: workspace.id, name: workspace.name, logoUrl: workspace.logoUrl },
+        { beforeReset: onClose },
+      )
       router.replace('/(app)/chats')
     } catch (error) {
       setSwitchingId(null)

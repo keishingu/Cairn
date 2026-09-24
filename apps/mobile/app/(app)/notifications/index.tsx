@@ -83,7 +83,7 @@ export default function NotificationsScreen() {
     if (!item.readAt) {
       markRead.mutate([item.id])
     }
-    followNotification(router, routeFromNotification(item))
+    void followNotification(router, routeFromNotification(item))
   }
 
   if (notificationsQuery.isLoading) {
