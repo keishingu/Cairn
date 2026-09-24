@@ -9,7 +9,7 @@ import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import type { CurrentUserDto } from '@/app/api/me/route'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 
 interface MobileNavProps {
@@ -49,11 +49,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
   const projectLabel = useProjectLabel()
   const TABS = BASE_TABS.map((tab) => ({ ...tab, label: tab.label ? t(tab.label) : projectLabel }))
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: me } = useCurrentUser()
   const { data: workspace } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
     queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),

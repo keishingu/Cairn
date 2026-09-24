@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useCurrentUser } from './use-current-user'
-import type { CurrentUserDto } from '@/app/api/me/route'
+import { patchCurrentUserCache, useCurrentUser } from './use-current-user'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
@@ -49,7 +48,7 @@ export function useSidebarCurrentUser() {
       return status
     },
     onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
+      patchCurrentUserCache(queryClient, { status })
     },
   })
 
@@ -67,7 +66,7 @@ export function useSidebarCurrentUser() {
       return statusMessage
     },
     onSuccess: (statusMessage) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
+      patchCurrentUserCache(queryClient, { statusMessage })
     },
   })
 

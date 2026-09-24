@@ -49,5 +49,8 @@ describe('chatQueryKeys', () => {
       'channel-1',
       'message-1',
     ])
+    expect(chatQueryKeys.messageSearch('channel-1', 'hello')).toEqual(['message-search', 'channel-1', 'hello'])
+    expect(chatQueryKeys.globalMessageSearch('hello')).toEqual(['global-message-search', 'hello'])
+    expect(chatQueryKeys.bookmarks).toEqual(['bookmarks'])
   })
 })

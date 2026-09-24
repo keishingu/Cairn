@@ -40,7 +40,7 @@ import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { chatProjectRoleLabel } from '@cairn/shared'
+import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { isImageMime } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -60,8 +60,11 @@ import type { MentionSelection } from '../../../lib/mobile-chat-state'
 import {
   useChannelMembers,
   useProjectMembers,
+  useWorkspaceChannels,
+  useWorkspaceDms,
   useWorkspaceMembers,
 } from '../../../hooks/use-chat-channels'
+import { useProjectChannels } from '../../../hooks/use-projects'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -494,6 +497,9 @@ export default function ChatThreadScreen() {
   const toggleBookmark = useToggleMessageBookmark(channelId ?? '')
   const upload = useAttachmentUpload(channelId ?? '')
   const { data: me } = useMe()
+  const projectChannelsQuery = useProjectChannels()
+  const workspaceChannelsQuery = useWorkspaceChannels()
+  const dmsQuery = useWorkspaceDms()
   const workspaceMembers = useWorkspaceMembers()
   const channelMembers = useChannelMembers(channelId ?? null, isPrivate === '1')
   const projectMembers = useProjectMembers(projectId ?? null)
@@ -595,6 +601,28 @@ export default function ChatThreadScreen() {
       }),
     [goBackToList, swipeX],
   )
+  const channelListsSettled = projectChannelsQuery.isSuccess && !projectChannelsQuery.isFetching
+    && workspaceChannelsQuery.isSuccess && !workspaceChannelsQuery.isFetching
+    && (!FEATURE_FLAGS.dm || (dmsQuery.isSuccess && !dmsQuery.isFetching))
+  const visibleChannelIds = React.useMemo(() => [
+    ...(projectChannelsQuery.data ?? []).map(channel => channel.channelId),
+    ...(workspaceChannelsQuery.data ?? []).map(channel => channel.id),
+    ...(dmsQuery.data ?? []).map(channel => channel.id),
+  ], [dmsQuery.data, projectChannelsQuery.data, workspaceChannelsQuery.data])
+  const previousVisibleChannelIdsRef = React.useRef<string[] | null>(null)
+  // 一覧に見えていた会話が消えたら、スレッドに残って失敗表示を見せない。作成直後で未反映の ID は対象外。
+  React.useEffect(() => {
+    if (!channelListsSettled || !channelId) return
+    const disappeared = openChannelDisappeared(
+      channelId,
+      previousVisibleChannelIdsRef.current,
+      visibleChannelIds,
+    )
+    if (disappeared && !isFocused) return
+    previousVisibleChannelIdsRef.current = visibleChannelIds
+    if (disappeared) goBackToList()
+  }, [channelId, channelListsSettled, goBackToList, isFocused, visibleChannelIds])
+
   React.useEffect(() => {
     const unsubFocus = navigation.addListener('focus', () => setIsFocused(true))
     const unsubBlur = navigation.addListener('blur', () => {

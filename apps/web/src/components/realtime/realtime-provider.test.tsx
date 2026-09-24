@@ -42,6 +42,10 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: mockCreateClient,
 }))
 
+vi.mock('@/hooks/use-current-user', () => ({
+  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
+}))
+
 vi.mock('@/lib/chat/client', () => ({
   chatQueryKeys: {
     projectChannels: ['project-channels'],
@@ -49,7 +53,6 @@ vi.mock('@/lib/chat/client', () => ({
     dms: ['dms'],
     messages: (id: string) => ['messages', id],
   },
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Tester' } }),
   useProjectChannels: () => ({ data: [] }),
   useWorkspaceChannels: () => ({ data: workspaceChannels }),
   useWorkspaceDms: () => ({ data: [] }),
@@ -227,6 +230,33 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
+  })
+
+  it('channels の削除 broadcast で一覧・タスク・通知を再取得する', async () => {
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    invalidate.mockClear()
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'channels', operation: 'DELETE' } })
+    })
+    act(() => {
+      vi.advanceTimersByTime(800)
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notifications'] })
   })
 
   it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {

@@ -24,7 +24,6 @@ import {
   useChannelMessageHistory,
   useChannelMessages,
   useChannelMembers,
-  useCurrentUser,
   useDeleteMessage,
   useEditMessage,
   useEnsureMessageLoaded,
@@ -37,6 +36,7 @@ import {
   useProjectChannels,
   ChannelMessagesError,
 } from '@/lib/chat/client'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
