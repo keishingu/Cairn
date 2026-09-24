@@ -4,6 +4,7 @@ export interface QueuedMessage {
   id: string
   channelId: string
   content: string
+  mentionNames?: Record<string, string>
   parentMessageId?: string
   attachmentFileIds?: string[]
   createdAt: string

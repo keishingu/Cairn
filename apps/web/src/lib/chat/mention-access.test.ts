@@ -11,16 +11,28 @@ const recipients = [
 ]
 
 describe('filterMentionRecipients', () => {
-  it('通常のワークスペースチャンネルでは全員を通知対象にする', () => {
+  it('通常のワークスペースチャンネルでは member 以上を残し、未参加 guest を除外する', () => {
     const channel: MentionChannelInfo = { type: 'workspace', projectId: null, isPrivate: false }
     const result = filterMentionRecipients({
       channel,
       recipients,
+      channelMemberIds: new Set(['guest-in']),
+      guestIds: new Set(['guest-in', 'guest-out']),
+      projectMemberIds: new Set(),
+    })
+    expect(result.map(r => r.userId)).toEqual(['member-a', 'guest-in'])
+  })
+
+  it('通常チャンネルで guest が居なければ全員（member）を通知対象にする', () => {
+    const channel: MentionChannelInfo = { type: 'workspace', projectId: null, isPrivate: false }
+    const result = filterMentionRecipients({
+      channel,
+      recipients: [{ userId: 'member-a' }],
       channelMemberIds: new Set(),
       guestIds: new Set(),
       projectMemberIds: new Set(),
     })
-    expect(result).toEqual(recipients)
+    expect(result).toEqual([{ userId: 'member-a' }])
   })
 
   it('プロジェクトチャンネルでは参加外プロジェクトのゲストを除外する', () => {
@@ -46,6 +58,18 @@ describe('filterMentionRecipients', () => {
       projectMemberIds: new Set(['guest-in']),
     })
     expect(result.map(r => r.userId)).toEqual(['member-a'])
+  })
+
+  it('DM でもチャンネルメンバーのみ通知対象にする', () => {
+    const channel: MentionChannelInfo = { type: 'dm', projectId: null, isPrivate: false }
+    const result = filterMentionRecipients({
+      channel,
+      recipients,
+      channelMemberIds: new Set(['member-a', 'guest-in']),
+      guestIds: new Set(['guest-in', 'guest-out']),
+      projectMemberIds: new Set(),
+    })
+    expect(result.map(r => r.userId)).toEqual(['member-a', 'guest-in'])
   })
 
   it('member 以上（ゲストでない）はプロジェクト未参加でも通知対象に残す', () => {

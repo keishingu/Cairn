@@ -249,14 +249,18 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 
 .hero h1 { margin-bottom: 22px; }
 .hero h1 .row2 { color: var(--ink-3); }
-.hero-lead { font-size: clamp(16px, 1.9vw, 20px); color: var(--ink-2); max-width: 42ch; line-height: 1.65; margin: 0 auto 14px; }
+.hero-lead { font-size: clamp(16px, 1.9vw, 20px); color: var(--ink-2); max-width: 30em; line-height: 1.65; margin: 0 auto 14px; }
 .hero-lead .jp { display: block; font-size: 15px; color: var(--ink-3); max-width: 40ch; margin: 12px auto 0; }
-.hero-money { font-size: 14.5px; color: var(--ink-3); max-width: 42ch; line-height: 1.6; margin: 0 auto; }
+.hero-money { font-size: 14.5px; color: var(--ink-3); max-width: 30em; line-height: 1.6; margin: 0 auto; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 30px; }
 
 .hero-meta { display: flex; flex-wrap: wrap; gap: 8px 26px; justify-content: center; margin-top: 30px; color: var(--ink-3); font-size: 13.5px; }
 .hero-meta span { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .hero-meta svg { width: 15px; height: 15px; color: var(--accent-2); }
+
+.store-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 14px; color: var(--ink-2); transition: color .15s; }
+.store-link:hover { color: var(--accent-2); }
+.store-link svg { width: 16px; height: 16px; color: var(--accent-2); }
 
 /* product window mock */
 .shot { position: relative; z-index: 1; width: 100%; max-width: 1080px; margin: clamp(48px,7vh,80px) auto 0; }
@@ -439,6 +443,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .feat-ic svg { width: 22px; height: 22px; }
 .feat h3 { margin-bottom: 10px; display: flex; align-items: center; gap: 9px; }
 .feat .en { font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+.feat-link { display: inline-block; margin-top: 12px; font-size: 14px; color: var(--accent-2); }
+.feat-link:hover { text-decoration: underline; }
 .feat .jp { display: block; font-size: 13px; color: var(--ink-4); margin-top: 7px; }
 
 /* ── split (oss / deploy) ──────────────────────────────────────────── */
@@ -547,9 +553,47 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 .reveal[data-d="5"] { transition-delay: .30s; }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
 
+/* ── free scope stats ──────────────────────────────────────────────── */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 48px; border: 1px solid var(--hair); border-radius: var(--radius); overflow: hidden; background: var(--hair); }
+.stat { background: var(--bg); padding: 28px 24px; display: flex; flex-direction: column; gap: 8px; }
+.stat b { font-size: clamp(26px, 3vw, 34px); font-weight: 600; letter-spacing: -0.03em; color: var(--accent-2); line-height: 1.1; }
+.stat b small { font-size: 0.55em; margin-left: 3px; color: var(--ink-2); }
+.stat > span { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+
+/* ── comparison table ─────────────────────────────────────────────── */
+.cmp-wrap { margin-top: 48px; overflow-x: auto; border: 1px solid var(--hair); border-radius: var(--radius); -webkit-overflow-scrolling: touch; }
+.cmp { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px; }
+.cmp th, .cmp td { padding: 16px 18px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hair); line-height: 1.5; }
+.cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+.cmp thead th { font-size: 13px; font-weight: 600; color: var(--ink-2); background: var(--bg-2); }
+.cmp tbody th { font-weight: 500; color: var(--ink-2); width: 22%; }
+.cmp td { color: var(--ink-3); }
+.cmp .is-cairn { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+.cmp thead .is-cairn { color: var(--accent-2); }
+.cmp tbody th, .cmp thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+.cmp thead th:first-child { background: var(--bg-2); }
+.cmp-note { margin: 16px auto 0; max-width: 72ch; text-align: center; font-size: 12.5px; color: var(--ink-4); line-height: 1.6; }
+
+/* ── pricing ──────────────────────────────────────────────────────── */
+.price-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 48px; align-items: stretch; }
+.price { position: relative; display: flex; flex-direction: column; padding: 28px 24px; border-radius: var(--radius); border: 1px solid var(--hair-2); background: var(--card); }
+.price--quiet { background: var(--bg-2); }
+.price h3 { font-size: 18px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+.price-tag { font-style: normal; font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--ink-3); border: 1px solid var(--hair-2); padding: 2px 7px; border-radius: 999px; }
+.price-amt { margin-top: 14px; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.price-amt small { display: block; margin-top: 4px; font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--ink-3); }
+.price-amt--text { font-size: 26px; }
+.price-for { margin: 10px 0 0; font-size: 14px; color: var(--ink-2); }
+.price .check-list { margin-top: 20px; gap: 10px; }
+.price .check-list li { font-size: 13.5px; }
+.price-cta { margin-top: auto; }
+.price .check-list + .price-cta { margin-top: 24px; }
+
 /* ── responsive ────────────────────────────────────────────────────── */
 @media (max-width: 1000px) {
   .nav-links { display: none; }
+  .price-grid { grid-template-columns: 1fr 1fr; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
   .ent { grid-template-columns: 1fr; }
   .ent-r { border-left: 0; border-top: 1px solid var(--hair); }
   .app { grid-template-columns: 1fr 300px; }
@@ -566,6 +610,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 }
 @media (max-width: 560px) {
   .wrap { padding: 0 18px; }
+  .price-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
+  .display { font-size: 34px; }
   .feat-grid { grid-template-columns: 1fr; }
   .deploy-targets { grid-template-columns: 1fr; }
   .foot-grid { grid-template-columns: 1fr 1fr; }

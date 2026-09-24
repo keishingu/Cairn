@@ -15,7 +15,7 @@ export async function POST(
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers, channelMembers, channels, projects } = await import('@cairn/db')
+    const { workspaceInvites, workspaceMembers, projectMembers, projectRoles, channelMembers, channels, projects } = await import('@cairn/db')
     const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
@@ -130,12 +130,18 @@ export async function POST(
 
       // ゲスト招待にプロジェクトが紐付いている場合、プロジェクトメンバーにも自動追加
       if (claimed.projectId) {
+        const [defaultRole] = await tx
+          .select({ id: projectRoles.id })
+          .from(projectRoles)
+          .where(and(eq(projectRoles.workspaceId, claimed.workspaceId), eq(projectRoles.legacyRole, 'member')))
+
         await tx
           .insert(projectMembers)
           .values({
             projectId: claimed.projectId,
             userId,
             role: 'member',
+            roleId: defaultRole?.id ?? null,
             attendance: 'attending',
           })
           .onConflictDoNothing()

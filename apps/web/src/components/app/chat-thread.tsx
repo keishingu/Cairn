@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -38,8 +38,16 @@ import {
   ChannelMessagesError,
 } from '@/lib/chat/client'
 import { useProjectMembers } from '@/hooks/use-project-members'
+import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  ALL_MENTION_ID,
+  ALL_MENTION_LABEL,
+  PROJECT_MEMBERS_MENTION_ID,
+  PROJECT_MEMBERS_MENTION_LABEL,
+  attributeMentionTokenId,
+  stripMentionsToText,
+} from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
@@ -132,14 +140,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-const PROJECT_ROLE_LABEL: Record<Exclude<ProjectMemberRole, 'member'>, string> = {
-  leader: 'リーダー',
-  subleader: 'サブリーダー',
-  reviewer: 'レビュワー',
-  observer: 'オブザーバー',
-}
-
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -149,6 +150,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderEmail?: string | null
   senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
+  senderProjectRoleName?: string | null
+  senderProjectRoleColor?: string | null
+  senderProjectRoleLegacy?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -185,9 +189,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const emojiOnly = isEmojiOnly(content)
   const isOwn = currentUserId === senderId
   const canCopy = content.length > 0
-  const visibleProjectRole = senderProjectRole && senderProjectRole !== 'member'
-    ? PROJECT_ROLE_LABEL[senderProjectRole]
-    : null
+  const visibleProjectRole = chatProjectRoleLabel({
+    legacyRole: senderProjectRole,
+    roleName: senderProjectRoleName,
+    configuredLegacyRole: senderProjectRoleLegacy,
+  })
+  const projectRoleColor = senderProjectRoleName ? senderProjectRoleColor : null
 
   const startEdit = () => {
     setEditDraft(content)
@@ -234,7 +241,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     }
   }
 
-  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、コピーは内容がある場合、編集/削除は自分のみ
+  // ホバーツールバー（モバイルは名前行の右端に常時表示、PC はホバー時に本文へ重ねる）。
+  // モバイルで本文列の横に置くと、右上の導線のために本文まで狭くなる。
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content)
   }, [content])
@@ -285,7 +293,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
   const messageActions = !editMode && (isMobile || hovered) && (
     <div style={isMobile
-      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2, display: 'flex', alignItems: 'center', gap: 2 }
+      ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
       <button onClick={() => onReply(messageId)} title="返信" style={iconBtnStyle}>
@@ -314,16 +322,19 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
-          {visibleProjectRole && (
-            <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--violet-soft)', color: 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
-              {visibleProjectRole}
-            </span>
-          )}
-          {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
-          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
-          {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
+          <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+            {visibleProjectRole && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
+                {visibleProjectRole}
+              </span>
+            )}
+            {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
+            <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
+            {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+          </div>
+          {isMobile && messageActions}
         </div>
         {isMobile && senderProfileAttributes.length > 0 && (
           <span style={{ display: 'block', marginBottom: 4 }}>
@@ -472,7 +483,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           )}
         </div>
       </div>
-      {messageActions}
+      {!isMobile && messageActions}
 
       <ConfirmDialog
         open={deleteConfirm}
@@ -487,7 +498,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -504,8 +515,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  mentionAttributes?: { id: string; name: string }[]
+  /** DM ではグループメンションを展開しないため候補から外す */
+  includeAllMention?: boolean
+  /** プロジェクトチャンネルのときだけ @project_members を候補に出す */
+  includeProjectMembersMention?: boolean
   mentionNames?: Map<string, string>
-  onMentionInserted?: (userId: string, displayName: string) => void
+  onMentionInserted?: (tokenId: string, displayName: string) => void
   onCreateTextFile: () => void
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
@@ -598,10 +614,36 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }, [draft])
 
   const mentionCandidates = React.useMemo(() => {
-    if (mentionQuery === null || !mentionMembers) return []
+    if (mentionQuery === null) return []
     const q = mentionQuery.toLowerCase()
-    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q))
-  }, [mentionQuery, mentionMembers])
+    type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
+    const items: MentionPickerItem[] = []
+    if (includeAllMention && ALL_MENTION_LABEL.startsWith(q)) {
+      items.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
+    }
+    if (includeProjectMembersMention && PROJECT_MEMBERS_MENTION_LABEL.startsWith(q)) {
+      items.push({
+        tokenId: PROJECT_MEMBERS_MENTION_ID,
+        displayName: PROJECT_MEMBERS_MENTION_LABEL,
+        kind: 'project_members',
+      })
+    }
+    for (const attribute of mentionAttributes ?? []) {
+      if (attribute.name.toLowerCase().includes(q)) {
+        items.push({
+          tokenId: attributeMentionTokenId(attribute.id),
+          displayName: attribute.name,
+          kind: 'attr',
+        })
+      }
+    }
+    for (const member of mentionMembers ?? []) {
+      if (member.displayName.toLowerCase().includes(q)) {
+        items.push({ tokenId: member.userId, displayName: member.displayName, kind: 'user' })
+      }
+    }
+    return items
+  }, [mentionQuery, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
@@ -618,12 +660,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     detectMention(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
   }
 
-  const insertMention = (userId: string, displayName: string) => {
+  const insertMention = (tokenId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
-    onMentionInserted?.(userId, displayName)
+    onMentionInserted?.(tokenId, displayName)
     setInsertedMentionNames(prev => { const next = new Set(prev); next.add(displayName); return next })
     setMentionQuery(null)
     setMentionAnchorPos(null)
@@ -643,7 +685,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         const m = mentionCandidates[selectedIdx] ?? mentionCandidates[0]
-        if (m) insertMention(m.userId, m.displayName)
+        if (m) insertMention(m.tokenId, m.displayName)
         return
       }
     } else if (e.key === 'Escape') {
@@ -665,14 +707,21 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     return (
       <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
-          <button key={m.userId}
+          <button key={m.tokenId}
             ref={i === selectedIdx ? node => node?.scrollIntoView?.({ block: 'nearest' }) : undefined}
-            onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.tokenId, m.displayName) }}
             onMouseEnter={() => setSelectedIdx(i)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
-            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>
+              @{m.displayName}
+              {m.kind === 'all' || m.kind === 'project_members' || m.kind === 'attr' ? (
+                <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-4)', fontWeight: 500 }}>
+                  {m.kind === 'all' ? '全員' : m.kind === 'project_members' ? 'プロジェクトメンバー' : '属性'}
+                </span>
+              ) : null}
+            </span>
           </button>
         ))}
       </div>
@@ -1080,10 +1129,12 @@ function useMessageTimelineScroll({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
+  /** DM ではグループ/属性メンションを展開しないためピッカーから外す */
+  isDm?: boolean
   compact?: boolean
   isMobile?: boolean
   targetMessage?: { id: string } | null
@@ -1107,8 +1158,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const [initialPositioned, setInitialPositioned] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const queryClient = useQueryClient()
-  // displayName → userId map for structured mention serialization
-  const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+  // 挿入順のリスト。同名ラベルが衝突しても出現順で正しい tokenId に変換できる
+  const mentionInsertionsRef = React.useRef<{ tokenId: string; displayName: string }[]>([])
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
   const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
   latestDraftRef.current = { draft, pendingAttachments }
@@ -1148,6 +1199,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       setDraft('')
       setPendingAttachments([])
     }
+    mentionInsertionsRef.current = []
     return () => {
       const { draft: d, pendingAttachments: p } = latestDraftRef.current
       persistDraft(channelId, d, p)
@@ -1161,22 +1213,21 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => clearTimeout(timer)
   }, [channelId, draft, pendingAttachments, persistDraft])
 
-  const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
-    mentionMapRef.current.set(displayName, userId)
+  const onMentionInserted = React.useCallback((tokenId: string, displayName: string) => {
+    mentionInsertionsRef.current.push({ tokenId, displayName })
   }, [])
 
-  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
+  // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない。
+  // 同名ラベルは挿入順に「先頭から1件ずつ」置換し、後勝ちの Map 衝突を避ける。
   const transformContent = (text: string): string => {
-    const entries = [...mentionMapRef.current.entries()]
-    if (entries.length === 0) return text
-    // Longest name first to avoid partial replacements
-    entries.sort((a, b) => b[0].length - a[0].length)
+    const insertions = mentionInsertionsRef.current
+    if (insertions.length === 0) return text
     let result = text
-    for (const [displayName, userId] of entries) {
+    for (const { tokenId, displayName } of insertions) {
       const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       result = result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}>`,
+        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`),
+        `<@${tokenId}>`,
       )
     }
     return result
@@ -1430,13 +1481,20 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return wsMembers.filter(m => m.userId !== currentUser?.id)
   }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
 
-  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
-  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  const { data: profileAttributes = [] } = useProfileAttributes()
+
+  // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）
   const mentionNames = React.useMemo(() => {
     const map = new Map<string, string>()
+    map.set(ALL_MENTION_ID, ALL_MENTION_LABEL)
+    map.set(PROJECT_MEMBERS_MENTION_ID, PROJECT_MEMBERS_MENTION_LABEL)
+    for (const attribute of profileAttributes) {
+      map.set(attributeMentionTokenId(attribute.id), attribute.name)
+    }
     for (const m of wsMembers) map.set(m.userId, m.displayName)
     return map
-  }, [wsMembers])
+  }, [wsMembers, profileAttributes])
   const emailByUserId = React.useMemo(() => {
     const map = new Map<string, string | null>()
     for (const m of wsMembers) map.set(m.userId, m.email ?? null)
@@ -1757,7 +1815,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const rawText = draft.trim()
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
-    mentionMapRef.current.clear()
+    mentionInsertionsRef.current = []
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1876,6 +1934,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
               senderEmail={emailByUserId.get(item.message.senderId) ?? null}
               senderProfileAttributes={item.message.senderProfileAttributes ?? []}
               senderProjectRole={item.message.senderProjectRole ?? null}
+              senderProjectRoleName={item.message.senderProjectRoleName ?? null}
+              senderProjectRoleColor={item.message.senderProjectRoleColor ?? null}
+              senderProjectRoleLegacy={item.message.senderProjectRoleLegacy ?? null}
               createdAt={item.message.createdAt}
               isEdited={item.message.isEdited}
               content={item.message.content}
@@ -1936,6 +1997,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionAttributes={isDm ? [] : profileAttributes}
+        includeAllMention={!isDm}
+        includeProjectMembersMention={!isDm && !!projectId}
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}

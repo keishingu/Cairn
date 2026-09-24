@@ -1,8 +1,8 @@
-# LP コンテンツ再構築（三人称順・誠実コピー）
+# LP コンテンツ再構築（無料のチャット＋プロジェクト管理）
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
-- **更新**: 2026-08-27
+- **更新**: 2026-09-23
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
@@ -11,99 +11,89 @@
 
 ## 1. 背景
 
-旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者に刺さらなかった。その後の再構築（2026-07）は「One Project. One Place」と 6 機能カタログ、`?p=team|alpineclub` のペルソナ切替を主物語にした。
+2026-08 の「三人称順」版（Hero「コメントが、チャットになる。」→ まとめ役 → アーリーアダプター）は、仕組みの説明が中心で困りごとに接続せず、競合名を避けた結果「何と比べて良いのか」も伝わらなかった。
 
-2026-08 の再構築は、そのカタログ物語をやめて **一枚のページを三人の読み順** にする。公開 LP は初回訪問者向けであり、実装していない能力・人数課金・ケルン課金 UX を出さない。競合製品名は **Hero / セクション1–2 の本文には出さず**、検索で見つかる場所（title・meta・ページ下部 FAQ）にだけ置く。
-
-
-## 2. 三人の読み順（現行の主物語）
-
-`?p=team|alpineclub` は **主物語にしない**。JS は古い URL 互換のため `data-persona` を残すが、コピーは切替に依存しない。現場の例はイラストとして出してよい。競合製品名は Hero・セクション1–2・まとめ役本文には付けない。
-
-| 順 | 読み手 | セクション | 伝えること |
-|---|---|---|---|
-| 1 | 一般メンバー（全員が得する） | Hero `#stay` | 案件のコメントスレッドがリアルタイムチャットとして進む。話したことは消えない。仕事として残る。人数では料金が増えない。有料は大きなファイルと、自分から使う AI だけ。会話は無料。CTA は「無料で始める」 |
-| 2 | これまで「まとめ役」だった人 | `#admin` | 遅れを指摘しなくていい。進捗を聞きに回る時間をやめられる。管理ツールの売り込みにしない。短い |
-| 3 | エンジニア / アーリーアダプターだけ | `#ai` | ネイティブのチーム AI（MCP を知らない人向け）が先。会話とファイルを読んで出典つきで答える。チャットの ☑ がタスクになる。能動利用は有料。MCP は任意でその下。Claude / Cursor からタスクとメッセージを読み書きできる |
-
-Hero と最終 CTA のラベルは「**無料で始める / Start for free**」。`/auth/login` に `data-cta` と `?utm_source=lp&utm_content=<cta-id>`（`nav` / `hero` / `final` / `footer-product`）。
-
-GitHub リンクは維持する。Hero の二次 CTA も実リポジトリへ向ける。
+小規模チーム・団体は、Slack / 国産チャット / Backlog などの **無料プランを組み合わせて** 使っていることが多く、判断軸は主に料金である。そこで 2026-09 に主物語を **「無料でチャットも、プロジェクト管理も。」** に置き換えた。
 
 
-## 3. 誠実化（Soul ゲート）
+## 2. ターゲット
 
-公開 LP に書いてよいのは、**本番で動いていること**だけ。望む一文が未出荷なら、いちばん近い本当のループに落とす。
+| 優先 | 読み手 | 入口のプラン |
+|---|---|---|
+| 1 | 学生団体・コミュニティ | Free → 必要な人だけ Solo |
+| 2 | 個人事業主の延長のような小規模チーム | Free / Solo → Team（準備中） |
+| 3 | 企業内の小規模チーム（試験導入） | Free → Expedition（導入支援つき） |
+
+企業向けは Expedition で FDE 的な導入支援（業務整理・運用設計・既存ツール連携）へつなぐ。
+
+
+## 3. 構成
+
+| 順 | セクション | 伝えること |
+|---|---|---|
+| 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は必要な人だけ月 ¥300。CTA「無料で始める」＋「料金を見る」 |
+| 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 10GB（1ファイル 5MB） |
+| 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
+| 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
+| 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone アプリとブラウザ（App Store リンク）、キーボード、電気通信事業届出 |
+| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談 |
+| 7 | AI `#ai` | 出典つき回答（Solo）と MCP（任意）を短く |
+| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる。GitHub と要望受付ワークスペースへの導線 |
+| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、ゲスト、企業導入 |
+| 10 | 最終 CTA `#demo` | Hero と同じ見出し。クレジットカード不要 |
+
+
+## 4. コピーの規則
+
+### トーン
+
+- 事実を短く書く。**AI っぽい甘い口調を使わない**（呼びかけ・「〜しませんか」・詩的な改行・「もう〜しない」・情緒的な言い換えを避ける）
+- 見出しは機能か数字で言い切る。本文は常体（FAQ の回答のみ敬体）
+
+### 競合名
+
+- **Chatwork は名前を出さず「国産チャット」とぼかす**（title・meta・本文・FAQ すべて）
+- **比較表では製品名を出さない**。列見出しは「海外製チャット」（Slack）/「国産チャット」（Chatwork）/「国産プロジェクト管理」（Backlog）とする
+- Slack / Backlog の名前は FAQ・meta（検索対策）に限って出してよい。Hero・比較表には出さない
+- 比較表の競合情報は **各社が公開している無料プランの条件** に限り、表の下に「2026年◯月時点」の注記を必ず付ける。条件が変わったら表と注記を更新する
+- 競合の料金の具体額は載せない（「人数課金」「プラン別の月額」の形で書く）
 
 ### 書いてよい（コードで確認済み）
 
 | コピー | 根拠 |
 |---|---|
-| 案件コメントがリアルタイムチャットになる | `RealtimeProvider` + `realtime.broadcast_changes()`。ポーリングなし |
-| チャットの ☑ がタスクになる | `parseCheckboxes` → プロジェクトチャンネル投稿時にタスク化（`post-message.ts`） |
-| `/ai` がファイル・会話を読み、出典つきで答える | RAG `rag-sources` + 読み取り専用 research tools。書き込み・自動リスケはしない |
-| リモート MCP でタスクとメッセージの読み書き | `GET`/`POST /api/mcp`。`list_my_tasks` / `create_task` / `complete_task` / `search_messages` / `post_message` ほか |
-| 会話メンバーは人数無制限。人数では課金しない | [`pricing-plan-design.md`](./pricing-plan-design.md)（メンバー数 / チャット履歴 / ゲストは全プラン無制限） |
-| 有料 = 大きなファイル + 能動 AI | [`billing-implementation-design.md`](./billing-implementation-design.md)。能動 AI は `/ai` 依頼。チャット本文は無料 |
-| ゲストはリンク招待（メール不要） | 招待リンク。ゲストは参加プロジェクトのみ |
-| スマホと PC、同じ場所 | Web / iOS / Android / Desktop |
-| Apache-2.0 / GitHub | 公開リポジトリ |
-| セルフホストは事実ベース | ローカルは `git clone` + `supabase start && pnpm dev`。Docker / On-Premise は `roadmap` |
+| メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
+| ファイル 10GB・1ファイル 5MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `FREE_ATTACHMENT_MAX_FILE_SIZE` |
+| Solo ¥300/月、1ファイル 10MB、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
+| AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
+| ☑ がタスクになり双方向同期 | `parseCheckboxes` / Todo→Task 同期 |
+| 圏外送信（スマホアプリ） | Expo の送信オフラインキュー |
+| 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
+| 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
+| セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
+| iPhone アプリ（App Store 公開済み） | https://apps.apple.com/jp/app/cairn/id6800673777 |
+| 電気通信事業届出（A-08-24291） | [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) |
 
 ### 書いてはいけない
 
-- **未出荷の約束**: 自律エージェント、予定の自動変更、チャンネル内 AI メンバー、Bring Your Own AI、動く `docker compose up`
-- **AI PMO / 監視**: 「誰が遅いか」ダッシュボード、遅れの自動指摘を売りにしない（Productionでもワークスペース単位の段階公開中。受動ナッジを LP の機能として出さない）
-- **人数課金**: per-seat / 席課金の暗示も禁止
-- **ケルン課金 UX**: 石積み・風化・Solo プラン名は初回訪問者向け LP に出さない。入口では「会話は無料、大きなファイルと能動 AI だけ有料」まで
-- **競合製品名を主物語にしない**: Backlog / Chatwork / Slack / Notion / LINE を Hero、H1、セクション1–2、まとめ役本文に置かない。検索で見つかるように `<title>` / `meta description` / `og:description` とページ下部 FAQ（`#faq`）に自然な日本語で置く。FAQ は「案件コメント + 仕事チャットが分かれている状態の置き場所」まで。機能比較表や `/vs/` ページは作らない
-- **非公開の顧客名**: パブリックリポジトリのため固有名詞を出さない
-- **MCP の実装詳細を Hero に置かない**: OAuth / PAT / API / `/api/mcp` は Hero 禁止。MCP 自体はセクション 3 の任意枠だけ
-- **機能カタログを主物語にしない**: Chat / Tasks / Calendar / Files / Gallery / AI の 6 枚並べは廃止。Gallery は「残ることの証拠」として降格
+- **未公開のアプリ**: Android（社内配布のみ）とデスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
+- **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
+- **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない
+- **石・ケルン・風化の用語**: LP では「クレジット」で説明する
+- **Team の確定価格**: 「目安」「準備中」と必ず併記する
+- **Solo の AI 回数**: 「最大」と書く。保存と AI の自動通知が同じクレジットを消費するため
+- **非公開の顧客名**
 
 
-## 4. 降格して残すもの
-
-主物語のあと、小さめに残す。
-
-- ゲスト招待（リンク、メール不要）
-- スマホと PC、同じ場所
-- Apache-2.0 / GitHub
-- Gallery は機能一覧ではなく、「写真も会話の隣に残る」証拠
-- セルフホストは事実ベース / roadmap
-- 法人向けサポート（フッター近く）
-- 下部 FAQ（競合名はここ。Hero には出さない）
-
-
-## 5. 履歴（2026-07 の再構築）
-
-当時の二段構え（小さなチームが主役、山岳部は `?p=alpineclub`）と 6 機能カタログは、2026-08 の三人称順に置き換えた。CTA ラベル「無料で始める」、UTM、GitHub 実リンク、BYO AI 削除、偽 `docker compose up` 削除は維持している。
-
-当時の機能→PR 対応表は参考用:
-
-| 体験 | 根拠 PR |
-|---|---|
-| Chat: 返信・ブックマーク・下書き自動保存 | #225, #106, #76 |
-| Tasks: チャットの ☑ がタスクに同期 | #112 |
-| Calendar: Google カレンダー読込・タイムライン・ドラッグ作成 | #121, #146 |
-| Files & Search: 最新版フラグ・全チャンネル横断検索 | #155, #89, #237 |
-| Gallery: プロジェクトごとのアルバム | 既存 + #92 |
-| AI: ファイル・Google Docs を読み出典つきで回答 | #59, #263 |
-| Everywhere: Web / iOS / Android / Desktop | Expo, #115, #130 |
-| Guests & Roles: 招待リンク・ゲスト制限・ロール権限 | #120, #140, #93, #102 |
-
-
-## 6. CTA とパラメータ規約
+## 5. CTA とパラメータ規約
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
-- `data-cta`: `nav` / `hero` / `final` / `footer-product`（フッターアイコン・コミュニティは要望受付ワークスペース招待）
-- 計測（PostHog 集約イベント）は後回し。導入時はこの `data-cta` / UTM をイベントプロパティに使う
-- 認証ルーティングとアプリ本体の UI は LP 再構築の対象外（[`landing-page-routing-design.md`](./landing-page-routing-design.md)）
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-hero` / `appstore-details` / `appstore-final` / `appstore-footer`（App Store は外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- Expedition の問い合わせは既存の相談窓口へ
 
 
-## 7. 今後
+## 6. 今後
 
-- LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ。ペルソナ別 CVR 比較の受け皿として `?p=` は残っているが、**現行コピーはペルソナ切替を使わない**
-- BYO AI・Docker セルフホストが実装されたら、事実として昇格させてよい
-- AI PMO の段階公開中は、受動 AI を LP の機能として書かない
-- OGP 画像・canonical・robots・sitemap は整備済み。title / description / FAQ の競合名は検索用であり、Hero のコピー実験とは分けて扱う
+- OGP 画像（`og-image.png` / `.svg`）は旧コピー「One Project. One Place.」のまま。作り直すまで `og:image:alt` は画像の実際の内容に合わせる
+- Team の提供開始時に価格と内容を確定し、「準備中」を外す
+- 比較表の競合条件は四半期ごとに見直す

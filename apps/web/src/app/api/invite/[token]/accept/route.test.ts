@@ -58,7 +58,9 @@ vi.mock('@cairn/db', () => ({
     userId: 'pm.userId',
     role: 'pm.role',
     attendance: 'pm.attendance',
+    roleId: 'pm.roleId',
   },
+  projectRoles: { id: 'pr.id', workspaceId: 'pr.workspaceId', legacyRole: 'pr.legacyRole' },
   channelMembers: {
     channelId: 'cm.channelId',
     userId: 'cm.userId',
@@ -215,6 +217,7 @@ describe('POST /api/invite/[token]/accept', () => {
       .mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
       .mockReturnValueOnce(selectChain([{ id: 'old-project' }, { id: 'project-invite' }]))
       .mockReturnValueOnce(selectChain([{ id: 'old-private-channel' }]))
+      .mockReturnValueOnce(selectChain([{ id: 'role-member' }]))
     mockDb.update.mockReturnValueOnce(updateChain([{ id: 'inv-guest', workspaceId: WORKSPACE_ID, role: 'guest', projectId: 'project-invite' }]))
     mockDb.update.mockReturnValueOnce({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) })
     mockDb.delete.mockReturnValue(deleteChain())

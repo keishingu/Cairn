@@ -114,7 +114,7 @@ pnpm dev
 
 ## モバイルプレビュー（EAS Update）
 
-`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、CI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。同じ revision は `preview` channel にも配信され、Internal Distribution build は次回起動時に取得する。
+`apps/mobile`、`packages/shared`、またはモバイルの依存関係に変更がある PR では、PR作成時にCI（`.github/workflows/mobile-preview.yml`）が EAS Update を発行し、PR に QR コード付きのプレビューリンクをコメントする。以降のpushでは更新せず、レビュー指摘への対応完了後など、最新SHAの確認が必要なときに権限のあるメンバーがPRへ `@eas update` とコメントして再配信する。互換性のある Cairn Development Build で QR を開けば、ローカル環境を起動せずに確認できる（Expo Go は使用しない）。同じ revision は `preview` channel にも配信され、Internal Distribution build は次回起動時に取得する。
 
 | 起動方法                                    | JavaScript の配信元                      | Web / API 接続先                       | Supabase 接続先                         |
 | ------------------------------------------- | ---------------------------------------- | -------------------------------------- | --------------------------------------- |

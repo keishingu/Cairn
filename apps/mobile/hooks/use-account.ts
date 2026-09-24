@@ -9,6 +9,7 @@ export interface MeDto {
   avatarUrl: string | null
   theme: AppearanceTheme
   accentId: AccentId
+  wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export interface WorkspaceDto {

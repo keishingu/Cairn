@@ -71,7 +71,7 @@ pnpm dev
   - 開発は expo-dev-client を使う。`pnpm ios` / `pnpm android` でローカルビルド（単体アプリとしてインストール）、2回目以降は `pnpm dev` で Metro 起動のみ
   - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios` を使う。初回設定、メタデータ、審査アカウント、スクリーンショット、確認項目は [`docs/app-store-submission.md`](docs/app-store-submission.md) を参照
   - ネイティブ側の接続先 URL は `EXPO_PUBLIC_*` 未設定時に Metro の接続先ホストから自動導出する（`apps/mobile/lib/env.ts`）。シミュレータ・実機・Android エミュレータで IP の手動設定は不要
-  - PR の Mobile Preview は、Vercel Deployment Protection を避けるため初回から `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR固有branchへDevelopment Build用QRを発行すると同時に `preview` channelへInternal Distribution用OTAを配信する（`.github/workflows/mobile-preview.yml`）。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。Internal Distributionでは最後に成功したMobile Previewを最新版とする
+  - PR の Mobile Preview は、Vercel Deployment Protection を避けるため初回から `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR固有branchへDevelopment Build用QRを発行すると同時に `preview` channelへInternal Distribution用OTAを配信する（`.github/workflows/mobile-preview.yml`）。自動配信はモバイル関連PRの作成時だけとし、以降は権限のあるメンバーによる完全一致の `@eas update` コメントで最新SHAを再配信する。同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。Internal Distributionでは最後に成功したMobile Previewを最新版とする
   - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先として使用しない
   - **Internal Distribution は `preview` profile を使う**。Android は APK、iOS は登録済み端末向け Ad Hoc build とし、ローカルコマンドまたは手動の `.github/workflows/mobile-internal-build.yml` から起動する。GitHub Actions の `ios` / `all` build は `--refresh-ad-hoc-provisioning-profile` で登録済み端末を provisioning profile へ反映する。`app.config.ts` で `Cairn Dev` / `Cairn Preview` / `Cairn` の URL scheme と bundle/package ID を分離し、同一端末へ共存可能にする
   - **端末キャッシュ基盤は `expo-sqlite`、回線復帰検知は `expo-network` を使う**。SQLite は WAL / foreign keys を初期化し、将来のメッセージキャッシュ・全チャンネル検索を schema migration で追加する。送信 outbox は先に永続化できている AsyncStorage を維持し、`expo-network` が明示的に圏外なら POST を抑止、復帰イベントで即時再送する
@@ -82,6 +82,7 @@ pnpm dev
   - ネイティブチャットも Web と同じ private Realtime Broadcast（`user:{userId}` / `channel:{channelId}`）で更新し、ポーリングは使わない
   - **ネイティブの本文・返信送信は必ずオフラインキューを経由する**。初回POSTより前にユーザー別AsyncStorageへ保存し、保存完了後に即時送信、失敗時は8秒間隔・前面復帰時に自動再送する。クライアント生成UUIDを `messages.id` としてAPIへ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応
   - **Google ログインはネイティブ実装**: Web のリダイレクト方式は使えないため、`expo-web-browser` で認可コードを受け取り Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先はアプリスキーム `cairn://auth/callback`。**Supabase の許可リストに登録が必要**（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番は Supabase ダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` を呼んで profiles を作成する
+  - **Apple / Google の追加ログイン手段は設定から手動連携**: 同一メールの自動紐付けに加え、設定 → アカウント → ログイン方法で `linkIdentity` により既存アカウントへ Apple / Google を明示連携できる（Apple relay email 対応）。ローカルは `enable_manual_linking = true`、Preview / Production は Dashboard でも Manual Linking を有効化する。Expo の設定 WebView はネイティブ bridge（`link-apple-identity` / `link-google-identity`）経由で連携する
 - **UA ベースのデバイス出し分け**: middleware で `x-device` ヘッダーをセットし、`app/(app)/layout.tsx` で PC シェル / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **プロジェクトビューは localStorage で管理**: 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクト済み。ビュー切替（一覧 / カレンダー / カンバン）はURLパラメータを使わず localStorage のみで永続化（`STORAGE_KEYS.projects_view_pc` / `STORAGE_KEYS.projects_view_mob`）。`/projects/[id]` はプロジェクト詳細（現在は `/projects?open={id}` にリダイレクト）
 - **ファイル一覧はプロジェクト別表示、保存フィルターはユーザー × ワークスペース単位**: `/files` は `files.project_id` を第一階層として折りたたみ表示し、未所属ファイルは「プロジェクトなし」にまとめる。名前付きフィルターは `saved_file_filters` に `workspace_id` / `user_id` を必須で保存し、別ワークスペースや別ユーザーへ共有しない。ストレージ実体の `storage_path` は表示上の分類に使わない
@@ -91,6 +92,7 @@ pnpm dev
 - **WebView 認証はワンタイムトークンハンドオフ方式**: ネイティブ（Expo）の `refresh_token` を WebView に渡して `setSession()` するのは禁止。同一 refresh_token を 2 クライアントが共有すると rotation と衝突してセッションが突然失効する。ネイティブは `POST /api/auth/webview-handoff` で本人の使い捨て magiclink（`hashed_token`）を発行させ、WebView 側は `verifyOtp` で独立したセッションを確立する。詳細は [`docs/mobile-webview-auth-handoff.md`](docs/mobile-webview-auth-handoff.md)
 - **認証メールは Supabase Auth が生成し、Resend のカスタム SMTP で配送する**: 送信専用サブドメインは `mail.oss-cairn.com`。アプリ側に Resend SDK やメール送信ロジックを実装せず、ローカルは Mailpit、Preview / Production は環境別の Resend API キーを Supabase SMTP password にだけ設定する。招待は引き続きリンク共有（30日有効）。設定・検証・ローテーションは [`docs/resend-email-provider.md`](docs/resend-email-provider.md)
 - **権限モデルはワークスペースロールのみで決定する**（プロジェクトロールは業務上の役割であり、システム権限に影響させない）
+  - プロジェクトロールの表示名・色・並び順はワークスペース単位の `project_roles` が共有元。初期値は「リーダー」「サブリーダー」「メンバー」で、`legacy_role = 'member'` の行を新規参加時のデフォルトとする。`project_members.role` はローリングデプロイ互換用に残し、新コードは `role_id` を優先する
   - `owner`: WS設定（名前・ロゴ等）変更 + admin の全権限
   - `admin`: メンバー管理・招待、プロジェクト作成・削除、ゲスト招待リンク発行 + member の全権限
   - `member`: プロジェクト編集・メンバー追加削除、日常操作（チャット・タスク・ファイル等）

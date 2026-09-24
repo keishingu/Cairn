@@ -3,7 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import type { MessageType, ProjectMemberRole } from '@cairn/shared'
-import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { hydrateMentions } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
@@ -43,6 +44,7 @@ export async function getMessages({
       workspaceMembers,
       channels,
       projectMembers,
+      projectRoles,
     } = await import('@cairn/db')
     const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
 
@@ -55,6 +57,9 @@ export async function getMessages({
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
       senderProjectRole: projectMembers.role,
+      senderProjectRoleName: projectRoles.name,
+      senderProjectRoleColor: projectRoles.color,
+      senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
     }
@@ -68,6 +73,9 @@ export async function getMessages({
       senderName: string
       senderAvatarUrl: string | null
       senderProjectRole: ProjectMemberRole | null
+      senderProjectRoleName: string | null
+      senderProjectRoleColor: string | null
+      senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
     }>
@@ -111,6 +119,13 @@ export async function getMessages({
               eq(projectMembers.projectId, channels.projectId),
             ),
           )
+          .leftJoin(
+            projectRoles,
+            and(
+              eq(projectMembers.roleId, projectRoles.id),
+              eq(projectRoles.workspaceId, workspaceId),
+            ),
+          )
           .where(
             and(
               eq(messages.channelId, channelId),
@@ -140,6 +155,13 @@ export async function getMessages({
             and(
               eq(projectMembers.userId, messages.senderId),
               eq(projectMembers.projectId, channels.projectId),
+            ),
+          )
+          .leftJoin(
+            projectRoles,
+            and(
+              eq(projectMembers.roleId, projectRoles.id),
+              eq(projectRoles.workspaceId, workspaceId),
             ),
           )
           .where(
@@ -191,6 +213,13 @@ export async function getMessages({
           and(
             eq(projectMembers.userId, messages.senderId),
             eq(projectMembers.projectId, channels.projectId),
+          ),
+        )
+        .leftJoin(
+          projectRoles,
+          and(
+            eq(projectMembers.roleId, projectRoles.id),
+            eq(projectRoles.workspaceId, workspaceId),
           ),
         )
         .where(and(
@@ -334,38 +363,12 @@ export async function getMessages({
     const senderIds = [...new Set(rows.map(row => row.senderId).filter(id => id !== userId))]
     const visibleSenderIds = new Set(await filterUnblockedRecipients(userId, senderIds))
 
-    // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
-    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
-    // 引用返信バーもメンションを `@表示名` で描画するため、親メッセージの userId も解決対象に含める。
-    const mentionIds = [
-      ...new Set([
-        ...rows.flatMap((row) => extractMentionIds(row.content)),
-        ...parentRows.flatMap((parent) =>
-          parent.deletedAt ? [] : extractMentionIds(parent.content),
-        ),
-      ]),
-    ]
-    const nameMap = new Map<string, string>()
-    if (mentionIds.length > 0) {
-      const profileRows = await db
-        .select({
-          id: profiles.id,
-          displayName: workspaceMemberDisplayName(
-            workspaceMembers.displayName,
-            profiles.displayName,
-          ),
-        })
-        .from(profiles)
-        .leftJoin(
-          workspaceMembers,
-          and(
-            eq(workspaceMembers.userId, profiles.id),
-            eq(workspaceMembers.workspaceId, workspaceId),
-          ),
-        )
-        .where(inArray(profiles.id, mentionIds))
-      for (const profile of profileRows) nameMap.set(profile.id, profile.displayName)
-    }
+    // メンションは canonical な `<@id>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
+    // ユーザー・@all・@project_members・属性をまとめて解決する。
+    const nameMap = await buildMentionNameMap(workspaceId, [
+      ...rows.map((row) => row.content),
+      ...parentRows.flatMap((parent) => (parent.deletedAt ? [] : [parent.content])),
+    ])
 
     const parentMap = new Map<string, ReplyToDto>()
     for (const parent of parentRows) {
@@ -386,6 +389,9 @@ export async function getMessages({
       senderAvatarUrl: row.senderAvatarUrl ?? null,
       senderProfileAttributes: profileAttributes.get(row.senderId) ?? [],
       senderProjectRole: row.senderProjectRole ?? null,
+      senderProjectRoleName: row.senderProjectRoleName ?? null,
+      senderProjectRoleColor: row.senderProjectRoleColor ?? null,
+      senderProjectRoleLegacy: row.senderProjectRoleLegacy ?? null,
       createdAt: row.createdAt.toISOString(),
       isEdited: row.updatedAt.getTime() > row.createdAt.getTime(),
       reactions: reactionMap.get(row.id) ?? [],

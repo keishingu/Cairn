@@ -7,7 +7,14 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  extractAttributeMentionIds,
+  extractMentionIds,
+  hasAllMention,
+  hasGroupMention,
+  hasProjectMembersMention,
+  stripMentionsToText,
+} from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 
@@ -158,11 +165,17 @@ export const onMessageCreated = inngest.createFunction(
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
     }
 
-    // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
+    // @メンション通知（個別・@all・@project_members・属性）。チャンネル未参加でも到達可能な人へ通知。
     const mentionedIds = extractMentionIds(content)
+    const attributeMentionIds = extractAttributeMentionIds(content)
+    const wantsAll = hasAllMention(content)
+    const wantsProjectMembers = hasProjectMembersMention(content)
+    const hasAnyMentionTarget =
+      mentionedIds.length > 0 || hasGroupMention(content)
 
-    if (members.length === 0 && mentionedIds.length === 0)
+    if (members.length === 0 && !hasAnyMentionTarget)
       return { mentionNotifications: 0, fileNotifications: 0 }
+
     const mentionedMembers =
       mentionedIds.length > 0
         ? await step.run('fetch-mentioned-members', async () => {
@@ -183,25 +196,63 @@ export const onMessageCreated = inngest.createFunction(
           })
         : []
 
-    // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
-    const mentionBody = stripMentionsToText(
-      content,
-      nameResolver([...members, ...mentionedMembers]),
+    const allMentionMembers = wantsAll
+      ? await step.run('expand-all-mention', async () => {
+          const { listActiveWorkspaceMembersExcept } = await import('@/lib/chat/mention-expand')
+          return listActiveWorkspaceMembersExcept(workspaceId, senderId)
+        })
+      : []
+
+    const projectMentionMembers = wantsProjectMembers
+      ? await step.run('expand-project-members-mention', async () => {
+          const { db, channels } = await import('@cairn/db')
+          const { eq } = await import('drizzle-orm')
+          const { listActiveProjectMembersExcept } = await import('@/lib/chat/mention-expand')
+          const [ch] = await db
+            .select({ projectId: channels.projectId })
+            .from(channels)
+            .where(eq(channels.id, channelId))
+            .limit(1)
+          return listActiveProjectMembersExcept(workspaceId, ch?.projectId, senderId)
+        })
+      : []
+
+    const attributeMentionMembers = attributeMentionIds.length > 0
+      ? await step.run('expand-attr-mentions', async () => {
+          const { listActiveMembersByAttributeIds } = await import('@/lib/chat/mention-expand')
+          return listActiveMembersByAttributeIds(workspaceId, attributeMentionIds, senderId)
+        })
+      : []
+
+    const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
+    const candidateMentioned = mergeMentionMembers(
+      mentionedMembers,
+      allMentionMembers,
+      projectMentionMembers,
+      attributeMentionMembers,
     )
 
+    // 本文プレビューのメンションは送信時点の最新名で解決する
+    const mentionNameMap = await step.run('resolve-mention-preview-names', async () => {
+      const { buildMentionNameMap } = await import('@/lib/chat/mention-name-map')
+      const map = await buildMentionNameMap(workspaceId, [content])
+      for (const member of [...members, ...candidateMentioned]) {
+        if (!map.has(member.userId)) map.set(member.userId, member.displayName)
+      }
+      return Object.fromEntries(map)
+    })
+    const mentionBody = stripMentionsToText(content, (id) => mentionNameMap[id])
+
     // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
-    // - プライベートチャンネル: チャンネルメンバーのみ
-    // - プロジェクトチャンネル: 参加外プロジェクトのゲストを除外（メンバー以上は全員可）
-    // 通知を飛ばしても遷移先で 403 になり「通知は来るのに開けない」状態になるため、
-    // requireChannelAccess と同じスコープ感でここで対象を絞る。
+    // requireChannelAccess と同じスコープ感で対象を絞る（guest / private 含む）。
     const notifyMentioned =
-      mentionedMembers.length > 0
+      candidateMentioned.length > 0
         ? await step.run('filter-mention-access', async () => {
             const { db, channels, channelMembers, projectMembers, activeWorkspaceMembers } =
               await import('@cairn/db')
             const { eq, and, inArray } = await import('drizzle-orm')
             const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
-            const ids = mentionedMembers.map((m) => m.userId)
+            const ids = candidateMentioned.map((m) => m.userId)
 
             const [ch] = await db
               .select({
@@ -214,8 +265,9 @@ export const onMessageCreated = inngest.createFunction(
               .limit(1)
             if (!ch) return []
 
-            // プライベートチャンネルはメンバーのみ、プロジェクトチャンネルは guest の参加判定に使う集合を引く
-            const channelMemberIds = ch.isPrivate
+            const needsChannelMembers =
+              ch.isPrivate || ch.type === 'dm' || ch.type === 'workspace'
+            const channelMemberIds = needsChannelMembers
               ? new Set(
                   (
                     await db
@@ -231,26 +283,23 @@ export const onMessageCreated = inngest.createFunction(
                 )
               : new Set<string>()
 
-            const guestIds =
-              ch.type === 'project' && ch.projectId
-                ? new Set(
-                    (
-                      await db
-                        .select({ userId: activeWorkspaceMembers.userId })
-                        .from(activeWorkspaceMembers)
-                        .where(
-                          and(
-                            eq(activeWorkspaceMembers.workspaceId, workspaceId),
-                            inArray(activeWorkspaceMembers.userId, ids),
-                            eq(activeWorkspaceMembers.role, 'guest'),
-                          ),
-                        )
-                    ).map((r) => r.userId),
+            const guestIds = new Set(
+              (
+                await db
+                  .select({ userId: activeWorkspaceMembers.userId })
+                  .from(activeWorkspaceMembers)
+                  .where(
+                    and(
+                      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+                      inArray(activeWorkspaceMembers.userId, ids),
+                      eq(activeWorkspaceMembers.role, 'guest'),
+                    ),
                   )
-                : new Set<string>()
+              ).map((r) => r.userId),
+            )
 
             const projectMemberIds =
-              guestIds.size > 0 && ch.projectId
+              guestIds.size > 0 && ch.type === 'project' && ch.projectId
                 ? new Set(
                     (
                       await db
@@ -268,7 +317,7 @@ export const onMessageCreated = inngest.createFunction(
 
             return filterMentionRecipients({
               channel: ch,
-              recipients: mentionedMembers,
+              recipients: candidateMentioned,
               channelMemberIds,
               guestIds,
               projectMemberIds,

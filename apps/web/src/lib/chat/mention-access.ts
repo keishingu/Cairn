@@ -5,10 +5,10 @@
 // DB 参照（チャンネル種別・メンバー・プロジェクトメンバー）は呼び出し側で解決し、
 // ここでは集合演算だけを行うことでユニットテスト可能にしている。
 //
-// アクセス範囲は requireChannelAccess と同じスコープ感で判定する:
+// アクセス範囲は requireChannelAccess と同じ判定:
 //   - プライベートチャンネル / DM: channel_members に居る人のみ
 //   - プロジェクトチャンネル: member 以上は全員可、guest は project_members に居る場合のみ
-//   - それ以外（通常のワークスペースチャンネル）: 全ワークスペースメンバー可
+//   - 通常のワークスペースチャンネル: member 以上は全員可、guest は channel_members に居る場合のみ
 
 export interface MentionChannelInfo {
   type: string
@@ -19,7 +19,7 @@ export interface MentionChannelInfo {
 export function filterMentionRecipients<T extends { userId: string }>(params: {
   channel: MentionChannelInfo
   recipients: T[]
-  /** プライベートチャンネルのメンバー（channel_members） */
+  /** チャンネルメンバー（channel_members）。private / DM / workspace guest 判定に使う */
   channelMemberIds: Set<string>
   /** recipients のうち guest ロールの userId */
   guestIds: Set<string>
@@ -28,7 +28,7 @@ export function filterMentionRecipients<T extends { userId: string }>(params: {
 }): T[] {
   const { channel, recipients, channelMemberIds, guestIds, projectMemberIds } = params
 
-  if (channel.isPrivate) {
+  if (channel.isPrivate || channel.type === 'dm') {
     return recipients.filter(r => channelMemberIds.has(r.userId))
   }
 
@@ -37,5 +37,6 @@ export function filterMentionRecipients<T extends { userId: string }>(params: {
     return recipients.filter(r => !guestIds.has(r.userId) || projectMemberIds.has(r.userId))
   }
 
-  return recipients
+  // 通常のワークスペースチャンネル: guest は channel_members 必須（requireChannelAccess と同じ）
+  return recipients.filter(r => !guestIds.has(r.userId) || channelMemberIds.has(r.userId))
 }

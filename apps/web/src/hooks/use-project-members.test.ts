@@ -11,6 +11,7 @@ import {
   useRevokeWorkspaceInvite,
   useCreateProjectGuestInvite,
   useAddProjectMember,
+  useUpdateProjectMemberRole,
   useRemoveProjectMember,
 } from './use-project-members'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -31,13 +32,57 @@ function makeWrapper() {
 }
 
 const STUB_MEMBERS: ProjectMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'leader', attendance: 'attending', addedAt: '2026-01-01' },
-  { userId: 'u2', displayName: 'Bob', email: 'bob@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-02' },
+  {
+    userId: 'u1',
+    displayName: 'Alice',
+    email: 'alice@example.com',
+    avatarUrl: null,
+    role: 'leader',
+    roleId: 'role-leader',
+    roleName: 'リーダー',
+    roleColor: '#3B82F6',
+    roleSortOrder: 1,
+    attendance: 'attending',
+    addedAt: '2026-01-01',
+  },
+  {
+    userId: 'u2',
+    displayName: 'Bob',
+    email: 'bob@example.com',
+    avatarUrl: null,
+    role: 'member',
+    roleId: 'role-member',
+    roleName: 'メンバー',
+    roleColor: '#6B7280',
+    roleSortOrder: 3,
+    attendance: 'attending',
+    addedAt: '2026-01-02',
+  },
 ]
 
 const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
-  { userId: 'u1', displayName: 'Alice', email: 'alice@example.com', avatarUrl: null, role: 'owner', membershipStatus: 'active', profileAttributes: [], joinedAt: '2026-01-01', projectCount: 1 },
-  { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', membershipStatus: 'active', profileAttributes: [], joinedAt: '2026-01-03', projectCount: 0 },
+  {
+    userId: 'u1',
+    displayName: 'Alice',
+    email: 'alice@example.com',
+    avatarUrl: null,
+    role: 'owner',
+    membershipStatus: 'active',
+    profileAttributes: [],
+    joinedAt: '2026-01-01',
+    projectCount: 1,
+  },
+  {
+    userId: 'u3',
+    displayName: 'Carol',
+    email: 'carol@example.com',
+    avatarUrl: null,
+    role: 'member',
+    membershipStatus: 'active',
+    profileAttributes: [],
+    joinedAt: '2026-01-03',
+    projectCount: 0,
+  },
 ]
 
 const STUB_INVITES: WorkspaceInviteDto[] = [
@@ -55,7 +100,9 @@ const STUB_INVITES: WorkspaceInviteDto[] = [
 ]
 
 describe('useWorkspaceMembers', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('ワークスペースメンバー一覧を取得する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_WS_MEMBERS), { status: 200 }))
@@ -68,7 +115,9 @@ describe('useWorkspaceMembers', () => {
 })
 
 describe('useProjectMembers', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('/api/projects/:id/members からメンバー一覧を取得する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_MEMBERS), { status: 200 }))
@@ -81,7 +130,9 @@ describe('useProjectMembers', () => {
 })
 
 describe('useWorkspaceMembersForInvite', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('enabled=true のときワークスペースメンバーを取得する', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify(STUB_WS_MEMBERS), { status: 200 }))
@@ -99,10 +150,14 @@ describe('useWorkspaceMembersForInvite', () => {
 })
 
 describe('workspace invite hooks', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('useWorkspaceInvites が招待一覧を取得する', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({ invites: STUB_INVITES }), { status: 200 }))
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ invites: STUB_INVITES }), { status: 200 }),
+    )
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useWorkspaceInvites(), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -111,12 +166,17 @@ describe('workspace invite hooks', () => {
   })
 
   it('useCreateWorkspaceInvite が招待リンク生成後に一覧を再取得する', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({
-      token: 'token-2',
-      url: 'https://example.com/invite/token-2',
-      expiresAt: null,
-      role: 'member',
-    }), { status: 200 }))
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          token: 'token-2',
+          url: 'https://example.com/invite/token-2',
+          expiresAt: null,
+          role: 'member',
+        }),
+        { status: 200 },
+      ),
+    )
     const { wrapper, queryClient } = makeWrapper()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(() => useCreateWorkspaceInvite(), { wrapper })
@@ -159,11 +219,16 @@ describe('workspace invite hooks', () => {
   })
 
   it('useCreateProjectGuestInvite が guest 招待リンク生成後に一覧を再取得する', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({
-      token: 'guest-token',
-      url: 'https://example.com/invite/guest-token',
-      expiresAt: '2026-07-31T00:00:00.000Z',
-    }), { status: 200 }))
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          token: 'guest-token',
+          url: 'https://example.com/invite/guest-token',
+          expiresAt: '2026-07-31T00:00:00.000Z',
+        }),
+        { status: 200 },
+      ),
+    )
     const { wrapper, queryClient } = makeWrapper()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(() => useCreateProjectGuestInvite('project-1'), { wrapper })
@@ -181,16 +246,32 @@ describe('workspace invite hooks', () => {
 })
 
 describe('useAddProjectMember', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('メンバーを追加してキャッシュに追記する', async () => {
-    const newMember: ProjectMemberDto = { userId: 'u3', displayName: 'Carol', email: 'carol@example.com', avatarUrl: null, role: 'member', attendance: 'attending', addedAt: '2026-01-03' }
+    const newMember: ProjectMemberDto = {
+      userId: 'u3',
+      displayName: 'Carol',
+      email: 'carol@example.com',
+      avatarUrl: null,
+      role: 'member',
+      roleId: 'role-member',
+      roleName: 'メンバー',
+      roleColor: '#6B7280',
+      roleSortOrder: 3,
+      attendance: 'attending',
+      addedAt: '2026-01-03',
+    }
     mockFetch.mockResolvedValue(new Response(JSON.stringify([newMember]), { status: 200 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
 
     const { result } = renderHook(() => useAddProjectMember('p1'), { wrapper })
-    act(() => { result.current.mutate({ userIds: ['u3'], role: 'member' }) })
+    act(() => {
+      result.current.mutate({ userIds: ['u3'], roleId: 'role-member' })
+    })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -198,7 +279,7 @@ describe('useAddProjectMember', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     const cached = queryClient.getQueryData<ProjectMemberDto[]>(['project-members', 'p1'])
-    expect(cached?.some(m => m.userId === 'u3')).toBe(true)
+    expect(cached?.some((m) => m.userId === 'u3')).toBe(true)
   })
 
   it('エラーレスポンスのときエラーメッセージを throw する', async () => {
@@ -207,14 +288,44 @@ describe('useAddProjectMember', () => {
     )
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useAddProjectMember('p1'), { wrapper })
-    act(() => { result.current.mutate({ userIds: ['u3'], role: 'member' }) })
+    act(() => {
+      result.current.mutate({ userIds: ['u3'], roleId: 'role-member' })
+    })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error?.message).toBe('追加エラー')
   })
 })
 
+describe('useUpdateProjectMemberRole', () => {
+  it('変更した役割をメンバーキャッシュへ反映する', async () => {
+    mockFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          userId: 'u2',
+          role: 'leader',
+          roleId: 'role-leader',
+          roleName: 'リーダー',
+          roleColor: '#3B82F6',
+          roleSortOrder: 1,
+        }),
+        { status: 200 },
+      ),
+    )
+    const { wrapper, queryClient } = makeWrapper()
+    queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
+    const { result } = renderHook(() => useUpdateProjectMemberRole('p1'), { wrapper })
+
+    await act(async () => result.current.mutateAsync({ userId: 'u2', roleId: 'role-leader' }))
+
+    const cached = queryClient.getQueryData<ProjectMemberDto[]>(['project-members', 'p1'])
+    expect(cached?.find((member) => member.userId === 'u2')?.roleName).toBe('リーダー')
+  })
+})
+
 describe('useRemoveProjectMember', () => {
-  beforeEach(() => { mockFetch.mockClear() })
+  beforeEach(() => {
+    mockFetch.mockClear()
+  })
 
   it('メンバーを削除してキャッシュから取り除く', async () => {
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }))
@@ -222,7 +333,9 @@ describe('useRemoveProjectMember', () => {
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
 
     const { result } = renderHook(() => useRemoveProjectMember('p1'), { wrapper })
-    act(() => { result.current.mutate('u2') })
+    act(() => {
+      result.current.mutate('u2')
+    })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(mockFetch).toHaveBeenCalledWith(
@@ -230,7 +343,7 @@ describe('useRemoveProjectMember', () => {
       expect.objectContaining({ method: 'DELETE' }),
     )
     const cached = queryClient.getQueryData<ProjectMemberDto[]>(['project-members', 'p1'])
-    expect(cached?.some(m => m.userId === 'u2')).toBe(false)
-    expect(cached?.some(m => m.userId === 'u1')).toBe(true)
+    expect(cached?.some((m) => m.userId === 'u2')).toBe(false)
+    expect(cached?.some((m) => m.userId === 'u1')).toBe(true)
   })
 })

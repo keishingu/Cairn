@@ -1,10 +1,13 @@
 export function webPath(path: string): string {
-  const [pathnamePart, search = ''] = path.split('?')
-  const pathname = pathnamePart ?? path
+  const hashIndex = path.indexOf('#')
+  const hash = hashIndex >= 0 ? path.slice(hashIndex) : ''
+  const pathWithoutHash = hashIndex >= 0 ? path.slice(0, hashIndex) : path
+  const [pathnamePart, search = ''] = pathWithoutHash.split('?')
+  const pathname = pathnamePart ?? pathWithoutHash
   const params = new URLSearchParams(search)
   params.set('webview', '1')
   const query = params.toString()
-  return query ? `${pathname}?${query}` : pathname
+  return `${query ? `${pathname}?${query}` : pathname}${hash}`
 }
 
 export function mobileHandoffUrl(

@@ -51,7 +51,13 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
     userId: 'pm.userId',
     role: 'pm.role',
+    roleId: 'pm.roleId',
     attendance: 'pm.attendance',
+  },
+  projectRoles: {
+    id: 'prr.id',
+    workspaceId: 'prr.workspaceId',
+    legacyRole: 'prr.legacyRole',
   },
   projectStatuses: {
     id: 'ps.id',
@@ -150,6 +156,7 @@ describe('POST /api/projects', () => {
     let insertCount = 0
     mockDb.select
       .mockReturnValueOnce(selectChain([{ userId: MEMBER_A }, { userId: MEMBER_B }]))
+      .mockReturnValueOnce(selectChain([{ id: 'role-member' }]))
       .mockReturnValueOnce(selectChain([
         { userId: MEMBER_A, displayName: 'Alice', avatarUrl: 'https://example.com/a.png' },
         { userId: MEMBER_B, displayName: 'Bob', avatarUrl: null },

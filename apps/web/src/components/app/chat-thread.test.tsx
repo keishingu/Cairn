@@ -66,6 +66,7 @@ vi.mock('@/hooks/use-ai-nudges', () => ({
   useAiNudges: () => ({ data: [], isError: false }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: chatThreadState.projectMembers }) }))
+vi.mock('@/hooks/use-profile-attributes', () => ({ useProfileAttributes: () => ({ data: [] }) }))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -118,6 +119,12 @@ describe('ChatMessage copy action', () => {
         isMobile
       />,
     )
+
+    const reply = screen.getByTitle('返信')
+    const sender = screen.getByText('Alice')
+    const header = sender.parentElement?.parentElement
+    expect(reply.parentElement?.parentElement).toBe(header)
+    expect(header?.contains(screen.getByRole('link'))).toBe(false)
 
     await user.click(screen.getByTitle('操作'))
 
@@ -237,6 +244,41 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByText('経済学部')).toBeInTheDocument()
 
     rerender(<ChatMessage {...props} senderProjectRole="member" senderProfileAttributes={[]} />)
+    expect(screen.queryByText('メンバー')).toBeNull()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="member"
+        senderProjectRoleName="デザイナー"
+        senderProjectRoleColor="#EC4899"
+        senderProjectRoleLegacy={null}
+        senderProfileAttributes={[]}
+      />,
+    )
+    expect(screen.getByText('デザイナー')).toBeInTheDocument()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="leader"
+        senderProjectRoleName="主宰"
+        senderProjectRoleLegacy="leader"
+        senderProfileAttributes={[]}
+      />,
+    )
+    expect(screen.getByText('主宰')).toBeInTheDocument()
+    expect(screen.queryByText('リーダー')).toBeNull()
+
+    rerender(
+      <ChatMessage
+        {...props}
+        senderProjectRole="member"
+        senderProjectRoleName="メンバー"
+        senderProjectRoleLegacy="member"
+        senderProfileAttributes={[]}
+      />,
+    )
     expect(screen.queryByText('メンバー')).toBeNull()
   })
 })
@@ -358,15 +400,17 @@ describe('ChatThreadのメンション候補', () => {
       </QueryClientProvider>,
     )
 
-    const projectMemberButton = screen.getByText('鈴木').closest('button')!
+    const projectMemberButton = screen.getByRole('button', { name: /@鈴木/ })
     const picker = projectMemberButton.parentElement!
     expect([...picker.querySelectorAll('button')].map(button => button.lastElementChild?.textContent)).toEqual([
-      '鈴木',
-      ...Array.from({ length: 6 }, (_, index) => `候補${index + 1}`),
+      '@all全員',
+      '@project_membersプロジェクトメンバー',
+      '@鈴木',
+      ...Array.from({ length: 6 }, (_, index) => `@候補${index + 1}`),
     ])
     expect(picker).toHaveStyle({ maxHeight: '240px', overflowY: 'auto' })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(input.value).toBe('@鈴木 ')
+    expect(input.value).toBe('@all ')
   })
 
   it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {
@@ -384,13 +428,13 @@ describe('ChatThreadのメンション候補', () => {
     expect(input.value).toBe('@')
 
     fireEvent.change(input, { target: { value: '@鈴木', selectionStart: 1 } })
-    expect(screen.getByText('候補1')).toBeInTheDocument()
-    expect(screen.getByText('鈴木')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /@候補1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /@鈴木/ })).toBeInTheDocument()
 
     input.setSelectionRange(3, 3)
     fireEvent.compositionEnd(input)
 
-    expect(screen.getByText('鈴木')).toBeInTheDocument()
-    expect(screen.queryByText('候補1')).toBeNull()
+    expect(screen.getByRole('button', { name: /@鈴木/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /@候補1/ })).toBeNull()
   })
 })

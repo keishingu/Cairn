@@ -28,6 +28,10 @@ export interface MessageDto {
   senderAvatarUrl: string | null
   senderProfileAttributes?: ProfileAttributeDto[]
   senderProjectRole?: ProjectMemberRole | null
+  senderProjectRoleName?: string | null
+  senderProjectRoleColor?: string | null
+  /** project_roles.legacy_role。カスタム役割は null */
+  senderProjectRoleLegacy?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   reactions: ReactionDto[]

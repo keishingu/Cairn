@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { getVercelOidcToken } from '@vercel/oidc'
 import { z } from 'zod'
 
 export const JEV_MODEL = 'typesafe-ai/jev'
@@ -57,21 +58,23 @@ export interface JevEvaluationInput {
   questions: Record<string, JevQuestion>
 }
 
-export function resolveAiGatewayAuth(
-  env: { AI_GATEWAY_API_KEY?: string; VERCEL_OIDC_TOKEN?: string } = process.env as {
-    AI_GATEWAY_API_KEY?: string
-    VERCEL_OIDC_TOKEN?: string
-  },
-): { token: string; method: 'api-key' | 'oidc' } {
+export async function resolveAiGatewayAuth(
+  env: { AI_GATEWAY_API_KEY?: string } = process.env as { AI_GATEWAY_API_KEY?: string },
+  getOidcToken: () => Promise<string> = getVercelOidcToken,
+): Promise<{ token: string; method: 'api-key' | 'oidc' }> {
   if (env.AI_GATEWAY_API_KEY) return { token: env.AI_GATEWAY_API_KEY, method: 'api-key' }
-  if (env.VERCEL_OIDC_TOKEN) return { token: env.VERCEL_OIDC_TOKEN, method: 'oidc' }
-  throw new Error('AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is not configured')
+  try {
+    return { token: await getOidcToken(), method: 'oidc' }
+  } catch {
+    throw new Error('AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN is not configured')
+  }
 }
 
-export function resolveAiGatewayToken(
-  env?: { AI_GATEWAY_API_KEY?: string; VERCEL_OIDC_TOKEN?: string },
-): string {
-  return resolveAiGatewayAuth(env).token
+export async function resolveAiGatewayToken(
+  env?: { AI_GATEWAY_API_KEY?: string },
+  getOidcToken?: () => Promise<string>,
+): Promise<string> {
+  return (await resolveAiGatewayAuth(env, getOidcToken)).token
 }
 
 function gatewayCostUsd(metadata: Record<string, unknown> | undefined): number | null {
@@ -100,7 +103,7 @@ export function jevEvaluationRequestByteLength(input: JevEvaluationInput): numbe
 }
 
 export async function evaluateWithJev(input: JevEvaluationInput): Promise<JevEvaluationResult> {
-  const auth = resolveAiGatewayAuth()
+  const auth = await resolveAiGatewayAuth()
   const startedAt = performance.now()
   const response = await fetch('https://ai-gateway.vercel.sh/v1/evaluate', {
     method: 'POST',

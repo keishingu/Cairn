@@ -1190,20 +1190,81 @@ export function formatMilestoneLabel(milestone: Pick<WorkspaceMilestoneDto, 'pro
 interface MobileCalendarGridProps {
   year: number
   month: number
-  projects: ProjectDto[]
-  milestones: WorkspaceMilestoneDto[]
-  projectMap: Map<string, ProjectDto>
+  events: CalEvent[]
+  milestoneEvents: MilestoneDisplayEvent[]
   selectedDate: Date
   onSelectDate: (d: Date) => void
   onCreateDate?: (d: Date) => void
   onProjectClick: (project: ProjectDto) => void
 }
 
-const MOBILE_MAX_CHIPS = 3
+const MOBILE_DATE_AREA = 26
+const MOBILE_EVENT_H = 13
+const MOBILE_EVENT_GAP = 1
+const MOBILE_MAX_EVENT_ROWS = 3
 
-const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
+function eventCoversDay(e: { day: number; span: number }, col: number): boolean {
+  return col >= e.day && col < e.day + e.span
+}
+
+type MobilePackedBar =
+  | { kind: 'project'; row: number; day: number; span: number; week: number; project: ProjectDto }
+  | { kind: 'milestone'; row: number; day: number; span: number; week: number; milestone: WorkspaceMilestoneDto; project: ProjectDto | null }
+
+/** モバイル月表示はプロジェクトとマイルストーンを同一レーンに詰め、週の別日の予定で空きレーンを潰さない */
+export function packMobileMonthBars(
+  events: CalEvent[],
+  milestoneEvents: MilestoneDisplayEvent[],
+  week: number,
+): MobilePackedBar[] {
+  const items: Array<{
+    day: number
+    span: number
+    kindRank: number
+    build: (row: number) => MobilePackedBar
+  }> = [
+    ...events.filter(e => e.week === week).map(e => ({
+      day: e.day,
+      span: e.span,
+      kindRank: 0,
+      build: (row: number): MobilePackedBar => ({
+        kind: 'project', row, day: e.day, span: e.span, week: e.week, project: e.project,
+      }),
+    })),
+    ...milestoneEvents.filter(e => e.week === week).map(e => ({
+      day: e.day,
+      span: e.span,
+      kindRank: 1,
+      build: (row: number): MobilePackedBar => ({
+        kind: 'milestone', row, day: e.day, span: e.span, week: e.week, milestone: e.milestone, project: e.project,
+      }),
+    })),
+  ].sort((a, b) => a.day - b.day || b.span - a.span || a.kindRank - b.kindRank)
+
+  const occupiedUntil: number[] = []
+  return items.map(item => {
+    let row = 0
+    while ((occupiedUntil[row] ?? -1) >= item.day) row++
+    occupiedUntil[row] = item.day + item.span - 1
+    return item.build(row)
+  })
+}
+
+/** 日付セルの +N は、見えているバー本数ではなくその日の最下段レーンの直下に置く */
+export function mobileOverflowLane(coveringRows: number[], maxEventRows: number): { overflow: number; lane: number } | null {
+  const visibleRows = coveringRows.filter(row => row < maxEventRows)
+  const overflow = coveringRows.length - visibleRows.length
+  if (overflow <= 0) return null
+  return {
+    overflow,
+    lane: Math.max(-1, ...visibleRows) + 1,
+  }
+}
+
+const MobileCalendarGrid = ({ year, month, events, milestoneEvents, selectedDate, onSelectDate, onCreateDate, onProjectClick }: MobileCalendarGridProps) => {
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const cells = buildCells(year, month)
+  const colW = 100 / 7
 
   return (
     <div style={{ background: 'var(--card)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -1217,92 +1278,143 @@ const MobileCalendarGrid = ({ year, month, projects, milestones, projectMap, sel
         ))}
       </div>
 
-      {/* Grid rows */}
+      {/* Grid rows: PC と同じく週単位の span バーを日付セルの上に重ねる */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {cells.map((row, week) => (
-        <div key={week} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none', flex: 1 }}>
-          {row.map((cell, col) => {
-            const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
-            const dayProjects = getDateProjects(projects, cell.fullDate)
-            const dayMilestones = getDateMilestones(milestones, cell.fullDate)
-            const chips = [
-              ...dayProjects.map(project => ({ kind: 'project' as const, id: project.id, title: project.title, color: project.statusColor ?? '#9CA3AF', project })),
-              ...dayMilestones.map(milestone => ({ kind: 'milestone' as const, id: milestone.id, title: formatMilestoneLabel(milestone), color: projectMap.get(milestone.projectId)?.statusColor ?? '#64748B', project: projectMap.get(milestone.projectId) ?? null, completed: milestone.completed })),
-            ]
-            const visible = chips.slice(0, MOBILE_MAX_CHIPS)
-            const overflow = chips.length - MOBILE_MAX_CHIPS
+      {cells.map((row, week) => {
+        const packed = packMobileMonthBars(events, milestoneEvents, week)
+        const visibleBars = packed.filter(e => e.row < MOBILE_MAX_EVENT_ROWS)
 
-            return (
-              <button
-                key={col}
-                aria-label={formatDateLabel(cell.fullDate)}
-                onClick={() => {
-                  if (isSelected && onCreateDate) {
-                    onCreateDate(cell.fullDate)
-                    return
-                  }
-                  onSelectDate(cell.fullDate)
-                }}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                  justifyContent: 'flex-start',
-                  padding: '3px 1px 4px', gap: 2,
-                  border: 'none',
-                  background: isSelected ? 'var(--accent-soft)' : 'transparent',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  height: '100%', width: '100%', minWidth: 0, overflow: 'hidden',
-                }}
-              >
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 22, height: 22, borderRadius: '50%', fontSize: 11.5,
-                  fontWeight: isSelected || cell.isToday ? 700 : 400,
-                  background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
-                  color: isSelected || cell.isToday
-                    ? 'var(--on-accent)'
-                    : cell.isOther
-                      ? 'var(--text-4)'
-                      : col === 0
-                        ? 'var(--red)'
-                        : col === 6
-                          ? 'var(--blue)'
-                          : 'var(--text)',
-                  lineHeight: 1, flexShrink: 0,
-                }}>
-                  {cell.date}
-                </span>
-                <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {visible.map(item => {
-                    const cfg = { bg: item.kind === 'milestone' && item.completed ? 'var(--card-2)' : item.color + '18', bar: item.kind === 'milestone' && item.completed ? 'var(--text-4)' : item.color, text: item.kind === 'milestone' && item.completed ? 'var(--text-4)' : item.color }
-                    return (
-                      <div
-                        key={`${item.kind}-${item.id}`}
-                        onClick={(e) => { e.stopPropagation(); if (item.project) onProjectClick(item.project) }}
-                        style={{
-                          height: 13, borderRadius: 2,
-                          background: cfg.bg,
-                          fontSize: 9, fontWeight: 600, color: cfg.text,
-                          paddingLeft: 2,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          lineHeight: '13px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {item.title}
-                      </div>
-                    )
-                  })}
-                  {overflow > 0 && (
-                    <div style={{ fontSize: 9, color: 'var(--text-3)', paddingLeft: 2, lineHeight: '12px' }}>
-                      +{overflow}
-                    </div>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      ))}
+        return (
+          <div key={week} style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: week < 5 ? '1px solid var(--border)' : 'none', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            {row.map((cell, col) => {
+              const isSelected = cell.fullDate.toDateString() === selectedDate.toDateString()
+
+              return (
+                <button
+                  key={col}
+                  type="button"
+                  aria-label={formatDateLabel(cell.fullDate)}
+                  onClick={() => {
+                    if (isSelected && onCreateDate) {
+                      onCreateDate(cell.fullDate)
+                      return
+                    }
+                    onSelectDate(cell.fullDate)
+                  }}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                    justifyContent: 'flex-start',
+                    padding: '3px 1px 4px',
+                    border: 'none',
+                    background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    height: '100%', width: '100%', minWidth: 0, overflow: 'hidden',
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 22, height: 22, borderRadius: '50%', fontSize: 11.5,
+                    fontWeight: isSelected || cell.isToday ? 700 : 400,
+                    background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
+                    color: isSelected || cell.isToday
+                      ? 'var(--on-accent)'
+                      : cell.isOther
+                        ? 'var(--text-4)'
+                        : col === 0
+                          ? 'var(--red)'
+                          : col === 6
+                            ? 'var(--blue)'
+                            : 'var(--text)',
+                    lineHeight: 1, flexShrink: 0,
+                  }}>
+                    {cell.date}
+                  </span>
+                </button>
+              )
+            })}
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              {visibleBars.map(e => {
+                const left = `calc(${e.day * colW}% + 1px)`
+                const width = `calc(${e.span * colW}% - 2px)`
+                const top = MOBILE_DATE_AREA + e.row * (MOBILE_EVENT_H + MOBILE_EVENT_GAP)
+                if (e.kind === 'project') {
+                  const barColor = e.project.statusColor ?? '#9CA3AF'
+                  return (
+                    <button
+                      key={`c-${e.project.id}-${e.week}-${e.day}`}
+                      type="button"
+                      onClick={ev => { ev.stopPropagation(); onProjectClick(e.project) }}
+                      style={{
+                        position: 'absolute', left, top, width,
+                        height: MOBILE_EVENT_H, borderRadius: 2,
+                        background: barColor + '18', color: barColor,
+                        border: 'none',
+                        fontSize: 9, fontWeight: 600,
+                        padding: '0 2px', textAlign: 'left',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+                        lineHeight: `${MOBILE_EVENT_H}px`,
+                      }}
+                      title={e.project.title}
+                    >
+                      {e.project.title}
+                    </button>
+                  )
+                }
+                const barColor = e.project?.statusColor ?? '#64748B'
+                const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
+                const label = formatMilestoneLabel(e.milestone)
+                return (
+                  <button
+                    key={`m-${e.milestone.id}-${e.week}-${e.day}`}
+                    type="button"
+                    onClick={ev => { ev.stopPropagation(); if (e.project) onProjectClick(e.project) }}
+                    style={{
+                      position: 'absolute', left, top, width,
+                      height: MOBILE_EVENT_H, borderRadius: 2,
+                      background: e.milestone.completed ? 'var(--card-2)' : barColor + '18',
+                      color: fgColor,
+                      border: 'none',
+                      fontSize: 9, fontWeight: 600,
+                      padding: '0 2px', textAlign: 'left',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontFamily: 'inherit', pointerEvents: 'auto', cursor: e.project ? 'pointer' : 'default',
+                      lineHeight: `${MOBILE_EVENT_H}px`,
+                      opacity: e.milestone.completed ? 0.65 : 1,
+                    }}
+                    title={label}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+              {row.map((_, col) => {
+                const overflowInfo = mobileOverflowLane(
+                  packed.filter(e => eventCoversDay(e, col)).map(e => e.row),
+                  MOBILE_MAX_EVENT_ROWS,
+                )
+                if (!overflowInfo) return null
+                return (
+                  <div
+                    key={`o-${col}`}
+                    style={{
+                      position: 'absolute',
+                      left: `calc(${col * colW}% + 1px)`,
+                      top: MOBILE_DATE_AREA + overflowInfo.lane * (MOBILE_EVENT_H + MOBILE_EVENT_GAP),
+                      width: `calc(${colW}% - 2px)`,
+                      fontSize: 9, color: 'var(--text-3)',
+                      lineHeight: '12px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    +{overflowInfo.overflow}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
       </div>
     </div>
   )
@@ -2134,9 +2246,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <MobileCalendarGrid
             year={year}
             month={month}
-            projects={visibleProjects}
-            milestones={visibleMilestones}
-            projectMap={projectMap}
+            events={events}
+            milestoneEvents={milestoneEvents}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onProjectClick={openPanel}
