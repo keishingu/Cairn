@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  acceptLanguageFromTags,
   localeFromAcceptLanguage,
   parseLocalePreference,
   readLocalePreferenceCookie,
@@ -20,6 +21,15 @@ describe('localeFromAcceptLanguage', () => {
 
   it('quality が低い言語より高い言語を優先する', () => {
     expect(localeFromAcceptLanguage('en;q=0.2,ja;q=0.9')).toBe('ja')
+  })
+})
+
+describe('acceptLanguageFromTags', () => {
+  it('先頭以外の対応言語も Accept-Language と同じ順で残す', () => {
+    expect(localeFromAcceptLanguage(acceptLanguageFromTags(['fr-FR', 'en-US']))).toBe('en')
+    expect(localeFromAcceptLanguage(acceptLanguageFromTags(['ja-JP', 'en-US']))).toBe('ja')
+    expect(acceptLanguageFromTags([])).toBeNull()
+    expect(acceptLanguageFromTags(null)).toBeNull()
   })
 })
 
@@ -48,5 +58,10 @@ describe('readLocalePreferenceCookie', () => {
     expect(readLocalePreferenceCookie('cairn-theme=dark; cairn-locale-preference=en')).toBe('en')
     expect(readLocalePreferenceCookie('cairn-locale-preference=ja')).toBe('ja')
     expect(readLocalePreferenceCookie(null)).toBe('system')
+  })
+
+  it('壊れたパーセントエンコードは system にする', () => {
+    expect(readLocalePreferenceCookie('cairn-locale-preference=%')).toBe('system')
+    expect(readLocalePreferenceCookie('cairn-locale-preference=%E0%A4%A')).toBe('system')
   })
 })

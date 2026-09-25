@@ -3,7 +3,6 @@ import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } fro
 import { Ionicons } from '@expo/vector-icons'
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
@@ -78,7 +77,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: dms } = useWorkspaceDms()
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
-  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
@@ -105,7 +103,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const signOut = async () => {
     closeOverlays()
     await supabase.auth.signOut().catch(() => undefined)
-    queryClient.clear()
   }
 
   const pressTab = (tab: (typeof TABS)[number]) => {

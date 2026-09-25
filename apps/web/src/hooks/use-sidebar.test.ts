@@ -71,6 +71,7 @@ const STUB_ME: CurrentUserDto = {
   theme: 'system',
   accentId: 'emerald',
   locale: 'system',
+  calendarWeekStart: 'sunday',
 }
 
 describe('useSidebar data hooks', () => {

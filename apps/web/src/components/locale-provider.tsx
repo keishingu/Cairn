@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { LOCALE_PREFERENCE_COOKIE, resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
+import { acceptLanguageFromTags, LOCALE_PREFERENCE_COOKIE, resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
 
 type LocaleContextValue = {
   locale: AppLocale
@@ -19,13 +19,22 @@ function writeLocalePreferenceCookie(preference: LocalePreference) {
   document.cookie = `${LOCALE_PREFERENCE_COOKIE}=${preference};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
 }
 
+function browserAcceptLanguage(): string | null {
+  if (typeof navigator === 'undefined') return null
+  const tags = navigator.languages?.length
+    ? navigator.languages
+    : navigator.language
+      ? [navigator.language]
+      : []
+  return acceptLanguageFromTags(tags)
+}
+
 export function LocaleProvider({ initialLocale, initialPreference, children }: { initialLocale: AppLocale; initialPreference: LocalePreference; children: React.ReactNode }) {
   const [preference, setPreferenceState] = React.useState(initialPreference)
   const [locale, setLocale] = React.useState(initialLocale)
 
   const setPreference = React.useCallback((next: LocalePreference) => {
-    const language = typeof navigator === 'undefined' ? null : navigator.language
-    const resolved = resolveLocale(next, language)
+    const resolved = resolveLocale(next, browserAcceptLanguage())
     setPreferenceState(next)
     setLocale(resolved)
     document.documentElement.lang = resolved

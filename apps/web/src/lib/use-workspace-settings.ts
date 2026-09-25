@@ -7,8 +7,14 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { WorkspaceSettingsDto } from '@/app/api/workspaces/settings/route'
 
 const QUERY_KEY = ['workspaceSettings']
-const DEFAULT_PROJECT_LABEL = 'Projects'
-const STORED_DEFAULT_PROJECT_LABELS = new Set(['Projects', 'プロジェクト'])
+
+export function displayProjectLabel(
+  stored: string | null | undefined,
+  translate: (message: string) => string,
+): string {
+  if (!stored) return translate('Projects')
+  return stored
+}
 
 async function fetchSettings(): Promise<WorkspaceSettingsDto> {
   const res = await fetchWithAuth('/api/workspaces/settings')
@@ -37,9 +43,7 @@ export function useWorkspaceSettings() {
 export function useProjectLabel(): string {
   const t = useT()
   const { data } = useWorkspaceSettings()
-  const label = data?.projectLabel
-  if (!label || STORED_DEFAULT_PROJECT_LABELS.has(label)) return t(DEFAULT_PROJECT_LABEL)
-  return label
+  return displayProjectLabel(data?.projectLabel, t)
 }
 
 export function useUpdateWorkspaceSettings() {

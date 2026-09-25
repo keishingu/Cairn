@@ -3,6 +3,7 @@
 
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
+import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { LOCALE_PREFERENCES } from '../config/locale'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
 
@@ -124,11 +125,12 @@ export const patchMeSchema = z.object({
   aiNudgesEnabled: z.boolean().optional(),
   theme: z.enum(APPEARANCE_THEMES).optional(),
   accentId: z.enum(ACCENT_IDS).optional(),
-locale: z.enum(LOCALE_PREFERENCES).optional(),
-  })
-  .refine((data) => Object.values(data).some((value) => value !== undefined), {
-    message: 'At least one field is required',
-  })
+  locale: z.enum(LOCALE_PREFERENCES).optional(),
+  calendarWeekStart: z.enum(CALENDAR_WEEK_STARTS).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
 
 export const createProjectStatusSchema = z.object({
   name: z.string().trim().min(1).max(100),

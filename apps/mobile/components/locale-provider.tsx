@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
+import { acceptLanguageFromTags, resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
 import { useMe, type MeDto } from '../hooks/use-account'
 import { useSession } from '../lib/session-context'
 
@@ -16,9 +16,9 @@ const LocaleContext = React.createContext<LocaleContextValue>({
   updateLocale: () => undefined,
 })
 
-function deviceLanguage(): string | null {
+function deviceAcceptLanguage(): string | null {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().locale
+    return acceptLanguageFromTags([Intl.DateTimeFormat().resolvedOptions().locale])
   } catch {
     return null
   }
@@ -26,10 +26,11 @@ function deviceLanguage(): string | null {
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const session = useSession()
-  const meQuery = useMe(!!session)
+  const signedIn = !!session
+  const meQuery = useMe(signedIn)
   const queryClient = useQueryClient()
-  const preference = meQuery.data?.locale ?? 'system'
-  const locale = resolveLocale(preference, deviceLanguage())
+  const preference = signedIn ? (meQuery.data?.locale ?? 'system') : 'system'
+  const locale = resolveLocale(preference, deviceAcceptLanguage())
 
   const updateLocale = React.useCallback(
     (next: LocalePreference) => {

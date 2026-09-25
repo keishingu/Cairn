@@ -10,6 +10,7 @@
 - **ワークスペース選択はユーザー別 AsyncStorage が共有元**。API は `X-Cairn-Workspace-Id` を Cookie より優先して active membership を再検証する。WebView ハンドオフ時は検証済み workspace ID を Cookie へ同期する
 - **テーマとハイライトカラーは `profiles.theme` / `profiles.accent_id` が共有元**。Web の `next-themes` / localStorage は即時描画用キャッシュ。設定変更時は `PATCH /api/me` へ保存し、設定 WebView は `appearance-changed` を bridge へ通知、Expo は `/api/me` と前面復帰時の再取得で追従する
 - **表示言語は `profiles.locale`（`ja` / `en` / `system`）が共有元**。`system` はブラウザまたは端末の言語に従う。設定 WebView は `locale-changed` を bridge へ通知し、Expo のタブとログインも同じ設定に合わせる
+- **カレンダーの週の始まりは `profiles.calendar_week_start`（`sunday` / `monday`、既定は日曜）が共有元**。設定 → 外観で選び `PATCH /api/me` へ保存する。Web の `cairn:calendar_week_start` は取得前の即時描画用キャッシュに留める。カレンダー画面自体は WebView
 - ネイティブチャットも Web と同じ private Realtime Broadcast（`user:{userId}` / `channel:{channelId}`）で更新し、ポーリングは使わない
 
 ## 開発

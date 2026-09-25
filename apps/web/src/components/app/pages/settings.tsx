@@ -29,8 +29,15 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
-import type { AccentId, LocalePreference } from '@cairn/shared'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import {
+  DEFAULT_CALENDAR_WEEK_START,
+  FEATURE_FLAGS,
+  isCalendarWeekStart,
+  type AccentId,
+  type CalendarWeekStart,
+  type LocalePreference,
+} from '@cairn/shared'
+import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
@@ -650,17 +657,31 @@ const SettingsAccount = () => {
   )
 }
 
+const WEEK_START_OPTIONS: { value: CalendarWeekStart; label: string }[] = [
+  { value: 'sunday', label: 'Sunday' },
+  { value: 'monday', label: 'Monday' },
+]
+
 const SettingsAppearance = () => {
   const t = useT()
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
   const { preference, setPreference } = useLocale()
+  const { data: me, isSuccess: meLoaded } = useCurrentUser()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
+  const weekStart = isCalendarWeekStart(me?.calendarWeekStart)
+    ? me.calendarWeekStart
+    : DEFAULT_CALENDAR_WEEK_START
 
   const appearanceMutation = useMutation({
-    mutationFn: async (patch: { theme?: ThemeValue; accentId?: AccentId; locale?: LocalePreference }) => {
+    mutationFn: async (patch: {
+      theme?: ThemeValue
+      accentId?: AccentId
+      locale?: LocalePreference
+      calendarWeekStart?: CalendarWeekStart
+    }) => {
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -710,14 +731,30 @@ const SettingsAppearance = () => {
   const changeLocale = (value: LocalePreference) => {
     if (appearanceMutation.isPending) return
     const previous = preference
-    queryClient.setQueryData<CurrentUserDto>(['me'], (current) => (current ? { ...current, locale: value } : current))
+    patchCurrentUserCache(queryClient, { locale: value })
     setPreference(value)
     appearanceMutation.mutate(
       { locale: value },
       {
         onError: () => {
-          queryClient.setQueryData<CurrentUserDto>(['me'], (current) => (current ? { ...current, locale: previous } : current))
+          patchCurrentUserCache(queryClient, { locale: previous })
           setPreference(previous)
+        },
+      },
+    )
+  }
+
+  const changeWeekStart = (value: CalendarWeekStart) => {
+    if (!meLoaded || appearanceMutation.isPending || value === weekStart) return
+    const previous = weekStart
+    patchCurrentUserCache(queryClient, { calendarWeekStart: value })
+    writeStoredCalendarWeekStart(value)
+    appearanceMutation.mutate(
+      { calendarWeekStart: value },
+      {
+        onError: () => {
+          patchCurrentUserCache(queryClient, { calendarWeekStart: previous })
+          writeStoredCalendarWeekStart(previous)
         },
       },
     )
@@ -732,7 +769,7 @@ const SettingsAppearance = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Appearance')}</h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, and color.')}</p>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
 
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Theme and color')}</h2>
@@ -885,6 +922,56 @@ const SettingsAppearance = () => {
               {t(appearanceMutation.error instanceof Error ? appearanceMutation.error.message : 'Could not save appearance. Check your connection and try again.')}
             </div>
           )}
+        </div>
+      </section>
+
+      <section>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Calendar')}</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Week start')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                {t('Start month and week views on Sunday or Monday.')}
+              </div>
+            </div>
+            {mounted && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-elev)',
+                  borderRadius: 10,
+                  padding: 4,
+                }}
+              >
+                {WEEK_START_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={weekStart === opt.value}
+                    onClick={() => changeWeekStart(opt.value)}
+                    disabled={!meLoaded || appearanceMutation.isPending}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: 'none',
+                      background: weekStart === opt.value ? 'var(--card)' : 'transparent',
+                      color: weekStart === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: weekStart === opt.value ? 600 : 500,
+                      fontSize: 12.5,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      boxShadow: weekStart === opt.value ? 'var(--shadow-sm)' : 'none',
+                      transition: 'all .12s',
+                    }}
+                  >
+                    {t(opt.label)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>

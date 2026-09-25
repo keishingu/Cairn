@@ -33,6 +33,7 @@ const user: CurrentUserDto = {
   theme: 'system',
   accentId: 'emerald',
   locale: 'system',
+  calendarWeekStart: 'sunday',
 }
 
 describe('PostHogUserIdentity', () => {

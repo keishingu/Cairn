@@ -77,7 +77,7 @@ describe('PATCH /api/me', () => {
       accentId: 'violet',
     })
   })
-it('言語設定をプロフィールへ保存する', async () => {
+  it('言語設定をプロフィールへ保存する', async () => {
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: USER_ID, workspaceId: WORKSPACE_ID },
       error: null,
@@ -102,6 +102,30 @@ it('言語設定をプロフィールへ保存する', async () => {
     await expect(response.json()).resolves.toEqual({
       id: USER_ID,
       locale: 'en',
+    })
+  })
+
+  it('カレンダーの週の始まりをプロフィールへ保存する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: USER_ID, workspaceId: WORKSPACE_ID },
+      error: null,
+    })
+
+    const { PATCH } = await import('./route')
+    const response = await PATCH(new Request('http://localhost/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ calendarWeekStart: 'monday' }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({
+      calendarWeekStart: 'monday',
+      updatedAt: expect.any(Date),
+    }))
+    await expect(response.json()).resolves.toEqual({
+      id: USER_ID,
+      calendarWeekStart: 'monday',
     })
   })
 })
