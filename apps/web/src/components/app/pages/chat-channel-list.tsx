@@ -11,6 +11,8 @@ import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
 
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
+
 // ─── ChatSidebarSection ───────────────────────────────────────────
 
 // 見出し横の追加ボタン: 低頻度の補助アクションなので ghost。
@@ -33,19 +35,22 @@ const onAddButtonLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
   e.currentTarget.style.color = 'var(--text-4)'
 }
 
-export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
+export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => {
+  const t = useT()
+  return (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       {onAdd && (
-        <button onClick={onAdd} aria-label={`${title}を追加`} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+        <button onClick={onAdd} aria-label={t('Add {title}', { title })} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
           <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
         </button>
       )}
     </div>
     <div>{children}</div>
   </div>
-)
+  )
+}
 
 // ─── ChatSidebarCollapsibleSection ────────────────────────────────
 
@@ -97,17 +102,17 @@ const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS
 // date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
 
-export function formatChannelPeriod(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string | undefined {
+export function formatChannelPeriod(start: string | null, end: string | null, startTime: string | null | undefined, endTime: string | null | undefined, t: TranslateFn): string | undefined {
   const f = (iso: string) => { const [, m, d] = iso.slice(0, 10).split('-').map(Number); return `${m}/${d}` }
   const st = formatTime(startTime ?? null)
   const et = formatTime(endTime ?? null)
   if (start && end) {
     const startLabel = `${f(start)}${st ? ` ${st}` : ''}`
     const endLabel = `${end === start ? '' : f(end)}${et ? `${end === start ? '' : ' '}${et}` : ''}`
-    return endLabel ? `${startLabel}〜${endLabel}` : startLabel
+    return endLabel ? t('{start}–{end}', { start: startLabel, end: endLabel }) : startLabel
   }
-  if (end) return `〜${f(end)}${et ? ` ${et}` : ''}`
-  if (start) return `${f(start)}${st ? ` ${st}` : ''}〜`
+  if (end) return t('–{end}', { end: `${f(end)}${et ? ` ${et}` : ''}` })
+  if (start) return t('{start}–', { start: `${f(start)}${st ? ` ${st}` : ''}` })
   return undefined
 }
 
@@ -116,7 +121,9 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
   avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
-}) => (
+}) => {
+  const t = useT()
+  return (
   <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -163,7 +170,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
       {memberCount != null && !mobile && memberCount > 0 && (
-        <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{memberCount}名</span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
       )}
     </button>
     {action && (
@@ -176,7 +183,8 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       </div>
     )}
   </div>
-)
+  )
+}
 
 interface SidebarMenuAction {
   label: string
@@ -191,6 +199,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
   actions: SidebarMenuAction[]
   isMobile: boolean
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ top: 0, left: 0 })
   const buttonRef = React.useRef<HTMLButtonElement>(null)
@@ -245,7 +254,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
         ref={buttonRef}
         type="button"
         onClick={toggle}
-        aria-label={`${ownerLabel}のメニュー`}
+        aria-label={t('{name} menu', { name: ownerLabel })}
         aria-haspopup="menu"
         aria-expanded={open}
         style={{
@@ -270,7 +279,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
         <div
           ref={menuRef}
           role="menu"
-          aria-label={`${ownerLabel}の操作`}
+          aria-label={t('{name} actions', { name: ownerLabel })}
           style={{
             position: 'fixed',
             top: position.top,
@@ -323,19 +332,20 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
-  const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime)
+  const t = useT()
+  const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime, t)
   const completed = channel.milestoneCompleted === true
   const actions: SidebarMenuAction[] = []
   if (!completed && onEditMilestone) {
     actions.push({
-      label: '編集',
+      label: t('Edit'),
       icon: 'edit',
       onSelect: () => onEditMilestone(channel),
     })
   }
   if (onSetMilestoneCompleted) {
     actions.push({
-      label: completed ? '未完了にする' : '完了にする',
+      label: completed ? t('Mark incomplete') : t('Mark complete'),
       icon: completed ? 'refresh' : 'check',
       onSelect: () => onSetMilestoneCompleted(channel, !completed),
       restoreFocus: true,
@@ -366,6 +376,7 @@ function workspaceRowActions({
   onCreateThread,
   onRename,
   onDelete,
+  t,
 }: {
   channel: WorkspaceChannelDto
   isThread: boolean
@@ -373,11 +384,12 @@ function workspaceRowActions({
   onCreateThread?: (target: { id: string; name: string }) => void
   onRename?: (target: WorkspaceChannelDto) => void
   onDelete?: (target: WorkspaceChannelDto) => void
+  t: TranslateFn
 }): SidebarMenuAction[] {
   const actions: SidebarMenuAction[] = []
   if (!isThread && onCreateThread && channel.name) {
     actions.push({
-      label: 'スレッドを作成',
+      label: t('Create thread'),
       icon: 'chat',
       onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
     })
@@ -385,14 +397,14 @@ function workspaceRowActions({
   if (isThread || canManageParent) {
     if (onRename) {
       actions.push({
-        label: '名前を変更',
+        label: t('Rename'),
         icon: 'edit',
         onSelect: () => onRename(channel),
       })
     }
     if (onDelete) {
       actions.push({
-        label: '削除',
+        label: t('Delete'),
         icon: 'trash',
         danger: true,
         onSelect: () => onDelete(channel),
@@ -408,23 +420,27 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actio
   onSelectChannel: (id: string) => void
   isMobile: boolean
   actions: SidebarMenuAction[]
-}) => (
+}) => {
+  const t = useT()
+  const name = channel.name ?? t('Untitled thread')
+  return (
   <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
     <ChatSidebarItem
       active={active}
       onClick={() => onSelectChannel(channel.id)}
       prefix="┗"
-      label={channel.name ?? '名称未設定スレッド'}
+      label={name}
       badge={channel.unreadCount}
       mobile={isMobile}
       memberNames={channel.memberNames}
       memberCount={channel.memberCount}
       action={actions.length > 0 ? (
-        <SidebarCreateMenu ownerLabel={channel.name ?? '名称未設定スレッド'} actions={actions} isMobile={isMobile} />
+        <SidebarCreateMenu ownerLabel={name} actions={actions} isMobile={isMobile} />
       ) : undefined}
     />
   </div>
-)
+  )
+}
 
 const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, onEditMilestone, onSetMilestoneCompleted, isMobile }: {
   general: ProjectChannelDto
@@ -437,6 +453,7 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
+  const t = useT()
   const storageKey = chatCompletedMilestonesCollapsedKey(general.projectId)
   const containsActiveChannel = completedMilestones.some(channel => channel.channelId === channelId)
   const [collapsed, setCollapsed] = React.useState(true)
@@ -459,21 +476,21 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   const actions: SidebarMenuAction[] = []
   if (onCreateMilestone) {
     actions.push({
-      label: 'マイルストーンを作成',
+      label: t('Create milestone'),
       icon: 'flag',
       onSelect: () => onCreateMilestone({ id: general.projectId, title: general.projectTitle }),
     })
   }
   if (completedMilestones.length > 0) {
     actions.push({
-      label: `完了済みマイルストーンを${collapsed ? '表示' : '非表示'}`,
+      label: t('Completed milestones: {state}', { state: collapsed ? t('Show') : t('Hide') }),
       icon: collapsed ? 'eye' : 'eye-off',
       onSelect: toggle,
       restoreFocus: true,
     })
   }
 
-  const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime)
+  const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime, t)
 
   return (
     <>
@@ -522,6 +539,7 @@ interface DmPickerProps {
 }
 
 const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -535,7 +553,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label="ダイレクトメッセージを開始" style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
       {open && (
@@ -639,6 +657,7 @@ export const ChannelList = ({
           ...(onCreateThread ? { onCreateThread } : {}),
           ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
           ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+          t,
         })
         return (
         <React.Fragment key={channel.id}>
@@ -653,7 +672,7 @@ export const ChannelList = ({
             memberCount={channel.memberCount}
             action={channelActions.length > 0 ? (
               <SidebarCreateMenu
-                ownerLabel={channel.name ?? '名称未設定チャンネル'}
+                ownerLabel={channel.name ?? t('Untitled channel')}
                 actions={channelActions}
                 isMobile={isMobile}
               />
@@ -672,6 +691,7 @@ export const ChannelList = ({
                 canManageParent: canManageWorkspaceChannel,
                 ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
                 ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+                t,
               })}
             />
           ))}

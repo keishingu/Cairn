@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { shareCachedAttachment } from '../lib/attachment-cache'
+import { useT } from './locale-provider'
 
 export function ChatImageViewer({
   fileUrl,
@@ -28,6 +29,7 @@ export function ChatImageViewer({
   accessToken: string
   onClose: () => void
 }) {
+  const t = useT()
   const insets = useSafeAreaInsets()
   const [attempt, setAttempt] = React.useState(0)
   const [loading, setLoading] = React.useState(true)
@@ -44,12 +46,13 @@ export function ChatImageViewer({
         fileName,
         accessToken,
         mimeType,
-        dialogTitle: action === 'save' ? '画像を保存' : '画像を共有',
+        dialogTitle: action === 'save' ? t('Save image') : t('Share image'),
+        t,
       })
     } catch (error) {
       Alert.alert(
-        action === 'save' ? '画像を保存できませんでした' : '画像を共有できませんでした',
-        error instanceof Error ? error.message : 'しばらくしてから再度お試しください。',
+        action === 'save' ? t('Could not save the image') : t('Could not share the image'),
+        error instanceof Error ? error.message : t('Please try again in a moment.'),
       )
     } finally {
       setBusyAction(null)
@@ -62,7 +65,7 @@ export function ChatImageViewer({
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="画像を閉じる"
+            accessibilityLabel={t('Close image')}
             onPress={onClose}
             hitSlop={8}
             style={styles.iconButton}
@@ -77,10 +80,10 @@ export function ChatImageViewer({
         <View style={styles.stage}>
           {failed ? (
             <View style={styles.failure}>
-              <Text style={styles.failureText}>画像を表示できませんでした</Text>
+              <Text style={styles.failureText}>{t('Could not display the image')}</Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="画像を再読み込み"
+                accessibilityLabel={t('Reload image')}
                 onPress={() => {
                   setFailed(false)
                   setLoading(true)
@@ -88,7 +91,7 @@ export function ChatImageViewer({
                 }}
                 style={styles.retry}
               >
-                <Text style={styles.retryText}>再試行</Text>
+                <Text style={styles.retryText}>{t('Retry')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -117,14 +120,14 @@ export function ChatImageViewer({
         <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
           <ViewerAction
             icon="download-outline"
-            label="保存"
+            label={t('Save entry')}
             busy={busyAction === 'save'}
             disabled={busyAction !== null}
             onPress={() => void runFileAction('save')}
           />
           <ViewerAction
             icon="share-outline"
-            label="共有"
+            label={t('Share')}
             busy={busyAction === 'share'}
             disabled={busyAction !== null}
             onPress={() => void runFileAction('share')}

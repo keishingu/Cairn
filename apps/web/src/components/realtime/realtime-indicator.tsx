@@ -3,11 +3,13 @@
 
 'use client'
 
+import { useT } from '@/components/locale-provider'
 import { useRealtime } from './realtime-provider'
 
 // Realtime が一定時間復帰できないとき「再接続中…」を表示する。
 // 更新が止まっているのではなく接続が切れていることをユーザーに見せる（障害を隠さない）
 export function RealtimeIndicator() {
+  const t = useT()
   const { degraded } = useRealtime()
   if (!degraded) return null
 
@@ -42,7 +44,7 @@ export function RealtimeIndicator() {
           animation: 'realtimePulse 1.2s ease-in-out infinite',
         }}
       />
-      再接続中…
+      {t('Reconnecting...')}
       <style>{`@keyframes realtimePulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
     </div>
   )

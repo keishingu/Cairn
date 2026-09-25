@@ -5,6 +5,7 @@
 
 import React from 'react'
 import type { ProfileAttributeColor, ProfileAttributeDto } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   useCreateProfileAttribute,
@@ -26,16 +27,17 @@ function ColorPicker({
   value: ProfileAttributeColor
   onChange: (value: ProfileAttributeColor) => void
 }) {
+  const t = useT()
   return (
-    <div role="group" aria-label="ラベルの色" style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+    <div role="group" aria-label={t('Label color')} style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
       {PROFILE_ATTRIBUTE_COLOR_OPTIONS.map(option => (
         <button
           key={option.id}
           type="button"
           className="btn btn-ghost"
-          aria-label={option.label}
+          aria-label={t(option.label)}
           aria-pressed={value === option.id}
-          title={option.label}
+          title={t(option.label)}
           onClick={() => onChange(option.id)}
           style={{
             width: 40,
@@ -73,6 +75,7 @@ function AttributeRow({
   attribute: ProfileAttributeDto
   canManage: boolean
 }) {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const [name, setName] = React.useState(attribute.name)
@@ -104,7 +107,7 @@ function AttributeRow({
     return (
       <div style={{ padding: 16, background: 'var(--card-2)' }}>
         <label htmlFor={`profile-attribute-${attribute.id}`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-          属性名
+          {t('Attribute name')}
         </label>
         <input
           id={`profile-attribute-${attribute.id}`}
@@ -125,10 +128,10 @@ function AttributeRow({
         {update.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{update.error.message}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button type="button" className="btn" onClick={handleCancelEditing}>
-            キャンセル
+            {t('Cancel')}
           </button>
           <button type="button" className="btn btn-primary" disabled={!name.trim() || update.isPending} onClick={handleUpdate}>
-            {update.isPending ? '保存中…' : '保存'}
+            {update.isPending ? t('Saving...') : t('Save')}
           </button>
         </div>
       </div>
@@ -142,14 +145,14 @@ function AttributeRow({
       </div>
       {canManage && (
         <RowActionMenu actions={[
-          { icon: 'edit', label: '編集', onSelect: () => { setName(attribute.name); setColor(attribute.color); update.reset(); setEditing(true) } },
-          { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDelete(true) },
+          { icon: 'edit', label: 'Edit', onSelect: () => { setName(attribute.name); setColor(attribute.color); update.reset(); setEditing(true) } },
+          { icon: 'trash', label: 'Delete', danger: true, onSelect: () => setConfirmDelete(true) },
         ]} />
       )}
       <ConfirmDialog
         open={confirmDelete}
-        title="属性を削除"
-        message={`「${attribute.name}」を削除します。設定済みのすべてのメンバーからも外れます。`}
+        title={t('Delete attribute')}
+        message={t('Delete "{name}". It is also removed from every member who has it.', { name: attribute.name })}
         onConfirm={() => remove.mutateAsync()}
         onClose={() => setConfirmDelete(false)}
       />
@@ -158,6 +161,7 @@ function AttributeRow({
 }
 
 export function ProfileAttributesSettings() {
+  const t = useT()
   const { isAdmin } = useWorkspacePermissions()
   const { data: attributes = [], isLoading, error } = useProfileAttributes()
   const [adding, setAdding] = React.useState(false)
@@ -185,30 +189,30 @@ export function ProfileAttributesSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>プロフィール属性</h1>
+          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Profile attributes')}</h1>
           <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
-            メンバーに付ける共通ラベルと色を管理します。属性はワークスペース内のすべてのプロジェクトで共有されます。
+            {t('Manage shared labels and colors for members. Attributes are shared across every project in the workspace.')}
           </p>
         </div>
         {isAdmin && !adding && (
           <button type="button" className="btn btn-primary" onClick={() => { create.reset(); setAdding(true) }} style={{ flexShrink: 0 }}>
-            属性を追加
+            {t('Add attribute')}
           </button>
         )}
       </div>
 
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>属性一覧</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Attribute list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {adding && (
             <div style={{ padding: 16, background: 'var(--card-2)', borderBottom: attributes.length > 0 ? '1px solid var(--divider)' : 'none' }}>
-              <label htmlFor="new-profile-attribute" style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>属性名</label>
+              <label htmlFor="new-profile-attribute" style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>{t('Attribute name')}</label>
               <input
                 id="new-profile-attribute"
                 name="newProfileAttributeName"
                 autoComplete="off"
                 className="form-control"
-                placeholder="例: 3年生、経済学部…"
+                placeholder={t('e.g. 3rd year, economics…')}
                 value={name}
                 maxLength={20}
                 aria-invalid={create.isError}
@@ -222,26 +226,26 @@ export function ProfileAttributesSettings() {
               <ColorPicker value={color} onChange={setColor} />
               {create.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{create.error.message}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                <button type="button" className="btn" onClick={cancelAdding}>キャンセル</button>
+                <button type="button" className="btn" onClick={cancelAdding}>{t('Cancel')}</button>
                 <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={handleCreate}>
-                  {create.isPending ? '追加中…' : '追加'}
+                  {create.isPending ? t('Adding...') : t('Add')}
                 </button>
               </div>
             </div>
           )}
           {isLoading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
           ) : error ? (
             <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 13 }}>{error.message}</div>
           ) : attributes.length === 0 && !adding ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>属性はまだありません。</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('No attributes yet.')}</div>
           ) : attributes.map((attribute, index) => (
             <div key={attribute.id} style={{ borderBottom: index < attributes.length - 1 ? '1px solid var(--divider)' : 'none' }}>
               <AttributeRow attribute={attribute} canManage={isAdmin} />
             </div>
           ))}
         </div>
-        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 12 }}>属性の追加・編集・削除は管理者が行います。</p>}
+        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 12 }}>{t('Only admins can add, edit, or delete attributes.')}</p>}
       </section>
     </div>
   )

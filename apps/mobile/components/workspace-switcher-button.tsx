@@ -3,8 +3,10 @@ import { Image, Pressable, StyleSheet, Text } from 'react-native'
 import { useWorkspace } from '../hooks/use-account'
 import { useAppAppearance } from './appearance-provider'
 import { WorkspaceSwitcherModal } from './workspace-switcher-modal'
+import { useT } from './locale-provider'
 
 export function WorkspaceSwitcherButton() {
+  const t = useT()
   const { data: workspace } = useWorkspace()
   const { palette } = useAppAppearance()
   const [open, setOpen] = React.useState(false)
@@ -13,7 +15,7 @@ export function WorkspaceSwitcherButton() {
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${workspace?.name ?? '現在'}のワークスペースを切り替える`}
+        accessibilityLabel={t('Switch the {name} workspace', { name: workspace?.name ?? t('Current') })}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           styles.button,

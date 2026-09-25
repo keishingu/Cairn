@@ -3,6 +3,7 @@
 import React from 'react'
 import { Icon } from '../primitives'
 import { useCreateChannel } from '@/lib/chat/client'
+import { useT } from '@/components/locale-provider'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 
 const inputStyle: React.CSSProperties = {
@@ -25,6 +26,7 @@ interface CreateChannelSheetProps {
 }
 
 export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetProps) {
+  const t = useT()
   const [name, setName] = React.useState('')
   const [isPrivate, setIsPrivate] = React.useState(false)
   const [nameError, setNameError] = React.useState('')
@@ -37,11 +39,11 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) {
-      setNameError('チャンネル名を入力してください')
+      setNameError(t('Enter a channel name'))
       return
     }
     if (name.trim().length > 60) {
-      setNameError('60文字以内で入力してください')
+      setNameError(t('Enter 60 characters or fewer'))
       return
     }
     setNameError('')
@@ -90,8 +92,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             <Icon name="hash" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>新規チャンネル</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>チャンネル情報を入力してください</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('New channel')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('Enter the channel details')}</div>
           </div>
           <button
             onClick={onClose}
@@ -107,7 +109,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
               <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-                チャンネル名 <span style={{ color: 'var(--red)' }}>*</span>
+                {t('Channel name')} <span style={{ color: 'var(--red)' }}>*</span>
               </label>
               <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{name.length}/60</span>
             </div>
@@ -115,7 +117,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
               ref={nameRef}
               value={name}
               onChange={e => { setName(e.target.value); if (nameError) setNameError('') }}
-              placeholder="例: 雑談"
+              placeholder={t('e.g. Random')}
               style={nameError ? inputErrorStyle : inputStyle}
             />
             {nameError && (
@@ -129,7 +131,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
           {/* 公開 / 非公開 */}
           <div>
             <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
-              公開設定 <span style={{ color: 'var(--red)' }}>*</span>
+              {t('Visibility')} <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
@@ -144,8 +146,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
                 }}
               >
                 <Icon name="hash" size={20} color={!isPrivate ? 'var(--accent-text)' : 'var(--text-3)'}/>
-                <span style={{ fontSize: 13, fontWeight: 600, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-2)' }}>公開</span>
-                <span style={{ fontSize: 11, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>誰でも参加できます</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-2)' }}>{t('Public')}</span>
+                <span style={{ fontSize: 11, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Anyone can join')}</span>
               </button>
               <button
                 type="button"
@@ -159,8 +161,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
                 }}
               >
                 <Icon name="lock" size={20} color={isPrivate ? 'var(--amber-text)' : 'var(--text-3)'}/>
-                <span style={{ fontSize: 13, fontWeight: 600, color: isPrivate ? 'var(--amber-text)' : 'var(--text-2)' }}>非公開</span>
-                <span style={{ fontSize: 11, color: isPrivate ? 'var(--amber-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>招待されたメンバーのみ</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: isPrivate ? 'var(--amber-text)' : 'var(--text-2)' }}>{t('Private')}</span>
+                <span style={{ fontSize: 11, color: isPrivate ? 'var(--amber-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Invited members only')}</span>
               </button>
             </div>
           </div>
@@ -187,7 +189,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
               cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
-            キャンセル
+            {t('Cancel')}
           </button>
           <button
             onClick={handleSubmit}
@@ -202,7 +204,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
               fontFamily: 'inherit', transition: 'background 0.15s',
             }}
           >
-            {mutation.isPending ? '作成中…' : '作成する'}
+            {mutation.isPending ? t('Creating…') : t('Create')}
           </button>
         </div>
       </div>

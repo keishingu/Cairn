@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { Icon } from './primitives'
 
 export interface RowAction {
@@ -16,6 +17,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
   actions: RowAction[]
   triggerStyle?: React.CSSProperties
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ top: 0, right: 0 })
   const btnRef = React.useRef<HTMLButtonElement>(null)
@@ -51,7 +53,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
       <button
         ref={btnRef}
         type="button"
-        aria-label="操作"
+        aria-label={t('Actions')}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={e => {
@@ -62,7 +64,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
           setOpen(p => !p)
         }}
         style={{ border: 'none', background: open ? 'var(--card-hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', ...triggerStyle }}
-        title="操作"
+        title={t('Actions')}
       >
         <Icon name="more" size={15}/>
       </button>
@@ -80,7 +82,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
               onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(false); btnRef.current?.focus(); a.onSelect() }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: a.danger ? 'var(--red-text)' : 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
             >
-              <Icon name={a.icon} size={13}/> {a.label}
+              <Icon name={a.icon} size={13}/> {t(a.label)}
             </button>
           ))}
         </div>

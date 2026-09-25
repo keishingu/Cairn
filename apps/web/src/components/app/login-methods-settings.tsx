@@ -6,6 +6,7 @@
 import React from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { UserIdentity } from '@supabase/supabase-js'
+import { useT } from '@/components/locale-provider'
 import { ConfirmDialog } from './confirm-dialog'
 import {
   findIdentity,
@@ -16,6 +17,13 @@ import {
   type LinkableOAuthProvider,
 } from '@/hooks/use-auth-identities'
 import { formatLoginLinkErrorMessage } from '@/lib/auth-identity-link-errors'
+
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+function signInProviderName(provider: string, t: Translate): string {
+  if (provider === 'email') return t('Email and password')
+  return providerLabel(provider)
+}
 
 const NATIVE_LINK_EVENTS: Record<LinkableOAuthProvider, string> = {
   apple: 'cairn:apple-identity-linked',
@@ -51,10 +59,10 @@ function isExpoAndroidWebView(): boolean {
   return hasReactNativeWebView() && /Android/i.test(navigator.userAgent)
 }
 
-function requestNativeOAuthLink(provider: LinkableOAuthProvider): Promise<NativeLinkDetail> {
+function requestNativeOAuthLink(provider: LinkableOAuthProvider, t: Translate): Promise<NativeLinkDetail> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined') {
-      resolve({ ok: false, message: 'ネイティブ連携を開始できませんでした' })
+      resolve({ ok: false, message: t('Could not start native linking') })
       return
     }
 
@@ -65,7 +73,7 @@ function requestNativeOAuthLink(provider: LinkableOAuthProvider): Promise<Native
     ).ReactNativeWebView
 
     if (!nativeBridge) {
-      resolve({ ok: false, message: 'ネイティブ連携を開始できませんでした' })
+      resolve({ ok: false, message: t('Could not start native linking') })
       return
     }
 
@@ -74,7 +82,7 @@ function requestNativeOAuthLink(provider: LinkableOAuthProvider): Promise<Native
       window.removeEventListener(eventName, onResult as EventListener)
       resolve({
         ok: false,
-        message: `${providerLabel(provider)} 連携がタイムアウトしました。もう一度お試しください。`,
+        message: t('{label} linking timed out. Please try again.', { label: providerLabel(provider) }),
       })
     }, 120_000)
 
@@ -97,6 +105,8 @@ function IdentityRow({
   identity: UserIdentity
   action?: React.ReactNode
 }) {
+  const t = useT()
+  const label = signInProviderName(identity.provider, t)
   return (
     <div
       style={{
@@ -108,11 +118,11 @@ function IdentityRow({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{providerLabel(identity.provider)}</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
           {identity.identity_data?.['email']
             ? String(identity.identity_data['email'])
-            : '連携済み'}
+            : t('Linked')}
         </div>
       </div>
       {action}
@@ -129,6 +139,7 @@ function UnlinkedProviderRow({
   busy: boolean
   onLink: () => void
 }) {
+  const t = useT()
   const label = providerLabel(provider)
   return (
     <div
@@ -143,7 +154,7 @@ function UnlinkedProviderRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-          未連携。連携すると次回から {label} でも同じアカウントに入れます。
+          {t('Not linked. Link {label} to sign in to the same account next time.', { label })}
         </div>
       </div>
       <button
@@ -153,13 +164,14 @@ function UnlinkedProviderRow({
         disabled={busy}
         onClick={onLink}
       >
-        {busy ? '連携中…' : `${label} を連携`}
+        {busy ? t('Linking...') : t('Link {label}', { label })}
       </button>
     </div>
   )
 }
 
 export function LoginMethodsSettings() {
+  const t = useT()
   const searchParams = useSearchParams()
   const { data: identities, isLoading, isError, error, refetch } = useAuthIdentities()
   const linkApple = useLinkOAuthIdentity('apple')
@@ -225,14 +237,14 @@ export function LoginMethodsSettings() {
       linked === 'google' ? 'Google' : linked === 'apple' || linked === '1' ? 'Apple' : null
     if (!label) return
     handledLinkFeedbackRef.current = true
-    setMessage({ text: `${label} をログイン方法として連携しました`, ok: true })
+    setMessage({ text: t('Linked {label} as a sign-in method', { label }), ok: true })
     const url = new URL(window.location.href)
     url.searchParams.delete('loginLinked')
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     void refetch()
     const timer = window.setTimeout(() => setMessage(null), 5000)
     return () => window.clearTimeout(timer)
-  }, [searchParams, refetch])
+  }, [searchParams, refetch, t])
 
   const handleLink = async (provider: LinkableOAuthProvider) => {
     setMessage(null)
@@ -243,19 +255,19 @@ export function LoginMethodsSettings() {
         provider === 'apple' ? useNativeAppleLink : provider === 'google' ? useNativeGoogleLink : false
 
       if (useNative) {
-        const result = await requestNativeOAuthLink(provider)
+        const result = await requestNativeOAuthLink(provider, t)
         if (result.cancelled) {
-          setMessage({ text: `${label} 連携をキャンセルしました`, ok: false })
+          setMessage({ text: t('Canceled {label} linking', { label }), ok: false })
           return
         }
         if (!result.ok) {
           setMessage({
-            text: result.message ?? `${label} との連携に失敗しました`,
+            text: result.message ?? t('Could not link {label}', { label }),
             ok: false,
           })
           return
         }
-        setMessage({ text: `${label} をログイン方法として連携しました`, ok: true })
+        setMessage({ text: t('Linked {label} as a sign-in method', { label }), ok: true })
         void refetch()
         return
       }
@@ -264,7 +276,7 @@ export function LoginMethodsSettings() {
       else await linkGoogle.mutateAsync()
     } catch (err) {
       setMessage({
-        text: err instanceof Error ? err.message : `${label} との連携に失敗しました`,
+        text: err instanceof Error ? err.message : t('Could not link {label}', { label }),
         ok: false,
       })
     } finally {
@@ -277,7 +289,7 @@ export function LoginMethodsSettings() {
     const label = providerLabel(unlinkTarget.provider)
     await unlinkIdentity.mutateAsync(unlinkTarget)
     setUnlinkTarget(null)
-    setMessage({ text: `${label} 連携を解除しました`, ok: true })
+    setMessage({ text: t('Unlinked {label}', { label }), ok: true })
   }
 
   const busy =
@@ -285,13 +297,13 @@ export function LoginMethodsSettings() {
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ログイン方法</h2>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Sign-in methods')}</h2>
       <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 12.5, lineHeight: 1.5 }}>
-        同じアカウントに複数のログイン方法を追加できます。Apple の「メールを非公開」を使っても、ここで明示的に連携できます。
+        {t('You can add more than one sign-in method to the same account. You can link Apple here even when using Hide My Email.')}
       </p>
       <div className="card" style={{ padding: 0 }}>
         {isLoading ? (
-          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>読み込み中…</div>
+          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : isError ? (
           <div style={{ padding: 16, fontSize: 12, color: 'var(--red-text)' }}>
             ⚠ {(error as Error).message}
@@ -313,7 +325,7 @@ export function LoginMethodsSettings() {
                         disabled={!canUnlink || unlinkIdentity.isPending}
                         onClick={() => setUnlinkTarget(identity)}
                       >
-                        解除
+                        {t('Unlink')}
                       </button>
                     ) : undefined
                   }
@@ -346,8 +358,7 @@ export function LoginMethodsSettings() {
                   borderBottom: googleIdentity ? undefined : '1px solid var(--divider)',
                 }}
               >
-                Android アプリでは Apple ログインを提供していないため、ここでは連携できません。Web
-                または iOS から連携してください。
+                {t('The Android app does not offer Apple sign-in, so you cannot link it here. Link it from the web or iOS.')}
               </div>
             )}
           </>
@@ -375,12 +386,12 @@ export function LoginMethodsSettings() {
 
       <ConfirmDialog
         open={unlinkTarget !== null}
-        title={`${providerLabel(unlinkTarget?.provider ?? '')} 連携を解除しますか？`}
-        confirmLabel="解除する"
-        busyLabel="解除中…"
+        title={t('Unlink {label}?', { label: providerLabel(unlinkTarget?.provider ?? '') })}
+        confirmLabel={t('Unlink sign-in method')}
+        busyLabel={t('Unlinking...')}
         onClose={() => setUnlinkTarget(null)}
         onConfirm={handleUnlink}
-        message={`解除すると、このアカウントでは ${providerLabel(unlinkTarget?.provider ?? '')} でサインインできなくなります。メールなど別のログイン方法は残ります。`}
+        message={t('Unlinking removes {label} sign-in for this account. Other methods, such as email, remain.', { label: providerLabel(unlinkTarget?.provider ?? '') })}
       />
     </section>
   )

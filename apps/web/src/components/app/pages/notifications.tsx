@@ -6,10 +6,10 @@ import { Icon, UnreadBadge, Switch } from '../primitives'
 import {
   useNotifications,
   useMarkNotificationsRead,
-  formatRelativeTime,
   type NotificationDto,
 } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
+import { useT } from '@/components/locale-provider'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 
 const TYPE_CONFIG: Record<NotificationDto['type'], { icon: string; c: string; bg: string }> = {
@@ -29,11 +29,23 @@ function parseMentionText(text: string): string {
 }
 
 const FILTERS = [
-  { id: 'all',     label: 'すべて' },
-  { id: 'mention', label: '@メンション' },
-  { id: 'ai',      label: 'AI' },
-  { id: 'unread',  label: '未読' },
-]
+  { id: 'all', label: 'All' },
+  { id: 'mention', label: '@Mention' },
+  { id: 'ai', label: 'AI' },
+  { id: 'unread', label: 'Unread' },
+] as const
+
+function formatNotificationTime(iso: string, t: (message: string, values?: Record<string, string | number>) => string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 1) return t('Just now')
+  if (minutes < 60) return t('{count} minutes ago', { count: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('{count} hours ago', { count: hours })
+  const days = Math.floor(hours / 24)
+  if (days === 1) return t('Yesterday')
+  return t('{count} days ago', { count: days })
+}
 
 // 通知の遷移先を決める。チャンネル系は data.channelId のスレッドへ、タスクはマイタスクへ
 export function notificationHref(n: NotificationDto): string | null {
@@ -63,6 +75,7 @@ interface PageNotificationsProps {
 }
 
 export const PageNotifications = ({ onClose, isMobile = false }: PageNotificationsProps) => {
+  const t = useT()
   const [filter, setFilter] = React.useState('all')
   const router = useRouter()
   const { data: notifications = [], isLoading } = useNotifications(filter)
@@ -92,7 +105,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
         <div style={{ padding: isMobile ? 'max(16px, env(safe-area-inset-top)) 18px 12px' : '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-              通知
+              {t('Notifications')}
               <UnreadBadge count={unreadCount} />
             </h2>
             <button
@@ -101,18 +114,18 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
               onClick={handleMarkAllRead}
               disabled={unreadCount === 0 || markRead.isPending}
             >
-              <Icon name="check" size={12} /> すべて既読
+              <Icon name="check" size={12} /> {t('Mark all as read')}
             </button>
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="bell" size={14} color={push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)'} />
-                {!isMobile && <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Push通知</span>}
+                {!isMobile && <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{t('Push notifications')}</span>}
                 <Switch
                   size="sm"
                   checked={push.permission === 'granted'}
                   disabled={push.loading}
                   onChange={(next) => (next ? push.subscribe() : push.unsubscribe())}
-                  title={push.permission === 'granted' ? 'プッシュ通知を無効化' : 'プッシュ通知を有効化'}
+                  title={push.permission === 'granted' ? t('Turn off push notifications') : t('Turn on push notifications')}
                 />
               </div>
             )}
@@ -122,16 +135,16 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
             {FILTERS.map(f => (
-              <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--card-hover)' : 'transparent', color: filter === f.id ? 'var(--text)' : 'var(--text-3)', fontSize: 12, fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>{f.label}</button>
+              <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--card-hover)' : 'transparent', color: filter === f.id ? 'var(--text)' : 'var(--text-3)', fontSize: 12, fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>{t(f.label)}</button>
             ))}
           </div>
         </div>
 
         <div style={{ flex: 1, overflow: 'auto' }}>
           {isLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中...</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading…')}</div>
           ) : notifications.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>該当する通知はありません</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No matching notifications')}</div>
           ) : notifications.map((n) => {
             const cfg = TYPE_CONFIG[n.type]
             const isUnread = n.readAt === null
@@ -150,9 +163,9 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {senderName ?? (n.type === 'ai' ? 'AIアシスタント' : n.title)}
+                      {senderName ?? (n.type === 'ai' ? t('AI assistant') : n.title)}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-4)', flexShrink: 0 }}>· {formatRelativeTime(n.createdAt)}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-4)', flexShrink: 0 }}>· {formatNotificationTime(n.createdAt, t)}</span>
                   </div>
                   {senderName && (
                     <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5 }}>

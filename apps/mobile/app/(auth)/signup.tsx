@@ -6,8 +6,10 @@ import { apiFetch } from '../../lib/api-fetch'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
 import { AppleSignInButton } from '../../components/apple-sign-in-button'
 import * as AppleAuthentication from 'expo-apple-authentication'
+import { useT } from '../../components/locale-provider'
 
 export default function SignupScreen() {
+  const t = useT()
   const router = useRouter()
   const [displayName, setDisplayName] = React.useState('')
   const [email, setEmail] = React.useState('')
@@ -17,7 +19,7 @@ export default function SignupScreen() {
 
   async function handleSignup() {
     if (password.length < 8) {
-      setError('パスワードは8文字以上で入力してください')
+      setError(t('Password must be at least 8 characters.'))
       return
     }
     setLoading(true)
@@ -36,7 +38,7 @@ export default function SignupScreen() {
     }
 
     if (!data.session) {
-      setError('メール確認が必要です。受信トレイをご確認ください。')
+      setError(t('Confirm your email. Check your inbox.'))
       setLoading(false)
       return
     }
@@ -49,7 +51,7 @@ export default function SignupScreen() {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      setError((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
+      setError((body as { error?: string }).error ?? t('Could not create your profile.'))
       setLoading(false)
       return
     }
@@ -60,19 +62,19 @@ export default function SignupScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Cairn</Text>
-      <Text style={styles.subtitle}>新しいアカウントを作成</Text>
+      <Text style={styles.subtitle}>{t('Create a new account')}</Text>
 
       <View style={styles.form}>
         <TextInput
           style={styles.input}
-          placeholder="表示名"
+          placeholder={t('Display name')}
           value={displayName}
           onChangeText={setDisplayName}
           autoComplete="name"
         />
         <TextInput
           style={styles.input}
-          placeholder="メールアドレス"
+          placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -81,7 +83,7 @@ export default function SignupScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="パスワード（8文字以上）"
+          placeholder={t('Password (at least 8 characters)')}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -98,44 +100,42 @@ export default function SignupScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>アカウントを作成</Text>
+            <Text style={styles.buttonText}>{t('Create account')}</Text>
           )}
         </TouchableOpacity>
 
         <View style={styles.divider}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>または</Text>
+          <Text style={styles.dividerText}>{t('or')}</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        <GoogleSignInButton label="Google で続ける" onError={(m) => setError(m || null)} />
+        <GoogleSignInButton label={t('Continue with Google')} onError={(m) => setError(m || null)} />
         <AppleSignInButton
           buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
           onError={(m) => setError(m || null)}
         />
 
         <View style={styles.legal}>
-          <Text style={styles.legalText}>アカウントを作成することで、</Text>
+          <Text style={styles.legalText}>{t('By creating an account, you agree to the')}</Text>
           <TouchableOpacity
             accessibilityRole="link"
             onPress={() => void Linking.openURL('https://oss-cairn.com/terms')}
           >
-            <Text style={styles.legalLink}>利用規約</Text>
+            <Text style={styles.legalLink}>{t('Terms')}</Text>
           </TouchableOpacity>
-          <Text style={styles.legalText}>と</Text>
+          <Text style={styles.legalText}>{t('and')}</Text>
           <TouchableOpacity
             accessibilityRole="link"
             onPress={() => void Linking.openURL('https://oss-cairn.com/privacy')}
           >
-            <Text style={styles.legalLink}>プライバシーポリシー</Text>
+            <Text style={styles.legalLink}>{t('Privacy policy')}</Text>
           </TouchableOpacity>
-          <Text style={styles.legalText}>に同意したものとみなします。</Text>
+          <Text style={styles.legalText}>{t('you agree to them.')}</Text>
         </View>
       </View>
 
-      <Link href="/(auth)/login" style={styles.link}>
-        すでにアカウントをお持ちの方はこちら
-      </Link>
+      <Link href="/(auth)/login" style={styles.link}>{t('Already have an account? Sign in here')}</Link>
     </View>
   )
 }

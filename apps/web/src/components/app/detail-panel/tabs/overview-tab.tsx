@@ -11,6 +11,7 @@ import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 
@@ -112,6 +113,7 @@ const InlineDatePair = ({
   onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
@@ -165,7 +167,7 @@ const InlineDatePair = ({
           padding: '2px 0', border: 'none',
           background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
         }}
-        title={readOnly ? undefined : 'クリックして編集'}
+        title={readOnly ? undefined : t('Click to edit')}
       >
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
           {formatDateRange(startDate, endDate, startTime, endTime)}
@@ -196,7 +198,7 @@ const InlineDatePair = ({
         onKeyDown={e => { if (e.key === 'Escape') cancel() }}
         style={{ ...inputStyle, width: 104 }}
       />
-      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
+      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('to')}</span>
       <input
         type="date"
         value={end}
@@ -222,6 +224,7 @@ const InlineStatus = ({
   onSave: (name: string) => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -246,7 +249,7 @@ const InlineStatus = ({
           background: 'transparent', border: 'none',
           padding: '2px 0', cursor: readOnly ? 'default' : 'pointer',
         }}
-        title={readOnly ? undefined : 'クリックして変更'}
+        title={readOnly ? undefined : t('Click to change')}
       >
         <StatusChip name={statusName ?? '—'} color={statuses.find(s => s.name === statusName)?.color ?? '#9CA3AF'}/>
         {!readOnly && <Icon name="chevDown" size={11} color="var(--text-4)"/>}
@@ -290,6 +293,7 @@ const InlineLocation = ({
   onClear: () => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
 
   const inputStyle: React.CSSProperties = {
@@ -311,11 +315,11 @@ const InlineLocation = ({
           background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
           maxWidth: '100%',
         }}
-        title={readOnly ? undefined : 'クリックして編集'}
+        title={readOnly ? undefined : t('Click to edit')}
       >
         <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
         <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {location ?? (readOnly ? '未設定' : '場所を設定…')}
+          {location ?? (readOnly ? t('Not set') : t('Set a location…'))}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
@@ -329,14 +333,14 @@ const InlineLocation = ({
         onSelect={(desc, pid) => { onSave(desc, pid); setEditing(false) }}
         onClear={() => { onClear(); setEditing(false) }}
         inputStyle={inputStyle}
-        placeholder="場所を検索…"
+        placeholder={t('Search for a place…')}
       />
       <button
         onClick={() => setEditing(false)}
         className="btn btn-ghost"
         style={{ alignSelf: 'flex-start', height: 26, fontSize: 11.5, padding: '0 8px' }}
       >
-        キャンセル
+        {t('Cancel')}
       </button>
     </div>
   )
@@ -355,6 +359,7 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
   onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
   disabled?: boolean
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -397,7 +402,7 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
         className="btn btn-ghost"
         style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
       >
-        <Icon name="plus" size={12}/> 追加
+        <Icon name="plus" size={12}/> {t('Add')}
       </button>
     )
   }
@@ -416,25 +421,25 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)' }}>
-      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="タイトル" autoFocus style={inputStyle}/>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t('Title')} autoFocus style={inputStyle}/>
       <textarea
         value={description}
         onChange={e => setDescription(e.target.value)}
-        placeholder="説明"
+        placeholder={t('Description')}
         rows={2}
         style={{ ...inputStyle, height: 'auto', resize: 'vertical', paddingTop: 8, lineHeight: 1.5 }}
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label="開始日" style={inputStyle}/>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} aria-label="終了日" style={inputStyle}/>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} aria-label={t('End date')} style={inputStyle}/>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label="開始時刻" style={inputStyle}/>
-        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label="終了時刻" style={inputStyle}/>
+        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
+        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>キャンセル</button>
-        <button type="submit" className="btn btn-primary" disabled={!title.trim()}>作成</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>
+        <button type="submit" className="btn btn-primary" disabled={!title.trim()}>{t('Create entry')}</button>
       </div>
     </form>
   )
@@ -446,6 +451,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => void
   onDelete: (milestone: MilestoneDto) => void
 }) => {
+  const t = useT()
   const router = useRouter()
   const overdue = isPastDue(milestone)
 
@@ -474,13 +480,13 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         onClick={e => e.stopPropagation()}
         onChange={e => onPatch(milestone.id, { completed: e.target.checked })}
         style={{ marginTop: 7, cursor: canEdit ? 'pointer' : 'not-allowed' }}
-        aria-label="完了"
+        aria-label={t('Complete')}
       />
       <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>
         <InlineText
           value={milestone.title}
           onSave={v => onPatch(milestone.id, { title: v })}
-          placeholder="マイルストーン名"
+          placeholder={t('Milestone name')}
           required
           readOnly={!canEdit}
         />
@@ -502,13 +508,13 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
             className="btn btn-ghost"
             style={{ height: 24, fontSize: 11.5, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
-            <Icon name="chat" size={11}/> スレッド
+            <Icon name="chat" size={11}/> {t('Thread')}
           </button>
         </div>
         <InlineText
           value={milestone.description ?? ''}
           onSave={v => onPatch(milestone.id, { description: v || null })}
-          placeholder="説明を入力…"
+          placeholder={t('Enter a description…')}
           multiline
           readOnly={!canEdit}
         />
@@ -517,7 +523,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         <button
           type="button"
           onClick={e => { e.stopPropagation(); onDelete(milestone) }}
-          aria-label="マイルストーンを削除"
+          aria-label={t('Delete milestone')}
           style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer' }}
         >
           <Icon name="trash" size={13}/>
@@ -528,34 +534,35 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
 }
 
 const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: boolean }) => {
+  const t = useT()
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
 
   const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
     milestones.patchMutation.mutate(
       { id, input },
-      { onError: () => toast.error('マイルストーンの更新に失敗しました') },
+      { onError: () => toast.error(t('Could not update this milestone')) },
     )
   }
 
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{ ...cardLabelStyle, marginBottom: 0 }}>マイルストーン</div>
+        <div style={{ ...cardLabelStyle, marginBottom: 0 }}>{t('Milestones')}</div>
         <div style={{ marginLeft: 'auto' }}>
           <MilestoneCreateForm
             disabled={!canEdit || milestones.createMutation.isPending}
             onCreate={input => milestones.createMutation.mutate(input, {
-              onSuccess: () => toast.success('マイルストーンを作成しました'),
-              onError: () => toast.error('マイルストーンの作成に失敗しました'),
+              onSuccess: () => toast.success(t('Milestone created')),
+              onError: () => toast.error(t('Could not create the milestone')),
             })}
           />
         </div>
       </div>
       {milestones.isLoading ? (
-        <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中...</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading…')}</div>
       ) : milestones.isError ? (
-        <div style={{ fontSize: 12.5, color: 'var(--red-text)' }}>マイルストーンの取得に失敗しました</div>
+        <div style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
       ) : milestones.data && milestones.data.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {milestones.data.map(m => (
@@ -570,17 +577,17 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
         </div>
       ) : (
         <div style={{ fontSize: 12.5, color: 'var(--text-4)', lineHeight: 1.6 }}>
-          まだマイルストーンはありません。
+          {t('No milestones yet.')}
         </div>
       )}
       <ConfirmDialog
         open={deleteTarget != null}
-        title="マイルストーンを削除"
-        message={deleteTarget ? `「${deleteTarget.title}」を削除しますか？このマイルストーンのスレッドの会話もすべて削除されます。この操作は取り消せません。` : ''}
+        title={t('Delete milestone')}
+        message={deleteTarget ? t('Delete "{name}"? This also deletes every message in the milestone thread. This cannot be undone.', { name: deleteTarget.title }) : ''}
         onConfirm={async () => {
           if (!deleteTarget) return
           await milestones.deleteMutation.mutateAsync(deleteTarget.id)
-          toast.success('マイルストーンを削除しました')
+          toast.success(t('Milestone deleted'))
         }}
         onClose={() => setDeleteTarget(null)}
       />
@@ -595,6 +602,7 @@ interface OverviewTabProps {
 }
 
 export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
+  const t = useT()
   const patch = usePatchProject(project.id)
   const archivePatch = usePatchProject(project.id)
   const deleteMutation = useDeleteProject(project.id)
@@ -611,7 +619,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       <InlineText
         value={project.title}
         onSave={v => patch.mutate({ title: v })}
-        placeholder="プロジェクト名"
+        placeholder={t('Project name')}
         large
         required
         readOnly={readOnly}
@@ -626,17 +634,17 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* 日程 + ステータス */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>日程</div>
+          <div style={cardLabelStyle}>{t('Dates')}</div>
           <InlineDatePair
             startDate={project.startDate}
             endDate={project.endDate}
             onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
             readOnly={readOnly}
           />
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{project.memberCount}人参加</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>ステータス</div>
+          <div style={cardLabelStyle}>{t('Status')}</div>
           <InlineStatus
             statusName={project.statusName}
             onSave={name => patch.mutate({ statusName: name })}
@@ -647,7 +655,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 場所 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>場所</div>
+        <div style={cardLabelStyle}>{t('Location')}</div>
         <InlineLocation
           location={project.location}
           onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
@@ -658,11 +666,11 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* サマリー */}
       <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>サマリー</div>
+        <div style={cardLabelStyle}>{t('Summary')}</div>
         <InlineText
           value={project.description ?? ''}
           onSave={v => patch.mutate({ description: v || null })}
-          placeholder="プロジェクトの概要や目標をクリックして入力…"
+          placeholder={t('Click to enter a summary or goals…')}
           multiline
           readOnly={readOnly}
         />
@@ -672,47 +680,47 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>アーカイブ</div>
+        <div style={cardLabelStyle}>{t('Archive')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
           {project.archived
-            ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
-            : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
+            ? t('This project is archived. Unarchiving shows it in the project list again.')
+            : t('Archiving moves it to the Archive tab. Data is kept.')}
         </div>
         <button
           onClick={() => archivePatch.mutate(
             { archived: !project.archived },
             {
-              onSuccess: () => toast.success(project.archived ? 'アーカイブを解除しました' : 'アーカイブしました'),
-              onError: () => toast.error('操作に失敗しました'),
+              onSuccess: () => toast.success(project.archived ? t('Project unarchived') : t('Project archived')),
+              onError: () => toast.error(t('The action failed')),
             },
           )}
           disabled={archivePatch.isPending || !canEdit}
-          title={canEdit ? undefined : 'アーカイブの変更にはメンバー以上の権限が必要です'}
+          title={canEdit ? undefined : t('Changing the archive requires member access or higher')}
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
           <Icon name={project.archived ? 'refresh' : 'archive'} size={13}/>
-          {archivePatch.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
+          {archivePatch.isPending ? t('Working...') : project.archived ? t('Unarchive') : t('Archive project')}
         </button>
       </div>
 
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>削除</div>
+        <div style={cardLabelStyle}>{t('Delete')}</div>
         <button
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}
-          title={canDelete ? undefined : 'プロジェクトの削除には管理者以上の権限が必要です'}
+          title={canDelete ? undefined : t('Deleting a project requires admin access or higher')}
           style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
         >
-          プロジェクトを削除する
+          {t('Delete this project')}
         </button>
       </div>
 
       <ConfirmDialog
         open={confirmDelete}
-        title="プロジェクトを削除"
-        message={`「${project.title}」を削除しますか？チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。`}
+        title={t('Delete project')}
+        message={t('Delete "{name}"? Chat, files, tasks, and all other data will be permanently deleted. This cannot be undone.', { name: project.title })}
         onConfirm={async () => {
           await deleteMutation.mutateAsync()
           onDeleted()

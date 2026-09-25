@@ -3,6 +3,7 @@
 import React from 'react'
 import { Icon, Avatar } from '../primitives'
 import { useWorkspaceMembers, useAddChannelMember, useChannelMembers } from '@/lib/chat/client'
+import { useT } from '@/components/locale-provider'
 
 interface ChannelMemberSheetProps {
   channelId: string
@@ -10,6 +11,7 @@ interface ChannelMemberSheetProps {
 }
 
 export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetProps) {
+  const t = useT()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: existingMembers = [], isLoading: isLoadingMembers } = useChannelMembers(channelId)
   const mutation = useAddChannelMember(channelId)
@@ -68,8 +70,8 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
             <Icon name="userPlus" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>メンバーを招待</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>ワークスペースのメンバーを追加できます</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('Invite members')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('You can add workspace members')}</div>
           </div>
           <button
             onClick={onClose}
@@ -83,7 +85,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
         <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {isLoadingMembers ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 32, color: 'var(--text-4)', fontSize: 13 }}>
-              読み込み中...
+              {t('Loading…')}
             </div>
           ) : members.map(m => {
             const added = addedIds.has(m.userId)
@@ -100,7 +102,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                     {m.displayName}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
-                    {m.role === 'owner' ? 'オーナー' : m.role === 'admin' ? '管理者' : m.role === 'guest' ? 'ゲスト' : 'メンバー'}
+                    {t(m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : m.role === 'guest' ? 'Guest' : 'Members')}
                   </div>
                 </div>
                 <button
@@ -121,9 +123,9 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                   {loading ? (
                     <span style={{ fontSize: 12 }}>…</span>
                   ) : added ? (
-                    <><Icon name="check" size={12} color="var(--accent-text)"/> 追加済み</>
+                    <><Icon name="check" size={12} color="var(--accent-text)"/> {t('Added')}</>
                   ) : (
-                    <><Icon name="plus" size={12}/> 追加</>
+                    <><Icon name="plus" size={12}/> {t('Add')}</>
                   )}
                 </button>
               </div>

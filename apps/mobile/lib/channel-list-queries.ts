@@ -1,22 +1,26 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { FEATURE_FLAGS, translate } from '@cairn/shared'
 import type { ChannelListItem, DmListItem, WorkspaceChannelListItem } from './channel-open-params'
 import { fetchApiJson } from './fetch-api-json'
+
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const translateJa: Translate = (message, values) => translate('ja', message, values)
 
 export const projectChannelsQueryKey = ['project-channels'] as const
 export const workspaceChannelsQueryKey = ['workspace-channels'] as const
 export const workspaceDmsQueryKey = ['workspace-dms'] as const
 
-export function fetchProjectChannels<T>(): Promise<T> {
-  return fetchApiJson<T>('/api/projects/channels', 'チャンネル')
+export function fetchProjectChannels<T>(t: Translate = translateJa): Promise<T> {
+  return fetchApiJson<T>('/api/projects/channels', t('Could not load channels ({status})'))
 }
 
-export function fetchWorkspaceChannels<T>(): Promise<T> {
-  return fetchApiJson<T>('/api/workspaces/channels', 'チャンネル')
+export function fetchWorkspaceChannels<T>(t: Translate = translateJa): Promise<T> {
+  return fetchApiJson<T>('/api/workspaces/channels', t('Could not load channels ({status})'))
 }
 
-export function fetchWorkspaceDms<T>(): Promise<T> {
-  return fetchApiJson<T>('/api/workspaces/dms', 'ダイレクトメッセージ')
+export function fetchWorkspaceDms<T>(t: Translate = translateJa): Promise<T> {
+  return fetchApiJson<T>('/api/workspaces/dms', t('Could not load direct messages ({status})'))
 }
 
 export function invalidateChannelListQueries(

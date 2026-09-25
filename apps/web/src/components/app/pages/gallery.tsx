@@ -52,21 +52,21 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
       }}>
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
-            読み込み中...
+            {t('Loading…')}
           </div>
         )}
 
         {isError && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 13 }}>
-            ギャラリーの取得に失敗しました
+            {t('Could not load the gallery')}
           </div>
         )}
 
         {!isLoading && !isError && items.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
             <Icon name="image" size={36}/>
-            <span style={{ fontSize: 14 }}>まだ写真がありません</span>
-            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクトのギャラリータブから写真を追加してください</span>
+            <span style={{ fontSize: 14 }}>{t('No photos yet')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
           </div>
         )}
 

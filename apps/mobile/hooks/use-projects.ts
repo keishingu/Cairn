@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchProjectChannels, projectChannelsQueryKey } from '../lib/channel-list-queries'
 import { fetchApiJson } from '../lib/fetch-api-json'
+import { useT } from '../components/locale-provider'
 
 export interface ProjectDto {
   id: string
@@ -37,15 +38,17 @@ export interface ProjectChannelDto {
 }
 
 export function useProjects() {
+  const t = useT()
   return useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: () => fetchApiJson<ProjectDto[]>('/api/projects', 'プロジェクト'),
+    queryFn: () => fetchApiJson<ProjectDto[]>('/api/projects', t('Could not load projects ({status})')),
   })
 }
 
 export function useProjectChannels() {
+  const t = useT()
   return useQuery<ProjectChannelDto[]>({
     queryKey: projectChannelsQueryKey,
-    queryFn: () => fetchProjectChannels<ProjectChannelDto[]>(),
+    queryFn: () => fetchProjectChannels<ProjectChannelDto[]>(t),
   })
 }

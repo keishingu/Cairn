@@ -11,13 +11,14 @@ import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
+import { useT } from '@/components/locale-provider'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
 
 const STATUS_LABEL: Record<TaskDto['status'], string> = {
-  todo: '未着手',
-  in_progress: '進行中',
-  done: '完了',
+  todo: 'Not started',
+  in_progress: 'In progress',
+  done: 'Done',
 }
 
 const PRIORITY_COLOR: Record<TaskDto['priority'], string> = {
@@ -27,19 +28,22 @@ const PRIORITY_COLOR: Record<TaskDto['priority'], string> = {
 }
 
 const PRIORITY_LABEL: Record<TaskDto['priority'], string> = {
-  high: '高',
-  medium: '中',
-  low: '低',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
 }
 
-function formatDueDate(dueDate: string | null): { label: string; overdue: boolean } | null {
+function formatDueDate(
+  dueDate: string | null,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): { label: string; overdue: boolean } | null {
   if (!dueDate) return null
   const due = new Date(dueDate + 'T00:00:00')
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diff = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   const overdue = diff < 0
-  const label = diff === 0 ? '今日' : diff === 1 ? '明日' : diff < 0 ? `${Math.abs(diff)}日超過` : `${diff}日後`
+  const label = diff === 0 ? t('Today') : diff === 1 ? t('Tomorrow') : diff < 0 ? t('{count} days overdue', { count: Math.abs(diff) }) : t('In {count} days', { count: diff })
   return { label, overdue }
 }
 
@@ -55,7 +59,8 @@ interface TaskRowProps {
 }
 
 const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowProps) => {
-  const due = formatDueDate(task.dueDate)
+  const t = useT()
+  const due = formatDueDate(task.dueDate, t)
   const isDone = task.status === 'done'
   const displayTitle = formatTaskTitleForDisplay(task.title)
 
@@ -93,7 +98,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{displayTitle}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? task.channelName ?? 'プロジェクトなし'}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? task.channelName ?? t('No project')}</div>
       </div>
 
       {task.priority && !isDone && (
@@ -102,7 +107,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           color: PRIORITY_COLOR[task.priority],
           padding: '2px 7px', borderRadius: 4, background: 'var(--card-2)',
           flexShrink: 0,
-        }}>{PRIORITY_LABEL[task.priority]}</span>
+        }}>{t(PRIORITY_LABEL[task.priority])}</span>
       )}
 
       {due && !isDone && (
@@ -124,16 +129,16 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           fontSize: 10.5, fontWeight: 700,
           color: 'var(--violet-text)', background: 'var(--violet-soft)',
           padding: '2px 7px', borderRadius: 4, flexShrink: 0,
-        }}>進行中</span>
+        }}>{t('In progress')}</span>
       )}
 
       <RowActionMenu
         actions={[
-          { icon: 'edit', label: '編集', onSelect: () => onEdit(task, 'edit') },
+          { icon: 'edit', label: t('Edit'), onSelect: () => onEdit(task, 'edit') },
           // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
           ...(task.isLinkedToMessage
             ? []
-            : [{ icon: 'trash' as const, label: '削除', danger: true, onSelect: () => onEdit(task, 'delete') }]),
+            : [{ icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => onEdit(task, 'delete') }]),
         ]}
         triggerStyle={{ padding: '6px', borderRadius: 8 }}
       />
@@ -201,6 +206,7 @@ const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onTo
 // ─── PageTasks ────────────────────────────────────────────────────
 
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const searchParams = useSearchParams()
   const openedTaskIdRef = React.useRef<string | null>(null)
   const [filter, setFilter] = React.useState<FilterKey>('todo')
@@ -268,10 +274,10 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
     return projectOrder.map(pid => ({
       key: pid,
-      label: projectMap.get(pid)![0]!.projectTitle ?? projectMap.get(pid)![0]!.channelName ?? 'プロジェクトなし',
+      label: projectMap.get(pid)![0]!.projectTitle ?? projectMap.get(pid)![0]!.channelName ?? t('No project'),
       tasks: projectMap.get(pid)!,
     }))
-  }, [filtered])
+  }, [filtered, t])
 
   // セクションの開閉（明示トグルが無ければ先頭3つを開く）と、実際に見えているタスク列
   const isSectionOpen = React.useCallback(
@@ -296,10 +302,10 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const selectedTaskId = navIdx >= 0 ? (visibleTasks[navIdx]?.id ?? null) : null
 
   const filters: { id: FilterKey; label: string }[] = [
-    { id: 'todo',        label: `未着手 (${counts.todo})` },
-    { id: 'in_progress', label: `進行中 (${counts.in_progress})` },
-    { id: 'done',        label: `完了 (${counts.done})` },
-    { id: 'all',         label: `すべて (${counts.all})` },
+    { id: 'todo',        label: t('Not started ({count})', { count: counts.todo }) },
+    { id: 'in_progress', label: t('In progress ({count})', { count: counts.in_progress }) },
+    { id: 'done',        label: t('Done ({count})', { count: counts.done }) },
+    { id: 'all',         label: t('All ({count})', { count: counts.all }) },
   ]
 
   // ⌥[ / ⌥]: フィルタタブ切替
@@ -351,7 +357,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               <Icon name="plus" size={13} strokeWidth={2.4} />
-              タスクを追加
+              {t('Add a task')}
             </button>
           </div>
         )}
@@ -368,9 +374,9 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
               <Icon name="check" size={22} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>タスクはありません</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No tasks')}</div>
             <div style={{ fontSize: 12.5 }}>
-              {filter === 'all' ? 'タスクを追加してみましょう' : `「${STATUS_LABEL[filter as TaskDto['status']]}」のタスクはありません`}
+              {filter === 'all' ? t('Try adding a task') : t('No tasks in "{status}"', { status: t(STATUS_LABEL[filter as TaskDto['status']]) })}
             </div>
           </div>
         ) : (
@@ -394,7 +400,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
       </div>
 
-      {isMobile && <Fab onClick={() => setShowAddModal(true)} label="タスクを追加"/>}
+      {isMobile && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
       <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>

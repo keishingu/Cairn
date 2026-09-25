@@ -1,4 +1,5 @@
 import type { Router } from 'expo-router'
+import { translate } from '@cairn/shared'
 import { loadChannelLists, type ChannelLists } from './channel-list-queries'
 import { resolveChannelOpenParams } from './channel-open-params'
 import { decideWorkspaceSwitch } from './notification-workspace'
@@ -9,8 +10,12 @@ import { activateWorkspace } from './workspace-activation'
 import { fetchWorkspaceMemberships, workspaceListQueryKey } from './workspace-queries'
 import { getSelectedWorkspaceId } from './workspace-selection'
 
-function channelRouteParams(channelId: string, lists: ChannelLists): Record<string, string> {
-  const resolved = resolveChannelOpenParams(channelId, lists)
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const translateJa: Translate = (message, values) => translate('ja', message, values)
+
+function channelRouteParams(channelId: string, lists: ChannelLists, t: Translate): Record<string, string> {
+  const resolved = resolveChannelOpenParams(channelId, lists, t)
   const params: Record<string, string> = { channelId: resolved.channelId }
   if (resolved.channelName) params['channelName'] = resolved.channelName
   if (resolved.channelType) params['channelType'] = resolved.channelType
@@ -35,7 +40,7 @@ async function prepareWorkspace(workspaceId: string | undefined): Promise<boolea
   try {
     memberships = await queryClient.fetchQuery({
       queryKey: workspaceListQueryKey,
-      queryFn: fetchWorkspaceMemberships,
+      queryFn: () => fetchWorkspaceMemberships(),
       retry: false,
     })
   } catch (error) {
@@ -70,6 +75,7 @@ async function openNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
   workspaceId: string | undefined,
+  t: Translate,
 ): Promise<void> {
   try {
     const ready = await prepareWorkspace(workspaceId)
@@ -79,7 +85,7 @@ async function openNotification(
       const lists = await loadChannelLists(queryClient)
       router.push({
         pathname: '/chats/[channelId]',
-        params: channelRouteParams(destination.channelId, lists),
+        params: channelRouteParams(destination.channelId, lists, t),
       })
       return
     }
@@ -94,10 +100,11 @@ let notificationNavigation: Promise<void> = Promise.resolve()
 export function followNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
-  options?: { workspaceId?: string },
+  options?: { workspaceId?: string; t?: Translate },
 ): Promise<void> {
+  const t = options?.t ?? translateJa
   const navigation = notificationNavigation.then(() =>
-    openNotification(router, destination, options?.workspaceId),
+    openNotification(router, destination, options?.workspaceId, t),
   )
   notificationNavigation = navigation.then(
     () => undefined,

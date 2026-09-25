@@ -1,3 +1,9 @@
+import { translate } from '@cairn/shared'
+
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const translateJa: Translate = (message, values) => translate('ja', message, values)
+
 const TOPIC_PERMISSION_DENIED = /do not have permissions to read from this Channel topic/i
 
 function errorMessage(error: unknown): string {
@@ -93,7 +99,7 @@ export function serializeMentions(text: string, mentions: ReadonlyArray<MentionS
     }, text)
 }
 
-export function parseEditableMentions(content: string) {
+export function parseEditableMentions(content: string, t: Translate = translateJa) {
   let text = ''
   let cursor = 0
   const mentions: MentionSelection[] = []
@@ -102,7 +108,7 @@ export function parseEditableMentions(content: string) {
     const [token, userId, hydratedName] = match
     if (index == null || !token || !userId) continue
     text += content.slice(cursor, index)
-    const displayName = hydratedName ?? 'メンバー'
+    const displayName = hydratedName ?? t('Members')
     const start = text.length
     text += `@${displayName}`
     mentions.push({ start, end: text.length, userId, displayName })

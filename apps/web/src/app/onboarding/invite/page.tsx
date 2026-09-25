@@ -6,16 +6,18 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { useT } from '@/components/locale-provider'
 
 type ExpiresIn = '1h' | '30d' | 'never'
 
 const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
-  { value: '1h', label: '1時間' },
-  { value: '30d', label: '30日間' },
-  { value: 'never', label: '無期限' },
+  { value: '1h', label: '1 hour' },
+  { value: '30d', label: '30 days' },
+  { value: 'never', label: 'No expiry' },
 ]
 
 export default function OnboardingInvitePage() {
+  const t = useT()
   const router = useRouter()
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
@@ -41,7 +43,7 @@ export default function OnboardingInvitePage() {
     if (res.ok && data.url) {
       setInviteUrl(data.url)
     } else {
-      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
+      setGenerateError(data.error ?? t('Could not generate the invite link'))
     }
     setGenerating(false)
   }
@@ -76,13 +78,8 @@ export default function OnboardingInvitePage() {
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            メンバーを招待
-          </div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            招待リンクを共有してメンバーを追加できます。<br />
-            あとからメンバーページでも招待できます。
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('Invite members')}</div>
+          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('Share an invite link to add members.')}<br />{t('You can also invite people later from the members page.')}</div>
         </div>
 
         <div style={{
@@ -97,9 +94,7 @@ export default function OnboardingInvitePage() {
         }}>
           {/* 有効期限選択 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              リンクの有効期限
-            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {EXPIRES_OPTIONS.map(opt => (
                 <button
@@ -120,7 +115,7 @@ export default function OnboardingInvitePage() {
                     transition: 'all 0.15s',
                   }}
                 >
-                  {opt.label}
+                  {t(opt.label)}
                 </button>
               ))}
             </div>
@@ -145,7 +140,7 @@ export default function OnboardingInvitePage() {
                   fontFamily: 'inherit',
                 }}
               >
-                {generating ? '生成中...' : '招待リンクを生成'}
+                {generating ? t('Generating...') : t('Generate invite link')}
               </button>
               {generateError && (
                 <div style={{
@@ -199,16 +194,14 @@ export default function OnboardingInvitePage() {
                     transition: 'all 0.15s',
                   }}
                 >
-                  {copied ? 'コピー済み ✓' : 'コピー'}
+                  {copied ? t('Copied ✓') : t('Copy')}
                 </button>
               </div>
 
               {/* モバイルはQRコードも表示 */}
               {isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '12px 0' }}>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', fontWeight: 500 }}>
-                    QRコードでも招待できます
-                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', fontWeight: 500 }}>{t('You can also invite with a QR code')}</div>
                   <div style={{
                     padding: 12,
                     background: '#fff',
@@ -233,9 +226,7 @@ export default function OnboardingInvitePage() {
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
-              >
-                別のリンクを生成
-              </button>
+              >{t('Generate another link')}</button>
             </div>
           )}
         </div>
@@ -256,9 +247,7 @@ export default function OnboardingInvitePage() {
             cursor: 'pointer',
             fontFamily: 'inherit',
           }}
-        >
-          スキップして始める
-        </button>
+        >{t('Skip and get started')}</button>
       </div>
     </div>
   )

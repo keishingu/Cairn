@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { WORKSPACE_CHANNEL_NAME_MAX } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
 import { Field, Modal, ModalHeader, fieldInputStyle, onBlurRing, onFocusRing } from '../primitives'
 import { useRenameWorkspaceChannel } from '@/lib/chat/client'
 
@@ -20,9 +21,10 @@ export function RenameWorkspaceChannelModal({
 }: RenameWorkspaceChannelModalProps) {
   const [name, setName] = React.useState(currentName)
   const [error, setError] = React.useState('')
+  const t = useT()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const renameChannel = useRenameWorkspaceChannel()
-  const label = isThread ? 'スレッド名' : 'チャンネル名'
+  const label = isThread ? t('Thread name') : t('Channel name')
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -36,11 +38,11 @@ export function RenameWorkspaceChannelModal({
     event.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) {
-      setError(`${label}を入力してください`)
+      setError(isThread ? t('Enter a thread name') : t('Enter a channel name'))
       return
     }
     if (trimmed.length > WORKSPACE_CHANNEL_NAME_MAX) {
-      setError('60文字以内で入力してください')
+      setError(t('Enter 60 characters or fewer'))
       return
     }
 
@@ -66,7 +68,7 @@ export function RenameWorkspaceChannelModal({
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
-        <ModalHeader icon="edit" title={`${label}を変更`} onClose={close}/>
+        <ModalHeader icon="edit" title={isThread ? t('Rename thread') : t('Rename channel')} onClose={close}/>
         <div style={{ padding: '20px 22px' }}>
           <Field label={label} required error={error} hint={`${name.length}/${WORKSPACE_CHANNEL_NAME_MAX}`} htmlFor="rename-workspace-channel-name">
             <input
@@ -82,9 +84,9 @@ export function RenameWorkspaceChannelModal({
           </Field>
         </div>
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" className="btn" onClick={close} disabled={pending}>キャンセル</button>
+          <button type="button" className="btn" onClick={close} disabled={pending}>{t('Cancel')}</button>
           <button type="submit" className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
-            {pending ? '保存中…' : '保存する'}
+            {pending ? t('Saving…') : t('Save changes')}
           </button>
         </footer>
       </form>

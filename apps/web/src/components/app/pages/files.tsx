@@ -13,6 +13,7 @@ import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { useRenameFile } from '@/hooks/use-rename-file'
@@ -116,11 +117,12 @@ const FileRow = ({
   selected?: boolean
   index?: number
 }) => {
+  const t = useT()
   const router = useRouter()
   const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
-  const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
+  const projectLabel = file.projectTitle ?? file.channelName ?? t('Chats')
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
@@ -235,15 +237,15 @@ const FileRow = ({
         <RowActionMenu
           actions={[
             ...(chatHref
-              ? [{ icon: 'chat', label: 'チャットに移動', onSelect: () => router.push(chatHref) }]
+              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => router.push(chatHref) }]
               : []),
-            { icon: 'edit', label: '名前を変更', onSelect: () => setIsRenaming(true) },
+            { icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) },
             ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
-              ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
+              ? [{ icon: 'refresh', label: t('Reindex'), onSelect: () => onReindex(file.id) }]
               : []),
             {
               icon: 'trash',
-              label: '削除',
+              label: t('Delete'),
               danger: true,
               onSelect: () => onDelete(file.id, file.fileName),
             },
@@ -354,6 +356,7 @@ export const PageFiles = ({
   isMobile?: boolean
   externalSearch?: string
 }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const renameFile = useRenameFile()
   const [conditions, setConditions] = React.useState<FileFilterConditions>(
@@ -389,9 +392,9 @@ export const PageFiles = ({
     queryKey: ['attachment-text-preview', textPreviewFile?.id],
     enabled: textPreviewFile !== null,
     queryFn: async () => {
-      if (!textPreviewFile) throw new Error('プレビュー対象のテキストファイルがありません')
+      if (!textPreviewFile) throw new Error(t('No text file to preview'))
       const res = await fetchWithAuth(`/api/attachments/${textPreviewFile.id}`)
-      if (!res.ok) throw new Error('テキストプレビューの取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not fetch the text preview'))
       return res.text()
     },
   })
@@ -399,7 +402,7 @@ export const PageFiles = ({
   const deleteFile = useMutation({
     mutationFn: (fileId: string) =>
       fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw new Error('削除に失敗しました')
+        if (!r.ok) throw new Error(t('Could not delete the file'))
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['files'] })
@@ -410,7 +413,7 @@ export const PageFiles = ({
   const reindexFile = useMutation({
     mutationFn: (fileId: string) =>
       fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error('再インデックスに失敗しました')
+        if (!r.ok) throw new Error(t('Could not reindex the file'))
       }),
     onMutate: (fileId: string) => {
       queryClient.setQueryData<FileDto[]>(['files'], (prev) =>
@@ -515,13 +518,13 @@ export const PageFiles = ({
         const allProjectFiles = projectMap.get(projectId)!
         return {
           key: projectId,
-          label: allProjectFiles[0]!.projectTitle ?? 'プロジェクトなし',
+          label: allProjectFiles[0]!.projectTitle ?? t('No project'),
           count: allProjectFiles.length,
           files: allProjectFiles.filter((file) => pagedIds.has(file.id)),
         }
       })
       .filter((group) => group.files.length > 0)
-  }, [filtered, pagedFiles])
+  }, [filtered, pagedFiles, t])
 
   const isSectionOpen = React.useCallback(
     (key: string, index: number) => sectionOverride[key] ?? index < 3,
@@ -697,11 +700,11 @@ export const PageFiles = ({
             >
               <Icon name="file" size={22} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>ファイルはありません</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No files')}</div>
             <div style={{ fontSize: 12.5 }}>
               {files.length === 0
-                ? 'チャットでファイルを送ると、ここに表示されます'
-                : 'このフィルターに一致するファイルはありません'}
+                ? t('Files you send in chat show up here')
+                : t('No files match this filter')}
             </div>
           </div>
         ) : (
@@ -756,8 +759,8 @@ export const PageFiles = ({
 
       <ConfirmDialog
         open={filterDeleteTarget !== null}
-        title="保存済みフィルターを削除"
-        message={`「${filterDeleteTarget?.name}」を削除しますか？ファイルは削除されません。この操作は取り消せません。`}
+        title={t('Delete saved filter')}
+        message={t('Delete "{name}"? The files stay. This cannot be undone.', { name: filterDeleteTarget?.name ?? '' })}
         onConfirm={async () => {
           if (!filterDeleteTarget) return
           await deleteSavedFilter.mutateAsync(filterDeleteTarget.id)
@@ -768,8 +771,8 @@ export const PageFiles = ({
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="ファイルを削除"
-        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        title={t('Delete this file')}
+        message={t('Delete "{name}"? This cannot be undone.', { name: deleteTarget?.name ?? '' })}
         onConfirm={async () => {
           if (deleteTarget) await deleteFile.mutateAsync(deleteTarget.id)
         }}
@@ -780,7 +783,7 @@ export const PageFiles = ({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${textPreviewFile.fileName} のプレビュー`}
+          aria-label={t('Preview of {name}', { name: textPreviewFile.fileName })}
           onClick={() => setTextPreviewFile(null)}
           style={{
             position: 'fixed',
@@ -847,11 +850,11 @@ export const PageFiles = ({
                   fontWeight: 600,
                 }}
               >
-                別タブで開く
+                {t('Open in a new tab')}
               </a>
               <button
                 onClick={() => setTextPreviewFile(null)}
-                aria-label="プレビューを閉じる"
+                aria-label={t('Close preview')}
                 style={{
                   border: 'none',
                   background: 'transparent',
@@ -875,11 +878,11 @@ export const PageFiles = ({
             >
               {isTextPreviewLoading ? (
                 <div style={{ color: 'var(--text-3)', fontSize: 13 }}>
-                  テキストを読み込んでいます...
+                  {t('Loading text...')}
                 </div>
               ) : isTextPreviewError ? (
                 <div style={{ color: 'var(--danger)', fontSize: 13 }}>
-                  テキストプレビューを読み込めませんでした。
+                  {t('Could not load the text preview.')}
                 </div>
               ) : isMarkdownFile(textPreviewFile) ? (
                 <MarkdownContent

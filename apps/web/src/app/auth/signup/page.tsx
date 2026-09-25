@@ -112,7 +112,7 @@ function SignupForm() {
               onChange={e => setDisplayName(e.target.value)}
               required
               autoComplete="name"
-              placeholder="山田 太郎"
+              placeholder={t('Alex Morgan')}
               style={{
                 padding: '9px 12px',
                 border: '1px solid var(--border-2)',
@@ -207,7 +207,7 @@ function SignupForm() {
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
         <div style={{ marginBottom: 12, fontSize: 12 }}>
           <Link href="/terms">{t('Terms')}</Link>
-          {' ・ '}
+          {t(' · ')}
           <Link href="/privacy">{t('Privacy policy')}</Link>
         </div>
         {t('Already have an account?')}{' '}

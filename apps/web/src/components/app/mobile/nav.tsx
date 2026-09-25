@@ -162,7 +162,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {workspace?.name ?? '…'}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>ワークスペース</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>{t('Workspace')}</div>
               </div>
             </div>
 

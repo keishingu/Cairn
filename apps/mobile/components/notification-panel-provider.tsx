@@ -24,6 +24,7 @@ import {
 import { followNotification } from '../lib/follow-notification'
 import { routeFromNotification } from '../lib/notification-routing'
 import { useAppAppearance } from './appearance-provider'
+import { useT } from './locale-provider'
 
 interface NotificationPanelContextValue {
   unreadCount: number
@@ -43,6 +44,7 @@ function formatDate(value: string) {
 }
 
 export function NotificationPanelProvider({ children }: React.PropsWithChildren) {
+  const t = useT()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -97,7 +99,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
     setVisible(false)
     pendingNavigation.current = setTimeout(() => {
       pendingNavigation.current = null
-      void followNotification(router, destination)
+      void followNotification(router, destination, { t })
     }, 50)
   }
 
@@ -129,7 +131,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
           <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="通知を閉じる"
+              accessibilityLabel={t('Close notifications')}
               style={StyleSheet.absoluteFill}
               onPress={closeNotifications}
             />
@@ -165,7 +167,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   <View style={[styles.titleIcon, { backgroundColor: palette.accentSoft }]}>
                     <Ionicons name="notifications-outline" size={17} color={palette.accentText} />
                   </View>
-                  <Text style={[styles.title, { color: palette.text }]}>通知</Text>
+                  <Text style={[styles.title, { color: palette.text }]}>{t('Notifications')}</Text>
                   {unreadCount > 0 && (
                     <View style={[styles.countBadge, { backgroundColor: palette.accent }]}>
                       <Text style={[styles.countText, { color: palette.onAccent }]}>
@@ -177,7 +179,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                 <View style={styles.headerActions}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="すべて既読にする"
+                    accessibilityLabel={t('Mark all notifications as read')}
                     disabled={markRead.isPending || unreadCount === 0}
                     onPress={() => markRead.mutate(null)}
                     style={({ pressed }) => [
@@ -189,13 +191,11 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={[styles.markReadText, { color: palette.accentText }]}>
-                      すべて既読
-                    </Text>
+                    <Text style={[styles.markReadText, { color: palette.accentText }]}>{t('Mark all read')}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="通知を閉じる"
+                    accessibilityLabel={t('Close notifications')}
                     onPress={closeNotifications}
                     style={styles.closeButton}
                     hitSlop={8}
@@ -212,9 +212,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
               ) : notificationsQuery.error ? (
                 <View style={styles.center}>
                   <Ionicons name="cloud-offline-outline" size={24} color={palette.text3} />
-                  <Text style={[styles.errorTitle, { color: palette.text }]}>
-                    通知を読み込めませんでした
-                  </Text>
+                  <Text style={[styles.errorTitle, { color: palette.text }]}>{t('Could not load notifications')}</Text>
                   <Text style={[styles.errorBody, { color: palette.text3 }]}>
                     {notificationsQuery.error.message}
                   </Text>
@@ -223,7 +221,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                     onPress={() => void notificationsQuery.refetch()}
                     style={[styles.retryButton, { backgroundColor: palette.accent }]}
                   >
-                    <Text style={[styles.retryText, { color: palette.onAccent }]}>再読み込み</Text>
+                    <Text style={[styles.retryText, { color: palette.onAccent }]}>{t('Reload')}</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -265,19 +263,15 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                       </View>
                       <Text style={[styles.body, { color: palette.text2 }]}>{item.body}</Text>
                       {!item.readAt && (
-                        <Text style={[styles.unread, { color: palette.accentText }]}>未読</Text>
+                        <Text style={[styles.unread, { color: palette.accentText }]}>{t('Unread')}</Text>
                       )}
                     </Pressable>
                   )}
                   ListEmptyComponent={
                     <View style={styles.emptyState}>
                       <Ionicons name="notifications-off-outline" size={28} color={palette.text4} />
-                      <Text style={[styles.emptyTitle, { color: palette.text }]}>
-                        通知はまだありません
-                      </Text>
-                      <Text style={[styles.emptyBody, { color: palette.text3 }]}>
-                        メンションや更新が届くとここに表示されます。
-                      </Text>
+                      <Text style={[styles.emptyTitle, { color: palette.text }]}>{t('No notifications yet')}</Text>
+                      <Text style={[styles.emptyBody, { color: palette.text3 }]}>{t('Mentions and updates will show up here.')}</Text>
                     </View>
                   }
                 />

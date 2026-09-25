@@ -1,3 +1,4 @@
+import { translate } from '@cairn/shared'
 import type * as FileSystemTypes from 'expo-file-system/build/legacy/index'
 import * as Sharing from 'expo-sharing'
 import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './attachment-file'
@@ -7,14 +8,19 @@ import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './a
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
 
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const translateJa: Translate = (message, values) => translate('ja', message, values)
+
 export async function ensureCachedAttachment(
   fileUrl: string,
   fileId: string,
   fileName: string,
   accessToken: string,
+  t: Translate = translateJa,
 ): Promise<string> {
   const cacheDirectory = FileSystem.cacheDirectory
-  if (!cacheDirectory) throw new Error('この端末ではファイルを保存できません')
+  if (!cacheDirectory) throw new Error(t('This device cannot save files'))
   const target = `${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`
   const info = await FileSystem.getInfoAsync(target)
   if (shouldReuseCachedFile(info)) return info.uri
@@ -24,7 +30,7 @@ export async function ensureCachedAttachment(
   })
   if (result.status !== 200) {
     await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined)
-    throw new Error(`ダウンロードに失敗しました (${result.status})`)
+    throw new Error(t('Download failed ({status})', { status: result.status }))
   }
   return result.uri
 }
@@ -36,14 +42,17 @@ export async function shareCachedAttachment(input: {
   accessToken: string
   mimeType?: string | null
   dialogTitle: string
+  t?: Translate
 }): Promise<void> {
+  const t = input.t ?? translateJa
   const uri = await ensureCachedAttachment(
     input.fileUrl,
     input.fileId,
     input.fileName,
     input.accessToken,
+    t,
   )
-  if (!(await Sharing.isAvailableAsync())) throw new Error('この端末ではファイルを共有できません')
+  if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))
   const options: Sharing.SharingOptions = { dialogTitle: input.dialogTitle }
   if (input.mimeType) options.mimeType = input.mimeType
   if (isImageMime(input.mimeType)) options.UTI = 'public.image'

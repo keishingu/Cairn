@@ -6,12 +6,14 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { NativeAppHeader } from '../../../components/native-app-header'
 import { API_BASE_URL } from '../../../lib/env'
 import { resolveInternalAppPath } from '../../../lib/mobile-chat-state'
+import { useT } from '../../../components/locale-provider'
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
 }
 
 export default function ChatToolsScreen() {
+  const t = useT()
   const params = useLocalSearchParams<{
     path?: string | string[]
     title?: string | string[]
@@ -28,7 +30,7 @@ export default function ChatToolsScreen() {
   const path = safePath
     ? safePath
     : '/chats?nativeAux=1&panel=global-search'
-  const title = firstParam(params.title) ?? 'チャット'
+  const title = firstParam(params.title) ?? t('Chats')
   const returnChannelId = firstParam(params.returnChannelId)
   const returnChannelName = firstParam(params.returnChannelName)
   const returnChannelType = firstParam(params.returnChannelType)
@@ -54,7 +56,7 @@ export default function ChatToolsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: palette.bg }]}>
-      <NativeAppHeader title={title} onBack={close} backLabel="ネイティブチャットへ戻る" />
+      <NativeAppHeader title={title} onBack={close} backLabel={t('Back to native chat')} />
       <AppWebView path={path} allowChatRoutes includeSafeAreaTop={false} />
     </View>
   )

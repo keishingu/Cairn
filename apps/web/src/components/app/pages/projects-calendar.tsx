@@ -22,10 +22,14 @@ import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import { MobileHeader } from '@/components/app/mobile/header'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 
 // ─── Date helpers ──────────────────────────────────────────────────
 
-const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const WEEKDAY_KEYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const UNNAMED_CALENDAR = '（名称なし）'
 
 /** 週の左端を 0 とした列。Date#getDay は日曜が 0。 */
 export function weekdayColumn(date: Date, weekStartsOn: CalendarWeekStart): number {
@@ -35,8 +39,8 @@ export function weekdayColumn(date: Date, weekStartsOn: CalendarWeekStart): numb
 
 export function weekdayLabels(weekStartsOn: CalendarWeekStart): string[] {
   return weekStartsOn === 'monday'
-    ? [...WEEKDAY_LABELS.slice(1), WEEKDAY_LABELS[0]]
-    : [...WEEKDAY_LABELS]
+    ? [...WEEKDAY_KEYS.slice(1), WEEKDAY_KEYS[0]]
+    : [...WEEKDAY_KEYS]
 }
 
 function columnWeekday(column: number, weekStartsOn: CalendarWeekStart): number {
@@ -61,8 +65,8 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((bUTC - aUTC) / 86400000)
 }
 
-function formatYM(year: number, month: number): string {
-  return `${year}年${month + 1}月`
+function formatYM(year: number, month: number, t: Translate): string {
+  return t('{year}/{month}', { year, month: month + 1 })
 }
 
 function parseLocalDate(s: string): Date {
@@ -77,12 +81,12 @@ function getWeekStart(d: Date, weekStartsOn: CalendarWeekStart = 'sunday'): Date
   return result
 }
 
-function formatWeekRange(start: Date): string {
+function formatWeekRange(start: Date, t: Translate): string {
   const end = new Date(start)
   end.setDate(start.getDate() + 6)
   const m1 = start.getMonth() + 1
   const m2 = end.getMonth() + 1
-  if (m1 === m2) return `${m1}月${start.getDate()}日–${end.getDate()}日`
+  if (m1 === m2) return t('{month}/{start}–{end}', { month: m1, start: start.getDate(), end: end.getDate() })
   return `${m1}/${start.getDate()}–${m2}/${end.getDate()}`
 }
 
@@ -517,6 +521,7 @@ interface GcalCalendarPopoverProps {
 }
 
 const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClose }: GcalCalendarPopoverProps) => {
+  const t = useT()
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -540,7 +545,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
       borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-        表示するカレンダー
+        {t('Calendars to show')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {calendars.map(c => (
@@ -557,7 +562,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
               style={{ width: 14, height: 14, accentColor: c.color, cursor: 'pointer' }}
             />
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name === UNNAMED_CALENDAR ? t('(Untitled)') : c.name}</span>
           </label>
         ))}
       </div>
@@ -566,6 +571,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
 }
 
 const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents = [], milestoneEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarGridProps) => {
+  const t = useT()
   const days = weekdayLabels(weekStartsOn)
   const cells = buildCells(year, month, weekStartsOn)
   const flatCells = cells.flat()
@@ -650,7 +656,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
             padding: '8px 12px', fontSize: 11, fontWeight: 600,
             color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
             textAlign: 'left', letterSpacing: '0.04em', textTransform: 'uppercase',
-          }}>{d}</div>
+          }}>{t(d)}</div>
         ))}
       </div>
 
@@ -745,7 +751,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
               {milestoneEvents.filter(e => e.row < MAX_MILESTONE_ROWS).map((e, i) => {
                 const barColor = e.project?.statusColor ?? '#64748B'
                 const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
-                const label = formatMilestoneLabel(e.milestone)
+                const label = formatMilestoneLabel(e.milestone, t)
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 4px)`
                 const width = `calc(${e.span * colW}% - 8px)`
@@ -820,7 +826,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                         pointerEvents: 'auto',
                         cursor: 'pointer',
                       }}
-                      title={`${e.title}（Google カレンダーで開く）`}
+                      title={t('Open {title} in Google Calendar', { title: e.title })}
                       onMouseDown={e2 => e2.stopPropagation()}
                     >
                       {e.title}
@@ -855,6 +861,7 @@ interface CalendarWeekGridProps {
 }
 
 const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents = [], timedEvents = [], onEventClick, onMilestoneClick, onDateSelect, isLoading }: CalendarWeekGridProps) => {
+  const t = useT()
   const today = new Date()
   const cells = Array.from({ length: 7 }, (_, day) => {
     const d = new Date(weekStart)
@@ -952,7 +959,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
             textAlign: 'left', letterSpacing: '0.04em', textTransform: 'uppercase',
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
-            {WEEKDAY_LABELS[cell.fullDate.getDay()]}
+            {t(WEEKDAY_KEYS[cell.fullDate.getDay()]!)}
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12.5, fontWeight: cell.isToday ? 700 : 500,
@@ -966,7 +973,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
 
       {/* 終日エリア（Cairnプロジェクト・終日Googleイベント） */}
       <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0, paddingRight: scrollbarWidth }}>
-        <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>終日</div>
+        <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>{t('All day')}</div>
         <div
           ref={gridBodyRef}
           style={{ gridColumn: '2 / -1', position: 'relative', minHeight: Math.max(bodyHeight, 32), cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
@@ -1036,7 +1043,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                 {milestoneEvents.map((e, i) => {
                   const barColor = e.project?.statusColor ?? '#64748B'
                   const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
-                  const label = formatMilestoneLabel(e.milestone)
+                  const label = formatMilestoneLabel(e.milestone, t)
                   const colW = 100 / 7
                   const left = `calc(${e.day * colW}% + 4px)`
                   const width = `calc(${e.span * colW}% - 8px)`
@@ -1088,7 +1095,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ ...style, textDecoration: 'none', pointerEvents: 'auto', cursor: 'pointer' }}
-                        title={`${e.title}（Google カレンダーで開く）`}
+                        title={t('Open {title} in Google Calendar', { title: e.title })}
                         onMouseDown={e2 => e2.stopPropagation()}
                       >
                         {e.title}
@@ -1161,7 +1168,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ ...style, textDecoration: 'none', pointerEvents: 'auto', cursor: 'pointer', display: 'block' }}
-                      title={`${e.title}（Google カレンダーで開く）`}
+                      title={t('Open {title} in Google Calendar', { title: e.title })}
                     >
                       {e.title}
                     </a>
@@ -1179,8 +1186,12 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
 
 // ─── Mobile Calendar ───────────────────────────────────────────────
 
-function formatDateLabel(d: Date): string {
-  return `${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAY_LABELS[d.getDay()]})`
+function formatDateLabel(d: Date, t: Translate): string {
+  return t('{month}/{day} ({weekday})', {
+    month: d.getMonth() + 1,
+    day: d.getDate(),
+    weekday: t(WEEKDAY_KEYS[d.getDay()]!),
+  })
 }
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -1193,7 +1204,7 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `${fmt(start)}–${fmt(end)}`
 }
 
-function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto): string {
+function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto, t: Translate): string {
   const fmt = (s: string) => {
     const d = parseLocalDate(s)
     return `${d.getMonth() + 1}/${d.getDate()}`
@@ -1201,21 +1212,29 @@ function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto): string {
   const start = milestone.startDate
   const end = milestone.endDate
   if (!start && !end) return ''
-  if (!start && end) return `〜${fmt(end)}`
+  if (!start && end) return t('–{end}', { end: fmt(end) })
   if (start && (!end || end === start)) return fmt(start)
   return `${fmt(start!)}–${fmt(end!)}`
 }
 
-export function formatMilestoneTimeRange(milestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>): string {
-  if (milestone.startTime && milestone.endTime) return `${milestone.startTime}〜${milestone.endTime}`
-  if (milestone.startTime) return `${milestone.startTime}〜`
-  if (milestone.endTime) return `〜${milestone.endTime}`
+export function formatMilestoneTimeRange(
+  milestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>,
+  t?: Translate,
+): string {
+  if (milestone.startTime && milestone.endTime) {
+    return t ? t('{start}–{end}', { start: milestone.startTime, end: milestone.endTime }) : `${milestone.startTime}〜${milestone.endTime}`
+  }
+  if (milestone.startTime) return t ? t('{start}–', { start: milestone.startTime }) : `${milestone.startTime}〜`
+  if (milestone.endTime) return t ? t('–{end}', { end: milestone.endTime }) : `〜${milestone.endTime}`
   return ''
 }
 
-export function formatMilestoneLabel(milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime' | 'endTime'>): string {
+export function formatMilestoneLabel(
+  milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime' | 'endTime'>,
+  t?: Translate,
+): string {
   const base = `${milestone.projectTitle} / ${milestone.title}`
-  const timeRange = formatMilestoneTimeRange(milestone)
+  const timeRange = formatMilestoneTimeRange(milestone, t)
   return timeRange ? `${base} ${timeRange}` : base
 }
 
@@ -1296,6 +1315,7 @@ export function mobileOverflowLane(coveringRows: number[], maxEventRows: number)
 }
 
 const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, milestoneEvents, selectedDate, onSelectDate, onCreateDate, onProjectClick, onMonthStep }: MobileCalendarGridProps) => {
+  const t = useT()
   const days = weekdayLabels(weekStartsOn)
   const cells = buildCells(year, month, weekStartsOn)
   const colW = 100 / 7
@@ -1315,7 +1335,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
           <div key={d} data-testid="weekday-label" style={{
             padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
             color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
-          }}>{d}</div>
+          }}>{t(d)}</div>
         ))}
       </div>
 
@@ -1334,7 +1354,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                 <button
                   key={col}
                   type="button"
-                  aria-label={formatDateLabel(cell.fullDate)}
+                  aria-label={formatDateLabel(cell.fullDate, t)}
                   onClick={() => {
                     if (isSelected && onCreateDate) {
                       onCreateDate(cell.fullDate)
@@ -1400,7 +1420,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                 }
                 const barColor = e.project?.statusColor ?? '#64748B'
                 const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
-                const label = formatMilestoneLabel(e.milestone)
+                const label = formatMilestoneLabel(e.milestone, t)
                 return (
                   <button
                     key={`m-${e.milestone.id}-${e.week}-${e.day}`}
@@ -1468,6 +1488,7 @@ interface MobileDayEventsProps {
 }
 
 const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate, onProjectClick, isLoading }: MobileDayEventsProps) => {
+  const t = useT()
   const dayProjects = getDateProjects(projects, date)
   const dayMilestones = getDateMilestones(milestones, date)
 
@@ -1479,7 +1500,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
         borderBottom: '1px solid var(--divider)',
         position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
       }}>
-        {formatDateLabel(date)}
+        {formatDateLabel(date, t)}
       </div>
 
       {isLoading ? (
@@ -1492,7 +1513,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {dayProjects.length === 0 && dayMilestones.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
-              <div>予定なし</div>
+              <div>{t('Nothing scheduled')}</div>
               {onCreateDate && (
                 <button
                   className="btn btn-primary"
@@ -1500,7 +1521,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
                   <Icon name="plus" size={13} strokeWidth={2.4} />
-                  この日に新規{`予定`}
+                  {t('New event on this day')}
                 </button>
               )}
             </div>
@@ -1513,7 +1534,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 <Icon name="plus" size={13} strokeWidth={2.4} />
-                この日に新規{`予定`}
+                {t('New event on this day')}
               </button>
             </div>
           ) : null}
@@ -1550,8 +1571,8 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
             const project = projectMap.get(m.projectId)
             const _c = project?.statusColor ?? '#64748B'
             const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
-            const dateStr = formatMilestoneDateRange(m)
-            const label = formatMilestoneLabel(m)
+            const dateStr = formatMilestoneDateRange(m, t)
+            const label = formatMilestoneLabel(m, t)
             return (
               <button
                 key={m.id}
@@ -1592,6 +1613,7 @@ interface MobileWeekStripProps {
 }
 
 const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selectedDate, onSelectDate }: MobileWeekStripProps) => {
+  const t = useT()
   const today = new Date()
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)
@@ -1603,7 +1625,7 @@ const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selected
     <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', padding: '6px 0 8px', flexShrink: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
         {days.map((day, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: weekdayColor(day.getDay(), 'var(--text-3)') }}>{WEEKDAY_LABELS[day.getDay()]}</div>
+          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: weekdayColor(day.getDay(), 'var(--text-3)') }}>{t(WEEKDAY_KEYS[day.getDay()]!)}</div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
@@ -1656,6 +1678,7 @@ interface MobileTimelineViewProps {
 }
 
 const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onProjectClick, isLoading }: MobileTimelineViewProps) => {
+  const t = useT()
   const monthStart = new Date(year, month, 1)
   const monthEnd = new Date(year, month + 1, 0)
 
@@ -1689,7 +1712,7 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
   if (sorted.length === 0) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-        この月の予定なし
+        {t('Nothing scheduled this month')}
       </div>
     )
   }
@@ -1701,8 +1724,8 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
         const _c = item.kind === 'project' ? item.project.statusColor ?? '#9CA3AF' : item.project?.statusColor ?? '#64748B'
         const completed = item.kind === 'milestone' && item.milestone.completed
         const cfg = { bg: _c + '18', bar: _c, text: _c }
-        const dateStr = item.kind === 'project' ? formatDateRange(item.project.startDate, item.project.endDate) : formatMilestoneDateRange(item.milestone)
-        const dateLabel = formatDateLabel(item.date)
+        const dateStr = item.kind === 'project' ? formatDateRange(item.project.startDate, item.project.endDate) : formatMilestoneDateRange(item.milestone, t)
+        const dateLabel = formatDateLabel(item.date, t)
         const showDateHeader = dateLabel !== lastDateLabel
         if (showDateHeader) lastDateLabel = dateLabel
 
@@ -1733,7 +1756,7 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.kind === 'project' ? item.project.title : formatMilestoneLabel(item.milestone)}
+                  {item.kind === 'project' ? item.project.title : formatMilestoneLabel(item.milestone, t)}
                 </div>
                 {dateStr && (
                   <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
@@ -1762,6 +1785,7 @@ interface PCTimelineViewProps {
 }
 
 const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = new Map(), gcalEvents = [], onProjectClick, isLoading }: PCTimelineViewProps) => {
+  const t = useT()
   const today = new Date()
 
   const timelineItems = React.useMemo(() => {
@@ -1816,7 +1840,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
   if (timelineItems.length === 0) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 14 }}>
-        この月の予定なし
+        {t('Nothing scheduled this month')}
       </div>
     )
   }
@@ -1825,7 +1849,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
     <div style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
       {timelineItems.map((item, index) => {
         const isToday = item.date.toDateString() === today.toDateString()
-        const dateLabel = formatDateLabel(item.date)
+        const dateLabel = formatDateLabel(item.date, t)
 
         return (
           <div key={index} style={{ marginBottom: 24 }}>
@@ -1844,7 +1868,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                   background: 'var(--accent)', color: 'var(--on-accent)',
                   padding: '2px 6px', borderRadius: 4,
                 }}>
-                  今日
+                  {t('Today')}
                 </span>
               )}
             </div>
@@ -1895,8 +1919,8 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                 const project = projectMap.get(m.projectId)
                 const _c = project?.statusColor ?? '#64748B'
                 const cfg = { bg: m.completed ? 'var(--card-2)' : _c + '12', bar: m.completed ? 'var(--text-4)' : _c, text: m.completed ? 'var(--text-4)' : _c }
-                const dateStr = formatMilestoneDateRange(m)
-                const label = formatMilestoneLabel(m)
+                const dateStr = formatMilestoneDateRange(m, t)
+                const label = formatMilestoneLabel(m, t)
 
                 return (
                   <button
@@ -1976,7 +2000,7 @@ function CalendarLoadNotice({ children, style }: { children: React.ReactNode; st
   )
 }
 
-const WEEK_START_LOAD_ERROR = '週の始まりの設定を読み込めませんでした。時間をおいて再読み込みしてください。'
+const WEEK_START_LOAD_ERROR = 'Could not load the week start. Reload and try again.'
 
 interface PageCalendarProps {
   openPanel: (project?: ProjectDto) => void
@@ -1985,10 +2009,11 @@ interface PageCalendarProps {
 
 type CalView = 'month' | 'week' | 'timeline'
 
-const CAL_VIEW_LABELS: Record<CalView, string> = { month: '月', week: '週', timeline: 'タイムライン' }
+const CAL_VIEW_LABELS: Record<CalView, string> = { month: 'Month', week: 'Week', timeline: 'Timeline' }
 const CAL_VIEWS: CalView[] = ['month', 'week', 'timeline']
 
 export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps) => {
+  const t = useT()
   const today = new Date()
   const queryClient = useQueryClient()
   const { data: me, isError: weekStartError } = useCurrentUser()
@@ -2083,7 +2108,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryKey: ['gcal-events', year, month],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/calendar/google/events?year=${year}&month=${month}`)
-      if (!res.ok) throw new Error('Googleカレンダーの予定取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not load Google Calendar events'))
       return res.json()
     },
     staleTime: 15 * 60 * 1000,
@@ -2094,7 +2119,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
     queryKey: ['milestones'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/milestones')
-      if (!res.ok) throw new Error('マイルストーンの取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not load milestones'))
       return res.json()
     },
   })
@@ -2102,14 +2127,14 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const gcalCalendars = React.useMemo(() => {
     const map = new Map<string, string>()
     for (const ev of gcalEventsRaw) {
-      const name = ev.calendarName ?? '（名称なし）'
+      const name = ev.calendarName ?? UNNAMED_CALENDAR
       if (!map.has(name)) map.set(name, ev.calendarColor ?? '#4285F4')
     }
     return [...map.entries()].map(([name, color]) => ({ name, color }))
   }, [gcalEventsRaw])
 
   const visibleGcalEvents = React.useMemo(
-    () => gcalEventsRaw.filter(ev => !hiddenGcalCalendars.includes(ev.calendarName ?? '（名称なし）')),
+    () => gcalEventsRaw.filter(ev => !hiddenGcalCalendars.includes(ev.calendarName ?? UNNAMED_CALENDAR)),
     [gcalEventsRaw, hiddenGcalCalendars],
   )
 
@@ -2224,7 +2249,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   const pcPageRef = React.useRef<HTMLDivElement>(null)
   useMonthWheelNavigation(pcPageRef, shiftMonth, !isMobile && calView === 'month')
 
-  const periodLabel = calView === 'week' ? formatWeekRange(weekStart) : formatYM(year, month)
+  const periodLabel = calView === 'week' ? formatWeekRange(weekStart, t) : formatYM(year, month, t)
 
   // ── Mobile layout ──────────────────────────────────────────────
   if (isMobile) {
@@ -2242,7 +2267,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           />
         )}
         <MobileHeader
-          title="カレンダー"
+          title={t('Calendar')}
           right={
             <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {!isCurrentPeriod && (
@@ -2254,7 +2279,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                     padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4,
                   }}
                 >
-                  今日
+                  {t('Today')}
                 </button>
               )}
               <button
@@ -2288,7 +2313,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
               }}
             >
-              {CAL_VIEW_LABELS[v]}
+              {t(CAL_VIEW_LABELS[v])}
             </button>
           ))}
         </div>
@@ -2305,12 +2330,12 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             }}
           >
             <Icon name={showMilestones ? 'eye' : 'eye-off'} size={12} />
-            マイルストーン
+            {t('Milestones')}
           </button>
         </div>
         {weekStartError && (
           <CalendarLoadNotice style={{ margin: '8px 12px 0' }}>
-            {WEEK_START_LOAD_ERROR}
+            {t(WEEK_START_LOAD_ERROR)}
           </CalendarLoadNotice>
         )}
         {calView === 'month' && (
@@ -2389,13 +2414,13 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               onClick={goToday}
               disabled={isCurrentPeriod}
             >
-              今日
+              {t('Today')}
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <button className="btn btn-ghost" aria-label="前の期間" style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goPrev}>
+              <button className="btn btn-ghost" aria-label={t('Previous period')} style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goPrev}>
                 <Icon name="chevLeft" size={15} />
               </button>
-              <button className="btn btn-ghost" aria-label="次の期間" style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goNext}>
+              <button className="btn btn-ghost" aria-label={t('Next period')} style={{ width: 34, padding: 0, justifyContent: 'center' }} onClick={goNext}>
                 <Icon name="chevRight" size={15} />
               </button>
             </div>
@@ -2408,9 +2433,9 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           <>
             <SegmentedControl
               options={[
-                { id: 'month',    label: '月' },
-                { id: 'week',     label: '週' },
-                { id: 'timeline', label: 'タイムライン' },
+                { id: 'month',    label: t('Month') },
+                { id: 'week',     label: t('Week') },
+                { id: 'timeline', label: t('Timeline') },
               ]}
               value={calView}
               onChange={(v) => setCalViewPersisted(v as CalView)}
@@ -2420,10 +2445,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 <button
                   className="btn"
                   onClick={() => setGcalFilterOpen(o => !o)}
-                  title="Google カレンダーの表示切り替え"
+                  title={t('Toggle Google Calendar')}
                   style={hiddenGcalCalendars.length > 0 ? { opacity: 0.6 } : { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' }}
                 >
-                  <Icon name={hiddenGcalCalendars.length < gcalCalendars.length ? 'eye' : 'eye-off'} size={13} /> Google カレンダー
+                  <Icon name={hiddenGcalCalendars.length < gcalCalendars.length ? 'eye' : 'eye-off'} size={13} /> {t('Google Calendar')}
                 </button>
                 {gcalFilterOpen && (
                   <GcalCalendarPopover
@@ -2439,10 +2464,10 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
             <button
               className="btn"
               onClick={() => setShowMilestonesPersisted(!showMilestones)}
-              title="マイルストーンの表示切り替え"
+              title={t('Toggle milestones')}
               style={showMilestones ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : { opacity: 0.6 }}
             >
-              <Icon name={showMilestones ? 'eye' : 'eye-off'} size={13} /> マイルストーン
+              <Icon name={showMilestones ? 'eye' : 'eye-off'} size={13} /> {t('Milestones')}
             </button>
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
@@ -2450,7 +2475,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 onClick={() => setFilterOpen(o => !o)}
                 style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
-                <Icon name="filter" size={13} /> フィルター
+                <Icon name="filter" size={13} /> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
@@ -2467,25 +2492,25 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               )}
             </div>
             <button className="btn btn-primary" disabled={!canCreateProject}
-              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}
-              onClick={() => { const t = formatISO(new Date()); openCreate(t, t) }}>
-              <Icon name="plus" size={13} /> 新規{projectLabel}
+              title={canCreateProject ? undefined : t('Creating a {label} requires an admin or owner', { label: projectLabel })}
+              onClick={() => { const iso = formatISO(new Date()); openCreate(iso, iso) }}>
+              <Icon name="plus" size={13} /> {t('New {label}', { label: projectLabel })}
             </button>
           </>
         }
       />
 
       {weekStartError && (
-        <CalendarLoadNotice>{WEEK_START_LOAD_ERROR}</CalendarLoadNotice>
+        <CalendarLoadNotice>{t(WEEK_START_LOAD_ERROR)}</CalendarLoadNotice>
       )}
       {gcalEventsError && (
         <CalendarLoadNotice>
-          Googleカレンダーの予定の取得に失敗しました。時間をおいて再読み込みしてください。
+          {t('Could not load Google Calendar events. Reload and try again.')}
         </CalendarLoadNotice>
       )}
       {milestonesError && (
         <CalendarLoadNotice>
-          マイルストーンの取得に失敗しました。時間をおいて再読み込みしてください。
+          {t('Could not load milestones. Reload and try again.')}
         </CalendarLoadNotice>
       )}
 
@@ -2540,7 +2565,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
         ))}
         {!isLoading && projects.length > 0 && (
           <span style={{ marginLeft: 'auto', color: 'var(--text-4)' }}>
-            {projects.filter(p => p.startDate).length} 件のプロジェクトに日程設定済み
+            {t('{count} projects have dates', { count: projects.filter(p => p.startDate).length })}
           </span>
         )}
       </div>

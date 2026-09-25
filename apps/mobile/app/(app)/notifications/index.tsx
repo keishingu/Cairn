@@ -20,6 +20,7 @@ import { followNotification } from '../../../lib/follow-notification'
 import { routeFromNotification } from '../../../lib/notification-routing'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import type { ThemePalette } from '../../../lib/theme'
+import { useT } from '../../../components/locale-provider'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -39,6 +40,7 @@ function NotificationCard({
   onPress: (item: NotificationDto) => void
   palette: ThemePalette
 }) {
+  const t = useT()
   return (
     <Pressable
       onPress={() => onPress(item)}
@@ -59,13 +61,14 @@ function NotificationCard({
       </View>
       <Text style={[styles.cardBody, { color: palette.text2 }]}>{item.body}</Text>
       {!item.readAt ? (
-        <Text style={[styles.unreadBadge, { color: palette.accentText }]}>未読</Text>
+        <Text style={[styles.unreadBadge, { color: palette.accentText }]}>{t('Unread')}</Text>
       ) : null}
     </Pressable>
   )
 }
 
 export default function NotificationsScreen() {
+  const t = useT()
   const router = useRouter()
   const notificationsQuery = useNotifications()
   const unreadCountQuery = useUnreadNotificationCount()
@@ -77,13 +80,13 @@ export default function NotificationsScreen() {
   const errorMessage =
     notificationsQuery.error instanceof Error
       ? notificationsQuery.error.message
-      : '通知の取得に失敗しました'
+      : t('Could not load the notification list')
 
   function handlePress(item: NotificationDto) {
     if (!item.readAt) {
       markRead.mutate([item.id])
     }
-    void followNotification(router, routeFromNotification(item))
+    void followNotification(router, routeFromNotification(item), { t })
   }
 
   if (notificationsQuery.isLoading) {
@@ -98,9 +101,7 @@ export default function NotificationsScreen() {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: palette.bg }]}>
         <View style={styles.errorState}>
-          <Text style={[styles.errorTitle, { color: palette.text }]}>
-            通知を読み込めませんでした
-          </Text>
+          <Text style={[styles.errorTitle, { color: palette.text }]}>{t('Could not load notifications')}</Text>
           <Text style={[styles.errorBody, { color: palette.text3 }]}>{errorMessage}</Text>
           <Pressable
             onPress={() => void notificationsQuery.refetch()}
@@ -110,7 +111,7 @@ export default function NotificationsScreen() {
               pressed && styles.retryButtonPressed,
             ]}
           >
-            <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再読み込み</Text>
+            <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Reload')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -130,14 +131,14 @@ export default function NotificationsScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="チャットへ戻る"
+          accessibilityLabel={t('Back to chats')}
           onPress={() => router.replace('/(app)/chats')}
           style={styles.backButton}
           hitSlop={8}
         >
           <Ionicons name="chevron-back" size={22} color={palette.accent} />
         </Pressable>
-        <Text style={[styles.heading, { color: palette.text }]}>通知</Text>
+        <Text style={[styles.heading, { color: palette.text }]}>{t('Notifications')}</Text>
         <Pressable
           disabled={markRead.isPending || unreadCount === 0}
           onPress={() => markRead.mutate(null)}
@@ -147,7 +148,7 @@ export default function NotificationsScreen() {
             pressed && styles.markAllButtonPressed,
           ]}
         >
-          <Text style={[styles.markAllLabel, { color: palette.accentText }]}>すべて既読</Text>
+          <Text style={[styles.markAllLabel, { color: palette.accentText }]}>{t('Mark all read')}</Text>
         </Pressable>
       </View>
       <FlatList
@@ -168,10 +169,8 @@ export default function NotificationsScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, { color: palette.text }]}>通知はまだありません</Text>
-            <Text style={[styles.emptyBody, { color: palette.text3 }]}>
-              メンションや更新が届くとここに表示されます。
-            </Text>
+            <Text style={[styles.emptyTitle, { color: palette.text }]}>{t('No notifications yet')}</Text>
+            <Text style={[styles.emptyBody, { color: palette.text3 }]}>{t('Mentions and updates will show up here.')}</Text>
           </View>
         }
       />

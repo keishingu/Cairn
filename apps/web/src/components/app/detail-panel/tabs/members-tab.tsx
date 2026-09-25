@@ -18,6 +18,7 @@ import {
   useUpdateProjectMemberRole,
 } from '@/hooks/use-project-members'
 import { useProjectRoles } from '@/hooks/use-project-roles'
+import { useT } from '@/components/locale-provider'
 
 // ─── Member row ───────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const MemberRow = ({
   changingRole,
   onMemberClick,
 }: MemberRowProps) => {
+  const t = useT()
   const [editingRole, setEditingRole] = React.useState(false)
   const [selectedRoleId, setSelectedRoleId] = React.useState(member.roleId ?? '')
   const [roleError, setRoleError] = React.useState<string | null>(null)
@@ -51,7 +53,7 @@ const MemberRow = ({
       await onChangeRole(selectedRoleId)
       setEditingRole(false)
     } catch (error) {
-      setRoleError(error instanceof Error ? error.message : '役割の変更に失敗しました')
+      setRoleError(error instanceof Error ? error.message : t('Could not change the role'))
     }
   }
   return (
@@ -100,8 +102,8 @@ const MemberRow = ({
         {canRemove && (
           <RowActionMenu
             actions={[
-              { icon: 'edit', label: '役割を変更', onSelect: () => setEditingRole(true) },
-              { icon: 'trash', label: '削除', danger: true, onSelect: onRemove },
+              { icon: 'edit', label: t('Change role'), onSelect: () => setEditingRole(true) },
+              { icon: 'trash', label: t('Delete'), danger: true, onSelect: onRemove },
             ]}
           />
         )}
@@ -110,7 +112,7 @@ const MemberRow = ({
         <div style={{ padding: '0 4px 10px 42px' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <select
-              aria-label={`${member.displayName}の役割`}
+              aria-label={t('Role for {name}', { name: member.displayName })}
               name={`projectRole-${member.userId}`}
             value={selectedRoleId}
             onChange={(event) => setSelectedRoleId(event.target.value)}
@@ -137,7 +139,7 @@ const MemberRow = ({
             style={{ height: 30, fontSize: 11.5 }}
             onClick={() => setEditingRole(false)}
           >
-            キャンセル
+            {t('Cancel')}
           </button>
           <button
             className="btn btn-primary"
@@ -147,7 +149,7 @@ const MemberRow = ({
               void saveRole()
             }}
           >
-            {changingRole ? '保存中…' : '保存'}
+            {changingRole ? t('Saving...') : t('Save')}
           </button>
           </div>
           {roleError && (
@@ -163,11 +165,13 @@ const MemberRow = ({
 
 // ─── Invite panel (absolutely positioned within the tab) ──────────
 
+const INVITE_CREATE_FAILED = 'invite-create-failed'
+
 const WS_ROLE_LABEL: Record<string, string> = {
-  owner: 'オーナー',
-  admin: '管理者',
-  member: 'メンバー',
-  guest: 'ゲスト',
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+  guest: 'Guest',
 }
 
 interface InvitePanelProps {
@@ -196,7 +200,9 @@ const InvitePanel = ({
   onClose,
   isLoading,
   error,
-}: InvitePanelProps) => (
+}: InvitePanelProps) => {
+  const t = useT()
+  return (
   <div
     style={{
       position: 'absolute',
@@ -220,7 +226,7 @@ const InvitePanel = ({
       }}
     >
       <button
-        aria-label="メンバー追加を閉じる"
+        aria-label={t('Close add members')}
         onClick={onClose}
         style={{
           width: 28,
@@ -238,7 +244,7 @@ const InvitePanel = ({
       >
         <Icon name="chevLeft" size={14} />
       </button>
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>メンバーを追加</span>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{t('Add members')}</span>
     </div>
 
     {/* Scrollable content */}
@@ -247,13 +253,13 @@ const InvitePanel = ({
         <div
           style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}
         >
-          読み込み中…
+          {t('Loading...')}
         </div>
       ) : inviteable.length === 0 ? (
         <div
           style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}
         >
-          追加できるメンバーがいません
+          {t('No members available to add')}
         </div>
       ) : (
         <>
@@ -267,7 +273,7 @@ const InvitePanel = ({
               marginBottom: 6,
             }}
           >
-            ワークスペースメンバー
+            {t('Workspace members')}
           </div>
 
           {/* Avatar list */}
@@ -325,7 +331,7 @@ const InvitePanel = ({
                       {m.displayName}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
-                      {WS_ROLE_LABEL[m.role] ?? m.role}
+                      {t(WS_ROLE_LABEL[m.role] ?? m.role)}
                     </div>
                   </div>
                 </button>
@@ -344,7 +350,7 @@ const InvitePanel = ({
               marginBottom: 8,
             }}
           >
-            役割
+            {t('Roles')}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {roles.map((role) => {
@@ -415,11 +421,12 @@ const InvitePanel = ({
           transition: 'background 0.15s',
         }}
       >
-        {isLoading ? '追加中…' : `${selectedUserIds.length}人を追加する`}
+        {isLoading ? t('Adding...') : t('Add {count} people', { count: selectedUserIds.length })}
       </button>
     </div>
   </div>
-)
+  )
+}
 
 // ─── Guest invite panel ───────────────────────────────────────────
 
@@ -429,6 +436,7 @@ interface GuestInvitePanelProps {
 }
 
 const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
+  const t = useT()
   const [url, setUrl] = React.useState<string | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -444,7 +452,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
         setToken(data.token ?? null)
       })
       .catch((mutationError) => {
-        setError(mutationError instanceof Error ? mutationError.message : '招待リンクの生成に失敗しました')
+        setError(mutationError instanceof Error ? mutationError.message : INVITE_CREATE_FAILED)
       })
   }, [projectId])
 
@@ -464,7 +472,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
       setToken(null)
       setRevoked(true)
     } catch {
-      setError('無効化に失敗しました')
+      setError(t('Could not revoke the link'))
     }
   }
 
@@ -483,7 +491,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
         flexShrink: 0,
       }}>
         <button
-          aria-label="外部ゲスト招待を閉じる"
+          aria-label={t('Close external guest invite')}
           onClick={onClose}
           style={{
             width: 28, height: 28, borderRadius: 7,
@@ -495,28 +503,28 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
         >
           <Icon name="chevLeft" size={14}/>
         </button>
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>外部ゲストを招待</span>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{t('Invite an external guest')}</span>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 12px' }}>
         <p style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>
-          このリンクを共有すると、相手はゲストとしてワークスペースに参加し、このプロジェクトに自動で追加されます。
+          {t('Sharing this link lets the recipient join the workspace as a guest and adds them to this project.')}
         </p>
 
         {createGuestInviteMutation.isPending && (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
-            リンクを生成中…
+            {t('Creating link...')}
           </div>
         )}
 
         {error && (
-          <p style={{ fontSize: 12, color: 'var(--red)', marginBottom: 0 }}>{error}</p>
+          <p style={{ fontSize: 12, color: 'var(--red)', marginBottom: 0 }}>{error === INVITE_CREATE_FAILED ? t('Could not create the invite link') : error}</p>
         )}
 
         {revoked && (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>
-            招待リンクを無効化しました
+            {t('Invite link revoked')}
           </div>
         )}
 
@@ -546,12 +554,12 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
                   transition: 'background 0.15s',
                 }}
               >
-                {copied ? 'コピー済み' : 'コピー'}
+                {copied ? t('Copied') : t('Copy')}
               </button>
             </div>
 
             <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>
-              有効期限: 30日間
+              {t('Expires in 30 days')}
             </p>
 
             <button
@@ -567,7 +575,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
                 fontFamily: 'inherit',
               }}
             >
-              {revokeInviteMutation.isPending ? '無効化中…' : 'このリンクを無効化'}
+              {revokeInviteMutation.isPending ? t('Revoking...') : t('Revoke this link')}
             </button>
           </>
         )}
@@ -584,6 +592,7 @@ interface MembersTabProps {
 }
 
 export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
+  const t = useT()
   const [showInvite, setShowInvite] = React.useState(false)
   const [showGuestInvite, setShowGuestInvite] = React.useState(false)
   const [selectedUserIds, setSelectedUserIds] = React.useState<string[]>([])
@@ -661,13 +670,13 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
           <div
             style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}
           >
-            読み込み中…
+            {t('Loading...')}
           </div>
         ) : members.length === 0 ? (
           <div
             style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}
           >
-            まだメンバーがいません
+            {t('No members yet')}
           </div>
         ) : (
           groupedMembers.map((group) => (
@@ -715,14 +724,14 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
         {rolesError && (
           <div role="alert" style={{ marginTop: 10, fontSize: 12, color: 'var(--red-text)' }}>
-            役割を読み込めませんでした。再読み込みしてください。
+            {t('Could not load roles. Please reload.')}
           </div>
         )}
 
         <button
           onClick={() => setShowInvite(true)}
           disabled={!canManageMembers || roles.length === 0}
-          title={!canManageMembers ? 'メンバーの追加にはメンバー以上の権限が必要です' : roles.length === 0 ? '役割を読み込めませんでした' : undefined}
+          title={!canManageMembers ? t('Adding members requires member access or higher') : roles.length === 0 ? t('Could not load roles') : undefined}
           style={{
             marginTop: 12,
             width: '100%',
@@ -742,7 +751,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
             gap: 6,
           }}
         >
-          <Icon name="plus" size={13} /> メンバーを招待
+          <Icon name="plus" size={13} /> {t('Invite members')}
         </button>
 
         {canInviteGuest && (
@@ -766,7 +775,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
               gap: 6,
             }}
           >
-            <Icon name="link" size={13} /> 外部ゲストを招待
+            <Icon name="link" size={13} /> {t('Invite an external guest')}
           </button>
         )}
       </div>
@@ -801,8 +810,8 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
 
       <ConfirmDialog
         open={removeTarget !== null}
-        title="メンバーを削除"
-        message={`「${removeTarget?.displayName}」をこのプロジェクトから削除しますか？`}
+        title={t('Remove member')}
+        message={t('Remove "{name}" from this project?', { name: removeTarget?.displayName ?? '' })}
         onConfirm={async () => {
           if (removeTarget) await removeMutation.mutateAsync(removeTarget.userId)
         }}

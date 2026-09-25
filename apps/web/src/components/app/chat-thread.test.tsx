@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { translate } from '@cairn/shared'
 import {
   ChatMessage,
   ChatThread,
@@ -12,6 +13,8 @@ import {
   copyMessageLink,
   isNearMessageTimelineEnd,
 } from './chat-thread'
+
+const copyT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
 
 const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadState } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
@@ -142,7 +145,7 @@ describe('ChatMessage copy action', () => {
   it('元の本文をそのままコピーして成功トーストを出す', async () => {
     const content = 'https://example.com/very/long/path?token=abcdef1234567890&next=%2Fprojects%2Falpha'
 
-    await expect(copyMessageContent(content)).resolves.toBe(true)
+    await expect(copyMessageContent(content, copyT)).resolves.toBe(true)
 
     expect(clipboardWriteText).toHaveBeenCalledWith(content)
     expect(toastSuccess).toHaveBeenCalledWith('メッセージをコピーしました')
@@ -155,7 +158,7 @@ describe('ChatMessage copy action', () => {
       value: { writeText },
     })
 
-    await expect(copyMessageContent('hello')).resolves.toBe(false)
+    await expect(copyMessageContent('hello', copyT)).resolves.toBe(false)
 
     expect(writeText).toHaveBeenCalledWith('hello')
     expect(toastError).toHaveBeenCalledWith('メッセージをコピーできませんでした')
@@ -164,7 +167,7 @@ describe('ChatMessage copy action', () => {
   it('メッセージのリンクをコピーして成功トーストを出す', async () => {
     const url = 'https://develop.oss-cairn.com/chats/channel-1?m=message-1'
 
-    await expect(copyMessageLink(url)).resolves.toBe(true)
+    await expect(copyMessageLink(url, copyT)).resolves.toBe(true)
 
     expect(clipboardWriteText).toHaveBeenCalledWith(url)
     expect(toastSuccess).toHaveBeenCalledWith('リンクをコピーしました')
@@ -173,7 +176,7 @@ describe('ChatMessage copy action', () => {
   it('メッセージのリンクをコピーできなければエラートーストを出す', async () => {
     clipboardWriteText.mockRejectedValue(new Error('denied'))
 
-    await expect(copyMessageLink('https://develop.oss-cairn.com/chats/1')).resolves.toBe(false)
+    await expect(copyMessageLink('https://develop.oss-cairn.com/chats/1', copyT)).resolves.toBe(false)
 
     expect(toastError).toHaveBeenCalledWith('リンクをコピーできませんでした')
   })

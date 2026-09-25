@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAppAppearance } from './appearance-provider'
 import { useNotificationPanel } from './notification-panel-provider'
 import { WorkspaceSwitcherButton } from './workspace-switcher-button'
+import { useT } from './locale-provider'
 
 interface NativeAppHeaderProps {
   title: string
@@ -16,13 +17,14 @@ interface NativeAppHeaderProps {
 }
 
 function NotificationButton() {
+  const t = useT()
   const { palette } = useAppAppearance()
   const { unreadCount, openNotifications } = useNotificationPanel()
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={unreadCount > 0 ? `通知、未読${unreadCount}件` : '通知'}
+      accessibilityLabel={unreadCount > 0 ? t('Notifications, {count} unread', { count: unreadCount }) : t('Notifications')}
       onPress={openNotifications}
       style={styles.notificationButton}
       hitSlop={6}
@@ -41,10 +43,12 @@ export function NativeAppHeader({
   title,
   subtitle,
   onBack,
-  backLabel = '前の画面へ戻る',
+  backLabel,
   right,
   showNotifications = true,
 }: NativeAppHeaderProps) {
+  const t = useT()
+  const resolvedBackLabel = backLabel ?? t('Back to the previous screen')
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
 
@@ -63,7 +67,7 @@ export function NativeAppHeader({
         {onBack ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={backLabel}
+            accessibilityLabel={resolvedBackLabel}
             onPress={onBack}
             style={styles.leadingButton}
             hitSlop={8}

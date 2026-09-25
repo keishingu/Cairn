@@ -3,6 +3,7 @@
 import React from 'react'
 import { fieldInputStyle } from './primitives'
 import { TaskAssigneeField } from './task-assignee-field'
+import { useT } from '@/components/locale-provider'
 import type { TaskDto } from '@/app/api/tasks/route'
 
 interface TaskFormFieldsProps {
@@ -50,12 +51,13 @@ export const TaskFormFields = ({
   currentAssignee,
   titleNote,
 }: TaskFormFieldsProps) => {
+  const t = useT()
   const id = React.useId()
   return (
     <>
       <div>
         <label htmlFor={`${id}-title`} style={labelStyle}>
-          タイトル <span style={{ color: 'var(--red)' }}>*</span>
+          {t('Title')} <span style={{ color: 'var(--red)' }}>*</span>
         </label>
         <input
           id={`${id}-title`}
@@ -87,7 +89,7 @@ export const TaskFormFields = ({
 
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <label htmlFor={`${id}-priority`} style={labelStyle}>優先度</label>
+          <label htmlFor={`${id}-priority`} style={labelStyle}>{t('Priority')}</label>
           <select
             id={`${id}-priority`}
             className="form-control"
@@ -95,13 +97,13 @@ export const TaskFormFields = ({
             onChange={e => onPriorityChange(e.target.value as TaskDto['priority'])}
             style={fieldInputStyle(false)}
           >
-            <option value="high">高</option>
-            <option value="medium">中</option>
-            <option value="low">低</option>
+            <option value="high">{t('High')}</option>
+            <option value="medium">{t('Medium')}</option>
+            <option value="low">{t('Low')}</option>
           </select>
         </div>
         <div style={{ flex: 1 }}>
-          <label htmlFor={`${id}-due`} style={labelStyle}>期限日</label>
+          <label htmlFor={`${id}-due`} style={labelStyle}>{t('Due date')}</label>
           <input
             id={`${id}-due`}
             className="form-control"

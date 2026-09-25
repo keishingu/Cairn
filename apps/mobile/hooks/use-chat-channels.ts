@@ -9,6 +9,7 @@ import {
   workspaceDmsQueryKey,
 } from '../lib/channel-list-queries'
 import { fetchApiJson } from '../lib/fetch-api-json'
+import { useT } from '../components/locale-provider'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -52,44 +53,50 @@ function fetchJson<T>(path: string, errorLabel: string) {
 }
 
 export function useWorkspaceChannels() {
+  const t = useT()
   return useQuery<WorkspaceChannelDto[]>({
     queryKey: workspaceChannelsQueryKey,
-    queryFn: () => fetchWorkspaceChannels<WorkspaceChannelDto[]>(),
+    queryFn: () => fetchWorkspaceChannels<WorkspaceChannelDto[]>(t),
   })
 }
 
 export function useWorkspaceDms() {
+  const t = useT()
   return useQuery<DmChannelDto[]>({
     queryKey: workspaceDmsQueryKey,
-    queryFn: () => fetchWorkspaceDms<DmChannelDto[]>(),
+    queryFn: () => fetchWorkspaceDms<DmChannelDto[]>(t),
     enabled: FEATURE_FLAGS.dm,
   })
 }
 
 export function useWorkspaceMembers() {
+  const t = useT()
   return useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
-    queryFn: fetchJson('/api/workspaces/members?status=active', 'メンバー'),
+    queryFn: fetchJson('/api/workspaces/members?status=active', t('Could not load members ({status})')),
   })
 }
 
 export function useChannelMembers(channelId: string | null, enabled: boolean) {
+  const t = useT()
   return useQuery<ChannelMemberDto[]>({
     queryKey: ['channel-members', channelId],
-    queryFn: fetchJson(`/api/channels/${channelId}/members`, 'チャンネルメンバー'),
+    queryFn: fetchJson(`/api/channels/${channelId}/members`, t('Could not load channel members ({status})')),
     enabled: enabled && !!channelId,
   })
 }
 
 export function useProjectMembers(projectId: string | null) {
+  const t = useT()
   return useQuery<ChannelMemberDto[]>({
     queryKey: ['project-members', projectId],
-    queryFn: fetchJson(`/api/projects/${projectId}/members`, 'プロジェクトメンバー'),
+    queryFn: fetchJson(`/api/projects/${projectId}/members`, t('Could not load project members ({status})')),
     enabled: !!projectId,
   })
 }
 
 export function useCreateWorkspaceChannel() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: { name: string; isPrivate: boolean }) => {
@@ -99,7 +106,7 @@ export function useCreateWorkspaceChannel() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? 'チャンネルの作成に失敗しました')
+        throw new Error(data.error ?? t('Could not create the channel'))
       }
       return res.json() as Promise<WorkspaceChannelDto>
     },
@@ -113,6 +120,7 @@ export function useCreateWorkspaceChannel() {
 }
 
 export function useRenameWorkspaceChannel() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ channelId, name }: { channelId: string; name: string }) => {
@@ -122,7 +130,7 @@ export function useRenameWorkspaceChannel() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? '名前の変更に失敗しました')
+        throw new Error(data.error ?? t('Could not rename'))
       }
       return res.json() as Promise<{ id: string; name: string }>
     },
@@ -135,13 +143,14 @@ export function useRenameWorkspaceChannel() {
 }
 
 export function useDeleteWorkspaceChannel() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (channelId: string) => {
       const res = await apiFetch(`/api/channels/${channelId}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? '削除に失敗しました')
+        throw new Error(data.error ?? t('Could not delete'))
       }
     },
     onSuccess: (_result, channelId) => {
@@ -155,6 +164,7 @@ export function useDeleteWorkspaceChannel() {
 }
 
 export function useCreateChannelThread() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ channelId, name }: { channelId: string; name: string }) => {
@@ -164,7 +174,7 @@ export function useCreateChannelThread() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? 'スレッドの作成に失敗しました')
+        throw new Error(data.error ?? t('Could not create the thread'))
       }
       return res.json() as Promise<{ id: string }>
     },
@@ -175,6 +185,7 @@ export function useCreateChannelThread() {
 }
 
 export function usePatchProjectMilestone() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({
@@ -192,7 +203,7 @@ export function usePatchProjectMilestone() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? 'マイルストーンの更新に失敗しました')
+        throw new Error(data.error ?? t('Could not update the milestone status'))
       }
     },
     onSuccess: () => {
@@ -202,6 +213,7 @@ export function usePatchProjectMilestone() {
 }
 
 export function useCreateWorkspaceDm() {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (targetUserId: string) => {
@@ -211,7 +223,7 @@ export function useCreateWorkspaceDm() {
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? 'ダイレクトメッセージの開始に失敗しました')
+        throw new Error(data.error ?? t('Could not start the direct message'))
       }
       return res.json() as Promise<{ id: string }>
     },
