@@ -17,6 +17,7 @@ import { useWorkspaceList, type WorkspaceListItemDto } from '../hooks/use-accoun
 import { useSession } from '../lib/session-context'
 import { activateWorkspace } from '../lib/workspace-activation'
 import { useAppAppearance } from './appearance-provider'
+import { useT } from './locale-provider'
 
 interface WorkspaceSwitcherModalProps {
   currentWorkspaceId?: string | undefined
@@ -25,10 +26,10 @@ interface WorkspaceSwitcherModalProps {
 }
 
 const ROLE_LABELS: Record<WorkspaceListItemDto['role'], string> = {
-  owner: 'オーナー',
-  admin: '管理者',
-  member: 'メンバー',
-  guest: 'ゲスト',
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+  guest: 'Guest',
 }
 
 export function WorkspaceSwitcherModal({
@@ -36,6 +37,7 @@ export function WorkspaceSwitcherModal({
   visible,
   onClose,
 }: WorkspaceSwitcherModalProps) {
+  const t = useT()
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -71,7 +73,7 @@ export function WorkspaceSwitcherModal({
     } catch (error) {
       setSwitchingId(null)
       setSwitchError(
-        error instanceof Error ? error.message : 'ワークスペースを切り替えられませんでした',
+        error instanceof Error ? error.message : t('Could not switch workspace'),
       )
     }
   }
@@ -81,7 +83,7 @@ export function WorkspaceSwitcherModal({
       <View style={styles.modalRoot}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="ワークスペース切替を閉じる"
+          accessibilityLabel={t('Close workspace switcher')}
           style={styles.backdrop}
           onPress={onClose}
         />
@@ -98,14 +100,12 @@ export function WorkspaceSwitcherModal({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View>
-              <Text style={[styles.title, { color: palette.text }]}>ワークスペース</Text>
-              <Text style={[styles.subtitle, { color: palette.text3 }]}>
-                表示するワークスペースを選択
-              </Text>
+              <Text style={[styles.title, { color: palette.text }]}>{t('Workspace')}</Text>
+              <Text style={[styles.subtitle, { color: palette.text3 }]}>{t('Choose a workspace to show')}</Text>
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="ワークスペース切替を閉じる"
+              accessibilityLabel={t('Close workspace switcher')}
               style={styles.closeButton}
               onPress={onClose}
               hitSlop={8}
@@ -134,7 +134,7 @@ export function WorkspaceSwitcherModal({
                 onPress={() => void workspacesQuery.refetch()}
                 style={[styles.retryButton, { backgroundColor: palette.accent }]}
               >
-                <Text style={[styles.retryText, { color: palette.onAccent }]}>再読み込み</Text>
+                <Text style={[styles.retryText, { color: palette.onAccent }]}>{t('Reload')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -177,7 +177,7 @@ export function WorkspaceSwitcherModal({
                         {item.name}
                       </Text>
                       <Text style={[styles.role, { color: palette.text3 }]}>
-                        {ROLE_LABELS[item.role]}
+                        {t(ROLE_LABELS[item.role])}
                       </Text>
                     </View>
                     {switching ? (

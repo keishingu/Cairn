@@ -10,6 +10,7 @@ import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useProjectFiles } from '@/hooks/use-project-files'
+import { useT } from '@/components/locale-provider'
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -28,18 +29,19 @@ const ACCEPT_FILE_TYPES = [
 ].join(',')
 
 function IndexingBadge({ status }: { status: string | undefined }) {
+  const t = useT()
   if (!status || status === 'indexed' || status === 'skipped') return null
   if (status === 'pending') {
     return (
       <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
-        インデックス中
+        {t('Indexing')}
       </span>
     )
   }
   if (status === 'failed') {
     return (
       <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
-        非公開
+        {t('Private')}
       </span>
     )
   }
@@ -63,6 +65,7 @@ function isImageFile(file: ProjectFileDto): boolean {
 }
 
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
@@ -97,7 +100,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
           if (!res.ok) {
             const data = await res.json().catch(() => ({})) as { error?: string }
-            throw new Error(data.error ?? `${file.name} のアップロードに失敗しました`)
+            throw new Error(data.error ?? t('Could not upload {name}', { name: file.name }))
           }
         }),
       )
@@ -114,7 +117,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         throw firstFailure.reason
       }
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'アップロードに失敗しました')
+      setUploadError(error instanceof Error ? error.message : t('Could not upload'))
     } finally {
       setIsUploading(false)
     }
@@ -123,7 +126,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   if (isLoading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-        読み込み中...
+        {t('Loading…')}
       </div>
     )
   }
@@ -131,7 +134,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   if (isError) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>
-        ファイルの取得に失敗しました
+        {t('Could not load files')}
       </div>
     )
   }
@@ -170,7 +173,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           }}
         >
           <Icon name="plus" size={13} />
-          {isUploading ? 'アップロード中...' : 'ファイルを追加'}
+          {isUploading ? t('Uploading...') : t('Add a file')}
         </button>
       </div>
 
@@ -182,7 +185,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
       {files.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13, padding: '24px 0' }}>
-          まだファイルがありません
+          {t('There are no files yet')}
         </div>
       )}
 
@@ -214,19 +217,19 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新版</span>}
+                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? t('External link') : meta}</div>
               </div>
             </a>
 
             <RowActionMenu
               actions={[
                 f.isLatest
-                  ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
-                  : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
-                { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
+                  ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
+                  : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
+                { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
               ]}
             />
           </div>
@@ -235,8 +238,8 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="ファイルを削除"
-        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        title={t('Delete this file')}
+        message={t('Delete "{name}"? This cannot be undone.', { name: deleteTarget?.name ?? '' })}
         onConfirm={async () => { if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id) }}
         onClose={() => setDeleteTarget(null)}
       />

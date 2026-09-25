@@ -6,6 +6,7 @@ import type { NativeHeaderDescriptor } from '../lib/native-header-bridge'
 import { useAppAppearance } from './appearance-provider'
 import { useWorkspace } from '../hooks/use-account'
 import { resolveNativeWebViewWorkspaceState } from '../lib/native-webview-workspace-state'
+import { useT } from './locale-provider'
 
 interface NativeWebViewScreenProps extends Omit<
   AppWebViewProps,
@@ -23,6 +24,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
     { title, subtitle, onBack, requiresWorkspace = true, showNotifications = true, ...webViewProps },
     forwardedRef,
   ) {
+    const t = useT()
     const innerRef = React.useRef<AppWebViewHandle>(null)
     const { palette } = useAppAppearance()
     const workspaceQuery = useWorkspace()
@@ -31,6 +33,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
       isPending: workspaceQuery.isPending,
       error: workspaceQuery.error,
       requiresWorkspace,
+      fallbackMessage: t('Could not load workspace info'),
     })
     const [header, setHeader] = React.useState<NativeHeaderDescriptor>({
       title,
@@ -65,22 +68,20 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
         {workspaceState.status === 'loading' ? (
           <View style={styles.stateContainer}>
             <ActivityIndicator
-              accessibilityLabel="ワークスペース情報を読み込み中"
+              accessibilityLabel={t('Loading workspace info')}
               size="small"
               color={palette.accent}
             />
           </View>
         ) : workspaceState.status === 'error' ? (
           <View style={styles.stateContainer}>
-            <Text accessibilityRole="alert" style={[styles.errorTitle, { color: palette.text }]}>
-              ワークスペースを読み込めませんでした
-            </Text>
+            <Text accessibilityRole="alert" style={[styles.errorTitle, { color: palette.text }]}>{t('Could not load the workspace')}</Text>
             <Text style={[styles.errorBody, { color: palette.text3 }]}>
               {workspaceState.message}
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="ワークスペース情報を再読み込み"
+              accessibilityLabel={t('Reload workspace info')}
               onPress={() => void workspaceQuery.refetch()}
               style={({ pressed }) => [
                 styles.retryButton,
@@ -88,7 +89,7 @@ export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebV
                 pressed && styles.retryButtonPressed,
               ]}
             >
-              <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再読み込み</Text>
+              <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Reload')}</Text>
             </Pressable>
           </View>
         ) : (

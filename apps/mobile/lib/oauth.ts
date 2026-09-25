@@ -1,3 +1,4 @@
+import { translate } from '@cairn/shared'
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
 import * as Application from 'expo-application'
@@ -15,9 +16,14 @@ WebBrowser.maybeCompleteAuthSession()
 
 export type OAuthResult = 'success' | 'cancelled' | 'needs-workspace'
 
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+const translateJa: Translate = (message, values) => translate('ja', message, values)
+
 async function setupProfile(
   session: Session,
-  displayName?: string,
+  displayName: string | undefined,
+  t: Translate,
 ): Promise<{ needsWorkspace: boolean }> {
   // OAuth初回ログインでもprofilesを作成する（省くと以降の全APIが403になる）。
   const profileDisplayName =
@@ -35,7 +41,7 @@ async function setupProfile(
   )
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error((body as { error?: string }).error ?? 'プロフィールの作成に失敗しました')
+    throw new Error((body as { error?: string }).error ?? t('Could not create your profile.'))
   }
 
   const body = (await res.json().catch(() => ({}))) as { needsWorkspace?: boolean }
@@ -45,7 +51,7 @@ async function setupProfile(
 // ネイティブの Google ログイン。
 // Web のリダイレクト方式は使えないため、配布variant固有のアプリスキームを
 // redirect 先にして WebBrowser で認可コードを受け取り、PKCE で交換する。
-export async function signInWithGoogle(): Promise<OAuthResult> {
+export async function signInWithGoogle(t: Translate = translateJa): Promise<OAuthResult> {
   // scheme を明示する。明示しないと dev ビルドで exp:// 形式や
   // スラッシュ3つの custom-scheme:///... を返すことがあり、それだと Supabase の
   // 許可リストに一致せず Site URL（web）へフォールバックして 500 になる。
@@ -63,7 +69,7 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     options: { redirectTo, skipBrowserRedirect: true },
   })
   if (error) throw error
-  if (!data.url) throw new Error('OAuth の認可 URL を取得できませんでした')
+  if (!data.url) throw new Error(t('Could not get the OAuth authorization URL'))
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
   if (__DEV__) {
@@ -78,16 +84,16 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
   const { queryParams } = Linking.parse(result.url)
   const code = queryParams?.['code']
   if (typeof code !== 'string') {
-    throw new Error('認可コードを取得できませんでした')
+    throw new Error(t('Could not get the authorization code'))
   }
 
   beginPostAuthNavigation()
   try {
     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
     if (exchangeError) throw exchangeError
-    if (!data.session) throw new Error('認証セッションを確立できませんでした')
+    if (!data.session) throw new Error(t('Could not establish a session'))
 
-    const { needsWorkspace } = await setupProfile(data.session)
+    const { needsWorkspace } = await setupProfile(data.session, undefined, t)
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {
     completePostAuthNavigation()
@@ -100,7 +106,7 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
 
 // iOSネイティブのAppleログイン。ID tokenをSupabaseへ直接渡すため、Web OAuthや
 // WebViewのハンドオフを経由せず、Googleログインと同じセッション確立後の処理へ接続する。
-export async function signInWithApple(): Promise<OAuthResult> {
+export async function signInWithApple(t: Translate = translateJa): Promise<OAuthResult> {
   const rawNonce = Crypto.randomUUID()
   const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce, {
     encoding: Crypto.CryptoEncoding.HEX,
@@ -122,7 +128,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
   }
 
   if (!credential.identityToken) {
-    throw new Error('Apple認証情報を取得できませんでした')
+    throw new Error(t('Could not get Apple credentials'))
   }
 
   beginPostAuthNavigation()
@@ -134,7 +140,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
       ...(credential.authorizationCode ? { access_token: credential.authorizationCode } : {}),
     })
     if (authError) throw authError
-    if (!data.session) throw new Error('認証セッションを確立できませんでした')
+    if (!data.session) throw new Error(t('Could not establish a session'))
 
     const displayName = getAppleDisplayName(credential.fullName)
     if (displayName) {
@@ -146,7 +152,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
     }
 
     // emailはAppleのID tokenをSupabaseに任せる。relay emailも通常の認証済みemailとして扱う。
-    const { needsWorkspace } = await setupProfile(data.session, displayName ?? undefined)
+    const { needsWorkspace } = await setupProfile(data.session, displayName ?? undefined, t)
 
     return needsWorkspace ? 'needs-workspace' : 'success'
   } catch (error) {

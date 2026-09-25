@@ -7,6 +7,7 @@ import * as Linking from 'expo-linking'
 import * as Application from 'expo-application'
 import * as WebBrowser from 'expo-web-browser'
 import { Platform } from 'react-native'
+import { translate } from '@cairn/shared'
 import { supabase } from './supabase'
 import { isAppleAuthenticationCancelled } from './apple-auth'
 import { resolveOAuthScheme } from './oauth-scheme'
@@ -23,12 +24,35 @@ export type NativeOAuthIdentityLinkResult =
 /** @deprecated use NativeOAuthIdentityLinkResult */
 export type NativeAppleIdentityLinkResult = NativeOAuthIdentityLinkResult
 
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
+// Unit tests assert these two strings when no translator is passed.
+const LOCKED_JA: Record<string, string> = {
+  'Apple linking is only available on iOS.': 'Apple 連携は iOS でのみ利用できます。',
+  'Apple linking was cancelled': 'Apple 連携をキャンセルしました',
+}
+
+function fill(template: string, values?: Record<string, string | number>) {
+  if (!values) return template
+  return template.replace(/\{(\w+)\}/g, (token, key: string) => {
+    const value = values[key]
+    return value === undefined ? token : String(value)
+  })
+}
+
+function defaultT(message: string, values?: Record<string, string | number>) {
+  const translated = translate('ja', message, values)
+  if (translated !== message) return translated
+  const locked = LOCKED_JA[message]
+  return locked ? fill(locked, values) : fill(message, values)
+}
+
 type AuthErrorLike = {
   message?: string | undefined
   code?: string | undefined
 } | null
 
-function mapLinkError(providerLabel: string, error: AuthErrorLike): string {
+function mapLinkError(providerLabel: string, error: AuthErrorLike, t: Translate): string {
   const message = error?.message ?? ''
   const code = error?.code ?? ''
   if (
@@ -36,16 +60,16 @@ function mapLinkError(providerLabel: string, error: AuthErrorLike): string {
     /already.*(linked|exists|registered)/i.test(message) ||
     /Identity is already linked/i.test(message)
   ) {
-    return `この ${providerLabel} アカウントは別の Cairn アカウントに連携済みです。別のアカウントを使うか、先にそちらの連携を解除してください。`
+    return t('This {provider} account is already linked to another Cairn account. Use another account, or unlink it there first.', { provider: providerLabel })
   }
   if (
     code === 'manual_linking_disabled' ||
     /manual.?linking/i.test(message) ||
     /linking.?not.?enabled/i.test(message)
   ) {
-    return `${providerLabel} 連携は現在この環境で無効です。しばらくしてから再度お試しください。`
+    return t('{provider} linking is disabled in this environment. Please try again in a moment.', { provider: providerLabel })
   }
-  return `${providerLabel} との連携に失敗しました。しばらくしてからもう一度お試しください。`
+  return t('Could not link {provider}. Please try again in a moment.', { provider: providerLabel })
 }
 
 export function buildAppleIdentityLinkedScript(result: NativeOAuthIdentityLinkResult): string {
@@ -63,11 +87,11 @@ export function buildGoogleIdentityLinkedScript(result: NativeOAuthIdentityLinkR
 }
 
 /** ログイン済みセッションに Apple identity を追加する（設定 WebView からの連携用）。 */
-export async function linkAppleIdentity(): Promise<NativeOAuthIdentityLinkResult> {
+export async function linkAppleIdentity(t: Translate = defaultT): Promise<NativeOAuthIdentityLinkResult> {
   if (Platform.OS !== 'ios') {
     return {
       ok: false,
-      message: 'Apple 連携は iOS でのみ利用できます。',
+      message: t('Apple linking is only available on iOS.'),
     }
   }
 
@@ -87,13 +111,13 @@ export async function linkAppleIdentity(): Promise<NativeOAuthIdentityLinkResult
     })
   } catch (error) {
     if (isAppleAuthenticationCancelled(error)) {
-      return { ok: false, cancelled: true, message: 'Apple 連携をキャンセルしました' }
+      return { ok: false, cancelled: true, message: t('Apple linking was cancelled') }
     }
     throw error
   }
 
   if (!credential.identityToken) {
-    return { ok: false, message: 'Apple認証情報を取得できませんでした' }
+    return { ok: false, message: t('Could not get Apple credentials') }
   }
 
   const { error } = await supabase.auth.linkIdentity({
@@ -104,14 +128,14 @@ export async function linkAppleIdentity(): Promise<NativeOAuthIdentityLinkResult
   })
 
   if (error) {
-    return { ok: false, message: mapLinkError('Apple', error) }
+    return { ok: false, message: mapLinkError('Apple', error, t) }
   }
 
   return { ok: true }
 }
 
 /** ログイン済みセッションに Google identity を追加する（設定 WebView からの連携用）。 */
-export async function linkGoogleIdentity(): Promise<NativeOAuthIdentityLinkResult> {
+export async function linkGoogleIdentity(t: Translate = defaultT): Promise<NativeOAuthIdentityLinkResult> {
   const scheme = resolveOAuthScheme(Application.applicationId)
   const redirectTo = Linking.createURL('auth/callback', { scheme })
 
@@ -120,26 +144,26 @@ export async function linkGoogleIdentity(): Promise<NativeOAuthIdentityLinkResul
     options: { redirectTo, skipBrowserRedirect: true },
   })
   if (error) {
-    return { ok: false, message: mapLinkError('Google', error) }
+    return { ok: false, message: mapLinkError('Google', error, t) }
   }
   if (!data.url) {
-    return { ok: false, message: 'Google 連携の認可 URL を取得できませんでした' }
+    return { ok: false, message: t('Could not get the Google linking URL') }
   }
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
   if (result.type !== 'success') {
-    return { ok: false, cancelled: true, message: 'Google 連携をキャンセルしました' }
+    return { ok: false, cancelled: true, message: t('Google linking was cancelled') }
   }
 
   const { queryParams } = Linking.parse(result.url)
   const code = queryParams?.['code']
   if (typeof code !== 'string') {
-    return { ok: false, message: '認可コードを取得できませんでした' }
+    return { ok: false, message: t('Could not get the authorization code') }
   }
 
   const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
   if (exchangeError) {
-    return { ok: false, message: mapLinkError('Google', exchangeError) }
+    return { ok: false, message: mapLinkError('Google', exchangeError, t) }
   }
 
   return { ok: true }

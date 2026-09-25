@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Field, Modal, ModalHeader, fieldInputStyle, onBlurRing, onFocusRing } from '../primitives'
+import { useT } from '@/components/locale-provider'
 import { useCreateChannelThread } from '@/lib/chat/client'
 
 interface CreateChannelThreadModalProps {
@@ -12,6 +13,7 @@ interface CreateChannelThreadModalProps {
 }
 
 export function CreateChannelThreadModal({ channelId, channelName, onClose, onCreated }: CreateChannelThreadModalProps) {
+  const t = useT()
   const [name, setName] = React.useState('')
   const [error, setError] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -26,11 +28,11 @@ export function CreateChannelThreadModal({ channelId, channelName, onClose, onCr
     event.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) {
-      setError('スレッド名を入力してください')
+      setError(t('Enter a thread name'))
       return
     }
     if (trimmed.length > 60) {
-      setError('60文字以内で入力してください')
+      setError(t('Enter 60 characters or fewer'))
       return
     }
 
@@ -59,16 +61,16 @@ export function CreateChannelThreadModal({ channelId, channelName, onClose, onCr
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
-        <ModalHeader icon="chat" title="スレッドを作成" subtitle={`# ${channelName}`} onClose={close}/>
+        <ModalHeader icon="chat" title={t('Create thread')} subtitle={`# ${channelName}`} onClose={close}/>
         <div style={{ padding: '20px 22px' }}>
-          <Field label="スレッド名" required error={error} hint={`${name.length}/60`} htmlFor="channel-thread-name">
+          <Field label={t('Thread name')} required error={error} hint={`${name.length}/60`} htmlFor="channel-thread-name">
             <input
               id="channel-thread-name"
               ref={inputRef}
               value={name}
               maxLength={60}
               onChange={event => { setName(event.target.value); if (error) setError('') }}
-              placeholder="例: リリース準備"
+              placeholder={t('e.g. Release prep')}
               style={fieldInputStyle(!!error)}
               onFocus={onFocusRing}
               onBlur={event => onBlurRing(event, !!error)}
@@ -76,9 +78,9 @@ export function CreateChannelThreadModal({ channelId, channelName, onClose, onCr
           </Field>
         </div>
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button type="button" className="btn" onClick={close} disabled={pending}>キャンセル</button>
+          <button type="button" className="btn" onClick={close} disabled={pending}>{t('Cancel')}</button>
           <button type="submit" className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
-            {pending ? '作成中…' : '作成する'}
+            {pending ? t('Creating…') : t('Create')}
           </button>
         </footer>
       </form>

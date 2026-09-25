@@ -6,8 +6,10 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
+import { useT } from '@/components/locale-provider'
 
 export default function NewWorkspacePage() {
+  const t = useT()
   const router = useRouter()
   const [workspaceName, setWorkspaceName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -28,7 +30,7 @@ export default function NewWorkspacePage() {
     const body = await res.json().catch(() => ({})) as { ok?: boolean; workspaceId?: string; error?: string }
 
     if (!res.ok) {
-      setError(body.error ?? 'ワークスペースの作成に失敗しました')
+      setError(body.error ?? t('Could not create the workspace.'))
       setLoading(false)
       return
     }
@@ -54,12 +56,8 @@ export default function NewWorkspacePage() {
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            新しいワークスペースを作成
-          </div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>
-            別のチームや用途向けに新しいワークスペースを作成します。
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('Create a new workspace')}</div>
+          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('Create a workspace for another team or purpose.')}</div>
         </div>
 
         <div style={{
@@ -71,16 +69,14 @@ export default function NewWorkspacePage() {
         }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-                ワークスペース名
-              </label>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
               <input
                 type="text"
                 value={workspaceName}
                 onChange={e => setWorkspaceName(e.target.value)}
                 required
                 autoFocus
-                placeholder="例: 開発チーム、ABC株式会社"
+                placeholder={t('e.g. Product team')}
                 maxLength={100}
                 style={{
                   padding: '9px 12px',
@@ -117,7 +113,7 @@ export default function NewWorkspacePage() {
                 fontFamily: 'inherit', marginTop: 4,
               }}
             >
-              {loading ? '作成中...' : '作成'}
+              {loading ? t('Creating...') : t('Create workspace')}
             </button>
           </form>
         </div>
@@ -131,9 +127,7 @@ export default function NewWorkspacePage() {
             color: 'var(--text-3)', fontSize: 14, fontWeight: 500,
             cursor: 'pointer', fontFamily: 'inherit',
           }}
-        >
-          キャンセル
-        </button>
+        >{t('Cancel')}</button>
       </div>
     </div>
   )

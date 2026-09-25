@@ -9,21 +9,22 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { LocationInput } from '../location-input'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
-  { id: 't1',  name: '縦走',         color: 'var(--blue)' },
-  { id: 't2',  name: '日帰り',       color: 'var(--emerald)' },
-  { id: 't3',  name: '雪山',         color: 'var(--violet)' },
-  { id: 't4',  name: '沢登り',       color: 'var(--blue)' },
-  { id: 't5',  name: 'クライミング', color: 'var(--amber)' },
-  { id: 't6',  name: 'テント泊',     color: 'var(--rose)' },
-  { id: 't7',  name: '合宿',         color: 'var(--violet)' },
-  { id: 't8',  name: '講習会',       color: 'var(--amber)' },
-  { id: 't9',  name: '初心者向け',   color: 'var(--emerald)' },
-  { id: 't10', name: 'OB合同',       color: 'var(--text-3)' },
-  { id: 't11', name: '装備強化',     color: 'var(--text-3)' },
-  { id: 't12', name: '危険度: 高',   color: 'var(--red)' },
+  { id: 't1',  name: 'Traverse',         color: 'var(--blue)' },
+  { id: 't2',  name: 'Day hike',       color: 'var(--emerald)' },
+  { id: 't3',  name: 'Snow mountain',         color: 'var(--violet)' },
+  { id: 't4',  name: 'Stream climb',       color: 'var(--blue)' },
+  { id: 't5',  name: 'Climbing', color: 'var(--amber)' },
+  { id: 't6',  name: 'Tent stay',     color: 'var(--rose)' },
+  { id: 't7',  name: 'Training camp',         color: 'var(--violet)' },
+  { id: 't8',  name: 'Workshop',       color: 'var(--amber)' },
+  { id: 't9',  name: 'Beginner friendly',   color: 'var(--emerald)' },
+  { id: 't10', name: 'Alumni meetup',       color: 'var(--text-3)' },
+  { id: 't11', name: 'Gear upgrade',     color: 'var(--text-3)' },
+  { id: 't12', name: 'Hazard: high',   color: 'var(--red)' },
 ] as const
 
 // ─── Status chip selector ─────────────────────────────────────────
@@ -89,13 +90,14 @@ const CoverPickerThumb = ({ selected, onClick, children }: { selected: boolean; 
 )
 
 const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: CoverPickerProps) => {
+  const t = useT()
   if (placePhotos.length === 0) {
     return (
       <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真は自動設定されます</div>
-          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>場所を入力すると、カバー写真の候補を選べます</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('The cover photo is set automatically')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>{t('Enter a place to choose a cover photo')}</div>
         </div>
       </div>
     )
@@ -116,7 +118,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
           }}
         >
           <Icon name="x" size={12}/>
-          自動
+          {t('Automatic')}
         </button>
       </div>
 
@@ -152,40 +154,41 @@ interface TagPickerProps {
 }
 
 const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
-  const selectedTags = available.filter(t => value.includes(t.id))
-  const unselected   = available.filter(t => !value.includes(t.id))
+  const selectedTags = available.filter(tag => value.includes(tag.id))
+  const unselected   = available.filter(tag => !value.includes(tag.id))
   return (
     <div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 36, padding: '5px 6px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}>
         {selectedTags.length === 0 && (
-          <span style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text-4)' }}>タグを選択（任意）</span>
+          <span style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text-4)' }}>{t('Select tags (optional)')}</span>
         )}
-        {selectedTags.map(t => (
-          <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 4px 3px 8px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.color }}/>
-            {t.name}
-            <button type="button" onClick={() => onChange(value.filter(id => id !== t.id))} style={{ width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+        {selectedTags.map(tag => (
+          <span key={tag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 4px 3px 8px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color }}/>
+            {t(tag.name)}
+            <button type="button" onClick={() => onChange(value.filter(id => id !== tag.id))} style={{ width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
               <Icon name="close" size={10} strokeWidth={2.5}/>
             </button>
           </span>
         ))}
         <button type="button" onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, background: open ? 'var(--accent-soft)' : 'transparent', border: `1px dashed ${open ? 'var(--accent)' : 'var(--border-2)'}`, color: open ? 'var(--accent-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          <Icon name="plus" size={11} strokeWidth={2.5}/> 追加
+          <Icon name="plus" size={11} strokeWidth={2.5}/> {t('Add')}
         </button>
       </div>
       {open && (
         <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', maxHeight: 140, overflow: 'auto' }}>
           {unselected.length === 0 ? (
-            <div style={{ padding: '6px 4px', fontSize: 11.5, color: 'var(--text-4)' }}>すべて選択済みです</div>
+            <div style={{ padding: '6px 4px', fontSize: 11.5, color: 'var(--text-4)' }}>{t('All tags are selected')}</div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {unselected.map(t => (
-                <button key={t.id} type="button" onClick={() => onChange([...value, t.id])} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              {unselected.map(tag => (
+                <button key={tag.id} type="button" onClick={() => onChange([...value, tag.id])} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
                   onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--accent-soft)'; el.style.borderColor = 'var(--accent)'; el.style.color = 'var(--accent-text)' }}
                   onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--card-2)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-2)' }}
                 >
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.color }}/>{t.name}
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color }}/>{t(tag.name)}
                 </button>
               ))}
             </div>
@@ -274,13 +277,13 @@ async function createProject(body: {
   placeId?: string | undefined
   placePhotoName?: string | undefined
   memberUserIds?: string[] | undefined
-}): Promise<ProjectDto> {
+}, t: (message: string, values?: Record<string, string | number>) => string): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
+  if (!res.ok) throw new Error(t('Could not create the project'))
   return res.json() as Promise<ProjectDto>
 }
 
@@ -318,6 +321,7 @@ interface FormState {
 }
 
 export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initialEndDate }: CreateProjectModalProps) => {
+  const t = useT()
   const { data: statuses = [] } = useQuery({ queryKey: ['project-statuses'], queryFn: fetchStatuses })
   const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
@@ -348,17 +352,17 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
     setErrors(prev => { const next = { ...prev }; delete next[k]; return next })
 
   const mutation = useMutation({
-    mutationFn: createProject,
+    mutationFn: (body: Parameters<typeof createProject>[0]) => createProject(body, t),
     onSuccess: (project) => { onCreated(project); onClose() },
     onError: (err: Error) => setErrors(prev => ({ ...prev, title: err.message })),
   })
 
   const validate = () => {
     const e: { title?: string; endDate?: string } = {}
-    if (!form.title.trim()) e.title = 'プロジェクト名を入力してください'
-    else if (form.title.trim().length > 60) e.title = '60文字以内で入力してください'
+    if (!form.title.trim()) e.title = t('Enter a project name')
+    else if (form.title.trim().length > 60) e.title = t('Enter 60 characters or fewer')
     if (form.startDate && form.endDate && form.endDate < form.startDate)
-      e.endDate = '終了日は開始日以降にしてください'
+      e.endDate = t('End date must be on or after the start date')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -414,28 +418,28 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        <ModalHeader icon="folder" title="新規プロジェクト" subtitle="顧客案件や社内プロジェクトなど、進行管理する単位を作成します" onClose={onClose}/>
+        <ModalHeader icon="folder" title={t('New project')} subtitle={t('Create a unit you track, such as a client engagement or an internal project')} onClose={onClose}/>
 
         {/* Body — 2 columns */}
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) 360px' }}>
           {/* Left — basic info */}
           <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <Field label="プロジェクト名" required error={errors.title} hint={`${form.title.length}/60`} htmlFor="cpm-title">
+            <Field label={t('Project name')} required error={errors.title} hint={`${form.title.length}/60`} htmlFor="cpm-title">
               <input id="cpm-title" ref={titleRef}
                 value={form.title}
                 onChange={e => { set('title', e.target.value); if (errors.title) clearError('title') }}
-                placeholder="例: 新規顧客向け導入プロジェクト"
+                placeholder={t('e.g. New customer rollout')}
                 style={fieldInputStyle(!!errors.title)}
                 onFocus={onFocusRing}
                 onBlur={e => onBlurRing(e, !!errors.title)}
               />
             </Field>
 
-            <Field label="説明" hint="任意 — メンバーに見える概要" htmlFor="cpm-desc">
+            <Field label={t('Description')} hint={t('Optional — visible to members')} htmlFor="cpm-desc">
               <textarea id="cpm-desc"
                 value={form.description}
                 onChange={e => set('description', e.target.value)}
-                placeholder="目的・日程の概要・備考など"
+                placeholder={t('Purpose, schedule, and notes')}
                 rows={5}
                 style={fieldTextareaStyle(false)}
                 onFocus={onFocusRing}
@@ -443,17 +447,17 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
               />
             </Field>
 
-            <Field label="場所" hint="任意" htmlFor="cpm-location">
+            <Field label={t('Location')} hint={t('Optional')} htmlFor="cpm-location">
               <LocationInput
                 value={form.location}
                 onSelect={(desc, pid) => { void handleLocationSelect(desc, pid) }}
                 onClear={handleLocationClear}
                 inputStyle={fieldInputStyle(false)}
-                placeholder="例: 東京都渋谷区、オンライン"
+                placeholder={t('e.g. Shibuya, Tokyo, or online')}
               />
             </Field>
 
-            <Field label="ステータス" required>
+            <Field label={t('Status')} required>
               <StatusChipSelector statuses={statuses} value={form.status} onChange={v => set('status', v)}/>
             </Field>
           </div>
@@ -461,7 +465,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
           {/* Right — meta */}
           <div style={{ padding: '20px 22px', borderLeft: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Field label="開始日" htmlFor="cpm-start">
+              <Field label={t('Start date')} htmlFor="cpm-start">
                 <input id="cpm-start" type="date"
                   value={form.startDate}
                   onChange={e => set('startDate', e.target.value)}
@@ -470,7 +474,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                   onBlur={e => onBlurRing(e, false)}
                 />
               </Field>
-              <Field label="終了日" error={errors.endDate} htmlFor="cpm-end">
+              <Field label={t('End date')} error={errors.endDate} htmlFor="cpm-end">
                 <input id="cpm-end" type="date"
                   value={form.endDate}
                   onChange={e => { set('endDate', e.target.value); if (errors.endDate) clearError('endDate') }}
@@ -482,25 +486,25 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
               </Field>
             </div>
 
-            <Field label="タグ" hint={`${form.tags.length}件選択`}>
+            <Field label={t('Tags')} hint={t('{count} selected', { count: form.tags.length })}>
               <TagPicker value={form.tags} onChange={v => set('tags', v)}/>
             </Field>
 
-            <Field label="メンバー" hint={form.memberUserIds.length > 0 ? `${form.memberUserIds.length}人選択` : '任意'}>
+            <Field label={t('Members')} hint={form.memberUserIds.length > 0 ? t('{count} selected members', { count: form.memberUserIds.length }) : t('Optional')}>
               {workspaceMembers.length === 0 ? (
                 <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-4)' }}>
-                  追加候補を読み込み中…
+                  {t('Loading people to add…')}
                 </div>
               ) : (
                 <MemberPicker members={workspaceMembers} value={form.memberUserIds} onChange={v => set('memberUserIds', v)}/>
               )}
             </Field>
 
-            <Field label="カバー写真" hint="一覧・パネルで表示">
+            <Field label={t('Cover photo')} hint={t('Shown in the list and panel')}>
               {photosLoading && (
                 <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Icon name="loader" size={14}/>
-                  場所の写真を取得中…
+                  {t('Loading place photos…')}
                 </div>
               )}
               {!photosLoading && (
@@ -518,10 +522,10 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                 return (
                   <div style={{ marginTop: 10, position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={previewUrl} alt="カバー" style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
+                    <img src={previewUrl} alt={t('Cover')} style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
                     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {form.title || 'プロジェクト名'}
+                        {form.title || t('Project name')}
                       </span>
                       {form.status && (() => {
                         const s = statuses.find(x => x.name === form.status)
@@ -539,12 +543,12 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="users" size={12}/>
-            必要なら作成時にメンバーも追加できます
+            {t('You can also add members when you create this')}
           </span>
           <div style={{ flex: 1 }}/>
-          <button type="button" onClick={onClose} className="btn" disabled={mutation.isPending}>キャンセル</button>
+          <button type="button" onClick={onClose} className="btn" disabled={mutation.isPending}>{t('Cancel')}</button>
           <button type="submit" className="btn btn-primary" disabled={mutation.isPending} style={{ opacity: mutation.isPending ? 0.7 : 1 }}>
-            {mutation.isPending ? '作成中…' : '作成する'}
+            {mutation.isPending ? t('Creating…') : t('Create')}
           </button>
         </footer>
       </form>

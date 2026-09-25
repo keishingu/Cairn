@@ -7,8 +7,10 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
+import { useT } from '@/components/locale-provider'
 import { MermaidDiagram } from './mermaid-diagram'
+
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
 
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
@@ -23,19 +25,19 @@ function truncateUrlForDisplay(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
 }
 
-function internalHrefLabel(href: string): string {
-  if (href.startsWith('/projects')) return 'プロジェクトを開く'
-  if (href.startsWith('/tasks')) return 'タスクを開く'
-  if (href.startsWith('/chats')) return 'メッセージを開く'
-  if (href.startsWith('/members')) return 'メンバーを開く'
-  return 'ファイルを開く'
+function internalHrefLabel(href: string, t: TranslateFn): string {
+  if (href.startsWith('/projects')) return t('Open project')
+  if (href.startsWith('/tasks')) return t('Open task')
+  if (href.startsWith('/chats')) return t('Open message')
+  if (href.startsWith('/members')) return t('Open member')
+  return t('Open file')
 }
 
 function isInternalHref(href: string | undefined): boolean {
   return href?.startsWith('/') === true && !href.startsWith('//')
 }
 
-function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
+function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -47,7 +49,7 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
       // 現在の表示名を優先し、無ければ旧データの埋め込み名、それも無ければフォールバック
       const mentionedId = match[1]!
       const embeddedName = match[2]
-      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? UNKNOWN_MENTION_NAME
+      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? t('Unknown member')
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           @{displayName}
@@ -60,7 +62,7 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
         <a key={match.index} href={url}
           target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
           style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
-          {isInternal ? internalHrefLabel(url) : truncateUrlForDisplay(url)}
+          {isInternal ? internalHrefLabel(url, t) : truncateUrlForDisplay(url)}
         </a>,
       )
       const trailingPunctuation = token.slice(url.length)
@@ -72,12 +74,12 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode, mentionNames?: Map<string, string>): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children, mentionNames)
+function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, t, mentionNames)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child, mentionNames)
+        const processed = renderInlineText(child, t, mentionNames)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -108,6 +110,7 @@ interface MarkdownContentProps {
 // props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
 // や mentionNames を安定参照で渡すこと）。
 export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
+  const t = useT()
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
@@ -116,7 +119,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames)}</p>
         ),
         h1: ({ children }) => (
           <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h1>
@@ -149,7 +152,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children, mentionNames)}
+              {processChildren(children, t, mentionNames)}
             </li>
           )
         },
@@ -181,7 +184,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
               : null
           const isInternal = isInternalHref(href)
           const display = linkText !== null && linkText === href
-            ? (isInternal ? internalHrefLabel(linkText) : truncateUrlForDisplay(linkText))
+            ? (isInternal ? internalHrefLabel(linkText, t) : truncateUrlForDisplay(linkText))
             : children
           return (
             <a href={href}
@@ -228,7 +231,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
           <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap', ...style }}>{children}</th>
         ),
         td: ({ children, style }) => (
-          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, mentionNames)}</td>
+          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames)}</td>
         ),
         hr: () => (
           <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '8px 0' }} />

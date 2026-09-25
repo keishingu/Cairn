@@ -13,7 +13,9 @@ import {
   createOAuthSecret,
 } from '@/lib/mcp-oauth'
 import { validateOAuthAuthorizationRequest } from '@/lib/mcp-oauth-authorization'
+import { translate } from '@cairn/shared'
 import { getWorkspaceRole } from '@/lib/access/membership'
+import { readRequestLocale } from '@/lib/i18n/request-locale'
 
 const authorizationKeys = [
   'client_id',
@@ -80,8 +82,9 @@ export async function finishOAuthAuthorization(formData: FormData) {
   const workspaceId = formData.get('workspace_id')
   if (typeof workspaceId !== 'string') throw new Error('workspace is required')
   const role = await getWorkspaceRole(workspaceId, userId)
-  if (!role) throw new Error('選択したワークスペースの有効なメンバーではありません')
-  if (role === 'guest') throw new Error('ゲストはMCP OAuth接続を認可できません')
+  const { locale } = await readRequestLocale()
+  if (!role) throw new Error(translate(locale, 'You are not an active member of the selected workspace'))
+  if (role === 'guest') throw new Error(translate(locale, 'Guests cannot authorize an MCP OAuth connection'))
 
   const code = createOAuthSecret(OAUTH_AUTHORIZATION_CODE_PREFIX)
   const { db, mcpOAuthAuthorizationCodes, mcpOAuthConnections } = await import('@cairn/db')

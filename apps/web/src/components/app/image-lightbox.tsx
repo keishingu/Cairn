@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { Icon } from './primitives'
 import {
   clampTranslate,
@@ -38,6 +39,7 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
   onIndexChange: (i: number) => void
   onClose: () => void
 }) => {
+  const t = useT()
   const item = images[index] ?? null
   const goPrev = () => { if (index > 0) onIndexChange(index - 1) }
   const goNext = () => { if (index < images.length - 1) onIndexChange(index + 1) }
@@ -280,7 +282,7 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
       {/* 閉じるボタン */}
       <button
         onClick={e => { e.stopPropagation(); onClose() }}
-        aria-label="閉じる"
+        aria-label={t('Close')}
         style={{
           position: 'absolute', top: 16, right: 16,
           width: 36, height: 36, borderRadius: 10,

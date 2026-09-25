@@ -69,6 +69,15 @@ export function acceptLanguageFromTags(tags: readonly string[] | null | undefine
     .join(',')
 }
 
+const INTL_LOCALE: Record<AppLocale, string> = {
+  ja: 'ja-JP',
+  en: 'en-US',
+}
+
+export function formatAppDate(locale: AppLocale, value: string | number | Date): string {
+  return new Date(value).toLocaleDateString(INTL_LOCALE[locale])
+}
+
 export function resolveLocale(preference: LocalePreference, acceptLanguage: string | null | undefined): AppLocale {
   if (preference === 'ja' || preference === 'en') return preference
   return localeFromAcceptLanguage(acceptLanguage)

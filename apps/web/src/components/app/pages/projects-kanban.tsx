@@ -14,6 +14,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 
@@ -23,6 +24,7 @@ interface PageKanbanProps {
 }
 
 export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
@@ -79,11 +81,11 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="カンバン" />
+        <MobileHeader title={t('Kanban')} />
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <KanbanBoard onCardClick={openPanel} isMobile />
         </div>
-        {canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`} />}
+        {canCreateProject && <Fab onClick={() => setShowCreate(true)} label={t('New {label}', { label: projectLabel })} />}
         {showCreate && canCreateProject && (
           <CreateProjectSheet
             onClose={() => setShowCreate(false)}
@@ -110,7 +112,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
                 onClick={() => setFilterOpen(o => !o)}
                 style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
-                <Icon name="filter" size={13} /> フィルター
+                <Icon name="filter" size={13} /> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
@@ -127,8 +129,8 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
               )}
             </div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)} disabled={!canCreateProject}
-              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}>
-              <Icon name="plus" size={13} /> 新規{projectLabel}
+              title={canCreateProject ? undefined : t('Creating a {label} requires an admin or owner', { label: projectLabel })}>
+              <Icon name="plus" size={13} /> {t('New {label}', { label: projectLabel })}
             </button>
           </>
         }

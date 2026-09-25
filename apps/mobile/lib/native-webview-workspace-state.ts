@@ -8,6 +8,7 @@ interface NativeWebViewWorkspaceSnapshot {
   isPending: boolean
   error: unknown
   requiresWorkspace?: boolean
+  fallbackMessage?: string
 }
 
 const DEFAULT_ERROR_MESSAGE = 'ワークスペース情報の取得に失敗しました'
@@ -17,6 +18,7 @@ export function resolveNativeWebViewWorkspaceState({
   isPending,
   error,
   requiresWorkspace = true,
+  fallbackMessage = DEFAULT_ERROR_MESSAGE,
 }: NativeWebViewWorkspaceSnapshot): NativeWebViewWorkspaceState {
   if (!requiresWorkspace) return { status: 'ready', workspaceId: workspaceId ?? 'auth-only' }
   // 再取得中・再取得失敗でも既存データがあればWebViewを維持する。
@@ -26,6 +28,6 @@ export function resolveNativeWebViewWorkspaceState({
 
   return {
     status: 'error',
-    message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+    message: error instanceof Error ? error.message : fallbackMessage,
   }
 }

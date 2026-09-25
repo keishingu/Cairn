@@ -12,6 +12,7 @@ import {
   onFocusRing,
 } from '../primitives'
 import { useCreateProjectMilestone, useProjectMilestones } from '@/hooks/use-project-milestones'
+import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 interface CreateMilestoneModalProps {
@@ -59,6 +60,7 @@ const modalCardStyle: React.CSSProperties = {
 }
 
 function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit }: MilestoneFormModalProps) {
+  const t = useT()
   const editing = initialMilestone != null
   const [title, setTitle] = React.useState(initialMilestone?.title ?? '')
   const [description, setDescription] = React.useState(initialMilestone?.description ?? '')
@@ -81,17 +83,17 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
     let invalid = false
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
-      setTitleError('マイルストーン名を入力してください')
+      setTitleError(t('Enter a milestone name'))
       invalid = true
     } else if (trimmedTitle.length > 100) {
-      setTitleError('100文字以内で入力してください')
+      setTitleError(t('Enter 100 characters or fewer'))
       invalid = true
     } else {
       setTitleError('')
     }
 
     if (startDate && endDate && endDate < startDate) {
-      setEndDateError('終了日は開始日以降にしてください')
+      setEndDateError(t('End date must be on or after the start date'))
       invalid = true
     } else {
       setEndDateError('')
@@ -110,33 +112,33 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
       >
         <ModalHeader
           icon="flag"
-          title={editing ? 'マイルストーンを編集' : 'マイルストーンを作成'}
+          title={editing ? t('Edit milestone') : t('Create milestone')}
           subtitle={projectTitle}
           onClose={() => { if (!pending) onClose() }}
         />
 
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto' }}>
-          <Field label="マイルストーン名" required error={titleError} hint={`${title.length}/100`} htmlFor="milestone-title">
+          <Field label={t('Milestone name')} required error={titleError} hint={`${title.length}/100`} htmlFor="milestone-title">
             <input
               id="milestone-title"
               ref={titleRef}
               value={title}
               maxLength={100}
               onChange={event => { setTitle(event.target.value); if (titleError) setTitleError('') }}
-              placeholder="例: 初回リリース"
+              placeholder={t('e.g. First release')}
               style={fieldInputStyle(!!titleError)}
               onFocus={onFocusRing}
               onBlur={event => onBlurRing(event, !!titleError)}
             />
           </Field>
 
-          <Field label="説明" hint={`${description.length}/1000`} htmlFor="milestone-description">
+          <Field label={t('Description')} hint={`${description.length}/1000`} htmlFor="milestone-description">
             <textarea
               id="milestone-description"
               value={description}
               maxLength={1000}
               onChange={event => setDescription(event.target.value)}
-              placeholder="達成したい状態や確認事項を入力"
+              placeholder={t('Describe the outcome or what to check')}
               rows={3}
               style={fieldTextareaStyle(false)}
               onFocus={onFocusRing}
@@ -145,9 +147,9 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           </Field>
 
           <fieldset style={{ margin: 0, padding: 0, border: 'none' }}>
-            <legend style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>期間</legend>
+            <legend style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Period')}</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
-              <Field label="開始日" htmlFor="milestone-start-date">
+              <Field label={t('Start date')} htmlFor="milestone-start-date">
                 <input
                   id="milestone-start-date"
                   type="date"
@@ -158,7 +160,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                   onBlur={event => onBlurRing(event, false)}
                 />
               </Field>
-              <Field label="終了日" error={endDateError} htmlFor="milestone-end-date">
+              <Field label={t('End date')} error={endDateError} htmlFor="milestone-end-date">
                 <input
                   id="milestone-end-date"
                   type="date"
@@ -169,7 +171,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                   onBlur={event => onBlurRing(event, !!endDateError)}
                 />
               </Field>
-              <Field label="開始時刻" htmlFor="milestone-start-time">
+              <Field label={t('Start time')} htmlFor="milestone-start-time">
                 <input
                   id="milestone-start-time"
                   type="time"
@@ -180,7 +182,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                   onBlur={event => onBlurRing(event, false)}
                 />
               </Field>
-              <Field label="終了時刻" htmlFor="milestone-end-time">
+              <Field label={t('End time')} htmlFor="milestone-end-time">
                 <input
                   id="milestone-end-time"
                   type="time"
@@ -199,13 +201,13 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           {!editing && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
               <Icon name="chat" size={12}/>
-              専用チャットも作成されます
+              {t('A dedicated chat is also created')}
             </span>
           )}
           <div style={{ flex: 1 }}/>
-          <button type="button" className="btn" onClick={onClose} disabled={pending}>キャンセル</button>
+          <button type="button" className="btn" onClick={onClose} disabled={pending}>{t('Cancel')}</button>
           <button type="submit" className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
-            {pending ? (editing ? '保存中…' : '作成中…') : (editing ? '保存する' : '作成する')}
+            {pending ? (editing ? t('Saving…') : t('Creating…')) : (editing ? t('Save changes') : t('Create'))}
           </button>
         </footer>
       </form>
@@ -243,6 +245,7 @@ export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreat
 }
 
 export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClose }: EditMilestoneModalProps) {
+  const t = useT()
   const milestones = useProjectMilestones(projectId)
   const milestone = milestones.data?.find(item => item.id === milestoneId)
 
@@ -250,8 +253,8 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
     return (
       <Modal onClose={onClose}>
         <div style={modalCardStyle}>
-          <ModalHeader icon="flag" title="マイルストーンを編集" subtitle={projectTitle} onClose={onClose}/>
-          <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>読み込み中…</div>
+          <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
+          <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>{t('Loading...')}</div>
         </div>
       </Modal>
     )
@@ -261,9 +264,9 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
     return (
       <Modal onClose={onClose}>
         <div style={modalCardStyle}>
-          <ModalHeader icon="flag" title="マイルストーンを編集" subtitle={projectTitle} onClose={onClose}/>
+          <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
           <div style={{ padding: '32px 22px', color: 'var(--danger)', fontSize: 13, textAlign: 'center' }}>
-            マイルストーンを読み込めませんでした
+            {t('Could not load the milestone')}
           </div>
         </div>
       </Modal>

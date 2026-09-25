@@ -7,6 +7,7 @@ import type {
   FileTypeFilter,
   SavedFileFilterDto,
 } from '@/lib/files/saved-file-filter'
+import { useT } from '@/components/locale-provider'
 
 interface FilterOption {
   id: string
@@ -32,10 +33,10 @@ interface FileFilterToolbarProps {
 }
 
 const typeFilters: { id: FileTypeFilter; label: string }[] = [
-  { id: 'all', label: 'すべて' },
+  { id: 'all', label: 'All' },
   { id: 'pdf', label: 'PDF' },
-  { id: 'img', label: '画像' },
-  { id: 'doc', label: 'ドキュメント' },
+  { id: 'img', label: 'Images' },
+  { id: 'doc', label: 'Documents' },
 ]
 
 const selectStyle: React.CSSProperties = { minWidth: 150 }
@@ -57,6 +58,7 @@ export function FileFilterToolbar({
   onSave,
   onClear,
 }: FileFilterToolbarProps) {
+  const t = useT()
   const [filterOpen, setFilterOpen] = React.useState(false)
   const [saveName, setSaveName] = React.useState('')
 
@@ -111,8 +113,8 @@ export function FileFilterToolbar({
           <input
             value={conditions.search}
             onChange={(event) => update('search', event.target.value)}
-            placeholder="ファイル名・プロジェクトで検索"
-            aria-label="ファイルを検索"
+            placeholder={t('Search by file or project name')}
+            aria-label={t('Search files')}
             style={{
               flex: 1,
               fontSize: 12.5,
@@ -126,7 +128,7 @@ export function FileFilterToolbar({
           {conditions.search && (
             <button
               onClick={() => update('search', '')}
-              aria-label="検索をクリア"
+              aria-label={t('Clear search')}
               style={{
                 border: 'none',
                 background: 'transparent',
@@ -145,7 +147,7 @@ export function FileFilterToolbar({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <div
           role="group"
-          aria-label="ファイル表示フィルター"
+          aria-label={t('File display filter')}
           style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto', minWidth: 0 }}
         >
           {typeFilters.map((filter) => {
@@ -168,7 +170,7 @@ export function FileFilterToolbar({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {filter.label} ({counts[filter.id]})
+                {t(filter.label)} ({counts[filter.id]})
               </button>
             )
           })}
@@ -205,8 +207,8 @@ export function FileFilterToolbar({
                 </button>
                 <button
                   onClick={() => onDeleteSavedFilter(filter.id)}
-                  aria-label={`保存済みフィルター「${filter.name}」を削除`}
-                  title={`保存済みフィルター「${filter.name}」を削除`}
+                  aria-label={t('Delete saved filter "{name}"', { name: filter.name })}
+                  title={t('Delete saved filter "{name}"', { name: filter.name })}
                   style={{
                     border: 'none',
                     background: 'transparent',
@@ -223,7 +225,7 @@ export function FileFilterToolbar({
           })}
           {isLoadingSavedFilters && (
             <span style={{ fontSize: 11.5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-              読み込み中…
+              {t('Loading...')}
             </span>
           )}
         </div>
@@ -243,7 +245,7 @@ export function FileFilterToolbar({
           }}
         >
           <Icon name="filter" size={13} />
-          {!isMobile && 'フィルター'}
+          {!isMobile && t('Filter')}
           {activeConditionCount > 0 && (
             <span
               style={{
@@ -263,7 +265,7 @@ export function FileFilterToolbar({
 
       {savedFiltersError && (
         <span role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
-          保存フィルターを読み込めませんでした
+          {t('Could not load saved filters')}
         </span>
       )}
 
@@ -290,12 +292,12 @@ export function FileFilterToolbar({
                 color: 'var(--text-3)',
               }}
             >
-              キーワード
+              {t('Keyword')}
               <input
                 className="form-control"
                 value={conditions.search}
                 onChange={(event) => update('search', event.target.value)}
-                placeholder="ファイル名・プロジェクト"
+                placeholder={t('File name or project')}
                 style={{ width: 190 }}
               />
             </label>
@@ -309,15 +311,15 @@ export function FileFilterToolbar({
               color: 'var(--text-3)',
             }}
           >
-            プロジェクト
+            {t('Projects')}
             <select
               className="form-control"
               value={conditions.projectId}
               onChange={(event) => update('projectId', event.target.value)}
               style={selectStyle}
             >
-              <option value="all">すべて</option>
-              <option value="none">プロジェクトなし</option>
+              <option value="all">{t('All')}</option>
+              <option value="none">{t('No project')}</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.label}
@@ -334,14 +336,14 @@ export function FileFilterToolbar({
               color: 'var(--text-3)',
             }}
           >
-            アップロード者
+            {t('Uploader')}
             <select
               className="form-control"
               value={conditions.uploaderId}
               onChange={(event) => update('uploaderId', event.target.value)}
               style={selectStyle}
             >
-              <option value="all">すべて</option>
+              <option value="all">{t('All')}</option>
               {uploaders.map((uploader) => (
                 <option key={uploader.id} value={uploader.id}>
                   {uploader.label}
@@ -358,7 +360,7 @@ export function FileFilterToolbar({
               color: 'var(--text-3)',
             }}
           >
-            開始日
+            {t('Start date')}
             <input
               className="form-control"
               type="date"
@@ -375,7 +377,7 @@ export function FileFilterToolbar({
               color: 'var(--text-3)',
             }}
           >
-            終了日
+            {t('End date')}
             <input
               className="form-control"
               type="date"
@@ -384,7 +386,7 @@ export function FileFilterToolbar({
             />
           </label>
           <button type="button" className="btn btn-ghost" onClick={onClear}>
-            クリア
+            {t('Clear')}
           </button>
           <div style={{ flexBasis: '100%', height: 0 }} />
           <label
@@ -397,17 +399,17 @@ export function FileFilterToolbar({
               flex: isMobile ? '1 1 180px' : '0 1 240px',
             }}
           >
-            現在の条件を保存
+            {t('Save the current filters')}
             <input
               className="form-control"
               value={saveName}
               onChange={(event) => setSaveName(event.target.value)}
-              placeholder="例: 計画書"
+              placeholder={t('e.g. Plan')}
               maxLength={50}
             />
           </label>
           <button className="btn btn-primary" type="submit" disabled={!saveName.trim() || isSaving}>
-            {isSaving ? '保存中…' : '保存'}
+            {isSaving ? t('Saving...') : t('Save')}
           </button>
         </form>
       )}

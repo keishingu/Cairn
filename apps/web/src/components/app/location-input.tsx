@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { Icon } from './primitives'
+import { useT } from '@/components/locale-provider'
 
 export interface PlaceSuggestion {
   placeId: string
@@ -26,8 +27,10 @@ export function LocationInput({
   onSelect,
   onClear,
   inputStyle,
-  placeholder = '例: 穂高連峰、北アルプス',
+  placeholder,
 }: LocationInputProps) {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('e.g. Hotaka range, Northern Alps')
   const [inputValue, setInputValue] = React.useState(value)
   const [suggestions, setSuggestions] = React.useState<PlaceSuggestion[]>([])
   const [isOpen, setIsOpen] = React.useState(false)
@@ -86,7 +89,7 @@ export function LocationInput({
           value={inputValue}
           onChange={handleChange}
           onFocus={() => { if (suggestions.length > 0) setIsOpen(true) }}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           style={{ ...inputStyle, paddingLeft: 34, paddingRight: inputValue ? 30 : 12 }}
           autoComplete="off"
         />

@@ -13,6 +13,7 @@ import { GalleryTab } from './tabs/gallery-tab'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { useProjectChannels } from '@/lib/chat/client'
 import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
+import { useT } from '@/components/locale-provider'
 
 
 
@@ -26,6 +27,7 @@ interface CoverPickerPanelProps {
 }
 
 const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onClose }: CoverPickerPanelProps) => {
+  const t = useT()
   const { data: placePhotos = [], isLoading: photosLoading } = usePlacePhotos(placeId)
   const clearCoverPhoto = useClearProjectCoverPhoto(projectId)
   const applyPlacePhoto = useApplyPlacePhoto(projectId)
@@ -43,7 +45,7 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
   return (
     <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--divider)', background: 'var(--card-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>カバー写真を変更</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>{t('Change cover photo')}</span>
         <button onClick={onClose} style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
           <Icon name="close" size={12}/>
         </button>
@@ -51,10 +53,10 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       {placeId && (
         <>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>場所の写真</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Place photos')}</div>
           {photosLoading ? (
             <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="loader" size={12}/> 取得中…
+              <Icon name="loader" size={12}/> {t('Fetching...')}
             </div>
           ) : placePhotos.length > 0 ? (
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6, scrollbarWidth: 'thin' }}>
@@ -72,12 +74,12 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>写真が見つかりませんでした</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>{t('No photos found')}</div>
           )}
         </>
       )}
 
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Default')}</div>
       <div>
         <button
           type="button"
@@ -109,6 +111,7 @@ interface ProjectPanelProps {
 }
 
 export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: tabProp, onTabChange }: ProjectPanelProps) => {
+  const t = useT()
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
@@ -163,21 +166,21 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   }, [moreOpen])
 
   const pcTabs = [
-    { id: 'overview',  label: '概要',       icon: 'book' },
-    { id: 'chat',      label: 'チャット',   icon: 'chat' },
-    { id: 'files',     label: 'ファイル',   icon: 'file' },
-    { id: 'tasks',     label: 'タスク',     icon: 'check' },
-    { id: 'members',   label: 'メンバー',   icon: 'users' },
-    { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
+    { id: 'overview',  label: t('Overview'), icon: 'book' },
+    { id: 'chat',      label: t('Chats'),    icon: 'chat' },
+    { id: 'files',     label: t('Files'),    icon: 'file' },
+    { id: 'tasks',     label: t('Tasks'),    icon: 'check' },
+    { id: 'members',   label: t('Members'),  icon: 'users' },
+    { id: 'gallery',   label: t('Gallery'),  icon: 'image' },
   ]
 
   const mobileTabs = [
-    { id: 'overview', label: '概要',       icon: 'book' },
-    { id: 'chat',     label: 'チャット',   icon: 'chat' },
-    { id: 'tasks',    label: 'タスク',     icon: 'check' },
-    { id: 'files',    label: 'ファイル',   icon: 'file' },
-    { id: 'gallery',  label: 'ギャラリー', icon: 'image' },
-    { id: 'members',  label: 'メンバー',   icon: 'users' },
+    { id: 'overview', label: t('Overview'), icon: 'book' },
+    { id: 'chat',     label: t('Chats'),    icon: 'chat' },
+    { id: 'tasks',    label: t('Tasks'),    icon: 'check' },
+    { id: 'files',    label: t('Files'),    icon: 'file' },
+    { id: 'gallery',  label: t('Gallery'),  icon: 'image' },
+    { id: 'members',  label: t('Members'),  icon: 'users' },
   ]
 
   const tabs = isMobile ? mobileTabs : pcTabs
@@ -245,7 +248,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
                       <Icon name="pin" size={13}/>
-                      {isPinned ? 'ピン留めを解除' : 'ピン留め'}
+                      {isPinned ? t('Unpin') : t('Pin')}
                     </button>
                     <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
@@ -253,7 +256,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
-                      <Icon name="image" size={13}/> カバー写真を変更
+                      <Icon name="image" size={13}/> {t('Change cover photo')}
                     </button>
                   </div>
                 )}
@@ -277,7 +280,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                 {project.archived && <ArchivedBadge onDark/>}
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                  <Icon name="users" size={11}/> {project.memberCount}人参加
+                  <Icon name="users" size={11}/> {t('{count} joined', { count: project.memberCount })}
                 </span>
               </div>
             </>
@@ -288,7 +291,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Icon name="users" size={12}/> {project.memberCount}人参加
+                  <Icon name="users" size={12}/> {t('{count} joined', { count: project.memberCount })}
                 </span>
               </div>
             </>
@@ -319,36 +322,36 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             disabled={!projectChannelId}
             onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
           >
-            <Icon name="chat" size={11}/> チャットを開く
+            <Icon name="chat" size={11}/> {t('Open chat')}
           </button>
         </div>
       )}
 
       {/* Tabs */}
       <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 2, overflowX: 'auto', flexShrink: 0 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+        {tabs.map(item => (
+          <button key={item.id} onClick={() => setTab(item.id)} style={{
             padding: isMobile ? '10px 12px' : '7px 10px',
             borderRadius: 6, border: 'none',
-            background: tab === t.id ? 'var(--card-hover)' : 'transparent',
-            color: tab === t.id ? 'var(--text)' : 'var(--text-3)',
+            background: tab === item.id ? 'var(--card-hover)' : 'transparent',
+            color: tab === item.id ? 'var(--text)' : 'var(--text-3)',
             fontSize: isMobile ? 13 : 12,
-            fontWeight: tab === t.id ? 600 : 500,
+            fontWeight: tab === item.id ? 600 : 500,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 5,
             whiteSpace: 'nowrap', flexShrink: 0,
-          }}><Icon name={t.icon} size={isMobile ? 14 : 13}/> {t.label}</button>
+          }}><Icon name={item.icon} size={isMobile ? 14 : 13}/> {item.label}</button>
         ))}
       </div>
 
       {/* Tab content — 訪問済みタブはマウントしたまま表示だけ切り替える（keep-alive） */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tabs.map(t => visitedTabs.has(t.id) ? (
+        {tabs.map(item => visitedTabs.has(item.id) ? (
           <div
-            key={t.id}
-            style={{ flex: 1, minHeight: 0, display: tab === t.id ? 'flex' : 'none', flexDirection: 'column' }}
+            key={item.id}
+            style={{ flex: 1, minHeight: 0, display: tab === item.id ? 'flex' : 'none', flexDirection: 'column' }}
           >
-            {renderTabContent(t.id)}
+            {renderTabContent(item.id)}
           </div>
         ) : null)}
       </div>

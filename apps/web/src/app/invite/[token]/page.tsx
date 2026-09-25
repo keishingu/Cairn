@@ -7,7 +7,9 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { formatAppDate } from '@cairn/shared'
 import { createClient } from '@/lib/supabase/client'
+import { useLocale, useT } from '@/components/locale-provider'
 
 interface InviteInfo {
   workspaceName: string
@@ -18,6 +20,8 @@ interface InviteInfo {
 }
 
 export default function InvitePage() {
+  const t = useT()
+  const { locale } = useLocale()
   const router = useRouter()
   const { token } = useParams<{ token: string }>()
 
@@ -60,7 +64,7 @@ export default function InvitePage() {
     const res = await fetch(`/api/invite/${token}/accept`, { method: 'POST' })
     const data = await res.json().catch(() => ({})) as { ok?: boolean; workspaceId?: string; error?: string }
     if (!res.ok) {
-      setJoinError(data.error ?? '参加に失敗しました')
+      setJoinError(data.error ?? t('Could not join'))
       setJoining(false)
       return
     }
@@ -78,13 +82,8 @@ export default function InvitePage() {
           <div style={logoStyle}>Cairn</div>
           <div style={cardStyle}>
             <div style={{ fontSize: 32, marginBottom: 16 }}>⚠️</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-              招待リンクが無効です
-            </div>
-            <div style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6 }}>
-              このリンクは期限切れか、すでに削除されています。<br />
-              招待者に新しいリンクを発行してもらってください。
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('This invite link is invalid')}</div>
+            <div style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('This link has expired or has been deleted.')}<br />{t('Ask the person who invited you for a new link.')}</div>
           </div>
         </div>
       </div>
@@ -94,18 +93,18 @@ export default function InvitePage() {
   if (!info || isLoggedIn === null) {
     return (
       <div style={centeredStyle}>
-        <div style={{ color: 'var(--text-3)', fontSize: 14 }}>読み込み中...</div>
+        <div style={{ color: 'var(--text-3)', fontSize: 14 }}>{t('Loading the page...')}</div>
       </div>
     )
   }
 
-  const roleLabel = info.role === 'guest' ? 'ゲスト' : 'メンバー'
+  const roleLabel = info.role === 'guest' ? t('Guest') : t('Member')
   const expiresLabel = info.expiresAt
-    ? `${new Date(info.expiresAt).toLocaleDateString('ja-JP')} まで有効`
-    : '無期限'
+    ? t('Valid until {date}', { date: formatAppDate(locale, info.expiresAt) })
+    : t('No expiry')
   const subtitle = info.projectName
-    ? `「${info.projectName}」プロジェクトへの招待`
-    : 'ワークスペースへの招待'
+    ? t('Invitation to the "{name}" project', { name: info.projectName })
+    : t('Workspace invitation')
 
   return (
     <div style={centeredStyle}>
@@ -118,7 +117,7 @@ export default function InvitePage() {
         <div style={cardStyle}>
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
             <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 4 }}>
-              {info.createdByName} さんが招待しています
+              {t('{name} invited you', { name: info.createdByName })}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>
               {info.workspaceName}
@@ -129,7 +128,7 @@ export default function InvitePage() {
               </div>
             )}
             <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <span style={badgeStyle}>{roleLabel}として参加</span>
+              <span style={badgeStyle}>{t('Join as {role}', { role: roleLabel })}</span>
               <span style={{ ...badgeStyle, background: 'var(--bg)', color: 'var(--text-3)' }}>{expiresLabel}</span>
             </div>
           </div>
@@ -145,7 +144,7 @@ export default function InvitePage() {
                 disabled={joining}
                 style={primaryButtonStyle(joining)}
               >
-                {joining ? '参加中...' : `「${info.workspaceName}」に参加する`}
+                {joining ? t('Joining...') : t('Join "{name}"', { name: info.workspaceName })}
               </button>
             </>
           ) : (
@@ -153,9 +152,7 @@ export default function InvitePage() {
               <Link
                 href={`/auth/signup?invite=${token}`}
                 style={{ ...primaryButtonStyle(false), textDecoration: 'none', textAlign: 'center', display: 'block' }}
-              >
-                新規登録して参加
-              </Link>
+              >{t('Sign up and join')}</Link>
               <Link
                 href={`/auth/login?invite=${token}`}
                 style={{
@@ -171,9 +168,7 @@ export default function InvitePage() {
                   display: 'block',
                   fontFamily: 'inherit',
                 }}
-              >
-                ログインして参加
-              </Link>
+              >{t('Sign in and join')}</Link>
             </div>
           )}
         </div>
@@ -181,7 +176,7 @@ export default function InvitePage() {
         {/* モバイルはQRコード表示 */}
         {isMobile && inviteUrl && (
           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>このQRコードを共有することもできます</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('You can also share this QR code')}</div>
             <div style={{ padding: 12, background: '#fff', borderRadius: 12, border: '1px solid var(--border)' }}>
               <QRCodeSVG value={inviteUrl} size={140} />
             </div>

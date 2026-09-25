@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { translate } from '@cairn/shared'
 import { ChannelList, formatChannelPeriod } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -34,13 +35,15 @@ const workspaceChannel = (overrides: Partial<WorkspaceChannelDto>): WorkspaceCha
   ...overrides,
 })
 
+const periodT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
+
 describe('formatChannelPeriod', () => {
   it('開始日と終了日が同じなら開いた期間に見せない', () => {
-    expect(formatChannelPeriod('2026-07-14', '2026-07-14')).toBe('7/14')
+    expect(formatChannelPeriod('2026-07-14', '2026-07-14', undefined, undefined, periodT)).toBe('7/14')
   })
 
   it('単日でも終了時刻があれば時刻範囲を表示する', () => {
-    expect(formatChannelPeriod('2026-07-14', '2026-07-14', '10:00', '12:00')).toBe('7/14 10:00〜12:00')
+    expect(formatChannelPeriod('2026-07-14', '2026-07-14', '10:00', '12:00', periodT)).toBe('7/14 10:00〜12:00')
   })
 })
 

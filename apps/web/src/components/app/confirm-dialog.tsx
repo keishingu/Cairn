@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { Icon, Modal } from './primitives'
 
 interface ConfirmDialogProps {
@@ -18,10 +19,13 @@ interface ConfirmDialogProps {
 // ダイアログを開いたままエラーメッセージを表示する
 export const ConfirmDialog = ({
   open, title, message,
-  confirmLabel = '削除する', busyLabel = '削除中…',
+  confirmLabel, busyLabel,
   confirmDisabled = false,
   onConfirm, onClose,
 }: ConfirmDialogProps) => {
+  const t = useT()
+  const resolvedConfirmLabel = confirmLabel ?? t('Delete this')
+  const resolvedBusyLabel = busyLabel ?? t('Deleting...')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -40,7 +44,7 @@ export const ConfirmDialog = ({
       await onConfirm()
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '操作に失敗しました')
+      setError(e instanceof Error ? e.message : t('The action failed'))
       setBusy(false)
     }
   }
@@ -61,9 +65,9 @@ export const ConfirmDialog = ({
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn" onClick={close} disabled={busy}>キャンセル</button>
+          <button className="btn" onClick={close} disabled={busy}>{t('Cancel')}</button>
           <button className="btn btn-danger" onClick={handleConfirm} disabled={busy || confirmDisabled} style={{ opacity: busy || confirmDisabled ? 0.7 : 1 }}>
-            {busy ? busyLabel : confirmLabel}
+            {busy ? resolvedBusyLabel : resolvedConfirmLabel}
           </button>
         </div>
       </div>

@@ -8,6 +8,7 @@ import type {
 import { apiFetch } from '../lib/api-fetch'
 import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { mergeChatMessages, nextMessagePageCursor } from '../lib/mobile-chat-state'
+import { useT } from '../components/locale-provider'
 
 export interface MessageDto {
   id: string
@@ -33,13 +34,13 @@ export interface MessageDto {
 
 // サーバーが read 時に `<@id|表示名>` へ解決済みのため最新名を表示できる。
 // 名前なしの canonical 形式 `<@id>` が来た場合も素のトークンを見せないようにする。
-export function parseMentions(content: string): string {
+export function parseMentions(content: string, t: (message: string, values?: Record<string, string | number>) => string = (message) => message): string {
   return content.replace(/<@([^|>\s]+)(?:\|([^>\n]+))?>/g, (_full, id: string, name?: string) => {
     if (name) return `@${name}`
     if (id === 'all') return '@all'
     if (id === 'project_members') return '@project_members'
-    if (id.startsWith('attr:')) return '@属性'
-    return '@メンバー'
+    if (id.startsWith('attr:')) return t('@Attribute')
+    return t('@Member')
   })
 }
 
@@ -64,8 +65,8 @@ export class MessageSendError extends Error {
 }
 
 // 401/403 は生のステータスコードを出さず、意味の分かる文言に変換する
-function friendlyMessageErrorText(status: number, fallback: string, forbiddenText: string): string {
-  if (status === 401) return 'セッションが切れました。再度ログインしてください。'
+function friendlyMessageErrorText(status: number, fallback: string, forbiddenText: string, t: (message: string, values?: Record<string, string | number>) => string = (message) => message): string {
+  if (status === 401) return t('Your session has expired. Please sign in again.')
   if (status === 403) return forbiddenText
   return `${fallback} (${status})`
 }
@@ -75,13 +76,17 @@ interface MessagePage {
   hasMore: boolean
 }
 
-async function fetchMessagePage(channelId: string, before: string | null): Promise<MessagePage> {
+async function fetchMessagePage(
+  channelId: string,
+  before: string | null,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): Promise<MessagePage> {
   const suffix = before ? `?before=${encodeURIComponent(before)}` : ''
   const res = await apiFetch(`/api/channels/${channelId}/messages${suffix}`)
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     throw new ChannelMessagesError(
-      data.error ?? `メッセージの取得に失敗しました (${res.status})`,
+      data.error ?? t('Could not load messages ({status})', { status: res.status }),
       res.status,
     )
   }
@@ -92,9 +97,10 @@ async function fetchMessagePage(channelId: string, before: string | null): Promi
 }
 
 export function useMessages(channelId: string | null) {
+  const t = useT()
   return useInfiniteQuery({
     queryKey: ['messages', channelId],
-    queryFn: ({ pageParam }) => fetchMessagePage(channelId!, pageParam),
+    queryFn: ({ pageParam }) => fetchMessagePage(channelId!, pageParam, t),
     initialPageParam: null as string | null,
     getNextPageParam: nextMessagePageCursor,
     select: (data) => mergeChatMessages(...data.pages.map((page) => page.messages)),
@@ -107,6 +113,7 @@ export function useMessages(channelId: string | null) {
 }
 
 export function useSendMessage(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
@@ -123,8 +130,9 @@ export function useSendMessage(channelId: string) {
         throw new MessageSendError(
           friendlyMessageErrorText(
             res.status,
-            'メッセージの送信に失敗しました',
-            'このチャンネルへの送信権限がありません。',
+            t('Could not send the message'),
+            t('You do not have permission to send to this channel.'),
+            t,
           ),
           res.status,
         )
@@ -135,7 +143,7 @@ export function useSendMessage(channelId: string) {
       // メッセージ自体は送信済みのため、既読化の副作用が失敗しても送信失敗として扱わない
       try {
         const res = await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
-        if (!res.ok) throw new Error(`既読化に失敗しました (${res.status})`)
+        if (!res.ok) throw new Error(t('Could not mark as read ({status})', { status: res.status }))
       } catch (err) {
         console.error('[useSendMessage] 送信後の既読化に失敗:', err)
       }
@@ -145,6 +153,7 @@ export function useSendMessage(channelId: string) {
 }
 
 export function useEditMessage(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ messageId, content }: { messageId: string; content: string }) => {
@@ -158,8 +167,9 @@ export function useEditMessage(channelId: string) {
           data.error ??
             friendlyMessageErrorText(
               res.status,
-              'メッセージの編集に失敗しました',
-              '自分のメッセージだけ編集できます。',
+              t('Could not edit the message'),
+              t('You can only edit your own messages.'),
+              t,
             ),
         )
       }
@@ -172,6 +182,7 @@ export function useEditMessage(channelId: string) {
 }
 
 export function useDeleteMessage(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (messageId: string) => {
@@ -182,8 +193,9 @@ export function useDeleteMessage(channelId: string) {
           data.error ??
             friendlyMessageErrorText(
               res.status,
-              'メッセージの削除に失敗しました',
-              '自分のメッセージだけ削除できます。',
+              t('Could not delete the message'),
+              t('You can only delete your own messages.'),
+              t,
             ),
         )
       }
@@ -196,6 +208,7 @@ export function useDeleteMessage(channelId: string) {
 }
 
 export function useToggleMessageBookmark(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (messageId: string) => {
@@ -204,8 +217,9 @@ export function useToggleMessageBookmark(channelId: string) {
         throw new Error(
           friendlyMessageErrorText(
             res.status,
-            'ブックマークの更新に失敗しました',
-            'このメッセージをブックマークできません。',
+            t('Could not update the bookmark'),
+            t('You cannot bookmark this message.'),
+            t,
           ),
         )
       const result = (await res.json()) as { bookmarked: boolean }
@@ -219,17 +233,19 @@ export function useToggleMessageBookmark(channelId: string) {
 }
 
 export function useMarkChannelRead(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const res = await apiFetch(`/api/channels/${channelId}/read`, { method: 'POST' })
-      if (!res.ok) throw new Error(`既読化に失敗しました (${res.status})`)
+      if (!res.ok) throw new Error(t('Could not mark as read ({status})', { status: res.status }))
     },
     onSuccess: () => invalidateChannelListQueries(qc),
   })
 }
 
 export function useToggleMessageReaction(channelId: string) {
+  const t = useT()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
@@ -241,8 +257,9 @@ export function useToggleMessageReaction(channelId: string) {
         throw new Error(
           friendlyMessageErrorText(
             res.status,
-            'リアクションの更新に失敗しました',
-            'このメッセージへの操作権限がありません。',
+            t('Could not update the reaction'),
+            t('You cannot change reactions on this message.'),
+            t,
           ),
         )
     },

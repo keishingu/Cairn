@@ -65,6 +65,7 @@ import {
   useWorkspaceMembers,
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
+import { useT } from '../../../components/locale-provider'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -94,6 +95,7 @@ async function openAttachmentFile(
   fileName: string,
   mimeType: string | null,
   accessToken: string,
+  t: (message: string, values?: Record<string, string | number>) => string,
 ): Promise<void> {
   try {
     await shareCachedAttachment({
@@ -102,13 +104,14 @@ async function openAttachmentFile(
       fileName,
       accessToken,
       mimeType,
-      dialogTitle: 'ファイルを開く',
+      dialogTitle: t('Open file'),
+      t,
     })
   } catch (error) {
     console.error('[chat] 添付ファイルを開けませんでした:', error)
     Alert.alert(
-      'ファイルを開けませんでした',
-      error instanceof Error ? error.message : 'しばらくしてから再度お試しください。',
+      t('Could not open the file'),
+      error instanceof Error ? error.message : t('Please try again in a moment.'),
     )
   }
 }
@@ -124,12 +127,13 @@ function AttachmentChip({
   accessToken?: string
   onOpenImage: (attachment: MessageDto['attachments'][number]) => void
 }) {
+  const t = useT()
   const isImage = isImageMime(attachment.mimeType)
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
-        isImage ? `${attachment.fileName}を表示` : `${attachment.fileName}を開く`
+        isImage ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
       }
       disabled={!accessToken}
       onPress={() => {
@@ -143,6 +147,7 @@ function AttachmentChip({
           attachment.fileName,
           attachment.mimeType,
           accessToken,
+          t,
         )
       }}
       style={({ pressed }) => [
@@ -189,6 +194,7 @@ function ChatMessageRow({
   onOpenActions: (message: MessageDto) => void
   onOpenImage: (attachment: MessageDto['attachments'][number]) => void
 }) {
+  const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
     legacyRole: message.senderProjectRole,
     roleName: message.senderProjectRoleName,
@@ -205,7 +211,7 @@ function ChatMessageRow({
             { backgroundColor: palette.card2, borderColor: palette.divider, color: palette.text4 },
           ]}
         >
-          {parseMentions(message.content)}
+          {parseMentions(message.content, t)}
         </Text>
       </View>
     )
@@ -246,7 +252,7 @@ function ChatMessageRow({
               {formatTime(message.createdAt)}
             </Text>
             {message.isEdited && (
-              <Text style={[styles.edited, { color: palette.text4 }]}>編集済み</Text>
+              <Text style={[styles.edited, { color: palette.text4 }]}>{t('Edited')}</Text>
             )}
             {message.bookmarked && <Ionicons name="bookmark" size={12} color={palette.accent} />}
           </View>
@@ -278,16 +284,14 @@ function ChatMessageRow({
               </Text>
               <Text style={[styles.replyText, { color: palette.text4 }]} numberOfLines={1}>
                 {message.replyTo.isDeleted
-                  ? '削除されたメッセージ'
-                  : parseMentions(message.replyTo.content) || '（添付ファイル）'}
+                  ? t('Deleted message')
+                  : parseMentions(message.replyTo.content, t) || t('(Attachment)')}
               </Text>
             </View>
           )}
 
           {message.blocked ? (
-            <Text style={[styles.messageText, { color: palette.text3 }]}>
-              ブロックしたユーザーのメッセージ（長押しメニューから表示できます）
-            </Text>
+            <Text style={[styles.messageText, { color: palette.text3 }]}>{t('Message from a blocked user (long-press the menu to show it)')}</Text>
           ) : (
             message.content.length > 0 && (
               <MobileMarkdown
@@ -324,8 +328,8 @@ function ChatMessageRow({
               <Pressable
                 key={reaction.emoji}
                 accessibilityRole="button"
-                accessibilityLabel={`${reaction.emoji} ${reaction.count}件のリアクション`}
-                accessibilityHint="長押しでリアクションした人を表示"
+                accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
+                accessibilityHint={t('Long-press to see who reacted')}
                 onPress={() => onToggleReaction(message.id, reaction.emoji)}
                 onLongPress={() => onShowReactors(reaction.emoji, reaction.userNames)}
                 delayLongPress={350}
@@ -350,7 +354,7 @@ function ChatMessageRow({
             ))}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="リアクションを追加"
+              accessibilityLabel={t('Add reaction')}
               onPress={() => onAddReaction(message)}
               style={[
                 styles.reaction,
@@ -365,7 +369,7 @@ function ChatMessageRow({
         {message.reactions.length === 0 && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="リアクションを追加"
+            accessibilityLabel={t('Add reaction')}
             onPress={() => onAddReaction(message)}
             style={[
               styles.reactionAddStandalone,
@@ -396,12 +400,13 @@ function QueuedMessageRow({
   onRetry: () => void
   onCancel: () => void
 }) {
+  const t = useT()
   const statusLabel =
     message.status === 'sending'
-      ? '送信中…'
+      ? t('Sending…')
       : message.status === 'failed'
-        ? '送信を完了できませんでした'
-        : '電波待ち・接続後に自動送信'
+        ? t('Could not finish sending')
+        : t('Waiting for a connection. It will send automatically.')
   return (
     <View style={styles.messageRow}>
       <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}>
@@ -412,7 +417,7 @@ function QueuedMessageRow({
       <View style={styles.messageBody}>
         <View style={styles.messageMeta}>
           <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
-          <Text style={[styles.messageTime, { color: palette.text4 }]}>未送信</Text>
+          <Text style={[styles.messageTime, { color: palette.text4 }]}>{t('Unsent')}</Text>
         </View>
         <MobileMarkdown
           content={message.content}
@@ -436,11 +441,11 @@ function QueuedMessageRow({
           </Text>
           {message.status === 'failed' && (
             <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={6}>
-              <Text style={[styles.queueAction, { color: palette.accentText }]}>再送</Text>
+              <Text style={[styles.queueAction, { color: palette.accentText }]}>{t('Resend')}</Text>
             </Pressable>
           )}
           <Pressable accessibilityRole="button" onPress={onCancel} hitSlop={6}>
-            <Text style={[styles.queueAction, { color: palette.text4 }]}>取消</Text>
+            <Text style={[styles.queueAction, { color: palette.text4 }]}>{t('Discard')}</Text>
           </Pressable>
         </View>
       </View>
@@ -478,6 +483,7 @@ function ActionButton({
 }
 
 export default function ChatThreadScreen() {
+  const t = useT()
   const { channelId, channelName, channelType, projectId, isPrivate } = useLocalSearchParams<{
     channelId: string
     channelName?: string
@@ -746,7 +752,7 @@ export default function ChatThreadScreen() {
         setEditingMessage(null)
         mentionSelectionsRef.current = []
       } catch (error) {
-        setSendError(error instanceof Error ? error.message : 'メッセージの編集に失敗しました')
+        setSendError(error instanceof Error ? error.message : t('Could not edit the message'))
       }
       return
     }
@@ -796,7 +802,7 @@ export default function ChatThreadScreen() {
       upload.clearUploads()
     } catch {
       if (channelIdRef.current !== sendingChannelId) return
-      setSendError('未送信メッセージを端末に保存できませんでした。再度送信してください。')
+      setSendError(t('Could not save unsent messages on this device. Send again.'))
     } finally {
       setIsQueueing(false)
     }
@@ -812,7 +818,7 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReplyTarget(null)
     setEditingMessage(message)
-    const editable = parseEditableMentions(message.content)
+    const editable = parseEditableMentions(message.content, t)
     mentionSelectionsRef.current = editable.mentions
     setDraft(editable.text)
     setSelection({ start: editable.text.length, end: editable.text.length })
@@ -820,16 +826,16 @@ export default function ChatThreadScreen() {
 
   const confirmDelete = (message: MessageDto) => {
     setActionTarget(null)
-    Alert.alert('メッセージを削除しますか？', 'この操作は取り消せません。', [
-      { text: 'キャンセル', style: 'cancel' },
+    Alert.alert(t('Delete this message?'), t('This cannot be undone.'), [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: '削除',
+        text: t('Delete'),
         style: 'destructive',
         onPress: () => {
           deleteMessage.mutate(message.id, {
             onError: (error) =>
               setSendError(
-                error instanceof Error ? error.message : 'メッセージの削除に失敗しました',
+                error instanceof Error ? error.message : t('Could not delete the message'),
               ),
           })
         },
@@ -841,7 +847,7 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     toggleBookmark.mutate(message.id, {
       onError: (error) =>
-        setSendError(error instanceof Error ? error.message : 'ブックマークの更新に失敗しました'),
+        setSendError(error instanceof Error ? error.message : t('Could not update the bookmark')),
     })
   }
 
@@ -856,26 +862,26 @@ export default function ChatThreadScreen() {
         method: 'POST',
         body: JSON.stringify({ reason, ...(details ? { details } : {}) }),
       }),
-      '報告に失敗しました',
+      t('Could not submit the report'),
     )
     if (error) setSendError(error)
-    else Alert.alert('報告しました', '運営者が内容を確認します。')
+    else Alert.alert(t('Reported'), t('The moderators will review it.'))
   }
   const reportMenu = (message: MessageDto) =>
-    Alert.alert('報告理由', '理由を選択してください', [
-      { text: '嫌がらせ・いじめ', onPress: () => void report(message, 'harassment') },
-      { text: '差別的または攻撃的', onPress: () => void report(message, 'discriminatory') },
-      { text: '性的または不適切', onPress: () => void report(message, 'sexual') },
-      { text: '暴力・脅迫', onPress: () => void report(message, 'violence') },
-      { text: 'スパム', onPress: () => void report(message, 'spam') },
+    Alert.alert(t('Report reason'), t('Choose a reason'), [
+      { text: t('Harassment or bullying'), onPress: () => void report(message, 'harassment') },
+      { text: t('Discriminatory or hostile'), onPress: () => void report(message, 'discriminatory') },
+      { text: t('Sexual or inappropriate'), onPress: () => void report(message, 'sexual') },
+      { text: t('Violence or threats'), onPress: () => void report(message, 'violence') },
+      { text: t('Spam'), onPress: () => void report(message, 'spam') },
       {
-        text: 'その他',
+        text: t('Other'),
         onPress: () =>
-          Alert.prompt('補足説明', '報告内容を入力してください', (text) => {
+          Alert.prompt(t('Details'), t('Describe what happened'), (text) => {
             if (text.trim()) void report(message, 'other', text.trim())
           }),
       },
-      { text: 'キャンセル', style: 'cancel' },
+      { text: t('Cancel'), style: 'cancel' },
     ])
   const blockUser = async (message: MessageDto) => {
     setActionTarget(null)
@@ -884,12 +890,12 @@ export default function ChatThreadScreen() {
         method: 'POST',
         body: JSON.stringify({ userId: message.senderId }),
       }),
-      'ブロックに失敗しました',
+      t('Could not block this user'),
     )
     if (error) setSendError(error)
     else {
       await messagesQuery.refetch()
-      Alert.alert('ブロックしました')
+      Alert.alert(t('User blocked'))
     }
   }
 
@@ -906,7 +912,7 @@ export default function ChatThreadScreen() {
       { messageId, emoji },
       {
         onError: (err) => {
-          setSendError(err instanceof Error ? err.message : 'リアクションの更新に失敗しました')
+          setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
         },
       },
     )
@@ -957,7 +963,7 @@ export default function ChatThreadScreen() {
       pathname: '/(app)/chat-tools',
       params: {
         path: `/chats/${channelId}?nativeAux=1&panel=search`,
-        title: 'メッセージ検索',
+        title: t('Message search'),
         returnChannelId: channelId,
         ...(channelName ? { returnChannelName: channelName } : {}),
         ...(channelType ? { returnChannelType: channelType } : {}),
@@ -973,7 +979,7 @@ export default function ChatThreadScreen() {
       pathname: '/(app)/chat-tools',
       params: {
         path: `/chats/${channelId}?nativeAux=1&panel=info`,
-        title: 'チャンネル情報',
+        title: t('Channel info'),
         returnChannelId: channelId,
         ...(channelName ? { returnChannelName: channelName } : {}),
         ...(channelType ? { returnChannelType: channelType } : {}),
@@ -987,11 +993,11 @@ export default function ChatThreadScreen() {
     (url: string) => {
       const target = resolveMobileMarkdownLink(url, API_BASE_URL)
       if (!target) {
-        setSendError('このリンクは開けません。')
+        setSendError(t('This link cannot be opened.'))
         return false
       }
       if (target.kind === 'external') {
-        void Linking.openURL(target.url).catch(() => setSendError('リンクを開けませんでした。'))
+        void Linking.openURL(target.url).catch(() => setSendError(t('Could not open the link.')))
         return false
       }
       if (!channelId) return false
@@ -999,7 +1005,7 @@ export default function ChatThreadScreen() {
         pathname: '/(app)/chat-tools',
         params: {
           path: target.path,
-          title: 'リンク',
+          title: t('Link'),
           returnChannelId: channelId,
           ...(channelName ? { returnChannelName: channelName } : {}),
           ...(channelType ? { returnChannelType: channelType } : {}),
@@ -1009,18 +1015,18 @@ export default function ChatThreadScreen() {
       })
       return false
     },
-    [channelId, channelName, channelType, isPrivate, projectId, router],
+    [channelId, channelName, channelType, isPrivate, projectId, router, t],
   )
 
   const shareMessage = async (message: MessageDto) => {
     setActionTarget(null)
-    const body = parseMentions(message.content).trim()
+    const body = parseMentions(message.content, t).trim()
     const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
     try {
       await Share.share({ message: body ? `${body}\n${url}` : url })
     } catch (shareError) {
       setSendError(
-        shareError instanceof Error ? shareError.message : 'メッセージを共有できませんでした',
+        shareError instanceof Error ? shareError.message : t('Could not share the message'),
       )
     }
   }
@@ -1040,7 +1046,7 @@ export default function ChatThreadScreen() {
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="チャット一覧へ戻る"
+            accessibilityLabel={t('Back to the chat list')}
             style={styles.backButton}
             onPress={goBackToList}
             hitSlop={8}
@@ -1048,11 +1054,11 @@ export default function ChatThreadScreen() {
             <Ionicons name="chevron-back" size={22} color={palette.accent} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: palette.text }]} numberOfLines={1}>
-            {channelName || 'チャット'}
+            {channelName || t('Chats')}
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="メッセージを検索"
+            accessibilityLabel={t('Search messages')}
             style={styles.headerButton}
             onPress={openSearch}
             hitSlop={6}
@@ -1061,7 +1067,7 @@ export default function ChatThreadScreen() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="チャンネル情報"
+            accessibilityLabel={t('Channel info')}
             style={styles.headerButton}
             onPress={openInfo}
             hitSlop={6}
@@ -1077,20 +1083,14 @@ export default function ChatThreadScreen() {
         ) : isAccessDenied ? (
           <View style={styles.center}>
             <Ionicons name="lock-closed-outline" size={24} color={palette.text3} />
-            <Text style={[styles.errorTitle, { color: palette.text }]}>
-              このチャンネルは表示できません
-            </Text>
-            <Text style={[styles.errorBody, { color: palette.text3 }]}>
-              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
-            </Text>
+            <Text style={[styles.errorTitle, { color: palette.text }]}>{t('This channel cannot be shown')}</Text>
+            <Text style={[styles.errorBody, { color: palette.text3 }]}>{t('You are not in this project, so this chat cannot be opened. Ask a workspace admin to invite you to the project.')}</Text>
           </View>
         ) : isSessionExpired ? (
           <View style={styles.center}>
             <Ionicons name="log-in-outline" size={24} color={palette.text3} />
-            <Text style={[styles.errorTitle, { color: palette.text }]}>セッションが切れました</Text>
-            <Text style={[styles.errorBody, { color: palette.text3 }]}>
-              再度ログインしてください。
-            </Text>
+            <Text style={[styles.errorTitle, { color: palette.text }]}>{t('Your session has expired')}</Text>
+            <Text style={[styles.errorBody, { color: palette.text3 }]}>{t('Please sign in again.')}</Text>
           </View>
         ) : (
           <View style={styles.messageListContainer}>
@@ -1111,7 +1111,7 @@ export default function ChatThreadScreen() {
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="メッセージを再読み込み"
+                  accessibilityLabel={t('Reload messages')}
                   disabled={messagesQuery.isFetching}
                   onPress={() => void messagesQuery.refetch()}
                   hitSlop={6}
@@ -1119,9 +1119,7 @@ export default function ChatThreadScreen() {
                   {messagesQuery.isFetching ? (
                     <ActivityIndicator size="small" color={palette.redText} />
                   ) : (
-                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>
-                      再試行
-                    </Text>
+                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>{t('Retry')}</Text>
                   )}
                 </Pressable>
               </View>
@@ -1136,7 +1134,7 @@ export default function ChatThreadScreen() {
                   <QueuedMessageRow
                     message={item.message}
                     palette={palette}
-                    senderName={me?.displayName ?? '自分'}
+                    senderName={me?.displayName ?? t('You')}
                     onLinkPress={openMarkdownLink}
                     onRetry={() => offlineQueue.retry(item.message.id)}
                     onCancel={() => offlineQueue.cancel(item.message.id)}
@@ -1168,22 +1166,20 @@ export default function ChatThreadScreen() {
                 ) : messagesQuery.isFetchNextPageError ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="過去のメッセージを再読み込み"
+                    accessibilityLabel={t('Reload older messages')}
                     onPress={() => void loadOlderMessages()}
                     style={styles.olderError}
                   >
                     <Text style={[styles.olderErrorText, { color: palette.redText }]}>
-                      {messagesQuery.error?.message ?? '過去のメッセージを取得できませんでした'}
-                      　再試行
+                      {messagesQuery.error?.message ?? t('Could not load older messages')}
+                      {t(' {action}', { action: t('Retry') })}
                     </Text>
                   </Pressable>
                 ) : null
               }
               ListEmptyComponent={
                 messagesQuery.error ? null : (
-                  <Text style={[styles.empty, { color: palette.text4 }]}>
-                    まだメッセージはありません。最初のメッセージを送ってみましょう！
-                  </Text>
+                  <Text style={[styles.empty, { color: palette.text4 }]}>{t('No messages yet. Send the first one.')}</Text>
                 )
               }
             />
@@ -1211,11 +1207,11 @@ export default function ChatThreadScreen() {
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="未送信メッセージを再読み込み"
+                  accessibilityLabel={t('Reload unsent messages')}
                   onPress={offlineQueue.retryRestore}
                   hitSlop={6}
                 >
-                  <Text style={[styles.queueRestoreRetry, { color: palette.redText }]}>再試行</Text>
+                  <Text style={[styles.queueRestoreRetry, { color: palette.redText }]}>{t('Retry')}</Text>
                 </Pressable>
               </View>
             )}
@@ -1234,21 +1230,21 @@ export default function ChatThreadScreen() {
                 <View style={styles.composerContextText}>
                   <Text style={[styles.composerContextTitle, { color: palette.text3 }]}>
                     {editingMessage
-                      ? 'メッセージを編集中'
-                      : `${replyTarget?.senderName ?? ''} に返信`}
+                      ? t('Editing message')
+                      : t('Reply to {name}', { name: replyTarget?.senderName ?? '' })}
                   </Text>
                   {!editingMessage && (
                     <Text
                       style={[styles.composerContextBody, { color: palette.text4 }]}
                       numberOfLines={1}
                     >
-                      {replyTarget ? parseMentions(replyTarget.content) || '（添付ファイル）' : ''}
+                      {replyTarget ? parseMentions(replyTarget.content, t) || t('(Attachment)') : ''}
                     </Text>
                   )}
                 </View>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="返信または編集をキャンセル"
+                  accessibilityLabel={t('Cancel reply or edit')}
                   onPress={() => {
                     if (editingMessage) setDraft('')
                     setEditingMessage(null)
@@ -1265,16 +1261,14 @@ export default function ChatThreadScreen() {
               <View style={styles.attachmentActions}>
                 <Pressable style={styles.attachmentAction} onPress={() => void upload.pickImage()}>
                   <Ionicons name="image-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>画像</Text>
+                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Photo')}</Text>
                 </Pressable>
                 <Pressable
                   style={styles.attachmentAction}
                   onPress={() => void upload.pickDocument()}
                 >
                   <Ionicons name="attach-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>
-                    ファイル
-                  </Text>
+                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
                 </Pressable>
               </View>
             )}
@@ -1307,7 +1301,7 @@ export default function ChatThreadScreen() {
                     </Text>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`${pending.fileName}を削除`}
+                      accessibilityLabel={t('Remove {name}', { name: pending.fileName })}
                       onPress={() => upload.removeUpload(pending.id)}
                       hitSlop={8}
                     >
@@ -1339,7 +1333,7 @@ export default function ChatThreadScreen() {
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="メンション候補を再読み込み"
+                  accessibilityLabel={t('Reload mention suggestions')}
                   disabled={isFetchingMentionMembers}
                   onPress={() => void retryMentionMembers()}
                   hitSlop={6}
@@ -1347,9 +1341,7 @@ export default function ChatThreadScreen() {
                   {isFetchingMentionMembers ? (
                     <ActivityIndicator size="small" color={palette.redText} />
                   ) : (
-                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>
-                      再試行
-                    </Text>
+                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>{t('Retry')}</Text>
                   )}
                 </Pressable>
               </View>
@@ -1365,7 +1357,7 @@ export default function ChatThreadScreen() {
                   <Pressable
                     key={member.userId}
                     accessibilityRole="button"
-                    accessibilityLabel={`${member.displayName}をメンション`}
+                    accessibilityLabel={t('Mention {name}', { name: member.displayName })}
                     onPress={() => selectMention(member)}
                     style={({ pressed }) => [
                       styles.mentionSuggestion,
@@ -1401,7 +1393,7 @@ export default function ChatThreadScreen() {
               ]}
             >
               <TextInput
-                accessibilityLabel="メッセージを入力"
+                accessibilityLabel={t('Enter a message')}
                 style={[styles.input, { color: palette.text }]}
                 value={draft}
                 selection={selection}
@@ -1415,13 +1407,13 @@ export default function ChatThreadScreen() {
                   setDraft(value)
                   if (sendError) setSendError(null)
                 }}
-                placeholder="メッセージを入力…"
+                placeholder={t('Write a message…')}
                 placeholderTextColor={palette.text4}
                 multiline
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="メッセージを送信"
+                accessibilityLabel={t('Send message')}
                 style={({ pressed }) => [
                   styles.sendButton,
                   {
@@ -1466,17 +1458,17 @@ export default function ChatThreadScreen() {
             <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
             <ActionButton
               icon="arrow-undo-outline"
-              label="返信"
+              label={t('Reply')}
               palette={palette}
               onPress={() => actionTarget && beginReply(actionTarget)}
             />
             {actionTarget?.blocked && (
               <ActionButton
                 icon="eye-outline"
-                label="メッセージを一時表示"
+                label={t('Show message temporarily')}
                 palette={palette}
                 onPress={() => {
-                  Alert.alert('ブロックしたユーザーのメッセージ', actionTarget.content)
+                  Alert.alert(t('Message from a blocked user'), actionTarget.content)
                   setActionTarget(null)
                 }}
               />
@@ -1485,21 +1477,21 @@ export default function ChatThreadScreen() {
               <>
                 <ActionButton
                   icon="flag-outline"
-                  label="報告"
+                  label={t('Report')}
                   palette={palette}
                   onPress={() => actionTarget && reportMenu(actionTarget)}
                 />
                 <ActionButton
                   icon="person-remove-outline"
-                  label="ブロック"
+                  label={t('Block')}
                   palette={palette}
                   destructive
                   onPress={() =>
                     actionTarget &&
-                    Alert.alert('ユーザーをブロックしますか？', '相手とのDMや通知も抑止します。', [
-                      { text: 'キャンセル', style: 'cancel' },
+                    Alert.alert(t('Block this user?'), t('DMs and notifications with this person will also be stopped.'), [
+                      { text: t('Cancel'), style: 'cancel' },
                       {
-                        text: 'ブロック',
+                        text: t('Block'),
                         style: 'destructive',
                         onPress: () => void blockUser(actionTarget),
                       },
@@ -1510,13 +1502,13 @@ export default function ChatThreadScreen() {
             )}
             <ActionButton
               icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
-              label={actionTarget?.bookmarked ? 'ブックマークを解除' : 'ブックマーク'}
+              label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
               palette={palette}
               onPress={() => actionTarget && handleBookmark(actionTarget)}
             />
             <ActionButton
               icon="happy-outline"
-              label="リアクションを追加"
+              label={t('Add reaction')}
               palette={palette}
               onPress={() => {
                 setReactionTarget(actionTarget)
@@ -1525,7 +1517,7 @@ export default function ChatThreadScreen() {
             />
             <ActionButton
               icon="share-outline"
-              label="共有"
+              label={t('Share')}
               palette={palette}
               onPress={() => actionTarget && void shareMessage(actionTarget)}
             />
@@ -1533,13 +1525,13 @@ export default function ChatThreadScreen() {
               <>
                 <ActionButton
                   icon="create-outline"
-                  label="編集"
+                  label={t('Edit')}
                   palette={palette}
                   onPress={() => actionTarget && beginEdit(actionTarget)}
                 />
                 <ActionButton
                   icon="trash-outline"
-                  label="削除"
+                  label={t('Delete')}
                   palette={palette}
                   destructive
                   onPress={() => actionTarget && confirmDelete(actionTarget)}
@@ -1566,13 +1558,13 @@ export default function ChatThreadScreen() {
               },
             ]}
           >
-            <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>リアクション</Text>
+            <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>{t('Reaction')}</Text>
             <View style={styles.reactionChoices}>
               {['👍', '❤️', '😂', '🎉', '🙌', '👀'].map((emoji) => (
                 <Pressable
                   key={emoji}
                   accessibilityRole="button"
-                  accessibilityLabel={`${emoji}を追加`}
+                  accessibilityLabel={t('Add {emoji}', { emoji })}
                   onPress={() => {
                     if (reactionTarget) handleToggleReaction(reactionTarget.id, emoji)
                     setReactionTarget(null)
@@ -1604,7 +1596,7 @@ export default function ChatThreadScreen() {
             ]}
           >
             <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>
-              {reactionPeople?.emoji} を付けた人
+              {t('People who reacted with {emoji}', { emoji: reactionPeople?.emoji ?? '' })}
             </Text>
             {reactionPeople && reactionPeople.userNames.length > 0 ? (
               reactionPeople.userNames.map((name, index) => (
@@ -1624,9 +1616,7 @@ export default function ChatThreadScreen() {
                   styles.reactionPerson,
                   { color: palette.text3, borderTopColor: palette.divider },
                 ]}
-              >
-                このリアクションを付けた人を表示できませんでした
-              </Text>
+              >{t('Could not show who reacted')}</Text>
             )}
           </View>
         </Modal>

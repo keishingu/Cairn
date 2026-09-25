@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { Icon } from './primitives'
 import { subscribeToasts, dismissToast, type ToastItem, type ToastVariant } from '@/lib/toast'
 
@@ -14,6 +15,7 @@ const VARIANT: Record<ToastVariant, { icon: string; iconColor: string }> = {
 }
 
 const ToastRow = ({ item }: { item: ToastItem }) => {
+  const t = useT()
   const v = VARIANT[item.variant]
   return (
     <div
@@ -35,7 +37,7 @@ const ToastRow = ({ item }: { item: ToastItem }) => {
       </span>
       <button
         onClick={() => dismissToast(item.id)}
-        aria-label="閉じる"
+        aria-label={t('Close')}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 22, height: 22, flexShrink: 0,

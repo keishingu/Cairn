@@ -10,6 +10,7 @@ import { TaskEditDialog } from '../../task-edit-dialog'
 import { TaskDialog } from '../../task-dialog'
 import { TaskFormFields } from '../../task-form-fields'
 import { RowActionMenu } from '../../row-action-menu'
+import { useT } from '@/components/locale-provider'
 
 // ─── AddTaskModal ─────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ interface AddTaskModalProps {
 }
 
 const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
+  const t = useT()
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
@@ -39,16 +41,16 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
 
   return (
     <TaskDialog
-      title="タスクを追加"
+      title={t('Add a task')}
       subtitle={project.title}
       onClose={onClose}
       onSubmit={handleSubmit}
-      submitLabel="追加"
-      submittingLabel="追加中..."
+      submitLabel={t('Add')}
+      submittingLabel={t('Adding…')}
       isSubmitting={mutation.isPending}
       submitDisabled={!title.trim()}
       disableClose={mutation.isPending}
-      {...(mutation.isError ? { errorMessage: 'タスクの作成に失敗しました。もう一度お試しください。' } : {})}
+      {...(mutation.isError ? { errorMessage: t('Could not create the task. Please try again.') } : {})}
     >
       <TaskFormFields
         title={title}
@@ -60,7 +62,7 @@ const AddTaskModal = ({ project, onClose }: AddTaskModalProps) => {
         assigneeId={assigneeId}
         onAssigneeChange={setAssigneeId}
         assigneeProjectId={project.id}
-        titlePlaceholder="タスク名を入力..."
+        titlePlaceholder={t('Enter a task name...')}
       />
     </TaskDialog>
   )
@@ -72,13 +74,14 @@ const PRIORITY_COLOR: Record<string, string> = {
   low: 'var(--text-4)',
 }
 
-const PRIORITY_LABEL: Record<string, string> = { high: '高', medium: '中', low: '低' }
+const PRIORITY_LABEL: Record<string, string> = { high: 'High', medium: 'Medium', low: 'Low' }
 
 interface TasksTabProps {
   project: ProjectDto
 }
 
 export const TasksTab = ({ project }: TasksTabProps) => {
+  const t = useT()
   const [showAddModal, setShowAddModal] = React.useState(false)
   const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
   const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
@@ -112,31 +115,31 @@ export const TasksTab = ({ project }: TasksTabProps) => {
     )
   }
 
-  const todoTasks = tasks.filter(t => t.status !== 'done')
-  const doneTasks = tasks.filter(t => t.status === 'done')
+  const todoTasks = tasks.filter(task => task.status !== 'done')
+  const doneTasks = tasks.filter(task => task.status === 'done')
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px 16px' }}>
       {tasks.length === 0 ? (
         <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5 }}>
-          タスクはありません
+          {t('No tasks')}
         </div>
       ) : (
         <>
           {todoTasks.length > 0 && (
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', padding: '4px 0 6px', letterSpacing: '0.04em' }}>
-                未完了 ({todoTasks.length})
+                {t('Incomplete ({count})', { count: todoTasks.length })}
               </div>
-              {todoTasks.map(t => (
-                <div key={t.id} style={{
+              {todoTasks.map(task => (
+                <div key={task.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '8px 4px', borderBottom: '1px solid var(--divider)',
-                  opacity: togglingId === t.id ? 0.5 : 1, transition: 'opacity .15s',
+                  opacity: togglingId === task.id ? 0.5 : 1, transition: 'opacity .15s',
                 }}>
                   <button
-                    onClick={() => handleToggle(t)}
-                    disabled={togglingId === t.id}
+                    onClick={() => handleToggle(task)}
+                    disabled={togglingId === task.id}
                     style={{
                       width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
                       border: '1.5px solid var(--border-2)', background: 'transparent',
@@ -146,21 +149,21 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)' }}
                   />
-                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>{formatTaskTitleForDisplay(t.title)}</span>
-                  {t.priority && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: PRIORITY_COLOR[t.priority], padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)' }}>
-                      {PRIORITY_LABEL[t.priority]}
+                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>{formatTaskTitleForDisplay(task.title)}</span>
+                  {task.priority && (
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: PRIORITY_COLOR[task.priority], padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)' }}>
+                      {t(PRIORITY_LABEL[task.priority] ?? task.priority)}
                     </span>
                   )}
-                  {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
-                  {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
+                  {task.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
+                  {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
-                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
                       // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-                      ...(t.isLinkedToMessage
+                      ...(task.isLinkedToMessage
                         ? []
-                        : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') }]),
+                        : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') }]),
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -171,17 +174,17 @@ export const TasksTab = ({ project }: TasksTabProps) => {
           {doneTasks.length > 0 && (
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', padding: '14px 0 6px', letterSpacing: '0.04em' }}>
-                完了 ({doneTasks.length})
+                {t('Done ({count})', { count: doneTasks.length })}
               </div>
-              {doneTasks.map(t => (
-                <div key={t.id} style={{
+              {doneTasks.map(task => (
+                <div key={task.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '8px 4px', borderBottom: '1px solid var(--divider)',
-                  opacity: togglingId === t.id ? 0.5 : 1, transition: 'opacity .15s',
+                  opacity: togglingId === task.id ? 0.5 : 1, transition: 'opacity .15s',
                 }}>
                   <button
-                    onClick={() => handleToggle(t)}
-                    disabled={togglingId === t.id}
+                    onClick={() => handleToggle(task)}
+                    disabled={togglingId === task.id}
                     style={{
                       width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
                       border: '1.5px solid var(--accent)', background: 'var(--accent)',
@@ -191,16 +194,16 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   >
                     <Icon name="check" size={10} strokeWidth={3} />
                   </button>
-                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{formatTaskTitleForDisplay(t.title)}</span>
-                  {t.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{t.dueDate.slice(5).replace('-', '/')}</span>}
-                  {t.assigneeName && <Avatar name={t.assigneeName} url={t.assigneeAvatarUrl} size={20} />}
+                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{formatTaskTitleForDisplay(task.title)}</span>
+                  {task.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
+                  {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
-                      { icon: 'edit', label: '編集', onSelect: () => openEditor(t, 'edit') },
+                      { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
                       // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-                      ...(t.isLinkedToMessage
+                      ...(task.isLinkedToMessage
                         ? []
-                        : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => openEditor(t, 'delete') }]),
+                        : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') }]),
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -220,7 +223,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
           fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         }}
       >
-        <Icon name="plus" size={13} /> タスクを追加
+        <Icon name="plus" size={13} /> {t('Add a task')}
       </button>
 
       {showAddModal && <AddTaskModal project={project} onClose={() => setShowAddModal(false)} />}

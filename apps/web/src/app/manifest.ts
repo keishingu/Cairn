@@ -3,7 +3,9 @@
 
 import type { MetadataRoute } from 'next'
 import { cookies } from 'next/headers'
+import { translate } from '@cairn/shared'
 import { ACCENT_PRESETS, DEFAULT_ACCENT_ID } from '@/lib/accent-presets'
+import { readRequestLocale } from '@/lib/i18n/request-locale'
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const cookieStore = await cookies()
@@ -13,11 +15,12 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const accent = ACCENT_PRESETS.find(p => p.id === accentCookie) ? accentCookie : DEFAULT_ACCENT_ID
   const theme  = themeCookie === 'light' ? 'light' : 'dark'
   const preset = ACCENT_PRESETS.find(p => p.id === accent)!
+  const { locale } = await readRequestLocale()
 
   return {
     name: 'Cairn',
     short_name: 'Cairn',
-    description: 'プロジェクト管理・チャット・カレンダーを統合したコラボレーションアプリ',
+    description: translate(locale, 'Chat, projects, and calendar in one place.'),
     start_url: '/chats',
     display: 'standalone',
     orientation: 'portrait',

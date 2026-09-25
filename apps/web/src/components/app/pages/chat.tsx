@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared, workspaceChannelDeleteCopy } from '@cairn/shared'
+import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
 import { usePathname, useRouter } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -118,20 +118,22 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
       <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 0' : '8px 0' }}>
         {!debouncedQuery ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            キーワードを入力してください
+            {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            検索中…
+            {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            「{debouncedQuery}」に一致するメッセージはありません
+            {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
             <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
-              {results.length} 件{results.length === 50 ? '以上' : ''}
+              {results.length === 50
+                ? t('{count} or more results', { count: results.length })
+                : t('{count} results', { count: results.length })}
             </div>
             {results.map(msg => (
               <div
@@ -208,20 +210,22 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {!debouncedQuery ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            キーワードを入力してください
+            {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            検索中…
+            {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            「{debouncedQuery}」に一致するメッセージはありません
+            {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
             <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
-              {results.length} 件{results.length === 50 ? '以上' : ''}
+              {results.length === 50
+                ? t('{count} or more results', { count: results.length })
+                : t('{count} results', { count: results.length })}
             </div>
             {results.map(msg => (
               <div
@@ -262,23 +266,24 @@ interface BookmarksPanelProps {
 }
 
 const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelProps) => {
+  const t = useT()
   const { data: bookmarks = [], isFetching } = useBookmarks(true)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
         <Icon name="bookmark" size={14} color="var(--accent)"/>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>ブックマーク</span>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Bookmarks')}</span>
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
           <Icon name="close" size={14}/>
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {isFetching && bookmarks.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
         ) : bookmarks.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            ブックマークしたメッセージはまだありません
+            {t('No bookmarked messages yet')}
           </div>
         ) : (
           bookmarks.map((msg: BookmarkDto) => (
@@ -316,6 +321,7 @@ let _pendingJump: { channelId: string; messageId: string } | null = null
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const router = useRouter()
   const pathname = usePathname()
   const queryClient = useQueryClient()
@@ -571,7 +577,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     patchMilestone.mutate(
       { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed } },
       {
-        onSuccess: () => toast.success(completed ? 'マイルストーンを完了にしました' : 'マイルストーンを未完了に戻しました'),
+        onSuccess: () => toast.success(completed ? t('Marked the milestone complete') : t('Marked the milestone incomplete')),
         onError: error => toast.error(error.message),
       },
     )
@@ -641,7 +647,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
 
   // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
-  const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
+  const memberLabel = isProject ? t('Project members') : isPrivate ? t('Channel members') : isDm ? t('Participants') : null
 
   const handleOpenProject = () => {
     if (currentChannel) {
@@ -725,23 +731,36 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   )
 
   const deletingWorkspaceChannelCopy = deletingWorkspaceChannel
-    ? workspaceChannelDeleteCopy({
-        name: deletingWorkspaceChannel.name,
-        isThread: deletingWorkspaceChannel.parentChannelId !== null,
-        childThreadCount: workspaceChannels.filter(channel => channel.parentChannelId === deletingWorkspaceChannel.id).length,
-      })
+    ? (() => {
+        const isThread = deletingWorkspaceChannel.parentChannelId !== null
+        const trimmed = deletingWorkspaceChannel.name?.trim() ?? ''
+        const name = trimmed || (isThread ? t('Untitled thread') : t('Untitled channel'))
+        const childThreadCount = workspaceChannels.filter(channel => channel.parentChannelId === deletingWorkspaceChannel.id).length
+        if (isThread) {
+          return {
+            title: t('Delete thread'),
+            message: t('Delete the thread "{name}". Messages and tasks will also be deleted. This cannot be undone.', { name }),
+          }
+        }
+        return {
+          title: t('Delete channel'),
+          message: childThreadCount > 0
+            ? t('Delete "{name}". Messages, tasks, and threads under it will also be deleted. This cannot be undone.', { name })
+            : t('Delete "{name}". Messages and tasks will also be deleted. This cannot be undone.', { name }),
+        }
+      })()
     : null
 
   const deleteWorkspaceChannelUI = (
     <ConfirmDialog
       open={deletingWorkspaceChannel !== null}
-      title={deletingWorkspaceChannelCopy?.title ?? 'チャンネルを削除'}
+      title={deletingWorkspaceChannelCopy?.title ?? t('Delete channel')}
       message={deletingWorkspaceChannelCopy?.message ?? ''}
       onConfirm={async () => {
         if (!deletingWorkspaceChannel) return
         const target = deletingWorkspaceChannel
         await deleteWorkspaceChannel.mutateAsync(target.id)
-        toast.success(target.parentChannelId ? 'スレッドを削除しました' : 'チャンネルを削除しました')
+        toast.success(target.parentChannelId ? t('Deleted the thread') : t('Deleted the channel'))
       }}
       onClose={() => setDeletingWorkspaceChannel(null)}
     />
@@ -763,7 +782,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader
-            title="チャット"
+            title={t('Chats')}
             right={
               <div style={{ display: 'flex', gap: 4 }}>
                 <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
@@ -795,7 +814,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
-          subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
+          subtitle={currentChannelMemberCount != null ? t('{count} participating', { count: currentChannelMemberCount }) : undefined}
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
@@ -805,7 +824,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   <Icon name="userPlus" size={16}/>
                 </button>
               )}
-              <button className="btn" onClick={() => setShowInfo(true)} aria-label="チャンネル情報">
+              <button className="btn" onClick={() => setShowInfo(true)} aria-label={t('Channel info')}>
                 <Icon name="info" size={18}/>
               </button>
             </div>
@@ -856,13 +875,13 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {deleteWorkspaceChannelUI}
       <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Chats')}</h2>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="btn"
               onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }}
               style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}
-              title="ブックマーク"
+              title={t('Bookmarks')}
             >
               <Icon name="bookmark" size={13}/>
             </button>
@@ -870,7 +889,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               className="btn"
               onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }}
               style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
-              title="全チャンネル検索"
+              title={t('Search all channels')}
             >
               <Icon name="search" size={13}/>
             </button>
@@ -888,11 +907,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
-                {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
-                {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
+                {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
+                {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
+                {isProject ? t('Participating members') : isDm ? t('Direct messages') : isPrivate ? t('Invite-only') : t('Workspace-wide channel')}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { Avatar, Icon, fieldInputStyle } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
 import { useChannelMembers } from '@/lib/chat/client'
+import { useT } from '@/components/locale-provider'
 
 interface AssigneeCandidate {
   userId: string
@@ -39,6 +40,7 @@ const labelStyle: React.CSSProperties = {
 // ワークスペース全体から担当者を検索・選択する。プロジェクト選択時はプロジェクト内メンバーを
 // 上部に優先表示し「プロジェクト内」ラベルを付ける。
 export const TaskAssigneeField = ({ value, onChange, projectId, channelId, channelIsPrivate = false, currentAssignee }: TaskAssigneeFieldProps) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [menuPosition, setMenuPosition] = React.useState<{
@@ -202,7 +204,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <label style={labelStyle}>担当者</label>
+      <label style={labelStyle}>{t('Assignee')}</label>
       <button
         ref={triggerRef}
         type="button"
@@ -224,7 +226,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
             </span>
           </>
         ) : (
-          <span style={{ flex: 1, color: 'var(--text-4)' }}>担当者を選択（任意）</span>
+          <span style={{ flex: 1, color: 'var(--text-4)' }}>{t('Select an assignee (optional)')}</span>
         )}
         <Icon name="chevDown" size={13} color="var(--text-3)" />
       </button>
@@ -251,7 +253,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="メンバーを検索..."
+              placeholder={t('Search members...')}
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               style={{ ...fieldInputStyle(false), padding: '7px 10px' }}
@@ -266,10 +268,10 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
               <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--card-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Icon name="x" size={11} color="var(--text-3)" />
               </span>
-              <span style={{ flex: 1 }}>担当者なし</span>
+              <span style={{ flex: 1 }}>{t('No assignee')}</span>
             </button>
             {filtered.length === 0 ? (
-              <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-4)' }}>該当するメンバーがいません</div>
+              <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('No matching members')}</div>
             ) : (
               filtered.map(c => (
                 <button
@@ -286,7 +288,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: 'var(--accent-text)',
                       background: 'var(--accent-soft)', padding: '2px 6px', borderRadius: 4, flexShrink: 0,
-                    }}>プロジェクト内</span>
+                    }}>{t('In this project')}</span>
                   )}
                 </button>
               ))

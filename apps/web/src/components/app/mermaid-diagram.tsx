@@ -6,6 +6,7 @@
 import React from 'react'
 import { useTheme } from 'next-themes'
 import { useAccentColor } from '@/components/accent-color-provider'
+import { useT } from '@/components/locale-provider'
 
 interface MermaidDiagramProps {
   definition: string
@@ -21,6 +22,7 @@ function readThemeColor(element: HTMLElement, property: string, fallback: string
 }
 
 export function MermaidDiagram({ definition }: MermaidDiagramProps) {
+  const t = useT()
   const { resolvedTheme } = useTheme()
   const { accentId } = useAccentColor()
   const diagramId = React.useId().replace(/:/g, '')
@@ -105,15 +107,15 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
       {state.svg ? (
         <div
           role="img"
-          aria-label="Mermaid図"
+          aria-label={t('Mermaid diagram')}
           style={{ width: '100%', minWidth: 0 }}
           dangerouslySetInnerHTML={{ __html: state.svg }}
         />
       ) : state.error ? (
         <div style={{ width: '100%' }}>
-          <div style={{ fontWeight: 600 }}>Mermaid図を表示できません</div>
+          <div style={{ fontWeight: 600 }}>{t('Could not display the Mermaid diagram')}</div>
           <details style={{ marginTop: 6, color: 'var(--text-3)' }}>
-            <summary style={{ cursor: 'pointer' }}>ソースを確認</summary>
+            <summary style={{ cursor: 'pointer' }}>{t('View source')}</summary>
             <pre
               style={{
                 margin: '6px 0 0',
@@ -127,7 +129,7 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
           </details>
         </div>
       ) : (
-        <span role="status">図を描画しています...</span>
+        <span role="status">{t('Rendering diagram...')}</span>
       )}
     </div>
   )

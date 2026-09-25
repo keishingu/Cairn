@@ -6,6 +6,7 @@ import { Platform, Text } from 'react-native'
 import Markdown, { MarkdownIt, type RenderRules } from 'react-native-markdown-display'
 import { matchMarkdownMention } from '../lib/mobile-chat-state'
 import type { ThemePalette } from '../lib/theme'
+import { useT } from './locale-provider'
 
 const markdownParser = MarkdownIt({ breaks: true, linkify: true, typographer: true })
 
@@ -78,6 +79,7 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   onLinkPress: (url: string) => boolean
   mentionNames?: Readonly<Record<string, string>>
 }) {
+  const t = useT()
   const rules = React.useMemo<RenderRules>(
     () => ({
       cairn_mention: (node, _children, _parents, styles, inheritedStyles = {}) => {
@@ -101,14 +103,14 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
               },
             ]}
           >
-            @{mentionNames?.[mention.userId] ?? mention.displayName ?? 'メンバー'}
+            @{mentionNames?.[mention.userId] ?? mention.displayName ?? t('Member')}
           </Text>
         )
       },
       // チャット画像は認証付き添付として別UIで描画する。外部URLを自動取得しない。
       image: () => null,
     }),
-    [mentionNames, palette.accentSoft, palette.accentText],
+    [mentionNames, palette.accentSoft, palette.accentText, t],
   )
   const markdownStyle = React.useMemo(
     () => ({

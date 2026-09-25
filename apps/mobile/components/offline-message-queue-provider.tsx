@@ -13,6 +13,7 @@ import {
   type QueuedMessage,
 } from '../lib/offline-message-queue'
 import { useSession } from '../lib/session-context'
+import { useT } from './locale-provider'
 
 interface QueueContextValue {
   ready: boolean
@@ -28,11 +29,12 @@ const QueueContext = React.createContext<QueueContextValue | null>(null)
 const STORAGE_PREFIX = 'cairn:offline-message-queue:v1:'
 const RETRY_INTERVAL_MS = 8_000
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : '送信できませんでした'
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
 }
 
 export function OfflineMessageQueueProvider({ children }: React.PropsWithChildren) {
+  const t = useT()
   const session = useSession()
   const networkState = useNetworkState()
   const canUseNetwork = shouldAttemptNetworkRequest(networkState)
@@ -85,7 +87,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
       .catch((error) => {
         if (cancelled) return
         console.warn('[offline-message-queue] 端末保存の読み込みに失敗しました:', error)
-        setRestoreError('未送信メッセージを端末から読み込めませんでした')
+        setRestoreError(t('Could not load unsent messages from this device'))
       })
     return () => {
       cancelled = true
@@ -118,7 +120,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             }),
           })
           if (!res.ok) {
-            const error = new Error(`送信に失敗しました (${res.status})`) as Error & {
+            const error = new Error(t('Could not send ({status})', { status: res.status })) as Error & {
               status: number
             }
             error.status = res.status
@@ -136,7 +138,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
                     ...message,
                     status: retryable ? 'waiting' : 'failed',
                     attempts: message.attempts + 1,
-                    lastError: errorMessage(error),
+                    lastError: errorMessage(error, t('Could not send')),
                   }
                 : message,
             ),
@@ -148,7 +150,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     } finally {
       flushingRef.current = false
     }
-  }, [canUseNetwork, qc, ready, storageKey, updateMessages])
+  }, [canUseNetwork, qc, ready, storageKey, t, updateMessages])
 
   React.useEffect(() => {
     if (!ready) return

@@ -10,12 +10,12 @@ export const PROFILE_ATTRIBUTE_COLOR_OPTIONS: Array<{
   text: string
   swatch: string
 }> = [
-  { id: 'slate', label: 'グレー', background: 'var(--card-2)', text: 'var(--text-3)', swatch: 'var(--text-3)' },
-  { id: 'blue', label: 'ブルー', background: 'var(--blue-soft)', text: 'var(--blue-text)', swatch: 'var(--blue)' },
-  { id: 'emerald', label: 'グリーン', background: 'var(--emerald-soft)', text: 'var(--emerald-text)', swatch: 'var(--emerald)' },
-  { id: 'amber', label: 'イエロー', background: 'var(--amber-soft)', text: 'var(--amber-text)', swatch: 'var(--amber)' },
-  { id: 'violet', label: 'パープル', background: 'var(--violet-soft)', text: 'var(--violet-text)', swatch: 'var(--violet)' },
-  { id: 'rose', label: 'レッド', background: 'var(--rose-soft)', text: 'var(--rose-text)', swatch: 'var(--rose)' },
+  { id: 'slate', label: 'Gray', background: 'var(--card-2)', text: 'var(--text-3)', swatch: 'var(--text-3)' },
+  { id: 'blue', label: 'Blue', background: 'var(--blue-soft)', text: 'var(--blue-text)', swatch: 'var(--blue)' },
+  { id: 'emerald', label: 'Green', background: 'var(--emerald-soft)', text: 'var(--emerald-text)', swatch: 'var(--emerald)' },
+  { id: 'amber', label: 'Yellow', background: 'var(--amber-soft)', text: 'var(--amber-text)', swatch: 'var(--amber)' },
+  { id: 'violet', label: 'Purple', background: 'var(--violet-soft)', text: 'var(--violet-text)', swatch: 'var(--violet)' },
+  { id: 'rose', label: 'Red', background: 'var(--rose-soft)', text: 'var(--rose-text)', swatch: 'var(--rose)' },
 ]
 
 const COLOR_STYLES = Object.fromEntries(

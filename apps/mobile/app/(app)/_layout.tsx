@@ -10,6 +10,7 @@ import { AppearanceProvider } from '../../components/appearance-provider'
 import { RealtimeProvider } from '../../components/realtime-provider'
 import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
+import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 
@@ -53,15 +54,23 @@ async function registerPushToken() {
 function routeFromNotificationResponse(
   response: Notifications.NotificationResponse,
   router: ReturnType<typeof useRouter>,
+  t: ReturnType<typeof useT>,
 ) {
   const { url, workspaceId } = readPushNotificationData(response.notification.request.content.data)
   const destination = routeFromPushUrl(url)
   if (!destination) return
-  void followNotification(router, destination, workspaceId ? { workspaceId } : undefined)
+  void followNotification(router, destination, {
+    ...(workspaceId ? { workspaceId } : {}),
+    t,
+  })
 }
 
 export default function AppLayout() {
   const router = useRouter()
+  const t = useT()
+  // 言語が決まってからリスナーを張り直すと、起動時の通知で二重に遷移する。
+  const tRef = React.useRef(t)
+  tRef.current = t
 
   React.useEffect(() => {
     void registerPushToken()
@@ -70,12 +79,13 @@ export default function AppLayout() {
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
   React.useEffect(() => {
     if (!supportsNotifications) return
+    const route = (response: Notifications.NotificationResponse) => {
+      routeFromNotificationResponse(response, router, tRef.current)
+    }
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) routeFromNotificationResponse(response, router)
+      if (response) route(response)
     })
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      routeFromNotificationResponse(response, router)
-    })
+    const sub = Notifications.addNotificationResponseReceivedListener(route)
     return () => sub.remove()
   }, [router])
 

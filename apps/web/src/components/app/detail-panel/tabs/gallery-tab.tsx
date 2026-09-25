@@ -10,6 +10,9 @@ import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/locale-provider'
+
+type Translate = (message: string, values?: Record<string, string | number>) => string
 
 interface UploadState {
   total: number
@@ -17,7 +20,7 @@ interface UploadState {
   errors: string[]
 }
 
-async function uploadFile(projectId: string, original: File): Promise<void> {
+async function uploadFile(projectId: string, original: File, t: Translate): Promise<void> {
   const {
     file: derivedFile,
     originalFile,
@@ -35,7 +38,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   })
   if (!urlRes.ok) {
     const data = (await urlRes.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `${original.name} のアップロード準備に失敗しました`)
+    throw new Error(data.error ?? t('Could not prepare the upload for {name}', { name: original.name }))
   }
 
   const signed = (await urlRes.json()) as {
@@ -58,7 +61,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   ]
   const uploadResults = await Promise.all(uploads)
   const uploadError = uploadResults.find((result) => result.error)?.error
-  if (uploadError) throw new Error(`${original.name} のアップロードに失敗しました`)
+  if (uploadError) throw new Error(t('Could not upload {name}', { name: original.name }))
 
   const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/finalize`, {
     method: 'POST',
@@ -72,11 +75,12 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `${original.name} のアップロードに失敗しました`)
+    throw new Error(data.error ?? t('Could not upload {name}', { name: original.name }))
   }
 }
 
 export const GalleryTab = ({ projectId }: { projectId: string }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
@@ -105,7 +109,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
     const results = await Promise.allSettled(
       files.map((file) =>
-        uploadFile(projectId, file).then(() => {
+        uploadFile(projectId, file, t).then(() => {
           setUploadState((s) => (s ? { ...s, done: s.done + 1 } : s))
         }),
       ),
@@ -113,7 +117,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
     const errors = results
       .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : 'アップロードに失敗しました'))
+      .map((r) => (r.reason instanceof Error ? r.reason.message : t('Could not upload')))
 
     setUploadState((s) => (s ? { ...s, errors } : s))
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
@@ -127,7 +131,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
     const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/${itemId}`, {
       method: 'DELETE',
     })
-    if (!res.ok) throw new Error('削除に失敗しました')
+    if (!res.ok) throw new Error(t('Could not delete'))
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
   }
 
@@ -154,7 +158,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           fontSize: 13,
         }}
       >
-        読み込み中...
+        {t('Loading…')}
       </div>
     )
   }
@@ -171,7 +175,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           fontSize: 13,
         }}
       >
-        ギャラリーの取得に失敗しました
+        {t('Could not load the gallery')}
       </div>
     )
   }
@@ -209,8 +213,8 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           >
             <Icon name="plus" size={13} />
             {isUploading
-              ? `${uploadState.done}/${uploadState.total} 枚アップロード中...`
-              : '写真を追加'}
+              ? t('Uploading {done}/{total} photos...', { done: uploadState.done, total: uploadState.total })
+              : t('Add photos')}
           </button>
         </div>
 
@@ -245,7 +249,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                 fontFamily: 'inherit',
               }}
             >
-              閉じる
+              {t('Close')}
             </button>
           </div>
         )}
@@ -263,7 +267,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             }}
           >
             <Icon name="image" size={28} />
-            <span style={{ fontSize: 13 }}>まだ写真がありません</span>
+            <span style={{ fontSize: 13 }}>{t('No photos yet')}</span>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
@@ -303,7 +307,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                     actions={[
                       {
                         icon: 'trash',
-                        label: '削除',
+                        label: t('Delete'),
                         danger: true,
                         onSelect: () => setDeleteTargetId(item.id),
                       },
@@ -318,8 +322,8 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
       <ConfirmDialog
         open={deleteTargetId !== null}
-        title="写真を削除"
-        message="この写真を削除しますか？この操作は取り消せません。"
+        title={t('Delete photo')}
+        message={t('Delete this photo? This cannot be undone.')}
         onConfirm={async () => {
           if (deleteTargetId) await deleteItem(deleteTargetId)
         }}

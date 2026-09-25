@@ -1,3 +1,4 @@
+import { translate } from '@cairn/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   projectChannelsQueryKey,
@@ -27,6 +28,9 @@ vi.mock('./workspace-selection', () => ({
 vi.mock('./api-fetch', () => ({
   apiFetch: mockApiFetch,
 }))
+
+const t = (message: string, values?: Record<string, string | number>) =>
+  translate('ja', message, values)
 
 const projectChannel = {
   channelId: 'project-channel',
@@ -79,7 +83,7 @@ describe('通知からチャットを開く', () => {
   it('キャッシュが空でも一覧を取得してからチャンネルを開く', async () => {
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'project-channel' })
+    await followNotification({ push }, { kind: 'channel', channelId: 'project-channel' }, { t })
 
     expect(mockApiFetch).toHaveBeenCalledWith('/api/projects/channels')
     expect(mockApiFetch).toHaveBeenCalledWith('/api/workspaces/channels')
@@ -100,7 +104,7 @@ describe('通知からチャットを開く', () => {
     queryClient.setQueryData(workspaceChannelsQueryKey, [])
     queryClient.setQueryData(workspaceDmsQueryKey, [])
 
-    await followNotification({ push: vi.fn() }, { kind: 'channel', channelId: 'project-channel' })
+    await followNotification({ push: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t })
 
     expect(mockApiFetch).not.toHaveBeenCalled()
   })
@@ -124,7 +128,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'channel', channelId: 'project-channel' },
-      { workspaceId: 'ws-b' },
+      { workspaceId: 'ws-b', t },
     )
 
     expect(calls.indexOf('select')).toBeGreaterThan(calls.indexOf('/api/workspaces/list'))
@@ -148,7 +152,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-x' },
+      { workspaceId: 'ws-x', t },
     )
 
     expect(mockSetSelectedWorkspaceId).not.toHaveBeenCalled()
@@ -163,7 +167,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-b' },
+      { workspaceId: 'ws-b', t },
     )
 
     expect(mockSetSelectedWorkspaceId).not.toHaveBeenCalled()
@@ -177,7 +181,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-b' },
+      { workspaceId: 'ws-b', t },
     )
 
     expect(mockApiFetch).not.toHaveBeenCalledWith('/api/workspaces/list')
@@ -189,7 +193,7 @@ describe('通知からチャットを開く', () => {
     mockApiFetch.mockRejectedValue(new Error('offline'))
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'missing' })
+    await followNotification({ push }, { kind: 'channel', channelId: 'missing' }, { t })
 
     expect(push).toHaveBeenCalledWith({
       pathname: '/chats/[channelId]',

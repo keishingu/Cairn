@@ -8,6 +8,7 @@ import type {
   CreditPlacementDto,
   PendingCreditDto,
 } from '@/app/api/billing/contributions/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // docs/prototypes/stone-stacking-sandbox.html の検証済み初期値。
@@ -339,6 +340,7 @@ function StoneThumbnail({
   onClick: () => void
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
 }) {
+  const t = useT()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const spec = stoneSpecForLedgerId(ledgerId)
 
@@ -348,7 +350,7 @@ function StoneThumbnail({
 
   return (
     <button
-      aria-label="つまんで積む"
+      aria-label={t('Grab and stack')}
       className="credit-placement-board__tray-stone"
       disabled={disabled}
       onClick={onClick}
@@ -363,7 +365,7 @@ function StoneThumbnail({
 async function fetchContributions(): Promise<CreditContributionsDto> {
   const response = await fetchWithAuth('/api/billing/contributions')
   const result = (await response.json().catch(() => null)) as { error?: string } | null
-  if (!response.ok) throw new Error(result?.error ?? '積み石の取得に失敗しました')
+  if (!response.ok) throw new Error(result?.error ?? 'Could not load the stone stack')
   return result as CreditContributionsDto
 }
 
@@ -376,6 +378,9 @@ export function CreditPlacementBoard({
 }: {
   workspaceState?: WorkspaceState
 }) {
+  const t = useT()
+  const tRef = useRef(t)
+  tRef.current = t
   const queryClient = useQueryClient()
   const stageWrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -625,13 +630,13 @@ export function CreditPlacementBoard({
           if (shouldRefreshContributionsAfterError(response.status)) {
             await queryClient.invalidateQueries({ queryKey: ['credit-contributions'] })
           }
-          throw new Error(result.error ?? '積み石を保存できませんでした')
+          throw new Error(result.error ?? 'Could not save the stone')
         }
         await queryClient.invalidateQueries({ queryKey: ['credit-contributions'] })
       } catch (cause) {
         Matter.Composite.remove(engine.world, body)
-        setActionError(cause instanceof Error ? cause.message : '積み石を保存できませんでした')
-        showToast('石は手元に戻った')
+        setActionError(cause instanceof Error ? cause.message : 'Could not save the stone')
+        showToast(tRef.current('The stone returned to your hand'))
       } finally {
         activeRef.current = null
         setIsHolding(false)
@@ -759,8 +764,8 @@ export function CreditPlacementBoard({
         release()
         activeRef.current = null
         setIsHolding(false)
-        setActionError('石が足場の外へ落ちました。もう一度置いてください。')
-        showToast('石は手元に戻った')
+        setActionError('The stone fell off the platform. Place it again.')
+        showToast(tRef.current('The stone returned to your hand'))
         return
       }
       const stable = body.speed < 0.18 && body.angularSpeed < 0.02
@@ -1004,23 +1009,23 @@ export function CreditPlacementBoard({
       `}</style>
       <header className="credit-placement-board__header">
         <div>
-          <h2 className="credit-placement-board__title">みんなで積む</h2>
+          <h2 className="credit-placement-board__title">{t('Stack together')}</h2>
           <p className="credit-placement-board__subtitle">
-            確定した月次付与・追加購入を、一つずつワークスペースに残します。
+            {t('Keep each confirmed monthly grant and extra purchase in the workspace.')}
           </p>
         </div>
         <div className="credit-placement-board__count">
-          積み済み {data?.placements.length ?? 0} 個
+          {t('{count} stacked', { count: data?.placements.length ?? 0 })}
         </div>
       </header>
 
       {isLoading ? (
         <div className="credit-placement-board__footer">
-          <span className="credit-placement-board__status">積み石を読み込み中…</span>
+          <span className="credit-placement-board__status">{t('Loading the stone stack...')}</span>
         </div>
       ) : isError ? (
         <p className="credit-placement-board__error">
-          ⚠ {error instanceof Error ? error.message : '積み石を取得できませんでした'}
+          ⚠ {error instanceof Error ? t(error.message) : t('Could not fetch the stones')}
         </p>
       ) : data?.billingEnabled ? (
         <>
@@ -1029,16 +1034,16 @@ export function CreditPlacementBoard({
             ref={stageWrapRef}
             style={{ height: stageHeight }}
           >
-            <canvas aria-label="石積みの実験場" ref={canvasRef} role="application" />
+            <canvas aria-label={t('Stone stacking yard')} ref={canvasRef} role="application" />
             <div className="credit-placement-board__hud">
               <div>
-                <span className="credit-placement-board__stat-key">積んだ石</span>
+                <span className="credit-placement-board__stat-key">{t('Stones stacked')}</span>
                 <span className="credit-placement-board__stat-value" ref={hudCountRef}>
                   0
                 </span>
               </div>
               <div>
-                <span className="credit-placement-board__stat-key">高さ</span>
+                <span className="credit-placement-board__stat-key">{t('Height')}</span>
                 <span className="credit-placement-board__stat-value">
                   <span ref={hudHeightRef}>0</span>
                   <span className="credit-placement-board__stat-unit">cm</span>
@@ -1046,12 +1051,12 @@ export function CreditPlacementBoard({
               </div>
             </div>
             <p className="credit-placement-board__hint">
-              手元の石をつまんで、好きな場所へ。
+              {t('Grab a stone from your hand and place it anywhere.')}
               <br />
-              転げ落ちても手元に戻るだけ — 消えません。
+              {t('If it rolls away, it only returns to your hand — it is not lost.')}
             </p>
             <div className="credit-placement-board__tray">
-              <span className="credit-placement-board__tray-label">手元の石</span>
+              <span className="credit-placement-board__tray-label">{t('Stones in hand')}</span>
               <div className="credit-placement-board__tray-items">
                 {visiblePending.slice(0, 10).map((pendingItem) => (
                   <StoneThumbnail
@@ -1070,7 +1075,7 @@ export function CreditPlacementBoard({
                   </span>
                 )}
                 {visiblePending.length === 0 && (
-                  <span className="credit-placement-board__tray-more">なし</span>
+                  <span className="credit-placement-board__tray-more">{t('None')}</span>
                 )}
               </div>
             </div>
@@ -1084,16 +1089,16 @@ export function CreditPlacementBoard({
           <div className="credit-placement-board__footer">
             <span className="credit-placement-board__status">
               {isSaving
-                ? '安定した位置を保存しています…'
+                ? t('Saving a stable position...')
                 : visiblePending.length
-                  ? `未積みの石: ${visiblePending.length} 個`
-                  : 'いまは未積みの石がありません'}
+                  ? t('Unstacked stones: {count}', { count: visiblePending.length })
+                  : t('There are no unstacked stones right now')}
             </span>
           </div>
           <p className="credit-placement-board__note">
-            石をドラッグして置くと、静止後に保存されます。足場の外へ落ちた石は手元に戻ります。
+            {t('Drag a stone into place to save it after it settles. Stones that fall off the platform return to your hand.')}
           </p>
-          {actionError && <p className="credit-placement-board__error">⚠ {actionError}</p>}
+          {actionError && <p className="credit-placement-board__error">⚠ {t(actionError)}</p>}
         </>
       ) : null}
     </section>

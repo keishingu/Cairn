@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   acceptLanguageFromTags,
   localeFromAcceptLanguage,
+  formatAppDate,
   parseLocalePreference,
   readLocalePreferenceCookie,
   resolveLocale,
@@ -30,6 +31,14 @@ describe('acceptLanguageFromTags', () => {
     expect(localeFromAcceptLanguage(acceptLanguageFromTags(['ja-JP', 'en-US']))).toBe('ja')
     expect(acceptLanguageFromTags([])).toBeNull()
     expect(acceptLanguageFromTags(null)).toBeNull()
+  })
+})
+
+describe('formatAppDate', () => {
+  it('表示言語の日付形式を使う', () => {
+    const value = new Date(2026, 8, 25)
+    expect(formatAppDate('ja', value)).toBe(value.toLocaleDateString('ja-JP'))
+    expect(formatAppDate('en', value)).toBe(value.toLocaleDateString('en-US'))
   })
 })
 

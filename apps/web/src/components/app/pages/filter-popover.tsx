@@ -2,6 +2,7 @@
 
 import React from 'react'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import { useT } from '@/components/locale-provider'
 
 export interface FilterPopoverProps {
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -24,6 +25,7 @@ export const FilterPopover = ({
   allMembers = [], selectedMembers = [], onChangeMembers,
   onClose,
 }: FilterPopoverProps) => {
+  const t = useT()
   const ref = React.useRef<HTMLDivElement>(null)
   const totalItems = allStatuses.length + allMembers.length
   const [focusIndex, setFocusIndex] = React.useState(0)
@@ -78,7 +80,7 @@ export const FilterPopover = ({
       borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-        ステータス
+        {t('Status')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {allStatuses.map((s, i) => {
@@ -107,7 +109,7 @@ export const FilterPopover = ({
       {allMembers.length > 0 && (
         <>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
-            参加者
+            {t('Participants')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {allMembers.map((name, i) => {
@@ -149,7 +151,7 @@ export const FilterPopover = ({
           background: 'transparent', color: 'var(--text-3)',
           fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
         }}>
-          すべてクリア
+          {t('Clear all')}
         </button>
       )}
     </div>

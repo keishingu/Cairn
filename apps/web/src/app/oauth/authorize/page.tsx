@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { translate } from '@cairn/shared'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { activeWorkspaceMembers, db, workspaces } from '@cairn/db'
@@ -8,13 +9,18 @@ import { eq } from 'drizzle-orm'
 import { getAuthUser, WORKSPACE_COOKIE } from '@/lib/get-auth-context'
 import { getOAuthIssuer } from '@/lib/mcp-oauth'
 import { validateOAuthAuthorizationRequest } from '@/lib/mcp-oauth-authorization'
+import { readRequestLocale } from '@/lib/i18n/request-locale'
 import { finishOAuthAuthorization } from './actions'
+
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
 
 export default async function OAuthAuthorizePage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const { locale } = await readRequestLocale()
+  const t: TranslateFn = (message, values) => translate(locale, message, values)
   const rawParams = await searchParams
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(rawParams)) {
@@ -38,7 +44,7 @@ export default async function OAuthAuthorizePage({
       `${getOAuthIssuer(request)}/api/mcp`,
     )
   } catch (validationError) {
-    return <AuthorizationError message={(validationError as Error).message} />
+    return <AuthorizationError message={(validationError as Error).message} t={t} />
   }
 
   const memberships = await db
@@ -56,10 +62,10 @@ export default async function OAuthAuthorizePage({
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em' }}>Cairn</div>
-        <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>MCP接続の認可</p>
+        <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>{t('MCP connection authorization')}</p>
 
         <div style={summaryStyle}>
-          <div style={labelStyle}>接続元</div>
+          <div style={labelStyle}>{t('Connected from')}</div>
           <div style={{ fontWeight: 700 }}>{authorization.clientName}</div>
           <div style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
             {new URL(authorization.redirectUri).hostname}
@@ -74,9 +80,7 @@ export default async function OAuthAuthorizePage({
           <label
             style={{ ...labelStyle, display: 'block', marginBottom: 6 }}
             htmlFor="workspace_id"
-          >
-            対象ワークスペース
-          </label>
+          >{t('Target workspace')}</label>
           <select
             id="workspace_id"
             name="workspace_id"
@@ -92,15 +96,15 @@ export default async function OAuthAuthorizePage({
                 disabled={membership.role === 'guest'}
               >
                 {membership.name}
-                {membership.role === 'guest' ? '（ゲストは利用不可）' : ''}
+                {membership.role === 'guest' ? t('(Guests cannot use this)') : ''}
               </option>
             ))}
           </select>
 
-          <div style={{ ...labelStyle, marginBottom: 8 }}>要求される権限</div>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>{t('Requested permissions')}</div>
           <div style={summaryStyle}>
             <div style={{ fontWeight: 700 }}>
-              {authorization.scope === 'write' ? '読み取り・書き込み' : '読み取り'}
+              {authorization.scope === 'write' ? t('Read and write access') : t('Read')}
             </div>
             <ul
               style={{
@@ -111,32 +115,24 @@ export default async function OAuthAuthorizePage({
                 lineHeight: 1.7,
               }}
             >
-              <li>プロジェクト、タスク、会話、ファイル本文の閲覧</li>
-              {authorization.scope === 'write' && <li>タスクの作成・完了、メッセージの投稿</li>}
+              <li>{t('View projects, tasks, conversations, and file contents')}</li>
+              {authorization.scope === 'write' && <li>{t('Create and complete tasks, and post messages')}</li>}
             </ul>
           </div>
 
           {!defaultWorkspace && (
-            <div style={{ color: 'var(--red-text)', fontSize: 12.5, marginBottom: 12 }}>
-              ゲストはMCP OAuth接続を認可できません。member以上のワークスペースが必要です。
-            </div>
+            <div style={{ color: 'var(--red-text)', fontSize: 12.5, marginBottom: 12 }}>{t('Guests cannot authorize an MCP OAuth connection. A member workspace or higher is required.')}</div>
           )}
-          <p style={{ color: 'var(--text-4)', fontSize: 11.5, lineHeight: 1.6 }}>
-            接続後も、現在のCairnロールと各ツールの権限が毎回適用されます。設定の「連携」からいつでも取り消せます。
-          </p>
+          <p style={{ color: 'var(--text-4)', fontSize: 11.5, lineHeight: 1.6 }}>{t('After connecting, your current Cairn role and each tool permission still apply. You can revoke access anytime from Settings, Integrations.')}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-            <button className="btn btn-ghost" type="submit" name="decision" value="deny">
-              キャンセル
-            </button>
+            <button className="btn btn-ghost" type="submit" name="decision" value="deny">{t('Cancel')}</button>
             <button
               className="btn btn-primary"
               type="submit"
               name="decision"
               value="approve"
               disabled={!defaultWorkspace}
-            >
-              接続を許可
-            </button>
+            >{t('Allow connection')}</button>
           </div>
         </form>
       </div>
@@ -144,15 +140,13 @@ export default async function OAuthAuthorizePage({
   )
 }
 
-function AuthorizationError({ message }: { message: string }) {
+function AuthorizationError({ message, t }: { message: string; t: TranslateFn }) {
   return (
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
-        <h1 style={{ fontSize: 18, margin: 0 }}>OAuthリクエストを確認できません</h1>
+        <h1 style={{ fontSize: 18, margin: 0 }}>{t('Could not verify the OAuth request')}</h1>
         <p style={{ color: 'var(--red-text)', fontSize: 13 }}>{message}</p>
-        <p style={{ color: 'var(--text-3)', fontSize: 12 }}>
-          接続元へ戻り、もう一度お試しください。
-        </p>
+        <p style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('Return to the app and try again.')}</p>
       </div>
     </main>
   )

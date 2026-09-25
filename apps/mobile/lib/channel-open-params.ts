@@ -1,3 +1,5 @@
+type Translate = (message: string, values?: Record<string, string | number>) => string
+
 export interface ChannelListItem {
   channelId: string
   channelName: string
@@ -32,6 +34,7 @@ export function resolveChannelOpenParams(
     workspace?: readonly WorkspaceChannelListItem[]
     dms?: readonly DmListItem[]
   },
+  t: Translate,
 ): ChannelOpenParams {
   const project = lists.projects?.find((channel) => channel.channelId === channelId)
   if (project) {
@@ -47,7 +50,7 @@ export function resolveChannelOpenParams(
   if (workspace) {
     return {
       channelId,
-      channelName: workspace.name ?? 'チャンネル',
+      channelName: workspace.name ?? t('Channels'),
       channelType: 'workspace',
       isPrivate: workspace.isPrivate ? '1' : '0',
     }

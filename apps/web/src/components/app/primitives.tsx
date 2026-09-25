@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
 
 const PHOTO_IDS = [
@@ -221,16 +222,19 @@ interface ArchivedBadgeProps {
   onDark?: boolean
 }
 
-export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => {
+  const t = useT()
+  return (
   <span
     className="chip"
     style={onDark
       ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
       : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
   >
-    アーカイブ
+    {t('Archive')}
   </span>
-)
+  )
+}
 
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
@@ -320,11 +324,13 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+export const TopBarSearch = ({ value, onChange, placeholder }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
 }) => {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('Search…')
   const inputRef = React.useRef<HTMLInputElement>(null)
   // ⌥S: 検索フォーカス
   useCommand('ctx.searchFocus', () => inputRef.current?.focus())
@@ -335,7 +341,7 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         ref={inputRef}
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
@@ -353,7 +359,9 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
 }
 
 // ─── Placeholder page ─────────────────────────────────────────────
-export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
+export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => {
+  const t = useT()
+  return (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
     <div style={{ maxWidth: 360, textAlign: 'center' }}>
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -361,11 +369,12 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
       </div>
       <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
-        このセクションはサイドバーから他のページへ移動できることを示すプレースホルダーです。実装時にはここに専用のビューが表示されます。
+        {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
     </div>
   </div>
-)
+  )
+}
 
 // ─── Modal ────────────────────────────────────────────────────────
 export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
@@ -385,7 +394,9 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
 
 export const ModalHeader = ({ icon, title, subtitle, onClose }: {
   icon?: string; title: string; subtitle?: string; onClose: () => void
-}) => (
+}) => {
+  const t = useT()
+  return (
   <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
     {icon && (
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -396,14 +407,15 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" aria-label="閉じる" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    <button type="button" aria-label={t('Close')} onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
       <Icon name="close" size={16}/>
     </button>
   </header>
-)
+  )
+}
 
 // ─── Form field ───────────────────────────────────────────────────
 interface FieldProps {

@@ -13,6 +13,7 @@ import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { PostHogProvider } from '@/components/posthog-provider'
+import { translate } from '@cairn/shared'
 import { readRequestLocale } from '@/lib/i18n/request-locale'
 import './globals.css'
 
@@ -23,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const { locale } = await readRequestLocale()
   return {
   title: 'Cairn',
-  description: locale === 'en' ? 'Chat, projects, calendar, files, gallery, and AI in one place.' : 'プロジェクト管理・チャット・カレンダー・ギャラリー・AIを統合したコラボレーションアプリ',
+  description: translate(locale, 'Chat, projects, calendar, files, gallery, and AI in one place.'),
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

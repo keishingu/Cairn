@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { AccentId, AppearanceTheme, CalendarWeekStart, LocalePreference } from '@cairn/shared'
 import { fetchApiJson } from '../lib/fetch-api-json'
+import { useT } from '../components/locale-provider'
 import {
   fetchWorkspaceMemberships,
   workspaceListQueryKey,
@@ -28,26 +29,29 @@ export interface WorkspaceDto {
 export type WorkspaceListItemDto = WorkspaceMembership
 
 export function useMe(enabled = true) {
+  const t = useT()
   return useQuery({
     queryKey: ['me'],
-    queryFn: () => fetchApiJson<MeDto>('/api/me', 'ユーザー情報'),
+    queryFn: () => fetchApiJson<MeDto>('/api/me', t('Could not load account info ({status})')),
     staleTime: 60_000,
     enabled,
   })
 }
 
 export function useWorkspace() {
+  const t = useT()
   return useQuery({
     queryKey: ['workspace'],
-    queryFn: () => fetchApiJson<WorkspaceDto>('/api/workspaces', 'ワークスペース情報'),
+    queryFn: () => fetchApiJson<WorkspaceDto>('/api/workspaces', t('Could not load workspace info ({status})')),
     staleTime: 60_000,
   })
 }
 
 export function useWorkspaceList(enabled = true) {
+  const t = useT()
   return useQuery({
     queryKey: workspaceListQueryKey,
-    queryFn: fetchWorkspaceMemberships,
+    queryFn: () => fetchWorkspaceMemberships(t),
     staleTime: 60_000,
     enabled,
   })

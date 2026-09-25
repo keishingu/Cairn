@@ -204,7 +204,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                   <Text style={[styles.workspaceName, { color: palette.text }]} numberOfLines={1}>
                     {workspace?.name ?? '…'}
                   </Text>
-                  <Text style={[styles.subtext, { color: palette.text3 }]}>ワークスペース</Text>
+                  <Text style={[styles.subtext, { color: palette.text3 }]}>{t('Workspace')}</Text>
                 </View>
               </View>
               <View
@@ -260,7 +260,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
               onPress={() => void signOut()}
             >
               <Ionicons name="log-out-outline" size={19} color={palette.redText} />
-              <Text style={[styles.menuLabel, { color: palette.redText }]}>ログアウト</Text>
+              <Text style={[styles.menuLabel, { color: palette.redText }]}>{t('Log out')}</Text>
               <Ionicons name="chevron-forward" size={15} color={palette.redText} />
             </TouchableOpacity>
           </View>

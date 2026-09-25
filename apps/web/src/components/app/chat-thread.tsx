@@ -103,25 +103,27 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
-export async function copyMessageContent(content: string): Promise<boolean> {
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
+
+export async function copyMessageContent(content: string, t: TranslateFn): Promise<boolean> {
   if (!content.length) return false
   try {
     await navigator.clipboard.writeText(content)
-    toast.success('メッセージをコピーしました')
+    toast.success(t('Copied the message'))
     return true
   } catch {
-    toast.error('メッセージをコピーできませんでした')
+    toast.error(t('Could not copy the message'))
     return false
   }
 }
 
-export async function copyMessageLink(url: string): Promise<boolean> {
+export async function copyMessageLink(url: string, t: TranslateFn): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(url)
-    toast.success('リンクをコピーしました')
+    toast.success(t('Copied the link'))
     return true
   } catch {
-    toast.error('リンクをコピーできませんでした')
+    toast.error(t('Could not copy the link'))
     return false
   }
 }
@@ -176,6 +178,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   isMobile?: boolean
   focused?: boolean
 }) {
+  const t = useT()
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
@@ -245,24 +248,24 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // ホバーツールバー（モバイルは名前行の右端に常時表示、PC はホバー時に本文へ重ねる）。
   // モバイルで本文列の横に置くと、右上の導線のために本文まで狭くなる。
   const handleCopy = React.useCallback(() => {
-    void copyMessageContent(content)
-  }, [content])
+    void copyMessageContent(content, t)
+  }, [content, t])
   const reportMessage = () => {
-    const choice = window.prompt('報告理由を選択してください\n1: 嫌がらせ・いじめ\n2: 差別的または攻撃的\n3: 性的または不適切\n4: 暴力・脅迫\n5: スパム\n6: その他')
+    const choice = window.prompt(t('Choose a report reason\n1: Harassment or bullying\n2: Discriminatory or offensive\n3: Sexual or inappropriate\n4: Violence or threats\n5: Spam\n6: Other'))
     const reasons = ['harassment', 'discriminatory', 'sexual', 'violence', 'spam', 'other'] as const
     const reason = choice ? reasons[Number(choice) - 1] : undefined
     if (!reason) return
-    const details = reason === 'other' ? window.prompt('補足説明を入力してください')?.trim() : undefined
+    const details = reason === 'other' ? window.prompt(t('Enter additional details'))?.trim() : undefined
     if (reason === 'other' && !details) return
     void fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
-      .then(res => res.ok ? toast.success('メッセージを報告しました') : res.json().then(data => toast.error(data.error ?? '報告に失敗しました')))
-      .catch(() => toast.error('報告に失敗しました'))
+      .then(res => res.ok ? toast.success(t('Reported the message')) : res.json().then(data => toast.error(data.error ?? t('Could not report the message'))))
+      .catch(() => toast.error(t('Could not report the message')))
   }
   const blockUser = () => {
-    if (!window.confirm(`${senderName} をブロックしますか？`)) return
+    if (!window.confirm(t('Block {name}?', { name: senderName }))) return
     void fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
-      .then(res => res.ok ? toast.success('ユーザーをブロックしました') : res.json().then(data => toast.error(data.error ?? 'ブロックに失敗しました')))
-      .catch(() => toast.error('ブロックに失敗しました'))
+      .then(res => res.ok ? toast.success(t('Blocked the user')) : res.json().then(data => toast.error(data.error ?? t('Could not block the user'))))
+      .catch(() => toast.error(t('Could not block the user')))
   }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
@@ -283,12 +286,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   }
 
   const menuActions = [
-    { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
-    ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
-    ...(!isOwn ? [{ icon: 'flag' as const, label: '報告', onSelect: reportMessage }, { icon: 'user' as const, label: 'ブロック', danger: true, onSelect: blockUser }] : []),
+    { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
+    ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: reportMessage }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: blockUser }] : []),
     ...(isOwn ? [
-      { icon: 'edit' as const, label: '編集', onSelect: startEdit },
-      { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+      { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
+      { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
   ]
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
@@ -297,10 +300,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
-      <button onClick={() => onReply(messageId)} title="返信" style={iconBtnStyle}>
+      <button onClick={() => onReply(messageId)} title={t('Reply')} style={iconBtnStyle}>
         <Icon name="reply" size={14}/>
       </button>
-      <button onClick={() => onBookmark(messageId)} title={bookmarked ? 'ブックマーク解除' : 'ブックマーク'} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
+      <button onClick={() => onBookmark(messageId)} title={bookmarked ? t('Remove bookmark') : t('Bookmarks')} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
         <Icon name="bookmark" size={14}/>
       </button>
       <RowActionMenu actions={menuActions}/>
@@ -333,7 +336,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             )}
             {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
             <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
-            {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+            {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>{t('Edited')}</span>}
           </div>
           {isMobile && messageActions}
         </div>
@@ -355,12 +358,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             <Icon name="reply" size={11} color="var(--text-4)"/>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
             <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+              {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
           </button>
         )}
         {blocked ? (
-          <details><summary style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}>ブロックしたユーザーのメッセージ</summary><div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-3)' }}>{content}</div></details>
+          <details><summary style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 13 }}>{t('Message from a blocked user')}</summary><div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-3)' }}>{content}</div></details>
         ) : editMode ? (
           <div style={{ marginBottom: 4 }}>
             <textarea
@@ -381,11 +384,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
               <button onClick={submitEdit}
                 style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >保存</button>
+              >{t('Save')}</button>
               <button onClick={() => setEditMode(false)}
                 style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >キャンセル</button>
-              {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Enter で保存 · Esc でキャンセル</span>}
+              >{t('Cancel')}</button>
+              {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
           </div>
         ) : (
@@ -467,7 +470,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 100,
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
-                  {r.userNames.join('、')}
+                  {r.userNames.join(t(', '))}
                 </span>
               )}
             </span>
@@ -488,8 +491,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
       <ConfirmDialog
         open={deleteConfirm}
-        title="メッセージを削除"
-        message="このメッセージを削除しますか？この操作は取り消せません。"
+        title={t('Delete message')}
+        message={t('Delete this message? This cannot be undone.')}
         onConfirm={() => onDelete(messageId)}
         onClose={() => setDeleteConfirm(false)}
       />
@@ -527,6 +530,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
 }) => {
+  const t = useT()
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -723,7 +727,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               @{m.displayName}
               {m.kind === 'all' || m.kind === 'project_members' || m.kind === 'attr' ? (
                 <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-4)', fontWeight: 500 }}>
-                  {m.kind === 'all' ? '全員' : m.kind === 'project_members' ? 'プロジェクトメンバー' : '属性'}
+                  {m.kind === 'all' ? t('Everyone') : m.kind === 'project_members' ? t('Project members') : t('Attribute')}
                 </span>
               ) : null}
             </span>
@@ -765,12 +769,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '6px 10px' : '8px 14px', borderBottom: '1px solid var(--divider)' }}>
       <Icon name="reply" size={13} color="var(--accent)"/>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{replyTarget.senderName} に返信</div>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Reply to {name}', { name: replyTarget.senderName })}</div>
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || t('(Attachment)')}
         </div>
       </div>
-      <button onClick={onCancelReply} title="返信をキャンセル" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+      <button onClick={onCancelReply} title={t('Cancel reply')} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
         <Icon name="close" size={14}/>
       </button>
     </div>
@@ -858,7 +862,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -930,22 +934,22 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="image" size={13}/> 画像
+            <Icon name="image" size={13}/> {t('Image')}
           </button>
           <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="paperclip" size={13}/> ファイル
+            <Icon name="paperclip" size={13}/> {t('Files')}
           </button>
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="file-text" size={13}/> テキストファイル
+            <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
           <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="smile" size={13}/> 絵文字
+            <Icon name="smile" size={13}/> {t('Emoji')}
           </button>
           {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
@@ -1008,7 +1012,9 @@ const AiNudgeCard = ({
   completing: boolean
   onFeedback: (feedback: 'later' | 'not_helpful') => void
   onComplete: () => void
-}) => (
+}) => {
+  const t = useT()
+  return (
   <article
     data-nudge-id={nudge.id}
     style={{ margin: '10px 16px', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--accent-border)', background: 'var(--accent-soft)' }}
@@ -1019,7 +1025,7 @@ const AiNudgeCard = ({
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>AI PMO · {nudge.title}</div>
-        <div style={{ fontSize: 10.5, color: 'var(--accent-text)', marginTop: 1 }}>このメッセージはあなただけに見えています</div>
+        <div style={{ fontSize: 10.5, color: 'var(--accent-text)', marginTop: 1 }}>{t('Only you can see this message')}</div>
       </div>
       <time style={{ marginLeft: 'auto', alignSelf: 'flex-start', fontSize: 10.5, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
         {formatChatMessageTime(nudge.createdAt)}
@@ -1033,23 +1039,24 @@ const AiNudgeCard = ({
           className="btn btn-ghost"
           style={{ height: 28, padding: '0 9px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
         >
-          <Icon name="external-link" size={11}/> タスクを開く
+          <Icon name="external-link" size={11}/> {t('Open task')}
         </a>
       )}
       {nudge.taskId && (
         <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={onComplete} disabled={completing || feedbackPending}>
-          {completing ? '更新中…' : '完了にする'}
+          {completing ? t('Updating…') : t('Mark complete')}
         </button>
       )}
       <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('later')} disabled={feedbackPending || completing}>
-        あとで
+        {t('Later')}
       </button>
       <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('not_helpful')} disabled={feedbackPending || completing}>
-        これは問題ない
+        {t('This is fine')}
       </button>
     </div>
   </article>
-)
+  )
+}
 
 export const MESSAGE_TIMELINE_END_THRESHOLD = 80
 
@@ -1352,7 +1359,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(data.error ?? 'タスクの更新に失敗しました')
+        throw new Error(data.error ?? t('Could not update the task'))
       }
       // 共通タスクAPIが紐づくactiveナッジもresolvedにし、ベル通知を削除する。
       queryClient.setQueryData<AiNudgeDto[]>(aiNudgeQueryKey(channelId), current =>
@@ -1365,7 +1372,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     } finally {
       setCompletingNudgeId(null)
     }
-  }, [channelId, queryClient])
+  }, [channelId, queryClient, t])
 
   // 初期表示対象がDOMへ反映されてから、その時点の最新メッセージまでを既読にする。
   React.useLayoutEffect(() => {
@@ -1671,8 +1678,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
-    void copyMessageLink(url)
-  }, [channelId])
+    void copyMessageLink(url, t)
+  }, [channelId, t])
 
   const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
@@ -1685,8 +1692,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (!uploadMimeType) {
         const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
         setSendError(identifiable
-          ? '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）'
-          : 'ファイル形式が不明です。拡張子をつけて再度アップロードしてください')
+          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+          : t('Unknown file type. Add an extension and upload again.'))
         return null
       }
 
@@ -1705,7 +1712,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       })
       if (!urlRes.ok) {
         const data = await urlRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? 'アップロードに失敗しました')
+        setSendError(data.error ?? t('Could not upload the file'))
         return null
       }
       const { token, path, storagePath, mimeType } = await urlRes.json() as {
@@ -1724,7 +1731,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         .from('chat-attachments')
         .uploadToSignedUrl(path, token, uploadBody)
       if (uploadError) {
-        setSendError('アップロードに失敗しました')
+        setSendError(t('Could not upload the file'))
         return null
       }
 
@@ -1742,14 +1749,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       })
       if (!finalizeRes.ok) {
         const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? 'アップロードに失敗しました')
+        setSendError(data.error ?? t('Could not upload the file'))
         return null
       }
       const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch {
-      setSendError('アップロードに失敗しました')
+      setSendError(t('Could not upload the file'))
       return null
     }
   }
@@ -1904,28 +1911,28 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       )}
       <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('Loading…')}</div>
         ) : isAccessDenied ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 24px', textAlign: 'center' }}>
             <Icon name="lock" size={24} />
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>このチャンネルは表示できません</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t('This channel cannot be viewed')}</div>
             <div style={{ fontSize: 13, color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
-              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+              {t('You are not in this project, so this chat cannot be opened. Ask a workspace admin to invite you.')}
             </div>
           </div>
         ) : isError ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load messages')}</div>
         ) : timeline.length === 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('No messages yet. Send the first one!')}</div>
         ) : (
           <>
           {isLoadingOlder && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--text-3)', fontSize: 12 }}>過去のメッセージを読み込み中...</div>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--text-3)', fontSize: 12 }}>{t('Loading older messages...')}</div>
           )}
           {loadOlderError && (
             <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
-              過去のメッセージを読み込めませんでした。
-              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>再試行</button>
+              {t('Could not load older messages.')}
+              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>{t('Retry')}</button>
             </div>
           )}
           {timeline.map(item => item.kind === 'nudge' ? (
@@ -1979,7 +1986,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         )}
         {(nudgesError || nudgeActionError) && (
           <div role="alert" style={{ margin: '8px 16px', color: 'var(--red-text)', fontSize: 12 }}>
-            {nudgeActionError ?? 'ナッジの取得に失敗しました'}
+            {nudgeActionError ?? t('Could not load nudges')}
           </div>
         )}
       </div>
@@ -1989,8 +1996,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
             type="button"
             className="chat-scroll-to-latest"
             onClick={handleScrollToLatest}
-            aria-label="最新のメッセージへ移動"
-            title="最新のメッセージへ移動"
+            aria-label={t('Go to the latest message')}
+            title={t('Go to the latest message')}
           >
             <Icon name="arrowDown" size={20} strokeWidth={1.8}/>
           </button>
