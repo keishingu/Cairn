@@ -39,6 +39,7 @@ import {
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
+import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import {
   ALL_MENTION_ID,
@@ -1144,6 +1145,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   targetMessage?: { id: string } | null
   initialUnreadPosition?: boolean
 }) => {
+  const t = useT()
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
@@ -1333,8 +1335,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     setNudgeActionError(null)
     nudgeFeedback.mutate({ id, feedback }, {
       onError: error => setNudgeActionError((error as Error).message),
-    })
-  }, [nudgeFeedback])
+  }, )
+    },
+    [nudgeFeedback],
+  )
 
   const handleCompleteNudgeTask = React.useCallback(async (nudge: AiNudgeDto) => {
     if (!nudge.taskId) return
@@ -1867,10 +1871,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const placeholder: React.ReactNode = channelName ? (
     <>
-      <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2}/>
-      <span>{channelName} にメッセージ送信</span>
+      <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2} />
+      <span>{t('Message {name}', { name: channelName })}</span>
     </>
-  ) : 'メッセージを入力...'
+  ) : (
+    t('Write a message...')
+  )
 
   const handleTextFileCreated = (file: File) => {
     setShowTextFileDialog(false)
@@ -1893,7 +1899,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       )}
       {isListDragOver && (
         <div style={{ position: 'absolute', inset: 8, zIndex: 50, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
       <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>

@@ -11,6 +11,7 @@ import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
 import { buildAiRequestBody } from './ai-request-body'
@@ -402,6 +403,7 @@ function ChatView({
 // ---- メインコンポーネント ----
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
+  const t = useT()
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
@@ -515,7 +517,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     ) : undefined
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="AIアシスタント" right={historyButton}/>
+        <MobileHeader title={t('AI assistant')} right={historyButton} />
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
@@ -525,7 +527,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TopBar title="AIアシスタント"/>
+      <TopBar title={t('AI assistant')} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <ConversationSidebar
         conversations={conversations}

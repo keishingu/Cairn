@@ -6,6 +6,7 @@ import { Icon } from '../primitives'
 import { TopBar } from '../sidebar'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDate(takenAt: string | null, createdAt: string): string {
@@ -18,6 +19,7 @@ function formatDate(takenAt: string | null, createdAt: string): string {
 }
 
 export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
@@ -40,7 +42,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* PC ヘッダー */}
       {!isMobile && (
-        <TopBar title="ギャラリー" subtitle={items.length > 0 ? `${items.length} 枚` : null}/>
+        <TopBar title={t('Gallery')} subtitle={items.length > 0 ? t('{count} photos', { count: items.length }) : null}/>
       )}
 
       {/* コンテンツ */}

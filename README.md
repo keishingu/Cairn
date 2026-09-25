@@ -1,5 +1,7 @@
 # Cairn
 
+日本語 | [English](./README.en.md)
+
 山岳部の山行計画を起点とした、プロジェクト管理・チャット・カレンダー・ファイル管理・ギャラリー・AIアシスタントを統合したコラボレーションアプリケーション。
 
 設計資料と作業別の参照先は [`docs/README.md`](docs/README.md)、AI エージェント向けの規約は [`AGENTS.md`](AGENTS.md) を参照。
@@ -66,15 +68,15 @@ docs/         設計資料
 
 ## その他のアプリ・機能
 
-| 対象 | 参照先 |
-|---|---|
-| モバイル（Expo）のローカル開発・実機のトラブル対処 | [`docs/mobile-app.md`](docs/mobile-app.md) |
-| PR の Mobile Preview・Internal Distribution・EAS の初期設定 | [`docs/mobile-internal-distribution.md`](docs/mobile-internal-distribution.md) |
-| App Store / TestFlight | [`docs/app-store-submission.md`](docs/app-store-submission.md) |
-| Electron デスクトップアプリ | [`docs/desktop-app.md`](docs/desktop-app.md) |
-| Web Push 通知（VAPID） | [`docs/web-push.md`](docs/web-push.md) |
-| PWA アイコン・アクセントカラーの追加 | [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md#pwa-アイコンとアクセントカラー) |
-| 本番デプロイ・リリース | [`docs/production-deployment.md`](docs/production-deployment.md) |
+| 対象                                                        | 参照先                                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| モバイル（Expo）のローカル開発・実機のトラブル対処          | [`docs/mobile-app.md`](docs/mobile-app.md)                                                  |
+| PR の Mobile Preview・Internal Distribution・EAS の初期設定 | [`docs/mobile-internal-distribution.md`](docs/mobile-internal-distribution.md)              |
+| App Store / TestFlight                                      | [`docs/app-store-submission.md`](docs/app-store-submission.md)                              |
+| Electron デスクトップアプリ                                 | [`docs/desktop-app.md`](docs/desktop-app.md)                                                |
+| Web Push 通知（VAPID）                                      | [`docs/web-push.md`](docs/web-push.md)                                                      |
+| PWA アイコン・アクセントカラーの追加                        | [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md#pwa-アイコンとアクセントカラー) |
+| 本番デプロイ・リリース                                      | [`docs/production-deployment.md`](docs/production-deployment.md)                            |
 
 ## ライセンス
 

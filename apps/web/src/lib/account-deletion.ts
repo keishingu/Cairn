@@ -379,6 +379,7 @@ async function anonymizeAndRevoke(
         aiNudgesEnabled: false,
         theme: 'system',
         accentId: 'emerald',
+        locale: 'system',
         calendarWeekStart: 'sunday',
         updatedAt: now,
       })

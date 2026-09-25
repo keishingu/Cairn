@@ -7,6 +7,7 @@ import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
@@ -82,6 +83,7 @@ interface ChatMessageSearchProps {
 }
 
 const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: ChatMessageSearchProps) => {
+  const t = useT()
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebounce(query, 400)
@@ -103,7 +105,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="メッセージを検索…"
+          placeholder={t('Search messages…')}
           style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />
@@ -171,6 +173,7 @@ interface CrossChannelSearchProps {
 }
 
 const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelSearchProps) => {
+  const t = useT()
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebounce(query, 400)
@@ -192,7 +195,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="全チャンネルを横断検索…"
+          placeholder={t('Search all channels…')}
           style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />

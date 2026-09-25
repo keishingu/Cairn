@@ -6,6 +6,7 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
+import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCurrentUser } from '@/hooks/use-current-user'
@@ -19,33 +20,34 @@ interface MobileNavProps {
 }
 
 const BASE_TABS = [
-  { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'チャット' },
+  { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'Chats' },
   { id: 'projects',  path: '/projects',  icon: 'kanban',    label: null },
-  { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'タスク' },
+  { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'Tasks' },
   { id: 'ai',        path: '/ai',        icon: 'sparkles',  label: 'AI' },
-  { id: 'menu',      path: null,         icon: 'list',      label: 'メニュー' },
+  { id: 'menu',      path: null,         icon: 'list',      label: 'Menu' },
 ] as const
 
 const PROJECTS_VIEWS = [
-  { id: 'list',     label: '一覧',       icon: 'list'    },
-  { id: 'calendar', label: 'カレンダー', icon: 'calendar' },
-  { id: 'kanban',   label: 'カンバン',   icon: 'kanban'  },
+  { id: 'list',     label: 'List',       icon: 'list'    },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar' },
+  { id: 'kanban',   label: 'Kanban',   icon: 'kanban'  },
 ]
 
 const MENU_ITEMS = [
-  { label: 'ファイル',   icon: 'file',     path: '/files' },
-  { label: 'ギャラリー', icon: 'image',    path: '/gallery' },
-  { label: 'メンバー',   icon: 'users',    path: '/members' },
-  { label: '設定',       icon: 'gear',     path: '/settings' },
+  { label: 'Files',   icon: 'file',     path: '/files' },
+  { label: 'Gallery', icon: 'image',    path: '/gallery' },
+  { label: 'Members',   icon: 'users',    path: '/members' },
+  { label: 'Settings',       icon: 'gear',     path: '/settings' },
 ]
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members'])
 
 export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
+  const t = useT()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
-  const TABS = BASE_TABS.map(t => ({ ...t, label: t.label ?? projectLabel }))
+  const TABS = BASE_TABS.map((tab) => ({ ...tab, label: tab.label ? t(tab.label) : projectLabel }))
 
   const { data: me } = useCurrentUser()
   const { data: workspace } = useQuery<WorkspaceDto>({
@@ -116,7 +118,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 }}
               >
                 <Icon name={v.icon} size={16} color={active ? 'var(--accent-text)' : 'var(--text-3)'} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{v.label}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{t(v.label)}</span>
                 {active && <Icon name="check" size={14} color="var(--accent-text)" strokeWidth={2.5} />}
               </button>
             )
@@ -205,7 +207,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
               }}>
                 <Icon name={item.icon} size={18} color="var(--text-2)" />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{item.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{t(item.label)}</span>
               <Icon name="chevRight" size={14} color="var(--text-4)" style={{ marginLeft: 'auto' }} />
             </button>
           ))}

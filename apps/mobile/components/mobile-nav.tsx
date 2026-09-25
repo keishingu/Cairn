@@ -3,12 +3,12 @@ import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } fro
 import { Ionicons } from '@expo/vector-icons'
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useQueryClient } from '@tanstack/react-query'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { supabase } from '../lib/supabase'
 import { useAppAppearance } from './appearance-provider'
+import { useT } from './locale-provider'
 import { useNotificationPanel } from './notification-panel-provider'
 import { type ProjectsView, useProjectsView } from './projects-view-context'
 
@@ -24,40 +24,40 @@ const TABS: {
     id: 'chats',
     route: 'chats/index',
     icon: 'chatbubble-outline',
-    label: 'チャット',
+    label: 'Chats',
   },
   {
     id: 'projects',
     route: 'projects/index',
     icon: 'grid-outline',
-    label: 'プロジェクト',
+    label: 'Projects',
   },
   {
     id: 'tasks',
     route: 'tasks/index',
     icon: 'checkmark-circle-outline',
-    label: 'タスク',
+    label: 'Tasks',
   },
   { id: 'ai', route: 'ai/index', icon: 'sparkles-outline', label: 'AI' },
-  { id: 'menu', route: '', icon: 'menu-outline', label: 'メニュー' },
+  { id: 'menu', route: '', icon: 'menu-outline', label: 'Menu' },
 ]
 
 const PROJECT_VIEWS: { id: ProjectsView; icon: IoniconName; label: string }[] = [
-  { id: 'list', icon: 'list-outline', label: '一覧' },
-  { id: 'calendar', icon: 'calendar-outline', label: 'カレンダー' },
-  { id: 'kanban', icon: 'grid-outline', label: 'カンバン' },
+  { id: 'list', icon: 'list-outline', label: 'List' },
+  { id: 'calendar', icon: 'calendar-outline', label: 'Calendar' },
+  { id: 'kanban', icon: 'grid-outline', label: 'Kanban' },
 ]
 
 const MENU_ITEMS: { route: string; icon: IoniconName; label: string }[] = [
   {
     route: 'notifications/index',
     icon: 'notifications-outline',
-    label: '通知',
+    label: 'Notifications',
   },
-  { route: 'files/index', icon: 'folder-outline', label: 'ファイル' },
-  { route: 'gallery/index', icon: 'images-outline', label: 'ギャラリー' },
-  { route: 'members/index', icon: 'people-outline', label: 'メンバー' },
-  { route: 'settings/index', icon: 'settings-outline', label: '設定' },
+  { route: 'files/index', icon: 'folder-outline', label: 'Files' },
+  { route: 'gallery/index', icon: 'images-outline', label: 'Gallery' },
+  { route: 'members/index', icon: 'people-outline', label: 'Members' },
+  { route: 'settings/index', icon: 'settings-outline', label: 'Settings' },
 ]
 
 const MENU_ROUTES = new Set([
@@ -67,6 +67,7 @@ const MENU_ROUTES = new Set([
 ])
 
 export function MobileNav({ state, navigation }: BottomTabBarProps) {
+  const t = useT()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const { openNotifications } = useNotificationPanel()
@@ -76,7 +77,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: dms } = useWorkspaceDms()
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
-  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
@@ -103,7 +103,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const signOut = async () => {
     closeOverlays()
     await supabase.auth.signOut().catch(() => undefined)
-    queryClient.clear()
   }
 
   const pressTab = (tab: (typeof TABS)[number]) => {
@@ -172,7 +171,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                       },
                     ]}
                   >
-                    {option.label}
+                    {t(option.label)}
                   </Text>
                   {active && <Ionicons name="checkmark" size={16} color={palette.accent} />}
                 </TouchableOpacity>
@@ -252,7 +251,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                 }}
               >
                 <Ionicons name={item.icon} size={19} color={palette.text3} />
-                <Text style={[styles.menuLabel, { color: palette.text }]}>{item.label}</Text>
+                <Text style={[styles.menuLabel, { color: palette.text }]}>{t(item.label)}</Text>
                 <Ionicons name="chevron-forward" size={15} color={palette.text3} />
               </TouchableOpacity>
             ))}
@@ -293,7 +292,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
               key={tab.id}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={tab.label}
+              accessibilityLabel={t(tab.label)}
               style={styles.tab}
               onPress={() => pressTab(tab)}
               activeOpacity={0.7}
@@ -323,7 +322,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
                 )}
               </View>
               <Text style={[styles.tabLabel, { color, fontWeight: active ? '700' : '500' }]}>
-                {tab.label}
+                {t(tab.label)}
               </Text>
             </TouchableOpacity>
           )

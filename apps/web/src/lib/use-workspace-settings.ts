@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { WorkspaceSettingsDto } from '@/app/api/workspaces/settings/route'
 
 const QUERY_KEY = ['workspaceSettings']
-const DEFAULT_PROJECT_LABEL = 'プロジェクト'
+
+export function displayProjectLabel(
+  stored: string | null | undefined,
+  translate: (message: string) => string,
+): string {
+  if (!stored) return translate('Projects')
+  return stored
+}
 
 async function fetchSettings(): Promise<WorkspaceSettingsDto> {
   const res = await fetchWithAuth('/api/workspaces/settings')
@@ -33,8 +41,9 @@ export function useWorkspaceSettings() {
 }
 
 export function useProjectLabel(): string {
+  const t = useT()
   const { data } = useWorkspaceSettings()
-  return data?.projectLabel || DEFAULT_PROJECT_LABEL
+  return displayProjectLabel(data?.projectLabel, t)
 }
 
 export function useUpdateWorkspaceSettings() {

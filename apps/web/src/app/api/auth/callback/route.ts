@@ -7,6 +7,7 @@ import {
   classifyLoginLinkError,
   parseLoginLinkContext,
 } from '@/lib/auth-identity-link-errors'
+import { explicitLocaleFromCookie } from '@/lib/i18n/initial-locale'
 
 function buildLoginLinkErrorRedirect(
   origin: string,
@@ -94,7 +95,9 @@ export async function GET(request: Request) {
           isNewUser = existing.length === 0
 
           if (isNewUser) {
-            await db.insert(profiles).values({ id: user.id, displayName })
+            const locale = explicitLocaleFromCookie(request.headers.get('cookie'))
+            await db.insert(profiles).values({ id: user.id, displayName,
+              ...(locale ? { locale } : {}), })
           }
         } catch (err) {
           console.error('[/api/auth/callback] setup failed:', err)

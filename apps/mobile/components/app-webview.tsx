@@ -8,8 +8,9 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { mobileHandoffUrl, webPath } from '../lib/webview-path'
-import { isAccentId, isAppearanceTheme } from '@cairn/shared'
+import { isAccentId, isAppearanceTheme, isLocalePreference } from '@cairn/shared'
 import { useAppAppearance } from './appearance-provider'
+import { useAppLocale } from './locale-provider'
 import {
   NATIVE_HEADER_BACK_SCRIPT,
   parseNativeHeaderDescriptor,
@@ -61,6 +62,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
   const { palette, updateAppearance } = useAppAppearance()
+  const { updateLocale } = useAppLocale()
   const bg = palette.bg
   const router = useRouter()
 
@@ -191,6 +193,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       type?: string
       theme?: unknown
       accentId?: unknown
+      locale?: unknown
       title?: unknown
       subtitle?: unknown
       canGoBack?: unknown
@@ -200,6 +203,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         type?: string
         theme?: unknown
         accentId?: unknown
+        locale?: unknown
         title?: unknown
         subtitle?: unknown
         canGoBack?: unknown
@@ -269,6 +273,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       isAccentId(msg.accentId)
     ) {
       updateAppearance({ theme: msg.theme, accentId: msg.accentId })
+    }
+    if (msg?.type === 'locale-changed' && isLocalePreference(msg.locale)) {
+      updateLocale(msg.locale)
     }
   }
 

@@ -5,6 +5,7 @@
 
 import React from 'react'
 import type { PageId } from '@/components/app/sidebar'
+import { useT } from '@/components/locale-provider'
 import { COMMANDS } from '@/lib/commands'
 import { isMac, isEditableTarget } from '@/lib/command-keys'
 
@@ -24,6 +25,7 @@ function hintsForLayer(layer: Layer, page: PageId): { id: string; keys: string[]
 const SHOW_DELAY_MS = 350
 
 export function ShortcutHints({ page }: { page: PageId }) {
+  const t = useT()
   const [layer, setLayer] = React.useState<Layer | null>(null)
   const pageRef = React.useRef(page)
   pageRef.current = page
@@ -77,12 +79,12 @@ export function ShortcutHints({ page }: { page: PageId }) {
   if (hints.length === 0) return null
 
   const prefix = layer === 'app' ? (mac ? '⌘⌥' : 'Ctrl ⇧') : (mac ? '⌥' : 'Alt')
-  const title = layer === 'app' ? '移動' : '今の画面'
+  const title = layer === 'app' ? t('Move') : t('This screen')
 
   return (
     <div
       role="dialog"
-      aria-label="キーボードショートカット"
+      aria-label={t('Keyboard shortcuts')}
       style={{
         position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
         zIndex: 9999, pointerEvents: 'none',
@@ -112,7 +114,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
                 </kbd>
               ))}
             </span>
-            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{h.label}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t(h.label)}</span>
           </div>
         ))}
       </div>

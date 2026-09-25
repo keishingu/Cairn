@@ -3,6 +3,7 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import { STORAGE_KEYS, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -585,6 +586,7 @@ export const ChannelList = ({
   onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onDeleteWorkspaceChannel,
   canManageWorkspaceChannel = false,
 }: ChannelListProps) => {
+  const t = useT()
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
   const projectGroups = activeProjectChannels
@@ -605,7 +607,7 @@ export const ChannelList = ({
     }))
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
-    <ChatSidebarSection title="プロジェクト" {...(onAddProject ? { onAdd: onAddProject } : {})}>
+    <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})}>
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
           key={general.channelId}
@@ -622,13 +624,13 @@ export const ChannelList = ({
       ))}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
-      <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
+      <ChatSidebarCollapsibleSection title={t('Archived')} count={archivedProjectChannels.length}>
         {archivedProjectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarCollapsibleSection>
     )}
-    <ChatSidebarSection title="チャンネル" {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
+    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
       {workspaceChannelGroups.map(({ channel, threads }) => {
         const channelActions = workspaceRowActions({
           channel,
@@ -679,8 +681,10 @@ export const ChannelList = ({
     </ChatSidebarSection>
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>ダイレクトメッセージ</span>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}
+          >
+            <span>{t('Direct messages')}</span>
           <DmPicker members={members} onStartDm={onStartDm}/>
         </div>
         <div>
@@ -690,8 +694,8 @@ export const ChannelList = ({
         </div>
       </div>
     )}
-    <ChatSidebarSection title="アプリ">
-      <ChatSidebarItem prefix="✨" label="AIアシスタント" mobile={isMobile}/>
+    <ChatSidebarSection title={t('Apps')}>
+      <ChatSidebarItem prefix="✨" label={t('AI assistant')} mobile={isMobile} />
     </ChatSidebarSection>
   </div>
   )

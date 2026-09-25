@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import {
@@ -34,6 +35,7 @@ import {
   isCalendarWeekStart,
   type AccentId,
   type CalendarWeekStart,
+  type LocalePreference,
 } from '@cairn/shared'
 import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
@@ -89,9 +91,9 @@ const Toggle = ({ on }: { on: boolean }) => (
 type ThemeValue = 'light' | 'dark' | 'system'
 
 const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
-  { value: 'light', label: 'ライト', icon: 'sun' },
-  { value: 'system', label: 'システム', icon: 'monitor' },
-  { value: 'dark', label: 'ダーク', icon: 'moon' },
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'system', label: 'System', icon: 'monitor' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
 ]
 
 const LEGAL_SUPPORT_LINKS = [
@@ -656,13 +658,15 @@ const SettingsAccount = () => {
 }
 
 const WEEK_START_OPTIONS: { value: CalendarWeekStart; label: string }[] = [
-  { value: 'sunday', label: '日曜' },
-  { value: 'monday', label: '月曜' },
+  { value: 'sunday', label: 'Sunday' },
+  { value: 'monday', label: 'Monday' },
 ]
 
 const SettingsAppearance = () => {
+  const t = useT()
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
+  const { preference, setPreference } = useLocale()
   const { data: me, isSuccess: meLoaded } = useCurrentUser()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = React.useState(false)
@@ -672,24 +676,34 @@ const SettingsAppearance = () => {
     : DEFAULT_CALENDAR_WEEK_START
 
   const appearanceMutation = useMutation({
-    mutationFn: async (patch: { theme?: ThemeValue; accentId?: AccentId; calendarWeekStart?: CalendarWeekStart }) => {
+    mutationFn: async (patch: {
+      theme?: ThemeValue
+      accentId?: AccentId
+      locale?: LocalePreference
+      calendarWeekStart?: CalendarWeekStart
+    }) => {
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       })
-      if (!res.ok) throw new Error('外観設定の保存に失敗しました')
+      if (!res.ok) { throw new Error(patch.locale ? 'Could not save the language. Check your connection and try again.' : 'Could not save appearance. Check your connection and try again.')
+      }
       return patch
     },
     onSuccess: (patch) => {
       patchCurrentUserCache(queryClient, patch)
 
-      // WebView内で変更したときは、再読込を待たずネイティブの配色も更新する。
+      // WebView内で変更したときは、再読込を待たずネイティブの配色と言語も更新する。
       const nativeBridge = (
         window as typeof window & {
           ReactNativeWebView?: { postMessage: (message: string) => void }
         }
       ).ReactNativeWebView
+      if (patch.locale) {
+        nativeBridge?.postMessage(JSON.stringify({ type: 'locale-changed', locale: patch.locale }))
+        return
+      }
       nativeBridge?.postMessage(
         JSON.stringify({
           type: 'appearance-changed',
@@ -714,6 +728,22 @@ const SettingsAppearance = () => {
     appearanceMutation.mutate({ accentId: value }, { onError: () => setAccentId(previous) })
   }
 
+  const changeLocale = (value: LocalePreference) => {
+    if (appearanceMutation.isPending) return
+    const previous = preference
+    patchCurrentUserCache(queryClient, { locale: value })
+    setPreference(value)
+    appearanceMutation.mutate(
+      { locale: value },
+      {
+        onError: () => {
+          patchCurrentUserCache(queryClient, { locale: previous })
+          setPreference(previous)
+        },
+      },
+    )
+  }
+
   const changeWeekStart = (value: CalendarWeekStart) => {
     if (!meLoaded || appearanceMutation.isPending || value === weekStart) return
     const previous = weekStart
@@ -730,17 +760,19 @@ const SettingsAppearance = () => {
     )
   }
 
+  const localeOptions: { value: LocalePreference; label: string }[] = [
+    { value: 'system', label: t('Browser') },
+    { value: 'ja', label: '日本語' },
+    { value: 'en', label: 'English' },
+  ]
+
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        外観
-      </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        テーマ、カラー、カレンダーなど、表示に関する個人設定です。
-      </p>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Appearance')}</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>テーマ・カラー</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Theme and color')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div
             style={{
@@ -752,10 +784,59 @@ const SettingsAppearance = () => {
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>テーマ</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ライト・ダーク・システム設定に従う
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Language')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Choose the language used in the app.')}</div>
+            </div>
+            {mounted && (
+              <div
+                role="group"
+                aria-label={t('Language')}
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-elev)',
+                  borderRadius: 10,
+                  padding: 4,
+                }}
+              >
+                {localeOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => changeLocale(opt.value)}
+                    disabled={appearanceMutation.isPending}
+                    aria-pressed={preference === opt.value}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: 'none',
+                      background: preference === opt.value ? 'var(--card)' : 'transparent',
+                      color: preference === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: preference === opt.value ? 600 : 500,
+                      fontSize: 12.5,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      boxShadow: preference === opt.value ? 'var(--shadow-sm)' : 'none',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
+            )}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--divider)',
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Theme')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Light, dark, or match the system')}</div>
             </div>
             {mounted && (
               <div
@@ -789,7 +870,7 @@ const SettingsAppearance = () => {
                       transition: 'all .12s',
                     }}
                   >
-                    <Icon name={opt.icon} size={13} /> {opt.label}
+                    <Icon name={opt.icon} size={13} /> {t(opt.label)}
                   </button>
                 ))}
               </div>
@@ -798,17 +879,15 @@ const SettingsAppearance = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>ハイライトカラー</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ボタン・アクティブ状態などのアクセントカラー
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Highlight color')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Accent color for buttons and active states')}</div>
             </div>
             {mounted && (
               <div style={{ display: 'flex', gap: 8 }}>
                 {ACCENT_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
-                    title={preset.label}
+                    title={t(preset.label)}
                     onClick={() => changeAccent(preset.id)}
                     disabled={appearanceMutation.isPending}
                     style={{
@@ -840,20 +919,20 @@ const SettingsAppearance = () => {
                 fontSize: 12,
               }}
             >
-              外観設定を保存できませんでした。通信状態を確認して再度お試しください。
+              {t(appearanceMutation.error instanceof Error ? appearanceMutation.error.message : 'Could not save appearance. Check your connection and try again.')}
             </div>
           )}
         </div>
       </section>
 
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>カレンダー</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Calendar')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>週の始まり</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Week start')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                月表示と週表示の左端を日曜または月曜にします
+                {t('Start month and week views on Sunday or Monday.')}
               </div>
             </div>
             {mounted && (
@@ -887,7 +966,7 @@ const SettingsAppearance = () => {
                       transition: 'all .12s',
                     }}
                   >
-                    {opt.label}
+                    {t(opt.label)}
                   </button>
                 ))}
               </div>
@@ -1780,10 +1859,8 @@ const SettingsWorkspaceGeneral = () => {
                       lineHeight: 1.6,
                     }}
                   >
-                    累計: {formatTokens(phaseTwoUsage.totalTokens)} トークン （入力{' '}
-                    {formatTokens(phaseTwoUsage.inputTokens)} / 出力{' '}
-                    {formatTokens(phaseTwoUsage.outputTokens)}、
-                    {formatTokens(phaseTwoUsage.requestCount)} 回）
+                    累計: {formatTokens(phaseTwoUsage.totalTokens)} トークン （入力
+                    {formatTokens(phaseTwoUsage.inputTokens)} / 出力 {formatTokens(phaseTwoUsage.outputTokens)}、{formatTokens(phaseTwoUsage.requestCount)} 回）
                   </div>
                 )}
               </div>
@@ -2008,8 +2085,8 @@ const ApiTokenSettings = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{token.name}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                    <code>{token.prefix}…</code> ・{' '}
-                    {token.scope === 'write' ? '読み書き' : '読み取り'} ・ 有効期限{' '}
+                    <code>{token.prefix}…</code> ・
+                    {token.scope === 'write' ? '読み書き' : '読み取り'} ・ 有効期限
                     {new Date(token.expiresAt).toLocaleDateString('ja-JP')}
                     {token.lastUsedAt
                       ? ` ・ 最終利用 ${new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}`
@@ -2101,7 +2178,7 @@ const McpOAuthConnectionSettings = () => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{connection.clientName}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  {connection.scope === 'write' ? '読み取り・書き込み' : '読み取り'} ・ 接続日{' '}
+                  {connection.scope === 'write' ? '読み取り・書き込み' : '読み取り'} ・ 接続日
                   {new Date(connection.createdAt).toLocaleDateString('ja-JP')}
                 </div>
               </div>
@@ -2200,8 +2277,7 @@ const SettingsIntegrations = () => {
     queryKey: ['gcal-calendars'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/calendar/google/calendars')
-      const body = (await res.json().catch(() => null)) as
-        | GcalCalendarDto[]
+      const body = (await res.json().catch(() => null)) as GcalCalendarDto[]
         | { error?: string; code?: string }
         | null
       if (!res.ok) {
@@ -3265,39 +3341,39 @@ export function getSettingsNavGroups(
   options: { isMobile?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
-    { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
-    { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
-    { id: 'project-roles', label: '役割', icon: 'users' },
-    { id: 'profile-attributes', label: 'プロフィール属性', icon: 'hash' },
-    { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
-    { id: 'members', label: 'メンバー', icon: 'users' },
-    { id: 'integrations', label: '連携', icon: 'layers' },
+    { id: 'general', label: 'Workspace settings', icon: 'settings' },
+    { id: 'workflow', label: 'Workflow', icon: 'flag' },
+    { id: 'project-roles', label: 'Roles', icon: 'users' },
+    { id: 'profile-attributes', label: 'Profile attributes', icon: 'hash' },
+    { id: 'ai', label: 'AI agent', icon: 'sparkles' },
+    { id: 'members', label: 'Members', icon: 'users' },
+    { id: 'integrations', label: 'Integrations', icon: 'layers' },
     ...(options.isMobile
-      ? [{ id: 'contributions', label: 'ケルン', icon: 'layers' } satisfies SettingsSectionMeta]
+      ? [{ id: 'contributions', label: 'Cairn', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
     ...(!options.isMobile
-      ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta]
+      ? [{ id: 'billing', label: 'Billing', icon: 'archive' } satisfies SettingsSectionMeta]
       : []),
   ]
 
   return [
     {
-      label: '個人',
+      label: 'Personal',
       items: [
-        { id: 'account', label: 'アカウント', icon: 'user' },
-        { id: 'appearance', label: '外観', icon: 'sun' },
-        { id: 'safety', label: '安全・サポート', icon: 'shield' },
+        { id: 'account', label: 'Account', icon: 'user' },
+        { id: 'appearance', label: 'Appearance', icon: 'sun' },
+        { id: 'safety', label: 'Safety and support', icon: 'shield' },
       ],
     },
     {
-      label: 'ワークスペース',
+      label: 'Workspace',
       items: workspaceItems,
     },
     ...(isOwner
       ? [
           {
-            label: '開発者',
-            items: [{ id: 'developer', label: '開発者情報', icon: 'code' }],
+            label: 'Developer',
+            items: [{ id: 'developer', label: 'Developer info', icon: 'code' }],
           },
         ]
       : []),
@@ -3348,24 +3424,24 @@ export function settingsSectionLabel(
     const item = g.items.find((i) => i.id === id)
     if (item) return item.label
   }
-  return '設定'
+  return 'Settings'
 }
 
 // セクションのメインカラム本体（PC・モバイル共通）。
 export function SettingsSectionContent({ section }: { section: string }) {
+  const t = useT()
   const Comp = SETTINGS_SECTION_COMPONENTS[section]
   if (Comp) return <Comp />
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        {settingsSectionLabel(section)}
-      </h1>
-      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
+      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t(settingsSectionLabel(section))}</h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Settings for this section are not ready yet.')}</p>
     </div>
   )
 }
 
 export const PageSettings = () => {
+  const t = useT()
   const pathname = usePathname()
   const router = useRouter()
   const { isOwner } = useWorkspacePermissions()
@@ -3374,7 +3450,7 @@ export const PageSettings = () => {
   const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TopBar title="設定" />
+      <TopBar title={t('Settings')} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <aside
           style={{
@@ -3397,7 +3473,7 @@ export const PageSettings = () => {
                   marginBottom: 4,
                 }}
               >
-                {group.label}
+                {t(group.label)}
               </div>
               {group.items.map((s) => (
                 <button
@@ -3420,7 +3496,7 @@ export const PageSettings = () => {
                     textAlign: 'left',
                   }}
                 >
-                  <Icon name={s.icon} size={14} /> {s.label}
+                  <Icon name={s.icon} size={14} /> {t(s.label)}
                 </button>
               ))}
             </div>
