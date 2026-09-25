@@ -103,7 +103,7 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
               },
             ]}
           >
-            @{mentionNames?.[mention.userId] ?? mention.displayName ?? t('Members')}
+            @{mentionNames?.[mention.userId] ?? mention.displayName ?? t('Member')}
           </Text>
         )
       },

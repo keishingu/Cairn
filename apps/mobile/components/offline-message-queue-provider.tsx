@@ -150,7 +150,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     } finally {
       flushingRef.current = false
     }
-  }, [canUseNetwork, qc, ready, storageKey, updateMessages])
+  }, [canUseNetwork, qc, ready, storageKey, t, updateMessages])
 
   React.useEffect(() => {
     if (!ready) return

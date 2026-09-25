@@ -1015,7 +1015,7 @@ export default function ChatThreadScreen() {
       })
       return false
     },
-    [channelId, channelName, channelType, isPrivate, projectId, router],
+    [channelId, channelName, channelType, isPrivate, projectId, router, t],
   )
 
   const shareMessage = async (message: MessageDto) => {

@@ -113,7 +113,7 @@ export default function NewWorkspacePage() {
                 fontFamily: 'inherit', marginTop: 4,
               }}
             >
-              {loading ? t('Creating...') : t('Create entry')}
+              {loading ? t('Creating...') : t('Create workspace')}
             </button>
           </form>
         </div>

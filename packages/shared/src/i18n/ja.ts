@@ -58,6 +58,8 @@ export const JA_MESSAGES: Record<string, string> = {
   '@Member': '@メンバー',
   '@Mention': '@メンション',
   '1 hour': '1時間',
+  '1 hour ago': '1時間前',
+  '1 minute ago': '1分前',
   '30 days': '30日間',
   'A dedicated chat is also created': '専用チャットも作成されます',
   'A rules-based reminder that checks due dates and stalled work every morning. It does not use generative AI and spends no tokens.': '期限・停滞を毎朝確認するルールベースのリマインダーです。生成AIは使わず、トークンは消費しません。',

@@ -4,6 +4,7 @@ import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { formatAppDate } from '@cairn/shared'
 import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
@@ -23,12 +24,12 @@ import {
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
-import { useT } from '@/components/locale-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'Owner',
   admin:  'Admin',
-  member: 'Members',
+  member: 'Member',
   guest:  'Guest',
 }
 
@@ -570,6 +571,7 @@ const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
 
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const t = useT()
+  const { locale } = useLocale()
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
@@ -738,9 +740,9 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Active links')}</div>
               {existingInvites.map((inv: WorkspaceInviteDto) => {
                 const expiresLabel = inv.expiresAt
-                  ? t('Until {date}', { date: new Date(inv.expiresAt).toLocaleDateString('ja-JP') })
+                  ? t('Until {date}', { date: formatAppDate(locale, inv.expiresAt) })
                   : t('No expiry')
-                const roleLabel = t(inv.role === 'guest' ? 'Guest' : 'Members')
+                const roleLabel = t(inv.role === 'guest' ? 'Guest' : 'Member')
                 return (
                   <div
                     key={inv.token}

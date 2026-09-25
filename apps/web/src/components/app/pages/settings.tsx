@@ -32,6 +32,7 @@ import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
+  formatAppDate,
   isCalendarWeekStart,
   type AccentId,
   type CalendarWeekStart,
@@ -1912,6 +1913,7 @@ const SettingsWorkspaceGeneral = () => {
 
 const ApiTokenSettings = () => {
   const t = useT()
+  const { locale } = useLocale()
   const queryClient = useQueryClient()
   const { isGuest } = useWorkspacePermissions()
   const [name, setName] = React.useState('MCP client')
@@ -2104,11 +2106,11 @@ const ApiTokenSettings = () => {
                     <code>{token.prefix}…</code>
                     {t(' · {scope} · Expires {date}', {
                       scope: token.scope === 'write' ? t('Read and write') : t('Read'),
-                      date: new Date(token.expiresAt).toLocaleDateString('ja-JP'),
+                      date: formatAppDate(locale, token.expiresAt),
                     })}
                     {token.lastUsedAt
                       ? t(' · Last used {date}', {
-                          date: new Date(token.lastUsedAt).toLocaleDateString('ja-JP'),
+                          date: formatAppDate(locale, token.lastUsedAt),
                         })
                       : ''}
                     {inactive ? t(' · Inactive') : ''}
@@ -2139,6 +2141,7 @@ const ApiTokenSettings = () => {
 
 const McpOAuthConnectionSettings = () => {
   const t = useT()
+  const { locale } = useLocale()
   const queryClient = useQueryClient()
   const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
   React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
@@ -2201,7 +2204,7 @@ const McpOAuthConnectionSettings = () => {
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
                   {t('{scope} · Connected {date}', {
                     scope: connection.scope === 'write' ? t('Read and write access') : t('Read'),
-                    date: new Date(connection.createdAt).toLocaleDateString('ja-JP'),
+                    date: formatAppDate(locale, connection.createdAt),
                   })}
                 </div>
               </div>

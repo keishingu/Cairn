@@ -28,7 +28,7 @@ interface WorkspaceSwitcherModalProps {
 const ROLE_LABELS: Record<WorkspaceListItemDto['role'], string> = {
   owner: 'Owner',
   admin: 'Admin',
-  member: 'Members',
+  member: 'Member',
   guest: 'Guest',
 }
 

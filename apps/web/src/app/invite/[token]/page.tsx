@@ -7,8 +7,9 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
+import { formatAppDate } from '@cairn/shared'
 import { createClient } from '@/lib/supabase/client'
-import { useT } from '@/components/locale-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 
 interface InviteInfo {
   workspaceName: string
@@ -20,6 +21,7 @@ interface InviteInfo {
 
 export default function InvitePage() {
   const t = useT()
+  const { locale } = useLocale()
   const router = useRouter()
   const { token } = useParams<{ token: string }>()
 
@@ -96,9 +98,9 @@ export default function InvitePage() {
     )
   }
 
-  const roleLabel = info.role === 'guest' ? t('Guest') : t('Members')
+  const roleLabel = info.role === 'guest' ? t('Guest') : t('Member')
   const expiresLabel = info.expiresAt
-    ? t('Valid until {date}', { date: new Date(info.expiresAt).toLocaleDateString('ja-JP') })
+    ? t('Valid until {date}', { date: formatAppDate(locale, info.expiresAt) })
     : t('No expiry')
   const subtitle = info.projectName
     ? t('Invitation to the "{name}" project', { name: info.projectName })

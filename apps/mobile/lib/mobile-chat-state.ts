@@ -108,7 +108,7 @@ export function parseEditableMentions(content: string, t: Translate = translateJ
     const [token, userId, hydratedName] = match
     if (index == null || !token || !userId) continue
     text += content.slice(cursor, index)
-    const displayName = hydratedName ?? t('Members')
+    const displayName = hydratedName ?? t('Member')
     const start = text.length
     text += `@${displayName}`
     mentions.push({ start, end: text.length, userId, displayName })

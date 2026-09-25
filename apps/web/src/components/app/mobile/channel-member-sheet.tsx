@@ -102,7 +102,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                     {m.displayName}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
-                    {t(m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : m.role === 'guest' ? 'Guest' : 'Members')}
+                    {t(m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : m.role === 'guest' ? 'Guest' : 'Member')}
                   </div>
                 </div>
                 <button
