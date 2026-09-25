@@ -14,6 +14,7 @@ import { CreateTaskModal, type CreateTaskChannel } from './create-task-modal'
 import { useTasksByScope } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import { useRenameFile } from '@/hooks/use-rename-file'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -63,11 +64,15 @@ function formatDate(iso: string): string {
   return `${y}/${m}/${d}`
 }
 
-function formatDateRange(start: string | null, end: string | null): string | null {
+function formatDateRange(
+  start: string | null,
+  end: string | null,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): string | null {
   if (!start && !end) return null
-  if (start && end) return `${formatDate(start)} 〜 ${formatDate(end)}`
-  if (start) return `${formatDate(start)} 〜`
-  return `〜 ${formatDate(end!)}`
+  if (start && end) return t('{start} – {end}', { start: formatDate(start), end: formatDate(end) })
+  if (start) return t('{start} –', { start: formatDate(start) })
+  return t('– {end}', { end: formatDate(end!) })
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -103,6 +108,7 @@ function isImageFile(file: ChannelFileDto): boolean {
 }
 
 const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClose: () => void }) => {
+  const t = useT()
   const { data: content, isLoading, isError } = useQuery<string>({
     queryKey: ['attachment-text-preview', file.id],
     queryFn: async () => {
@@ -113,18 +119,18 @@ const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClos
   })
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${file.fileName} のプレビュー`} onClick={onClose}
+    <div role="dialog" aria-modal="true" aria-label={t('Preview of {name}', { name: file.fileName })} onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id}/>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>
-          <a href={`/api/attachments/${file.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>別タブで開く</a>
-          <button onClick={onClose} aria-label="プレビューを閉じる" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', padding: 4 }}><Icon name="close" size={16}/></button>
+          <a href={`/api/attachments/${file.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>{t('Open in a new tab')}</a>
+          <button onClick={onClose} aria-label={t('Close preview')} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', padding: 4 }}><Icon name="close" size={16}/></button>
         </div>
         <div style={{ padding: 24, overflowY: 'auto', color: 'var(--text)', fontSize: 14, lineHeight: 1.7 }}>
-          {isLoading ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>テキストを読み込んでいます...</div>
-            : isError ? <div style={{ color: 'var(--red-text)', fontSize: 13 }}>テキストプレビューを読み込めませんでした。</div>
+          {isLoading ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Loading text...')}</div>
+            : isError ? <div style={{ color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load the text preview.')}</div>
               : isMarkdownFile(file) ? <MarkdownContent content={content ?? ''} fontSize={14} lineHeight={1.7}/>
                 : <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.7 }}>{content ?? ''}</pre>}
         </div>
@@ -135,6 +141,7 @@ const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClos
 
 // 長い説明文は5行でクランプし、下端をフェードアウト → 「続きを読む」で全文展開する
 const ExpandableDescription = ({ text }: { text: string }) => {
+  const t = useT()
   const ref = React.useRef<HTMLParagraphElement>(null)
   const [expanded, setExpanded] = React.useState(false)
   const [clamped, setClamped] = React.useState(false)
@@ -168,7 +175,7 @@ const ExpandableDescription = ({ text }: { text: string }) => {
           onClick={() => setExpanded(e => !e)}
           style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
         >
-          {expanded ? '閉じる' : '続きを読む'}
+          {expanded ? t('Close') : t('Read more')}
         </button>
       )}
     </div>
@@ -181,6 +188,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
   channel: CreateTaskChannel | null
   onJumpToMessage: (messageId: string) => void
 }) => {
+  const t = useT()
   const scope = project ? { projectId: project.id } : { channelId: channel!.id }
   const { data: tasks = [], isLoading, isError, error, toggleMutation } = useTasksByScope(scope)
   const listRef = React.useRef<HTMLDivElement>(null)
@@ -220,7 +228,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <Icon name="check" size={12} color="var(--accent)"/>
-          タスク
+          {t('Tasks')}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
@@ -230,7 +238,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
             <button
               type="button"
               onClick={() => setShowCreateDialog(true)}
-              aria-label="タスクを追加"
+              aria-label={t('Add a task')}
               style={{ width: 24, height: 24, borderRadius: 999, border: '1px solid var(--border)', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
             >
               <Icon name="plus" size={12}/>
@@ -243,23 +251,23 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
       </div>
 
       {isLoading ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>読み込み中…</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('Loading...')}</div>
       ) : isError ? (
         <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '8px 0 2px' }}>{error.message}</div>
       ) : tasks.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>タスクはまだありません</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('No tasks yet')}</div>
       ) : (
         <div>
           <div style={{ position: 'relative' }}>
             <div ref={listRef} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2, ...collapsedStyle }}>
-              {sortedTasks.map(t => {
-                const done = t.status === 'done'
+              {sortedTasks.map(task => {
+                const done = task.status === 'done'
                 return (
-                  <div key={t.id} className="chat-detail-row" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
+                  <div key={task.id} className="chat-detail-row" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0' }}>
                     <button
-                      onClick={() => toggle(t.id, t.status)}
+                      onClick={() => toggle(task.id, task.status)}
                       aria-pressed={done}
-                      aria-label={done ? 'タスクを未完了に戻す' : 'タスクを完了にする'}
+                      aria-label={done ? t('Mark task as not done') : t('Mark task as done')}
                       style={{
                         flexShrink: 0, marginTop: 1, width: 16, height: 16, borderRadius: '50%',
                         border: done ? 'none' : '1.5px solid var(--border-2)',
@@ -270,25 +278,25 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
                     >
                       {done && <Icon name="check" size={10} color="#fff" strokeWidth={3}/>}
                     </button>
-                    {t.sourceMessageId ? (
-                      <button type="button" onClick={() => onJumpToMessage(t.sourceMessageId!)} title="タスクを登録したメッセージへ移動"
+                    {task.sourceMessageId ? (
+                      <button type="button" onClick={() => onJumpToMessage(task.sourceMessageId!)} title={t('Go to the message that created this task')}
                         style={{ padding: 0, border: 'none', background: 'transparent', font: 'inherit', fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1, textAlign: 'left', cursor: 'pointer' }}>
-                        {formatTaskTitleForDisplay(t.title)}
-                        <span aria-label="メッセージに紐付いています" style={{ display: 'inline-flex', marginLeft: 4, verticalAlign: 'text-bottom' }}>
+                        {formatTaskTitleForDisplay(task.title)}
+                        <span aria-label={t('Linked to a message')} style={{ display: 'inline-flex', marginLeft: 4, verticalAlign: 'text-bottom' }}>
                           <Icon name="chat" size={11} color="var(--text-4)"/>
                         </span>
                       </button>
                     ) : (
                       <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
-                        {formatTaskTitleForDisplay(t.title)}
+                        {formatTaskTitleForDisplay(task.title)}
                       </span>
                     )}
                     <div className="chat-detail-row-action">
                       <RowActionMenu
                         triggerStyle={{ padding: '3px 4px' }}
                         actions={[
-                          { icon: 'edit', label: '編集', onSelect: () => { setDialogMode('edit'); setEditingTask(t) } },
-                          ...(t.isLinkedToMessage ? [] : [{ icon: 'trash', label: '削除', danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(t) } }]),
+                          { icon: 'edit', label: t('Edit'), onSelect: () => { setDialogMode('edit'); setEditingTask(task) } },
+                          ...(task.isLinkedToMessage ? [] : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(task) } }]),
                         ]}
                       />
                     </div>
@@ -305,7 +313,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
               onClick={() => setExpanded(e => !e)}
               style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
-              {expanded ? 'たたむ' : 'すべて表示'}
+              {expanded ? t('Show less') : t('Show all')}
             </button>
           )}
         </div>
@@ -322,6 +330,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
   channelId: string | null
   onJumpToMessage: (messageId: string) => void
 }) => {
+  const t = useT()
   const { data: files = [], isLoading, isError } = useChannelFiles(channelId)
   const renameFile = useRenameFile()
   const [expanded, setExpanded] = React.useState(false)
@@ -354,19 +363,19 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={SECTION_LABEL}>ファイル</div>
+      <div style={SECTION_LABEL}>{t('Files')}</div>
       {isLoading ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>読み込み中…</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('Loading...')}</div>
       ) : isError ? (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '4px 0' }}>ファイルの取得に失敗しました</div>
+        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '4px 0' }}>{t('Could not load files')}</div>
       ) : files.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>ファイルはまだありません</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('No files yet')}</div>
       ) : (
         <div>
           {visibleFiles.map((f: ChannelFileDto) => {
             const isLink = f.fileType === 'link'
             const sizeStr = formatFileSize(f.fileSize)
-            const meta = isLink ? '外部リンク' : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
+            const meta = isLink ? t('External link') : [sizeStr, formatFileTimestamp(f.createdAt)].filter(Boolean).join(' · ')
             const canJump = f.sourceMessageId !== null
             const isRenaming = renamingFileId === f.id
             const fileIcon = isLink && f.externalUrl
@@ -397,7 +406,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                   </div>
                 ) : (
                   <>
-                  <button type="button" onClick={() => openFile(f)} title="ファイルを開く"
+                  <button type="button" onClick={() => openFile(f)} title={t('Open file')}
                     style={{ flexShrink: 0, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex' }}>
                     {fileIcon}
                   </button>
@@ -405,7 +414,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     type="button"
                     onClick={() => f.sourceMessageId && onJumpToMessage(f.sourceMessageId)}
                     disabled={!canJump}
-                    title={canJump ? '共有されたメッセージへ移動' : '共有元のメッセージが見つかりません'}
+                    title={canJump ? t('Go to the message where this was shared') : t('The original message could not be found')}
                     style={{ flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', cursor: canJump ? 'pointer' : 'default' }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -421,8 +430,8 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                   <div className="chat-detail-row-action"><RowActionMenu
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
-                      { icon: 'eye', label: 'ファイルを開く', onSelect: () => openFile(f) },
-                      { icon: 'edit', label: '名前を変更', onSelect: () => setRenamingFileId(f.id) },
+                      { icon: 'eye', label: t('Open file'), onSelect: () => openFile(f) },
+                      { icon: 'edit', label: t('Rename'), onSelect: () => setRenamingFileId(f.id) },
                     ]}
                   /></div>
                 )}
@@ -434,7 +443,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
               onClick={() => setExpanded(e => !e)}
               style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
-              {expanded ? 'たたむ' : 'すべて表示'}
+              {expanded ? t('Show less') : t('Show all')}
             </button>
           )}
         </div>
@@ -470,18 +479,20 @@ const ChatDetailContent = ({
   currentDmAvatarUrl, dmParticipantId, project, channelMembers, memberLabel,
   channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
   onOpenProject, onOpenMember, onJumpToMessage,
-}: ChatDetailSidebarProps) => (
+}: ChatDetailSidebarProps) => {
+  const t = useT()
+  return (
   <>
     {isProject ? (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
         <div style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</div>
-        {project && formatDateRange(project.startDate, project.endDate) && (
+        {project && formatDateRange(project.startDate, project.endDate, t) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
             <Icon name="calendar" size={12} color="var(--text-4)"/>
-            {formatDateRange(project.startDate, project.endDate)}
+            {formatDateRange(project.startDate, project.endDate, t)}
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>プロジェクトチャンネル</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>{t('Project channel')}</div>
         <button
           onClick={onOpenProject}
           style={{
@@ -493,7 +504,7 @@ const ChatDetailContent = ({
           }}
         >
           <Icon name="arrowRight" size={13}/>
-          プロジェクトを開く
+          {t('Open project')}
         </button>
       </div>
     ) : (
@@ -519,14 +530,14 @@ const ChatDetailContent = ({
             }}
           >
             <Icon name="users" size={13}/>
-            プロフィールを見る
+            {t('View profile')}
           </button>
         )}
         {isPrivate && (
           <>
             <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="lock" size={12} color="var(--amber-text)"/>
-              <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>招待されたメンバーのみが閲覧できます</span>
+              <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>{t('Only invited members can view this')}</span>
             </div>
             <button
               onClick={onInviteMember}
@@ -539,7 +550,7 @@ const ChatDetailContent = ({
               }}
             >
               <Icon name="userPlus" size={13}/>
-              メンバーを招待
+              {t('Invite members')}
             </button>
             {showMemberInvite && channelId && (
               <ChannelMemberSheet channelId={channelId} onClose={onCloseMemberInvite}/>
@@ -567,7 +578,7 @@ const ChatDetailContent = ({
     <div style={{ padding: '12px 16px' }}>
       <div style={SECTION_LABEL}>{memberLabel}</div>
       {channelMembers.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>メンバーはいません</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('No members')}</div>
       ) : channelMembers.map((m, i) => {
         const clickable = !!m.userId
         return (
@@ -596,30 +607,36 @@ const ChatDetailContent = ({
     </div>
     )}
   </>
-)
+  )
+}
 
 function panelTitle({ isProject, isDm }: { isProject: boolean; isDm: boolean }): string {
-  return isProject ? 'このプロジェクトについて' : isDm ? 'ダイレクトメッセージ' : 'このチャンネルについて'
+  return isProject ? 'About this project' : isDm ? 'Direct messages' : 'About this channel'
 }
 
 // PC: 3カラムレイアウト右端の常設サイドバー
-export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => (
+export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => {
+  const t = useT()
+  return (
   <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{panelTitle(props)}</h3>
+      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(panelTitle(props))}</h3>
     </div>
     <ChatDetailContent {...props}/>
   </aside>
-)
+  )
+}
 
 // モバイル: ベルと同じく右からスライドインするインフォメーションドロワー
 // （MobileNav が zIndex:50 で固定されているため、ナビより前面に出す）
-export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & { onClose: () => void }) => (
+export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & { onClose: () => void }) => {
+  const t = useT()
+  return (
   <>
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 60, animation: 'notifFadeIn .15s ease-out' }}/>
     <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 61, display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
       <div style={{ padding: '14px 16px 12px', paddingTop: 'max(14px, env(safe-area-inset-top))', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{panelTitle(props)}</h3>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{t(panelTitle(props))}</h3>
         <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Icon name="close" size={15}/>
         </button>
@@ -627,4 +644,5 @@ export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & {
       <ChatDetailContent {...props}/>
     </aside>
   </>
-)
+  )
+}

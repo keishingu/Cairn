@@ -316,6 +316,7 @@ let _pendingJump: { channelId: string; messageId: string } | null = null
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const router = useRouter()
   const pathname = usePathname()
   const queryClient = useQueryClient()
@@ -641,7 +642,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
 
   // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
-  const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
+  const memberLabel = isProject ? t('Project members') : isPrivate ? t('Channel members') : isDm ? t('Participants') : null
 
   const handleOpenProject = () => {
     if (currentChannel) {

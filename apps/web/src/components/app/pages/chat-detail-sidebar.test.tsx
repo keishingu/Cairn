@@ -1,10 +1,11 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { LocaleProvider } from '@/components/locale-provider'
 import { ChatDetailSidebar } from './chat-detail-sidebar'
 import { useChannelFiles } from '@/hooks/use-channel-files'
 import { useTasksByScope } from '@/hooks/use-project-tasks'
@@ -53,9 +54,9 @@ const project: ProjectDto = {
   coverPhotoIdx: 0, coverPhotoUrl: null, location: null, placeId: null,
 }
 
-function renderSidebar(onJumpToMessage = vi.fn()) {
+function renderSidebar(onJumpToMessage = vi.fn(), locale: 'ja' | 'en' = 'ja') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  const sidebar = (
     <QueryClientProvider client={queryClient}><ChatDetailSidebar
       isProject={false}
       isDm={false}
@@ -73,8 +74,11 @@ function renderSidebar(onJumpToMessage = vi.fn()) {
       onOpenProject={vi.fn()}
       onOpenMember={vi.fn()}
       onJumpToMessage={onJumpToMessage}
-    /></QueryClientProvider>,
+    /></QueryClientProvider>
   )
+  render(locale === 'en' ? (
+    <LocaleProvider initialLocale="en" initialPreference="en">{sidebar}</LocaleProvider>
+  ) : sidebar)
   return onJumpToMessage
 }
 
@@ -228,6 +232,33 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
       isLoading: false,
       toggleMutation: { mutate: vi.fn() },
     } as unknown as ReturnType<typeof useTasksByScope>)
+  })
+
+  it('見出しと残件の展開は表示言語に従う', () => {
+    mockUseChannelFiles.mockReturnValue({
+      data: ['a', 'b', 'c', 'd'].map((id) => ({
+        id,
+        sourceMessageId: 'message-1',
+        fileName: `${id}.pdf`,
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        fileType: 'document',
+        uploaderName: '山田 太郎',
+        createdAt: '2026-08-07T03:45:00.000Z',
+      })),
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+
+    renderProjectSidebar()
+    expect(screen.getByRole('heading', { name: 'このプロジェクトについて' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'すべて表示' })).toBeInTheDocument()
+    expect(screen.queryByText('d.pdf')).not.toBeInTheDocument()
+
+    cleanup()
+    renderSidebar(vi.fn(), 'en')
+    expect(screen.getByRole('heading', { name: 'About this channel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show all' })).toBeInTheDocument()
   })
 
   it('メッセージに紐付くタスクだけに吹き出しアイコンを表示する', () => {
