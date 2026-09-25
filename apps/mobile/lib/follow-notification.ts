@@ -1,5 +1,4 @@
 import type { Router } from 'expo-router'
-import { translate } from '@cairn/shared'
 import { loadChannelLists, type ChannelLists } from './channel-list-queries'
 import { resolveChannelOpenParams } from './channel-open-params'
 import { decideWorkspaceSwitch } from './notification-workspace'
@@ -11,8 +10,6 @@ import { fetchWorkspaceMemberships, workspaceListQueryKey } from './workspace-qu
 import { getSelectedWorkspaceId } from './workspace-selection'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
-
-const translateJa: Translate = (message, values) => translate('ja', message, values)
 
 function channelRouteParams(channelId: string, lists: ChannelLists, t: Translate): Record<string, string> {
   const resolved = resolveChannelOpenParams(channelId, lists, t)
@@ -100,11 +97,10 @@ let notificationNavigation: Promise<void> = Promise.resolve()
 export function followNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
-  options?: { workspaceId?: string; t?: Translate },
+  options: { workspaceId?: string; t: Translate },
 ): Promise<void> {
-  const t = options?.t ?? translateJa
   const navigation = notificationNavigation.then(() =>
-    openNotification(router, destination, options?.workspaceId, t),
+    openNotification(router, destination, options.workspaceId, options.t),
   )
   notificationNavigation = navigation.then(
     () => undefined,

@@ -6,6 +6,12 @@ import { apiFetch } from '../../lib/api-fetch'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
 import { AppleSignInButton } from '../../components/apple-sign-in-button'
 import * as AppleAuthentication from 'expo-apple-authentication'
+import {
+  ACCOUNT_CONSENT_MESSAGE,
+  accountConsentPieces,
+  accountConsentUrl,
+  CONSENT_LINK_LABELS,
+} from '../../lib/account-consent'
 import { useT } from '../../components/locale-provider'
 
 export default function SignupScreen() {
@@ -116,23 +122,22 @@ export default function SignupScreen() {
           onError={(m) => setError(m || null)}
         />
 
-        <View style={styles.legal}>
-          <Text style={styles.legalText}>{t('By creating an account, you agree to the')}</Text>
-          <TouchableOpacity
-            accessibilityRole="link"
-            onPress={() => void Linking.openURL('https://oss-cairn.com/terms')}
-          >
-            <Text style={styles.legalLink}>{t('Terms')}</Text>
-          </TouchableOpacity>
-          <Text style={styles.legalText}>{t('and')}</Text>
-          <TouchableOpacity
-            accessibilityRole="link"
-            onPress={() => void Linking.openURL('https://oss-cairn.com/privacy')}
-          >
-            <Text style={styles.legalLink}>{t('Privacy policy')}</Text>
-          </TouchableOpacity>
-          <Text style={styles.legalText}>{t('you agree to them.')}</Text>
-        </View>
+        <Text style={styles.legalText}>
+          {accountConsentPieces(t(ACCOUNT_CONSENT_MESSAGE)).map((piece) =>
+            piece.kind === 'text' ? (
+              piece.text
+            ) : (
+              <Text
+                key={piece.slot}
+                accessibilityRole="link"
+                style={styles.legalLink}
+                onPress={() => void Linking.openURL(accountConsentUrl(piece.slot))}
+              >
+                {t(CONSENT_LINK_LABELS[piece.slot])}
+              </Text>
+            ),
+          )}
+        </Text>
       </View>
 
       <Link href="/(auth)/login" style={styles.link}>{t('Already have an account? Sign in here')}</Link>
@@ -212,16 +217,11 @@ const styles = StyleSheet.create({
     color: '#0070f3',
     fontSize: 14,
   },
-  legal: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 2,
-    marginTop: 4,
-  },
   legalText: {
+    marginTop: 4,
     color: '#666',
     fontSize: 12,
+    textAlign: 'center',
   },
   legalLink: {
     color: '#0070f3',

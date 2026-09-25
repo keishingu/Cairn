@@ -1,8 +1,4 @@
-import { translate } from '@cairn/shared'
-
 type Translate = (message: string, values?: Record<string, string | number>) => string
-
-const translateJa: Translate = (message, values) => translate('ja', message, values)
 
 export interface ChannelListItem {
   channelId: string
@@ -38,7 +34,7 @@ export function resolveChannelOpenParams(
     workspace?: readonly WorkspaceChannelListItem[]
     dms?: readonly DmListItem[]
   },
-  t: Translate = translateJa,
+  t: Translate,
 ): ChannelOpenParams {
   const project = lists.projects?.find((channel) => channel.channelId === channelId)
   if (project) {
