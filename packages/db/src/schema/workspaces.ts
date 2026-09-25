@@ -51,7 +51,7 @@ export const profiles = pgTable(
       'profiles_accent_id_check',
       sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
     ),
-    check('profiles_locale_check', sql`${t.locale} in ('ja', 'en', 'system')`),
+    check('profiles_locale_check', sql`${t.locale} in ('ja', 'en', 'ko', 'system')`),
     check(
       'profiles_calendar_week_start_check',
       sql`${t.calendarWeekStart} in ('sunday', 'monday')`,

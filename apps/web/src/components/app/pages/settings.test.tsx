@@ -636,6 +636,37 @@ describe('外観の言語設定', () => {
       )
     })
   })
+
+  it('韓国語を選ぶとプロフィールへ言語設定を保存する', async () => {
+    const user = userEvent.setup()
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({}) }
+      }
+      return { ok: true, json: async () => ({ id: 'user-1', locale: 'system', calendarWeekStart: 'sunday' }) }
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '한국어' }))
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ locale: 'ko' }),
+        }),
+      )
+    })
+  })
 })
 
 describe('外観の週の始まり', () => {

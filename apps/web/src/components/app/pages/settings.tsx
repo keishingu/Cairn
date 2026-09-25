@@ -768,8 +768,9 @@ const SettingsAppearance = () => {
 
   const localeOptions: { value: LocalePreference; label: string }[] = [
     { value: 'system', label: t('Browser') },
-    { value: 'ja', label: t('Japanese') },
+    { value: 'ja', label: '日本語' },
     { value: 'en', label: 'English' },
+    { value: 'ko', label: '한국어' },
   ]
 
   return (
