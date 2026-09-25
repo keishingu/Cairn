@@ -610,6 +610,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'It answers questions using projects, members, and files.': 'プロジェクト・メンバー・ファイルの情報をもとに質問に答えます。',
   'It answers your questions.': '質問に答えます。',
   Japanese: '日本語',
+  Korean: '韓国語',
+  English: '英語',
   'Join "{name}"': '「{name}」に参加する',
   'Join as {role}': '{role}として参加',
   Joined: '参加中',

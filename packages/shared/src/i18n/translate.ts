@@ -4,8 +4,9 @@
 import i18next from 'i18next'
 import type { AppLocale } from '../config/locale'
 import { JA_MESSAGES } from './ja'
+import { KO_MESSAGES } from './ko'
 
-// 英語の UI 文がキー。ja だけカタログを持ち、en と未登録キーは原文を返す。
+// 英語の UI 文がキー。ja / ko はカタログを持ち、en と未登録キーは原文を返す。
 // keySeparator / nsSeparator を切る。キーに '.' や ':' が含まれていても文のまま引ける。
 // プレースホルダは既存の {name}。count は文中の数値で、複数形の語尾はカタログに置かない。
 // 言語は t() の lng で渡す。インスタンスの言語は切り替えないので、SSR の同時リクエストで混ざらない。
@@ -15,9 +16,10 @@ void i18n.init({
   initAsync: false,
   resources: {
     ja: { translation: JA_MESSAGES },
+    ko: { translation: KO_MESSAGES },
   },
   fallbackLng: false,
-  supportedLngs: ['ja', 'en'],
+  supportedLngs: ['ja', 'en', 'ko'],
   load: 'currentOnly',
   keySeparator: false,
   nsSeparator: false,

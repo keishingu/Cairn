@@ -1,23 +1,23 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-export const APP_LOCALES = ['ja', 'en'] as const
+export const APP_LOCALES = ['ja', 'en', 'ko'] as const
 export type AppLocale = (typeof APP_LOCALES)[number]
 
 // system はブラウザ（Accept-Language / navigator.languages）に従う。
-// 明示の ja / en は設定画面と LP の言語スイッチが保存する選択。
-export const LOCALE_PREFERENCES = ['ja', 'en', 'system'] as const
+// 明示の ja / en / ko は設定画面と LP の言語スイッチが保存する選択。
+export const LOCALE_PREFERENCES = ['ja', 'en', 'ko', 'system'] as const
 export type LocalePreference = (typeof LOCALE_PREFERENCES)[number]
 
 export const DEFAULT_LOCALE_PREFERENCE: LocalePreference = 'system'
 export const LOCALE_PREFERENCE_COOKIE = 'cairn-locale-preference'
 
 export function isAppLocale(value: unknown): value is AppLocale {
-  return value === 'ja' || value === 'en'
+  return value === 'ja' || value === 'en' || value === 'ko'
 }
 
 export function isLocalePreference(value: unknown): value is LocalePreference {
-  return value === 'ja' || value === 'en' || value === 'system'
+  return value === 'ja' || value === 'en' || value === 'ko' || value === 'system'
 }
 
 export function parseLocalePreference(value: unknown): LocalePreference {
@@ -26,7 +26,7 @@ export function parseLocalePreference(value: unknown): LocalePreference {
 
 function supportedLocale(tag: string): AppLocale | null {
   const language = tag.trim().toLowerCase().split('-')[0]
-  if (language === 'en' || language === 'ja') return language
+  if (language === 'en' || language === 'ja' || language === 'ko') return language
   return null
 }
 
@@ -72,6 +72,7 @@ export function acceptLanguageFromTags(tags: readonly string[] | null | undefine
 const INTL_LOCALE: Record<AppLocale, string> = {
   ja: 'ja-JP',
   en: 'en-US',
+  ko: 'ko-KR',
 }
 
 export function formatAppDate(locale: AppLocale, value: string | number | Date): string {
@@ -79,7 +80,7 @@ export function formatAppDate(locale: AppLocale, value: string | number | Date):
 }
 
 export function resolveLocale(preference: LocalePreference, acceptLanguage: string | null | undefined): AppLocale {
-  if (preference === 'ja' || preference === 'en') return preference
+  if (preference === 'ja' || preference === 'en' || preference === 'ko') return preference
   return localeFromAcceptLanguage(acceptLanguage)
 }
 
