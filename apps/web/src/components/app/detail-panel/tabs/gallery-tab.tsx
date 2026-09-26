@@ -117,9 +117,13 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
       ),
     )
 
-    const errors = results
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : t('Could not upload')))
+    // サーバーの汎用エラーが並ぶとどの写真か分からないため、名前を含まない文言には先頭に付ける
+    const errors = results.flatMap((r, i) => {
+      if (r.status !== 'rejected') return []
+      const name = files[i]?.name ?? ''
+      const message = r.reason instanceof Error ? r.reason.message : t('Could not upload')
+      return [name && !message.includes(name) ? `${name}: ${message}` : message]
+    })
 
     const succeeded = files.length - errors.length
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
