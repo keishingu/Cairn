@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import type { UserIdentity } from '@supabase/supabase-js'
 import { useT } from '@/components/locale-provider'
 import { ConfirmDialog } from './confirm-dialog'
+import { InlineError } from './inline-error'
 import {
   findIdentity,
   providerLabel,
@@ -293,9 +294,7 @@ export function LoginMethodsSettings() {
         {isLoading ? (
           <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : isError ? (
-          <div style={{ padding: 16, fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(error as Error).message}
-          </div>
+          <InlineError style={{ padding: 16 }}>{(error as Error).message}</InlineError>
         ) : (
           <>
             {(identities ?? []).map((identity) => {
@@ -353,9 +352,7 @@ export function LoginMethodsSettings() {
         )}
 
         {unlinkIdentity.isError && (
-          <div style={{ padding: '0 16px 12px', fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(unlinkIdentity.error as Error).message}
-          </div>
+          <InlineError style={{ padding: '0 16px 12px' }}>{(unlinkIdentity.error as Error).message}</InlineError>
         )}
       </div>
 

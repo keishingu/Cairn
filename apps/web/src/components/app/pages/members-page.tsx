@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatAppDate } from '@cairn/shared'
 import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { InlineError } from '../inline-error'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
@@ -666,12 +667,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
           {!inviteUrl ? (
             <>
               {generateError && (
-                <div style={{
-                  padding: '8px 12px', borderRadius: 8, fontSize: 12.5,
-                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)',
-                }}>
-                  {generateError}
-                </div>
+                <InlineError variant="box" style={{ fontSize: 12.5 }}>{generateError}</InlineError>
               )}
               <button
                 type="button"

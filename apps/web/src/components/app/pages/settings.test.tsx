@@ -339,7 +339,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -373,7 +373,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -407,7 +407,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -433,7 +433,7 @@ describe('MCP / APIトークン設定', () => {
     mockIntegrationsFetch({ apiTokenListError: true })
     renderIntegrationsSection()
 
-    expect(await screen.findByText('⚠ APIトークンの取得に失敗しました')).toBeInTheDocument()
+    expect(await screen.findByText('APIトークンの取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByText('発行済みトークンはありません。')).not.toBeInTheDocument()
   })
 

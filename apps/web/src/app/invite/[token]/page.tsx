@@ -10,6 +10,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { formatAppDate } from '@cairn/shared'
 import { createClient } from '@/lib/supabase/client'
 import { useLocale, useT } from '@/components/locale-provider'
+import { Icon } from '@/components/app/primitives'
 
 interface InviteInfo {
   workspaceName: string
@@ -81,7 +82,9 @@ export default function InvitePage() {
         <div style={{ width: '100%', maxWidth: 400, textAlign: 'center' }}>
           <div style={logoStyle}>Cairn</div>
           <div style={cardStyle}>
-            <div style={{ fontSize: 32, marginBottom: 16 }}>⚠️</div>
+            <div style={{ width: 48, height: 48, margin: '0 auto 16px', borderRadius: 12, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="alertTriangle" size={22} />
+            </div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('This invite link is invalid')}</div>
             <div style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('This link has expired or has been deleted.')}<br />{t('Ask the person who invited you for a new link.')}</div>
           </div>

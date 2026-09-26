@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
+import { InlineError } from '../inline-error'
 import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
@@ -489,14 +490,10 @@ const SettingsAccount = () => {
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
           {avatarMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(avatarMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(avatarMutation.error as Error).message}</InlineError>
           )}
 
           {/* メール（読み取り専用） */}
@@ -540,9 +537,7 @@ const SettingsAccount = () => {
               </button>
             </div>
             {aiNudgesMutation.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(aiNudgesMutation.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(aiNudgesMutation.error as Error).message}</InlineError>
             )}
           </div>
         </section>
@@ -1122,7 +1117,7 @@ const StatusRow = ({
         ))}
       </div>
       {saveMutation.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ {t('Could not update')}</div>
+        <InlineError style={{ fontSize: 11.5 }}>{t('Could not update')}</InlineError>
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -1260,7 +1255,7 @@ const SettingsWorkflow = () => {
                 ))}
               </div>
               {addMutation.isError && (
-                <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ {t('Could not add')}</div>
+                <InlineError style={{ fontSize: 11.5 }}>{t('Could not add')}</InlineError>
               )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
@@ -1652,9 +1647,7 @@ const SettingsWorkspaceGeneral = () => {
             </button>
           </div>
           {logoMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(logoMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(logoMutation.error as Error).message}</InlineError>
           )}
 
           {/* ワークスペース名 */}
@@ -1693,9 +1686,7 @@ const SettingsWorkspaceGeneral = () => {
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
 
           {/* 説明 */}
@@ -1741,9 +1732,7 @@ const SettingsWorkspaceGeneral = () => {
             </div>
           </div>
           {descMutation.isError && (
-            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(descMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px 10px' }}>{(descMutation.error as Error).message}</InlineError>
           )}
         </div>
       </section>
@@ -1901,9 +1890,7 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
             {updateSettings.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(updateSettings.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
             )}
           </div>
         </section>
@@ -2082,9 +2069,7 @@ const ApiTokenSettings = () => {
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : tokensError ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(tokensError as Error).message}
-          </div>
+          <InlineError>{(tokensError as Error).message}</InlineError>
         ) : visibleTokens.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No tokens have been issued.')}</div>
         ) : (
@@ -2191,7 +2176,7 @@ const McpOAuthConnectionSettings = () => {
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>⚠ {(error as Error).message}</div>
+          <InlineError>{(error as Error).message}</InlineError>
         ) : connections.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('There are no active OAuth connections.')}</div>
         ) : (
@@ -2892,9 +2877,7 @@ const SettingsBilling = () => {
       </p>
 
       {billingQuery.isError ? (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ {t('Could not load billing')}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not load billing')}</InlineError>
       ) : billingQuery.data?.billingEnabled ? (
         <section className="card" style={{ padding: 20, marginBottom: 16 }}>
           <div
@@ -2970,9 +2953,7 @@ const SettingsBilling = () => {
       )}
 
       {billingActionError && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ {billingActionError}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{billingActionError}</InlineError>
       )}
 
       {creditPackFulfillmentState === 'polling' && (
@@ -2982,10 +2963,7 @@ const SettingsBilling = () => {
       )}
 
       {creditPackFulfillmentState === 'timed_out' && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠
-          {t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}</InlineError>
       )}
 
       <section className="card" style={{ padding: 20 }}>
@@ -2994,9 +2972,7 @@ const SettingsBilling = () => {
           <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
         ) : isError ? (
           // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
-          <div style={{ fontSize: 13, color: 'var(--red-text)' }}>
-            ⚠ {t('Could not load storage usage')}
-          </div>
+          <InlineError style={{ fontSize: 13 }}>{t('Could not load storage usage')}</InlineError>
         ) : (
           <>
             <div
@@ -3043,7 +3019,7 @@ const SettingsContributions = () => {
   }
   if (billingQuery.isError) {
     return (
-      <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ {t('Could not load Cairn')}</div>
+      <InlineError style={{ fontSize: 13 }}>{t('Could not load Cairn')}</InlineError>
     )
   }
   if (!billingQuery.data?.billingEnabled) return null

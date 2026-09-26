@@ -9,6 +9,7 @@ import type {
   PendingCreditDto,
 } from '@/app/api/billing/contributions/route'
 import { useT } from '@/components/locale-provider'
+import { Icon } from '@/components/app/primitives'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 // docs/prototypes/stone-stacking-sandbox.html の検証済み初期値。
@@ -1004,7 +1005,8 @@ export function CreditPlacementBoard({
         .credit-placement-board__footer { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; padding: 13px 20px 18px; }
         .credit-placement-board__status { color: var(--text-3); font-size: 12.5px; }
         .credit-placement-board__note { color: var(--text-4); font-size: 11.5px; margin: 0; padding: 0 20px 18px; }
-        .credit-placement-board__error { color: var(--red-text); font-size: 12.5px; margin: 0; padding: 0 20px 18px; }
+        .credit-placement-board__error { align-items: flex-start; color: var(--red-text); display: flex; font-size: 12.5px; gap: 6px; margin: 0; padding: 0 20px 18px; }
+        .credit-placement-board__error svg { margin-top: .15em; }
         @media (max-width: 760px) { .credit-placement-board__hint { display: none; } .credit-placement-board__header { padding: 16px 16px 12px; } .credit-placement-board__footer { padding: 12px 16px 15px; } .credit-placement-board__note, .credit-placement-board__error { padding-left: 16px; padding-right: 16px; } }
       `}</style>
       <header className="credit-placement-board__header">
@@ -1024,8 +1026,9 @@ export function CreditPlacementBoard({
           <span className="credit-placement-board__status">{t('Loading the stone stack...')}</span>
         </div>
       ) : isError ? (
-        <p className="credit-placement-board__error">
-          ⚠ {error instanceof Error ? t(error.message) : t('Could not fetch the stones')}
+        <p className="credit-placement-board__error" role="alert">
+          <Icon name="alertTriangle" size={13} strokeWidth={2} />
+          {error instanceof Error ? t(error.message) : t('Could not fetch the stones')}
         </p>
       ) : data?.billingEnabled ? (
         <>
@@ -1098,7 +1101,7 @@ export function CreditPlacementBoard({
           <p className="credit-placement-board__note">
             {t('Drag a stone into place to save it after it settles. Stones that fall off the platform return to your hand.')}
           </p>
-          {actionError && <p className="credit-placement-board__error">⚠ {t(actionError)}</p>}
+          {actionError && <p className="credit-placement-board__error" role="alert"><Icon name="alertTriangle" size={13} strokeWidth={2} />{t(actionError)}</p>}
         </>
       ) : null}
     </section>

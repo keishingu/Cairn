@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import { Icon } from '../../primitives'
+import { InlineError } from '../../inline-error'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
@@ -178,9 +179,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       </div>
 
       {uploadError && (
-        <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
-          {uploadError}
-        </div>
+        <InlineError variant="box" style={{ marginBottom: 8 }}>{uploadError}</InlineError>
       )}
 
       {files.length === 0 && (

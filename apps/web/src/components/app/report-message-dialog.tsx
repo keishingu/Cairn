@@ -6,6 +6,7 @@
 import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { Modal, ModalHeader } from './primitives'
+import { InlineError } from './inline-error'
 
 export const REPORT_REASONS = [
   { value: 'harassment', label: 'Harassment or bullying' },
@@ -109,11 +110,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
               />
             </label>
           )}
-          {error && (
-            <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)', padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)' }}>
-              {error}
-            </div>
-          )}
+          {error && <InlineError variant="box">{error}</InlineError>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px', borderTop: '1px solid var(--divider)' }}>
           <button type="button" className="btn" onClick={close} disabled={busy}>{t('Cancel')}</button>
