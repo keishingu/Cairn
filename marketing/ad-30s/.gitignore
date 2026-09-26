@@ -1,0 +1,5 @@
+# fetch_fonts.py / audio.py / build.sh の生成物
+fonts/
+fonts.local.css
+out/
+preview/

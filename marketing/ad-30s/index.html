@@ -1,0 +1,777 @@
+<!doctype html>
+<!-- Copyright 2026 Cairn Contributors · SPDX-License-Identifier: Apache-2.0 -->
+<!-- 30 秒広告のアニメーション本体。render(t) で時刻 t の画面を決定的に描く（CSS アニメーションは使わない）。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Cairn 30s</title>
+<link rel="stylesheet" href="fonts.local.css">
+<style>
+:root{
+  --bg:#101727;--bg2:#0C1220;--panel:#141D30;--panel2:#18223A;--card:#131C2E;
+  --hair:rgba(255,255,255,.075);--hair2:rgba(255,255,255,.12);
+  --ink:#EEF2F9;--ink2:#AEB9CD;--ink3:#7C89A1;--ink4:#586377;
+  --acc:#0FB981;--acc2:#34D399;--acc3:#45D6A4;--accink:#06281D;
+  --blue:#60A5FA;--red:#F87171;--amber:#F59E0B;--yellow:#EAB308;--grey:#94A3B8;
+  --sans:'Geist','Noto Sans JP',sans-serif;--mono:'Geist Mono','Noto Sans JP',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg)}
+body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;font-feature-settings:"palt"}
+#stage{position:absolute;inset:0;overflow:hidden;background:var(--bg)}
+#world{position:absolute;inset:0;transform-origin:50% 50%}
+.abs{position:absolute}
+.scene{position:absolute;inset:0;display:none}
+.ch{display:inline-block;white-space:pre;will-change:transform}
+.mono{font-family:var(--mono)}
+.eyebrow{font-family:var(--mono);font-size:22px;letter-spacing:.28em;color:var(--acc2);text-transform:uppercase;display:flex;align-items:center;gap:16px}
+.eyebrow::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--acc);box-shadow:0 0 14px var(--acc)}
+.h{font-weight:800;letter-spacing:-.03em;line-height:1.12}
+.glowtxt{background:linear-gradient(135deg,#0FB981,#45D6A4 60%,#8BF0C8);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* background */
+#grid{position:absolute;inset:-200px;background-image:linear-gradient(var(--hair) 1px,transparent 1px),linear-gradient(90deg,var(--hair) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse 60% 55% at 50% 45%,#000 30%,transparent 100%)}
+#glow{position:absolute;left:50%;top:50%;width:1600px;height:1100px;margin:-550px 0 0 -800px;background:radial-gradient(ellipse at center,rgba(15,185,129,.38),rgba(15,185,129,.10) 40%,transparent 70%);filter:blur(20px)}
+#vig{position:absolute;inset:0;background:radial-gradient(ellipse 80% 75% at 50% 50%,transparent 55%,rgba(4,7,14,.75) 100%);pointer-events:none}
+#grain{position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none}
+#flash{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 55%,#D9FFF0,rgba(52,211,153,.35) 60%,transparent 90%);opacity:0;pointer-events:none;mix-blend-mode:screen}
+#wipe{position:absolute;inset:0;pointer-events:none}
+#wipe .bar{position:absolute;left:0;height:380px;width:3000px;border-radius:120px}
+
+/* window / app mock */
+.win{position:absolute;background:linear-gradient(180deg,#151F33,#111A2B);border:1px solid var(--hair2);border-radius:22px;box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02) inset;overflow:hidden}
+.winbar{height:56px;border-bottom:1px solid var(--hair);display:flex;align-items:center;padding:0 22px;gap:10px}
+.dot{width:13px;height:13px;border-radius:50%;background:#2A3448}
+.url{margin:0 auto;font-family:var(--mono);font-size:17px;color:var(--ink3);border:1px solid var(--hair2);border-radius:9px;padding:6px 18px;display:flex;gap:10px;align-items:center}
+.av{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:700;font-size:20px;flex:none;color:#fff}
+.av.k{background:#D9534F}.av.y{background:#1F9D6E}.av.ai{background:linear-gradient(135deg,#0FB981,#45D6A4);color:var(--accink)}
+.msg{display:flex;gap:16px;align-items:flex-start}
+.msg .nm{font-weight:700;font-size:20px}
+.msg .tm{font-family:var(--mono);font-size:15px;color:var(--ink4);margin-left:10px;font-weight:400}
+.msg .tx{font-size:21px;color:var(--ink2);margin-top:4px}
+.cb{display:inline-grid;place-items:center;width:24px;height:24px;border:2px solid var(--ink3);border-radius:6px;vertical-align:-4px;margin-right:10px;position:relative;flex:none}
+.cb.on{background:var(--acc);border-color:var(--acc)}
+.cb svg{width:16px;height:16px}
+.chip{position:absolute;border-radius:8px;font-size:16px;font-weight:600;padding:0 10px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;border-left:4px solid}
+.pill{display:inline-flex;align-items:center;gap:14px;border:1px solid var(--hair2);border-radius:999px;padding:10px 22px;font-size:22px;color:var(--ink2);background:rgba(20,29,48,.7)}
+.tag{font-family:var(--mono);font-size:16px;border-radius:999px;padding:4px 12px;background:rgba(15,185,129,.14);color:var(--acc2);border:1px solid rgba(15,185,129,.35)}
+.btn{display:inline-flex;align-items:center;gap:14px;border-radius:16px;padding:0 40px;height:84px;font-size:32px;font-weight:700}
+.btn.p{background:var(--acc);color:#fff;box-shadow:0 18px 50px rgba(15,185,129,.45)}
+.btn.s{border:1px solid var(--hair2);color:var(--ink);background:rgba(20,29,48,.8)}
+.stone{position:absolute;border-radius:22px;background:linear-gradient(135deg,#0FB981,#45D6A4);transform-origin:50% 100%}
+#aL .tx{font-size:25px}#aL .nm{font-size:22px}#aRrows{font-size:25px!important}
+.card{position:absolute;background:linear-gradient(180deg,#152036,#111A2C);border:1px solid var(--hair2);border-radius:24px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="world">
+    <div id="grid"></div>
+    <div id="glow"></div>
+
+    <!-- ============ A: 課題 ============ -->
+    <section class="scene" id="sA">
+      <div class="abs" id="aHead" style="left:0;right:0;top:120px;height:120px;text-align:center">
+        <div class="abs h ak" style="left:0;right:0;font-size:88px">チャットは、こっち。</div>
+        <div class="abs h ak" style="left:0;right:0;font-size:88px">タスクは、あっち。</div>
+        <div class="abs h ak" style="left:0;right:0;font-size:88px">決まったことを、また転記。</div>
+        <div class="abs h ak" style="left:0;right:0;font-size:88px">古い履歴は、もう読めない。</div>
+      </div>
+      <div class="win" id="aL" style="left:250px;top:330px;width:660px;height:560px">
+        <div class="winbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span class="mono" style="margin-left:18px;font-size:17px;color:var(--ink3);letter-spacing:.2em">CHAT APP</span></div>
+        <div style="padding:26px 30px;display:flex;flex-direction:column;gap:22px" id="aLmsgs">
+          <div class="msg"><div class="av y">山</div><div><div class="nm">山田 太郎<span class="tm">10:02</span></div><div class="tx">明日の打ち合わせ、14時からで</div></div></div>
+          <div class="msg"><div class="av k">圭</div><div><div class="nm">新宮 圭<span class="tm">10:05</span></div><div class="tx">資料どこに置きましたっけ？</div></div></div>
+          <div class="msg" id="aKey"><div class="av y">山</div><div><div class="nm">山田 太郎<span class="tm">10:11</span></div><div class="tx" style="color:var(--ink);font-weight:600">納期は 6/27 で確定！</div></div></div>
+          <div class="msg"><div class="av k">圭</div><div><div class="nm">新宮 圭<span class="tm">10:12</span></div><div class="tx">了解です、タスクに入れておきます</div></div></div>
+        </div>
+      </div>
+      <div class="win" id="aR" style="left:1010px;top:330px;width:660px;height:560px">
+        <div class="winbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><span class="mono" style="margin-left:18px;font-size:17px;color:var(--ink3);letter-spacing:.2em">TASK TRACKER</span></div>
+        <div style="padding:26px 30px;display:flex;flex-direction:column;gap:16px;font-size:22px;color:var(--ink2)" id="aRrows">
+          <div style="height:64px;border:1px solid var(--hair);border-radius:14px;display:flex;align-items:center;padding:0 20px"><span class="cb"></span>台本レビュー<span class="mono" style="margin-left:auto;font-size:16px;color:var(--ink4)">6/12</span></div>
+          <div style="height:64px;border:1px solid var(--hair);border-radius:14px;display:flex;align-items:center;padding:0 20px"><span class="cb"></span>会場確保<span class="mono" style="margin-left:auto;font-size:16px;color:var(--ink4)">6/12</span></div>
+          <div id="aSlot" style="height:64px;border:2px dashed var(--hair2);border-radius:14px;display:flex;align-items:center;padding:0 20px;color:var(--ink4)"><span class="mono" style="font-size:16px;letter-spacing:.15em">+ NEW</span></div>
+        </div>
+      </div>
+      <div class="abs" id="aFly" style="left:0;top:0;height:64px;padding:0 22px;border-radius:14px;background:#1B2742;border:1px solid var(--acc);display:flex;align-items:center;font-size:22px;font-weight:600;box-shadow:0 20px 50px rgba(0,0,0,.5)">
+        <span class="cb"></span>納期は 6/27 で確定！
+      </div>
+      <svg class="abs" id="aCursor" width="44" height="44" viewBox="0 0 24 24" style="left:0;top:0"><path d="M4 2l16 9-7 1.8L9.6 20z" fill="#fff" stroke="#0B1020" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      <div class="abs mono" id="aLimit" style="left:250px;top:300px;font-size:18px;letter-spacing:.2em;color:var(--red);border:1px solid rgba(248,113,113,.5);background:rgba(248,113,113,.12);padding:6px 14px;border-radius:8px">HISTORY LIMIT</div>
+    </section>
+
+    <!-- ============ B: ロゴ ============ -->
+    <section class="scene" id="sB">
+      <div class="abs" id="bRings" style="left:0;top:0;width:1920px;height:1080px"></div>
+      <div class="abs" id="bParts" style="left:0;top:0;width:1920px;height:1080px"></div>
+      <div class="abs" id="bLogo" style="left:704px;top:284px;width:512px;height:512px">
+        <div class="stone" id="st0" style="left:112px;top:320px;width:296px;height:92px"></div>
+        <div class="stone" id="st1" style="left:96px;top:204px;width:228px;height:88px"></div>
+        <div class="stone" id="st2" style="left:192px;top:88px;width:188px;height:88px"></div>
+      </div>
+      <div class="abs" id="bWordWrap" style="left:960px;top:540px;width:0;height:0">
+        <div class="abs" id="bWord" style="left:0;top:-130px;font-size:250px;font-weight:700;letter-spacing:-.05em;line-height:1;white-space:nowrap">Cairn</div>
+      </div>
+      <div class="abs" id="bPill" style="left:960px;top:0;">
+        <div class="pill" style="font-size:26px;padding:14px 28px"><span class="tag" style="font-size:20px">OSS</span><span style="color:var(--ink)">Project Collaboration OS</span><span style="color:var(--ink4)">·</span><span>Apache-2.0</span></div>
+      </div>
+    </section>
+
+    <!-- ============ C: ヒーロー ============ -->
+    <section class="scene" id="sC">
+      <div class="abs" id="cFree" style="left:50%;top:50%;font-size:620px;font-weight:800;letter-spacing:-.06em;color:transparent;-webkit-text-stroke:2px rgba(52,211,153,.16);white-space:nowrap;line-height:1">FREE</div>
+      <div class="abs" id="cBlock" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs h" id="c1" style="left:0;right:0;top:170px;text-align:center;font-size:210px;font-weight:900;line-height:1"><span class="glowtxt">無料で</span></div>
+        <div class="abs h" id="c2" style="left:0;right:0;top:420px;text-align:center;font-size:150px;font-weight:900;line-height:1">チャットも、</div>
+        <div class="abs h" id="c3" style="left:0;right:0;top:620px;text-align:center;font-size:150px;font-weight:900;line-height:1">プロジェクト管理も。</div>
+      </div>
+      <div class="abs" id="cEn" style="left:0;right:0;top:770px;text-align:center;font-size:46px;font-weight:600;color:var(--ink2);letter-spacing:-.01em">Chat and project management, free.</div>
+      <div class="abs" id="cChecks" style="left:0;right:0;top:880px;display:flex;justify-content:center;gap:26px">
+        <div class="pill cc"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#34D399" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>履歴は無期限</div>
+        <div class="pill cc"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#34D399" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>メンバー・ゲスト無制限</div>
+        <div class="pill cc"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#34D399" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>iPhone アプリ・ブラウザ</div>
+        <div class="pill cc"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#34D399" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>クレジットカード不要</div>
+      </div>
+    </section>
+
+    <!-- ============ D: チャット → タスク ============ -->
+    <section class="scene" id="sD">
+      <div class="abs" id="dCopy" style="left:120px;top:250px;width:680px">
+        <div class="eyebrow dk">01 · Chat → Task</div>
+        <div class="h dk" style="font-size:84px;margin-top:34px;line-height:1.16">チャットの <span class="glowtxt">☑</span> が、<br>タスクになる。</div>
+        <div class="dk" style="font-size:30px;color:var(--ink2);margin-top:34px;line-height:1.6">チェック付きで発言すると、タスク一覧へ。<br>完了のチェックは双方向で同期。</div>
+      </div>
+      <div class="abs" id="dPersp" style="left:0;top:0;width:1920px;height:1080px;perspective:2200px">
+        <div class="win" id="dWin" style="left:790px;top:170px;width:1060px;height:760px;transform-origin:30% 50%">
+          <div class="winbar"><i class="dot"></i><i class="dot"></i><i class="dot"></i>
+            <div class="url"><svg width="14" height="14" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#7C89A1" stroke-width="2"/><path d="M8 11V8a4 4 0 018 0v3" fill="none" stroke="#7C89A1" stroke-width="2"/></svg>app.cairn.dev / Creative Studio</div>
+          </div>
+          <div style="display:flex;height:704px">
+            <div id="dChat" style="width:640px;border-right:1px solid var(--hair);position:relative;overflow:hidden">
+              <div style="height:66px;border-bottom:1px solid var(--hair);display:flex;align-items:center;padding:0 28px;gap:14px;font-size:24px;font-weight:700"># リリース準備<span class="mono" style="font-size:16px;color:var(--ink4);font-weight:400">👤 3</span>
+                <div style="margin-left:auto;display:flex;gap:22px;font-size:17px;font-weight:500;color:var(--ink3)"><span>概要</span><span style="color:var(--acc2)">チャット</span><span>ファイル</span><span>タスク</span></div></div>
+              <div id="dMsgs" class="abs" style="left:28px;right:28px;top:96px;display:flex;flex-direction:column;gap:30px">
+                <div class="msg dm"><div class="av k">圭</div><div><div class="nm">新宮 圭<span class="tm">5/26 14:27</span></div><div class="tx">最終案、共有します。確認お願いします</div>
+                  <div style="margin-top:12px;border:1px solid var(--hair2);border-radius:12px;padding:12px 16px;display:flex;gap:14px;align-items:center;width:320px;background:rgba(255,255,255,.02)"><div style="width:40px;height:40px;border-radius:9px;background:rgba(96,165,250,.16);display:grid;place-items:center"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="#93C5FD" stroke-width="2"/></svg></div><div><div style="font-weight:700;font-size:18px">進行表</div><div class="mono" style="font-size:14px;color:var(--ink4)">docs.google.com</div></div></div></div></div>
+                <div class="msg dm"><div class="av y">山</div><div><div class="nm">山田 太郎<span class="tm">5/28 10:27</span></div><div class="tx">見たよ。このまま進めて大丈夫</div></div></div>
+                <div class="msg dm" id="dNew"><div class="av k">圭</div><div><div class="nm">新宮 圭<span class="tm">5/28 10:31</span></div><div class="tx" style="color:var(--ink);display:flex;align-items:center"><span class="cb" id="dCb1"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="dNewTx">デザイン確認を明日まで</span></div></div></div>
+              </div>
+              <div class="abs" style="left:24px;right:24px;bottom:22px;height:66px;border:1px solid var(--hair2);border-radius:14px;display:flex;align-items:center;padding:0 20px;font-size:20px;background:rgba(0,0,0,.15)">
+                <span id="dPh" style="color:var(--ink4)"># リリース準備 にメッセージ送信</span><span id="dTyped" style="color:var(--ink)"></span><span id="dCaret" style="width:2px;height:26px;background:var(--acc2);margin-left:2px"></span>
+                <div id="dSend" style="margin-left:auto;width:44px;height:44px;border-radius:11px;background:var(--acc);display:grid;place-items:center"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z" fill="#fff"/></svg></div>
+              </div>
+            </div>
+            <div id="dTasks" style="flex:1;position:relative;background:rgba(0,0,0,.12)">
+              <div style="height:66px;border-bottom:1px solid var(--hair);display:flex;align-items:center;padding:0 26px;gap:12px;font-size:22px;font-weight:700">マイタスク<span class="tag" id="dCount">2</span></div>
+              <div class="abs dT" id="dT0" style="left:22px;right:22px;top:96px;height:78px;border:1px solid var(--hair2);border-radius:14px;padding:0 18px;display:flex;align-items:center;font-size:20px;background:#162137"><span class="cb" id="dCb2"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><div id="dT0tx" style="font-weight:600">デザイン確認を明日まで</div><div class="mono" style="font-size:14px;color:var(--ink4)"># リリース準備</div></div></div>
+              <div class="abs dT" id="dT1" style="left:22px;right:22px;top:96px;height:78px;border:1px solid var(--hair);border-radius:14px;padding:0 18px;display:flex;align-items:center;font-size:20px;color:var(--ink2)"><span class="cb"></span><div><div>台本レビュー</div><div class="mono" style="font-size:14px;color:var(--ink4)">6/12 · # 撮影</div></div></div>
+              <div class="abs dT" id="dT2" style="left:22px;right:22px;top:190px;height:78px;border:1px solid var(--hair);border-radius:14px;padding:0 18px;display:flex;align-items:center;font-size:20px;color:var(--ink2)"><span class="cb"></span><div><div>会場確保</div><div class="mono" style="font-size:14px;color:var(--ink4)">6/12 · # 展示会</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="abs" id="dFly" style="left:0;top:0;height:60px;padding:0 20px;border-radius:14px;background:#1B2742;border:2px solid var(--acc);display:flex;align-items:center;font-size:20px;font-weight:600;box-shadow:0 24px 60px rgba(15,185,129,.35)"><span class="cb"></span>デザイン確認を明日まで</div>
+      <div class="abs" id="dSync" style="left:0;top:0"><div class="pill" style="background:var(--acc);color:var(--accink);border:none;font-weight:700;font-size:24px;box-shadow:0 12px 40px rgba(15,185,129,.5)"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3" fill="none" stroke="#06281D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>双方向で同期</div></div>
+      <svg class="abs" id="dCursor" width="44" height="44" viewBox="0 0 24 24" style="left:0;top:0"><path d="M4 2l16 9-7 1.8L9.6 20z" fill="#fff" stroke="#0B1020" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    </section>
+
+    <!-- ============ E: カレンダー / カンバン ============ -->
+    <section class="scene" id="sE">
+      <div class="abs" id="eCopy" style="left:120px;top:80px;width:1680px;display:flex;align-items:flex-end;gap:60px">
+        <div><div class="eyebrow ek">02 · Calendar · Board</div>
+        <div class="h ek" style="font-size:76px;margin-top:26px">プロジェクトごとに、<span class="glowtxt">カレンダーとカンバン。</span></div></div>
+      </div>
+      <div class="win" id="eWin" style="left:120px;top:300px;width:1680px;height:720px">
+        <div style="height:80px;border-bottom:1px solid var(--hair);display:flex;align-items:center;padding:0 30px;gap:24px">
+          <div style="font-size:30px;font-weight:700">2026年6月</div>
+          <div id="eSeg" style="position:relative;display:flex;border:1px solid var(--hair2);border-radius:12px;padding:5px;margin-left:30px;font-size:19px;color:var(--ink3)">
+            <div id="eSegHi" class="abs" style="top:5px;left:5px;height:40px;width:130px;border-radius:9px;background:rgba(255,255,255,.08)"></div>
+            <div style="width:130px;height:40px;display:grid;place-items:center;position:relative" id="eSeg0">カレンダー</div>
+            <div style="width:130px;height:40px;display:grid;place-items:center;position:relative" id="eSeg1">カンバン</div>
+            <div style="width:130px;height:40px;display:grid;place-items:center;position:relative">一覧</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:22px;font-size:18px;color:var(--ink3);align-items:center">
+            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--blue);margin-right:8px"></i>計画中</span>
+            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--yellow);margin-right:8px"></i>審査中</span>
+            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#22C55E;margin-right:8px"></i>実施待ち</span>
+            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--grey);margin-right:8px"></i>保留</span>
+            <div style="margin-left:14px;height:46px;padding:0 20px;border-radius:11px;background:var(--acc);color:#fff;font-weight:700;display:grid;place-items:center">＋ 新規イベント</div>
+          </div>
+        </div>
+        <div id="eCal" class="abs" style="left:0;top:80px;width:1680px;height:640px"></div>
+        <div id="eBoard" class="abs" style="left:0;top:80px;width:1680px;height:640px"></div>
+        <div id="eChips" class="abs" style="left:0;top:0;width:1680px;height:720px"></div>
+      </div>
+    </section>
+
+    <!-- ============ F: 無制限 ============ -->
+    <section class="scene" id="sF">
+      <div class="abs" id="fBg" style="inset:0;background:var(--acc)"></div>
+      <div class="abs" id="fInf" style="left:50%;top:50%;font-size:900px;font-weight:300;line-height:1;color:rgba(255,255,255,.05)">∞</div>
+      <div class="abs fS" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs mono fL" style="left:0;right:0;top:250px;text-align:center;font-size:30px;letter-spacing:.3em">MESSAGES · HISTORY</div>
+        <div class="abs fB h" style="left:0;right:0;top:330px;text-align:center;font-size:300px;font-weight:900;line-height:1">無制限</div>
+        <div class="abs fJ" style="left:0;right:0;top:700px;text-align:center;font-size:54px;font-weight:700">メッセージ数・履歴の保存期間</div>
+      </div>
+      <div class="abs fS" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs mono fL" style="left:0;right:0;top:250px;text-align:center;font-size:30px;letter-spacing:.3em">MEMBERS · GUESTS</div>
+        <div class="abs fB h" style="left:0;right:0;top:330px;text-align:center;font-size:300px;font-weight:900;line-height:1">無制限</div>
+        <div class="abs fJ" style="left:0;right:0;top:700px;text-align:center;font-size:54px;font-weight:700">メンバー数・ゲスト数</div>
+      </div>
+      <div class="abs fS" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs mono fL" style="left:0;right:0;top:250px;text-align:center;font-size:30px;letter-spacing:.3em">PROJECTS · TASKS · CALENDAR</div>
+        <div class="abs fB h" style="left:0;right:0;top:330px;text-align:center;font-size:300px;font-weight:900;line-height:1">無制限</div>
+        <div class="abs fJ" style="left:0;right:0;top:700px;text-align:center;font-size:54px;font-weight:700">プロジェクト・タスク・カレンダー</div>
+      </div>
+      <div class="abs fS" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs mono fL" style="left:0;right:0;top:250px;text-align:center;font-size:30px;letter-spacing:.3em">FILE STORAGE</div>
+        <div class="abs fB h" style="left:0;right:0;top:300px;text-align:center;font-size:340px;font-weight:900;line-height:1;letter-spacing:-.05em">10<span style="font-size:190px">GB</span></div>
+        <div class="abs fJ" style="left:0;right:0;top:700px;text-align:center;font-size:54px;font-weight:700">ファイル保存<span style="font-size:36px;opacity:.7">（1ファイル 5MB まで）</span></div>
+      </div>
+      <div class="abs fS" style="left:0;right:0;top:0;height:1080px">
+        <div class="abs h" style="left:0;right:0;top:360px;text-align:center;font-size:130px;font-weight:900;line-height:1.25" id="fEnd"><span>期限なし。</span><br><span class="glowtxt">カード登録なし。</span></div>
+      </div>
+      <div class="abs mono" id="fTick" style="left:0;top:980px;white-space:nowrap;font-size:34px;letter-spacing:.3em;opacity:.35"></div>
+    </section>
+
+    <!-- ============ G: 比較・料金 ============ -->
+    <section class="scene" id="sG">
+      <div class="abs" id="gA" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="abs" style="left:160px;top:120px"><div class="eyebrow gk">Comparison</div>
+          <div class="h gk" style="font-size:80px;margin-top:26px">無料で読める、<span class="glowtxt">過去のメッセージ。</span></div></div>
+        <div class="abs gRow" style="left:160px;top:420px;width:1760px;height:120px">
+          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;gap:18px;font-size:42px;font-weight:800">
+            <svg width="54" height="54" viewBox="0 0 512 512"><rect x="192" y="88" width="188" height="88" rx="22" fill="#1AC47D"/><rect x="96" y="204" width="228" height="88" rx="22" fill="#1AC47D"/><rect x="112" y="320" width="296" height="92" rx="22" fill="#1AC47D"/></svg>Cairn</div>
+          <div class="abs gBar" style="left:400px;top:20px;height:80px;border-radius:14px;background:linear-gradient(90deg,#0FB981,#45D6A4);box-shadow:0 0 60px rgba(15,185,129,.55)"></div>
+          <div class="abs gVal" style="left:420px;top:20px;height:80px;display:flex;align-items:center;font-size:44px;font-weight:900;color:var(--accink)">無期限 →</div>
+        </div>
+        <div class="abs gRow" style="left:160px;top:580px;width:1760px;height:120px">
+          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">海外製チャット</div>
+          <div class="abs gBar" style="left:400px;top:30px;height:60px;border-radius:12px;background:#2A3550"></div>
+          <div class="abs gVal" style="left:0;top:30px;height:60px;display:flex;align-items:center;font-size:34px;font-weight:700;color:var(--ink3)">直近 90 日</div>
+        </div>
+        <div class="abs gRow" style="left:160px;top:720px;width:1760px;height:120px">
+          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">国産チャット</div>
+          <div class="abs gBar" style="left:400px;top:30px;height:60px;border-radius:12px;background:#2A3550"></div>
+          <div class="abs gVal" style="left:0;top:30px;height:60px;display:flex;align-items:center;font-size:34px;font-weight:700;color:var(--ink3)">直近 40 日・最新 5,000 件</div>
+        </div>
+        <div class="abs mono" id="gNote" style="left:160px;top:900px;font-size:20px;color:var(--ink4)">※ 2026年9月時点で各社が公開している無料プランの条件をもとに作成</div>
+      </div>
+      <div class="abs" id="gB" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow pk" style="justify-content:center">Pricing</div>
+          <div class="h pk" style="font-size:96px;margin-top:22px">払うのは、<span class="glowtxt">必要な人だけ。</span></div>
+          <div class="pk" style="font-size:34px;color:var(--ink2);margin-top:18px">人数では課金しない。</div></div>
+        <div class="abs" id="gPeople" style="left:0;right:0;top:470px;height:140px"></div>
+        <div class="card" id="gFree" style="left:300px;top:690px;width:640px;height:300px;padding:36px 44px">
+          <div style="font-size:30px;font-weight:700;color:var(--ink2)">Free</div>
+          <div style="font-size:110px;font-weight:800;letter-spacing:-.04em;line-height:1.05">¥0</div>
+          <div style="font-size:26px;color:var(--ink2)">まず全員で使う · メッセージ・メンバー無制限</div>
+        </div>
+        <div class="card" id="gSolo" style="left:980px;top:690px;width:640px;height:300px;padding:36px 44px;border:2px solid var(--acc);box-shadow:0 0 80px rgba(15,185,129,.25)">
+          <div style="font-size:30px;font-weight:700;color:var(--acc2)">Solo</div>
+          <div style="font-size:110px;font-weight:800;letter-spacing:-.04em;line-height:1.05">¥<span id="gNum">300</span><span style="font-size:32px;font-weight:600;color:var(--ink2);letter-spacing:0"> / 月・1人</span></div>
+          <div style="font-size:26px;color:var(--ink2)">容量や AI を使いたい人だけ</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ H: AI / MCP / OSS ============ -->
+    <section class="scene" id="sH">
+      <div class="abs" id="h1" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk1" style="justify-content:center">AI Assistant</div>
+          <div class="h hk1" style="font-size:84px;margin-top:22px">会話とファイルから、<span class="glowtxt">AI が答える。</span></div></div>
+        <div class="abs" id="hQ" style="right:360px;top:430px;max-width:900px;background:var(--acc);color:#fff;font-size:40px;font-weight:700;border-radius:28px 28px 6px 28px;padding:24px 36px">先週決めた納期は？</div>
+        <div class="abs" id="hA" style="left:360px;top:580px;width:1000px;display:flex;gap:22px">
+          <div class="av ai" style="width:64px;height:64px;border-radius:18px"><svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z" fill="#06281D"/></svg></div>
+          <div style="flex:1;background:#162137;border:1px solid var(--hair2);border-radius:6px 28px 28px 28px;padding:24px 32px">
+            <div class="mono" style="font-size:18px;color:var(--acc2);letter-spacing:.14em">AI ASSISTANT</div>
+            <div id="hDots" style="display:flex;gap:10px;margin-top:14px;height:20px"><i class="hd" style="width:14px;height:14px;border-radius:50%;background:var(--ink3)"></i><i class="hd" style="width:14px;height:14px;border-radius:50%;background:var(--ink3)"></i><i class="hd" style="width:14px;height:14px;border-radius:50%;background:var(--ink3)"></i></div>
+            <div id="hAns" style="font-size:36px;font-weight:600;margin-top:10px;line-height:1.45">リリース準備は <span style="color:var(--acc2)">6/27 〜 6/29</span> で決まっています。</div>
+            <div id="hSrc" style="display:flex;gap:14px;margin-top:18px">
+              <span class="tag hs" style="font-size:19px;padding:8px 16px">↗ # リリース準備 · 新宮 圭 5/26</span>
+              <span class="tag hs" style="font-size:19px;padding:8px 16px;background:rgba(96,165,250,.14);color:#93C5FD;border-color:rgba(96,165,250,.35)">📄 進行表</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="abs" id="h2" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk2" style="justify-content:center">MCP</div>
+          <div class="h hk2" style="font-size:84px;margin-top:22px"><span class="glowtxt">Claude</span> や <span class="glowtxt">Cursor</span> からも操作。</div></div>
+        <svg class="abs" id="hLines" width="1920" height="1080" style="left:0;top:0"></svg>
+        <div class="abs hN" id="hN0" style="left:380px;top:560px"><div class="pill" style="font-size:40px;font-weight:700;color:var(--ink);padding:22px 40px">Claude</div></div>
+        <div class="abs hN" id="hN1" style="left:380px;top:780px"><div class="pill" style="font-size:40px;font-weight:700;color:var(--ink);padding:22px 40px">Cursor</div></div>
+        <div class="abs hN" id="hN2" style="left:1300px;top:670px"><div style="display:flex;align-items:center;gap:22px;padding:26px 44px;border-radius:28px;background:#162137;border:2px solid var(--acc);box-shadow:0 0 90px rgba(15,185,129,.35)"><svg width="70" height="70" viewBox="0 0 512 512"><rect x="192" y="88" width="188" height="88" rx="22" fill="#1AC47D"/><rect x="96" y="204" width="228" height="88" rx="22" fill="#1AC47D"/><rect x="112" y="320" width="296" height="92" rx="22" fill="#1AC47D"/></svg><span style="font-size:56px;font-weight:700;letter-spacing:-.04em">Cairn</span></div></div>
+        <div class="abs mono hT" style="left:0;top:0;font-size:24px;padding:10px 18px;border-radius:10px;background:#0B1220;border:1px solid var(--acc);color:var(--acc2)">create_task</div>
+        <div class="abs mono hT" style="left:0;top:0;font-size:24px;padding:10px 18px;border-radius:10px;background:#0B1220;border:1px solid var(--acc);color:var(--acc2)">complete_task</div>
+        <div class="abs mono hT" style="left:0;top:0;font-size:24px;padding:10px 18px;border-radius:10px;background:#0B1220;border:1px solid var(--acc);color:var(--acc2)">search_messages</div>
+        <div class="abs mono hT" style="left:0;top:0;font-size:24px;padding:10px 18px;border-radius:10px;background:#0B1220;border:1px solid var(--acc);color:var(--acc2)">post_message</div>
+      </div>
+      <div class="abs" id="h3" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="abs mono" id="hCode" style="left:120px;top:0;width:1700px;font-size:24px;line-height:1.7;color:rgba(174,185,205,.16);white-space:pre"></div>
+        <div class="abs" style="left:0;right:0;top:300px;text-align:center">
+          <div class="h hk3" style="font-size:210px;letter-spacing:-.05em;line-height:1">Open <span class="glowtxt">Source.</span></div>
+          <div class="hk3" style="font-size:40px;color:var(--ink2);margin-top:34px;font-weight:600">ソースコードを公開。保存方法も、権限も、課金の計算も。</div>
+          <div class="hk3" style="margin-top:40px;display:flex;justify-content:center;gap:22px">
+            <div class="pill" style="font-size:30px;padding:14px 30px;color:var(--ink)"><svg width="34" height="34" viewBox="0 0 16 16"><path fill="#EEF2F9" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub で公開</div>
+            <div class="pill" style="font-size:30px;padding:14px 30px"><span class="tag" style="font-size:22px">Apache-2.0</span>セルフホストも可能</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ I: エンドカード ============ -->
+    <section class="scene" id="sI">
+      <div class="abs" id="iLogo" style="left:0;right:0;top:120px;display:flex;justify-content:center;align-items:center;gap:30px">
+        <div style="position:relative;width:150px;height:150px">
+          <div class="stone iS" style="left:33px;top:94px;width:87px;height:27px;border-radius:7px"></div>
+          <div class="stone iS" style="left:28px;top:60px;width:67px;height:26px;border-radius:7px"></div>
+          <div class="stone iS" style="left:56px;top:26px;width:55px;height:26px;border-radius:7px"></div>
+        </div>
+        <div id="iWord" style="font-size:120px;font-weight:700;letter-spacing:-.05em;margin-left:-20px">Cairn</div>
+      </div>
+      <div class="abs" style="left:0;right:0;top:340px;text-align:center">
+        <div class="h ik" style="font-size:104px;font-weight:900">無料でチャットも、<br><span class="glowtxt">プロジェクト管理も。</span></div>
+      </div>
+      <div class="abs ik2" style="left:0;right:0;top:640px;display:flex;justify-content:center;gap:24px">
+        <div class="btn p" id="iBtn" style="position:relative;overflow:hidden">無料で始める<svg width="30" height="30" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><i id="iShine" class="abs" style="top:-20px;left:0;width:90px;height:140px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-20deg)"></i></div>
+        <div class="btn s"><svg width="28" height="28" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="#EEF2F9" stroke-width="2"/></svg>App Store で入手</div>
+      </div>
+      <div class="abs ik3" style="left:0;right:0;top:800px;text-align:center;font-family:var(--mono);font-size:58px;font-weight:600;color:var(--acc2);letter-spacing:.02em">oss-cairn.com</div>
+      <div class="abs ik4" style="left:0;right:0;top:900px;text-align:center;font-size:26px;color:var(--ink3)">クレジットカード不要 · iPhone アプリ / ブラウザ · Apache-2.0 オープンソース</div>
+    </section>
+  </div>
+
+  <div id="wipe">
+    <div class="bar" style="top:-10px;background:#34D399"></div>
+    <div class="bar" style="top:350px;background:#0FB981"></div>
+    <div class="bar" style="top:710px;background:#0A9E6E"></div>
+  </div>
+  <div id="vig"></div>
+  <canvas id="grain" width="960" height="540" style="width:1920px;height:1080px"></canvas>
+  <div id="flash"></div>
+</div>
+
+<script>
+/* ---------- film grain (seeded, deterministic) ---------- */
+{
+  const cv=document.getElementById('grain'),g=cv.getContext('2d'),img=g.createImageData(cv.width,cv.height);
+  let seed=3; const r=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296;
+  for(let i=0;i<img.data.length;i+=4){const v=r()*255; img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=255;}
+  g.putImageData(img,0,0);
+}
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const cl=(x,a=0,b=1)=>x<a?a:x>b?b:x;
+const P=(t,a,b)=>cl((t-a)/(b-a));
+const L=(a,b,x)=>a+(b-a)*x;
+const E={
+  o2:x=>1-(1-x)*(1-x), o3:x=>1-Math.pow(1-x,3), o5:x=>1-Math.pow(1-x,5),
+  oE:x=>x>=1?1:1-Math.pow(2,-10*x), iE:x=>x<=0?0:Math.pow(2,10*x-10),
+  i2:x=>x*x, i3:x=>x*x*x,
+  io3:x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2,
+  ioE:x=>x<=0?0:x>=1?1:x<.5?Math.pow(2,20*x-10)/2:(2-Math.pow(2,-20*x+10))/2,
+  oB:(x,s=1.9)=>1+(s+1)*Math.pow(x-1,3)+s*Math.pow(x-1,2),
+  oEl:x=>x<=0?0:x>=1?1:Math.pow(2,-10*x)*Math.sin((x*10-.75)*(2*Math.PI/3))+1,
+};
+function st(el,o={}){
+  let tr='';
+  if(o.c) tr+='translate(-50%,-50%) ';
+  tr+=`translate3d(${(o.x||0).toFixed(2)}px,${(o.y||0).toFixed(2)}px,0)`;
+  if(o.rx) tr+=` rotateX(${o.rx}deg)`; if(o.ry) tr+=` rotateY(${o.ry}deg)`; if(o.r) tr+=` rotate(${o.r}deg)`;
+  const s=o.s??1; tr+=` scale(${((o.sx??1)*s).toFixed(4)},${((o.sy??1)*s).toFixed(4)})`;
+  el.style.transform=tr;
+  el.style.opacity=(o.o??1).toFixed(3);
+  el.style.filter=o.b>0.05?`blur(${o.b.toFixed(2)}px)`:'none';
+}
+function split(el){
+  const walk=n=>{ if(n.nodeType===3){ const f=document.createDocumentFragment(); for(const c of n.textContent){ const s=document.createElement('span'); s.className='ch'; s.textContent=c; f.appendChild(s);} n.replaceWith(f);} else if(n.nodeName!=='BR' && !(n.classList&&n.classList.contains('glowtxt'))) [...n.childNodes].forEach(walk); };
+  // glowtxt spans keep gradient: split inside but copy class to chars
+  el.querySelectorAll('.glowtxt').forEach(g=>{ const t=g.textContent; g.textContent=''; for(const c of t){const s=document.createElement('span'); s.className='ch glowtxt'; s.textContent=c; g.appendChild(s);} g.classList.remove('glowtxt'); g.classList.add('gw'); });
+  [...el.childNodes].forEach(walk);
+  return [...el.querySelectorAll('.ch')];
+}
+/* per-char kinetic in/out */
+function kin(chs,t,tIn,tOut,o={}){
+  const stag=o.stag??.022,dur=o.dur??.5,dy=o.dy??70,bl=o.blur??16,sc=o.sc??1,rot=o.rot??0;
+  chs.forEach((c,i)=>{
+    const a=E.oE(P(t,tIn+i*stag,tIn+i*stag+dur));
+    let op=a,y=(1-a)*dy,b=(1-a)*bl,s=L(sc,1,a),r=(1-a)*rot;
+    if(tOut!=null){const e=E.i3(P(t,tOut+i*stag*.4,tOut+i*stag*.4+.22)); op*=1-e; y-=e*dy*.7; b+=e*bl;}
+    st(c,{y,o:op,b,s,r});
+  });
+}
+/* block in/out */
+function blk(el,t,tIn,tOut,o={}){
+  const a=(o.ease||E.oE)(P(t,tIn,tIn+(o.dur??.5)));
+  let op=a,y=(1-a)*(o.dy??50),x=(1-a)*(o.dx??0),b=(1-a)*(o.blur??10),s=L(o.sc??1,1,a);
+  if(tOut!=null){const e=E.i3(P(t,tOut,tOut+(o.odur??.25))); op*=1-e; y-=e*(o.ody??30); b+=e*10; s*=L(1,o.osc??1,e);}
+  st(el,{x,y,o:op,b,s,c:o.c});
+}
+function rng(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;}}
+
+/* ---------- global timeline ---------- */
+const SH=[[3.5,14],[3.75,16],[4.0,34],[6.0,18],[6.5,10],[7.0,22],[16.5,26],[17.125,20],[17.75,20],[18.375,22],[19.0,14],[19.5,10],[27.0,26],[27.1,10],[27.2,14]];
+const FL=[[4.0,.6],[16.5,.4],[17.125,.3],[17.75,.3],[18.375,.35],[19.5,.5],[27.0,.55]];
+const WIPES=[9.0,13.0,23.0];
+function camera(T){
+  let x=0,y=0,r=0,z=0;
+  for(const [t0,a] of SH){ if(T<t0) continue; const k=T-t0; const d=a*Math.exp(-k*9); x+=d*Math.sin(k*93+t0*7); y+=d*Math.cos(k*71+t0*3); r+=d*.02*Math.sin(k*57); z+=a*.0022*Math.exp(-k*12); }
+  $('#world').style.transform=`translate(${x}px,${y}px) rotate(${r}deg) scale(${1+z})`;
+  let f=0; for(const [t0,a] of FL){ if(T>=t0) f+=a*Math.exp(-(T-t0)*10); } $('#flash').style.opacity=cl(f);
+  // wipes (stone bars)
+  const bars=$$('#wipe .bar'); let shown=false;
+  bars.forEach((b,i)=>{
+    let x=4000;
+    for(const tc of WIPES){
+      const d=[-.03,0,.03][i];
+      const q=P(T,tc-.25+d,tc+.3+d);
+      if(q>0&&q<1){ x = q<.45 ? L(1960,-600,E.oE(q/.45)) : L(-600,-3200,E.iE((q-.45)/.55)); shown=true; }
+    }
+    b.style.transform=`translateX(${x}px) skewX(-12deg)`;
+  });
+  $('#wipe').style.display=shown?'block':'none';
+  // background
+  const gOn=T<3.9?0.2:1;
+  $('#grid').style.opacity=(T<3.9?L(.35,.55,P(T,0,1)):.9);
+  $('#grid').style.transform=`translate(${(T*18)%64}px,${(T*10)%64}px)`;
+  let glow=T<3.9?0:E.o3(P(T,3.95,4.4))*(1+.35*Math.exp(-(T-4)*3));
+  if(T>=16.5&&T<19.6) glow=.4;
+  glow*=1+.08*Math.sin(T*3.2);
+  if(T>=27) glow=1.1+.15*Math.sin((T-27)*2.4);
+  $('#glow').style.opacity=cl(glow,0,1.6);
+  $('#glow').style.transform=`scale(${1+.05*Math.sin(T*.9)})`;
+}
+
+/* ---------- scenes ---------- */
+const S=[];
+function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
+
+/* A: problem */
+{
+  const heads=$$('.ak').map(split);
+  const tl=[[.1,.9],[1.0,1.72],[1.8,2.58],[2.66,3.22]];
+  const aL=$('#aL'),aR=$('#aR'),fly=$('#aFly'),cur=$('#aCursor'),lim=$('#aLimit'),slot=$('#aSlot');
+  const lrows=$$('#aLmsgs .msg');
+  scene('sA',0,3.55,t=>{
+    heads.forEach((h,i)=>kin(h,t,tl[i][0],tl[i][1],{stag:.018,dur:.4,dy:60}));
+    const imp=E.i3(P(t,3.18,3.5));
+    const eL=E.oE(P(t,0,.55)), eR=E.oE(P(t,.55,1.1));
+    const hl=Math.exp(-Math.max(0,t-.2)*1.2)*(t<1?1:0), hr=(t>=1&&t<1.8)?1:0;
+    st(aL,{x:L(-1300,0,eL)+imp*450,y:imp*40,ry:L(35,0,eL),o:eL*(1-imp),s:L(1,.25,imp),b:imp*18});
+    st(aR,{x:L(1300,0,eR)-imp*450,y:imp*40,o:eR*(1-imp),s:L(1,.25,imp),b:imp*18});
+    aL.style.borderColor=t<1?`rgba(52,211,153,${.2+.6*P(t,.1,.3)})`:'rgba(255,255,255,.12)';
+    aR.style.borderColor=hr?'rgba(52,211,153,.8)':'rgba(255,255,255,.12)';
+    // copy flight 1.85 -> 2.45
+    const q=E.io3(P(t,1.9,2.45));
+    const x0=340,y0=590,x1=1041,y1=572;
+    const fx=L(x0,x1,q), fy=L(y0,y1,q)-Math.sin(q*Math.PI)*220;
+    const fo=P(t,1.82,1.9)*(1-imp);
+    st(fly,{x:fx,y:fy,o:fo,s:1+.08*Math.sin(q*Math.PI),r:Math.sin(q*Math.PI)*-5});
+    st(cur,{x:fx+280,y:fy+34,o:fo});
+    slot.style.borderColor=q>=1?'rgba(52,211,153,.8)':'rgba(255,255,255,.12)';
+    // history dissolve
+    lrows.forEach((r,i)=>{const d=P(t,2.7+i*.07,2.95+i*.07); r.style.opacity=L(1,.08,d); r.style.filter=`blur(${d*6}px)`;});
+    const lb=P(t,2.72,2.8); st(lim,{o:lb*(0.6+0.4*(Math.floor(t*12)%2))*(1-imp),x:imp*400,y:0});
+    $('#aHead').style.opacity=1-imp;
+  });
+}
+
+/* B: logo */
+{
+  const stones=[$('#st0'),$('#st1'),$('#st2')];
+  const land=[3.5,3.75,4.0];
+  const logo=$('#bLogo'),word=$('#bWord'),pill=$('#bPill');
+  const rings=$('#bRings'),parts=$('#bParts');
+  const ringEls=land.map(()=>{const d=document.createElement('div');d.className='abs';d.style.cssText='left:0;top:0;width:200px;height:200px;border-radius:50%;border:4px solid #34D399';rings.appendChild(d);return d;});
+  // stone landing centers in screen coords (logo at 704,284 scale 1)
+  const cen=[[704+260,284+412],[704+210,284+292],[704+286,284+176]];
+  const R=rng(7); const P_=[];
+  land.forEach((tl,si)=>{ for(let k=0;k<(si==2?26:14);k++){ const d=document.createElement('div'); d.className='abs'; const sz=6+R()*12; d.style.cssText=`left:0;top:0;width:${sz}px;height:${sz}px;border-radius:3px;background:${R()<.5?'#34D399':'#0FB981'}`; parts.appendChild(d); const ang=-Math.PI*(0.05+0.9*R()); const v=(si==2?900:600)*(0.4+R()); P_.push({d,tl,si,vx:Math.cos(ang)*v*(R()<.5?-1:1)*1.3,vy:Math.sin(ang)*v,rot:R()*720}); } });
+  const wsplit=split(word);
+  scene('sB',3.2,6.3,(t,T)=>{
+    stones.forEach((s,i)=>{
+      const tl=land[i];
+      const q=P(T,tl-.3,tl);
+      let y=-1000*(1-q*q);
+      const k=Math.max(0,T-tl);
+      const d=T<tl?0:Math.exp(-7*k)*Math.cos(k*Math.PI*5);
+      st(s,{y,sx:1+.16*d,sy:1-.24*d,o:T<tl-.3?0:1});
+      s.style.boxShadow=`0 0 ${40+80*(T>=4?Math.exp(-(T-4)*2):0)}px rgba(15,185,129,${.35+.4*(T>=4?Math.exp(-(T-4)*2):0)})`;
+    });
+    ringEls.forEach((r,i)=>{ const k=P(T,land[i],land[i]+.6); const sz=L(40,i==2?1400:800,E.o3(k)); r.style.width=r.style.height=sz+'px'; r.style.borderWidth=L(10,1,k)+'px'; st(r,{x:cen[i][0]-sz/2,y:cen[i][1]-sz/2,sy:.32,o:(k>0&&k<1)?(1-k):0}); });
+    P_.forEach(p=>{ const k=T-p.tl; if(k<0||k>.9){p.d.style.opacity=0;return;} const [cx,cy]=cen[p.si]; st(p.d,{x:cx+p.vx*k,y:cy+p.vy*k+1400*k*k,r:p.rot*k,o:1-k/.9}); });
+    // lockup
+    const m=E.io3(P(T,4.35,4.95));
+    const out=E.iE(P(T,5.85,6.3));
+    const wW=word.offsetWidth, tot=312*.62+60+wW, start=960-tot/2;
+    const lx=L(0,start+96-960,m), ls=L(1,.62,m);
+    logo.style.transformOrigin='50% 50%';
+    st(logo,{x:lx,y:L(0,-40,m),s:ls*L(1,7,out),o:1-out,b:out*20});
+    const wx=start+312*.62+60-960;
+    wsplit.forEach((c,i)=>{const a=E.oE(P(T,4.55+i*.05,4.95+i*.05)); st(c,{x:(1-a)*-120,o:a,b:(1-a)*14});});
+    st(word,{x:wx+L(0,0,m),y:-40,s:L(1,7,out),o:1-out,b:out*20});
+    word.style.transformOrigin='-200px 50%';
+    const pa=E.oB(P(T,5.05,5.45));
+    st(pill.firstElementChild,{c:true,y:0,s:L(.6,1,pa),o:P(T,5.05,5.2)*(1-out)});
+    pill.style.top='800px';
+  });
+}
+
+/* C: hero */
+{
+  const c1=split($('#c1')),c2=split($('#c2')),c3=split($('#c3')),en=split($('#cEn'));
+  const blockEl=$('#cBlock'),free=$('#cFree'),checks=$$('.cc');
+  scene('sC',5.95,9.3,(t,T)=>{
+    // slam each line
+    const slam=(chs,tIn,dy)=>chs.forEach((c,i)=>{const a=E.o5(P(T,tIn+i*.03,tIn+i*.03+.28)); st(c,{y:(1-a)*dy,s:L(2.2,1,a),o:P(T,tIn+i*.03,tIn+i*.03+.06),b:(1-a)*24});});
+    slam(c1,6.0,-40); slam(c2,6.5,0); slam(c3,7.0,0);
+    const m=E.io3(P(T,7.55,8.0));
+    blockEl.style.transformOrigin='50% 0%';
+    st(blockEl,{y:L(0,40,m),s:L(1,.66,m)});
+    kin(en,T,7.75,null,{stag:.012,dur:.35,dy:30,blur:10});
+    checks.forEach((c,i)=>{const a=E.oB(P(T,8.05+i*.1,8.4+i*.1)); st(c,{y:(1-a)*40,s:L(.7,1,a),o:P(T,8.05+i*.1,8.15+i*.1)});});
+    st(free,{c:true,x:L(160,-160,P(T,6,9.3)),y:-20,s:L(1.25,1,E.o3(P(T,6,7.5))),o:.9*P(T,6,6.2)});
+  });
+}
+
+/* D: chat -> task */
+{
+  const copy=$$('.dk'),win=$('#dWin'),msgs=$$('#dMsgs .dm'),nw=$('#dNew');
+  const typed=$('#dTyped'),ph=$('#dPh'),caret=$('#dCaret'),send=$('#dSend');
+  const fly=$('#dFly'),cur=$('#dCursor'),sync=$('#dSync');
+  const T0=$('#dT0'),T1=$('#dT1'),T2=$('#dT2'),cb1=$('#dCb1'),cb2=$('#dCb2'),cnt=$('#dCount');
+  const TXT='☐ デザイン確認を明日まで';
+  scene('sD',8.9,13.3,(t,T)=>{
+    copy.forEach((c,i)=>blk(c,T,9.0+i*.12,12.95,{dy:50,dx:-60}));
+    const e=E.oE(P(T,9.0,9.7));
+    const push=L(0,1,E.io3(P(T,9.7,13)));
+    st(win,{x:L(900,0,e),ry:L(-38,-12,e)+push*4,rx:4,s:L(.9,1,e)*L(1,1.04,push),o:P(T,9,9.2)*(1-P(T,12.95,13.1))});
+    // typing
+    const n=Math.floor(P(T,9.85,10.55)*TXT.length);
+    const sent=T>=10.72;
+    typed.textContent=sent?'':TXT.slice(0,n);
+    ph.style.display=(n>0||sent)&&!sent?'none':'inline';
+    if(sent) ph.style.display='inline';
+    caret.style.opacity=(Math.floor(T*4)%2&&!sent)?1:(!sent?.2:0);
+    const sp=Math.exp(-Math.max(0,T-10.66)*10)*(T>=10.66?1:0);
+    st(send,{s:1-.25*sp});
+    // new message appears, others shift up
+    const ap=E.oE(P(T,10.72,11.1));
+    msgs.forEach((m,i)=>{ if(m===nw) st(m,{y:L(40,0,ap),o:ap}); else st(m,{y:0}); });
+    // fly to tasks 11.25 -> 11.8
+    const q=E.io3(P(T,11.2,11.75));
+    const r1=cb1.getBoundingClientRect(), r2=$('#dTasks').getBoundingClientRect();
+    const x0=r1.left-20,y0=r1.top-18,x1=r2.left+22,y1=r2.top+96;
+    st(fly,{x:L(x0,x1,q),y:L(y0,y1,q)-Math.sin(q*Math.PI)*160,o:(T>11.15&&T<11.8)?P(T,11.15,11.22):0,s:1+.12*Math.sin(q*Math.PI),r:Math.sin(q*Math.PI)*4});
+    const land=E.oB(P(T,11.72,12.0));
+    st(T0,{o:T>=11.72?1:0,s:L(.9,1,land)});
+    T0.style.borderColor=`rgba(52,211,153,${T>=11.72?.9:0})`;
+    const sh=E.io3(P(T,11.45,11.75));
+    st(T1,{y:sh*94}); st(T2,{y:sh*94});
+    cnt.textContent=T>=11.72?'3':'2';
+    nw.querySelector('.cb').style.boxShadow=(T>11.05&&T<11.4)?`0 0 0 ${6*Math.sin(P(T,11.05,11.4)*Math.PI)}px rgba(52,211,153,.5)`:'none';
+    // cursor clicks checkbox in tasks at 12.2
+    const r3=cb2.getBoundingClientRect();
+    const cq=E.io3(P(T,11.8,12.15));
+    const cx=L(1500,r3.left+8,cq), cy=L(1000,r3.top+10,cq);
+    st(cur,{x:cx,y:cy,o:P(T,11.8,11.9)*(1-P(T,12.9,13)),s:T>12.15&&T<12.28?.85:1});
+    const done=T>=12.2;
+    [cb1,cb2].forEach(c=>{c.classList.toggle('on',done); c.querySelector('svg').style.opacity=done?1:0;});
+    const pop=E.oB(P(T,12.2,12.45));
+    st(cb2,{s:done?L(.5,1,pop):1}); st(cb1,{s:done?L(.5,1,E.oB(P(T,12.26,12.5))):1});
+    $('#dT0tx').style.textDecoration=done?'line-through':'none'; $('#dT0tx').style.opacity=done?.6:1;
+    $('#dNewTx').style.textDecoration=done?'line-through':'none';
+    // sync badge
+    const sb=E.oB(P(T,12.3,12.6));
+    const rw=win.getBoundingClientRect();
+    st(sync,{x:rw.left+rw.width*.6-130,y:rw.top-34,s:L(.4,1,sb),o:P(T,12.3,12.4)*(1-P(T,12.95,13.05))});
+  });
+}
+
+/* E: calendar -> board */
+{
+  const cal=$('#eCal'),board=$('#eBoard'),chipsEl=$('#eChips');
+  const CW=1680/7, CH=640/5;
+  const days=[31,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,1,2,3,4];
+  let h='';
+  ['日','月','火','水','木','金','土'].forEach((d,i)=>{h+=`<div class="abs" style="left:${i*CW+16}px;top:-2px;font-size:16px;color:var(--ink4)"></div>`;});
+  days.forEach((d,i)=>{const c=i%7,r=Math.floor(i/7); const col=c===0?'#F87171':c===6?'#60A5FA':'var(--ink3)'; const dim=(i<1||i>30)?.35:1;
+    h+=`<div class="abs eCell" style="left:${c*CW}px;top:${r*CH}px;width:${CW}px;height:${CH}px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:10px 14px;font-size:19px;color:${col};opacity:${dim}">${d}</div>`;});
+  cal.innerHTML=h;
+  const COLS=[['計画中','#3B82F6','rgba(59,130,246,.10)'],['審査中','#EAB308','rgba(234,179,8,.10)'],['実施待ち','#22C55E','rgba(34,197,94,.10)'],['保留','#94A3B8','rgba(148,163,184,.10)']];
+  const BW=390, BG=20, BX=30;
+  let bh='';
+  COLS.forEach((c,i)=>{bh+=`<div class="abs eCol" style="left:${BX+i*(BW+BG)}px;top:24px;width:${BW}px;height:590px;border-radius:18px;background:${c[2]};border-top:4px solid ${c[1]}"><div style="padding:18px 22px;font-size:24px;font-weight:700">${c[0]}</div></div>`;});
+  board.innerHTML=bh;
+  // events: [dayIndex, slot, label, col(status), date]
+  const EV=[[0,0,'キックオフ',0,'5/31'],[0,1,'提案締切',1,'5/31'],[5,0,'展示会準備',0,'6/5 ～ 6/7'],[7,0,'展示会準備',0,''],[9,0,'撮影',2,'6/9'],[12,0,'会場確保',2,'6/12'],[12,1,'台本レビュー',3,'6/12 ～ 6/14'],[14,0,'台本レビュー',3,''],[16,0,'定例会',1,'6/16'],[27,0,'リリース準備',0,'6/27 ～ 6/29'],[28,0,'リリース準備',0,'']];
+  const colFill=[0,0,0,0];
+  const chips=EV.map(([di,slot,label,st_,date],k)=>{
+    const c=COLS[st_]; const d=document.createElement('div'); d.className='chip';
+    d.style.cssText+=`background:${c[2].replace('.10','.22')};border-color:${c[1]};color:#E6ECF7`;
+    d.innerHTML=`<div style="display:flex;flex-direction:column;justify-content:center;height:100%"><div class="lb">${label}</div><div class="mono dt" style="font-size:15px;color:var(--ink3);height:0;overflow:hidden">${date}</div></div>`;
+    chipsEl.appendChild(d);
+    const col=di%7,row=Math.floor(di/7);
+    const from={x:col*CW+10,y:80+row*CH+44+slot*38,w:CW-20,h:32};
+    let to,dup=!date;
+    if(!dup){const n=colFill[st_]++; to={x:BX+st_*(BW+BG)+18,y:80+24+70+n*112,w:BW-36,h:96};}
+    return {d,from,to,dup,k,st:st_};
+  });
+  chips.forEach(c=>{ if(c.dup){ const tw=chips.find(o=>!o.dup&&o.d.querySelector('.lb').textContent===c.d.querySelector('.lb').textContent); c.to=tw.to; } });
+  const copy=$$('.ek'),win=$('#eWin'),hi=$('#eSegHi');
+  scene('sE',12.9,16.7,(t,T)=>{
+    copy.forEach((c,i)=>blk(c,T,13.05+i*.1,16.25,{dy:40}));
+    const e=E.oE(P(T,13.0,13.6));
+    st(win,{y:L(500,0,e),s:L(.92,1,e)*L(1,.94,E.i3(P(T,16.2,16.55))),o:P(T,13,13.15)*(1-E.i3(P(T,16.3,16.55))),b:E.i3(P(T,16.3,16.55))*16});
+    const m=E.io3(P(T,14.95,15.6));
+    cal.style.opacity=1-P(T,14.95,15.3);
+    $$('.eCell').forEach((c,i)=>{const d=P(T,14.95+(i%7)*.02,15.25+(i%7)*.02); c.style.transform=`scale(${1-d*.2})`;});
+    $$('.eCol').forEach((c,i)=>{const a=E.oE(P(T,15.1+i*.07,15.6+i*.07)); st(c,{y:(1-a)*80,o:a});});
+    hi.style.transform=`translateX(${130*E.oB(P(T,14.85,15.2))}px)`;
+    $('#eSeg0').style.color=m<.5?'var(--ink)':''; $('#eSeg1').style.color=m>=.5?'var(--ink)':'';
+    chips.forEach(c=>{
+      const pin=E.oB(P(T,13.45+c.k*.075,13.8+c.k*.075));
+      const mq=E.io3(P(T,14.95+c.k*.03,15.6+c.k*.03));
+      const x=L(c.from.x,c.to.x,mq), y=L(c.from.y,c.to.y,mq)-Math.sin(mq*Math.PI)*(60+c.k*8);
+      c.d.style.left=x+'px'; c.d.style.top=y+'px'; c.d.style.width=L(c.from.w,c.to.w,mq)+'px'; c.d.style.height=L(c.from.h,c.to.h,mq)+'px';
+      c.d.style.fontSize=L(16,22,mq)+'px';
+      c.d.querySelector('.dt').style.height=(mq*24)+'px';
+      c.d.style.transformOrigin='0 50%';
+      st(c.d,{s:L(0,1,pin)*(1+.06*Math.sin(mq*Math.PI)),r:Math.sin(mq*Math.PI)*(c.k%2?4:-4),o:(c.dup? 1-P(T,15.35,15.6):1)*P(T,13.45+c.k*.075,13.5+c.k*.075)});
+    });
+  });
+}
+
+/* F: unlimited */
+{
+  const slides=$$('.fS'),bg=$('#fBg'),inf=$('#fInf'),tick=$('#fTick');
+  tick.textContent=('UNLIMITED · 無制限 · ').repeat(20);
+  const TS=[16.5,17.125,17.75,18.375,19.0,19.62];
+  const green=[false,true,false,true,false];
+  scene('sF',16.45,19.5,(t,T)=>{
+    let idx=0; for(let i=0;i<5;i++) if(T>=TS[i]) idx=i;
+    bg.style.opacity=green[idx]?1:0;
+    slides.forEach((s,i)=>{
+      if(i!==idx){s.style.display='none';return;} s.style.display='block';
+      const k=T-TS[i];
+      const a=E.o5(P(k,0,.3));
+      const ink=green[i]?'#06281D':'#EEF2F9';
+      s.querySelectorAll('.fB,.fJ,.fL').forEach(x=>x.style.color=green[i]?'#06281D':'');
+      const b=s.querySelector('.fB'),j=s.querySelector('.fJ'),l=s.querySelector('.fL');
+      if(b){ st(b,{s:L(1.9,1,a)*(1+k*.04),o:P(k,0,.05),b:(1-a)*22}); b.style.textShadow=green[i]?'none':'0 0 60px rgba(15,185,129,.55)'; }
+      if(l){ st(l,{y:(1-E.oE(P(k,.05,.35)))*-30,o:P(k,.05,.2)}); if(!green[i]) l.style.color='var(--acc2)'; }
+      if(j){ st(j,{y:(1-E.oE(P(k,.08,.4)))*40,o:P(k,.08,.2)}); }
+      if(i===4){ const sp=s.querySelectorAll('#fEnd > span'); sp.forEach((x,n)=>{const q=E.o5(P(k,n*.12,n*.12+.25)); st(x,{s:L(1.8,1,q),o:P(k,n*.12,n*.12+.05),b:(1-q)*20}); x.style.display='inline-block';}); }
+    });
+    st(inf,{c:true,r:T*40,s:1+.1*Math.sin(T*6),o:1});
+    inf.style.color=green[idx]?'rgba(6,40,29,.08)':'rgba(255,255,255,.045)';
+    tick.style.transform=`translateX(${-((T-16.5)*700)%1400}px)`;
+    tick.style.color=green[idx]?'#06281D':'#34D399';
+  });
+}
+
+/* G: compare + pricing */
+{
+  const rows=$$('.gRow'),gk=$$('.gk'),pk=$$('.pk'),ppl=$('#gPeople');
+  const W=[1560,300,135];
+  let ph='';
+  for(let i=0;i<10;i++){ ph+=`<div class="abs gP" style="left:${960-5*120+i*120+10}px;top:0;width:100px;height:140px"><svg width="100" height="100" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M3.5 21c.8-4.6 4.3-7 8.5-7s7.7 2.4 8.5 7z" fill="currentColor"/></svg><div class="mono gTag" style="text-align:center;font-size:20px;font-weight:600;margin-top:4px">¥0</div></div>`; }
+  ppl.innerHTML=ph;
+  const people=$$('.gP');
+  scene('sG',19.5,23.3,(t,T)=>{
+    const zin=E.oE(P(T,19.5,19.9)); st($('#sG'),{s:L(1.25,1,zin),b:(1-zin)*14});
+    const outA=E.i3(P(T,21.1,21.35));
+    gk.forEach((g,i)=>blk(g,T,19.5+i*.08,null,{dy:40}));
+    $('#gA').style.opacity=1-outA; $('#gA').style.transform=`translateY(${-outA*60}px)`;
+    rows.forEach((r,i)=>{
+      const a=E.oE(P(T,19.62+i*.1,20.0+i*.1));
+      st(r,{x:(1-a)*-200,o:a});
+      const g=E.o3(P(T,19.95+i*.12,i==0?20.9:20.5+i*.1));
+      const w=W[i]*g + (i==0?Math.max(0,T-20.9)*200:0);
+      r.querySelector('.gBar').style.width=w+'px';
+      const v=r.querySelector('.gVal');
+      if(i==0){ v.style.left=(400+Math.max(20,Math.min(w,1320)-280))+'px'; v.style.opacity=P(T,20.4,20.6); }
+      else { v.style.left=(400+w+24)+'px'; v.style.opacity=P(T,20.3+i*.1,20.5+i*.1); }
+    });
+    $('#gNote').style.opacity=P(T,20.4,20.7);
+    // pricing
+    const inB=P(T,21.25,21.3);
+    $('#gB').style.opacity=inB*(1-E.i3(P(T,22.9,23.1)));
+    pk.forEach((g,i)=>blk(g,T,21.3+i*.08,null,{dy:40}));
+    people.forEach((p,i)=>{
+      const a=E.oB(P(T,21.55+i*.035,21.85+i*.035));
+      const solo=i===6, on=solo&&T>=22.05;
+      st(p,{y:(1-a)*60-(on?E.oB(P(T,22.05,22.35))*14:0),o:P(T,21.55+i*.035,21.62+i*.035),s:on?L(1,1.15,E.oB(P(T,22.05,22.35))):1});
+      p.style.color=on?'#34D399':'#3A4763';
+      const tg=p.querySelector('.gTag'); tg.textContent=on?'¥300':'¥0'; tg.style.color=on?'#34D399':'#7C89A1';
+      p.style.filter=on?'drop-shadow(0 0 18px rgba(15,185,129,.8))':'none';
+    });
+    blk($('#gFree'),T,22.25,null,{dy:120,ease:E.oB,dur:.45});
+    blk($('#gSolo'),T,22.37,null,{dy:120,ease:E.oB,dur:.45});
+    $('#gNum').textContent=Math.round(300*E.o3(P(T,22.4,22.8)));
+  });
+}
+
+/* H: AI / MCP / OSS */
+{
+  const h1=$('#h1'),h2=$('#h2'),h3=$('#h3');
+  const k1=$$('.hk1'),k2=$$('.hk2'),k3=$$('.hk3');
+  const q=$('#hQ'),a=$('#hA'),dots=$$('.hd'),ans=split($('#hAns')),srcs=$$('.hs');
+  const nodes=[$('#hN0'),$('#hN1'),$('#hN2')],tools=$$('.hT'),lines=$('#hLines');
+  lines.innerHTML=`<path id="hl0" d="M620 600 C 900 600, 1000 710, 1300 710" fill="none" stroke="#34D399" stroke-width="3" stroke-dasharray="10 12"/><path id="hl1" d="M620 820 C 900 820, 1000 720, 1300 720" fill="none" stroke="#34D399" stroke-width="3" stroke-dasharray="10 12"/>`;
+  const code=`import { activeWorkspaceMembers } from '@cairn/db'\n\nexport async function requireMembership(ctx: Ctx, workspaceId: string) {\n  const member = await ctx.db.query.activeWorkspaceMembers.findFirst({\n    where: (m, { and, eq }) => and(eq(m.workspaceId, workspaceId), eq(m.userId, ctx.user.id)),\n  })\n  if (!member) throw new ForbiddenError('not a member of this workspace')\n  return member\n}\n\n// Realtime: Broadcast from Database → invalidate → refetch\nexport function subscribeProject(projectId: string) {\n  return supabase.channel(\`project:\${projectId}\`, { config: { private: true } })\n}\n\n// SPDX-License-Identifier: Apache-2.0\n`;
+  $('#hCode').textContent=(code+'\n').repeat(4);
+  const tpos=[[760,470],[980,560],[820,880],[1060,930]];
+  scene('sH',22.9,27.2,(t,T)=>{
+    // H1 AI 23.0-24.6
+    const o1=E.i3(P(T,24.45,24.65));
+    h1.style.opacity=1-o1; h1.style.display=T<24.66?'block':'none';
+    k1.forEach((k,i)=>blk(k,T,23.05+i*.08,null,{dy:40}));
+    blk(q,T,23.3,null,{dy:40,dx:80,sc:.8,ease:E.oB,dur:.4});
+    blk(a,T,23.6,null,{dy:40,dx:-80});
+    const th=P(T,23.7,23.95);
+    dots.forEach((d,i)=>{d.style.transform=`translateY(${-8*Math.max(0,Math.sin((T*10)-i*1.1))}px)`;});
+    $('#hDots').style.display=T<23.95?'flex':'none';
+    kin(ans,T,23.95,null,{stag:.012,dur:.3,dy:20,blur:6});
+    srcs.forEach((s,i)=>blk(s,T,24.2+i*.08,null,{dy:20,sc:.8,ease:E.oB,dur:.3}));
+    // H2 MCP 24.6-25.9
+    const in2=P(T,24.6,24.65), o2=E.i3(P(T,25.75,25.95));
+    h2.style.display=(T>=24.6&&T<25.96)?'block':'none';
+    h2.style.opacity=in2*(1-o2);
+    k2.forEach((k,i)=>blk(k,T,24.62+i*.08,null,{dy:40}));
+    nodes.forEach((n,i)=>blk(n,T,24.7+i*.1,null,{dx:i<2?-150:150,dy:0,sc:.8,ease:E.oB,dur:.4}));
+    ['#hl0','#hl1'].forEach((id,i)=>{const p=$(id); const len=900; p.style.strokeDashoffset=-(T*140); p.style.opacity=P(T,24.85+i*.08,25.0+i*.08);});
+    tools.forEach((tl,i)=>{const [x,y]=tpos[i]; const a2=E.oB(P(T,25.0+i*.12,25.3+i*.12)); st(tl,{x,y:y+(1-a2)*30,s:L(.5,1,a2),o:P(T,25.0+i*.12,25.06+i*.12)});});
+    // H3 OSS 25.9-27.1
+    h3.style.display=T>=25.9?'block':'none';
+    h3.style.opacity=P(T,25.9,26.0)*(1-E.i3(P(T,26.95,27.05)));
+    $('#hCode').style.transform=`translateY(${-((T-25.9)*260)}px)`;
+    k3.forEach((k,i)=>blk(k,T,25.95+i*.12,null,{dy:50,sc:i==0?1.3:1,blur:18}));
+  });
+}
+
+/* I: end card */
+{
+  const ss=$$('.iS'),word=split($('#iWord')),ik=split($$('.ik')[0]);
+  scene('sI',26.95,30.1,(t,T)=>{
+    ss.forEach((s,i)=>{const tl=27.0+i*.1; const q=P(T,tl-.18,tl); const k=Math.max(0,T-tl); const d=T<tl?0:Math.exp(-8*k)*Math.cos(k*Math.PI*5); st(s,{y:-400*(1-q*q),sx:1+.14*d,sy:1-.22*d,o:T<tl-.18?0:1}); s.style.boxShadow='0 0 30px rgba(15,185,129,.5)';});
+    word.forEach((c,i)=>{const a=E.oE(P(T,27.2+i*.04,27.55+i*.04)); st(c,{x:(1-a)*-60,o:a,b:(1-a)*12});});
+    kin(ik,T,27.3,null,{stag:.02,dur:.45,dy:60,blur:16,sc:1.3});
+    blk($('.ik2'),T,27.9,null,{dy:40,ease:E.oB,dur:.45});
+    blk($('.ik3'),T,28.15,null,{dy:30});
+    blk($('.ik4'),T,28.3,null,{dy:20});
+    $('#iShine').style.transform=`translateX(${L(-150,520,E.io3(P(T,28.7,29.3)))}px) skewX(-20deg)`;
+    st($('#sI'),{s:1+.03*E.o3(P(T,27,30))});
+  });
+}
+
+function render(T){
+  camera(T);
+  for(const s of S){ const on=T>=s.t0&&T<s.t1; s.el.style.display=on?'block':'none'; if(on) s.fn(T-s.t0,T); }
+}
+window.render=render;
+window.ready=document.fonts.ready.then(()=>{ render(0); return true; });
+</script>
+</body>
+</html>
