@@ -21,7 +21,7 @@ export function RealtimeIndicator() {
         bottom: 'calc(16px + env(safe-area-inset-bottom))',
         left: '50%',
         transform: 'translateX(-50%)',
-        zIndex: 100,
+        zIndex: 'var(--z-toast)',
         display: 'flex',
         alignItems: 'center',
         gap: 8,

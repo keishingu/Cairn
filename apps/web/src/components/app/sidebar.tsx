@@ -42,8 +42,8 @@ const SidebarItem = ({ icon, label, active, badge, onClick, onPrefetch, indent }
     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
     transition: 'background .12s', position: 'relative',
   }}
-    onMouseEnter={e => { onPrefetch?.(); if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    className={!active ? 'hover-bg' : undefined}
+    onMouseEnter={() => { onPrefetch?.() }}
   >
     {active && <span style={{ position: 'absolute', left: -12, top: 6, bottom: 6, width: 3, borderRadius: 2, background: 'var(--accent)' }}/>}
     {icon && <Icon name={icon} size={17}/>}
@@ -82,8 +82,8 @@ const SidebarGroup = ({ icon, label, page, setPage, prefetchPage, items }: Sideb
         fontWeight: isChildActive ? 600 : 500, fontSize: 13.5,
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
-        onMouseEnter={e => { prefetchPage?.(items[0]?.id ?? page); (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        className="hover-bg"
+        onMouseEnter={() => { prefetchPage?.(items[0]?.id ?? page) }}
       >
         <Icon name={icon} size={17}/>
         <span style={{ flex: 1 }}>{label}</span>
@@ -143,8 +143,7 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
             border: 'none', background: 'transparent', cursor: 'pointer',
             color: 'var(--text-4)', padding: 2, borderRadius: 4, display: 'flex', alignItems: 'center',
           }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-4)'}
+          className="hover-text"
         >
           <Icon name="close" size={11}/>
         </button>
@@ -235,22 +234,21 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
               cursor: 'pointer', padding: 4, borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-            onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-            onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            className={!switcherOpen ? 'hover-bg' : undefined}
           >
             {logoEl}
           </button>
 
           {switcherOpen && (
             <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSwitcherOpen(false)}/>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }} onClick={() => setSwitcherOpen(false)}/>
               <div style={{
                 position: 'absolute', top: '100%', left: 4, right: 4,
-                zIndex: 100,
+                zIndex: 'var(--z-dropdown)',
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                boxShadow: 'var(--shadow-pop)',
                 padding: '6px',
                 marginTop: 4,
                 minWidth: 200,
@@ -266,8 +264,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                       background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
                       cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                     }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                    className="hover-bg"
                   >
                     <div style={{
                       width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -301,8 +298,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                     color: 'var(--text-3)',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  className="hover-bg"
                 >
                   <div style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -356,8 +352,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
             background: switcherOpen ? 'var(--card-hover)' : 'transparent',
             cursor: 'pointer', textAlign: 'left',
           }}
-          onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-          onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          className={!switcherOpen ? 'hover-bg' : undefined}
         >
           {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -373,16 +368,16 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         {switcherOpen && (
           <>
             <div
-              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }}
               onClick={() => setSwitcherOpen(false)}
             />
             <div style={{
               position: 'absolute', top: '100%', left: 12, right: 12,
-              zIndex: 100,
+              zIndex: 'var(--z-dropdown)',
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--shadow-pop)',
               padding: '6px',
               marginTop: 4,
             }}>
@@ -397,8 +392,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                     background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
                     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                  className="hover-bg"
                 >
                   <div style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -432,8 +426,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                   cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                   color: 'var(--text-3)',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <div style={{
                   width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -534,8 +527,8 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: C
       color: active ? 'var(--accent)' : 'var(--text-3)',
       cursor: 'pointer', position: 'relative',
     }}
-    onMouseEnter={e => { onPrefetch?.(); if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    className={!active ? 'hover-bg' : undefined}
+    onMouseEnter={() => { onPrefetch?.() }}
   >
     <Icon name={icon} size={18}/>
     {badge != null && (
@@ -545,10 +538,10 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: C
 )
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
-  { value: 'online',  label: 'Online',   color: '#22C55E' },
-  { value: 'away',    label: 'Away',       color: '#F59E0B' },
-  { value: 'busy',    label: 'Busy',   color: '#EF4444' },
-  { value: 'offline', label: 'Offline',   color: '#9CA3AF' },
+  { value: 'online',  label: 'Online',   color: 'var(--emerald)' },
+  { value: 'away',    label: 'Away',       color: 'var(--amber)' },
+  { value: 'busy',    label: 'Busy',   color: 'var(--red)' },
+  { value: 'offline', label: 'Offline',   color: 'var(--text-4)' },
 ]
 
 const statusLabel = (status: UserStatus | undefined) =>
@@ -606,7 +599,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     <div style={{
       position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
       background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 'var(--z-dropdown)',
       minWidth: 160,
     }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
@@ -624,8 +617,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
             background: 'transparent', color: 'var(--text)', fontSize: 13,
             fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
           }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+          className="hover-bg"
         >
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: opt.color, flexShrink: 0 }}/>
           <span style={{ flex: 1 }}>{t(opt.label)}</span>
@@ -666,8 +658,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
         }}
-        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
-        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        className="hover-bg-danger"
       >
         <Icon name="logout" size={14} />
         {t('Log out')}
@@ -691,8 +682,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         color: 'var(--text-4)', padding: '5px 6px', borderRadius: 7,
         display: 'flex', alignItems: 'center', flexShrink: 0,
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+      className="hover-bg hover-text"
     >
       <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={15}/>
     </button>

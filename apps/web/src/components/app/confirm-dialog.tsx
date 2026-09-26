@@ -3,6 +3,7 @@
 import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { Icon, Modal } from './primitives'
+import { InlineError } from './inline-error'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -50,8 +51,8 @@ export const ConfirmDialog = ({
   }
 
   return (
-    <Modal onClose={close}>
-      <div role="alertdialog" aria-modal="true" aria-label={title} className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+    <Modal onClose={close} label={title} role="alertdialog">
+      <div className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="alertTriangle" size={16}/>
@@ -60,9 +61,7 @@ export const ConfirmDialog = ({
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>{message}</div>
         {error && (
-          <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)', padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', marginBottom: 12 }}>
-            ⚠ {error}
-          </div>
+          <InlineError variant="box" style={{ marginBottom: 12 }}>{error}</InlineError>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={close} disabled={busy}>{t('Cancel')}</button>

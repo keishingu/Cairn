@@ -6,76 +6,147 @@
 import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { Icon } from './primitives'
-import { subscribeToasts, dismissToast, type ToastItem, type ToastVariant } from '@/lib/toast'
+import {
+  subscribeToasts, dismissToast, pauseToast, resumeToast, MAX_VISIBLE_TOASTS,
+  type ToastItem, type ToastVariant,
+} from '@/lib/toast'
 
-const VARIANT: Record<ToastVariant, { icon: string; iconColor: string }> = {
-  success: { icon: 'check',         iconColor: 'var(--emerald-text)' },
-  error:   { icon: 'alertTriangle', iconColor: 'var(--red-text)' },
-  info:    { icon: 'bell',          iconColor: 'var(--accent-text)' },
+export type ToastPlacement = 'bottom-right' | 'top'
+
+const VARIANT: Record<ToastVariant, { icon: string; color: string; soft: string }> = {
+  success: { icon: 'check',         color: 'var(--emerald-text)', soft: 'var(--emerald-soft)' },
+  error:   { icon: 'alertTriangle', color: 'var(--red-text)',     soft: 'var(--red-soft)' },
+  info:    { icon: 'info',          color: 'var(--accent-text)',  soft: 'var(--accent-soft)' },
 }
 
-const ToastRow = ({ item }: { item: ToastItem }) => {
+// globals.css の toast-leave アニメーション長と揃える
+const LEAVE_MS = 200
+
+interface RenderedToast {
+  item: ToastItem
+  leaving: boolean
+}
+
+const ToastRow = ({ item, leaving }: RenderedToast) => {
   const t = useT()
   const v = VARIANT[item.variant]
+  const isError = item.variant === 'error'
+  // ホバーとフォーカスのどちらかが続いている間は止めたままにする
+  const interaction = React.useRef({ hovered: false, focused: false })
+  const update = (next: Partial<typeof interaction.current>) => {
+    interaction.current = { ...interaction.current, ...next }
+    if (interaction.current.hovered || interaction.current.focused) pauseToast(item.id)
+    else resumeToast(item.id)
+  }
   return (
-    <div
-      role="status"
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        minWidth: 240, maxWidth: 'min(420px, 90vw)',
-        padding: '11px 12px 11px 14px',
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        boxShadow: 'var(--shadow)',
-        pointerEvents: 'auto',
-      }}
-    >
-      <Icon name={v.icon} size={15} color={v.iconColor} />
-      <span style={{ flex: 1, fontSize: 13, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word' }}>
-        {item.message}
-      </span>
-      <button
-        onClick={() => dismissToast(item.id)}
-        aria-label={t('Close')}
+    <div className="app-toast-slot" data-leaving={leaving || undefined}>
+      <div
+        className="app-toast"
+        role={isError ? 'alert' : 'status'}
+        aria-live={isError ? 'assertive' : 'polite'}
+        onMouseEnter={() => update({ hovered: true })}
+        onMouseLeave={() => update({ hovered: false })}
+        onFocus={() => update({ focused: true })}
+        onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) update({ focused: false }) }}
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 22, height: 22, flexShrink: 0,
-          border: 'none', background: 'transparent', borderRadius: 6,
-          color: 'var(--text-4)', cursor: 'pointer',
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          width: '100%', boxSizing: 'border-box',
+          padding: '10px 8px 10px 12px',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          boxShadow: 'var(--shadow-lg)',
+          pointerEvents: leaving ? 'none' : 'auto',
         }}
       >
-        <Icon name="close" size={13} />
-      </button>
+        <span
+          aria-hidden
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 22, height: 22, flexShrink: 0, borderRadius: '50%',
+            background: v.soft, color: v.color,
+          }}
+        >
+          <Icon name={v.icon} size={13} strokeWidth={2.2} />
+        </span>
+        <span style={{ flex: 1, padding: '2px 0', fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word' }}>
+          {item.message}
+        </span>
+        <button
+          type="button"
+          className="app-toast-close"
+          onClick={() => dismissToast(item.id)}
+          aria-label={t('Close')}
+        >
+          <Icon name="close" size={13} />
+        </button>
+      </div>
     </div>
   )
+}
+
+/** ストアから消えた行をアニメーションが終わるまで残すため、leaving 状態を付けて保持する。 */
+function mergeRendered(prev: RenderedToast[], next: ToastItem[]): RenderedToast[] {
+  const nextIds = new Set(next.map(t => t.id))
+  const prevIds = new Set(prev.map(r => r.item.id))
+  const kept = prev.map(r => (nextIds.has(r.item.id) || r.leaving ? r : { ...r, leaving: true }))
+  const added = next.filter(t => !prevIds.has(t.id)).map(item => ({ item, leaving: false }))
+  const merged = [...kept, ...added]
+  // 連続で出したとき退場中の行が積み上がらないよう、上限を超えた分は古い退場行から即座に外す
+  let excess = merged.length - MAX_VISIBLE_TOASTS
+  return merged.filter(r => {
+    if (excess > 0 && r.leaving) { excess--; return false }
+    return true
+  })
 }
 
 /**
  * アプリ全体のトースト表示。ルートレイアウトに1つだけマウントする。
  * 表示内容は `@/lib/toast` の `toast.success/error/info` で操作する。
+ * PC は右下（チャット入力欄やショートカットヒントの中央下部を塞がない）、
+ * モバイルはボトムナビ・入力欄と重ならないよう上部に出す。
  */
-export const Toaster = () => {
-  const [items, setItems] = React.useState<ToastItem[]>([])
+export const Toaster = ({ placement = 'bottom-right' }: { placement?: ToastPlacement }) => {
+  const [rendered, setRendered] = React.useState<RenderedToast[]>([])
 
-  React.useEffect(() => subscribeToasts(setItems), [])
+  React.useEffect(() => subscribeToasts(next => setRendered(prev => mergeRendered(prev, next))), [])
 
-  if (items.length === 0) return null
+  const hasLeaving = rendered.some(r => r.leaving)
+  React.useEffect(() => {
+    if (!hasLeaving) return
+    const timer = setTimeout(() => setRendered(prev => prev.filter(r => !r.leaving)), LEAVE_MS)
+    return () => clearTimeout(timer)
+  }, [hasLeaving, rendered])
+
+  if (rendered.length === 0) return null
+
+  const isTop = placement === 'top'
 
   return (
     <div
-      className="app-root"
+      className="app-root app-toaster"
+      data-placement={placement}
       style={{
         position: 'fixed',
-        left: '50%',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
-        transform: 'translateX(-50%)',
-        zIndex: 2000,
-        display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
+        zIndex: 'var(--z-toast)',
+        display: 'flex',
+        // 新しいトーストを画面端側に積む
+        flexDirection: isTop ? 'column-reverse' : 'column',
         pointerEvents: 'none',
+        ...(isTop
+          ? {
+              top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+              left: 12, right: 12,
+              margin: '0 auto', maxWidth: 420,
+            }
+          : {
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
+              right: 20,
+              width: 'min(360px, calc(100vw - 40px))',
+            }),
       }}
     >
-      {items.map(item => <ToastRow key={item.id} item={item} />)}
+      {rendered.map(r => <ToastRow key={r.item.id} item={r.item} leaving={r.leaving} />)}
     </div>
   )
 }

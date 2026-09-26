@@ -25,7 +25,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     display: 'standalone',
     orientation: 'portrait',
     theme_color: preset.swatch,
-    background_color: theme === 'light' ? '#ffffff' : '#0B1622',
+    background_color: theme === 'light' ? '#F8FAFC' : '#0B0F14',
     icons: [
       {
         src: `/icon-${accent}-${theme}-192.png`,

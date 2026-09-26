@@ -10,6 +10,8 @@ import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { InlineError } from './inline-error'
+import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { EmojiPicker } from './emoji-picker'
@@ -250,22 +252,23 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content, t)
   }, [content, t])
-  const reportMessage = () => {
-    const choice = window.prompt(t('Choose a report reason\n1: Harassment or bullying\n2: Discriminatory or offensive\n3: Sexual or inappropriate\n4: Violence or threats\n5: Spam\n6: Other'))
-    const reasons = ['harassment', 'discriminatory', 'sexual', 'violence', 'spam', 'other'] as const
-    const reason = choice ? reasons[Number(choice) - 1] : undefined
-    if (!reason) return
-    const details = reason === 'other' ? window.prompt(t('Enter additional details'))?.trim() : undefined
-    if (reason === 'other' && !details) return
-    void fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
-      .then(res => res.ok ? toast.success(t('Reported the message')) : res.json().then(data => toast.error(data.error ?? t('Could not report the message'))))
-      .catch(() => toast.error(t('Could not report the message')))
+  const [reportOpen, setReportOpen] = React.useState(false)
+  const [blockConfirm, setBlockConfirm] = React.useState(false)
+  const submitReport = async (input: { reason: ReportReason; details?: string }) => {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not report the message'))
+    }
+    toast.success(t('Reported the message'))
   }
-  const blockUser = () => {
-    if (!window.confirm(t('Block {name}?', { name: senderName }))) return
-    void fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
-      .then(res => res.ok ? toast.success(t('Blocked the user')) : res.json().then(data => toast.error(data.error ?? t('Could not block the user'))))
-      .catch(() => toast.error(t('Could not block the user')))
+  const blockUser = async () => {
+    const res = await fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not block the user'))
+    }
+    toast.success(t('Blocked the user'))
   }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
@@ -288,7 +291,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
-    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: reportMessage }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: blockUser }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -382,12 +385,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               }}
             />
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              <button onClick={submitEdit}
-                style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >{t('Save')}</button>
-              <button onClick={() => setEditMode(false)}
-                style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >{t('Cancel')}</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={submitEdit}>{t('Save')}</button>
+              <button type="button" className="btn btn-sm" onClick={() => setEditMode(false)}>{t('Cancel')}</button>
               {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
           </div>
@@ -467,7 +466,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 <span style={{
                   position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 100,
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 'var(--z-dropdown)',
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   {r.userNames.join(t(', '))}
@@ -496,6 +495,16 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         onConfirm={() => onDelete(messageId)}
         onClose={() => setDeleteConfirm(false)}
       />
+      <ConfirmDialog
+        open={blockConfirm}
+        title={t('Block {name}', { name: senderName })}
+        message={t('You and this user will no longer be able to send each other direct messages.')}
+        confirmLabel={t('Block')}
+        busyLabel={t('Blocking...')}
+        onConfirm={blockUser}
+        onClose={() => setBlockConfirm(false)}
+      />
+      <ReportMessageDialog open={reportOpen} onSubmit={submitReport} onClose={() => setReportOpen(false)} />
     </div>
   )
 })
@@ -711,8 +720,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const el = textareaRef.current ?? compactInputRef.current
     const rect = el?.getBoundingClientRect()
     const style: React.CSSProperties = rect
-      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
-      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 'var(--z-popover)' }
+      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 'var(--z-dropdown)' }
     return (
       <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
@@ -855,10 +864,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)', position: 'relative' }} {...dropHandlers}>
         {hiddenFileInput}
         {sendError && (
-          <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>⚠️ {sendError}</span>
-            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', padding: '0 2px' }}>✕</button>
-          </div>
+          <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendError}</InlineError>
         )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -927,10 +933,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       {hiddenImageInput}
       {hiddenDocInput}
       {sendError && (
-        <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>⚠️ {sendError}</span>
-          <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>✕</button>
-        </div>
+        <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6 }}>{sendError}</InlineError>
       )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

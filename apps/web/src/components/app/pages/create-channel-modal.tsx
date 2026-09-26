@@ -39,7 +39,7 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} label={t('New channel')}>
       <form onSubmit={handleSubmit} style={{
         position: 'relative',
         width: '100%', maxWidth: 480,

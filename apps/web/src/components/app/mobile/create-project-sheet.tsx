@@ -132,17 +132,17 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
       <div
         onClick={onClose}
         style={{
-          position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+          background: 'var(--overlay)',
         }}
       />
 
       {/* Sheet */}
       <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 301,
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-modal-content)',
         background: 'var(--card)',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+        boxShadow: 'var(--shadow-sheet)',
         maxHeight: '90dvh',
         display: 'flex', flexDirection: 'column',
         animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
@@ -272,7 +272,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     }}
                   >
-                    <Icon name="x" size={13}/>
+                    <Icon name="close" size={13}/>
                     {t('Automatic')}
                   </button>
 
@@ -423,27 +423,16 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
             type="button"
             onClick={onClose}
             disabled={mutation.isPending}
-            style={{
-              flex: 1, height: 46, borderRadius: 12,
-              border: '1px solid var(--border)', background: 'var(--card-2)',
-              color: 'var(--text-2)', fontSize: 15, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
+            className="btn btn-lg"
+            style={{ flex: 1, height: 46, borderRadius: 12, fontSize: 15 }}
           >
             {t('Cancel')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={mutation.isPending}
-            style={{
-              flex: 2, height: 46, borderRadius: 12,
-              border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
-              fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', transition: 'background 0.15s',
-            }}
+            className="btn btn-primary btn-lg"
+            style={{ flex: 2, height: 46, borderRadius: 12, fontSize: 15 }}
           >
             {mutation.isPending ? t('Creating…') : t('Create')}
           </button>

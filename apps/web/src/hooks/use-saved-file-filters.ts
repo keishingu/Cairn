@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
 import type { FileFilterConditions, SavedFileFilterDto } from '@/lib/files/saved-file-filter'
 
 export const savedFileFilterQueryKey = ['saved-file-filters'] as const
@@ -15,13 +16,14 @@ async function responseError(response: Response, fallback: string): Promise<Erro
 
 export function useSavedFileFilters() {
   const queryClient = useQueryClient()
+  const t = useT()
 
   const query = useQuery<SavedFileFilterDto[]>({
     queryKey: savedFileFilterQueryKey,
     queryFn: async () => {
       const response = await fetchWithAuth('/api/files/filters')
       if (!response.ok)
-        throw await responseError(response, '保存済みフィルターの取得に失敗しました')
+        throw await responseError(response, t('Could not load saved filters'))
       return response.json() as Promise<SavedFileFilterDto[]>
     },
   })
@@ -39,7 +41,7 @@ export function useSavedFileFilters() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, conditions }),
       })
-      if (!response.ok) throw await responseError(response, 'フィルターの保存に失敗しました')
+      if (!response.ok) throw await responseError(response, t('Could not save the filter'))
       return response.json() as Promise<SavedFileFilterDto>
     },
     onSuccess: (created) => {
@@ -47,16 +49,16 @@ export function useSavedFileFilters() {
         ...(current ?? []),
         created,
       ])
-      toast.success('フィルターを保存しました')
+      toast.success(t('Saved the filter'))
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'フィルターの保存に失敗しました'),
+      toast.error(error instanceof Error ? error.message : t('Could not save the filter')),
   })
 
   const deleteMutation = useMutation({
     mutationFn: async (filterId: string) => {
       const response = await fetchWithAuth(`/api/files/filters/${filterId}`, { method: 'DELETE' })
-      if (!response.ok) throw await responseError(response, 'フィルターの削除に失敗しました')
+      if (!response.ok) throw await responseError(response, t('Could not delete the filter'))
       return filterId
     },
     onSuccess: (filterId) => {
@@ -64,10 +66,10 @@ export function useSavedFileFilters() {
         savedFileFilterQueryKey,
         (current) => current?.filter((filter) => filter.id !== filterId) ?? [],
       )
-      toast.success('フィルターを削除しました')
+      toast.success(t('Deleted the filter'))
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'フィルターの削除に失敗しました'),
+      toast.error(error instanceof Error ? error.message : t('Could not delete the filter')),
   })
 
   return { ...query, createMutation, deleteMutation }

@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── 重なり順（z-index）の段階 ──
+   画面をまたいで重なる要素は数値を直書きせずこの変数を使う。コンポーネント内だけの前後関係（1〜10）は直書きでよい。
+   *-backdrop はクリックで閉じる透明レイヤーで、本体の1つ下に置く */
+:root {
+  --z-sticky: 20;              /* スクロール内の固定ヘッダー */
+  --z-nav-backdrop: 49;
+  --z-nav: 50;                 /* モバイルのボトムナビ・FAB */
+  --z-drawer-backdrop: 60;
+  --z-drawer: 61;              /* 横から出るパネル */
+  --z-dropdown-backdrop: 99;
+  --z-dropdown: 100;           /* 画面内のメニュー・ポップオーバー */
+  --z-modal: 1000;             /* モーダル・ボトムシート（背景幕を含む） */
+  --z-modal-content: 1001;     /* 背景幕と別要素にしたシート本体 */
+  --z-popover: 1100;           /* fixed 配置でモーダルの上にも出るメニュー・ピッカー */
+  --z-lightbox: 1500;          /* 画像ビューア（モーダル内から開いても前面） */
+  --z-toast: 2000;             /* トースト・接続状態などの一過性表示 */
+  --z-system: 3000;            /* ナビゲーション進捗・ショートカットヒント */
+}
+
 /* ── Design tokens (山岳部SaaS) ─────────────────────────────────── */
 .app-root {
   --bg:            #F8FAFC;
@@ -60,6 +79,8 @@
   --shadow-md:   0 4px 12px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04);
   --shadow-lg:   0 12px 32px rgba(15,23,42,0.08), 0 4px 12px rgba(15,23,42,0.04);
   --shadow-pop:  0 16px 48px rgba(15,23,42,0.16), 0 0 0 1px var(--border);
+  --shadow-sheet: 0 -8px 32px rgba(15,23,42,0.12);
+  --shadow-fab:  0 6px 20px rgba(15,23,42,0.22), 0 2px 6px rgba(15,23,42,0.12);
   --ring:        0 0 0 3px rgba(16,185,129,0.20);
   --selection:   #C7F0DC;
 }
@@ -121,6 +142,8 @@
   --shadow-md:   0 6px 18px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.35);
   --shadow-lg:   0 16px 40px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
   --shadow-pop:  0 20px 56px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+  --shadow-sheet: 0 -8px 32px rgba(0,0,0,0.55), 0 0 0 1px var(--border);
+  --shadow-fab:  0 6px 20px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4);
   --ring:        0 0 0 3px rgba(16,185,129,0.32);
   --selection:   rgba(16,185,129,0.25);
 }
@@ -149,19 +172,39 @@
 .app *::-webkit-scrollbar-track { background: transparent; }
 
 .app .btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; font-family: inherit; }
+.app .btn { justify-content:center; white-space:nowrap; }
 .app .btn:disabled { opacity:.5; cursor:not-allowed; }
-.app .btn:hover { background: var(--card-hover); border-color: var(--border-2); }
+.app .btn:not(:disabled):hover { background: var(--card-hover); border-color: var(--border-2); }
+.app .btn:focus-visible { outline:none; box-shadow: var(--ring); }
 .app .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight:600; }
-.app .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.app .btn-primary:not(:disabled):hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .app .btn-ghost { background: transparent; border-color: transparent; }
-.app .btn-ghost:hover { background: var(--card-hover); }
+.app .btn-ghost:not(:disabled):hover { background: var(--card-hover); border-color: transparent; }
 .app .btn-danger { background: var(--red); border-color: var(--red); color:#fff; font-weight:600; }
-.app .btn-danger:hover { background: #DC2626; border-color: #DC2626; }
+.app .btn-danger:not(:disabled):hover { background: #DC2626; border-color: #DC2626; }
+/* サイズ: 既定 34px。行内の小さな操作は sm、フォームの主操作は lg */
+.app .btn-sm { height:28px; padding:0 10px; font-size:12px; border-radius:7px; gap:5px; }
+.app .btn-lg { height:40px; padding:0 16px; font-size:14px; }
+.app .btn-block { display:flex; width:100%; }
+/* アイコンだけのボタン。JS の onMouseEnter で背景を塗り替えず、これを使う */
+.app .icon-btn { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:28px; height:28px; padding:0; border:none; border-radius:7px; background:transparent; color:var(--text-3); cursor:pointer; font-family:inherit; transition: background .12s, color .12s; }
+.app .icon-btn:not(:disabled):hover, .app .icon-btn[aria-expanded="true"] { background: var(--card-hover); color: var(--text); }
+.app .icon-btn:focus-visible { outline:none; box-shadow: var(--ring); }
+.app .icon-btn:disabled { opacity:.5; cursor:not-allowed; }
+.app .icon-btn-sm { width:24px; height:24px; border-radius:6px; }
+/* 行・メニュー項目のホバー。インラインの background/color より優先させるため !important を付ける */
+.app .hover-bg:not(:disabled):hover { background: var(--card-hover) !important; }
+.app .hover-bg-card:not(:disabled):hover { background: var(--card) !important; }
+.app .hover-bg-danger:not(:disabled):hover { background: var(--red-soft) !important; }
+.app .hover-text:not(:disabled):hover { color: var(--text-2) !important; }
+.app :is(.hover-bg, .hover-bg-card, .hover-bg-danger):focus-visible { outline: none; box-shadow: var(--ring); }
 .app .form-control { height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--card-2); color:var(--text); font-size:13px; font-family:inherit; outline:none; transition:background .12s, border-color .12s, box-shadow .12s; }
 .app .form-control:hover { border-color:var(--border-2); }
 .app .form-control:focus-visible { border-color:var(--accent); box-shadow:var(--ring); outline:2px solid var(--accent); outline-offset:2px; }
 .app .form-control:disabled { color:var(--text-4); cursor:not-allowed; opacity:.65; }
 .app .form-control::placeholder { color:var(--text-3); }
+/* 高さ固定は1行の input 向け。textarea は rows に従って複数行を見せる */
+.app textarea.form-control { height:auto; min-height:72px; padding:8px 10px; line-height:1.5; resize:vertical; }
 .app .chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:0.01em; }
 .app .card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
 .app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
@@ -279,4 +322,30 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ── トースト（components/app/toaster.tsx）──
+   slot は grid 行を 1fr→0fr に畳んで、消えた行の分だけ残りのトーストを滑らかに詰める */
+.app-toast-slot { display: grid; grid-template-rows: 1fr; padding: 4px 0; animation: toastSlotIn 220ms cubic-bezier(.2,.8,.2,1); }
+.app-toast-slot > .app-toast { min-height: 0; animation: toastIn 220ms cubic-bezier(.2,.8,.2,1); }
+.app-toast-slot[data-leaving] { grid-template-rows: 0fr; padding: 0; animation: toastSlotOut 200ms ease-in forwards; }
+.app-toast-slot[data-leaving] > .app-toast { overflow: hidden; animation: toastOut 160ms ease-in forwards; }
+.app-toaster[data-placement="top"] .app-toast-slot > .app-toast { --toast-from-y: -10px; }
+.app-toast-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex-shrink: 0;
+  border: none; background: transparent; border-radius: 6px;
+  color: var(--text-4); cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+.app-toast-close:hover { background: var(--card-hover); color: var(--text); }
+.app-toast-close:focus-visible { outline: none; box-shadow: var(--ring); }
+@keyframes toastSlotIn  { from { grid-template-rows: 0fr; padding: 0; } to { grid-template-rows: 1fr; padding: 4px 0; } }
+@keyframes toastSlotOut { from { grid-template-rows: 1fr; padding: 4px 0; } to { grid-template-rows: 0fr; padding: 0; } }
+@keyframes toastIn  { from { opacity: 0; transform: translateY(var(--toast-from-y, 10px)) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-toast-slot, .app-toast-slot > .app-toast,
+  .app-toast-slot[data-leaving], .app-toast-slot[data-leaving] > .app-toast { animation-duration: 1ms; }
+  .app-toast-close { transition: none; }
 }

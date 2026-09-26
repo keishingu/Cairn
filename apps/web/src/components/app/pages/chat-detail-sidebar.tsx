@@ -120,8 +120,8 @@ const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClos
 
   return (
     <div role="dialog" aria-modal="true" aria-label={t('Preview of {name}', { name: file.fileName })} onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-pop)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id}/>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>
@@ -386,10 +386,8 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             return (
               <div
                 key={f.id}
-                className="chat-detail-row"
+                className="chat-detail-row hover-bg"
                 style={{ width: 'calc(100% + 12px)', display: 'flex', alignItems: 'center', gap: 2, padding: '5px 2px 5px 6px', margin: '0 -6px', borderRadius: 7 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
                 {isRenaming ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -495,13 +493,8 @@ const ChatDetailContent = ({
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>{t('Project channel')}</div>
         <button
           onClick={onOpenProject}
-          style={{
-            marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-            border: '1px solid var(--border)', background: 'var(--card-2)',
-            color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}
+          className="btn btn-block"
+          style={{ marginTop: 10 }}
         >
           <Icon name="arrowRight" size={13}/>
           {t('Open project')}
@@ -521,13 +514,8 @@ const ChatDetailContent = ({
           <button
             onClick={() => dmParticipantId && onOpenMember(dmParticipantId)}
             disabled={!dmParticipantId}
-            style={{
-              marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-              border: '1px solid var(--border)', background: 'var(--card-2)',
-              color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-              cursor: dmParticipantId ? 'pointer' : 'default', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}
+            className="btn btn-block"
+            style={{ marginTop: 10 }}
           >
             <Icon name="users" size={13}/>
             {t('View profile')}
@@ -541,13 +529,8 @@ const ChatDetailContent = ({
             </div>
             <button
               onClick={onInviteMember}
-              style={{
-                marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-                border: '1px solid var(--border)', background: 'var(--card-2)',
-                color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              }}
+              className="btn btn-block"
+              style={{ marginTop: 10 }}
             >
               <Icon name="userPlus" size={13}/>
               {t('Invite members')}
@@ -593,8 +576,7 @@ const ChatDetailContent = ({
               margin: '0 -6px', borderRadius: 7,
               cursor: clickable ? 'pointer' : 'default',
             }}
-            onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' } : undefined}
-            onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' } : undefined}
+            className={clickable ? 'hover-bg' : undefined}
           >
             <div style={{ position: 'relative' }}>
               <Avatar name={m.name} url={m.url} size={24}/>
@@ -628,13 +610,13 @@ export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => {
 }
 
 // モバイル: ベルと同じく右からスライドインするインフォメーションドロワー
-// （MobileNav が zIndex:50 で固定されているため、ナビより前面に出す）
+// （MobileNav が --z-nav で固定されているため、ナビより前面に出す）
 export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & { onClose: () => void }) => {
   const t = useT()
   return (
   <>
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 60, animation: 'notifFadeIn .15s ease-out' }}/>
-    <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 61, display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 'var(--z-drawer-backdrop)', animation: 'notifFadeIn .15s ease-out' }}/>
+    <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-drawer)', display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
       <div style={{ padding: '14px 16px 12px', paddingTop: 'max(14px, env(safe-area-inset-top))', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{t(panelTitle(props))}</h3>
         <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

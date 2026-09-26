@@ -48,7 +48,7 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} label={t('Command palette')}>
       <div
         className="card"
         style={{ position: 'relative', width: 520, maxWidth: '92vw', maxHeight: '70vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}

@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -339,7 +339,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -373,7 +373,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -407,7 +407,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -433,7 +433,7 @@ describe('MCP / APIトークン設定', () => {
     mockIntegrationsFetch({ apiTokenListError: true })
     renderIntegrationsSection()
 
-    expect(await screen.findByText('⚠ APIトークンの取得に失敗しました')).toBeInTheDocument()
+    expect(await screen.findByText('APIトークンの取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByText('発行済みトークンはありません。')).not.toBeInTheDocument()
   })
 
@@ -448,13 +448,14 @@ describe('MCP / APIトークン設定', () => {
         },
       ],
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     expect(await screen.findByText('Claude')).toBeInTheDocument()
     expect(screen.getByText(/読み取り・書き込み/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
     await waitFor(() => expect(screen.queryByText('Claude')).not.toBeInTheDocument())
     expect(toastSuccess).toHaveBeenCalledWith('OAuth接続を取り消しました')
@@ -516,15 +517,15 @@ describe('MCP / APIトークン設定', () => {
       ],
       revokeError: true,
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     await user.click(await screen.findByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith('APIトークンの取り消しに失敗しました')
-    })
+    // 失敗時はダイアログを開いたまま理由を表示する
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('APIトークンの取り消しに失敗しました')
   })
 
   it('クリップボードへの保存完了後だけコピー済みと表示する', async () => {
@@ -549,7 +550,8 @@ describe('MCP / APIトークン設定', () => {
     expect(screen.queryByRole('button', { name: 'コピー済み' })).not.toBeInTheDocument()
     finishCopy?.()
     expect(await screen.findByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
-    expect(toastSuccess).toHaveBeenCalledWith('APIトークンをコピーしました')
+    // 成功はボタン自身の表示で返し、トーストは重ねない
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('クリップボードへの保存失敗を通知する', async () => {

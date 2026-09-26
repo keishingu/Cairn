@@ -46,15 +46,15 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.4)' }}
+        style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'var(--overlay)' }}
       />
 
       {/* Sheet */}
       <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 301,
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-modal-content)',
         background: 'var(--card)',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+        boxShadow: 'var(--shadow-sheet)',
         maxHeight: '80dvh',
         display: 'flex', flexDirection: 'column',
         animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',

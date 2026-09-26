@@ -201,7 +201,7 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
     <div
       onClick={() => { if (!isZoomed) onClose() }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 200,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-lightbox)',
         background: 'rgba(0,0,0,0.9)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',

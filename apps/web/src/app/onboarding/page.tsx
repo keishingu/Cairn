@@ -121,18 +121,8 @@ export default function OnboardingPage() {
             <button
               type="submit"
               disabled={loading || !workspaceName.trim()}
-              style={{
-                padding: '10px 16px',
-                borderRadius: 8,
-                border: 'none',
-                background: loading || !workspaceName.trim() ? 'var(--border-2)' : 'var(--accent)',
-                color: loading || !workspaceName.trim() ? 'var(--text-4)' : 'var(--on-accent)',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading || !workspaceName.trim() ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                marginTop: 4,
-              }}
+              className="btn btn-primary btn-lg"
+              style={{ marginTop: 4 }}
             >
               {loading ? t('Creating...') : t('Create workspace')}
             </button>

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { Avatar, Icon, fieldInputStyle } from './primitives'
+import { Avatar, Icon, fieldInputStyle, portalHostFor } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
 import { useChannelMembers } from '@/lib/chat/client'
 import { useT } from '@/components/locale-provider'
@@ -200,7 +200,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
     setQuery('')
   }
 
-  const portalHost = containerRef.current?.closest<HTMLElement>('.app-root')
+  const portalHost = portalHostFor(containerRef.current)
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
@@ -240,7 +240,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
             ...(menuPosition.top != null ? { top: menuPosition.top } : {}),
             ...(menuPosition.bottom != null ? { bottom: menuPosition.bottom } : {}),
             width: menuPosition.width,
-            zIndex: 1100,
+            zIndex: 'var(--z-popover)',
             background: 'var(--card)',
             border: '1px solid var(--border)',
             borderRadius: 10,
@@ -266,7 +266,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
               style={optionStyle(value === null)}
             >
               <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--card-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="x" size={11} color="var(--text-3)" />
+                <Icon name="close" size={11} color="var(--text-3)" />
               </span>
               <span style={{ flex: 1 }}>{t('No assignee')}</span>
             </button>

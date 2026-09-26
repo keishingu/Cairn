@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import type { UserIdentity } from '@supabase/supabase-js'
 import { useT } from '@/components/locale-provider'
 import { ConfirmDialog } from './confirm-dialog'
+import { InlineError } from './inline-error'
 import {
   findIdentity,
   providerLabel,
@@ -17,6 +18,7 @@ import {
   type LinkableOAuthProvider,
 } from '@/hooks/use-auth-identities'
 import { formatLoginLinkErrorMessage } from '@/lib/auth-identity-link-errors'
+import { toast } from '@/lib/toast'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
@@ -178,7 +180,6 @@ export function LoginMethodsSettings() {
   const linkGoogle = useLinkOAuthIdentity('google')
   const unlinkIdentity = useUnlinkOAuthIdentity()
 
-  const [message, setMessage] = React.useState<{ text: string; ok: boolean } | null>(null)
   const [unlinkTarget, setUnlinkTarget] = React.useState<UserIdentity | null>(null)
   const [linkingProvider, setLinkingProvider] = React.useState<LinkableOAuthProvider | null>(null)
   // SSR / 初回描画では window を読まず、マウント後にだけネイティブ判定する。
@@ -220,16 +221,13 @@ export function LoginMethodsSettings() {
         linkError === 'callback'
           ? linkError
           : 'callback'
-      setMessage({
-        text: formatLoginLinkErrorMessage(key, linkProvider),
-        ok: false,
-      })
+      // OAuth 連携の失敗理由は長文で対処が要るため、既定より長く出す
+      toast.error(formatLoginLinkErrorMessage(key, linkProvider), { duration: 8000 })
       const url = new URL(window.location.href)
       url.searchParams.delete('loginLinkError')
       url.searchParams.delete('loginLinkProvider')
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
-      const timer = window.setTimeout(() => setMessage(null), 8000)
-      return () => window.clearTimeout(timer)
+      return
     }
 
     if (linked !== 'apple' && linked !== 'google' && linked !== '1') return
@@ -237,17 +235,14 @@ export function LoginMethodsSettings() {
       linked === 'google' ? 'Google' : linked === 'apple' || linked === '1' ? 'Apple' : null
     if (!label) return
     handledLinkFeedbackRef.current = true
-    setMessage({ text: t('Linked {label} as a sign-in method', { label }), ok: true })
+    toast.success(t('Linked {label} as a sign-in method', { label }))
     const url = new URL(window.location.href)
     url.searchParams.delete('loginLinked')
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     void refetch()
-    const timer = window.setTimeout(() => setMessage(null), 5000)
-    return () => window.clearTimeout(timer)
   }, [searchParams, refetch, t])
 
   const handleLink = async (provider: LinkableOAuthProvider) => {
-    setMessage(null)
     setLinkingProvider(provider)
     const label = providerLabel(provider)
     try {
@@ -257,17 +252,14 @@ export function LoginMethodsSettings() {
       if (useNative) {
         const result = await requestNativeOAuthLink(provider, t)
         if (result.cancelled) {
-          setMessage({ text: t('Canceled {label} linking', { label }), ok: false })
+          toast.info(t('Canceled {label} linking', { label }))
           return
         }
         if (!result.ok) {
-          setMessage({
-            text: result.message ?? t('Could not link {label}', { label }),
-            ok: false,
-          })
+          toast.error(result.message ?? t('Could not link {label}', { label }))
           return
         }
-        setMessage({ text: t('Linked {label} as a sign-in method', { label }), ok: true })
+        toast.success(t('Linked {label} as a sign-in method', { label }))
         void refetch()
         return
       }
@@ -275,10 +267,7 @@ export function LoginMethodsSettings() {
       if (provider === 'apple') await linkApple.mutateAsync()
       else await linkGoogle.mutateAsync()
     } catch (err) {
-      setMessage({
-        text: err instanceof Error ? err.message : t('Could not link {label}', { label }),
-        ok: false,
-      })
+      toast.error(err instanceof Error ? err.message : t('Could not link {label}', { label }))
     } finally {
       setLinkingProvider(null)
     }
@@ -289,7 +278,7 @@ export function LoginMethodsSettings() {
     const label = providerLabel(unlinkTarget.provider)
     await unlinkIdentity.mutateAsync(unlinkTarget)
     setUnlinkTarget(null)
-    setMessage({ text: t('Unlinked {label}', { label }), ok: true })
+    toast.success(t('Unlinked {label}', { label }))
   }
 
   const busy =
@@ -305,9 +294,7 @@ export function LoginMethodsSettings() {
         {isLoading ? (
           <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : isError ? (
-          <div style={{ padding: 16, fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(error as Error).message}
-          </div>
+          <InlineError style={{ padding: 16 }}>{(error as Error).message}</InlineError>
         ) : (
           <>
             {(identities ?? []).map((identity) => {
@@ -364,23 +351,8 @@ export function LoginMethodsSettings() {
           </>
         )}
 
-        {message && (
-          <div
-            role="status"
-            style={{
-              padding: '8px 16px 12px',
-              fontSize: 12,
-              color: message.ok ? 'var(--text-2)' : 'var(--red-text)',
-            }}
-          >
-            {message.ok ? message.text : `⚠ ${message.text}`}
-          </div>
-        )}
-
         {unlinkIdentity.isError && (
-          <div style={{ padding: '0 16px 12px', fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(unlinkIdentity.error as Error).message}
-          </div>
+          <InlineError style={{ padding: '0 16px 12px' }}>{(unlinkIdentity.error as Error).message}</InlineError>
         )}
       </div>
 

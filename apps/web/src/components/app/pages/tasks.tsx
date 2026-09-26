@@ -73,8 +73,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
         opacity: toggling ? 0.5 : 1, transition: 'opacity .15s',
         background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
-      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      className={!selected ? 'hover-bg' : undefined}
     >
       <button
         onClick={() => onToggle(task.id, task.status)}

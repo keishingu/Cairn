@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatAppDate } from '@cairn/shared'
 import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
@@ -140,8 +142,7 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
                   background: 'transparent', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer',
                   fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <Icon name={isArchived ? 'refresh' : 'archive'} size={13} />
                 {isArchived ? t('Remove from archive') : t('Move to archive')}
@@ -575,13 +576,11 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
   const { data: existingInvites = [] } = useWorkspaceInvites()
   const createInviteMutation = useCreateWorkspaceInvite()
   const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   async function generateLink() {
-    setCopied(false)
     setGenerateError(null)
     try {
       const data = await createInviteMutation.mutateAsync({ expiresIn })
@@ -600,18 +599,11 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     }
   }
 
-  async function copyLink() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0,0,0,0.4)',
+        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+        background: 'var(--overlay)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px 16px',
       }}
@@ -666,25 +658,13 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
           {!inviteUrl ? (
             <>
               {generateError && (
-                <div style={{
-                  padding: '8px 12px', borderRadius: 8, fontSize: 12.5,
-                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)',
-                }}>
-                  {generateError}
-                </div>
+                <InlineError variant="box" style={{ fontSize: 12.5 }}>{generateError}</InlineError>
               )}
               <button
                 type="button"
                 onClick={generateLink}
                 disabled={createInviteMutation.isPending}
-                style={{
-                  padding: '10px 16px', borderRadius: 8, border: 'none',
-                  background: createInviteMutation.isPending ? 'var(--border-2)' : 'var(--accent)',
-                  color: createInviteMutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
-                  fontSize: 14, fontWeight: 600,
-                  cursor: createInviteMutation.isPending ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-              }}
+                className="btn btn-primary btn-lg"
             >
               {createInviteMutation.isPending ? t('Generating...') : t('Generate invite link')}
             </button>
@@ -698,19 +678,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {inviteUrl}
                 </div>
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  style={{
-                    flexShrink: 0, padding: '5px 12px', borderRadius: 6, border: 'none',
-                    background: copied ? '#e6f7ee' : 'var(--accent)',
-                    color: copied ? '#1a7a3c' : 'var(--on-accent)',
-                    fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? t('Copied ✓') : t('Copy')}
-                </button>
+                <CopyButton text={inviteUrl} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
               </div>
 
               {isMobile && (
@@ -725,10 +693,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               <button
                 type="button"
                 onClick={generateLink}
-                style={{
-                  padding: '6px 0', borderRadius: 8, border: '1px solid var(--border-2)',
-                  background: 'transparent', color: 'var(--text-3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-                }}
+                className="btn btn-sm"
               >
                 {t('Generate another link')}
               </button>

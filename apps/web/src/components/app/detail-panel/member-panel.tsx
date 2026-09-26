@@ -120,8 +120,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         transition: 'background .1s',
         opacity: project.archived ? ARCHIVED_OPACITY : 1,
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      className="hover-bg"
     >
       <div style={{
         width: 32, height: 32, borderRadius: 8, flexShrink: 0,
@@ -319,7 +318,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             position: 'absolute', top: 'calc(100% + 4px)', left: 0,
             background: 'var(--card)', border: '1px solid var(--border)',
             borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-            zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
+            zIndex: 'var(--z-dropdown)', overflow: 'hidden', minWidth: isMobile ? 128 : 110,
           }}
         >
           {selectableRoles.map(role => (
@@ -337,8 +336,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
               }}
-              onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
-              onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
+              className={currentRole !== role ? 'hover-bg' : undefined}
             >
               {t(WS_ROLE_LABEL[role])}
             </button>
@@ -370,7 +368,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)',
         background: 'var(--bg)',
         display: 'flex', flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
@@ -483,8 +481,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            className="hover-bg"
           >
             <Icon name="close" size={15}/>
           </button>

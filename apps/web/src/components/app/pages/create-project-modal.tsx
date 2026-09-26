@@ -49,8 +49,7 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
           fontFamily: 'inherit', cursor: 'pointer',
           transition: 'background .12s, border-color .12s',
         }}
-          onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-          onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}
+          className={!selected ? 'hover-bg' : undefined}
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }}/>
           {s.name}
@@ -117,7 +116,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
           }}
         >
-          <Icon name="x" size={12}/>
+          <Icon name="close" size={12}/>
           {t('Automatic')}
         </button>
       </div>
@@ -407,7 +406,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} label={t('New project')}>
       <form onSubmit={handleSubmit} style={{
         position: 'relative',
         width: '100%', maxWidth: 960,

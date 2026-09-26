@@ -49,11 +49,9 @@ export const TaskDialog = ({
   const headerProps = subtitle ? { subtitle } : {}
 
   return (
-    <Modal onClose={handleClose}>
+    <Modal onClose={handleClose} label={title}>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
+        data-task-dialog
         style={{
           position: 'relative',
           background: 'var(--card)',

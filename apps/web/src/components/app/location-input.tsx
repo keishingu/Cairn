@@ -115,10 +115,10 @@ export function LocationInput({
 
       {isOpen && suggestions.length > 0 && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 'var(--z-dropdown)',
           marginTop: 4, borderRadius: 10,
           background: 'var(--card)', border: '1px solid var(--border)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+          boxShadow: 'var(--shadow-lg)',
           overflow: 'hidden',
         }}>
           {suggestions.map((s, i) => (
@@ -134,8 +134,7 @@ export function LocationInput({
                 background: 'transparent', cursor: 'pointer', textAlign: 'left',
                 fontFamily: 'inherit',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ color: 'var(--text-4)', flexShrink: 0, display: 'flex' }}>
                 <Icon name="map-pin" size={13}/>

@@ -7,6 +7,8 @@ import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
+import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
@@ -489,14 +491,10 @@ const SettingsAccount = () => {
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
           {avatarMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(avatarMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(avatarMutation.error as Error).message}</InlineError>
           )}
 
           {/* メール（読み取り専用） */}
@@ -540,9 +538,7 @@ const SettingsAccount = () => {
               </button>
             </div>
             {aiNudgesMutation.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(aiNudgesMutation.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(aiNudgesMutation.error as Error).message}</InlineError>
             )}
           </div>
         </section>
@@ -1122,7 +1118,7 @@ const StatusRow = ({
         ))}
       </div>
       {saveMutation.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ {t('Could not update')}</div>
+        <InlineError style={{ fontSize: 11.5 }}>{t('Could not update')}</InlineError>
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -1260,7 +1256,7 @@ const SettingsWorkflow = () => {
                 ))}
               </div>
               {addMutation.isError && (
-                <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ {t('Could not add')}</div>
+                <InlineError style={{ fontSize: 11.5 }}>{t('Could not add')}</InlineError>
               )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
@@ -1652,9 +1648,7 @@ const SettingsWorkspaceGeneral = () => {
             </button>
           </div>
           {logoMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(logoMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(logoMutation.error as Error).message}</InlineError>
           )}
 
           {/* ワークスペース名 */}
@@ -1693,9 +1687,7 @@ const SettingsWorkspaceGeneral = () => {
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
 
           {/* 説明 */}
@@ -1741,9 +1733,7 @@ const SettingsWorkspaceGeneral = () => {
             </div>
           </div>
           {descMutation.isError && (
-            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(descMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px 10px' }}>{(descMutation.error as Error).message}</InlineError>
           )}
         </div>
       </section>
@@ -1901,9 +1891,7 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
             {updateSettings.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(updateSettings.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
             )}
           </div>
         </section>
@@ -1921,7 +1909,7 @@ const ApiTokenSettings = () => {
   const [scope, setScope] = React.useState<'read' | 'write'>('read')
   const [expiresInDays, setExpiresInDays] = React.useState(90)
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
+  const [revokeTarget, setRevokeTarget] = React.useState<ApiTokenDto | null>(null)
 
   const {
     data: tokens = [],
@@ -1965,21 +1953,7 @@ const ApiTokenSettings = () => {
       )
       void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
     },
-    onError: (error) => toast.error((error as Error).message),
   })
-
-  const copyToken = async () => {
-    if (!issuedToken) return
-    try {
-      await navigator.clipboard.writeText(issuedToken)
-      setCopied(true)
-      toast.success(t('API token copied'))
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setCopied(false)
-      toast.error(t('Could not copy the API token'))
-    }
-  }
 
   return (
     <section style={{ marginBottom: 32 }}>
@@ -2013,9 +1987,7 @@ const ApiTokenSettings = () => {
             >
               {issuedToken}
             </code>
-            <button type="button" className="btn btn-primary" onClick={() => void copyToken()}>
-              {copied ? t('Copied') : t('Copy')}
-            </button>
+            <CopyButton text={issuedToken} className="btn btn-primary" errorMessage={t('Could not copy the API token')} />
             <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
               {t('Close')}
             </button>
@@ -2082,9 +2054,7 @@ const ApiTokenSettings = () => {
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : tokensError ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(tokensError as Error).message}
-          </div>
+          <InlineError>{(tokensError as Error).message}</InlineError>
         ) : visibleTokens.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No tokens have been issued.')}</div>
         ) : (
@@ -2123,10 +2093,7 @@ const ApiTokenSettings = () => {
                     className="btn btn-ghost"
                     style={{ color: 'var(--red-text)' }}
                     disabled={revoke.isPending}
-                    onClick={() => {
-                      if (window.confirm(t('Revoke "{name}"?', { name: token.name })))
-                        revoke.mutate(token.id)
-                    }}
+                    onClick={() => setRevokeTarget(token)}
                   >
                     {t('Revoke access')}
                   </button>
@@ -2136,6 +2103,15 @@ const ApiTokenSettings = () => {
           })
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke "{name}"?', { name: revokeTarget?.name ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }
@@ -2145,6 +2121,7 @@ const McpOAuthConnectionSettings = () => {
   const { locale } = useLocale()
   const queryClient = useQueryClient()
   const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
+  const [revokeTarget, setRevokeTarget] = React.useState<McpOAuthConnectionDto | null>(null)
   React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
   const {
     data: connections = [],
@@ -2169,7 +2146,6 @@ const McpOAuthConnectionSettings = () => {
         current?.filter((connection) => connection.id !== revokedId),
       )
     },
-    onError: (mutationError) => toast.error((mutationError as Error).message),
   })
 
   return (
@@ -2185,7 +2161,7 @@ const McpOAuthConnectionSettings = () => {
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>⚠ {(error as Error).message}</div>
+          <InlineError>{(error as Error).message}</InlineError>
         ) : connections.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('There are no active OAuth connections.')}</div>
         ) : (
@@ -2214,11 +2190,7 @@ const McpOAuthConnectionSettings = () => {
                 className="btn btn-ghost"
                 style={{ color: 'var(--red-text)' }}
                 disabled={revoke.isPending}
-                onClick={() => {
-                  if (window.confirm(t('Revoke the connection with "{name}"?', { name: connection.clientName }))) {
-                    revoke.mutate(connection.id)
-                  }
-                }}
+                onClick={() => setRevokeTarget(connection)}
               >
                 {t('Revoke access')}
               </button>
@@ -2226,6 +2198,15 @@ const McpOAuthConnectionSettings = () => {
           ))
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke the connection with "{name}"?', { name: revokeTarget?.clientName ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }
@@ -2246,18 +2227,11 @@ const SettingsIntegrations = () => {
       fetchWithAuth('/api/calendar/token', { method: 'POST' }).then((r) => r.json()),
     onSuccess: () => refetch(),
   })
-  const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
     if (!data?.token || !ws?.id) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
     return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
-  }
-
-  const copy = (scope: 'me' | 'workspace') => {
-    void navigator.clipboard.writeText(buildUrl(scope))
-    setCopiedScope(scope)
-    setTimeout(() => setCopiedScope(null), 2000)
   }
 
   const feeds: { scope: 'me' | 'workspace'; label: string; desc: string }[] = [
@@ -2275,22 +2249,18 @@ const SettingsIntegrations = () => {
 
   // ── Google カレンダー読み込み ───────────────────────────────────────
   const queryClient = useQueryClient()
-  const [gcalMsg, setGcalMsg] = React.useState<{ text: string; ok: boolean } | null>(null)
-
+  // OAuth コールバックから戻ったときの結果をトーストで知らせる（処理後に URL からパラメータを消すので再実行されても重複しない）
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const gcal = params.get('gcal')
-    if (gcal === 'connected') setGcalMsg({ text: 'Connected to Google Calendar', ok: true })
-    else if (gcal === 'error')
-      setGcalMsg({ text: 'Could not connect. Try again.', ok: false })
-    else if (gcal === 'denied') setGcalMsg({ text: 'The connection was canceled.', ok: false })
-    if (gcal) {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('gcal')
-      window.history.replaceState({}, '', url.toString())
-      setTimeout(() => setGcalMsg(null), 5000)
-    }
-  }, [])
+    if (!gcal) return
+    if (gcal === 'connected') toast.success(t('Connected to Google Calendar'))
+    else if (gcal === 'error') toast.error(t('Could not connect. Try again.'))
+    else if (gcal === 'denied') toast.info(t('The connection was canceled.'))
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gcal')
+    window.history.replaceState({}, '', url.toString())
+  }, [t])
 
   const { data: gcalStatus, isLoading: gcalLoading } = useQuery<GcalStatusDto>({
     queryKey: ['gcal-status'],
@@ -2425,23 +2395,12 @@ const SettingsIntegrations = () => {
                     >
                       {data?.token ? buildUrl(f.scope) : t('Loading...')}
                     </span>
-                    <button
-                      onClick={() => copy(f.scope)}
+                    <CopyButton
+                      text={data?.token ? buildUrl(f.scope) : ''}
                       disabled={!data?.token}
-                      className="btn btn-ghost"
-                      style={{
-                        height: 26,
-                        fontSize: 11.5,
-                        padding: '0 8px',
-                        flexShrink: 0,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <Icon name={copiedScope === f.scope ? 'check' : 'copy'} size={12} />
-                      {copiedScope === f.scope ? t('Copied') : t('Copy')}
-                    </button>
+                      className="btn btn-ghost btn-sm"
+                      style={{ flexShrink: 0 }}
+                    />
                   </div>
                 </div>
               </div>
@@ -2513,26 +2472,6 @@ const SettingsIntegrations = () => {
           {t('Overlays Google Calendar events on the calendar view. This is experimental and may change.')}
         </p>
 
-        {gcalMsg && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '10px 14px',
-              borderRadius: 8,
-              fontSize: 12.5,
-              background: gcalMsg.ok ? 'var(--emerald-soft)' : 'var(--red-soft)',
-              color: gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)',
-              border: `1px solid ${gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)'}22`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Icon name={gcalMsg.ok ? 'check-circle' : 'alert-circle'} size={14} />
-            {t(gcalMsg.text)}
-          </div>
-        )}
-
         <div className="card" style={{ padding: 0 }}>
           {gcalLoading ? (
             <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -2540,7 +2479,7 @@ const SettingsIntegrations = () => {
             </div>
           ) : !gcalStatus?.configured ? (
             <div style={{ padding: '16px', fontSize: 12.5, color: 'var(--text-3)' }}>
-              <Icon name="alert-circle" size={13} style={{ marginRight: 6 }} />
+              <Icon name="alertTriangle" size={13} style={{ marginRight: 6 }} />
               {t('Environment variables')}{' '}
               <code
                 style={{
@@ -2905,9 +2844,7 @@ const SettingsBilling = () => {
       </p>
 
       {billingQuery.isError ? (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ {t('Could not load billing')}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not load billing')}</InlineError>
       ) : billingQuery.data?.billingEnabled ? (
         <section className="card" style={{ padding: 20, marginBottom: 16 }}>
           <div
@@ -2983,9 +2920,7 @@ const SettingsBilling = () => {
       )}
 
       {billingActionError && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ {billingActionError}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{billingActionError}</InlineError>
       )}
 
       {creditPackFulfillmentState === 'polling' && (
@@ -2995,10 +2930,7 @@ const SettingsBilling = () => {
       )}
 
       {creditPackFulfillmentState === 'timed_out' && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠
-          {t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}</InlineError>
       )}
 
       <section className="card" style={{ padding: 20 }}>
@@ -3007,9 +2939,7 @@ const SettingsBilling = () => {
           <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
         ) : isError ? (
           // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
-          <div style={{ fontSize: 13, color: 'var(--red-text)' }}>
-            ⚠ {t('Could not load storage usage')}
-          </div>
+          <InlineError style={{ fontSize: 13 }}>{t('Could not load storage usage')}</InlineError>
         ) : (
           <>
             <div
@@ -3056,7 +2986,7 @@ const SettingsContributions = () => {
   }
   if (billingQuery.isError) {
     return (
-      <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ {t('Could not load Cairn')}</div>
+      <InlineError style={{ fontSize: 13 }}>{t('Could not load Cairn')}</InlineError>
     )
   }
   if (!billingQuery.data?.billingEnabled) return null

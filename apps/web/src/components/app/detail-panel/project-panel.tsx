@@ -187,7 +187,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)',
         background: 'var(--bg)',
         display: 'flex', flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
@@ -237,15 +237,14 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                   <Icon name="more" size={14}/>
                 </button>
                 {moreOpen && (
-                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 50, minWidth: 168, padding: 4 }}>
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', minWidth: 168, padding: 4 }}>
                     <button
                       onClick={() => {
                         setMoreOpen(false)
                         isPinned ? unpinProject.mutate(project.id) : pinProject.mutate(project.id)
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
                       <Icon name="pin" size={13}/>
                       {isPinned ? t('Unpin') : t('Pin')}
@@ -253,8 +252,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                     <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
                       <Icon name="image" size={13}/> {t('Change cover photo')}
                     </button>

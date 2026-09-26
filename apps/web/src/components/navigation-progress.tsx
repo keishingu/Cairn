@@ -110,7 +110,7 @@ export function NavigationProgress() {
           left: 0,
           right: 0,
           height: 2,
-          zIndex: 9999,
+          zIndex: 'var(--z-system)',
           pointerEvents: 'none',
           opacity: visible ? 1 : 0,
           transition: visible ? 'none' : 'opacity 0.25s ease 0.05s',

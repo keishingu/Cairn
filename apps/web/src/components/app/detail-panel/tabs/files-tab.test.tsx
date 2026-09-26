@@ -10,6 +10,8 @@ import { FilesTab } from './files-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 vi.mock('@/lib/fetch-with-auth')
+const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock('@/lib/toast', () => ({ toast: toastMocks }))
 vi.mock('@/hooks/use-project-files', () => ({
   useProjectFiles: vi.fn(() => ({
     data: [],
@@ -43,6 +45,27 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
 describe('ファイルタブ', () => {
   beforeEach(() => {
     mockFetch.mockReset()
+    toastMocks.success.mockReset()
+  })
+
+  it('複数選択で一部だけ失敗したら、成功件数をトーストし失敗をすべて残す', async () => {
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ fileId: 'f1' }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'a.zip は対応していない形式です' }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'b.zip は対応していない形式です' }), { status: 400 }))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [
+      new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }),
+      new File(['x'], 'a.pdf', { type: 'application/pdf' }),
+      new File(['y'], 'b.pdf', { type: 'application/pdf' }),
+    ])
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('a.pdf: a.zip は対応していない形式です')
+    expect(alert).toHaveTextContent('b.pdf: b.zip は対応していない形式です')
+    expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
   })
 
   it('detail panel の file picker が CSV と pptx を許可する', () => {
@@ -100,6 +123,16 @@ describe('ファイルタブ', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
-    expect(screen.getByText('big.zip は大きすぎます')).toBeInTheDocument()
+    expect(screen.getByText('big.md: big.zip は大きすぎます')).toBeInTheDocument()
+  })
+
+  it('選択直後に input が空になっても、失敗したファイル名を示す', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'アップロードに失敗しました' }), { status: 500 }))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [new File(['x'], 'report.pdf', { type: 'application/pdf' })])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf: アップロードに失敗しました')
   })
 })

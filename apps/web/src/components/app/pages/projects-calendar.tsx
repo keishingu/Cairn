@@ -542,7 +542,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
     <div ref={ref} style={{
       position: 'absolute', top: '100%', right: 0, marginTop: 4,
       width: 220, background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
+      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', padding: 12,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
         {t('Calendars to show')}
@@ -552,8 +552,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
           <label
             key={c.name}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            className="hover-bg"
           >
             <input
               type="checkbox"
@@ -1892,8 +1891,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                       borderRadius: 6,
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    className="hover-bg"
                   >
                     <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1935,8 +1933,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                       opacity: m.completed ? 0.7 : 1,
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    className="hover-bg"
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2273,11 +2270,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               {!isCurrentPeriod && (
                 <button
                   onClick={goToday}
-                  style={{
-                    border: '1px solid var(--border)', borderRadius: 7, background: 'transparent',
-                    color: 'var(--accent)', fontSize: 12, fontWeight: 600,
-                    padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4,
-                  }}
+                  className="btn btn-sm" style={{ color: 'var(--accent-text)', marginRight: 4 }}
                 >
                   {t('Today')}
                 </button>

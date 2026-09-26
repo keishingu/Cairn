@@ -4,6 +4,7 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, StatusChip } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
+import { InlineError } from '../../inline-error'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { LocationInput } from '../../location-input'
 import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
@@ -198,7 +199,7 @@ const InlineDatePair = ({
         onKeyDown={e => { if (e.key === 'Escape') cancel() }}
         style={{ ...inputStyle, width: 104 }}
       />
-      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('to')}</span>
+      <span style={{ color: 'var(--text-4)'}}>{t('to')}</span>
       <input
         type="date"
         value={end}
@@ -256,7 +257,7 @@ const InlineStatus = ({
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20,
+          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 'var(--z-dropdown)',
           background: 'var(--card)', border: '1px solid var(--border)',
           borderRadius: 9, boxShadow: 'var(--shadow-lg)', minWidth: 140, padding: 4,
         }}>
@@ -271,8 +272,7 @@ const InlineStatus = ({
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
               {s.name}
@@ -626,9 +626,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       />
 
       {patch.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginTop: -10 }}>
-          ⚠ {(patch.error as Error).message}
-        </div>
+        <InlineError style={{ fontSize: 11.5, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
 
       {/* 日程 + ステータス */}

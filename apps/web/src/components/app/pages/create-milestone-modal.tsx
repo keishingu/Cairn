@@ -105,7 +105,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
   }
 
   return (
-    <Modal onClose={() => { if (!pending) onClose() }}>
+    <Modal onClose={() => { if (!pending) onClose() }} label={editing ? t('Edit milestone') : t('Create milestone')}>
       <form
         onSubmit={handleSubmit}
         style={modalCardStyle}
@@ -251,7 +251,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
 
   if (!milestones.isFetchedAfterMount) {
     return (
-      <Modal onClose={onClose}>
+      <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
           <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
           <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>{t('Loading...')}</div>
@@ -262,7 +262,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
 
   if (milestones.isError || !milestone) {
     return (
-      <Modal onClose={onClose}>
+      <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
           <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
           <div style={{ padding: '32px 22px', color: 'var(--danger)', fontSize: 13, textAlign: 'center' }}>

@@ -26,14 +26,7 @@ const sectionAddButtonStyle: React.CSSProperties = {
 }
 
 // hover で濃いグレー＋うっすら背景（ChatSidebarItem の hover と同じトーン）
-const onAddButtonEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-  e.currentTarget.style.background = 'var(--card)'
-  e.currentTarget.style.color = 'var(--text-2)'
-}
-const onAddButtonLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-  e.currentTarget.style.background = 'transparent'
-  e.currentTarget.style.color = 'var(--text-4)'
-}
+const sectionAddButtonClass = 'hover-bg-card hover-text'
 
 export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => {
   const t = useT()
@@ -42,7 +35,7 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       {onAdd && (
-        <button onClick={onAdd} aria-label={t('Add {title}', { title })} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+        <button onClick={onAdd} aria-label={t('Add {title}', { title })} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
           <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
         </button>
       )}
@@ -137,8 +130,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       fontWeight: badge && badge > 0 ? 700 : 500,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
-      onMouseEnter={e => { if (!active && !mobile) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}
-      onMouseLeave={e => { if (!active && !mobile) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      className={!active && !mobile ? 'hover-bg-card' : undefined}
     >
       {prefix === 'lock' ? (
         <span style={{ width: mobile ? 36 : 14, height: mobile ? 36 : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: mobile ? 8 : undefined, background: mobile ? 'var(--card-2)' : undefined, color: 'var(--text-3)' }}>
@@ -270,8 +262,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
           cursor: 'pointer',
           padding: 0,
         }}
-        onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-hover)'; event.currentTarget.style.color = 'var(--text-2)' }}
-        onMouseLeave={event => { if (!open) { event.currentTarget.style.background = 'transparent'; event.currentTarget.style.color = 'var(--text-4)' } }}
+        className="hover-bg hover-text"
       >
         <Icon name="more" size={isMobile ? 18 : 15} strokeWidth={2}/>
       </button>
@@ -290,7 +281,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
             border: '1px solid var(--border-2)',
             borderRadius: 8,
             boxShadow: 'var(--shadow-pop)',
-            zIndex: 300,
+            zIndex: 'var(--z-popover)',
           }}
         >
           {actions.map((action, index) => (
@@ -310,8 +301,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
                 cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
                 whiteSpace: 'nowrap',
               }}
-              onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-2)' }}
-              onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
+              className="hover-bg"
             >
               <Icon name={action.icon} size={14}/>
               {action.label}
@@ -553,18 +543,17 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', minWidth: 160, overflow: 'hidden' }}>
           {members.map(m => (
             <button
               key={m.userId}
               onClick={() => { setOpen(false); onStartDm(m.userId) }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <Avatar name={m.displayName} url={m.avatarUrl ?? null} size={20}/>
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>

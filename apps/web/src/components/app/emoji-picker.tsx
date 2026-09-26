@@ -73,7 +73,7 @@ export const EmojiPicker = ({ anchorRef, onSelect, onClose }: EmojiPickerProps) 
   return createPortal(
     <div
       ref={containerRef}
-      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, '--rgb-accent': accentRgb } as React.CSSProperties}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 'var(--z-popover)', '--rgb-accent': accentRgb } as React.CSSProperties}
     >
       <Picker
         data={data}

@@ -7,6 +7,7 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { useT } from '@/components/locale-provider'
+import { CopyButton } from '@/components/app/copy-button'
 
 type ExpiresIn = '1h' | '30d' | 'never'
 
@@ -23,7 +24,6 @@ export default function OnboardingInvitePage() {
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
   const [isMobile, setIsMobile] = React.useState(false)
 
   React.useEffect(() => {
@@ -32,7 +32,6 @@ export default function OnboardingInvitePage() {
 
   async function generateLink() {
     setGenerating(true)
-    setCopied(false)
     setGenerateError(null)
     const res = await fetch('/api/workspaces/invites', {
       method: 'POST',
@@ -46,13 +45,6 @@ export default function OnboardingInvitePage() {
       setGenerateError(data.error ?? t('Could not generate the invite link'))
     }
     setGenerating(false)
-  }
-
-  async function copyLink() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -128,17 +120,7 @@ export default function OnboardingInvitePage() {
                 type="button"
                 onClick={generateLink}
                 disabled={generating}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: generating ? 'var(--border-2)' : 'var(--accent)',
-                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: generating ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-                }}
+                className="btn btn-primary btn-lg"
               >
                 {generating ? t('Generating...') : t('Generate invite link')}
               </button>
@@ -176,26 +158,7 @@ export default function OnboardingInvitePage() {
                 }}>
                   {inviteUrl}
                 </div>
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  style={{
-                    flexShrink: 0,
-                    padding: '5px 12px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: copied ? 'var(--green-soft, #e6f7ee)' : 'var(--accent)',
-                    color: copied ? 'var(--green-text, #1a7a3c)' : 'var(--on-accent)',
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? t('Copied ✓') : t('Copy')}
-                </button>
+                <CopyButton text={inviteUrl} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
               </div>
 
               {/* モバイルはQRコードも表示 */}
@@ -216,16 +179,7 @@ export default function OnboardingInvitePage() {
               <button
                 type="button"
                 onClick={generateLink}
-                style={{
-                  padding: '6px 0',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-2)',
-                  background: 'transparent',
-                  color: 'var(--text-3)',
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
+                className="btn btn-sm"
               >{t('Generate another link')}</button>
             </div>
           )}
@@ -234,19 +188,7 @@ export default function OnboardingInvitePage() {
         <button
           type="button"
           onClick={() => router.push('/chats')}
-          style={{
-            width: '100%',
-            marginTop: 16,
-            padding: '10px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--border-2)',
-            background: 'transparent',
-            color: 'var(--text-3)',
-            fontSize: 14,
-            fontWeight: 500,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
+          className="btn btn-lg btn-block" style={{ marginTop: 16 }}
         >{t('Skip and get started')}</button>
       </div>
     </div>

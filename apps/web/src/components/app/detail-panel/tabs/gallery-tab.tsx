@@ -4,11 +4,14 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
+import { InlineError } from '../../inline-error'
 import { RowActionMenu } from '../../row-action-menu'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
+import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/components/locale-provider'
 
@@ -38,7 +41,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   })
   if (!urlRes.ok) {
     const data = (await urlRes.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? t('Could not prepare the upload for {name}', { name: original.name }))
+    throw new Error(data.error ?? t('Could not prepare the upload'))
   }
 
   const signed = (await urlRes.json()) as {
@@ -61,7 +64,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   ]
   const uploadResults = await Promise.all(uploads)
   const uploadError = uploadResults.find((result) => result.error)?.error
-  if (uploadError) throw new Error(t('Could not upload {name}', { name: original.name }))
+  if (uploadError) throw new Error(t('Could not upload'))
 
   const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/finalize`, {
     method: 'POST',
@@ -75,7 +78,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? t('Could not upload {name}', { name: original.name }))
+    throw new Error(data.error ?? t('Could not upload'))
   }
 }
 
@@ -115,16 +118,13 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
       ),
     )
 
-    const errors = results
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : t('Could not upload')))
+    const errors = describeUploadFailures(files, results, t('Could not upload'))
 
-    setUploadState((s) => (s ? { ...s, errors } : s))
+    const succeeded = files.length - errors.length
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
-
-    if (errors.length === 0) {
-      setTimeout(() => setUploadState(null), 1500)
-    }
+    if (succeeded > 0) toast.success(t('Added {count} photos', { count: succeeded }))
+    // 失敗は一過性にせず、どのファイルかを閉じるまで残す。完了後に「アップロード中」の文言を残さない
+    setUploadState(errors.length > 0 ? { total: files.length, done: files.length, errors } : null)
   }
 
   const deleteItem = async (itemId: string) => {
@@ -194,22 +194,10 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             onChange={handleFileChange}
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 10px',
-              borderRadius: 7,
-              border: '1px solid var(--border)',
-              background: 'var(--card)',
-              color: 'var(--text-2)',
-              fontSize: 12,
-              cursor: isUploading ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              opacity: isUploading ? 0.6 : 1,
-            }}
+            className="btn btn-sm"
           >
             <Icon name="plus" size={13} />
             {isUploading
@@ -219,39 +207,11 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
         </div>
 
         {uploadState?.errors && uploadState.errors.length > 0 && (
-          <div
-            style={{
-              marginBottom: 8,
-              padding: '6px 10px',
-              borderRadius: 6,
-              background: 'var(--red-soft)',
-              color: 'var(--red-text)',
-              fontSize: 12,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-            }}
-          >
+          <InlineError variant="box" onDismiss={() => setUploadState(null)} style={{ marginBottom: 8 }}>
             {uploadState.errors.map((err, i) => (
-              <span key={i}>{err}</span>
+              <div key={i}>{err}</div>
             ))}
-            <button
-              onClick={() => setUploadState(null)}
-              style={{
-                alignSelf: 'flex-end',
-                marginTop: 4,
-                fontSize: 11,
-                background: 'none',
-                border: 'none',
-                color: 'var(--red-text)',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontFamily: 'inherit',
-              }}
-            >
-              {t('Close')}
-            </button>
-          </div>
+          </InlineError>
         )}
 
         {items.length === 0 && !isUploading ? (

@@ -46,7 +46,7 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--overlay)' }}
       onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
@@ -106,15 +106,8 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
 
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 2 }}>
-            <button
-              onClick={onClose}
-              style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'transparent', color: 'var(--text-2)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-            >{t('Cancel')}</button>
-            <button
-              onClick={handleSubmit}
-              disabled={!content.trim()}
-              style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: content.trim() ? 'var(--accent)' : 'var(--border-2)', color: content.trim() ? 'var(--on-accent)' : 'var(--text-4)', fontSize: 13, fontWeight: 500, cursor: content.trim() ? 'pointer' : 'default', fontFamily: 'inherit', transition: 'background .12s' }}
-            >{t('Attach')}</button>
+            <button type="button" className="btn" onClick={onClose}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={!content.trim()}>{t('Attach')}</button>
           </div>
         </div>
       </div>
