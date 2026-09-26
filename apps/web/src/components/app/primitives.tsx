@@ -433,7 +433,7 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
 }) => {
   const t = useT()
   return (
-  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
+  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
     {icon && (
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={16}/>

@@ -67,10 +67,15 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
         aria-label={t('Report message')}
         className="card"
         onSubmit={submit}
-        style={{ position: 'relative', width: 420, maxWidth: '90vw', padding: 0, boxShadow: 'var(--shadow-lg)' }}
+        // 横向きのスマホなど縦が短い画面でも報告・キャンセルに届くよう、本文だけをスクロールさせる
+        style={{
+          position: 'relative', width: 420, maxWidth: '90vw', maxHeight: 'calc(100dvh - 48px)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          padding: 0, boxShadow: 'var(--shadow-lg)',
+        }}
       >
         <ModalHeader icon="flag" title={t('Report message')} onClose={close} />
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
             {t('Choose why you are reporting this message. The moderators will review it.')}
           </p>
@@ -113,7 +118,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
           )}
           {error && <InlineError variant="box">{error}</InlineError>}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px', borderTop: '1px solid var(--divider)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px', borderTop: '1px solid var(--divider)', flexShrink: 0 }}>
           <button type="button" className="btn" onClick={close} disabled={busy}>{t('Cancel')}</button>
           <button type="submit" className="btn btn-danger" disabled={!canSubmit}>
             {busy ? t('Reporting...') : t('Submit report')}
