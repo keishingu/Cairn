@@ -8,6 +8,8 @@ export const JA_MESSAGES: Record<string, string> = {
   ' · Inactive': ' ・ 無効',
   ' · Last used {date}': ' ・ 最終利用 {date}',
   ' {action}': '　{action}',
+  'Added {count} files': 'ファイルを {count} 件追加しました',
+  'Added {count} photos': '写真を {count} 枚追加しました',
   'Apps using this access will stop working. This cannot be undone.': 'このアクセスを使っているアプリは利用できなくなります。元に戻せません。',
   'Block {name}': '{name} をブロック',
   'Blocking...': 'ブロック中…',

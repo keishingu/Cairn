@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import { Icon } from '../../primitives'
 import { InlineError } from '../../inline-error'
+import { toast } from '@/lib/toast'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
@@ -72,7 +73,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [isUploading, setIsUploading] = React.useState(false)
-  const [uploadError, setUploadError] = React.useState<string | null>(null)
+  const [uploadError, setUploadError] = React.useState<string[] | null>(null)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
@@ -106,19 +107,20 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         }),
       )
 
-      const hasSuccess = results.some((result) => result.status === 'fulfilled')
-      const firstFailure = results.find((result) => result.status === 'rejected')
+      const succeeded = results.filter((result) => result.status === 'fulfilled').length
+      const failures = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => (result.reason instanceof Error ? result.reason.message : t('Could not upload')))
 
-      if (hasSuccess) {
+      if (succeeded > 0) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
         await queryClient.invalidateQueries({ queryKey: ['files'] })
+        toast.success(t('Added {count} files', { count: succeeded }))
       }
-
-      if (firstFailure?.status === 'rejected') {
-        throw firstFailure.reason
-      }
+      // 複数選択で一部だけ失敗したとき、先頭の1件だけでなく失敗したものをすべて示す
+      if (failures.length > 0) setUploadError(failures)
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : t('Could not upload'))
+      setUploadError([error instanceof Error ? error.message : t('Could not upload')])
     } finally {
       setIsUploading(false)
     }
@@ -166,7 +168,9 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       </div>
 
       {uploadError && (
-        <InlineError variant="box" style={{ marginBottom: 8 }}>{uploadError}</InlineError>
+        <InlineError variant="box" onDismiss={() => setUploadError(null)} style={{ marginBottom: 8 }}>
+          {uploadError.map((message, i) => <div key={i}>{message}</div>)}
+        </InlineError>
       )}
 
       {files.length === 0 && (

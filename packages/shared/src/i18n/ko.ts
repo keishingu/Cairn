@@ -8,6 +8,8 @@ export const KO_MESSAGES: Record<string, string> = {
   ' · Inactive': ' · 비활성',
   ' · Last used {date}': ' · 최근 사용 {date}',
   ' {action}': '　{action}',
+  'Added {count} files': '파일 {count}개를 추가했습니다',
+  'Added {count} photos': '사진 {count}장을 추가했습니다',
   'Apps using this access will stop working. This cannot be undone.': '이 액세스를 사용하는 앱은 더 이상 작동하지 않습니다. 되돌릴 수 없습니다.',
   'Block {name}': '{name} 차단',
   'Blocking...': '차단 중...',
