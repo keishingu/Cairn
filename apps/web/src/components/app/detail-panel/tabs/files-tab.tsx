@@ -89,13 +89,15 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
   const handleFilesSelect = async (selectedFiles: FileList | null) => {
     if (!channelId || !selectedFiles || selectedFiles.length === 0) return
+    // 呼び出し元がすぐ input を空にすると FileList も空になるため、最初の await より前に控えておく
+    const files = Array.from(selectedFiles)
 
     setIsUploading(true)
     setUploadError(null)
 
     try {
       const results = await Promise.allSettled(
-        Array.from(selectedFiles).map(async (file) => {
+        files.map(async (file) => {
           const formData = new FormData()
           formData.append('file', file)
           formData.append('channelId', channelId)
@@ -108,7 +110,6 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       )
 
       const succeeded = results.filter((result) => result.status === 'fulfilled').length
-      const files = Array.from(selectedFiles)
       // サーバーの汎用エラーが並ぶとどのファイルか分からないため、名前を含まない文言には先頭に付ける
       const failures = results.flatMap((result, i) => {
         if (result.status !== 'rejected') return []

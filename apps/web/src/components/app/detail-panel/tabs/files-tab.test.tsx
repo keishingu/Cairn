@@ -125,4 +125,14 @@ describe('ファイルタブ', () => {
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
     expect(screen.getByText('big.md: big.zip は大きすぎます')).toBeInTheDocument()
   })
+
+  it('選択直後に input が空になっても、失敗したファイル名を示す', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'アップロードに失敗しました' }), { status: 500 }))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [new File(['x'], 'report.pdf', { type: 'application/pdf' })])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf: アップロードに失敗しました')
+  })
 })
