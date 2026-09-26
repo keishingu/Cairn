@@ -148,4 +148,16 @@ describe('toast ストア', () => {
     vi.advanceTimersByTime(4000)
     expect(current).toHaveLength(0)
   })
+
+  it('一時停止中に同じ内容が duration: 0 で来たら、再開しても自動で消えない', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const id = toast.info('処理中')
+    pauseToast(id)
+    toast.info('処理中', { duration: 0 })
+    resumeToast(id)
+    vi.advanceTimersByTime(60_000)
+    expect(current).toHaveLength(1)
+  })
 })

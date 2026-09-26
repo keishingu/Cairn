@@ -96,8 +96,10 @@ function push(message: string, variant: ToastVariant, options?: ToastOptions): n
   const existing = toasts.find(t => t.message === message && t.variant === variant)
   if (existing) {
     const timer = timers.get(existing.id)
+    // 自動で消さない指定はホバー中でもタイマーごと外し、再開時に消えないようにする
+    if (duration <= 0) clearTimer(existing.id)
     // ホバー中（一時停止中）なら再開せず、残り時間だけ延ばして止めたままにする
-    if (timer && !timer.handle) timer.remaining = duration
+    else if (timer && !timer.handle) timer.remaining = duration
     else startTimer(existing.id, duration)
     return existing.id
   }
