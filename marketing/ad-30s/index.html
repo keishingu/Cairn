@@ -6,6 +6,11 @@
 <meta charset="utf-8">
 <title>Cairn 30s</title>
 <link rel="stylesheet" href="fonts.local.css">
+<script>
+  // ?format=vertical で 1080x1920（9:16）の縦型レイアウトにする。既定は 1920x1080
+  window.V = new URLSearchParams(location.search).get('format') === 'vertical'
+  if (window.V) document.documentElement.classList.add('v')
+</script>
 <style>
 :root{
   --bg:#101727;--bg2:#0C1220;--panel:#141D30;--panel2:#18223A;--card:#131C2E;
@@ -61,6 +66,71 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
 .stone{position:absolute;border-radius:22px;background:linear-gradient(135deg,#0FB981,#45D6A4);transform-origin:50% 100%}
 #aL .tx{font-size:25px}#aL .nm{font-size:22px}#aRrows{font-size:25px!important}
 .card{position:absolute;background:linear-gradient(180deg,#152036,#111A2C);border:1px solid var(--hair2);border-radius:24px}
+
+/* ================= 縦型（9:16）レイアウト ================= */
+html:not(.v) .vbr{display:none}
+html.v,html.v body{width:1080px;height:1920px}
+html.v #grain{width:1080px!important;height:1920px!important}
+html.v #wipe .bar{height:680px}
+html.v #gA,html.v #gB,html.v #h1,html.v #h2,html.v #h3{width:1080px!important;height:1920px!important}
+#bPill .pill{white-space:nowrap}
+html.v #bWord{font-size:200px!important;top:-104px!important}
+html.v #wipe .bar:nth-child(2){top:620px!important}
+html.v #wipe .bar:nth-child(3){top:1250px!important}
+/* A */
+html.v #aHead{top:300px!important}
+html.v .ak{font-size:70px!important}
+html.v #aL{left:90px!important;top:520px!important;width:900px!important;height:500px!important}
+html.v #aR{left:90px!important;top:1080px!important;width:900px!important;height:420px!important}
+html.v #aL .tx{font-size:29px}html.v #aL .nm{font-size:25px}html.v #aRrows{font-size:28px!important}
+html.v #aLimit{left:90px!important;top:476px!important}
+/* C */
+html.v #cFree{font-size:420px!important}
+html.v #c1{top:380px!important;font-size:220px!important}
+html.v #c2{top:650px!important}
+html.v #c3{top:830px!important;line-height:1.12!important}
+html.v #cEn{top:990px!important;font-size:44px!important}
+html.v #cChecks{top:1090px!important;flex-wrap:wrap;padding:0 70px;row-gap:18px;gap:18px!important}
+/* D */
+html.v #dCopy{left:80px!important;top:260px!important;width:920px!important}
+html.v #dWin{left:10px!important;top:730px!important;transform-origin:50% 50%!important}
+/* E */
+html.v #eCopy{left:60px!important;top:250px!important;width:960px!important}
+html.v #eWin{left:30px!important;top:560px!important;width:1020px!important;height:1000px!important}
+html.v .elg{display:none!important}
+/* F */
+html.v .fL{top:640px!important}
+html.v .fB{top:720px!important}
+html.v .fJ{top:1090px!important;padding:0 40px}
+html.v #fEnd{top:780px!important;font-size:112px!important}
+html.v #fTick{top:1500px!important}
+/* G */
+html.v #gAT{left:60px!important;top:280px!important}
+html.v .gRow{left:60px!important;width:1020px!important;height:200px!important}
+html.v .gLab{top:0!important;height:60px!important;width:700px!important}
+html.v #gNote{left:60px!important;top:1270px!important;width:960px;white-space:normal;line-height:1.5}
+html.v #gBT{top:250px!important}
+html.v #gPeople{top:700px!important}
+html.v .gP svg{width:84px;height:84px}
+html.v #gFree{left:90px!important;top:900px!important;width:900px!important;height:270px!important}
+html.v #gSolo{left:90px!important;top:1210px!important;width:900px!important;height:270px!important}
+/* H */
+html.v #h1T,html.v #h2T{top:250px!important}
+html.v #hQ{right:60px!important;top:640px!important}
+html.v #hA{left:40px!important;top:800px!important;width:1000px!important}
+html.v #hN0{left:120px!important;top:620px!important}
+html.v #hN1{left:600px!important;top:620px!important}
+html.v #hN2{left:355px!important;top:1180px!important}
+html.v #h3T{top:470px!important}
+html.v #h3T .h{font-size:240px!important;line-height:1.02!important}
+html.v #h3T .hk3:last-child{flex-wrap:wrap;padding:0 60px}
+/* I */
+html.v #iLogo{top:330px!important}
+html.v #iH{top:620px!important}
+html.v #iH .h{font-size:96px!important}
+html.v .ik2{top:930px!important}
+html.v .ik3{top:1090px!important}
+html.v .ik4{top:1200px!important;padding:0 110px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -124,7 +194,7 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
       <div class="abs" id="cBlock" style="left:0;right:0;top:0;height:1080px">
         <div class="abs h" id="c1" style="left:0;right:0;top:170px;text-align:center;font-size:210px;font-weight:900;line-height:1"><span class="glowtxt">無料で</span></div>
         <div class="abs h" id="c2" style="left:0;right:0;top:420px;text-align:center;font-size:150px;font-weight:900;line-height:1">チャットも、</div>
-        <div class="abs h" id="c3" style="left:0;right:0;top:620px;text-align:center;font-size:150px;font-weight:900;line-height:1">プロジェクト管理も。</div>
+        <div class="abs h" id="c3" style="left:0;right:0;top:620px;text-align:center;font-size:150px;font-weight:900;line-height:1">プロジェクト<br class="vbr">管理も。</div>
       </div>
       <div class="abs" id="cEn" style="left:0;right:0;top:770px;text-align:center;font-size:46px;font-weight:600;color:var(--ink2);letter-spacing:-.01em">Chat and project management, free.</div>
       <div class="abs" id="cChecks" style="left:0;right:0;top:880px;display:flex;justify-content:center;gap:26px">
@@ -180,7 +250,7 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
     <section class="scene" id="sE">
       <div class="abs" id="eCopy" style="left:120px;top:80px;width:1680px;display:flex;align-items:flex-end;gap:60px">
         <div><div class="eyebrow ek">02 · Calendar · Board</div>
-        <div class="h ek" style="font-size:76px;margin-top:26px">プロジェクトごとに、<span class="glowtxt">カレンダーとカンバン。</span></div></div>
+        <div class="h ek" style="font-size:76px;margin-top:26px">プロジェクトごとに、<br class="vbr"><span class="glowtxt">カレンダーとカンバン。</span></div></div>
       </div>
       <div class="win" id="eWin" style="left:120px;top:300px;width:1680px;height:720px">
         <div style="height:80px;border-bottom:1px solid var(--hair);display:flex;align-items:center;padding:0 30px;gap:24px">
@@ -192,10 +262,10 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
             <div style="width:130px;height:40px;display:grid;place-items:center;position:relative">一覧</div>
           </div>
           <div style="margin-left:auto;display:flex;gap:22px;font-size:18px;color:var(--ink3);align-items:center">
-            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--blue);margin-right:8px"></i>計画中</span>
-            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--yellow);margin-right:8px"></i>審査中</span>
-            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#22C55E;margin-right:8px"></i>実施待ち</span>
-            <span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--grey);margin-right:8px"></i>保留</span>
+            <span class="elg"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--blue);margin-right:8px"></i>計画中</span>
+            <span class="elg"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--yellow);margin-right:8px"></i>審査中</span>
+            <span class="elg"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#22C55E;margin-right:8px"></i>実施待ち</span>
+            <span class="elg"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--grey);margin-right:8px"></i>保留</span>
             <div style="margin-left:14px;height:46px;padding:0 20px;border-radius:11px;background:var(--acc);color:#fff;font-weight:700;display:grid;place-items:center">＋ 新規イベント</div>
           </div>
         </div>
@@ -238,29 +308,29 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
     <!-- ============ G: 比較・料金 ============ -->
     <section class="scene" id="sG">
       <div class="abs" id="gA" style="left:0;top:0;width:1920px;height:1080px">
-        <div class="abs" style="left:160px;top:120px"><div class="eyebrow gk">Comparison</div>
-          <div class="h gk" style="font-size:80px;margin-top:26px">無料で読める、<span class="glowtxt">過去のメッセージ。</span></div></div>
+        <div class="abs" id="gAT" style="left:160px;top:120px"><div class="eyebrow gk">Comparison</div>
+          <div class="h gk" style="font-size:80px;margin-top:26px">無料で読める、<br class="vbr"><span class="glowtxt">過去のメッセージ。</span></div></div>
         <div class="abs gRow" style="left:160px;top:420px;width:1760px;height:120px">
-          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;gap:18px;font-size:42px;font-weight:800">
+          <div class="abs gLab" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;gap:18px;font-size:42px;font-weight:800">
             <svg width="54" height="54" viewBox="0 0 512 512"><rect x="192" y="88" width="188" height="88" rx="22" fill="#1AC47D"/><rect x="96" y="204" width="228" height="88" rx="22" fill="#1AC47D"/><rect x="112" y="320" width="296" height="92" rx="22" fill="#1AC47D"/></svg>Cairn</div>
           <div class="abs gBar" style="left:400px;top:20px;height:80px;border-radius:14px;background:linear-gradient(90deg,#0FB981,#45D6A4);box-shadow:0 0 60px rgba(15,185,129,.55)"></div>
           <div class="abs gVal" style="left:420px;top:20px;height:80px;display:flex;align-items:center;font-size:44px;font-weight:900;color:var(--accink)">無期限 →</div>
         </div>
         <div class="abs gRow" style="left:160px;top:580px;width:1760px;height:120px">
-          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">海外製チャット</div>
+          <div class="abs gLab" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">海外製チャット</div>
           <div class="abs gBar" style="left:400px;top:30px;height:60px;border-radius:12px;background:#2A3550"></div>
           <div class="abs gVal" style="left:0;top:30px;height:60px;display:flex;align-items:center;font-size:34px;font-weight:700;color:var(--ink3)">直近 90 日</div>
         </div>
         <div class="abs gRow" style="left:160px;top:720px;width:1760px;height:120px">
-          <div class="abs" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">国産チャット</div>
+          <div class="abs gLab" style="left:0;top:0;width:380px;height:120px;display:flex;align-items:center;font-size:36px;font-weight:700;color:var(--ink2)">国産チャット</div>
           <div class="abs gBar" style="left:400px;top:30px;height:60px;border-radius:12px;background:#2A3550"></div>
           <div class="abs gVal" style="left:0;top:30px;height:60px;display:flex;align-items:center;font-size:34px;font-weight:700;color:var(--ink3)">直近 40 日・最新 5,000 件</div>
         </div>
         <div class="abs mono" id="gNote" style="left:160px;top:900px;font-size:20px;color:var(--ink4)">※ 2026年9月時点で各社が公開している無料プランの条件をもとに作成</div>
       </div>
       <div class="abs" id="gB" style="left:0;top:0;width:1920px;height:1080px">
-        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow pk" style="justify-content:center">Pricing</div>
-          <div class="h pk" style="font-size:96px;margin-top:22px">払うのは、<span class="glowtxt">必要な人だけ。</span></div>
+        <div class="abs" id="gBT" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow pk" style="justify-content:center">Pricing</div>
+          <div class="h pk" style="font-size:96px;margin-top:22px">払うのは、<br class="vbr"><span class="glowtxt">必要な人だけ。</span></div>
           <div class="pk" style="font-size:34px;color:var(--ink2);margin-top:18px">人数では課金しない。</div></div>
         <div class="abs" id="gPeople" style="left:0;right:0;top:470px;height:140px"></div>
         <div class="card" id="gFree" style="left:300px;top:690px;width:640px;height:300px;padding:36px 44px">
@@ -279,8 +349,8 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
     <!-- ============ H: AI / MCP / OSS ============ -->
     <section class="scene" id="sH">
       <div class="abs" id="h1" style="left:0;top:0;width:1920px;height:1080px">
-        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk1" style="justify-content:center">AI Assistant</div>
-          <div class="h hk1" style="font-size:84px;margin-top:22px">会話とファイルから、<span class="glowtxt">AI が答える。</span></div></div>
+        <div class="abs" id="h1T" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk1" style="justify-content:center">AI Assistant</div>
+          <div class="h hk1" style="font-size:84px;margin-top:22px">会話とファイルから、<br class="vbr"><span class="glowtxt">AI が答える。</span></div></div>
         <div class="abs" id="hQ" style="right:360px;top:430px;max-width:900px;background:var(--acc);color:#fff;font-size:40px;font-weight:700;border-radius:28px 28px 6px 28px;padding:24px 36px">先週決めた納期は？</div>
         <div class="abs" id="hA" style="left:360px;top:580px;width:1000px;display:flex;gap:22px">
           <div class="av ai" style="width:64px;height:64px;border-radius:18px"><svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z" fill="#06281D"/></svg></div>
@@ -296,8 +366,8 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
         </div>
       </div>
       <div class="abs" id="h2" style="left:0;top:0;width:1920px;height:1080px">
-        <div class="abs" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk2" style="justify-content:center">MCP</div>
-          <div class="h hk2" style="font-size:84px;margin-top:22px"><span class="glowtxt">Claude</span> や <span class="glowtxt">Cursor</span> からも操作。</div></div>
+        <div class="abs" id="h2T" style="left:0;right:0;top:110px;text-align:center"><div class="eyebrow hk2" style="justify-content:center">MCP</div>
+          <div class="h hk2" style="font-size:84px;margin-top:22px"><span class="glowtxt">Claude</span> や <span class="glowtxt">Cursor</span> <br class="vbr">からも操作。</div></div>
         <svg class="abs" id="hLines" width="1920" height="1080" style="left:0;top:0"></svg>
         <div class="abs hN" id="hN0" style="left:380px;top:560px"><div class="pill" style="font-size:40px;font-weight:700;color:var(--ink);padding:22px 40px">Claude</div></div>
         <div class="abs hN" id="hN1" style="left:380px;top:780px"><div class="pill" style="font-size:40px;font-weight:700;color:var(--ink);padding:22px 40px">Cursor</div></div>
@@ -309,9 +379,9 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
       </div>
       <div class="abs" id="h3" style="left:0;top:0;width:1920px;height:1080px">
         <div class="abs mono" id="hCode" style="left:120px;top:0;width:1700px;font-size:24px;line-height:1.7;color:rgba(174,185,205,.16);white-space:pre"></div>
-        <div class="abs" style="left:0;right:0;top:300px;text-align:center">
-          <div class="h hk3" style="font-size:210px;letter-spacing:-.05em;line-height:1">Open <span class="glowtxt">Source.</span></div>
-          <div class="hk3" style="font-size:40px;color:var(--ink2);margin-top:34px;font-weight:600">ソースコードを公開。保存方法も、権限も、課金の計算も。</div>
+        <div class="abs" id="h3T" style="left:0;right:0;top:300px;text-align:center">
+          <div class="h hk3" style="font-size:210px;letter-spacing:-.05em;line-height:1">Open <br class="vbr"><span class="glowtxt">Source.</span></div>
+          <div class="hk3" style="font-size:40px;color:var(--ink2);margin-top:34px;font-weight:600">ソースコードを公開。<br class="vbr">保存方法も、権限も、課金の計算も。</div>
           <div class="hk3" style="margin-top:40px;display:flex;justify-content:center;gap:22px">
             <div class="pill" style="font-size:30px;padding:14px 30px;color:var(--ink)"><svg width="34" height="34" viewBox="0 0 16 16"><path fill="#EEF2F9" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub で公開</div>
             <div class="pill" style="font-size:30px;padding:14px 30px"><span class="tag" style="font-size:22px">Apache-2.0</span>セルフホストも可能</div>
@@ -330,7 +400,7 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
         </div>
         <div id="iWord" style="font-size:120px;font-weight:700;letter-spacing:-.05em;margin-left:-20px">Cairn</div>
       </div>
-      <div class="abs" style="left:0;right:0;top:340px;text-align:center">
+      <div class="abs" id="iH" style="left:0;right:0;top:340px;text-align:center">
         <div class="h ik" style="font-size:104px;font-weight:900">無料でチャットも、<br><span class="glowtxt">プロジェクト管理も。</span></div>
       </div>
       <div class="abs ik2" style="left:0;right:0;top:640px;display:flex;justify-content:center;gap:24px">
@@ -360,6 +430,7 @@ body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased
   for(let i=0;i<img.data.length;i+=4){const v=r()*255; img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=255;}
   g.putImageData(img,0,0);
 }
+const W=V?1080:1920, H=V?1920:1080, CX=W/2, CY=H/2;
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const cl=(x,a=0,b=1)=>x<a?a:x>b?b:x;
@@ -458,13 +529,13 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     const imp=E.i3(P(t,3.18,3.5));
     const eL=E.oE(P(t,0,.55)), eR=E.oE(P(t,.55,1.1));
     const hl=Math.exp(-Math.max(0,t-.2)*1.2)*(t<1?1:0), hr=(t>=1&&t<1.8)?1:0;
-    st(aL,{x:L(-1300,0,eL)+imp*450,y:imp*40,ry:L(35,0,eL),o:eL*(1-imp),s:L(1,.25,imp),b:imp*18});
-    st(aR,{x:L(1300,0,eR)-imp*450,y:imp*40,o:eR*(1-imp),s:L(1,.25,imp),b:imp*18});
+    st(aL,{x:L(-1300,0,eL)+imp*(V?0:450),y:imp*(V?280:40),ry:L(35,0,eL),o:eL*(1-imp),s:L(1,.25,imp),b:imp*18});
+    st(aR,{x:L(1300,0,eR)-imp*(V?0:450),y:imp*(V?-280:40),o:eR*(1-imp),s:L(1,.25,imp),b:imp*18});
     aL.style.borderColor=t<1?`rgba(52,211,153,${.2+.6*P(t,.1,.3)})`:'rgba(255,255,255,.12)';
     aR.style.borderColor=hr?'rgba(52,211,153,.8)':'rgba(255,255,255,.12)';
     // copy flight 1.85 -> 2.45
     const q=E.io3(P(t,1.9,2.45));
-    const x0=340,y0=590,x1=1041,y1=572;
+    const [x0,y0,x1,y1]=V?[180,786,120,1322]:[340,590,1041,572];
     const fx=L(x0,x1,q), fy=L(y0,y1,q)-Math.sin(q*Math.PI)*220;
     const fo=P(t,1.82,1.9)*(1-imp);
     st(fly,{x:fx,y:fy,o:fo,s:1+.08*Math.sin(q*Math.PI),r:Math.sin(q*Math.PI)*-5});
@@ -485,7 +556,10 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
   const rings=$('#bRings'),parts=$('#bParts');
   const ringEls=land.map(()=>{const d=document.createElement('div');d.className='abs';d.style.cssText='left:0;top:0;width:200px;height:200px;border-radius:50%;border:4px solid #34D399';rings.appendChild(d);return d;});
   // stone landing centers in screen coords (logo at 704,284 scale 1)
-  const cen=[[704+260,284+412],[704+210,284+292],[704+286,284+176]];
+  const LX=CX-256, LY=CY-256;
+  logo.style.left=LX+'px'; logo.style.top=LY+'px';
+  $('#bWordWrap').style.left=CX+'px'; $('#bWordWrap').style.top=CY+'px'; pill.style.left=CX+'px';
+  const cen=[[LX+260,LY+412],[LX+210,LY+292],[LX+286,LY+176]];
   const R=rng(7); const P_=[];
   land.forEach((tl,si)=>{ for(let k=0;k<(si==2?26:14);k++){ const d=document.createElement('div'); d.className='abs'; const sz=6+R()*12; d.style.cssText=`left:0;top:0;width:${sz}px;height:${sz}px;border-radius:3px;background:${R()<.5?'#34D399':'#0FB981'}`; parts.appendChild(d); const ang=-Math.PI*(0.05+0.9*R()); const v=(si==2?900:600)*(0.4+R()); P_.push({d,tl,si,vx:Math.cos(ang)*v*(R()<.5?-1:1)*1.3,vy:Math.sin(ang)*v,rot:R()*720}); } });
   const wsplit=split(word);
@@ -504,17 +578,17 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     // lockup
     const m=E.io3(P(T,4.35,4.95));
     const out=E.iE(P(T,5.85,6.3));
-    const wW=word.offsetWidth, tot=312*.62+60+wW, start=960-tot/2;
-    const lx=L(0,start+96-960,m), ls=L(1,.62,m);
+    const wW=word.offsetWidth, tot=312*.62+60+wW, start=CX-tot/2;
+    const lx=L(0,start+96-CX,m), ls=L(1,.62,m);
     logo.style.transformOrigin='50% 50%';
     st(logo,{x:lx,y:L(0,-40,m),s:ls*L(1,7,out),o:1-out,b:out*20});
-    const wx=start+312*.62+60-960;
+    const wx=start+312*.62+60-CX;
     wsplit.forEach((c,i)=>{const a=E.oE(P(T,4.55+i*.05,4.95+i*.05)); st(c,{x:(1-a)*-120,o:a,b:(1-a)*14});});
     st(word,{x:wx+L(0,0,m),y:-40,s:L(1,7,out),o:1-out,b:out*20});
     word.style.transformOrigin='-200px 50%';
     const pa=E.oB(P(T,5.05,5.45));
     st(pill.firstElementChild,{c:true,y:0,s:L(.6,1,pa),o:P(T,5.05,5.2)*(1-out)});
-    pill.style.top='800px';
+    pill.style.top=(CY+260)+'px';
   });
 }
 
@@ -528,7 +602,7 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     slam(c1,6.0,-40); slam(c2,6.5,0); slam(c3,7.0,0);
     const m=E.io3(P(T,7.55,8.0));
     blockEl.style.transformOrigin='50% 0%';
-    st(blockEl,{y:L(0,40,m),s:L(1,.66,m)});
+    st(blockEl,V?{y:L(0,-60,m),s:L(1,.86,m)}:{y:L(0,40,m),s:L(1,.66,m)});
     kin(en,T,7.75,null,{stag:.012,dur:.35,dy:30,blur:10});
     checks.forEach((c,i)=>{const a=E.oB(P(T,8.05+i*.1,8.4+i*.1)); st(c,{y:(1-a)*40,s:L(.7,1,a),o:P(T,8.05+i*.1,8.15+i*.1)});});
     st(free,{c:true,x:L(160,-160,P(T,6,9.3)),y:-20,s:L(1.25,1,E.o3(P(T,6,7.5))),o:.9*P(T,6,6.2)});
@@ -546,7 +620,8 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     copy.forEach((c,i)=>blk(c,T,9.0+i*.12,12.95,{dy:50,dx:-60}));
     const e=E.oE(P(T,9.0,9.7));
     const push=L(0,1,E.io3(P(T,9.7,13)));
-    st(win,{x:L(900,0,e),ry:L(-38,-12,e)+push*4,rx:4,s:L(.9,1,e)*L(1,1.04,push),o:P(T,9,9.2)*(1-P(T,12.95,13.1))});
+    st(win,V?{x:L(900,0,e),ry:L(-30,-5,e)+push*2,rx:3,s:L(.86,.97,e)*L(1,1.02,push),o:P(T,9,9.2)*(1-P(T,12.95,13.1))}
+            :{x:L(900,0,e),ry:L(-38,-12,e)+push*4,rx:4,s:L(.9,1,e)*L(1,1.04,push),o:P(T,9,9.2)*(1-P(T,12.95,13.1))});
     // typing
     const n=Math.floor(P(T,9.85,10.55)*TXT.length);
     const sent=T>=10.72;
@@ -574,7 +649,7 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     // cursor clicks checkbox in tasks at 12.2
     const r3=cb2.getBoundingClientRect();
     const cq=E.io3(P(T,11.8,12.15));
-    const cx=L(1500,r3.left+8,cq), cy=L(1000,r3.top+10,cq);
+    const cx=L(V?900:1500,r3.left+8,cq), cy=L(V?1750:1000,r3.top+10,cq);
     st(cur,{x:cx,y:cy,o:P(T,11.8,11.9)*(1-P(T,12.9,13)),s:T>12.15&&T<12.28?.85:1});
     const done=T>=12.2;
     [cb1,cb2].forEach(c=>{c.classList.toggle('on',done); c.querySelector('svg').style.opacity=done?1:0;});
@@ -592,7 +667,9 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
 /* E: calendar -> board */
 {
   const cal=$('#eCal'),board=$('#eBoard'),chipsEl=$('#eChips');
-  const CW=1680/7, CH=640/5;
+  const WW=V?1020:1680, HH=V?920:640, CW=WW/7, CH=HH/5;
+  [cal,board].forEach(el=>{el.style.width=WW+'px';el.style.height=HH+'px';});
+  chipsEl.style.width=WW+'px'; chipsEl.style.height=(HH+80)+'px';
   const days=[31,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,1,2,3,4];
   let h='';
   ['日','月','火','水','木','金','土'].forEach((d,i)=>{h+=`<div class="abs" style="left:${i*CW+16}px;top:-2px;font-size:16px;color:var(--ink4)"></div>`;});
@@ -600,9 +677,9 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
     h+=`<div class="abs eCell" style="left:${c*CW}px;top:${r*CH}px;width:${CW}px;height:${CH}px;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:10px 14px;font-size:19px;color:${col};opacity:${dim}">${d}</div>`;});
   cal.innerHTML=h;
   const COLS=[['計画中','#3B82F6','rgba(59,130,246,.10)'],['審査中','#EAB308','rgba(234,179,8,.10)'],['実施待ち','#22C55E','rgba(34,197,94,.10)'],['保留','#94A3B8','rgba(148,163,184,.10)']];
-  const BW=390, BG=20, BX=30;
+  const BX=30, BG=V?16:20, BW=V?(WW-2*BX-3*BG)/4:390;
   let bh='';
-  COLS.forEach((c,i)=>{bh+=`<div class="abs eCol" style="left:${BX+i*(BW+BG)}px;top:24px;width:${BW}px;height:590px;border-radius:18px;background:${c[2]};border-top:4px solid ${c[1]}"><div style="padding:18px 22px;font-size:24px;font-weight:700">${c[0]}</div></div>`;});
+  COLS.forEach((c,i)=>{bh+=`<div class="abs eCol" style="left:${BX+i*(BW+BG)}px;top:24px;width:${BW}px;height:${HH-50}px;border-radius:18px;background:${c[2]};border-top:4px solid ${c[1]}"><div style="padding:18px 22px;font-size:24px;font-weight:700">${c[0]}</div></div>`;});
   board.innerHTML=bh;
   // events: [dayIndex, slot, label, col(status), date]
   const EV=[[0,0,'キックオフ',0,'5/31'],[0,1,'提案締切',1,'5/31'],[5,0,'展示会準備',0,'6/5 ～ 6/7'],[7,0,'展示会準備',0,''],[9,0,'撮影',2,'6/9'],[12,0,'会場確保',2,'6/12'],[12,1,'台本レビュー',3,'6/12 ～ 6/14'],[14,0,'台本レビュー',3,''],[16,0,'定例会',1,'6/16'],[27,0,'リリース準備',0,'6/27 ～ 6/29'],[28,0,'リリース準備',0,'']];
@@ -674,9 +751,10 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
 /* G: compare + pricing */
 {
   const rows=$$('.gRow'),gk=$$('.gk'),pk=$$('.pk'),ppl=$('#gPeople');
-  const W=[1560,300,135];
+  const BW_=[1560,300,135], BX0=V?0:400, CAP=V?1000:1320;
+  if(V) rows.forEach((r,i)=>{ r.style.top=[560,800,1010][i]+'px'; r.querySelectorAll('.gBar,.gVal').forEach(e=>e.style.top=(i?72:68)+'px'); r.querySelectorAll('.gBar,.gVal').forEach(e=>{if(e.classList.contains('gBar'))e.style.left='0px';}); });
   let ph='';
-  for(let i=0;i<10;i++){ ph+=`<div class="abs gP" style="left:${960-5*120+i*120+10}px;top:0;width:100px;height:140px"><svg width="100" height="100" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M3.5 21c.8-4.6 4.3-7 8.5-7s7.7 2.4 8.5 7z" fill="currentColor"/></svg><div class="mono gTag" style="text-align:center;font-size:20px;font-weight:600;margin-top:4px">¥0</div></div>`; }
+  for(let i=0;i<10;i++){ ph+=`<div class="abs gP" style="left:${CX-5*(V?100:120)+i*(V?100:120)+(V?8:10)}px;top:0;width:100px;height:140px"><svg width="100" height="100" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4.2" fill="currentColor"/><path d="M3.5 21c.8-4.6 4.3-7 8.5-7s7.7 2.4 8.5 7z" fill="currentColor"/></svg><div class="mono gTag" style="text-align:center;font-size:20px;font-weight:600;margin-top:4px">¥0</div></div>`; }
   ppl.innerHTML=ph;
   const people=$$('.gP');
   scene('sG',19.5,23.3,(t,T)=>{
@@ -688,11 +766,11 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
       const a=E.oE(P(T,19.62+i*.1,20.0+i*.1));
       st(r,{x:(1-a)*-200,o:a});
       const g=E.o3(P(T,19.95+i*.12,i==0?20.9:20.5+i*.1));
-      const w=W[i]*g + (i==0?Math.max(0,T-20.9)*200:0);
+      const w=BW_[i]*g + (i==0?Math.max(0,T-20.9)*200:0);
       r.querySelector('.gBar').style.width=w+'px';
       const v=r.querySelector('.gVal');
-      if(i==0){ v.style.left=(400+Math.max(20,Math.min(w,1320)-280))+'px'; v.style.opacity=P(T,20.4,20.6); }
-      else { v.style.left=(400+w+24)+'px'; v.style.opacity=P(T,20.3+i*.1,20.5+i*.1); }
+      if(i==0){ v.style.left=(BX0+Math.max(20,Math.min(w,CAP)-280))+'px'; v.style.opacity=P(T,20.4,20.6); }
+      else { v.style.left=(BX0+w+24)+'px'; v.style.opacity=P(T,20.3+i*.1,20.5+i*.1); }
     });
     $('#gNote').style.opacity=P(T,20.4,20.7);
     // pricing
@@ -719,10 +797,12 @@ function scene(id,t0,t1,fn){S.push({el:$('#'+id),t0,t1,fn});}
   const k1=$$('.hk1'),k2=$$('.hk2'),k3=$$('.hk3');
   const q=$('#hQ'),a=$('#hA'),dots=$$('.hd'),ans=split($('#hAns')),srcs=$$('.hs');
   const nodes=[$('#hN0'),$('#hN1'),$('#hN2')],tools=$$('.hT'),lines=$('#hLines');
-  lines.innerHTML=`<path id="hl0" d="M620 600 C 900 600, 1000 710, 1300 710" fill="none" stroke="#34D399" stroke-width="3" stroke-dasharray="10 12"/><path id="hl1" d="M620 820 C 900 820, 1000 720, 1300 720" fill="none" stroke="#34D399" stroke-width="3" stroke-dasharray="10 12"/>`;
+  const LP=V?['M250 720 C 250 960, 540 940, 540 1180','M740 720 C 740 960, 540 940, 540 1180']:['M620 600 C 900 600, 1000 710, 1300 710','M620 820 C 900 820, 1000 720, 1300 720'];
+  lines.setAttribute('width',W); lines.setAttribute('height',H);
+  lines.innerHTML=LP.map((d,i)=>`<path id="hl${i}" d="${d}" fill="none" stroke="#34D399" stroke-width="3" stroke-dasharray="10 12"/>`).join('');
   const code=`import { activeWorkspaceMembers } from '@cairn/db'\n\nexport async function requireMembership(ctx: Ctx, workspaceId: string) {\n  const member = await ctx.db.query.activeWorkspaceMembers.findFirst({\n    where: (m, { and, eq }) => and(eq(m.workspaceId, workspaceId), eq(m.userId, ctx.user.id)),\n  })\n  if (!member) throw new ForbiddenError('not a member of this workspace')\n  return member\n}\n\n// Realtime: Broadcast from Database → invalidate → refetch\nexport function subscribeProject(projectId: string) {\n  return supabase.channel(\`project:\${projectId}\`, { config: { private: true } })\n}\n\n// SPDX-License-Identifier: Apache-2.0\n`;
   $('#hCode').textContent=(code+'\n').repeat(4);
-  const tpos=[[760,470],[980,560],[820,880],[1060,930]];
+  const tpos=V?[[40,880],[700,880],[60,1420],[640,1420]]:[[760,470],[980,560],[820,880],[1060,930]];
   scene('sH',22.9,27.2,(t,T)=>{
     // H1 AI 23.0-24.6
     const o1=E.i3(P(T,24.45,24.65));

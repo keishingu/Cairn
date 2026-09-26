@@ -4,6 +4,7 @@
 // index.html の render(t) をフレームごとに呼んで撮影し、ffmpeg で動画セグメントにする。
 //   node render.mjs <startFrame> <endFrame> <out.mp4>   … セグメント書き出し（60fps）
 //   node render.mjs --preview <秒> [<秒> ...]            … 指定時刻の静止画を preview/ に保存
+// 環境変数 FORMAT=vertical で 1080x1920（9:16）の縦型を書き出す
 import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -11,6 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FPS = 60
+const VERTICAL = process.env.FORMAT === 'vertical'
+const [VW, VH] = VERTICAL ? [1080, 1920] : [1920, 1080]
 
 async function loadChromium() {
   if (process.env.PLAYWRIGHT_MODULE) return (await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE).href)).chromium
@@ -34,11 +37,11 @@ export function ffmpegPath() {
 
 const chromium = await loadChromium()
 const browser = await chromium.launch({ args: ['--force-color-profile=srgb'] })
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } })
+const page = await browser.newPage({ viewport: { width: VW, height: VH } })
 const cdp = await page.context().newCDPSession(page)
 const errors = []
 page.on('pageerror', (e) => errors.push(e.message))
-await page.goto(pathToFileURL(join(HERE, 'index.html')).href)
+await page.goto(pathToFileURL(join(HERE, 'index.html')).href + (VERTICAL ? '?format=vertical' : ''))
 await page.evaluate(() => window.ready)
 // 全シーンを一度描画して、unicode-range で分割された日本語フォントを読み込ませる
 for (let t = 0; t < 30; t += 0.25) await page.evaluate((t) => render(t), t)
@@ -54,7 +57,7 @@ if (process.argv[2] === '--preview') {
   const { writeFileSync } = await import('node:fs')
   mkdirSync(join(HERE, 'preview'), { recursive: true })
   for (const s of process.argv.slice(3).map(Number)) {
-    writeFileSync(join(HERE, 'preview', `t_${s.toFixed(2)}.png`), await shot(s))
+    writeFileSync(join(HERE, 'preview', `${VERTICAL ? 'v' : 't'}_${s.toFixed(2)}.png`), await shot(s))
   }
 } else {
   const [f0, f1] = [Number(process.argv[2]), Number(process.argv[3])]
