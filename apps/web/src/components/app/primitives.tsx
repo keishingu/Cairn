@@ -396,12 +396,13 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
     // 中身が autoFocus で先にフォーカスを取っていればそれを尊重する
-    if (root && !root.contains(document.activeElement)) focusables()[0]?.focus()
+    if (root && !root.contains(document.activeElement)) (focusables()[0] ?? root).focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !root) return
       const items = focusables()
-      if (items.length === 0) return
+      // 処理中でボタンがすべて無効なときも背後へ抜けないよう、モーダル自体に留める
+      if (items.length === 0) { e.preventDefault(); root.focus(); return }
       const first = items[0]!
       const last = items[items.length - 1]!
       const active = document.activeElement
@@ -417,7 +418,7 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   }, [])
 
   return (
-    <div ref={rootRef} data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div ref={rootRef} tabIndex={-1} data-cairn-modal style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>

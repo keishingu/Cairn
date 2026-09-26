@@ -43,4 +43,22 @@ describe('Modal', () => {
     await user.keyboard('{Escape}')
     expect(opener).toHaveFocus()
   })
+
+  it('中の操作がすべて無効でも Tab で背後へ抜けない', async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <button type="button">背後</button>
+        <Modal onClose={() => {}}>
+          <div role="dialog">
+            <button type="button" disabled>処理中…</button>
+          </div>
+        </Modal>
+      </>,
+    )
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: '背後' })).not.toHaveFocus()
+    expect(document.activeElement).toHaveAttribute('data-cairn-modal')
+  })
 })
