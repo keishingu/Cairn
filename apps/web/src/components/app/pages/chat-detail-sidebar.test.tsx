@@ -50,7 +50,7 @@ const mockUseTasksByScope = vi.mocked(useTasksByScope)
 const project: ProjectDto = {
   id: 'project-1', title: 'プロジェクト', description: null, statusName: null, statusColor: null,
   startDate: null, endDate: null, memberCount: 0, memberNames: [], memberAvatarUrls: [],
-  taskCount: 2, completedTaskCount: 0, isOwner: true, isMember: true, archived: false,
+  taskCount: 2, completedTaskCount: 0, isHosting: true, isJoined: true, archived: false,
   coverPhotoIdx: 0, coverPhotoUrl: null, location: null, placeId: null,
 }
 
