@@ -86,4 +86,43 @@ describe('Modal', () => {
     await user.keyboard('{Escape}')
     expect(opener).toHaveFocus()
   })
+
+  it('重ねたモーダルでは上のものだけが Tab を循環させ、Escape で上だけを閉じる', async () => {
+    const user = userEvent.setup()
+    const Nested = () => {
+      const [editorOpen, setEditorOpen] = React.useState(true)
+      const [confirmOpen, setConfirmOpen] = React.useState(false)
+      return editorOpen ? (
+        <Modal onClose={() => setEditorOpen(false)}>
+          <div role="dialog" aria-label="編集">
+            <button type="button" onClick={() => setConfirmOpen(true)}>削除</button>
+            <button type="button">保存</button>
+          </div>
+          {confirmOpen && (
+            <Modal onClose={() => setConfirmOpen(false)}>
+              <div role="alertdialog" aria-label="確認">
+                <button type="button">キャンセル</button>
+                <button type="button">削除する</button>
+              </div>
+            </Modal>
+          )}
+        </Modal>
+      ) : null
+    }
+    render(<Nested />)
+
+    const openConfirm = screen.getByRole('button', { name: '削除' })
+    await user.click(openConfirm)
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toHaveFocus()
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: '削除する' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('dialog', { name: '編集' })).toBeInTheDocument()
+    expect(openConfirm).toHaveFocus()
+  })
 })

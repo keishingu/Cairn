@@ -381,6 +381,11 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
 // ─── Modal ────────────────────────────────────────────────────────
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// 開いている Modal の重なり順。確認ダイアログを編集ダイアログの上に重ねたとき、
+// Tab の循環と Escape は一番上のものだけが受け持つ
+const openModals: HTMLElement[] = []
+const isTopModal = (root: HTMLElement | null) => root !== null && openModals[openModals.length - 1] === root
+
 export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
   const rootRef = React.useRef<HTMLDivElement>(null)
   // 中身の autoFocus は effect より先に走るため、開いた元の要素は初回描画の時点で記録しておく
@@ -389,7 +394,7 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   )
 
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopModal(rootRef.current)) onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
@@ -397,12 +402,13 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   // キーボードで開いたときに背後へフォーカスが残らないよう、開いたら中へ移し、Tab を中で循環させ、閉じたら元へ戻す
   React.useEffect(() => {
     const root = rootRef.current
+    if (root) openModals.push(root)
     const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
     // 中身が autoFocus で先にフォーカスを取っていればそれを尊重する
     if (root && !root.contains(document.activeElement)) (focusables()[0] ?? root).focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !root) return
+      if (e.key !== 'Tab' || !root || !isTopModal(root)) return
       const items = focusables()
       // 処理中でボタンがすべて無効なときも背後へ抜けないよう、モーダル自体に留める
       if (items.length === 0) { e.preventDefault(); root.focus(); return }
@@ -416,6 +422,8 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      const index = root ? openModals.lastIndexOf(root) : -1
+      if (index >= 0) openModals.splice(index, 1)
       if (opener && document.contains(opener)) opener.focus()
     }
   }, [opener])
