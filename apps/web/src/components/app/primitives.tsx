@@ -383,6 +383,10 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([t
 
 export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
   const rootRef = React.useRef<HTMLDivElement>(null)
+  // 中身の autoFocus は effect より先に走るため、開いた元の要素は初回描画の時点で記録しておく
+  const [opener] = React.useState(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  )
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -393,7 +397,6 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   // キーボードで開いたときに背後へフォーカスが残らないよう、開いたら中へ移し、Tab を中で循環させ、閉じたら元へ戻す
   React.useEffect(() => {
     const root = rootRef.current
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
     // 中身が autoFocus で先にフォーカスを取っていればそれを尊重する
     if (root && !root.contains(document.activeElement)) (focusables()[0] ?? root).focus()
@@ -413,9 +416,9 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      if (previous && document.contains(previous)) previous.focus()
+      if (opener && document.contains(opener)) opener.focus()
     }
-  }, [])
+  }, [opener])
 
   return (
     <div ref={rootRef} tabIndex={-1} data-cairn-modal style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>

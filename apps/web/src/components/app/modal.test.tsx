@@ -61,4 +61,29 @@ describe('Modal', () => {
     expect(screen.getByRole('button', { name: '背後' })).not.toHaveFocus()
     expect(document.activeElement).toHaveAttribute('data-cairn-modal')
   })
+
+  it('中身が autoFocus を持っていても、閉じると開いた元へ戻す', async () => {
+    const user = userEvent.setup()
+    const AutoFocusHarness = () => {
+      const [open, setOpen] = React.useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>開く</button>
+          {open && (
+            <Modal onClose={() => setOpen(false)}>
+              <input aria-label="タイトル" autoFocus />
+            </Modal>
+          )}
+        </>
+      )
+    }
+    render(<AutoFocusHarness />)
+
+    const opener = screen.getByRole('button', { name: '開く' })
+    await user.click(opener)
+    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveFocus()
+  })
 })
