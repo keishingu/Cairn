@@ -38,12 +38,15 @@ describe('CopyButton', () => {
   it('関数で渡すと押した時点の値をコピーする', async () => {
     writeText.mockResolvedValue(undefined)
     let value = 'before'
-    render(<CopyButton text={() => value} />)
+    const { rerender } = render(<CopyButton text={() => value} />)
     value = 'after'
+    rerender(<CopyButton text={() => value} />)
 
     await act(async () => { screen.getByRole('button', { name: 'コピー' }).click() })
 
     expect(writeText).toHaveBeenCalledWith('after')
+    // 関数は描画ごとに作り直されても、コピー済みの表示を消さない
+    expect(screen.getByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
   })
 
   it('失敗したらトーストで知らせ、コピー済みにしない', async () => {
@@ -53,6 +56,29 @@ describe('CopyButton', () => {
     await act(async () => { screen.getByRole('button', { name: 'コピー' }).click() })
 
     expect(mocks.toastError).toHaveBeenCalledWith('招待リンクをコピーできませんでした')
+    expect(screen.queryByRole('button', { name: 'コピー済み' })).toBeNull()
+  })
+
+  it('コピー対象が変わったらコピー済みの表示を戻す', async () => {
+    writeText.mockResolvedValue(undefined)
+    const { rerender } = render(<CopyButton text="https://example.com/old" />)
+
+    await act(async () => { screen.getByRole('button', { name: 'コピー' }).click() })
+    expect(screen.getByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
+
+    rerender(<CopyButton text="https://example.com/new" />)
+    expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
+  })
+
+  it('対象が変わる前に始めた書き込みが後から終わっても、コピー済みにしない', async () => {
+    let finish: (() => void) | undefined
+    writeText.mockReturnValue(new Promise<void>(resolve => { finish = resolve }))
+    const { rerender } = render(<CopyButton text="https://example.com/old" />)
+
+    act(() => { screen.getByRole('button', { name: 'コピー' }).click() })
+    rerender(<CopyButton text="https://example.com/new" />)
+    await act(async () => { finish?.() })
+
     expect(screen.queryByRole('button', { name: 'コピー済み' })).toBeNull()
   })
 })
