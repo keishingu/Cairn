@@ -108,9 +108,14 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       )
 
       const succeeded = results.filter((result) => result.status === 'fulfilled').length
-      const failures = results
-        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-        .map((result) => (result.reason instanceof Error ? result.reason.message : t('Could not upload')))
+      const files = Array.from(selectedFiles)
+      // サーバーの汎用エラーが並ぶとどのファイルか分からないため、名前を含まない文言には先頭に付ける
+      const failures = results.flatMap((result, i) => {
+        if (result.status !== 'rejected') return []
+        const name = files[i]?.name ?? ''
+        const message = result.reason instanceof Error ? result.reason.message : t('Could not upload')
+        return [name && !message.includes(name) ? `${name}: ${message}` : message]
+      })
 
       if (succeeded > 0) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })

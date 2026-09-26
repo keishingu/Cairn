@@ -63,8 +63,8 @@ describe('ファイルタブ', () => {
     ])
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('a.zip は対応していない形式です')
-    expect(alert).toHaveTextContent('b.zip は対応していない形式です')
+    expect(alert).toHaveTextContent('a.pdf: a.zip は対応していない形式です')
+    expect(alert).toHaveTextContent('b.pdf: b.zip は対応していない形式です')
     expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
   })
 
@@ -123,6 +123,6 @@ describe('ファイルタブ', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
-    expect(screen.getByText('big.zip は大きすぎます')).toBeInTheDocument()
+    expect(screen.getByText('big.md: big.zip は大きすぎます')).toBeInTheDocument()
   })
 })
