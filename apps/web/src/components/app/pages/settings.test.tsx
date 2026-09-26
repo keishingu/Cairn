@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -448,13 +448,14 @@ describe('MCP / APIトークン設定', () => {
         },
       ],
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     expect(await screen.findByText('Claude')).toBeInTheDocument()
     expect(screen.getByText(/読み取り・書き込み/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
     await waitFor(() => expect(screen.queryByText('Claude')).not.toBeInTheDocument())
     expect(toastSuccess).toHaveBeenCalledWith('OAuth接続を取り消しました')
@@ -516,15 +517,15 @@ describe('MCP / APIトークン設定', () => {
       ],
       revokeError: true,
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     await user.click(await screen.findByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith('APIトークンの取り消しに失敗しました')
-    })
+    // 失敗時はダイアログを開いたまま理由を表示する
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('APIトークンの取り消しに失敗しました')
   })
 
   it('クリップボードへの保存完了後だけコピー済みと表示する', async () => {

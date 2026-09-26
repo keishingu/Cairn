@@ -1922,6 +1922,7 @@ const ApiTokenSettings = () => {
   const [expiresInDays, setExpiresInDays] = React.useState(90)
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
+  const [revokeTarget, setRevokeTarget] = React.useState<ApiTokenDto | null>(null)
 
   const {
     data: tokens = [],
@@ -1965,7 +1966,6 @@ const ApiTokenSettings = () => {
       )
       void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
     },
-    onError: (error) => toast.error((error as Error).message),
   })
 
   const copyToken = async () => {
@@ -2123,10 +2123,7 @@ const ApiTokenSettings = () => {
                     className="btn btn-ghost"
                     style={{ color: 'var(--red-text)' }}
                     disabled={revoke.isPending}
-                    onClick={() => {
-                      if (window.confirm(t('Revoke "{name}"?', { name: token.name })))
-                        revoke.mutate(token.id)
-                    }}
+                    onClick={() => setRevokeTarget(token)}
                   >
                     {t('Revoke access')}
                   </button>
@@ -2136,6 +2133,15 @@ const ApiTokenSettings = () => {
           })
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke "{name}"?', { name: revokeTarget?.name ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }
@@ -2145,6 +2151,7 @@ const McpOAuthConnectionSettings = () => {
   const { locale } = useLocale()
   const queryClient = useQueryClient()
   const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
+  const [revokeTarget, setRevokeTarget] = React.useState<McpOAuthConnectionDto | null>(null)
   React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
   const {
     data: connections = [],
@@ -2169,7 +2176,6 @@ const McpOAuthConnectionSettings = () => {
         current?.filter((connection) => connection.id !== revokedId),
       )
     },
-    onError: (mutationError) => toast.error((mutationError as Error).message),
   })
 
   return (
@@ -2214,11 +2220,7 @@ const McpOAuthConnectionSettings = () => {
                 className="btn btn-ghost"
                 style={{ color: 'var(--red-text)' }}
                 disabled={revoke.isPending}
-                onClick={() => {
-                  if (window.confirm(t('Revoke the connection with "{name}"?', { name: connection.clientName }))) {
-                    revoke.mutate(connection.id)
-                  }
-                }}
+                onClick={() => setRevokeTarget(connection)}
               >
                 {t('Revoke access')}
               </button>
@@ -2226,6 +2228,15 @@ const McpOAuthConnectionSettings = () => {
           ))
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke the connection with "{name}"?', { name: revokeTarget?.clientName ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }

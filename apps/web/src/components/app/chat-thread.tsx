@@ -10,6 +10,7 @@ import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import { Avatar } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { EmojiPicker } from './emoji-picker'
@@ -250,22 +251,23 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const handleCopy = React.useCallback(() => {
     void copyMessageContent(content, t)
   }, [content, t])
-  const reportMessage = () => {
-    const choice = window.prompt(t('Choose a report reason\n1: Harassment or bullying\n2: Discriminatory or offensive\n3: Sexual or inappropriate\n4: Violence or threats\n5: Spam\n6: Other'))
-    const reasons = ['harassment', 'discriminatory', 'sexual', 'violence', 'spam', 'other'] as const
-    const reason = choice ? reasons[Number(choice) - 1] : undefined
-    if (!reason) return
-    const details = reason === 'other' ? window.prompt(t('Enter additional details'))?.trim() : undefined
-    if (reason === 'other' && !details) return
-    void fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, ...(details ? { details } : {}) }) })
-      .then(res => res.ok ? toast.success(t('Reported the message')) : res.json().then(data => toast.error(data.error ?? t('Could not report the message'))))
-      .catch(() => toast.error(t('Could not report the message')))
+  const [reportOpen, setReportOpen] = React.useState(false)
+  const [blockConfirm, setBlockConfirm] = React.useState(false)
+  const submitReport = async (input: { reason: ReportReason; details?: string }) => {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not report the message'))
+    }
+    toast.success(t('Reported the message'))
   }
-  const blockUser = () => {
-    if (!window.confirm(t('Block {name}?', { name: senderName }))) return
-    void fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
-      .then(res => res.ok ? toast.success(t('Blocked the user')) : res.json().then(data => toast.error(data.error ?? t('Could not block the user'))))
-      .catch(() => toast.error(t('Could not block the user')))
+  const blockUser = async () => {
+    const res = await fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not block the user'))
+    }
+    toast.success(t('Blocked the user'))
   }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
@@ -288,7 +290,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
-    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: reportMessage }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: blockUser }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -496,6 +498,16 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         onConfirm={() => onDelete(messageId)}
         onClose={() => setDeleteConfirm(false)}
       />
+      <ConfirmDialog
+        open={blockConfirm}
+        title={t('Block {name}', { name: senderName })}
+        message={t('You and this user will no longer be able to send each other direct messages.')}
+        confirmLabel={t('Block')}
+        busyLabel={t('Blocking...')}
+        onConfirm={blockUser}
+        onClose={() => setBlockConfirm(false)}
+      />
+      <ReportMessageDialog open={reportOpen} onSubmit={submitReport} onClose={() => setReportOpen(false)} />
     </div>
   )
 })
