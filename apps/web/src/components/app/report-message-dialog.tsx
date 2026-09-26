@@ -50,7 +50,8 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
     setBusy(true)
     setError(null)
     try {
-      await onSubmit({ reason, ...(trimmedDetails ? { details: trimmedDetails } : {}) })
+      // 「その他」から別の理由へ切り替えると詳細欄は隠れるため、見えていない文言は送らない
+      await onSubmit({ reason, ...(reason === 'other' && trimmedDetails ? { details: trimmedDetails } : {}) })
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Could not report the message'))

@@ -55,4 +55,17 @@ describe('ReportMessageDialog', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('報告に失敗しました')
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  it('その他で詳細を入れてから別の理由に変えたら、隠れた詳細は送らない', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<ReportMessageDialog open onSubmit={onSubmit} onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole('radio', { name: 'その他' }))
+    await user.type(screen.getByRole('textbox'), '宣伝の連投')
+    await user.click(screen.getByRole('radio', { name: 'スパム' }))
+    await user.click(screen.getByRole('button', { name: '報告する' }))
+
+    expect(onSubmit).toHaveBeenCalledWith({ reason: 'spam' })
+  })
 })
