@@ -33,7 +33,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
   )
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} label={t('Keyboard shortcuts')}>
       <div className="card" style={{ position: 'relative', width: 600, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', padding: 22, boxShadow: 'var(--shadow-lg)' }}>
         <h2 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{t('Keyboard shortcuts')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>

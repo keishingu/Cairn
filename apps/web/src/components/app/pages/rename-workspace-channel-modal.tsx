@@ -59,7 +59,7 @@ export function RenameWorkspaceChannelModal({
   const close = () => { if (!pending) onClose() }
 
   return (
-    <Modal onClose={close}>
+    <Modal onClose={close} label={isThread ? t('Rename thread') : t('Rename channel')}>
       <form
         onSubmit={handleSubmit}
         style={{

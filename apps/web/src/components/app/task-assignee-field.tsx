@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { Avatar, Icon, fieldInputStyle } from './primitives'
+import { Avatar, Icon, fieldInputStyle, portalHostFor } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
 import { useChannelMembers } from '@/lib/chat/client'
 import { useT } from '@/components/locale-provider'
@@ -200,7 +200,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
     setQuery('')
   }
 
-  const portalHost = containerRef.current?.closest<HTMLElement>('.app-root')
+  const portalHost = portalHostFor(containerRef.current)
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>

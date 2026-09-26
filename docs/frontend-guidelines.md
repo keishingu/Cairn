@@ -131,6 +131,14 @@ const { data } = useQuery({
   - **アップロード**: 進行中はボタンの文言で件数を示し、完了したら成功件数をトーストする。失敗はどのファイルかを `InlineError`（閉じるまで残す）で一覧する
   - フォームのバリデーションエラーや読み込み失敗など「その場に留めて直す」性質のものは入力近傍に `components/app/inline-error.tsx` の `InlineError` で出す（赤文字は `variant="text"`、送信失敗など目立たせたいものは `variant="box"`）。「⚠」などの絵文字や独自の赤帯は作らない
 
+### モーダル
+
+モーダルは `primitives.tsx` の `Modal`（中身は `@radix-ui/react-dialog`）を使い、`position: fixed` の独自オーバーレイを作らない。フォーカスの閉じ込めと復元・背後の `aria-hidden`・スクロール固定・重なったときの Escape は Radix が受け持つので、`onKeyDown` などで自前のフォーカストラップを足さない。
+
+- `label` は必須（スクリーンリーダーが読み上げるダイアログ名。通常は見出しと同じ文言）。確認ダイアログは `role="alertdialog"`
+- 中身の要素に `role="dialog"` / `aria-modal` / `aria-label` を重ねて付けない（`Modal` 側が持つ）
+- モーダル内の部品が `createPortal` でメニューを出すときは、出し先を `portalHostFor(要素)` にする。`body` や `.app-root` に出すとモーダルの外になり、フォーカスできず操作できない
+
 ### 重なり順（z-index）
 
 画面をまたいで重なる要素（ナビ・メニュー・モーダル・トースト等）は `globals.css` の `--z-*` を使い、数値を直書きしない（`zIndex: 'var(--z-modal)'`）。コンポーネント内だけの前後関係（1〜10）は直書きでよい。

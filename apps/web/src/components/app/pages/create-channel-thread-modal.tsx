@@ -52,7 +52,7 @@ export function CreateChannelThreadModal({ channelId, channelName, onClose, onCr
   const close = () => { if (!pending) onClose() }
 
   return (
-    <Modal onClose={close}>
+    <Modal onClose={close} label={t('Create thread')}>
       <form
         onSubmit={handleSubmit}
         style={{

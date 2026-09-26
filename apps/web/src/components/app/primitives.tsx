@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
 
@@ -379,79 +380,55 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
 }
 
 // ─── Modal ────────────────────────────────────────────────────────
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+// フォーカスの閉じ込め・背後の非表示（aria-hidden）・スクロール固定・重なったときの Escape は
+// Radix Dialog に任せる。自前で持つと portal・入れ子・無効ボタンなどの端のケースを追い切れないため。
+const visuallyHidden: React.CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
+}
 
-// 開いている Modal の重なり順。確認ダイアログを編集ダイアログの上に重ねたとき、
-// Tab の循環と Escape は一番上のものだけが受け持つ
-const openModals: HTMLElement[] = []
-const isTopModal = (root: HTMLElement | null) => root !== null && openModals[openModals.length - 1] === root
-// createPortal で body 直下などに出したメニューもモーダルの一部として扱うため、React の合成イベント
-// （portal でも React の親子関係に沿って伝わる）で「どのモーダルの中から来たキー入力か」を印付けする
-const OWNER_KEY = '__cairnModalOwner'
-type OwnedKeyboardEvent = KeyboardEvent & { [OWNER_KEY]?: HTMLElement }
-
-export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
-  const rootRef = React.useRef<HTMLDivElement>(null)
-  // 中身の autoFocus は effect より先に走るため、開いた元の要素は初回描画の時点で記録しておく
+export const Modal = ({ onClose, label, role = 'dialog', children }: {
+  onClose: () => void
+  /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
+  label: string
+  role?: 'dialog' | 'alertdialog'
+  children: React.ReactNode
+}) => {
+  // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
   const [opener] = React.useState(() =>
     typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
   )
 
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopModal(rootRef.current)) onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  // キーボードで開いたときに背後へフォーカスが残らないよう、開いたら中へ移し、Tab を中で循環させ、閉じたら元へ戻す
-  React.useEffect(() => {
-    const root = rootRef.current
-    if (root) openModals.push(root)
-    const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
-    // 中身（portal で出したものを含む）が autoFocus で先にフォーカスを取っていればそれを尊重し、
-    // フォーカスが開いた元の要素や body に残っているときだけ中へ移す
-    const active = document.activeElement
-    const stillOutside = active === null || active === document.body || active === opener
-    if (root && !root.contains(active) && stillOutside) (focusables()[0] ?? root).focus()
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !root || !isTopModal(root)) return
-      // このモーダルが描画した portal（担当者選択のメニューなど）の中なら、ブラウザ既定の Tab 移動に任せる
-      if (!root.contains(document.activeElement) && (e as OwnedKeyboardEvent)[OWNER_KEY] === root) return
-      const items = focusables()
-      // 処理中でボタンがすべて無効なときも背後へ抜けないよう、モーダル自体に留める
-      if (items.length === 0) { e.preventDefault(); root.focus(); return }
-      const first = items[0]!
-      const last = items[items.length - 1]!
-      const active = document.activeElement
-      if (!root.contains(active)) { e.preventDefault(); first.focus() }
-      else if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
-      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      const index = root ? openModals.lastIndexOf(root) : -1
-      if (index >= 0) openModals.splice(index, 1)
-      if (opener && document.contains(opener)) opener.focus()
-    }
-  }, [opener])
-
   return (
-    <div
-      ref={rootRef}
-      tabIndex={-1}
-      data-cairn-modal
-      onKeyDown={e => {
-        // 入れ子のモーダルでは内側から先に通るので、最初に付いた印（一番内側）を残す
-        const native = e.nativeEvent as OwnedKeyboardEvent
-        if (!native[OWNER_KEY] && rootRef.current) native[OWNER_KEY] = rootRef.current
-      }}
-      style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-      {children}
-    </div>
+    <DialogPrimitive.Root open onOpenChange={open => { if (!open) onClose() }}>
+      {/* portal にすると .app / .app-root のテーマ変数・ボタン用クラスが効かなくなるため、その場に描画する */}
+      <DialogPrimitive.Content
+        data-cairn-modal
+        role={role}
+        aria-describedby={undefined}
+        // 背景幕のクリックは下の div で扱う。トーストなど中身の外にある要素への操作では閉じない
+        onInteractOutside={e => e.preventDefault()}
+        onCloseAutoFocus={e => {
+          e.preventDefault()
+          if (opener && document.contains(opener)) opener.focus()
+        }}
+        style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      >
+        {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
+        <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
+        <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Root>
   )
+}
+
+/**
+ * createPortal の出し先。モーダルの中ならモーダル内に出して、フォーカスの閉じ込めや背後の非表示の
+ * 対象に含める（外に出すとフォーカスできない・読み上げられない）。それ以外はテーマ変数の効く .app-root。
+ */
+export function portalHostFor(el: Element | null | undefined): HTMLElement | null {
+  return el?.closest<HTMLElement>('[data-cairn-modal]') ?? el?.closest<HTMLElement>('.app-root') ?? null
 }
 
 export const ModalHeader = ({ icon, title, subtitle, onClose }: {

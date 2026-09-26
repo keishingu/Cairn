@@ -60,11 +60,8 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
   }
 
   return (
-    <Modal onClose={close}>
+    <Modal onClose={close} label={t('Report message')}>
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('Report message')}
         className="card"
         onSubmit={submit}
         // 横向きのスマホなど縦が短い画面でも報告・キャンセルに届くよう、本文だけをスクロールさせる

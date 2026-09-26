@@ -51,8 +51,8 @@ export const ConfirmDialog = ({
   }
 
   return (
-    <Modal onClose={close}>
-      <div role="alertdialog" aria-modal="true" aria-label={title} className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+    <Modal onClose={close} label={title} role="alertdialog">
+      <div className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="alertTriangle" size={16}/>

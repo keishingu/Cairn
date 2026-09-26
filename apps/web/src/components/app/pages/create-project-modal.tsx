@@ -406,7 +406,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} label={t('New project')}>
       <form onSubmit={handleSubmit} style={{
         position: 'relative',
         width: '100%', maxWidth: 960,
