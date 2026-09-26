@@ -313,12 +313,14 @@ describe('useUpdateProjectMemberRole', () => {
     )
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(() => useUpdateProjectMemberRole('p1'), { wrapper })
 
     await act(async () => result.current.mutateAsync({ userId: 'u2', roleId: 'role-leader' }))
 
     const cached = queryClient.getQueryData<ProjectMemberDto[]>(['project-members', 'p1'])
     expect(cached?.find((member) => member.userId === 'u2')?.roleName).toBe('リーダー')
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
   })
 })
 
@@ -331,6 +333,7 @@ describe('useRemoveProjectMember', () => {
     mockFetch.mockResolvedValue(new Response(null, { status: 200 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(['project-members', 'p1'], STUB_MEMBERS)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     const { result } = renderHook(() => useRemoveProjectMember('p1'), { wrapper })
     act(() => {
@@ -345,5 +348,6 @@ describe('useRemoveProjectMember', () => {
     const cached = queryClient.getQueryData<ProjectMemberDto[]>(['project-members', 'p1'])
     expect(cached?.some((m) => m.userId === 'u2')).toBe(false)
     expect(cached?.some((m) => m.userId === 'u1')).toBe(true)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
   })
 })

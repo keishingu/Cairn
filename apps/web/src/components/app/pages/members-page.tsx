@@ -221,6 +221,9 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   const [showInviteModal, setShowInviteModal] = React.useState(false)
 
   const handleProjectClick = (p: MemberProjectDto) => {
+    // isJoined / isHosting は閲覧者自身の参加状態。MemberProjectDto.role は対象メンバーの役割なので使わない
+    const viewerEntry = queryClient.getQueryData<ProjectDto[]>(['projects'])
+      ?.find(proj => proj.id === p.projectId)
     setSelectedProject({
       id:                 p.projectId,
       title:              p.title,
@@ -234,8 +237,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       memberAvatarUrls:   [],
       taskCount:          0,
       completedTaskCount: 0,
-      isJoined:           true,
-      isHosting:          p.role === 'leader' || p.role === 'subleader',
+      isJoined:           viewerEntry?.isJoined ?? false,
+      isHosting:          viewerEntry?.isHosting ?? false,
       archived:           p.archived,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
