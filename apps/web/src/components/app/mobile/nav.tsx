@@ -83,7 +83,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       {/* Overlay backdrop for any open popup */}
       {(menuOpen || projectsPickerOpen) && (
         <div
-          style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-nav-backdrop)' }}
           onClick={closeAll}
         />
       )}
@@ -94,7 +94,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
           position: 'fixed',
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
           left: 'calc(8px + env(safe-area-inset-left))',
-          zIndex: 50,
+          zIndex: 'var(--z-nav)',
           background: 'var(--card)',
           border: '1px solid var(--border)',
           borderRadius: 14,
@@ -133,7 +133,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          zIndex: 50,
+          zIndex: 'var(--z-nav)',
           background: 'var(--card)',
           border: '1px solid var(--border)',
           borderRadius: 16,
@@ -215,7 +215,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       )}
 
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 'var(--z-nav)',
         background: 'var(--card)', borderTop: '1px solid var(--border)',
         display: 'flex',
         paddingBottom: 'env(safe-area-inset-bottom)',

@@ -257,7 +257,7 @@ const InlineStatus = ({
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20,
+          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 'var(--z-dropdown)',
           background: 'var(--card)', border: '1px solid var(--border)',
           borderRadius: 9, boxShadow: 'var(--shadow-lg)', minWidth: 140, padding: 4,
         }}>

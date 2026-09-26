@@ -115,7 +115,7 @@ export const Toaster = ({ placement = 'bottom-right' }: { placement?: ToastPlace
       data-placement={placement}
       style={{
         position: 'fixed',
-        zIndex: 2000,
+        zIndex: 'var(--z-toast)',
         display: 'flex',
         // 新しいトーストを画面端側に積む
         flexDirection: isTop ? 'column-reverse' : 'column',

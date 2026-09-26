@@ -788,7 +788,7 @@ export const PageFiles = ({
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 60,
+            zIndex: 'var(--z-modal)',
             background: 'rgba(0,0,0,0.45)',
             display: 'flex',
             alignItems: 'center',

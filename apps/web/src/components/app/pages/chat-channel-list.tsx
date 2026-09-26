@@ -290,7 +290,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
             border: '1px solid var(--border-2)',
             borderRadius: 8,
             boxShadow: 'var(--shadow-pop)',
-            zIndex: 300,
+            zIndex: 'var(--z-popover)',
           }}
         >
           {actions.map((action, index) => (
@@ -557,7 +557,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', minWidth: 160, overflow: 'hidden' }}>
           {members.map(m => (
             <button
               key={m.userId}

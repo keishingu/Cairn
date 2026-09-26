@@ -243,10 +243,10 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
 
           {switcherOpen && (
             <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSwitcherOpen(false)}/>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }} onClick={() => setSwitcherOpen(false)}/>
               <div style={{
                 position: 'absolute', top: '100%', left: 4, right: 4,
-                zIndex: 100,
+                zIndex: 'var(--z-dropdown)',
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 10,
@@ -373,12 +373,12 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         {switcherOpen && (
           <>
             <div
-              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }}
               onClick={() => setSwitcherOpen(false)}
             />
             <div style={{
               position: 'absolute', top: '100%', left: 12, right: 12,
-              zIndex: 100,
+              zIndex: 'var(--z-dropdown)',
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 10,
@@ -606,7 +606,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     <div style={{
       position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
       background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 'var(--z-dropdown)',
       minWidth: 160,
     }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',

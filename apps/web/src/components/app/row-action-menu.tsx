@@ -46,7 +46,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
   }, [open])
 
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
-  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 300, minWidth: 120 }
+  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120 }
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>

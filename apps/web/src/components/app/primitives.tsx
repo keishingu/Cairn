@@ -387,7 +387,7 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   }, [onClose])
 
   return (
-    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>
@@ -484,7 +484,7 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-      zIndex: 50,
+      zIndex: 'var(--z-nav)',
     }}
   >
     <Icon name="plus" size={22}/>

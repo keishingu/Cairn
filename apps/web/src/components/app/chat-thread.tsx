@@ -470,7 +470,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 <span style={{
                   position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 100,
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 'var(--z-dropdown)',
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   {r.userNames.join(t(', '))}
@@ -724,8 +724,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const el = textareaRef.current ?? compactInputRef.current
     const rect = el?.getBoundingClientRect()
     const style: React.CSSProperties = rect
-      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
-      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 'var(--z-popover)' }
+      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 'var(--z-dropdown)' }
     return (
       <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (

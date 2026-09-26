@@ -129,6 +129,13 @@ const { data } = useQuery({
   - **インライン編集の保存成功はトーストしない**（blur のたびに鳴ると煩い）。失敗時のみトーストで知らせる
   - フォームのバリデーションエラーや読み込み失敗など「その場に留めて直す」性質のものは入力近傍に `components/app/inline-error.tsx` の `InlineError` で出す（赤文字は `variant="text"`、送信失敗など目立たせたいものは `variant="box"`）。「⚠」などの絵文字や独自の赤帯は作らない
 
+### 重なり順（z-index）
+
+画面をまたいで重なる要素（ナビ・メニュー・モーダル・トースト等）は `globals.css` の `--z-*` を使い、数値を直書きしない（`zIndex: 'var(--z-modal)'`）。コンポーネント内だけの前後関係（1〜10）は直書きでよい。
+
+- 画面内のメニュー・ポップオーバーは `--z-dropdown`、`position: fixed` でモーダルの上にも出るメニュー・ピッカーは `--z-popover`
+- モーダル・ボトムシートは `--z-modal`、画像ビューアは `--z-lightbox`、トーストは `--z-toast`
+
 ### 未読件数バッジ
 
 未読件数の表示は `primitives.tsx` の `UnreadBadge` を使う（accent 色のピル・件数表示・既定で 99 超は `99+`）。

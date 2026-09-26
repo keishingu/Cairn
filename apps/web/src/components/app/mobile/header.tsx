@@ -88,7 +88,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
       paddingLeft: 'calc(16px + env(safe-area-inset-left))',
       paddingRight: 'calc(16px + env(safe-area-inset-right))',
       background: 'var(--card)', borderBottom: '1px solid var(--border)',
-      position: 'sticky', top: 0, zIndex: 20,
+      position: 'sticky', top: 0, zIndex: 'var(--z-sticky)',
     }}>
       {/* バックボタンがない最上位ページではワークスペースロゴを表示 */}
       {!onBack ? (
@@ -118,12 +118,12 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
           {wsSwitcherOpen && (
             <>
               <div
-                style={{ position: 'fixed', inset: 0, zIndex: 29 }}
+                style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }}
                 onClick={() => setWsSwitcherOpen(false)}
               />
               <div style={{
                 position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                zIndex: 30,
+                zIndex: 'var(--z-dropdown)',
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 12,

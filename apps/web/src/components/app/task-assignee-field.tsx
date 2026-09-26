@@ -240,7 +240,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
             ...(menuPosition.top != null ? { top: menuPosition.top } : {}),
             ...(menuPosition.bottom != null ? { bottom: menuPosition.bottom } : {}),
             width: menuPosition.width,
-            zIndex: 1100,
+            zIndex: 'var(--z-popover)',
             background: 'var(--card)',
             border: '1px solid var(--border)',
             borderRadius: 10,

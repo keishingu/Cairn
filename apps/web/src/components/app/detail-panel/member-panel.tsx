@@ -319,7 +319,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             position: 'absolute', top: 'calc(100% + 4px)', left: 0,
             background: 'var(--card)', border: '1px solid var(--border)',
             borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-            zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
+            zIndex: 'var(--z-dropdown)', overflow: 'hidden', minWidth: isMobile ? 128 : 110,
           }}
         >
           {selectableRoles.map(role => (
@@ -370,7 +370,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)',
         background: 'var(--bg)',
         display: 'flex', flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',

@@ -46,7 +46,7 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}
       onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
