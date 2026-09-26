@@ -250,7 +250,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                boxShadow: 'var(--shadow-pop)',
                 padding: '6px',
                 marginTop: 4,
                 minWidth: 200,
@@ -382,7 +382,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--shadow-pop)',
               padding: '6px',
               marginTop: 4,
             }}>
@@ -545,10 +545,10 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: C
 )
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
-  { value: 'online',  label: 'Online',   color: '#22C55E' },
-  { value: 'away',    label: 'Away',       color: '#F59E0B' },
-  { value: 'busy',    label: 'Busy',   color: '#EF4444' },
-  { value: 'offline', label: 'Offline',   color: '#9CA3AF' },
+  { value: 'online',  label: 'Online',   color: 'var(--emerald)' },
+  { value: 'away',    label: 'Away',       color: 'var(--amber)' },
+  { value: 'busy',    label: 'Busy',   color: 'var(--red)' },
+  { value: 'offline', label: 'Offline',   color: 'var(--text-4)' },
 ]
 
 const statusLabel = (status: UserStatus | undefined) =>

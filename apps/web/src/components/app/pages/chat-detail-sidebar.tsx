@@ -120,8 +120,8 @@ const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClos
 
   return (
     <div role="dialog" aria-modal="true" aria-label={t('Preview of {name}', { name: file.fileName })} onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-pop)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id}/>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>

@@ -483,7 +483,7 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
       background: 'var(--accent)', color: 'var(--on-accent)',
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+      boxShadow: 'var(--shadow-fab)',
       zIndex: 'var(--z-nav)',
     }}
   >

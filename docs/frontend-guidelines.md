@@ -136,6 +136,10 @@ const { data } = useQuery({
 - 画面内のメニュー・ポップオーバーは `--z-dropdown`、`position: fixed` でモーダルの上にも出るメニュー・ピッカーは `--z-popover`
 - モーダル・ボトムシートは `--z-modal`、画像ビューアは `--z-lightbox`、トーストは `--z-toast`
 
+### 影・背景幕の色
+
+影は `--shadow-*`（メニュー・ダイアログは `--shadow-pop`、ボトムシートは `--shadow-sheet`、FAB は `--shadow-fab`）、モーダルの背景幕は `--overlay` を使う。`rgba(0,0,0,…)` の直書きはダークモードで影が消えたり、ライトで濁ったりする。写真の上に重ねる白文字・QR コードの白地など、テーマに依らず固定の色だけは直書きでよい。
+
 ### 未読件数バッジ
 
 未読件数の表示は `primitives.tsx` の `UnreadBadge` を使う（accent 色のピル・件数表示・既定で 99 超は `99+`）。

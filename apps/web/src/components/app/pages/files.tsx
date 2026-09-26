@@ -789,7 +789,7 @@ export const PageFiles = ({
             position: 'fixed',
             inset: 0,
             zIndex: 'var(--z-modal)',
-            background: 'rgba(0,0,0,0.45)',
+            background: 'var(--overlay)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -806,7 +806,7 @@ export const PageFiles = ({
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 12,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+              boxShadow: 'var(--shadow-pop)',
               overflow: 'hidden',
             }}
           >

@@ -42,8 +42,8 @@ export const viewport: Viewport = {
   // env(safe-area-inset-*) を使って各UI側で安全な余白を確保する
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#4F8EF7' },
-    { media: '(prefers-color-scheme: dark)', color: '#0B1622' },
+    { media: '(prefers-color-scheme: light)', color: '#F8FAFC' },
+    { media: '(prefers-color-scheme: dark)', color: '#0B0F14' },
   ],
   // iOS Safari で input/textarea フォーカス時の自動ズームを防ぐ
   maximumScale: 1,

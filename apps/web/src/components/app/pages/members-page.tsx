@@ -612,7 +612,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
-        background: 'rgba(0,0,0,0.4)',
+        background: 'var(--overlay)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px 16px',
       }}
