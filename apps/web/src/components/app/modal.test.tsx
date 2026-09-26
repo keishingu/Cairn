@@ -4,6 +4,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { describe, expect, it } from 'vitest'
 import { Modal } from './primitives'
 
@@ -124,5 +125,27 @@ describe('Modal', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(screen.getByRole('dialog', { name: '編集' })).toBeInTheDocument()
     expect(openConfirm).toHaveFocus()
+  })
+
+  it('モーダルが portal で出したメニューの中では、Tab でモーダルの先頭へ引き戻さない', async () => {
+    const user = userEvent.setup()
+    render(
+      <Modal onClose={() => {}}>
+        <div role="dialog">
+          <button type="button">閉じる</button>
+          {createPortal(
+            <div role="listbox">
+              <input aria-label="担当者を検索" autoFocus />
+              <button type="button">山田</button>
+            </div>,
+            document.body,
+          )}
+        </div>
+      </Modal>,
+    )
+
+    expect(screen.getByRole('textbox', { name: '担当者を検索' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: '山田' })).toHaveFocus()
   })
 })

@@ -385,6 +385,10 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([t
 // Tab の循環と Escape は一番上のものだけが受け持つ
 const openModals: HTMLElement[] = []
 const isTopModal = (root: HTMLElement | null) => root !== null && openModals[openModals.length - 1] === root
+// createPortal で body 直下などに出したメニューもモーダルの一部として扱うため、React の合成イベント
+// （portal でも React の親子関係に沿って伝わる）で「どのモーダルの中から来たキー入力か」を印付けする
+const OWNER_KEY = '__cairnModalOwner'
+type OwnedKeyboardEvent = KeyboardEvent & { [OWNER_KEY]?: HTMLElement }
 
 export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
   const rootRef = React.useRef<HTMLDivElement>(null)
@@ -404,11 +408,16 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
     const root = rootRef.current
     if (root) openModals.push(root)
     const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
-    // 中身が autoFocus で先にフォーカスを取っていればそれを尊重する
-    if (root && !root.contains(document.activeElement)) (focusables()[0] ?? root).focus()
+    // 中身（portal で出したものを含む）が autoFocus で先にフォーカスを取っていればそれを尊重し、
+    // フォーカスが開いた元の要素や body に残っているときだけ中へ移す
+    const active = document.activeElement
+    const stillOutside = active === null || active === document.body || active === opener
+    if (root && !root.contains(active) && stillOutside) (focusables()[0] ?? root).focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !root || !isTopModal(root)) return
+      // このモーダルが描画した portal（担当者選択のメニューなど）の中なら、ブラウザ既定の Tab 移動に任せる
+      if (!root.contains(document.activeElement) && (e as OwnedKeyboardEvent)[OWNER_KEY] === root) return
       const items = focusables()
       // 処理中でボタンがすべて無効なときも背後へ抜けないよう、モーダル自体に留める
       if (items.length === 0) { e.preventDefault(); root.focus(); return }
@@ -429,7 +438,16 @@ export const Modal = ({ onClose, children }: { onClose: () => void; children: Re
   }, [opener])
 
   return (
-    <div ref={rootRef} tabIndex={-1} data-cairn-modal style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      data-cairn-modal
+      onKeyDown={e => {
+        // 入れ子のモーダルでは内側から先に通るので、最初に付いた印（一番内側）を残す
+        const native = e.nativeEvent as OwnedKeyboardEvent
+        if (!native[OWNER_KEY] && rootRef.current) native[OWNER_KEY] = rootRef.current
+      }}
+      style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>
