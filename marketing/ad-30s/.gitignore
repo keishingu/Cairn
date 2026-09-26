@@ -3,3 +3,4 @@ fonts/
 fonts.local.css
 out/
 preview/
+__pycache__/
