@@ -2275,22 +2275,18 @@ const SettingsIntegrations = () => {
 
   // ── Google カレンダー読み込み ───────────────────────────────────────
   const queryClient = useQueryClient()
-  const [gcalMsg, setGcalMsg] = React.useState<{ text: string; ok: boolean } | null>(null)
-
+  // OAuth コールバックから戻ったときの結果をトーストで知らせる（処理後に URL からパラメータを消すので再実行されても重複しない）
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const gcal = params.get('gcal')
-    if (gcal === 'connected') setGcalMsg({ text: 'Connected to Google Calendar', ok: true })
-    else if (gcal === 'error')
-      setGcalMsg({ text: 'Could not connect. Try again.', ok: false })
-    else if (gcal === 'denied') setGcalMsg({ text: 'The connection was canceled.', ok: false })
-    if (gcal) {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('gcal')
-      window.history.replaceState({}, '', url.toString())
-      setTimeout(() => setGcalMsg(null), 5000)
-    }
-  }, [])
+    if (!gcal) return
+    if (gcal === 'connected') toast.success(t('Connected to Google Calendar'))
+    else if (gcal === 'error') toast.error(t('Could not connect. Try again.'))
+    else if (gcal === 'denied') toast.info(t('The connection was canceled.'))
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gcal')
+    window.history.replaceState({}, '', url.toString())
+  }, [t])
 
   const { data: gcalStatus, isLoading: gcalLoading } = useQuery<GcalStatusDto>({
     queryKey: ['gcal-status'],
@@ -2513,26 +2509,6 @@ const SettingsIntegrations = () => {
           {t('Overlays Google Calendar events on the calendar view. This is experimental and may change.')}
         </p>
 
-        {gcalMsg && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '10px 14px',
-              borderRadius: 8,
-              fontSize: 12.5,
-              background: gcalMsg.ok ? 'var(--emerald-soft)' : 'var(--red-soft)',
-              color: gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)',
-              border: `1px solid ${gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)'}22`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Icon name={gcalMsg.ok ? 'check-circle' : 'alert-circle'} size={14} />
-            {t(gcalMsg.text)}
-          </div>
-        )}
-
         <div className="card" style={{ padding: 0 }}>
           {gcalLoading ? (
             <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -2540,7 +2516,7 @@ const SettingsIntegrations = () => {
             </div>
           ) : !gcalStatus?.configured ? (
             <div style={{ padding: '16px', fontSize: 12.5, color: 'var(--text-3)' }}>
-              <Icon name="alert-circle" size={13} style={{ marginRight: 6 }} />
+              <Icon name="alertTriangle" size={13} style={{ marginRight: 6 }} />
               {t('Environment variables')}{' '}
               <code
                 style={{

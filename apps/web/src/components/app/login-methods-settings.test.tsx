@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LoginMethodsSettings } from './login-methods-settings'
+import { Toaster } from './toaster'
+import { __resetToastsForTest } from '@/lib/toast'
 
 const mocks = vi.hoisted(() => ({
   getUserIdentities: vi.fn(),
@@ -36,12 +38,14 @@ function renderLoginMethods() {
   return render(
     <QueryClientProvider client={queryClient}>
       <LoginMethodsSettings />
+      <Toaster />
     </QueryClientProvider>,
   )
 }
 
 describe('LoginMethodsSettings', () => {
   beforeEach(() => {
+    __resetToastsForTest()
     mocks.getUserIdentities.mockReset()
     mocks.linkIdentity.mockReset()
     mocks.unlinkIdentity.mockReset()

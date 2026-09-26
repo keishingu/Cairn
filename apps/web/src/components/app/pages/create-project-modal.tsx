@@ -117,7 +117,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
           }}
         >
-          <Icon name="x" size={12}/>
+          <Icon name="close" size={12}/>
           {t('Automatic')}
         </button>
       </div>

@@ -266,7 +266,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
               style={optionStyle(value === null)}
             >
               <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--card-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="x" size={11} color="var(--text-3)" />
+                <Icon name="close" size={11} color="var(--text-3)" />
               </span>
               <span style={{ flex: 1 }}>{t('No assignee')}</span>
             </button>

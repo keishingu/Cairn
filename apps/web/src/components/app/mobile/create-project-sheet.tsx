@@ -272,7 +272,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     }}
                   >
-                    <Icon name="x" size={13}/>
+                    <Icon name="close" size={13}/>
                     {t('Automatic')}
                   </button>
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { Inter, Noto_Sans_JP } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AccentColorProvider } from '@/components/accent-color-provider'
@@ -54,6 +55,7 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   const { locale, preference } = await readRequestLocale()
+  const isMobile = (await headers()).get('x-device') === 'mobile'
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansJP.variable}`} style={{ margin: 0, padding: 0, height: '100%' }}>
@@ -68,7 +70,7 @@ export default async function RootLayout({
               <DynamicFavicon />
             </AccentColorProvider>
           </PostHogProvider>
-          <Toaster />
+          <Toaster placement={isMobile ? 'top' : 'bottom-right'} />
         </ThemeProvider>
         <ServiceWorkerRegistrar />
       </body>

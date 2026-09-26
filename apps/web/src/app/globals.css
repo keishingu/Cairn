@@ -280,3 +280,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── トースト（components/app/toaster.tsx）──
+   slot は grid 行を 1fr→0fr に畳んで、消えた行の分だけ残りのトーストを滑らかに詰める */
+.app-toast-slot { display: grid; grid-template-rows: 1fr; padding: 4px 0; animation: toastSlotIn 220ms cubic-bezier(.2,.8,.2,1); }
+.app-toast-slot > .app-toast { min-height: 0; animation: toastIn 220ms cubic-bezier(.2,.8,.2,1); }
+.app-toast-slot[data-leaving] { grid-template-rows: 0fr; padding: 0; animation: toastSlotOut 200ms ease-in forwards; }
+.app-toast-slot[data-leaving] > .app-toast { overflow: hidden; animation: toastOut 160ms ease-in forwards; }
+.app-toaster[data-placement="top"] .app-toast-slot > .app-toast { --toast-from-y: -10px; }
+.app-toast-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex-shrink: 0;
+  border: none; background: transparent; border-radius: 6px;
+  color: var(--text-4); cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+.app-toast-close:hover { background: var(--card-hover); color: var(--text); }
+.app-toast-close:focus-visible { outline: none; box-shadow: var(--ring); }
+@keyframes toastSlotIn  { from { grid-template-rows: 0fr; padding: 0; } to { grid-template-rows: 1fr; padding: 4px 0; } }
+@keyframes toastSlotOut { from { grid-template-rows: 1fr; padding: 4px 0; } to { grid-template-rows: 0fr; padding: 0; } }
+@keyframes toastIn  { from { opacity: 0; transform: translateY(var(--toast-from-y, 10px)) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-toast-slot, .app-toast-slot > .app-toast,
+  .app-toast-slot[data-leaving], .app-toast-slot[data-leaving] > .app-toast { animation-duration: 1ms; }
+  .app-toast-close { transition: none; }
+}
