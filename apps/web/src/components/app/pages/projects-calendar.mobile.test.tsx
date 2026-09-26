@@ -42,8 +42,8 @@ vi.mock('../mobile/create-project-sheet', () => ({
       memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
-      isOwner: true,
-      isMember: true,
+      isHosting: true,
+      isJoined: true,
       archived: false,
       coverPhotoIdx: 0,
       coverPhotoUrl: null,
@@ -70,9 +70,9 @@ vi.mock('../mobile/create-project-sheet', () => ({
 
 const mockUseWorkspacePermissions = vi.fn(() => ({
   wsRole: 'owner',
-  isOwner: true,
+  isHosting: true,
   isAdmin: true,
-  isMember: true,
+  isJoined: true,
   isGuest: false,
 }))
 
@@ -135,8 +135,8 @@ function makeProject(overrides: Partial<ProjectDto> = {}): ProjectDto {
     memberAvatarUrls: [],
     taskCount: 0,
     completedTaskCount: 0,
-    isOwner: true,
-    isMember: true,
+    isHosting: true,
+    isJoined: true,
     archived: false,
     coverPhotoIdx: 0,
     coverPhotoUrl: null,
@@ -178,9 +178,9 @@ describe('PageCalendar (モバイル)', () => {
     mockUseWorkspacePermissions.mockReset()
     mockUseWorkspacePermissions.mockReturnValue({
       wsRole: 'owner',
-      isOwner: true,
+      isHosting: true,
       isAdmin: true,
-      isMember: true,
+      isJoined: true,
       isGuest: false,
     })
     mockUseCurrentUser.mockReset()
@@ -260,9 +260,9 @@ describe('PageCalendar (モバイル)', () => {
     const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
     mockUseWorkspacePermissions.mockReturnValue({
       wsRole: 'member',
-      isOwner: false,
+      isHosting: false,
       isAdmin: false,
-      isMember: true,
+      isJoined: true,
       isGuest: false,
     })
 

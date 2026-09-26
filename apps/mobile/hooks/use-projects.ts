@@ -14,8 +14,8 @@ export interface ProjectDto {
   memberNames: string[]
   taskCount: number
   completedTaskCount: number
-  isOwner: boolean
-  isMember: boolean
+  isJoined: boolean
+  isHosting: boolean
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null

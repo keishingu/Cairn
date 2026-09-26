@@ -69,7 +69,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
-    return localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
+    const saved = localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
+    // 旧 ID（mine/owned）を参加中/主催の意味に合わせて移行
+    if (saved === 'mine') return 'joined'
+    if (saved === 'owned') return 'hosting'
+    return saved
   })
   const setFilter = (f: string) => {
     setFilterState(f)
@@ -112,18 +116,18 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const counts = {
     all:      projects.filter(p => !p.archived).length,
-    mine:     projects.filter(p => p.isMember && !p.archived).length,
-    owned:    projects.filter(p => p.isOwner && !p.archived).length,
+    joined:   projects.filter(p => p.isJoined && !p.archived).length,
+    hosting:  projects.filter(p => p.isHosting && !p.archived).length,
     active:   projects.filter(p => !p.archived).length,
     archived: projects.filter(p => p.archived).length,
   }
 
   const filterTabs = [
-    { id: 'all',      label: t('All'),     n: counts.all },
-    { id: 'mine',     label: t('Joined'),     n: counts.mine },
-    { id: 'owned',    label: t('Hosting'),       n: counts.owned },
-    { id: 'active',   label: t('In progress'),     n: counts.active },
-    { id: 'archived', label: t('Archive'), n: counts.archived },
+    { id: 'all',      label: t('All'),         n: counts.all },
+    { id: 'joined',   label: t('Joined'),      n: counts.joined },
+    { id: 'hosting',  label: t('Hosting'),     n: counts.hosting },
+    { id: 'active',   label: t('In progress'), n: counts.active },
+    { id: 'archived', label: t('Archive'),     n: counts.archived },
   ]
 
   // ⌥[ / ⌥]: フィルタタブ切替
@@ -139,8 +143,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
-      case 'mine':     return projects.filter(p => p.isMember && !p.archived)
-      case 'owned':    return projects.filter(p => p.isOwner && !p.archived)
+      case 'joined':   return projects.filter(p => p.isJoined && !p.archived)
+      case 'hosting':  return projects.filter(p => p.isHosting && !p.archived)
       case 'active':   return projects.filter(p => !p.archived)
       case 'archived': return projects.filter(p => p.archived)
       default:         return projects.filter(p => !p.archived)
