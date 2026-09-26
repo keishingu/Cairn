@@ -158,20 +158,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={!channelId || isUploading}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '5px 10px',
-            borderRadius: 7,
-            border: '1px solid var(--border)',
-            background: 'var(--card)',
-            color: 'var(--text-2)',
-            fontSize: 12,
-            cursor: !channelId || isUploading ? 'default' : 'pointer',
-            fontFamily: 'inherit',
-            opacity: !channelId || isUploading ? 0.6 : 1,
-          }}
+          className="btn btn-sm"
         >
           <Icon name="plus" size={13} />
           {isUploading ? t('Uploading...') : t('Add a file')}

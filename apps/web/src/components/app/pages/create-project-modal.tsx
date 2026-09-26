@@ -49,8 +49,7 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
           fontFamily: 'inherit', cursor: 'pointer',
           transition: 'background .12s, border-color .12s',
         }}
-          onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-          onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}
+          className={!selected ? 'hover-bg' : undefined}
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }}/>
           {s.name}

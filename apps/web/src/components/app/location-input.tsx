@@ -134,8 +134,7 @@ export function LocationInput({
                 background: 'transparent', cursor: 'pointer', textAlign: 'left',
                 fontFamily: 'inherit',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ color: 'var(--text-4)', flexShrink: 0, display: 'flex' }}>
                 <Icon name="map-pin" size={13}/>

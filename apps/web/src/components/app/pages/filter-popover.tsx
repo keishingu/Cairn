@@ -90,8 +90,7 @@ export const FilterPopover = ({
             <label
               key={s.id}
               style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-              onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className={!focused ? 'hover-bg' : undefined}
             >
               <input
                 type="checkbox"
@@ -119,8 +118,7 @@ export const FilterPopover = ({
                 <label
                   key={name}
                   style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-                  onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  className={!focused ? 'hover-bg' : undefined}
                 >
                   <input
                     type="checkbox"
@@ -145,12 +143,7 @@ export const FilterPopover = ({
       )}
 
       {hasAny && (
-        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} style={{
-          marginTop: 10, width: '100%', padding: '7px 0',
-          border: '1px solid var(--border)', borderRadius: 6,
-          background: 'transparent', color: 'var(--text-3)',
-          fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-        }}>
+        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} className="btn btn-sm btn-block" style={{ marginTop: 10 }}>
           {t('Clear all')}
         </button>
       )}

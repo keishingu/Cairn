@@ -172,14 +172,32 @@
 .app *::-webkit-scrollbar-track { background: transparent; }
 
 .app .btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; font-family: inherit; }
+.app .btn { justify-content:center; white-space:nowrap; }
 .app .btn:disabled { opacity:.5; cursor:not-allowed; }
-.app .btn:hover { background: var(--card-hover); border-color: var(--border-2); }
+.app .btn:not(:disabled):hover { background: var(--card-hover); border-color: var(--border-2); }
+.app .btn:focus-visible { outline:none; box-shadow: var(--ring); }
 .app .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight:600; }
-.app .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.app .btn-primary:not(:disabled):hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .app .btn-ghost { background: transparent; border-color: transparent; }
-.app .btn-ghost:hover { background: var(--card-hover); }
+.app .btn-ghost:not(:disabled):hover { background: var(--card-hover); border-color: transparent; }
 .app .btn-danger { background: var(--red); border-color: var(--red); color:#fff; font-weight:600; }
-.app .btn-danger:hover { background: #DC2626; border-color: #DC2626; }
+.app .btn-danger:not(:disabled):hover { background: #DC2626; border-color: #DC2626; }
+/* サイズ: 既定 34px。行内の小さな操作は sm、フォームの主操作は lg */
+.app .btn-sm { height:28px; padding:0 10px; font-size:12px; border-radius:7px; gap:5px; }
+.app .btn-lg { height:40px; padding:0 16px; font-size:14px; }
+.app .btn-block { display:flex; width:100%; }
+/* アイコンだけのボタン。JS の onMouseEnter で背景を塗り替えず、これを使う */
+.app .icon-btn { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:28px; height:28px; padding:0; border:none; border-radius:7px; background:transparent; color:var(--text-3); cursor:pointer; font-family:inherit; transition: background .12s, color .12s; }
+.app .icon-btn:not(:disabled):hover, .app .icon-btn[aria-expanded="true"] { background: var(--card-hover); color: var(--text); }
+.app .icon-btn:focus-visible { outline:none; box-shadow: var(--ring); }
+.app .icon-btn:disabled { opacity:.5; cursor:not-allowed; }
+.app .icon-btn-sm { width:24px; height:24px; border-radius:6px; }
+/* 行・メニュー項目のホバー。インラインの background/color より優先させるため !important を付ける */
+.app .hover-bg:not(:disabled):hover { background: var(--card-hover) !important; }
+.app .hover-bg-card:not(:disabled):hover { background: var(--card) !important; }
+.app .hover-bg-danger:not(:disabled):hover { background: var(--red-soft) !important; }
+.app .hover-text:not(:disabled):hover { color: var(--text-2) !important; }
+.app :is(.hover-bg, .hover-bg-card, .hover-bg-danger):focus-visible { outline: none; box-shadow: var(--ring); }
 .app .form-control { height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--card-2); color:var(--text); font-size:13px; font-family:inherit; outline:none; transition:background .12s, border-color .12s, box-shadow .12s; }
 .app .form-control:hover { border-color:var(--border-2); }
 .app .form-control:focus-visible { border-color:var(--accent); box-shadow:var(--ring); outline:2px solid var(--accent); outline-offset:2px; }

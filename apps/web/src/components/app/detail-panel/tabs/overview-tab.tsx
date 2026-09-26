@@ -272,8 +272,7 @@ const InlineStatus = ({
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
               {s.name}

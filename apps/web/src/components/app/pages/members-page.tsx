@@ -141,8 +141,7 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
                   background: 'transparent', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer',
                   fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <Icon name={isArchived ? 'refresh' : 'archive'} size={13} />
                 {isArchived ? t('Remove from archive') : t('Move to archive')}
@@ -673,14 +672,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 type="button"
                 onClick={generateLink}
                 disabled={createInviteMutation.isPending}
-                style={{
-                  padding: '10px 16px', borderRadius: 8, border: 'none',
-                  background: createInviteMutation.isPending ? 'var(--border-2)' : 'var(--accent)',
-                  color: createInviteMutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
-                  fontSize: 14, fontWeight: 600,
-                  cursor: createInviteMutation.isPending ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-              }}
+                className="btn btn-primary btn-lg"
             >
               {createInviteMutation.isPending ? t('Generating...') : t('Generate invite link')}
             </button>
@@ -721,10 +713,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               <button
                 type="button"
                 onClick={generateLink}
-                style={{
-                  padding: '6px 0', borderRadius: 8, border: '1px solid var(--border-2)',
-                  background: 'transparent', color: 'var(--text-3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-                }}
+                className="btn btn-sm"
               >
                 {t('Generate another link')}
               </button>

@@ -104,14 +104,8 @@ export default function NewWorkspacePage() {
             <button
               type="submit"
               disabled={loading || !workspaceName.trim()}
-              style={{
-                padding: '10px 16px', borderRadius: 8, border: 'none',
-                background: loading || !workspaceName.trim() ? 'var(--border-2)' : 'var(--accent)',
-                color: loading || !workspaceName.trim() ? 'var(--text-4)' : 'var(--on-accent)',
-                fontSize: 14, fontWeight: 600,
-                cursor: loading || !workspaceName.trim() ? 'default' : 'pointer',
-                fontFamily: 'inherit', marginTop: 4,
-              }}
+              className="btn btn-primary btn-lg"
+              style={{ marginTop: 4 }}
             >
               {loading ? t('Creating...') : t('Create workspace')}
             </button>
@@ -121,12 +115,7 @@ export default function NewWorkspacePage() {
         <button
           type="button"
           onClick={() => router.back()}
-          style={{
-            width: '100%', marginTop: 16, padding: '10px 16px', borderRadius: 8,
-            border: '1px solid var(--border-2)', background: 'transparent',
-            color: 'var(--text-3)', fontSize: 14, fontWeight: 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
+          className="btn btn-lg btn-block" style={{ marginTop: 16 }}
         >{t('Cancel')}</button>
       </div>
     </div>

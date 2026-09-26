@@ -128,17 +128,7 @@ export default function OnboardingInvitePage() {
                 type="button"
                 onClick={generateLink}
                 disabled={generating}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: generating ? 'var(--border-2)' : 'var(--accent)',
-                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: generating ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-                }}
+                className="btn btn-primary btn-lg"
               >
                 {generating ? t('Generating...') : t('Generate invite link')}
               </button>
@@ -216,16 +206,7 @@ export default function OnboardingInvitePage() {
               <button
                 type="button"
                 onClick={generateLink}
-                style={{
-                  padding: '6px 0',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-2)',
-                  background: 'transparent',
-                  color: 'var(--text-3)',
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
+                className="btn btn-sm"
               >{t('Generate another link')}</button>
             </div>
           )}
@@ -234,19 +215,7 @@ export default function OnboardingInvitePage() {
         <button
           type="button"
           onClick={() => router.push('/chats')}
-          style={{
-            width: '100%',
-            marginTop: 16,
-            padding: '10px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--border-2)',
-            background: 'transparent',
-            color: 'var(--text-3)',
-            fontSize: 14,
-            fontWeight: 500,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
+          className="btn btn-lg btn-block" style={{ marginTop: 16 }}
         >{t('Skip and get started')}</button>
       </div>
     </div>

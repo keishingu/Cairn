@@ -400,26 +400,7 @@ const InvitePanel = ({
       <button
         onClick={onConfirm}
         disabled={selectedUserIds.length === 0 || !selectedRoleId || isLoading}
-        style={{
-          width: '100%',
-          padding: '10px',
-          borderRadius: 9,
-          border: 'none',
-          background:
-            selectedUserIds.length > 0 && selectedRoleId && !isLoading
-              ? 'var(--accent)'
-              : 'var(--card-2)',
-          color:
-            selectedUserIds.length > 0 && selectedRoleId && !isLoading
-              ? 'var(--on-accent)'
-              : 'var(--text-4)',
-          fontSize: 13.5,
-          fontWeight: 700,
-          cursor:
-            selectedUserIds.length > 0 && selectedRoleId && !isLoading ? 'pointer' : 'not-allowed',
-          fontFamily: 'inherit',
-          transition: 'background 0.15s',
-        }}
+        className="btn btn-primary btn-lg btn-block"
       >
         {isLoading ? t('Adding...') : t('Add {count} people', { count: selectedUserIds.length })}
       </button>

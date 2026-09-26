@@ -409,10 +409,7 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" aria-label={t('Close')} onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-    >
+    <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
     </button>
   </header>

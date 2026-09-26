@@ -244,8 +244,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                         isPinned ? unpinProject.mutate(project.id) : pinProject.mutate(project.id)
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
                       <Icon name="pin" size={13}/>
                       {isPinned ? t('Unpin') : t('Pin')}
@@ -253,8 +252,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                     <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
                       <Icon name="image" size={13}/> {t('Change cover photo')}
                     </button>

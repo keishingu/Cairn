@@ -186,18 +186,8 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: loading ? 'var(--border-2)' : 'var(--accent)',
-              color: loading ? 'var(--text-4)' : 'var(--on-accent)',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              marginTop: 4,
-            }}
+            className="btn btn-primary btn-lg"
+            style={{ marginTop: 4 }}
           >
             {loading ? t('Signing in...') : t('Sign in')}
           </button>

@@ -386,10 +386,8 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             return (
               <div
                 key={f.id}
-                className="chat-detail-row"
+                className="chat-detail-row hover-bg"
                 style={{ width: 'calc(100% + 12px)', display: 'flex', alignItems: 'center', gap: 2, padding: '5px 2px 5px 6px', margin: '0 -6px', borderRadius: 7 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
                 {isRenaming ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -495,13 +493,8 @@ const ChatDetailContent = ({
         <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>{t('Project channel')}</div>
         <button
           onClick={onOpenProject}
-          style={{
-            marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-            border: '1px solid var(--border)', background: 'var(--card-2)',
-            color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'inherit',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}
+          className="btn btn-block"
+          style={{ marginTop: 10 }}
         >
           <Icon name="arrowRight" size={13}/>
           {t('Open project')}
@@ -521,13 +514,8 @@ const ChatDetailContent = ({
           <button
             onClick={() => dmParticipantId && onOpenMember(dmParticipantId)}
             disabled={!dmParticipantId}
-            style={{
-              marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-              border: '1px solid var(--border)', background: 'var(--card-2)',
-              color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-              cursor: dmParticipantId ? 'pointer' : 'default', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}
+            className="btn btn-block"
+            style={{ marginTop: 10 }}
           >
             <Icon name="users" size={13}/>
             {t('View profile')}
@@ -541,13 +529,8 @@ const ChatDetailContent = ({
             </div>
             <button
               onClick={onInviteMember}
-              style={{
-                marginTop: 10, width: '100%', height: 34, borderRadius: 8,
-                border: '1px solid var(--border)', background: 'var(--card-2)',
-                color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              }}
+              className="btn btn-block"
+              style={{ marginTop: 10 }}
             >
               <Icon name="userPlus" size={13}/>
               {t('Invite members')}
@@ -593,8 +576,7 @@ const ChatDetailContent = ({
               margin: '0 -6px', borderRadius: 7,
               cursor: clickable ? 'pointer' : 'default',
             }}
-            onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' } : undefined}
-            onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' } : undefined}
+            className={clickable ? 'hover-bg' : undefined}
           >
             <div style={{ position: 'relative' }}>
               <Avatar name={m.name} url={m.url} size={24}/>

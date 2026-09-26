@@ -385,12 +385,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               }}
             />
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              <button onClick={submitEdit}
-                style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >{t('Save')}</button>
-              <button onClick={() => setEditMode(false)}
-                style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >{t('Cancel')}</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={submitEdit}>{t('Save')}</button>
+              <button type="button" className="btn btn-sm" onClick={() => setEditMode(false)}>{t('Cancel')}</button>
               {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
           </div>
