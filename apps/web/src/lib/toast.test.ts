@@ -133,4 +133,19 @@ describe('toast ストア', () => {
     vi.advanceTimersByTime(1)
     expect(current).toHaveLength(0)
   })
+
+  it('一時停止中に同じ内容が来ても再開せず、止めたままにする', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const id = toast.success('コピーしました')
+    pauseToast(id)
+    toast.success('コピーしました')
+    vi.advanceTimersByTime(60_000)
+    expect(current).toHaveLength(1)
+
+    resumeToast(id)
+    vi.advanceTimersByTime(4000)
+    expect(current).toHaveLength(0)
+  })
 })

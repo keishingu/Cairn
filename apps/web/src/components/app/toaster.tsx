@@ -7,7 +7,7 @@ import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { Icon } from './primitives'
 import {
-  subscribeToasts, dismissToast, pauseToast, resumeToast,
+  subscribeToasts, dismissToast, pauseToast, resumeToast, MAX_VISIBLE_TOASTS,
   type ToastItem, type ToastVariant,
 } from '@/lib/toast'
 
@@ -31,16 +31,23 @@ const ToastRow = ({ item, leaving }: RenderedToast) => {
   const t = useT()
   const v = VARIANT[item.variant]
   const isError = item.variant === 'error'
+  // ホバーとフォーカスのどちらかが続いている間は止めたままにする
+  const interaction = React.useRef({ hovered: false, focused: false })
+  const update = (next: Partial<typeof interaction.current>) => {
+    interaction.current = { ...interaction.current, ...next }
+    if (interaction.current.hovered || interaction.current.focused) pauseToast(item.id)
+    else resumeToast(item.id)
+  }
   return (
     <div className="app-toast-slot" data-leaving={leaving || undefined}>
       <div
         className="app-toast"
         role={isError ? 'alert' : 'status'}
         aria-live={isError ? 'assertive' : 'polite'}
-        onMouseEnter={() => pauseToast(item.id)}
-        onMouseLeave={() => resumeToast(item.id)}
-        onFocus={() => pauseToast(item.id)}
-        onBlur={() => resumeToast(item.id)}
+        onMouseEnter={() => update({ hovered: true })}
+        onMouseLeave={() => update({ hovered: false })}
+        onFocus={() => update({ focused: true })}
+        onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) update({ focused: false }) }}
         style={{
           display: 'flex', alignItems: 'flex-start', gap: 10,
           width: '100%', boxSizing: 'border-box',
@@ -84,7 +91,13 @@ function mergeRendered(prev: RenderedToast[], next: ToastItem[]): RenderedToast[
   const prevIds = new Set(prev.map(r => r.item.id))
   const kept = prev.map(r => (nextIds.has(r.item.id) || r.leaving ? r : { ...r, leaving: true }))
   const added = next.filter(t => !prevIds.has(t.id)).map(item => ({ item, leaving: false }))
-  return [...kept, ...added]
+  const merged = [...kept, ...added]
+  // 連続で出したとき退場中の行が積み上がらないよう、上限を超えた分は古い退場行から即座に外す
+  let excess = merged.length - MAX_VISIBLE_TOASTS
+  return merged.filter(r => {
+    if (excess > 0 && r.leaving) { excess--; return false }
+    return true
+  })
 }
 
 /**

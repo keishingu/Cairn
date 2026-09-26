@@ -22,7 +22,7 @@ const DEFAULT_DURATION: Record<ToastVariant, number> = {
   error: 6000,
 }
 // 連打などで積み上がると画面を覆うため、同時表示数を絞って古いものから消す
-const MAX_VISIBLE = 3
+export const MAX_VISIBLE_TOASTS = 3
 
 interface TimerState {
   handle: ReturnType<typeof setTimeout> | null
@@ -95,13 +95,16 @@ function push(message: string, variant: ToastVariant, options?: ToastOptions): n
   // 同じ内容が表示中なら積まずに表示時間だけ延ばす（コピー連打などで同じ行が並ぶのを防ぐ）
   const existing = toasts.find(t => t.message === message && t.variant === variant)
   if (existing) {
-    startTimer(existing.id, duration)
+    const timer = timers.get(existing.id)
+    // ホバー中（一時停止中）なら再開せず、残り時間だけ延ばして止めたままにする
+    if (timer && !timer.handle) timer.remaining = duration
+    else startTimer(existing.id, duration)
     return existing.id
   }
 
   const id = nextId++
   toasts = [...toasts, { id, message, variant }]
-  const overflow = toasts.slice(0, Math.max(0, toasts.length - MAX_VISIBLE))
+  const overflow = toasts.slice(0, Math.max(0, toasts.length - MAX_VISIBLE_TOASTS))
   for (const t of overflow) clearTimer(t.id)
   toasts = toasts.slice(overflow.length)
   emit()
