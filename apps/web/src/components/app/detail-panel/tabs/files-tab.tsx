@@ -7,6 +7,7 @@ import { RowActionMenu } from '../../row-action-menu'
 import { Icon } from '../../primitives'
 import { InlineError } from '../../inline-error'
 import { toast } from '@/lib/toast'
+import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
@@ -104,19 +105,13 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
           if (!res.ok) {
             const data = await res.json().catch(() => ({})) as { error?: string }
-            throw new Error(data.error ?? t('Could not upload {name}', { name: file.name }))
+            throw new Error(data.error ?? t('Could not upload'))
           }
         }),
       )
 
       const succeeded = results.filter((result) => result.status === 'fulfilled').length
-      // サーバーの汎用エラーが並ぶとどのファイルか分からないため、名前を含まない文言には先頭に付ける
-      const failures = results.flatMap((result, i) => {
-        if (result.status !== 'rejected') return []
-        const name = files[i]?.name ?? ''
-        const message = result.reason instanceof Error ? result.reason.message : t('Could not upload')
-        return [name && !message.includes(name) ? `${name}: ${message}` : message]
-      })
+      const failures = describeUploadFailures(files, results, t('Could not upload'))
 
       if (succeeded > 0) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })

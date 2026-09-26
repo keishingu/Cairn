@@ -11,6 +11,7 @@ import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/components/locale-provider'
 
@@ -63,7 +64,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   ]
   const uploadResults = await Promise.all(uploads)
   const uploadError = uploadResults.find((result) => result.error)?.error
-  if (uploadError) throw new Error(t('Could not upload {name}', { name: original.name }))
+  if (uploadError) throw new Error(t('Could not upload'))
 
   const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/finalize`, {
     method: 'POST',
@@ -77,7 +78,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? t('Could not upload {name}', { name: original.name }))
+    throw new Error(data.error ?? t('Could not upload'))
   }
 }
 
@@ -117,13 +118,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
       ),
     )
 
-    // サーバーの汎用エラーが並ぶとどの写真か分からないため、名前を含まない文言には先頭に付ける
-    const errors = results.flatMap((r, i) => {
-      if (r.status !== 'rejected') return []
-      const name = files[i]?.name ?? ''
-      const message = r.reason instanceof Error ? r.reason.message : t('Could not upload')
-      return [name && !message.includes(name) ? `${name}: ${message}` : message]
-    })
+    const errors = describeUploadFailures(files, results, t('Could not upload'))
 
     const succeeded = files.length - errors.length
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })

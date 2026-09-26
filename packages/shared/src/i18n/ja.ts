@@ -389,7 +389,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not update the task.': 'タスクの更新に失敗しました。',
   'Could not update this milestone': 'マイルストーンの更新に失敗しました',
   'Could not upload': 'アップロードに失敗しました',
-  'Could not upload {name}': '{name} のアップロードに失敗しました',
   'Could not upload the file': 'アップロードに失敗しました',
   'Could not verify the OAuth request': 'OAuthリクエストを確認できません',
   Cover: 'カバー',

@@ -389,7 +389,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not update the task.': '작업을 업데이트하지 못했습니다.',
   'Could not update this milestone': '마일스톤을 업데이트하지 못했습니다',
   'Could not upload': '업로드하지 못했습니다',
-  'Could not upload {name}': '{name}을(를) 업로드하지 못했습니다',
   'Could not upload the file': '업로드하지 못했습니다',
   'Could not verify the OAuth request': 'OAuth 요청을 확인하지 못했습니다',
   Cover: '커버',
