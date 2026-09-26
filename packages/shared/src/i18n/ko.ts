@@ -350,7 +350,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not open the link.': '링크를 열지 못했습니다.',
   'Could not prepare the image. Try another photo': '이미지 준비에 실패했습니다. 다른 사진으로 시도해 주세요',
   'Could not prepare the upload': '업로드 준비에 실패했습니다',
-  'Could not prepare the upload for {name}': '{name} 업로드 준비에 실패했습니다',
   'Could not register the upload': '업로드 등록에 실패했습니다',
   'Could not reindex the file': '재인덱싱에 실패했습니다',
   'Could not rename': '이름을 변경하지 못했습니다',

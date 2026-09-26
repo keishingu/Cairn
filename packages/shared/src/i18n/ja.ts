@@ -350,7 +350,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not open the link.': 'リンクを開けませんでした。',
   'Could not prepare the image. Try another photo': '画像の準備に失敗しました。別の写真でお試しください',
   'Could not prepare the upload': 'アップロードの準備に失敗しました',
-  'Could not prepare the upload for {name}': '{name} のアップロード準備に失敗しました',
   'Could not register the upload': 'アップロードの登録に失敗しました',
   'Could not reindex the file': '再インデックスに失敗しました',
   'Could not rename': '名前の変更に失敗しました',

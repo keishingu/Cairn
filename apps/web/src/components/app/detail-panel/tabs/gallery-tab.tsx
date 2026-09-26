@@ -41,7 +41,7 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
   })
   if (!urlRes.ok) {
     const data = (await urlRes.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? t('Could not prepare the upload for {name}', { name: original.name }))
+    throw new Error(data.error ?? t('Could not prepare the upload'))
   }
 
   const signed = (await urlRes.json()) as {
