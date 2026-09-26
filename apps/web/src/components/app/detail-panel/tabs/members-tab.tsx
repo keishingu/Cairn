@@ -4,6 +4,7 @@ import React from 'react'
 import { Icon, Avatar } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
+import { CopyButton } from '../../copy-button'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import type { ProjectRoleDto } from '@/app/api/projects/roles/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -421,7 +422,6 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
   const [url, setUrl] = React.useState<string | null>(null)
   const [token, setToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
   const [revoked, setRevoked] = React.useState(false)
   const createGuestInviteMutation = useCreateProjectGuestInvite(projectId)
   const revokeInviteMutation = useRevokeWorkspaceInvite()
@@ -436,14 +436,6 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
         setError(mutationError instanceof Error ? mutationError.message : INVITE_CREATE_FAILED)
       })
   }, [projectId])
-
-  const handleCopy = () => {
-    if (!url) return
-    void navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
 
   const handleRevoke = async () => {
     if (!token) return
@@ -523,20 +515,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
               }}>
                 {url}
               </span>
-              <button
-                onClick={handleCopy}
-                style={{
-                  flexShrink: 0, padding: '5px 10px', borderRadius: 6,
-                  border: 'none',
-                  background: copied ? 'var(--green-soft)' : 'var(--accent)',
-                  color: copied ? 'var(--green-text)' : 'var(--on-accent)',
-                  fontSize: 12, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'background 0.15s',
-                }}
-              >
-                {copied ? t('Copied') : t('Copy')}
-              </button>
+              <CopyButton text={url} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
             </div>
 
             <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>

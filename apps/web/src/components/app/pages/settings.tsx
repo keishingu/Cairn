@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
@@ -1908,7 +1909,6 @@ const ApiTokenSettings = () => {
   const [scope, setScope] = React.useState<'read' | 'write'>('read')
   const [expiresInDays, setExpiresInDays] = React.useState(90)
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
   const [revokeTarget, setRevokeTarget] = React.useState<ApiTokenDto | null>(null)
 
   const {
@@ -1955,19 +1955,6 @@ const ApiTokenSettings = () => {
     },
   })
 
-  const copyToken = async () => {
-    if (!issuedToken) return
-    try {
-      await navigator.clipboard.writeText(issuedToken)
-      setCopied(true)
-      toast.success(t('API token copied'))
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setCopied(false)
-      toast.error(t('Could not copy the API token'))
-    }
-  }
-
   return (
     <section style={{ marginBottom: 32 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('MCP / API tokens')}</h2>
@@ -2000,9 +1987,7 @@ const ApiTokenSettings = () => {
             >
               {issuedToken}
             </code>
-            <button type="button" className="btn btn-primary" onClick={() => void copyToken()}>
-              {copied ? t('Copied') : t('Copy')}
-            </button>
+            <CopyButton text={issuedToken} className="btn btn-primary" errorMessage={t('Could not copy the API token')} />
             <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
               {t('Close')}
             </button>
@@ -2242,18 +2227,11 @@ const SettingsIntegrations = () => {
       fetchWithAuth('/api/calendar/token', { method: 'POST' }).then((r) => r.json()),
     onSuccess: () => refetch(),
   })
-  const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
     if (!data?.token || !ws?.id) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
     return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
-  }
-
-  const copy = (scope: 'me' | 'workspace') => {
-    void navigator.clipboard.writeText(buildUrl(scope))
-    setCopiedScope(scope)
-    setTimeout(() => setCopiedScope(null), 2000)
   }
 
   const feeds: { scope: 'me' | 'workspace'; label: string; desc: string }[] = [
@@ -2417,23 +2395,12 @@ const SettingsIntegrations = () => {
                     >
                       {data?.token ? buildUrl(f.scope) : t('Loading...')}
                     </span>
-                    <button
-                      onClick={() => copy(f.scope)}
+                    <CopyButton
+                      text={() => buildUrl(f.scope)}
                       disabled={!data?.token}
-                      className="btn btn-ghost"
-                      style={{
-                        height: 26,
-                        fontSize: 11.5,
-                        padding: '0 8px',
-                        flexShrink: 0,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <Icon name={copiedScope === f.scope ? 'check' : 'copy'} size={12} />
-                      {copiedScope === f.scope ? t('Copied') : t('Copy')}
-                    </button>
+                      className="btn btn-ghost btn-sm"
+                      style={{ flexShrink: 0 }}
+                    />
                   </div>
                 </div>
               </div>

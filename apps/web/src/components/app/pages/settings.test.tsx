@@ -550,7 +550,8 @@ describe('MCP / APIトークン設定', () => {
     expect(screen.queryByRole('button', { name: 'コピー済み' })).not.toBeInTheDocument()
     finishCopy?.()
     expect(await screen.findByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
-    expect(toastSuccess).toHaveBeenCalledWith('APIトークンをコピーしました')
+    // 成功はボタン自身の表示で返し、トーストは重ねない
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('クリップボードへの保存失敗を通知する', async () => {

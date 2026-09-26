@@ -7,6 +7,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { formatAppDate } from '@cairn/shared'
 import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
@@ -575,13 +576,11 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
   const { data: existingInvites = [] } = useWorkspaceInvites()
   const createInviteMutation = useCreateWorkspaceInvite()
   const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   async function generateLink() {
-    setCopied(false)
     setGenerateError(null)
     try {
       const data = await createInviteMutation.mutateAsync({ expiresIn })
@@ -598,13 +597,6 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
     } catch (error) {
       setGenerateError(error instanceof Error ? error.message : t('Could not revoke the invite link'))
     }
-  }
-
-  async function copyLink() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -686,19 +678,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {inviteUrl}
                 </div>
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  style={{
-                    flexShrink: 0, padding: '5px 12px', borderRadius: 6, border: 'none',
-                    background: copied ? '#e6f7ee' : 'var(--accent)',
-                    color: copied ? '#1a7a3c' : 'var(--on-accent)',
-                    fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? t('Copied ✓') : t('Copy')}
-                </button>
+                <CopyButton text={inviteUrl} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
               </div>
 
               {isMobile && (
