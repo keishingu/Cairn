@@ -28,7 +28,10 @@ for ((j = 0; j < JOBS; j++)); do
   pids+=($!)
   echo "file seg$j.mp4" >> out/list.txt
 done
-for p in "${pids[@]}"; do wait "$p"; done
+# 1 つが失敗しても残りを待ってから止める（途中で抜けると Chromium / ffmpeg が out/ に書き続ける）
+failed=0
+for p in "${pids[@]}"; do wait "$p" || failed=1; done
+if [ "$failed" -ne 0 ]; then echo "render failed" >&2; exit 1; fi
 
 "$FF" -y -loglevel error -f concat -safe 0 -i out/list.txt -i out/audio.wav -map 0:v -map 1:a \
   -c:v libx264 -preset slow -crf 17 -pix_fmt yuv420p -profile:v high \

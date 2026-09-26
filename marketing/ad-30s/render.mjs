@@ -67,6 +67,9 @@ if (process.argv[2] === '--preview') {
   const ff = spawn(
     ffmpegPath(),
     ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'png', '-i', '-',
+      // RGB→YUV を BT.709 で変換し、タグも揃える（既定の BT.601 変換だとブランドカラーがずれる）
+      '-vf', 'scale=out_color_matrix=bt709:out_range=tv',
+      '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '9', '-pix_fmt', 'yuv444p', out],
     { stdio: ['pipe', 'inherit', 'inherit'] },
   )
@@ -77,8 +80,15 @@ if (process.argv[2] === '--preview') {
     if ((i - f0) % 120 === 0) console.log(`[${out}] ${i - f0}/${f1 - f0} ${((Date.now() - t0) / 1000).toFixed(0)}s`)
   }
   ff.stdin.end()
-  await new Promise((r) => ff.on('close', r))
+  const code = await new Promise((r) => ff.on('close', r))
+  if (code !== 0) {
+    console.error(`[${out}] ffmpeg exited with ${code}`)
+    process.exitCode = 1
+  }
   console.log(`[${out}] done ${((Date.now() - t0) / 1000).toFixed(0)}s`)
 }
-if (errors.length) console.error(errors.join('\n'))
+if (errors.length) {
+  console.error(errors.join('\n'))
+  process.exitCode = 1
+}
 await browser.close()

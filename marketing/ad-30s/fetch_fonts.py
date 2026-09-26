@@ -20,7 +20,7 @@ UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chr
 
 def get(url):
     req = urllib.request.Request(url, headers={'User-Agent': UA})
-    with urllib.request.urlopen(req) as res:
+    with urllib.request.urlopen(req, timeout=60) as res:
         return res.read()
 
 
@@ -31,9 +31,12 @@ def main():
     for u in urls:
         name = 'fonts/' + hashlib.md5(u.encode()).hexdigest()[:12] + '.woff2'
         path = os.path.join(HERE, name)
-        if not os.path.exists(path):
-            with open(path, 'wb') as f:
-                f.write(get(u))
+        # 取得に失敗したとき空ファイルが残って次回スキップされないよう、取得後に一時ファイル経由で置き換える
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            data = get(u)
+            with open(path + '.tmp', 'wb') as f:
+                f.write(data)
+            os.replace(path + '.tmp', path)
         css = css.replace(u, name)
     with open(os.path.join(HERE, 'fonts.local.css'), 'w') as f:
         f.write(css)
