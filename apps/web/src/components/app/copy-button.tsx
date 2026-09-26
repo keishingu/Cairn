@@ -11,8 +11,8 @@ import { Icon } from './primitives'
 const COPIED_MS = 2000
 
 interface CopyButtonProps {
-  /** コピーする文字列。押した時点の値を組み立てる場合は関数で渡す */
-  text: string | (() => string)
+  /** コピーする文字列。変わると「コピー済み」の表示を戻す */
+  text: string
   className?: string
   style?: React.CSSProperties
   disabled?: boolean
@@ -30,22 +30,20 @@ export const CopyButton = ({ text, className = 'btn btn-sm', style, disabled, er
   const [copied, setCopied] = React.useState(false)
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // コピー対象が変わったら（招待リンクの再発行など）表示を戻し、前の対象への書き込み完了も無視する。
-  // 関数で渡された対象は描画ごとに参照が変わるため、文字列のときだけ比較する
+  // コピー対象が変わったら（招待リンクや iCal トークンの再発行など）表示を戻し、前の対象への書き込み完了も無視する
   const generationRef = React.useRef(0)
-  const staticTarget = typeof text === 'string' ? text : null
   React.useEffect(() => {
     generationRef.current++
     setCopied(false)
     if (timerRef.current) clearTimeout(timerRef.current)
-  }, [staticTarget])
+  }, [text])
 
   React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
 
   const copy = async () => {
     const generation = generationRef.current
     try {
-      await navigator.clipboard.writeText(typeof text === 'function' ? text() : text)
+      await navigator.clipboard.writeText(text)
       if (generation !== generationRef.current) return
       setCopied(true)
       if (timerRef.current) clearTimeout(timerRef.current)

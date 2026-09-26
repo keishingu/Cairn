@@ -35,19 +35,6 @@ describe('CopyButton', () => {
     expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
   })
 
-  it('関数で渡すと押した時点の値をコピーする', async () => {
-    writeText.mockResolvedValue(undefined)
-    let value = 'before'
-    const { rerender } = render(<CopyButton text={() => value} />)
-    value = 'after'
-    rerender(<CopyButton text={() => value} />)
-
-    await act(async () => { screen.getByRole('button', { name: 'コピー' }).click() })
-
-    expect(writeText).toHaveBeenCalledWith('after')
-    // 関数は描画ごとに作り直されても、コピー済みの表示を消さない
-    expect(screen.getByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
-  })
 
   it('失敗したらトーストで知らせ、コピー済みにしない', async () => {
     writeText.mockRejectedValue(new Error('denied'))

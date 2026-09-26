@@ -2396,7 +2396,7 @@ const SettingsIntegrations = () => {
                       {data?.token ? buildUrl(f.scope) : t('Loading...')}
                     </span>
                     <CopyButton
-                      text={() => buildUrl(f.scope)}
+                      text={data?.token ? buildUrl(f.scope) : ''}
                       disabled={!data?.token}
                       className="btn btn-ghost btn-sm"
                       style={{ flexShrink: 0 }}
