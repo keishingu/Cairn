@@ -379,15 +379,45 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
 }
 
 // ─── Modal ────────────────────────────────────────────────────────
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
+  const rootRef = React.useRef<HTMLDivElement>(null)
+
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // キーボードで開いたときに背後へフォーカスが残らないよう、開いたら中へ移し、Tab を中で循環させ、閉じたら元へ戻す
+  React.useEffect(() => {
+    const root = rootRef.current
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
+    // 中身が autoFocus で先にフォーカスを取っていればそれを尊重する
+    if (root && !root.contains(document.activeElement)) focusables()[0]?.focus()
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !root) return
+      const items = focusables()
+      if (items.length === 0) return
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+      if (!root.contains(active)) { e.preventDefault(); first.focus() }
+      else if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previous && document.contains(previous)) previous.focus()
+    }
+  }, [])
+
   return (
-    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div ref={rootRef} data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
       {children}
     </div>
