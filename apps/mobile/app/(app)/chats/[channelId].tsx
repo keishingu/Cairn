@@ -506,6 +506,16 @@ export default function ChatThreadScreen() {
   const projectChannelsQuery = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
+  const workspaceChannel = workspaceChannelsQuery.data?.find((channel) => channel.id === channelId)
+  const channelSubtitle = channelType === 'project'
+    ? t('Participating members')
+    : channelType === 'dm'
+      ? t('Direct messages')
+      : workspaceChannel?.isPrivate
+        ? t('{count} participating', { count: workspaceChannel.memberCount })
+        : workspaceChannel
+          ? t('Open to everyone')
+          : undefined
   const workspaceMembers = useWorkspaceMembers()
   const channelMembers = useChannelMembers(channelId ?? null, isPrivate === '1')
   const projectMembers = useProjectMembers(projectId ?? null)
@@ -1053,9 +1063,16 @@ export default function ChatThreadScreen() {
           >
             <Ionicons name="chevron-back" size={22} color={palette.accent} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: palette.text }]} numberOfLines={1}>
-            {channelName || t('Chats')}
-          </Text>
+          <View style={styles.headerTitleArea}>
+            <Text style={[styles.headerTitle, { color: palette.text }]} numberOfLines={1}>
+              {channelName || t('Chats')}
+            </Text>
+            {channelSubtitle ? (
+              <Text style={[styles.headerSubtitle, { color: palette.text4 }]} numberOfLines={1}>
+                {channelSubtitle}
+              </Text>
+            ) : null}
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('Search messages')}
@@ -1648,7 +1665,9 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 5 },
   headerButton: { padding: 5 },
-  headerTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
+  headerTitleArea: { flex: 1, minWidth: 0 },
+  headerTitle: { fontSize: 15, fontWeight: '700' },
+  headerSubtitle: { marginTop: 1, fontSize: 11.5 },
   center: {
     flex: 1,
     justifyContent: 'center',
