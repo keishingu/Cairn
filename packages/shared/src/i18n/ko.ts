@@ -19,6 +19,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not rename the file': '파일 이름을 변경하지 못했습니다',
   'Could not save the filter': '필터를 저장하지 못했습니다',
   'Deleted the filter': '필터를 삭제했습니다',
+  'Open to everyone': '모두에게 공개',
   'Renamed the file': '파일 이름을 변경했습니다',
   'Report message': '메시지 신고',
   'Reporting...': '신고 중...',

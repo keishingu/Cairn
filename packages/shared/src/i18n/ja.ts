@@ -19,6 +19,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not rename the file': 'ファイル名を変更できませんでした',
   'Could not save the filter': 'フィルターを保存できませんでした',
   'Deleted the filter': 'フィルターを削除しました',
+  'Open to everyone': '全員に公開',
   'Renamed the file': 'ファイル名を変更しました',
   'Report message': 'メッセージを報告',
   'Reporting...': '報告中…',

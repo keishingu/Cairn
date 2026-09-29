@@ -591,7 +591,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       ? `${currentChannel.projectTitle} / ${currentChannel.channelName}`
       : currentChannel.projectTitle
     : currentGeneral?.name ?? currentDm?.participantName ?? ''
-  const currentChannelMemberCount = currentGeneral?.memberCount
+  const channelSubtitle = currentGeneral
+    ? currentGeneral.isPrivate
+      ? t('{count} participating', { count: currentGeneral.memberCount })
+      : t('Open to everyone')
+    : undefined
 
   const { data: currentUser } = useCurrentUser()
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
@@ -811,7 +815,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
-          subtitle={currentChannelMemberCount != null ? t('{count} participating', { count: currentChannelMemberCount }) : undefined}
+          subtitle={channelSubtitle}
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
