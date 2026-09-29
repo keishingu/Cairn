@@ -1,11 +1,13 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CurrentUserDto } from '@/app/api/me/route'
+import { CURRENT_USER_FETCH_ERROR_MESSAGE, CURRENT_USER_QUERY_KEY } from '@/hooks/use-current-user'
 import {
   getSettingsNavGroups,
   isSettingsSection,
@@ -70,11 +72,14 @@ function renderAccountSection() {
     },
   })
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <SettingsSectionContent section="account" />
-    </QueryClientProvider>,
-  )
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="account" />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 function renderIntegrationsSection() {
@@ -225,6 +230,56 @@ describe('SettingsSectionContent', () => {
     })
   })
 
+  it('表示名の保存後に共有キャッシュへ新しい名前を反映する', async () => {
+    const user = userEvent.setup()
+    let displayName = '山田 太郎'
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            displayName,
+            email: 'taro@example.com',
+            avatarUrl: null,
+            wsRole: 'member',
+          }),
+        }
+      }
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        displayName = (JSON.parse(String(init.body)) as { displayName: string }).displayName
+        return { ok: true, json: async () => ({}) }
+      }
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    const { queryClient } = renderAccountSection()
+    await screen.findByDisplayValue('山田 太郎')
+
+    const input = screen.getByDisplayValue('山田 太郎')
+    await user.clear(input)
+    await user.type(input, '新しい名前')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await screen.findByText('新しい名前')
+    await waitFor(() => {
+      expect(queryClient.getQueryData<CurrentUserDto>(CURRENT_USER_QUERY_KEY)?.displayName).toBe('新しい名前')
+    })
+  })
+
+  it('ユーザー情報の取得失敗を表示する', async () => {
+    fetchWithAuth.mockImplementation(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'failed' }),
+    }))
+
+    renderAccountSection()
+
+    expect(await screen.findByText(CURRENT_USER_FETCH_ERROR_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText('山田 太郎')).toBeNull()
+  })
+
   it('アバター画像を縮小後のファイルでアップロードする', async () => {
     const originalFile = new File(['original'], 'avatar.heic', { type: 'image/heic' })
     const processedFile = new File(['processed'], 'avatar.jpg', { type: 'image/jpeg' })
@@ -284,7 +339,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -318,7 +373,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -352,7 +407,7 @@ describe('SettingsSectionContent', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '⚠ アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
         ),
       ).toBeInTheDocument()
     })
@@ -378,7 +433,7 @@ describe('MCP / APIトークン設定', () => {
     mockIntegrationsFetch({ apiTokenListError: true })
     renderIntegrationsSection()
 
-    expect(await screen.findByText('⚠ APIトークンの取得に失敗しました')).toBeInTheDocument()
+    expect(await screen.findByText('APIトークンの取得に失敗しました')).toBeInTheDocument()
     expect(screen.queryByText('発行済みトークンはありません。')).not.toBeInTheDocument()
   })
 
@@ -393,13 +448,14 @@ describe('MCP / APIトークン設定', () => {
         },
       ],
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     expect(await screen.findByText('Claude')).toBeInTheDocument()
     expect(screen.getByText(/読み取り・書き込み/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
     await waitFor(() => expect(screen.queryByText('Claude')).not.toBeInTheDocument())
     expect(toastSuccess).toHaveBeenCalledWith('OAuth接続を取り消しました')
@@ -461,15 +517,15 @@ describe('MCP / APIトークン設定', () => {
       ],
       revokeError: true,
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     renderIntegrationsSection()
 
     await user.click(await screen.findByRole('button', { name: '取り消す' }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }))
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith('APIトークンの取り消しに失敗しました')
-    })
+    // 失敗時はダイアログを開いたまま理由を表示する
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('APIトークンの取り消しに失敗しました')
   })
 
   it('クリップボードへの保存完了後だけコピー済みと表示する', async () => {
@@ -494,7 +550,8 @@ describe('MCP / APIトークン設定', () => {
     expect(screen.queryByRole('button', { name: 'コピー済み' })).not.toBeInTheDocument()
     finishCopy?.()
     expect(await screen.findByRole('button', { name: 'コピー済み' })).toBeInTheDocument()
-    expect(toastSuccess).toHaveBeenCalledWith('APIトークンをコピーしました')
+    // 成功はボタン自身の表示で返し、トーストは重ねない
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('クリップボードへの保存失敗を通知する', async () => {
@@ -547,6 +604,116 @@ describe('クレジットパック購入後の確認', () => {
         now: 60_000,
       }),
     ).toBe('timed_out')
+  })
+})
+
+describe('外観の言語設定', () => {
+  it('英語を選ぶとプロフィールへ言語設定を保存する', async () => {
+    const user = userEvent.setup()
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({}) }
+      }
+      return { ok: true, json: async () => ({ id: 'user-1', locale: 'system', calendarWeekStart: 'sunday' }) }
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'English' }))
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ locale: 'en' }),
+        }),
+      )
+    })
+  })
+
+  it('韓国語を選ぶとプロフィールへ言語設定を保存する', async () => {
+    const user = userEvent.setup()
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({}) }
+      }
+      return { ok: true, json: async () => ({ id: 'user-1', locale: 'system', calendarWeekStart: 'sunday' }) }
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '한국어' }))
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/me',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ locale: 'ko' }),
+        }),
+      )
+    })
+  })
+})
+
+describe('外観の週の始まり', () => {
+  it('月曜を選ぶとプロフィールへ保存する', async () => {
+    const user = userEvent.setup()
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            displayName: '山田 太郎',
+            email: 'taro@example.com',
+            avatarUrl: null,
+            theme: 'system',
+            accentId: 'emerald',
+            locale: 'system',
+            calendarWeekStart: 'sunday',
+          }),
+        }
+      }
+      if (input === '/api/me' && init?.method === 'PATCH') {
+        return { ok: true, json: async () => ({ id: 'user-1', calendarWeekStart: 'monday' }) }
+      }
+      throw new Error(`unexpected fetch: ${input}`)
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+
+    const monday = await screen.findByRole('button', { name: '月曜' })
+    await waitFor(() => expect(monday).toBeEnabled())
+    await user.click(monday)
+
+    await waitFor(() => {
+      expect(fetchWithAuth).toHaveBeenCalledWith('/api/me', expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ calendarWeekStart: 'monday' }),
+      }))
+    })
+    expect(window.localStorage.getItem('cairn:calendar_week_start')).toBe('monday')
   })
 })
 

@@ -14,7 +14,7 @@ import { FEATURE_FLAGS } from '@cairn/shared'
  * 通常の GET/PATCH（getAuthContext 経由で active workspace にスコープ）から
  * 到達・既読化できず残り続けるため、バッジにも含めない。
  * active membership の判定は `active_workspace_members` ビュー経由に統一する
- * （CLAUDE.md: 認可目的で membership を読む処理は必ずこのビューを経由する）。
+ * （AGENTS.md: 認可目的で membership を読む処理は必ずこのビューを経由する）。
  */
 export async function getUnreadNotificationCount(userId: string): Promise<number> {
   const { aiNudges, db, notifications, activeWorkspaceMembers, workspaces } = await import('@cairn/db')

@@ -85,8 +85,8 @@ export function NavigationProgress() {
     window.history.pushState = (...args: Parameters<typeof orig>) => {
       startScheduledRef.current = true
       const ret = orig(...args)
-      // nuqs などは useInsertionEffect 内で pushState を呼ぶ。その同期実行中に
-      // start() が setState すると "useInsertionEffect must not schedule updates" になるため、
+      // useInsertionEffect 内から pushState されると、その同期実行中に
+      // start() が setState して "useInsertionEffect must not schedule updates" になるため、
       // 状態更新を commit フェーズ外のマイクロタスクへ逃がす
       queueMicrotask(() => {
         startScheduledRef.current = false
@@ -110,7 +110,7 @@ export function NavigationProgress() {
           left: 0,
           right: 0,
           height: 2,
-          zIndex: 9999,
+          zIndex: 'var(--z-system)',
           pointerEvents: 'none',
           opacity: visible ? 1 : 0,
           transition: visible ? 'none' : 'opacity 0.25s ease 0.05s',

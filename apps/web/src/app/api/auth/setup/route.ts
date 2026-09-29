@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/get-auth-context'
+import { explicitLocaleFromCookie } from '@/lib/i18n/initial-locale'
 
 const setupSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -45,7 +46,9 @@ export async function POST(req: Request) {
         (user.user_metadata?.['display_name'] as string | undefined) ??
         user.email ??
         'ユーザー'
-      await db.insert(profiles).values({ id: userId, displayName })
+      const locale = explicitLocaleFromCookie(req.headers.get('cookie'))
+      await db.insert(profiles).values({ id: userId, displayName,
+        ...(locale ? { locale } : {}), })
     }
 
     // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）

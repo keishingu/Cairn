@@ -5,11 +5,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
 import { Icon } from '../../primitives'
+import { InlineError } from '../../inline-error'
+import { toast } from '@/lib/toast'
+import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useProjectFiles } from '@/hooks/use-project-files'
+import { useT } from '@/components/locale-provider'
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -28,18 +32,19 @@ const ACCEPT_FILE_TYPES = [
 ].join(',')
 
 function IndexingBadge({ status }: { status: string | undefined }) {
+  const t = useT()
   if (!status || status === 'indexed' || status === 'skipped') return null
   if (status === 'pending') {
     return (
       <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
-        インデックス中
+        {t('Indexing')}
       </span>
     )
   }
   if (status === 'failed') {
     return (
       <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
-        非公開
+        {t('Private')}
       </span>
     )
   }
@@ -63,12 +68,13 @@ function isImageFile(file: ProjectFileDto): boolean {
 }
 
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [isUploading, setIsUploading] = React.useState(false)
-  const [uploadError, setUploadError] = React.useState<string | null>(null)
+  const [uploadError, setUploadError] = React.useState<string[] | null>(null)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
@@ -84,37 +90,38 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
   const handleFilesSelect = async (selectedFiles: FileList | null) => {
     if (!channelId || !selectedFiles || selectedFiles.length === 0) return
+    // 呼び出し元がすぐ input を空にすると FileList も空になるため、最初の await より前に控えておく
+    const files = Array.from(selectedFiles)
 
     setIsUploading(true)
     setUploadError(null)
 
     try {
       const results = await Promise.allSettled(
-        Array.from(selectedFiles).map(async (file) => {
+        files.map(async (file) => {
           const formData = new FormData()
           formData.append('file', file)
           formData.append('channelId', channelId)
           const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
           if (!res.ok) {
             const data = await res.json().catch(() => ({})) as { error?: string }
-            throw new Error(data.error ?? `${file.name} のアップロードに失敗しました`)
+            throw new Error(data.error ?? t('Could not upload'))
           }
         }),
       )
 
-      const hasSuccess = results.some((result) => result.status === 'fulfilled')
-      const firstFailure = results.find((result) => result.status === 'rejected')
+      const succeeded = results.filter((result) => result.status === 'fulfilled').length
+      const failures = describeUploadFailures(files, results, t('Could not upload'))
 
-      if (hasSuccess) {
+      if (succeeded > 0) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
         await queryClient.invalidateQueries({ queryKey: ['files'] })
+        toast.success(t('Added {count} files', { count: succeeded }))
       }
-
-      if (firstFailure?.status === 'rejected') {
-        throw firstFailure.reason
-      }
+      // 複数選択で一部だけ失敗したとき、先頭の1件だけでなく失敗したものをすべて示す
+      if (failures.length > 0) setUploadError(failures)
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'アップロードに失敗しました')
+      setUploadError([error instanceof Error ? error.message : t('Could not upload')])
     } finally {
       setIsUploading(false)
     }
@@ -123,7 +130,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   if (isLoading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-        読み込み中...
+        {t('Loading…')}
       </div>
     )
   }
@@ -131,7 +138,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   if (isError) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>
-        ファイルの取得に失敗しました
+        {t('Could not load files')}
       </div>
     )
   }
@@ -154,35 +161,22 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={!channelId || isUploading}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '5px 10px',
-            borderRadius: 7,
-            border: '1px solid var(--border)',
-            background: 'var(--card)',
-            color: 'var(--text-2)',
-            fontSize: 12,
-            cursor: !channelId || isUploading ? 'default' : 'pointer',
-            fontFamily: 'inherit',
-            opacity: !channelId || isUploading ? 0.6 : 1,
-          }}
+          className="btn btn-sm"
         >
           <Icon name="plus" size={13} />
-          {isUploading ? 'アップロード中...' : 'ファイルを追加'}
+          {isUploading ? t('Uploading...') : t('Add a file')}
         </button>
       </div>
 
       {uploadError && (
-        <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
-          {uploadError}
-        </div>
+        <InlineError variant="box" onDismiss={() => setUploadError(null)} style={{ marginBottom: 8 }}>
+          {uploadError.map((message, i) => <div key={i}>{message}</div>)}
+        </InlineError>
       )}
 
       {files.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13, padding: '24px 0' }}>
-          まだファイルがありません
+          {t('There are no files yet')}
         </div>
       )}
 
@@ -214,19 +208,19 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>最新版</span>}
+                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? '外部リンク' : meta}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? t('External link') : meta}</div>
               </div>
             </a>
 
             <RowActionMenu
               actions={[
                 f.isLatest
-                  ? { icon: 'star', label: '最新版を解除', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
-                  : { icon: 'star', label: '最新版にする', onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
-                { icon: 'trash', label: '削除', danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
+                  ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
+                  : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
+                { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
               ]}
             />
           </div>
@@ -235,8 +229,8 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="ファイルを削除"
-        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        title={t('Delete this file')}
+        message={t('Delete "{name}"? This cannot be undone.', { name: deleteTarget?.name ?? '' })}
         onConfirm={async () => { if (deleteTarget) await deleteMutation.mutateAsync(deleteTarget.id) }}
         onClose={() => setDeleteTarget(null)}
       />

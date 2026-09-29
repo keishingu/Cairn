@@ -1,5 +1,7 @@
 import { NativeWebViewScreen } from '../../../components/native-webview-screen'
+import { useT } from '../../../components/locale-provider'
 
 export default function GalleryScreen() {
-  return <NativeWebViewScreen path="/gallery" title="ギャラリー" />
+  const t = useT()
+  return <NativeWebViewScreen path="/gallery" title={t('Gallery')} />
 }

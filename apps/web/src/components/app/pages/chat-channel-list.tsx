@@ -3,12 +3,15 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
 import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
 import { STORAGE_KEYS, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { DmChannelDto } from '@/app/api/workspaces/dms/route'
+
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
 
 // ─── ChatSidebarSection ───────────────────────────────────────────
 
@@ -23,28 +26,24 @@ const sectionAddButtonStyle: React.CSSProperties = {
 }
 
 // hover で濃いグレー＋うっすら背景（ChatSidebarItem の hover と同じトーン）
-const onAddButtonEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-  e.currentTarget.style.background = 'var(--card)'
-  e.currentTarget.style.color = 'var(--text-2)'
-}
-const onAddButtonLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-  e.currentTarget.style.background = 'transparent'
-  e.currentTarget.style.color = 'var(--text-4)'
-}
+const sectionAddButtonClass = 'hover-bg-card hover-text'
 
-export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => (
+export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => {
+  const t = useT()
+  return (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       {onAdd && (
-        <button onClick={onAdd} aria-label={`${title}を追加`} style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+        <button onClick={onAdd} aria-label={t('Add {title}', { title })} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
           <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
         </button>
       )}
     </div>
     <div>{children}</div>
   </div>
-)
+  )
+}
 
 // ─── ChatSidebarCollapsibleSection ────────────────────────────────
 
@@ -96,17 +95,17 @@ const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS
 // date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
 
-export function formatChannelPeriod(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string | undefined {
+export function formatChannelPeriod(start: string | null, end: string | null, startTime: string | null | undefined, endTime: string | null | undefined, t: TranslateFn): string | undefined {
   const f = (iso: string) => { const [, m, d] = iso.slice(0, 10).split('-').map(Number); return `${m}/${d}` }
   const st = formatTime(startTime ?? null)
   const et = formatTime(endTime ?? null)
   if (start && end) {
     const startLabel = `${f(start)}${st ? ` ${st}` : ''}`
     const endLabel = `${end === start ? '' : f(end)}${et ? `${end === start ? '' : ' '}${et}` : ''}`
-    return endLabel ? `${startLabel}〜${endLabel}` : startLabel
+    return endLabel ? t('{start}–{end}', { start: startLabel, end: endLabel }) : startLabel
   }
-  if (end) return `〜${f(end)}${et ? ` ${et}` : ''}`
-  if (start) return `${f(start)}${st ? ` ${st}` : ''}〜`
+  if (end) return t('–{end}', { end: `${f(end)}${et ? ` ${et}` : ''}` })
+  if (start) return t('{start}–', { start: `${f(start)}${st ? ` ${st}` : ''}` })
   return undefined
 }
 
@@ -115,7 +114,9 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
   avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
-}) => (
+}) => {
+  const t = useT()
+  return (
   <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -129,8 +130,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       fontWeight: badge && badge > 0 ? 700 : 500,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
-      onMouseEnter={e => { if (!active && !mobile) (e.currentTarget as HTMLElement).style.background = 'var(--card)' }}
-      onMouseLeave={e => { if (!active && !mobile) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      className={!active && !mobile ? 'hover-bg-card' : undefined}
     >
       {prefix === 'lock' ? (
         <span style={{ width: mobile ? 36 : 14, height: mobile ? 36 : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: mobile ? 8 : undefined, background: mobile ? 'var(--card-2)' : undefined, color: 'var(--text-3)' }}>
@@ -162,7 +162,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
       {memberCount != null && !mobile && memberCount > 0 && (
-        <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{memberCount}名</span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
       )}
     </button>
     {action && (
@@ -175,13 +175,15 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       </div>
     )}
   </div>
-)
+  )
+}
 
 interface SidebarMenuAction {
   label: string
   icon: string
   onSelect: () => void
   restoreFocus?: boolean
+  danger?: boolean
 }
 
 const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
@@ -189,6 +191,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
   actions: SidebarMenuAction[]
   isMobile: boolean
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ top: 0, left: 0 })
   const buttonRef = React.useRef<HTMLButtonElement>(null)
@@ -243,7 +246,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
         ref={buttonRef}
         type="button"
         onClick={toggle}
-        aria-label={`${ownerLabel}のメニュー`}
+        aria-label={t('{name} menu', { name: ownerLabel })}
         aria-haspopup="menu"
         aria-expanded={open}
         style={{
@@ -259,8 +262,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
           cursor: 'pointer',
           padding: 0,
         }}
-        onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-hover)'; event.currentTarget.style.color = 'var(--text-2)' }}
-        onMouseLeave={event => { if (!open) { event.currentTarget.style.background = 'transparent'; event.currentTarget.style.color = 'var(--text-4)' } }}
+        className="hover-bg hover-text"
       >
         <Icon name="more" size={isMobile ? 18 : 15} strokeWidth={2}/>
       </button>
@@ -268,7 +270,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
         <div
           ref={menuRef}
           role="menu"
-          aria-label={`${ownerLabel}の操作`}
+          aria-label={t('{name} actions', { name: ownerLabel })}
           style={{
             position: 'fixed',
             top: position.top,
@@ -279,7 +281,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
             border: '1px solid var(--border-2)',
             borderRadius: 8,
             boxShadow: 'var(--shadow-pop)',
-            zIndex: 300,
+            zIndex: 'var(--z-popover)',
           }}
         >
           {actions.map((action, index) => (
@@ -295,12 +297,11 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
               }}
               style={{
                 width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
-                border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)',
+                border: 'none', borderRadius: 6, background: 'transparent', color: action.danger ? 'var(--red-text)' : 'var(--text-2)',
                 cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
                 whiteSpace: 'nowrap',
               }}
-              onMouseEnter={event => { event.currentTarget.style.background = 'var(--card-2)' }}
-              onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
+              className="hover-bg"
             >
               <Icon name={action.icon} size={14}/>
               {action.label}
@@ -321,19 +322,20 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
-  const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime)
+  const t = useT()
+  const period = formatChannelPeriod(channel.startDate, channel.endDate, channel.startTime, channel.endTime, t)
   const completed = channel.milestoneCompleted === true
   const actions: SidebarMenuAction[] = []
   if (!completed && onEditMilestone) {
     actions.push({
-      label: '編集',
+      label: t('Edit'),
       icon: 'edit',
       onSelect: () => onEditMilestone(channel),
     })
   }
   if (onSetMilestoneCompleted) {
     actions.push({
-      label: completed ? '未完了にする' : '完了にする',
+      label: completed ? t('Mark incomplete') : t('Mark complete'),
       icon: completed ? 'refresh' : 'check',
       onSelect: () => onSetMilestoneCompleted(channel, !completed),
       restoreFocus: true,
@@ -357,25 +359,78 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
   )
 }
 
-const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile }: {
+function workspaceRowActions({
+  channel,
+  isThread,
+  canManageParent,
+  onCreateThread,
+  onRename,
+  onDelete,
+  t,
+}: {
+  channel: WorkspaceChannelDto
+  isThread: boolean
+  canManageParent: boolean
+  onCreateThread?: (target: { id: string; name: string }) => void
+  onRename?: (target: WorkspaceChannelDto) => void
+  onDelete?: (target: WorkspaceChannelDto) => void
+  t: TranslateFn
+}): SidebarMenuAction[] {
+  const actions: SidebarMenuAction[] = []
+  if (!isThread && onCreateThread && channel.name) {
+    actions.push({
+      label: t('Create thread'),
+      icon: 'chat',
+      onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
+    })
+  }
+  if (isThread || canManageParent) {
+    if (onRename) {
+      actions.push({
+        label: t('Rename'),
+        icon: 'edit',
+        onSelect: () => onRename(channel),
+      })
+    }
+    if (onDelete) {
+      actions.push({
+        label: t('Delete'),
+        icon: 'trash',
+        danger: true,
+        onSelect: () => onDelete(channel),
+      })
+    }
+  }
+  return actions
+}
+
+const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actions }: {
   channel: WorkspaceChannelDto
   active: boolean
   onSelectChannel: (id: string) => void
   isMobile: boolean
-}) => (
+  actions: SidebarMenuAction[]
+}) => {
+  const t = useT()
+  const name = channel.name ?? t('Untitled thread')
+  return (
   <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
     <ChatSidebarItem
       active={active}
       onClick={() => onSelectChannel(channel.id)}
       prefix="┗"
-      label={channel.name ?? '名称未設定スレッド'}
+      label={name}
       badge={channel.unreadCount}
       mobile={isMobile}
       memberNames={channel.memberNames}
       memberCount={channel.memberCount}
+      action={actions.length > 0 ? (
+        <SidebarCreateMenu ownerLabel={name} actions={actions} isMobile={isMobile} />
+      ) : undefined}
     />
   </div>
-)
+  )
+}
 
 const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, onEditMilestone, onSetMilestoneCompleted, isMobile }: {
   general: ProjectChannelDto
@@ -388,6 +443,7 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   isMobile: boolean
 }) => {
+  const t = useT()
   const storageKey = chatCompletedMilestonesCollapsedKey(general.projectId)
   const containsActiveChannel = completedMilestones.some(channel => channel.channelId === channelId)
   const [collapsed, setCollapsed] = React.useState(true)
@@ -410,21 +466,21 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   const actions: SidebarMenuAction[] = []
   if (onCreateMilestone) {
     actions.push({
-      label: 'マイルストーンを作成',
+      label: t('Create milestone'),
       icon: 'flag',
       onSelect: () => onCreateMilestone({ id: general.projectId, title: general.projectTitle }),
     })
   }
   if (completedMilestones.length > 0) {
     actions.push({
-      label: `完了済みマイルストーンを${collapsed ? '表示' : '非表示'}`,
+      label: t('Completed milestones: {state}', { state: collapsed ? t('Show') : t('Hide') }),
       icon: collapsed ? 'eye' : 'eye-off',
       onSelect: toggle,
       restoreFocus: true,
     })
   }
 
-  const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime)
+  const period = formatChannelPeriod(general.startDate, general.endDate, general.startTime, general.endTime, t)
 
   return (
     <>
@@ -473,6 +529,7 @@ interface DmPickerProps {
 }
 
 const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -486,18 +543,17 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label="ダイレクトメッセージを開始" style={sectionAddButtonStyle} onMouseEnter={onAddButtonEnter} onMouseLeave={onAddButtonLeave}>
+      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 50, minWidth: 160, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', minWidth: 160, overflow: 'hidden' }}>
           {members.map(m => (
             <button
               key={m.userId}
               onClick={() => { setOpen(false); onStartDm(m.userId) }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <Avatar name={m.displayName} url={m.avatarUrl ?? null} size={20}/>
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
@@ -520,19 +576,24 @@ export interface ChannelListProps {
   members: WorkspaceMemberDto[]
   isMobile?: boolean
   onAddProject?: () => void
-  onAddChannel: () => void
+  onAddChannel?: () => void
   onStartDm: (userId: string) => void
   onCreateMilestone?: (project: { id: string; title: string }) => void
   onEditMilestone?: (milestone: ProjectChannelDto) => void
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   onCreateThread?: (channel: { id: string; name: string }) => void
+  onRenameWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
+  onDeleteWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
+  canManageWorkspaceChannel?: boolean
 }
 
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onDeleteWorkspaceChannel,
+  canManageWorkspaceChannel = false,
 }: ChannelListProps) => {
+  const t = useT()
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
   const projectGroups = activeProjectChannels
@@ -553,7 +614,7 @@ export const ChannelList = ({
     }))
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
-    <ChatSidebarSection title="プロジェクト" {...(onAddProject ? { onAdd: onAddProject } : {})}>
+    <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})}>
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
           key={general.channelId}
@@ -570,14 +631,24 @@ export const ChannelList = ({
       ))}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
-      <ChatSidebarCollapsibleSection title="アーカイブ済み" count={archivedProjectChannels.length}>
+      <ChatSidebarCollapsibleSection title={t('Archived')} count={archivedProjectChannels.length}>
         {archivedProjectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarCollapsibleSection>
     )}
-    <ChatSidebarSection title="チャンネル" onAdd={onAddChannel}>
-      {workspaceChannelGroups.map(({ channel, threads }) => (
+    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
+      {workspaceChannelGroups.map(({ channel, threads }) => {
+        const channelActions = workspaceRowActions({
+          channel,
+          isThread: false,
+          canManageParent: canManageWorkspaceChannel,
+          ...(onCreateThread ? { onCreateThread } : {}),
+          ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+          ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+          t,
+        })
+        return (
         <React.Fragment key={channel.id}>
           <ChatSidebarItem
             active={channelId === channel.id}
@@ -588,14 +659,10 @@ export const ChannelList = ({
             mobile={isMobile}
             memberNames={channel.memberNames}
             memberCount={channel.memberCount}
-            action={onCreateThread && channel.name ? (
+            action={channelActions.length > 0 ? (
               <SidebarCreateMenu
-                ownerLabel={channel.name}
-                actions={[{
-                  label: 'スレッドを作成',
-                  icon: 'chat',
-                  onSelect: () => onCreateThread({ id: channel.id, name: channel.name! }),
-                }]}
+                ownerLabel={channel.name ?? t('Untitled channel')}
+                actions={channelActions}
                 isMobile={isMobile}
               />
             ) : undefined}
@@ -607,15 +674,26 @@ export const ChannelList = ({
               active={channelId === thread.id}
               onSelectChannel={onSelectChannel}
               isMobile={isMobile}
+              actions={workspaceRowActions({
+                channel: thread,
+                isThread: true,
+                canManageParent: canManageWorkspaceChannel,
+                ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+                ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+                t,
+              })}
             />
           ))}
         </React.Fragment>
-      ))}
+        )
+      })}
     </ChatSidebarSection>
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>ダイレクトメッセージ</span>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}
+          >
+            <span>{t('Direct messages')}</span>
           <DmPicker members={members} onStartDm={onStartDm}/>
         </div>
         <div>
@@ -625,8 +703,8 @@ export const ChannelList = ({
         </div>
       </div>
     )}
-    <ChatSidebarSection title="アプリ">
-      <ChatSidebarItem prefix="✨" label="AIアシスタント" mobile={isMobile}/>
+    <ChatSidebarSection title={t('Apps')}>
+      <ChatSidebarItem prefix="✨" label={t('AI assistant')} mobile={isMobile} />
     </ChatSidebarSection>
   </div>
   )

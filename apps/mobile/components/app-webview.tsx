@@ -8,8 +8,9 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { mobileHandoffUrl, webPath } from '../lib/webview-path'
-import { isAccentId, isAppearanceTheme } from '@cairn/shared'
+import { isAccentId, isAppearanceTheme, isLocalePreference } from '@cairn/shared'
 import { useAppAppearance } from './appearance-provider'
+import { useAppLocale, useT} from './locale-provider'
 import {
   NATIVE_HEADER_BACK_SCRIPT,
   parseNativeHeaderDescriptor,
@@ -56,11 +57,13 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   { path, onLoadEnd, onWebPathChange, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
   ref,
 ) {
+  const t = useT()
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
   const { palette, updateAppearance } = useAppAppearance()
+  const { updateLocale } = useAppLocale()
   const bg = palette.bg
   const router = useRouter()
 
@@ -191,6 +194,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       type?: string
       theme?: unknown
       accentId?: unknown
+      locale?: unknown
       title?: unknown
       subtitle?: unknown
       canGoBack?: unknown
@@ -200,6 +204,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         type?: string
         theme?: unknown
         accentId?: unknown
+        locale?: unknown
         title?: unknown
         subtitle?: unknown
         canGoBack?: unknown
@@ -229,11 +234,11 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     if (msg?.type === LINK_APPLE_IDENTITY_MESSAGE_TYPE) {
       // 設定 WebView からの Apple 連携。Web OAuth は WebView 外へ出るため、
       // ネイティブセッションへ ID token で linkIdentity する。
-      void linkAppleIdentity()
+      void linkAppleIdentity(t)
         .catch(
           (): NativeOAuthIdentityLinkResult => ({
             ok: false,
-            message: 'Apple との連携に失敗しました。しばらくしてからもう一度お試しください。',
+            message: t('Could not link Apple. Please try again in a moment.'),
           }),
         )
         .then((result) => {
@@ -244,11 +249,11 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     if (msg?.type === LINK_GOOGLE_IDENTITY_MESSAGE_TYPE) {
       // 設定 WebView からの Google 連携。ネイティブの WebBrowser + PKCE で
       // 現在のネイティブセッションへ linkIdentity する。
-      void linkGoogleIdentity()
+      void linkGoogleIdentity(t)
         .catch(
           (): NativeOAuthIdentityLinkResult => ({
             ok: false,
-            message: 'Google との連携に失敗しました。しばらくしてからもう一度お試しください。',
+            message: t('Could not link Google. Please try again in a moment.'),
           }),
         )
         .then((result) => {
@@ -269,6 +274,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       isAccentId(msg.accentId)
     ) {
       updateAppearance({ theme: msg.theme, accentId: msg.accentId })
+    }
+    if (msg?.type === 'locale-changed' && isLocalePreference(msg.locale)) {
+      updateLocale(msg.locale)
     }
   }
 
@@ -321,12 +329,12 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
           { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
         ]}
       >
-        <Text style={[styles.errorText, { color: palette.text3 }]}>読み込みに失敗しました</Text>
+        <Text style={[styles.errorText, { color: palette.text3 }]}>{t('Could not load this page')}</Text>
         <Pressable
           style={[styles.retryButton, { backgroundColor: palette.accent }]}
           onPress={() => void performHandoff(pathRef.current)}
         >
-          <Text style={[styles.retryLabel, { color: palette.onAccent }]}>再試行</Text>
+          <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Retry')}</Text>
         </Pressable>
       </View>
     )

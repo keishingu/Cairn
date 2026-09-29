@@ -6,9 +6,14 @@ import { projectRoleLabel } from '@cairn/shared'
 import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import {
+  CURRENT_USER_QUERY_KEY,
+  patchCurrentUserCache,
+  useCurrentUser,
+} from '@/hooks/use-current-user'
 import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
 import {
   useProfileAttributes,
@@ -16,10 +21,10 @@ import {
 } from '@/hooks/use-profile-attributes'
 
 const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
-  owner:  'オーナー',
-  admin:  '管理者',
-  member: 'メンバー',
-  guest:  'ゲスト',
+  owner:  'Owner',
+  admin:  'Admin',
+  member: 'Member',
+  guest:  'Guest',
 }
 
 const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> = {
@@ -37,9 +42,12 @@ const PROJECT_ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
   observer:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
-function formatJoinedAt(dateStr: string): string {
+function formatJoinedAt(
+  dateStr: string,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): string {
   const d = new Date(dateStr + 'T00:00:00')
-  return `${d.getFullYear()}年${d.getMonth() + 1}月参加`
+  return t('Joined {year}/{month}', { year: d.getFullYear(), month: d.getMonth() + 1 })
 }
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -112,8 +120,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         transition: 'background .1s',
         opacity: project.archived ? ARCHIVED_OPACITY : 1,
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-hover)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      className="hover-bg"
     >
       <div style={{
         width: 32, height: 32, borderRadius: 8, flexShrink: 0,
@@ -159,6 +166,7 @@ interface MemberDetailPanelProps {
 }
 
 export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }: MemberDetailPanelProps) => {
+  const t = useT()
   const queryClient = useQueryClient()
 
   // ---- ロール変更 ----
@@ -176,10 +184,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     return () => document.removeEventListener('mousedown', handle)
   }, [showRoleMenu])
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-  })
+  const { data: me } = useCurrentUser()
   const { data: allMembers = [] } = useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
     queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
@@ -211,12 +216,16 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       }).then(async r => {
         if (!r.ok) {
           const e = await r.json() as { error?: string }
-          throw new Error(e.error ?? 'ロールの変更に失敗しました')
+          throw new Error(e.error ?? t('Could not change the workspace role'))
         }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+      if (result.userId === me?.id) {
+        patchCurrentUserCache(queryClient, { wsRole: result.role })
+        void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
+      }
     },
   })
 
@@ -228,7 +237,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     roleMutation.mutate(newRole, {
       onError: (err) => {
         setCurrentRole(prev)
-        toast.error(err instanceof Error ? err.message : 'ロールの変更に失敗しました')
+        toast.error(err instanceof Error ? err.message : t('Could not change the workspace role'))
       },
     })
   }
@@ -270,10 +279,10 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         setDraftAttributeIds(attributes.map(attribute => attribute.id))
         setEditingAttributes(false)
         setAttributeError(null)
-        toast.success('属性を保存しました')
+        toast.success(t('Attributes saved'))
       },
       onError: error => setAttributeError(
-        error instanceof Error ? error.message : '属性の保存に失敗しました',
+        error instanceof Error ? error.message : t('Could not save attributes'),
       ),
     })
   }
@@ -288,7 +297,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         disabled={roleMutation.isPending}
         aria-haspopup="listbox"
         aria-expanded={showRoleMenu}
-        aria-label="ワークスペース権限を変更"
+        aria-label={t('Change workspace role')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
           fontSize: isMobile ? 11 : 10.5, fontWeight: 700,
@@ -298,18 +307,18 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           opacity: roleMutation.isPending ? 0.6 : 1,
         }}
       >
-        {WS_ROLE_LABEL[currentRole]}
+        {t(WS_ROLE_LABEL[currentRole])}
         <Icon name="chevDown" size={isMobile ? 10 : 9}/>
       </button>
       {showRoleMenu && (
         <div
           role="listbox"
-          aria-label="ワークスペース権限"
+          aria-label={t('Workspace role')}
           style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0,
             background: 'var(--card)', border: '1px solid var(--border)',
             borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-            zIndex: 100, overflow: 'hidden', minWidth: isMobile ? 128 : 110,
+            zIndex: 'var(--z-dropdown)', overflow: 'hidden', minWidth: isMobile ? 128 : 110,
           }}
         >
           {selectableRoles.map(role => (
@@ -327,10 +336,9 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
               }}
-              onMouseEnter={e => { if (currentRole !== role) (e.currentTarget.style.background = 'var(--card-hover)') }}
-              onMouseLeave={e => { if (currentRole !== role) (e.currentTarget.style.background = 'transparent') }}
+              className={currentRole !== role ? 'hover-bg' : undefined}
             >
-              {WS_ROLE_LABEL[role]}
+              {t(WS_ROLE_LABEL[role])}
             </button>
           ))}
         </div>
@@ -338,7 +346,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     </div>
   ) : (
     <span style={{ fontSize: isMobile ? 11 : 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
-      {WS_ROLE_LABEL[currentRole]}
+      {t(WS_ROLE_LABEL[currentRole])}
     </span>
   )
 
@@ -360,7 +368,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)',
         background: 'var(--bg)',
         display: 'flex', flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
@@ -395,7 +403,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             >
               <Icon name="chevLeft" size={18}/>
             </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>メンバー詳細</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>{t('Member details')}</span>
           </div>
           <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
@@ -420,7 +428,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {roleBadge}
                 <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                  <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt)}
+                  <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt, t)}
                 </span>
               </div>
             </div>
@@ -461,7 +469,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               {roleBadge}
               <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 <Icon name="clock" size={10}/>
-                {formatJoinedAt(member.joinedAt)}
+                {formatJoinedAt(member.joinedAt, t)}
               </span>
             </div>
           </div>
@@ -473,8 +481,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            className="hover-bg"
           >
             <Icon name="close" size={15}/>
           </button>
@@ -483,25 +490,25 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
       <div style={{ padding: isMobile ? '12px 16px' : '10px 16px', borderBottom: '1px solid var(--divider)', background: isMobile ? 'var(--card)' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: profileAttributes.length > 0 || editingAttributes ? 8 : 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>属性</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>{t('Attributes')}</span>
           {canEditAttributes && !editingAttributes && (
             <button
               type="button"
               onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
               style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
             >
-              編集
+              {t('Edit')}
             </button>
           )}
         </div>
         {editingAttributes ? (
           <div>
             {attributeOptionsLoading ? (
-              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>読み込み中…</div>
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Loading...')}</div>
             ) : attributeOptionsError ? (
-              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>属性一覧を取得できませんでした</div>
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>{t('Could not load the attribute list')}</div>
             ) : attributeOptions.length === 0 ? (
-              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>設定画面で属性を作成してください。</div>
+              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Create attributes in settings.')}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {attributeOptions.map(attribute => {
@@ -533,7 +540,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 })}
               </div>
             )}
-            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{draftAttributeIds.length}/5件</div>
+            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{t('{count}/5 items', { count: draftAttributeIds.length })}</div>
             {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
               <button
@@ -542,7 +549,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 className="btn btn-ghost"
                 style={{ height: 30, padding: '0 10px', fontSize: 12 }}
               >
-                キャンセル
+                {t('Cancel')}
               </button>
               <button
                 type="button"
@@ -551,14 +558,14 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 className="btn btn-primary"
                 style={{ height: 30, padding: '0 12px', fontSize: 12 }}
               >
-                {attributeMutation.isPending ? '保存中…' : '保存'}
+                {attributeMutation.isPending ? t('Saving...') : t('Save')}
               </button>
             </div>
           </div>
         ) : profileAttributes.length > 0 ? (
           <ProfileAttributeBadges attributes={profileAttributes} />
         ) : (
-          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>未設定</span>
+          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('Not set')}</span>
         )}
       </div>
 
@@ -578,7 +585,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             {isLoading ? '—' : projects.length}
           </span>
           <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
-            <Icon name="folder" size={isMobile ? 12 : 11}/> 参加プロジェクト
+            <Icon name="folder" size={isMobile ? 12 : 11}/> {t('Joined projects')}
           </span>
         </div>
         <div style={{ flex: 1, padding: isMobile ? '12px 20px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -586,7 +593,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             {isLoading ? '—' : projects.filter(p => p.role === 'leader' || p.role === 'subleader').length}
           </span>
           <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
-            <Icon name="users" size={isMobile ? 12 : 11}/> リーダー経験
+            <Icon name="users" size={isMobile ? 12 : 11}/> {t('Leadership experience')}
           </span>
         </div>
       </div>
@@ -602,7 +609,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           letterSpacing: '0.06em', textTransform: 'uppercase',
           padding: isMobile ? '14px 16px 6px' : '0 0 4px',
         }}>
-          プロジェクト履歴
+          {t('Project history')}
         </div>
 
         {isLoading ? (
@@ -623,7 +630,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             gap: isMobile ? 10 : 8, padding: isMobile ? '40px 16px' : '32px 0', color: 'var(--text-4)',
           }}>
             <Icon name="folder" size={isMobile ? 32 : 28}/>
-            <span style={{ fontSize: isMobile ? 14 : 12.5 }}>参加プロジェクトはありません</span>
+            <span style={{ fontSize: isMobile ? 14 : 12.5 }}>{t('No joined projects')}</span>
           </div>
         ) : (
           sortedProjects.map(p => (

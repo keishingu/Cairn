@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router'
 import * as AppleAuthentication from 'expo-apple-authentication'
 import { signInWithApple } from '../lib/oauth'
 import { completePostAuthNavigation } from '../lib/auth-navigation'
+import { useT } from './locale-provider'
 
 interface Props {
   buttonType: AppleAuthentication.AppleAuthenticationButtonType
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function AppleSignInButton({ buttonType, onError }: Props) {
+  const t = useT()
   const router = useRouter()
   const [available, setAvailable] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
@@ -29,11 +31,11 @@ export function AppleSignInButton({ buttonType, onError }: Props) {
     onError('')
     try {
       // キャンセルはログイン画面に戻る通常操作なので、エラーを表示しない。
-      const result = await signInWithApple()
+      const result = await signInWithApple(t)
       if (result === 'needs-workspace') router.replace('/onboarding')
       else if (result === 'success') router.replace('/(app)/chats')
     } catch {
-      onError('Appleでのサインインに失敗しました。しばらくしてからもう一度お試しください。')
+      onError(t('Could not sign in with Apple. Please try again in a moment.'))
     } finally {
       completePostAuthNavigation()
       loadingRef.current = false
@@ -51,7 +53,7 @@ export function AppleSignInButton({ buttonType, onError }: Props) {
       cornerRadius={8}
       style={[styles.button, loading && styles.loading]}
       onPress={handlePress}
-      accessibilityLabel="Appleでサインイン"
+      accessibilityLabel={t('Sign in with Apple button')}
       accessibilityState={{ disabled: loading, busy: loading }}
     />
   )

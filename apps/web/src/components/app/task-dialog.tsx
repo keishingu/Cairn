@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Modal, ModalHeader } from './primitives'
+import { useT } from '@/components/locale-provider'
 
 interface TaskDialogAction {
   label: string
@@ -39,6 +40,7 @@ export const TaskDialog = ({
   leadingAction,
   disableClose = false,
 }: TaskDialogProps) => {
+  const t = useT()
   const handleClose = () => {
     if (disableClose) return
     onClose()
@@ -47,11 +49,9 @@ export const TaskDialog = ({
   const headerProps = subtitle ? { subtitle } : {}
 
   return (
-    <Modal onClose={handleClose}>
+    <Modal onClose={handleClose} label={title}>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
+        data-task-dialog
         style={{
           position: 'relative',
           background: 'var(--card)',
@@ -124,7 +124,7 @@ export const TaskDialog = ({
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={handleClose} className="btn" disabled={disableClose}>
-                キャンセル
+                {t('Cancel')}
               </button>
               <button
                 type="submit"

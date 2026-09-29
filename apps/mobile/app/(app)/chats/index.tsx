@@ -1,5 +1,5 @@
 import React from 'react'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { FEATURE_FLAGS, workspaceChannelDeleteCopy } from '@cairn/shared'
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,9 @@ import {
   useCreateWorkspaceChannel,
   useCreateWorkspaceDm,
   useCreateChannelThread,
+  useDeleteWorkspaceChannel,
   usePatchProjectMilestone,
+  useRenameWorkspaceChannel,
   useWorkspaceChannels,
   useWorkspaceDms,
   useWorkspaceMembers,
@@ -36,6 +38,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { useNotificationPanel } from '../../../components/notification-panel-provider'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
+import { useT } from '../../../components/locale-provider'
 
 type ChannelItemProps = {
   channel: ProjectChannelDto
@@ -44,6 +47,7 @@ type ChannelItemProps = {
 }
 
 function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemProps) {
+  const t = useT()
   const router = useRouter()
   const { palette } = useAppAppearance()
   const period = formatChannelPeriod(
@@ -66,6 +70,13 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           },
         })
       }
+      {...(onOpenActions
+        ? {
+            onLongPress: onOpenActions,
+            delayLongPress: 350,
+            accessibilityHint: t('Long-press for the menu'),
+          }
+        : {})}
       activeOpacity={0.7}
     >
       <View
@@ -100,22 +111,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           </Text>
         </View>
       )}
-      {onOpenActions ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${milestone ? channel.channelName : channel.projectTitle}の操作`}
-          hitSlop={8}
-          onPress={(event) => {
-            event.stopPropagation()
-            onOpenActions()
-          }}
-          style={styles.rowAction}
-        >
-          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
-        </Pressable>
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
-      )}
+      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
 }
@@ -129,23 +125,35 @@ function WorkspaceChannelItem({
   thread?: boolean
   onOpenActions?: () => void
 }) {
+  const t = useT()
   const router = useRouter()
   const { palette } = useAppAppearance()
   const privateChannel = channel.isPrivate
   return (
     <TouchableOpacity
-      style={[styles.channelRow, thread && styles.threadRow, { borderBottomColor: palette.divider }]}
+      style={[
+        styles.channelRow,
+        thread && styles.threadRow,
+        { borderBottomColor: palette.divider },
+      ]}
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
           params: {
             channelId: channel.id,
-            channelName: channel.name ?? 'チャンネル',
+            channelName: channel.name ?? t('Channels'),
             channelType: 'workspace',
             isPrivate: channel.isPrivate ? '1' : '0',
           },
         })
       }
+      {...(onOpenActions
+        ? {
+            onLongPress: onOpenActions,
+            delayLongPress: 350,
+            accessibilityHint: t('Long-press for the menu'),
+          }
+        : {})}
       activeOpacity={0.7}
     >
       <View
@@ -166,25 +174,10 @@ function WorkspaceChannelItem({
         style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
         numberOfLines={1}
       >
-        {channel.name ?? '名称未設定チャンネル'}
+        {channel.name ?? t('Untitled channel')}
       </Text>
       {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
-      {onOpenActions ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${channel.name ?? 'チャンネル'}の操作`}
-          hitSlop={8}
-          onPress={(event) => {
-            event.stopPropagation()
-            onOpenActions()
-          }}
-          style={styles.rowAction}
-        >
-          <Ionicons name="ellipsis-horizontal" size={18} color={palette.text4} />
-        </Pressable>
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={palette.text4} />
-      )}
+      <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
 }
@@ -246,6 +239,7 @@ type RowActionTarget =
   | { type: 'workspace'; channel: WorkspaceChannelDto }
 
 export default function ChatsScreen() {
+  const t = useT()
   const router = useRouter()
   const navigation = useNavigation()
   const {
@@ -261,18 +255,23 @@ export default function ChatsScreen() {
   const createChannel = useCreateWorkspaceChannel()
   const createDm = useCreateWorkspaceDm()
   const createThread = useCreateChannelThread()
+  const renameChannel = useRenameWorkspaceChannel()
+  const deleteChannel = useDeleteWorkspaceChannel()
   const patchMilestone = usePatchProjectMilestone()
   const meQuery = useMe()
   const me = meQuery.data
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const { openNotifications } = useNotificationPanel()
-  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | null>(null)
+  const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | 'rename' | null>(
+    null,
+  )
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
   const [rowActionTarget, setRowActionTarget] = React.useState<RowActionTarget | null>(null)
   const [threadParent, setThreadParent] = React.useState<WorkspaceChannelDto | null>(null)
+  const [renamingChannel, setRenamingChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const [expandedCompletedProjects, setExpandedCompletedProjects] = React.useState<Set<string>>(
     () => new Set(),
   )
@@ -296,22 +295,22 @@ export default function ChatsScreen() {
     const active = (channels ?? []).filter((channel) => !channel.archived)
     return {
       projectGroups: active
-      .filter((channel) => channel.milestoneId === null)
-      .map((channel) => ({
-        channel,
-        activeMilestones: active.filter(
-          (candidate) =>
-            candidate.projectId === channel.projectId &&
-            candidate.milestoneId !== null &&
-            candidate.milestoneCompleted !== true,
-        ),
-        completedMilestones: active.filter(
-          (candidate) =>
-            candidate.projectId === channel.projectId &&
-            candidate.milestoneId !== null &&
-            candidate.milestoneCompleted === true,
-        ),
-      })),
+        .filter((channel) => channel.milestoneId === null)
+        .map((channel) => ({
+          channel,
+          activeMilestones: active.filter(
+            (candidate) =>
+              candidate.projectId === channel.projectId &&
+              candidate.milestoneId !== null &&
+              candidate.milestoneCompleted !== true,
+          ),
+          completedMilestones: active.filter(
+            (candidate) =>
+              candidate.projectId === channel.projectId &&
+              candidate.milestoneId !== null &&
+              candidate.milestoneCompleted === true,
+          ),
+        })),
       archivedProjects: (channels ?? []).filter(
         (channel) => channel.archived && channel.milestoneId === null,
       ),
@@ -332,19 +331,19 @@ export default function ChatsScreen() {
   }
 
   const openCreateProject = () =>
-    openChatTool('/chats?nativeAux=1&panel=create-project', 'プロジェクトを作成')
+    openChatTool('/chats?nativeAux=1&panel=create-project', t('Create project'))
 
   const openCreateMilestone = (channel: ProjectChannelDto) =>
     openChatTool(
       `/chats?nativeAux=1&panel=create-milestone&projectId=${encodeURIComponent(channel.projectId)}&projectTitle=${encodeURIComponent(channel.projectTitle)}`,
-      'マイルストーンを作成',
+      t('Create milestone'),
     )
 
   const openEditMilestone = (channel: ProjectChannelDto) => {
     if (!channel.milestoneId) return
     openChatTool(
       `/chats?nativeAux=1&panel=edit-milestone&milestoneId=${encodeURIComponent(channel.milestoneId)}`,
-      'マイルストーンを編集',
+      t('Edit milestone'),
     )
   }
 
@@ -358,6 +357,43 @@ export default function ChatsScreen() {
     setRowActionTarget(null)
   }
 
+  const openRenameChannel = (channel: WorkspaceChannelDto) => {
+    setRenamingChannel(channel)
+    setRowActionTarget(null)
+    setChannelName(channel.name ?? '')
+    setCreateError(null)
+    setCreateMode('rename')
+  }
+
+  const confirmDeleteChannel = (channel: WorkspaceChannelDto) => {
+    const isThread = channel.parentChannelId != null
+    const childThreadCount = (workspaceChannelsQuery.data ?? []).filter(
+      (candidate) => candidate.parentChannelId === channel.id,
+    ).length
+    const copy = workspaceChannelDeleteCopy({
+      name: channel.name,
+      isThread,
+      childThreadCount,
+    })
+    setRowActionTarget(null)
+    Alert.alert(copy.title, copy.message, [
+      { text: t('Cancel'), style: 'cancel' },
+      {
+        text: t('Delete it'),
+        style: 'destructive',
+        onPress: () => {
+          deleteChannel.mutate(channel.id, {
+            onError: (mutationError) =>
+              Alert.alert(
+                t('Could not delete it'),
+                mutationError instanceof Error ? mutationError.message : t('Please try again.'),
+              ),
+          })
+        },
+      },
+    ])
+  }
+
   const setMilestoneCompleted = (channel: ProjectChannelDto, completed: boolean) => {
     if (!channel.milestoneId || patchMilestone.isPending) return
     setRowActionTarget(null)
@@ -366,8 +402,8 @@ export default function ChatsScreen() {
       {
         onError: (mutationError) =>
           Alert.alert(
-            'マイルストーンを更新できませんでした',
-            mutationError instanceof Error ? mutationError.message : '再度お試しください。',
+            t('Could not update the milestone'),
+            mutationError instanceof Error ? mutationError.message : t('Please try again.'),
           ),
       },
     )
@@ -394,7 +430,7 @@ export default function ChatsScreen() {
         <Text style={[styles.errorText, { color: palette.redText }]}>{fetchError.message}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="チャット一覧を再読み込み"
+          accessibilityLabel={t('Reload chats')}
           disabled={isRetrying}
           onPress={() =>
             void Promise.all([
@@ -409,7 +445,7 @@ export default function ChatsScreen() {
           {isRetrying ? (
             <ActivityIndicator size="small" color={palette.accent} />
           ) : (
-            <Text style={[styles.memberRetryText, { color: palette.accentText }]}>再試行</Text>
+            <Text style={[styles.memberRetryText, { color: palette.accentText }]}>{t('Retry')}</Text>
           )}
         </Pressable>
       </View>
@@ -425,11 +461,11 @@ export default function ChatsScreen() {
         ]}
       >
         <WorkspaceSwitcherButton />
-        <Text style={[styles.heading, { color: palette.text }]}>チャット</Text>
+        <Text style={[styles.heading, { color: palette.text }]}>{t('Chats')}</Text>
         <View style={styles.headerActions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="通知"
+            accessibilityLabel={t('Notifications')}
             style={styles.headerAction}
             onPress={openNotifications}
           >
@@ -437,14 +473,14 @@ export default function ChatsScreen() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="ブックマーク"
+            accessibilityLabel={t('Bookmarks')}
             style={styles.headerAction}
             onPress={() =>
               router.push({
                 pathname: '/(app)/chat-tools',
                 params: {
                   path: '/chats?nativeAux=1&panel=bookmarks',
-                  title: 'ブックマーク',
+                  title: t('Bookmarks'),
                 },
               })
             }
@@ -453,14 +489,14 @@ export default function ChatsScreen() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="全チャンネル検索"
+            accessibilityLabel={t('Search all channels')}
             style={styles.headerAction}
             onPress={() =>
               router.push({
                 pathname: '/(app)/chat-tools',
                 params: {
                   path: '/chats?nativeAux=1&panel=global-search',
-                  title: '全チャンネル検索',
+                  title: t('Search all channels'),
                 },
               })
             }
@@ -470,7 +506,7 @@ export default function ChatsScreen() {
           {canCreateAnyChat && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="チャットを作成"
+              accessibilityLabel={t('Create chat')}
               style={[styles.headerAction, { backgroundColor: palette.card2 }]}
               onPress={() => {
                 setCreateError(null)
@@ -506,7 +542,10 @@ export default function ChatsScreen() {
                 channel={milestone}
                 milestone
                 {...(canManageChildChats
-                  ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                  ? {
+                      onOpenActions: () =>
+                        setRowActionTarget({ type: 'milestone', channel: milestone }),
+                    }
                   : {})}
               />
             ))}
@@ -517,7 +556,10 @@ export default function ChatsScreen() {
                   channel={milestone}
                   milestone
                   {...(canManageChildChats
-                    ? { onOpenActions: () => setRowActionTarget({ type: 'milestone', channel: milestone }) }
+                    ? {
+                        onOpenActions: () =>
+                          setRowActionTarget({ type: 'milestone', channel: milestone }),
+                      }
                     : {})}
                 />
               ))}
@@ -526,7 +568,7 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>プロジェクト</Text>
+            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Projects')}</Text>
           </>
         }
         ListFooterComponent={
@@ -535,7 +577,11 @@ export default function ChatsScreen() {
               <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={showArchivedProjects ? 'アーカイブ済みプロジェクトを閉じる' : 'アーカイブ済みプロジェクトを開く'}
+                  accessibilityLabel={
+                    showArchivedProjects
+                      ? t('Hide archived projects')
+                      : t('Show archived projects')
+                  }
                   accessibilityState={{ expanded: showArchivedProjects }}
                   onPress={() => setShowArchivedProjects((current) => !current)}
                   style={styles.collapsibleHeading}
@@ -545,8 +591,10 @@ export default function ChatsScreen() {
                     size={14}
                     color={palette.text4}
                   />
-                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>アーカイブ済み</Text>
-                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>{archivedProjects.length}</Text>
+                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>{t('Archived')}</Text>
+                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>
+                    {archivedProjects.length}
+                  </Text>
                 </Pressable>
                 {showArchivedProjects &&
                   archivedProjects.map((channel) => (
@@ -554,7 +602,7 @@ export default function ChatsScreen() {
                   ))}
               </>
             )}
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>チャンネル</Text>
+            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Channels')}</Text>
             {workspaceChannelGroups.map(({ channel, threads }) => (
               <React.Fragment key={channel.id}>
                 <WorkspaceChannelItem
@@ -564,21 +612,26 @@ export default function ChatsScreen() {
                     : {})}
                 />
                 {threads.map((thread) => (
-                  <WorkspaceChannelItem key={thread.id} channel={thread} thread />
+                  <WorkspaceChannelItem
+                    key={thread.id}
+                    channel={thread}
+                    thread
+                    {...(canManageChildChats
+                      ? { onOpenActions: () => setRowActionTarget({ type: 'workspace', channel: thread }) }
+                      : {})}
+                  />
                 ))}
               </React.Fragment>
             ))}
             {FEATURE_FLAGS.dm && (
               <>
-                <Text style={[styles.sectionTitle, { color: palette.text4 }]}>
-                  ダイレクトメッセージ
-                </Text>
+                <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Direct messages')}</Text>
                 {(dmsQuery.data ?? []).map((channel) => (
                   <DirectMessageItem key={channel.id} channel={channel} />
                 ))}
               </>
             )}
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>アプリ</Text>
+            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Apps')}</Text>
             <TouchableOpacity
               style={[styles.channelRow, { borderBottomColor: palette.divider }]}
               onPress={() => router.push('/(app)/ai')}
@@ -587,17 +640,13 @@ export default function ChatsScreen() {
               <View style={[styles.channelIcon, { backgroundColor: palette.accentSoft }]}>
                 <Text style={[styles.channelIconText, { color: palette.accentText }]}>✨</Text>
               </View>
-              <Text style={[styles.channelName, styles.rowLabel, { color: palette.text }]}>
-                AIアシスタント
-              </Text>
+              <Text style={[styles.channelName, styles.rowLabel, { color: palette.text }]}>{t('AI assistant')}</Text>
               <Ionicons name="chevron-forward" size={16} color={palette.text4} />
             </TouchableOpacity>
           </>
         }
         ListEmptyComponent={
-          <Text style={[styles.empty, { color: palette.text4 }]}>
-            プロジェクトチャンネルがありません
-          </Text>
+          <Text style={[styles.empty, { color: palette.text4 }]}>{t('No project channels')}</Text>
         }
       />
 
@@ -620,10 +669,10 @@ export default function ChatsScreen() {
         >
           <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
           <View style={styles.createHeader}>
-            {createMode !== 'menu' && (
+            {createMode !== 'menu' && createMode !== 'rename' && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="作成メニューへ戻る"
+                accessibilityLabel={t('Back to the create menu')}
                 onPress={() => {
                   setCreateError(null)
                   setCreateMode('menu')
@@ -635,16 +684,20 @@ export default function ChatsScreen() {
             )}
             <Text style={[styles.createTitle, { color: palette.text }]}>
               {createMode === 'channel'
-                ? 'チャンネルを作成'
+                ? t('Create channel')
                 : createMode === 'thread'
-                  ? 'スレッドを作成'
-                : createMode === 'dm'
-                  ? 'DMを開始'
-                  : '新しいチャット'}
+                  ? t('Create thread')
+                  : createMode === 'rename'
+                    ? renamingChannel?.parentChannelId
+                      ? t('Rename thread')
+                      : t('Rename channel')
+                    : createMode === 'dm'
+                      ? t('Start a DM')
+                      : t('New chat')}
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="作成画面を閉じる"
+              accessibilityLabel={t('Close the create screen')}
               onPress={() => setCreateMode(null)}
               hitSlop={8}
             >
@@ -662,7 +715,7 @@ export default function ChatsScreen() {
                 <>
                   <CreateMenuButton
                     icon="folder-open-outline"
-                    label="プロジェクトを作成"
+                    label={t('Create project')}
                     palette={palette}
                     onPress={() => {
                       setCreateMode(null)
@@ -671,7 +724,7 @@ export default function ChatsScreen() {
                   />
                   <CreateMenuButton
                     icon="chatbubbles-outline"
-                    label="チャンネルを作成"
+                    label={t('Create channel')}
                     palette={palette}
                     onPress={() => setCreateMode('channel')}
                   />
@@ -680,7 +733,7 @@ export default function ChatsScreen() {
               {FEATURE_FLAGS.dm && (
                 <CreateMenuButton
                   icon="person-add-outline"
-                  label="ダイレクトメッセージを開始"
+                  label={t('Start a direct message')}
                   palette={palette}
                   onPress={() => setCreateMode('dm')}
                 />
@@ -697,7 +750,7 @@ export default function ChatsScreen() {
                   setChannelName(value)
                   setCreateError(null)
                 }}
-                placeholder="チャンネル名"
+                placeholder={t('Channel name')}
                 placeholderTextColor={palette.text4}
                 style={[
                   styles.channelInput,
@@ -710,12 +763,8 @@ export default function ChatsScreen() {
               />
               <View style={styles.privateRow}>
                 <View style={styles.privateCopy}>
-                  <Text style={[styles.privateTitle, { color: palette.text }]}>
-                    非公開チャンネル
-                  </Text>
-                  <Text style={[styles.privateDescription, { color: palette.text3 }]}>
-                    招待されたメンバーだけが参加できます
-                  </Text>
+                  <Text style={[styles.privateTitle, { color: palette.text }]}>{t('Invite-only channel')}</Text>
+                  <Text style={[styles.privateDescription, { color: palette.text3 }]}>{t('Only invited members can join')}</Text>
                 </View>
                 <Switch
                   value={privateChannel}
@@ -744,7 +793,7 @@ export default function ChatsScreen() {
                           pathname: '/chats/[channelId]',
                           params: {
                             channelId: channel.id,
-                            channelName: channel.name ?? 'チャンネル',
+                            channelName: channel.name ?? t('Channels'),
                             channelType: 'workspace',
                             isPrivate: channel.isPrivate ? '1' : '0',
                           },
@@ -752,7 +801,7 @@ export default function ChatsScreen() {
                       },
                       onError: (error) =>
                         setCreateError(
-                          error instanceof Error ? error.message : 'チャンネルの作成に失敗しました',
+                          error instanceof Error ? error.message : t('Could not create the channel'),
                         ),
                     },
                   )
@@ -761,7 +810,7 @@ export default function ChatsScreen() {
                 {createChannel.isPending ? (
                   <ActivityIndicator size="small" color={palette.onAccent} />
                 ) : (
-                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>作成</Text>
+                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>{t('Create entry')}</Text>
                 )}
               </Pressable>
             </View>
@@ -780,7 +829,7 @@ export default function ChatsScreen() {
                   setChannelName(value)
                   setCreateError(null)
                 }}
-                placeholder="スレッド名"
+                placeholder={t('Thread name')}
                 placeholderTextColor={palette.text4}
                 style={[
                   styles.channelInput,
@@ -823,7 +872,7 @@ export default function ChatsScreen() {
                         setCreateError(
                           mutationError instanceof Error
                             ? mutationError.message
-                            : 'スレッドの作成に失敗しました',
+                            : t('Could not create the thread'),
                         ),
                     },
                   )
@@ -832,7 +881,66 @@ export default function ChatsScreen() {
                 {createThread.isPending ? (
                   <ActivityIndicator size="small" color={palette.onAccent} />
                 ) : (
-                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>作成</Text>
+                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>{t('Create entry')}</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
+
+          {createMode === 'rename' && renamingChannel && (
+            <View style={styles.channelForm}>
+              <TextInput
+                autoFocus
+                value={channelName}
+                maxLength={60}
+                onChangeText={(value) => {
+                  setChannelName(value)
+                  setCreateError(null)
+                }}
+                placeholder={renamingChannel.parentChannelId ? t('Thread name') : t('Channel name')}
+                placeholderTextColor={palette.text4}
+                style={[
+                  styles.channelInput,
+                  {
+                    color: palette.text,
+                    backgroundColor: palette.card2,
+                    borderColor: palette.border,
+                  },
+                ]}
+              />
+              <Pressable
+                disabled={!channelName.trim() || renameChannel.isPending}
+                style={[
+                  styles.createSubmit,
+                  {
+                    backgroundColor: palette.accent,
+                    opacity: !channelName.trim() || renameChannel.isPending ? 0.45 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  const target = renamingChannel
+                  renameChannel.mutate(
+                    { channelId: target.id, name: channelName.trim() },
+                    {
+                      onSuccess: () => {
+                        setCreateMode(null)
+                        setRenamingChannel(null)
+                        setChannelName('')
+                      },
+                      onError: (mutationError) =>
+                        setCreateError(
+                          mutationError instanceof Error
+                            ? mutationError.message
+                            : t('Could not rename'),
+                        ),
+                    },
+                  )
+                }}
+              >
+                {renameChannel.isPending ? (
+                  <ActivityIndicator size="small" color={palette.onAccent} />
+                ) : (
+                  <Text style={[styles.createSubmitText, { color: palette.onAccent }]}>{t('Save entry')}</Text>
                 )}
               </Pressable>
             </View>
@@ -848,7 +956,7 @@ export default function ChatsScreen() {
                   </Text>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="メンバーを再読み込み"
+                    accessibilityLabel={t('Reload members')}
                     disabled={membersQuery.isFetching}
                     onPress={() => void membersQuery.refetch()}
                     style={[styles.memberRetry, { borderColor: palette.border }]}
@@ -856,9 +964,7 @@ export default function ChatsScreen() {
                     {membersQuery.isFetching ? (
                       <ActivityIndicator size="small" color={palette.accent} />
                     ) : (
-                      <Text style={[styles.memberRetryText, { color: palette.accentText }]}>
-                        再試行
-                      </Text>
+                      <Text style={[styles.memberRetryText, { color: palette.accentText }]}>{t('Retry')}</Text>
                     )}
                   </Pressable>
                 </View>
@@ -885,7 +991,7 @@ export default function ChatsScreen() {
                           },
                           onError: (error) =>
                             setCreateError(
-                              error instanceof Error ? error.message : 'DMの開始に失敗しました',
+                              error instanceof Error ? error.message : t('Could not start the DM'),
                             ),
                         })
                       }
@@ -946,7 +1052,7 @@ export default function ChatsScreen() {
             <>
               <ActionSheetButton
                 icon="flag-outline"
-                label="マイルストーンを作成"
+                label={t('Create milestone')}
                 palette={palette}
                 onPress={() => {
                   const channel = rowActionTarget.channel
@@ -961,11 +1067,11 @@ export default function ChatsScreen() {
                       ? 'eye-off-outline'
                       : 'eye-outline'
                   }
-                  label={`完了済みマイルストーンを${
-                    expandedCompletedProjects.has(rowActionTarget.channel.projectId)
-                      ? '非表示'
-                      : '表示'
-                  }`}
+                  label={t('Completed milestones: {state}', {
+                    state: expandedCompletedProjects.has(rowActionTarget.channel.projectId)
+                      ? t('Hide')
+                      : t('Show'),
+                  })}
                   palette={palette}
                   onPress={() => toggleCompletedMilestones(rowActionTarget.channel.projectId)}
                 />
@@ -977,7 +1083,7 @@ export default function ChatsScreen() {
               {rowActionTarget.channel.milestoneCompleted !== true && (
                 <ActionSheetButton
                   icon="create-outline"
-                  label="編集"
+                  label={t('Edit')}
                   palette={palette}
                   onPress={() => {
                     const channel = rowActionTarget.channel
@@ -987,8 +1093,12 @@ export default function ChatsScreen() {
                 />
               )}
               <ActionSheetButton
-                icon={rowActionTarget.channel.milestoneCompleted ? 'refresh-outline' : 'checkmark-circle-outline'}
-                label={rowActionTarget.channel.milestoneCompleted ? '未完了にする' : '完了にする'}
+                icon={
+                  rowActionTarget.channel.milestoneCompleted
+                    ? 'refresh-outline'
+                    : 'checkmark-circle-outline'
+                }
+                label={rowActionTarget.channel.milestoneCompleted ? t('Mark incomplete') : t('Mark complete')}
                 palette={palette}
                 onPress={() =>
                   setMilestoneCompleted(
@@ -1000,18 +1110,39 @@ export default function ChatsScreen() {
             </>
           )}
           {rowActionTarget?.type === 'workspace' && (
-            <ActionSheetButton
-              icon="chatbubble-ellipses-outline"
-              label="スレッドを作成"
-              palette={palette}
-              onPress={() => {
-                setThreadParent(rowActionTarget.channel)
-                setRowActionTarget(null)
-                setChannelName('')
-                setCreateError(null)
-                setCreateMode('thread')
-              }}
-            />
+            <>
+              {rowActionTarget.channel.parentChannelId == null && (
+                <ActionSheetButton
+                  icon="chatbubble-ellipses-outline"
+                  label={t('Create thread')}
+                  palette={palette}
+                  onPress={() => {
+                    setThreadParent(rowActionTarget.channel)
+                    setRowActionTarget(null)
+                    setChannelName('')
+                    setCreateError(null)
+                    setCreateMode('thread')
+                  }}
+                />
+              )}
+              {(rowActionTarget.channel.parentChannelId != null || canCreateAdminResources) && (
+                <>
+                  <ActionSheetButton
+                    icon="create-outline"
+                    label={t('Rename')}
+                    palette={palette}
+                    onPress={() => openRenameChannel(rowActionTarget.channel)}
+                  />
+                  <ActionSheetButton
+                    icon="trash-outline"
+                    label={t('Delete')}
+                    palette={palette}
+                    danger
+                    onPress={() => confirmDeleteChannel(rowActionTarget.channel)}
+                  />
+                </>
+              )}
+            </>
           )}
         </View>
       </Modal>
@@ -1024,20 +1155,23 @@ function ActionSheetButton({
   label,
   palette,
   onPress,
+  danger = false,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name']
   label: string
   palette: ThemePalette
   onPress: () => void
+  danger?: boolean
 }) {
+  const color = danger ? palette.redText : palette.text
   return (
     <Pressable
       accessibilityRole="button"
       style={[styles.actionSheetButton, { borderTopColor: palette.divider }]}
       onPress={onPress}
     >
-      <Ionicons name={icon} size={19} color={palette.text2} />
-      <Text style={[styles.actionSheetLabel, { color: palette.text }]}>{label}</Text>
+      <Ionicons name={icon} size={19} color={danger ? palette.redText : palette.text2} />
+      <Text style={[styles.actionSheetLabel, { color }]}>{label}</Text>
     </Pressable>
   )
 }
@@ -1118,13 +1252,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   channelIconText: { fontSize: 18, fontWeight: '600' },
-  rowAction: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
   channelCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { flex: 1 },
   channelName: { fontSize: 15, fontWeight: '600' },

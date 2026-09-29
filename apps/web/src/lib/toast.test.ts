@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { toast, subscribeToasts, dismissToast, __resetToastsForTest, type ToastItem } from './toast'
+import {
+  toast, subscribeToasts, dismissToast, pauseToast, resumeToast, __resetToastsForTest, type ToastItem,
+} from './toast'
 
 describe('toast ストア', () => {
   beforeEach(() => {
@@ -74,5 +76,88 @@ describe('toast ストア', () => {
     unsubscribe()
     toast.success('保存しました')
     expect(count).toBe(1)
+  })
+
+  it('エラーは成功より長く表示される', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    toast.error('失敗しました')
+    vi.advanceTimersByTime(4000)
+    expect(current).toHaveLength(1)
+    vi.advanceTimersByTime(2000)
+    expect(current).toHaveLength(0)
+  })
+
+  it('表示中と同じ内容は積まずに表示時間を延ばす', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const first = toast.success('コピーしました')
+    vi.advanceTimersByTime(3000)
+    const second = toast.success('コピーしました')
+
+    expect(second).toBe(first)
+    expect(current).toHaveLength(1)
+    vi.advanceTimersByTime(3000)
+    expect(current).toHaveLength(1)
+    vi.advanceTimersByTime(1000)
+    expect(current).toHaveLength(0)
+  })
+
+  it('同時表示は3件までで古いものから消える', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    toast.info('1')
+    toast.info('2')
+    toast.info('3')
+    toast.info('4')
+
+    expect(current.map(t => t.message)).toEqual(['2', '3', '4'])
+  })
+
+  it('一時停止中は自動で消えず、再開すると残り時間で消える', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const id = toast.success('保存しました')
+    vi.advanceTimersByTime(1000)
+    pauseToast(id)
+    vi.advanceTimersByTime(60_000)
+    expect(current).toHaveLength(1)
+
+    resumeToast(id)
+    vi.advanceTimersByTime(2999)
+    expect(current).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(current).toHaveLength(0)
+  })
+
+  it('一時停止中に同じ内容が来ても再開せず、止めたままにする', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const id = toast.success('コピーしました')
+    pauseToast(id)
+    toast.success('コピーしました')
+    vi.advanceTimersByTime(60_000)
+    expect(current).toHaveLength(1)
+
+    resumeToast(id)
+    vi.advanceTimersByTime(4000)
+    expect(current).toHaveLength(0)
+  })
+
+  it('一時停止中に同じ内容が duration: 0 で来たら、再開しても自動で消えない', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    const id = toast.info('処理中')
+    pauseToast(id)
+    toast.info('処理中', { duration: 0 })
+    resumeToast(id)
+    vi.advanceTimersByTime(60_000)
+    expect(current).toHaveLength(1)
   })
 })

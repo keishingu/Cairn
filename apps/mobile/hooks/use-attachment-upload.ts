@@ -5,6 +5,7 @@ import { File } from 'expo-file-system'
 import { apiFetch } from '../lib/api-fetch'
 import { hasFailedUploads } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
+import { useT } from '../components/locale-provider'
 
 const ALLOWED_DOCUMENT_TYPES = [
   'application/pdf',
@@ -50,6 +51,7 @@ async function responseError(res: Response, fallback: string): Promise<Error> {
 }
 
 export function useAttachmentUpload(channelId: string) {
+  const t = useT()
   const [uploads, setUploads] = React.useState<PendingUpload[]>([])
 
   const patchUpload = React.useCallback((id: string, patch: Partial<PendingUpload>) => {
@@ -81,7 +83,7 @@ export function useAttachmentUpload(channelId: string) {
           }),
         })
         if (!signResponse.ok)
-          throw await responseError(signResponse, 'アップロードの準備に失敗しました')
+          throw await responseError(signResponse, t('Could not prepare the upload'))
         const signed = (await signResponse.json()) as SignedUploadDto
 
         const file = new File(picked.uri)
@@ -104,18 +106,18 @@ export function useAttachmentUpload(channelId: string) {
           }),
         })
         if (!finalizeResponse.ok)
-          throw await responseError(finalizeResponse, 'アップロードの登録に失敗しました')
+          throw await responseError(finalizeResponse, t('Could not register the upload'))
         const finalized = (await finalizeResponse.json()) as { fileId: string }
         patchUpload(id, { status: 'done', fileId: finalized.fileId })
       } catch (error) {
         console.error('[useAttachmentUpload] アップロードに失敗:', error)
         patchUpload(id, {
           status: 'error',
-          error: error instanceof Error ? error.message : 'アップロードに失敗しました',
+          error: error instanceof Error ? error.message : t('Upload failed'),
         })
       }
     },
-    [channelId, patchUpload],
+    [channelId, patchUpload, t],
   )
 
   const pickImage = React.useCallback(async () => {

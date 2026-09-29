@@ -19,11 +19,12 @@ describe('TaskDialog', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: 'タスクを追加' })
+    const card = dialog.querySelector<HTMLElement>('[data-task-dialog]')
     const body = dialog.querySelector<HTMLElement>('[data-task-dialog-body]')
     const actions = dialog.querySelector<HTMLElement>('[data-task-dialog-actions]')
     const alert = screen.getByRole('alert')
 
-    expect(dialog).toHaveStyle({ maxHeight: 'calc(100dvh - 48px)' })
+    expect(card).toHaveStyle({ maxHeight: 'calc(100dvh - 48px)' })
     expect(body).toHaveStyle({ overflowY: 'auto', minHeight: '0' })
     expect(actions).toHaveStyle({ flexShrink: '0' })
     expect(body?.contains(alert)).toBe(false)

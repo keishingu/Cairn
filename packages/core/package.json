@@ -12,9 +12,6 @@
       "default": "./src/billing.ts"
     }
   },
-  "dependencies": {
-    "@cairn/shared": "workspace:*"
-  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

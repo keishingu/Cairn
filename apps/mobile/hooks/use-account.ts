@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import type { AccentId, AppearanceTheme } from '@cairn/shared'
-import { apiFetch } from '../lib/api-fetch'
+import type { AccentId, AppearanceTheme, CalendarWeekStart, LocalePreference } from '@cairn/shared'
+import { fetchApiJson } from '../lib/fetch-api-json'
+import { useT } from '../components/locale-provider'
+import {
+  fetchWorkspaceMemberships,
+  workspaceListQueryKey,
+  type WorkspaceMembership,
+} from '../lib/workspace-queries'
 
 export interface MeDto {
   id: string
@@ -9,6 +15,8 @@ export interface MeDto {
   avatarUrl: string | null
   theme: AppearanceTheme
   accentId: AccentId
+  locale: LocalePreference
+  calendarWeekStart: CalendarWeekStart
   wsRole: 'owner' | 'admin' | 'member' | 'guest'
 }
 
@@ -18,40 +26,32 @@ export interface WorkspaceDto {
   logoUrl: string | null
 }
 
-export interface WorkspaceListItemDto {
-  id: string
-  name: string
-  slug: string
-  logoUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
-}
+export type WorkspaceListItemDto = WorkspaceMembership
 
-async function getJson<T>(path: string, label: string): Promise<T> {
-  const res = await apiFetch(path)
-  if (!res.ok) throw new Error(`${label}の取得に失敗しました (${res.status})`)
-  return res.json() as Promise<T>
-}
-
-export function useMe() {
+export function useMe(enabled = true) {
+  const t = useT()
   return useQuery({
     queryKey: ['me'],
-    queryFn: () => getJson<MeDto>('/api/me', 'ユーザー情報'),
+    queryFn: () => fetchApiJson<MeDto>('/api/me', t('Could not load account info ({status})')),
     staleTime: 60_000,
+    enabled,
   })
 }
 
 export function useWorkspace() {
+  const t = useT()
   return useQuery({
     queryKey: ['workspace'],
-    queryFn: () => getJson<WorkspaceDto>('/api/workspaces', 'ワークスペース情報'),
+    queryFn: () => fetchApiJson<WorkspaceDto>('/api/workspaces', t('Could not load workspace info ({status})')),
     staleTime: 60_000,
   })
 }
 
 export function useWorkspaceList(enabled = true) {
+  const t = useT()
   return useQuery({
-    queryKey: ['workspace-list'],
-    queryFn: () => getJson<WorkspaceListItemDto[]>('/api/workspaces/list', 'ワークスペース一覧'),
+    queryKey: workspaceListQueryKey,
+    queryFn: () => fetchWorkspaceMemberships(t),
     staleTime: 60_000,
     enabled,
   })

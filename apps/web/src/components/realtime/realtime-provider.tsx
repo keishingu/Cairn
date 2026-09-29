@@ -9,11 +9,11 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
-  useCurrentUser,
   useProjectChannels,
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 
@@ -138,6 +138,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           } else if (table === 'channel_members') {
             // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
             scheduleListInvalidate()
+          } else if (table === 'channels') {
+            // 名称変更と削除。削除後は channel トピックの認可が消えるため、ここへ届ける。
+            scheduleListInvalidate()
+            const operation = (message as { payload?: { operation?: unknown } }).payload?.operation
+            if (operation === 'DELETE') {
+              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+              void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            }
           }
         })
       userChannel = currentChannel

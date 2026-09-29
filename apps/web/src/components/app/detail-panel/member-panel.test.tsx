@@ -80,16 +80,19 @@ function renderPanel(
   qc.setQueryData(['workspace-members'], members)
   qc.setQueryData(['member-projects', member.userId], [])
 
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemberDetailPanel
-        member={member}
-        onProjectClick={vi.fn()}
-        onClose={vi.fn()}
-        {...(opts.isMobile ? { isMobile: true } : {})}
-      />
-    </QueryClientProvider>,
-  )
+  return {
+    queryClient: qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <MemberDetailPanel
+          member={member}
+          onProjectClick={vi.fn()}
+          onClose={vi.fn()}
+          {...(opts.isMobile ? { isMobile: true } : {})}
+        />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 function mockApis(
@@ -179,6 +182,42 @@ describe('MemberDetailPanel — ロール変更', () => {
     expect(screen.getByRole('option', { name: 'オーナー' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '管理者' })).toBeNull()
     expect(screen.queryByRole('option', { name: 'メンバー' })).toBeNull()
+  })
+
+  it('自分のロール変更は現在ユーザーのキャッシュへ反映する', async () => {
+    const coOwner: WorkspaceMemberDto = {
+      ...OWNER,
+      userId: 'owner-2',
+      displayName: '共同オーナー',
+      email: 'co-owner@example.com',
+    }
+    let patchedRole: WorkspaceMemberDto['role'] = 'owner'
+    fetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url === '/api/me') {
+        return Promise.resolve(jsonResponse({ id: OWNER.userId, wsRole: patchedRole }))
+      }
+      if (typeof url === 'string' && url === '/api/workspaces/members') {
+        return Promise.resolve(jsonResponse([OWNER, coOwner]))
+      }
+      if (typeof url === 'string' && url === '/api/workspaces/profile-attributes') {
+        return Promise.resolve(jsonResponse([]))
+      }
+      if (init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body)) as { role: WorkspaceMemberDto['role'] }
+        patchedRole = body.role
+        return Promise.resolve(jsonResponse({ userId: OWNER.userId, role: body.role }))
+      }
+      return Promise.resolve(jsonResponse([]))
+    })
+
+    const { queryClient } = renderPanel(OWNER, { viewer: OWNER, members: [OWNER, coOwner] })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ワークスペース権限を変更' }))
+    await userEvent.click(screen.getByRole('option', { name: '管理者' }))
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData<{ wsRole: string }>(['me'])?.wsRole).toBe('admin')
+    })
   })
 
   it('ロール変更が失敗したらトーストで理由を表示する', async () => {

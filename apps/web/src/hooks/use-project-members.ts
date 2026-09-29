@@ -187,6 +187,8 @@ export function useUpdateProjectMemberRole(projectId: string) {
             member.userId === updated.userId ? { ...member, ...updated } : member,
           ) ?? [],
       )
+      // 一覧の参加中/主催フィルタが参照する isJoined / isHosting を最新化する
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }
@@ -205,6 +207,8 @@ export function useRemoveProjectMember(projectId: string) {
         ['project-members', projectId],
         (old) => old?.filter((m) => m.userId !== userId) ?? [],
       )
+      // 自分の参加状態が変わる場合に一覧の isJoined / isHosting を最新化する
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }

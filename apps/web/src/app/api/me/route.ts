@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { FEATURE_FLAGS, patchMeSchema } from '@cairn/shared'
-import type { AccentId, AppearanceTheme } from '@cairn/shared'
+import type { AccentId, AppearanceTheme, CalendarWeekStart, LocalePreference } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import type { UserStatus } from '@/lib/user-status'
@@ -20,6 +20,8 @@ export interface CurrentUserDto {
   aiNudgesEnabled: boolean
   theme: AppearanceTheme
   accentId: AccentId
+  locale: LocalePreference
+  calendarWeekStart: CalendarWeekStart
 }
 
 export async function GET() {
@@ -47,6 +49,8 @@ export async function GET() {
         aiNudgesEnabled: profiles.aiNudgesEnabled,
         theme: profiles.theme,
         accentId: profiles.accentId,
+        locale: profiles.locale,
+        calendarWeekStart: profiles.calendarWeekStart,
         status: workspaceMembers.status,
         statusMessage: workspaceMembers.statusMessage,
         wsRole: workspaceMembers.role,
@@ -74,6 +78,8 @@ export async function GET() {
       aiNudgesEnabled: row.aiNudgesEnabled,
       theme: row.theme as AppearanceTheme,
       accentId: row.accentId as AccentId,
+      locale: row.locale as LocalePreference,
+      calendarWeekStart: row.calendarWeekStart as CalendarWeekStart,
     } satisfies CurrentUserDto)
   } catch (err) {
     console.error('[/api/me] DB query failed:', err)
@@ -113,6 +119,8 @@ export async function PATCH(req: Request) {
       || b.aiNudgesEnabled !== undefined
       || b.theme !== undefined
       || b.accentId !== undefined
+      || b.locale !== undefined
+      || b.calendarWeekStart !== undefined
     ) {
       await db.transaction(async (tx) => {
         const profileUpdate: {
@@ -120,6 +128,8 @@ export async function PATCH(req: Request) {
           aiNudgesEnabled?: boolean
           theme?: AppearanceTheme
           accentId?: AccentId
+          locale?: LocalePreference
+          calendarWeekStart?: CalendarWeekStart
           updatedAt: Date
         } = {
           updatedAt: new Date(),
@@ -128,11 +138,10 @@ export async function PATCH(req: Request) {
         if (b.aiNudgesEnabled !== undefined) profileUpdate.aiNudgesEnabled = b.aiNudgesEnabled
         if (b.theme !== undefined) profileUpdate.theme = b.theme
         if (b.accentId !== undefined) profileUpdate.accentId = b.accentId
+        if (b.locale !== undefined) profileUpdate.locale = b.locale
+        if (b.calendarWeekStart !== undefined) profileUpdate.calendarWeekStart = b.calendarWeekStart
 
-        await tx
-          .update(profiles)
-          .set(profileUpdate)
-          .where(eq(profiles.id, ctx.userId))
+        await tx.update(profiles).set(profileUpdate).where(eq(profiles.id, ctx.userId))
 
         // キルスイッチ OFF はサーバー側で即時遡及させる。同じ suppressed 遷移を
         // フィードバック・アクセス失効と共有することで、DB trigger がベル通知も消す。
@@ -177,6 +186,8 @@ export async function PATCH(req: Request) {
       id: ctx.userId,
       ...(b.theme !== undefined ? { theme: b.theme } : {}),
       ...(b.accentId !== undefined ? { accentId: b.accentId } : {}),
+      ...(b.locale !== undefined ? { locale: b.locale } : {}),
+      ...(b.calendarWeekStart !== undefined ? { calendarWeekStart: b.calendarWeekStart } : {}),
     })
   } catch (err) {
     console.error('[PATCH /api/me]', err)

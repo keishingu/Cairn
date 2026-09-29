@@ -135,9 +135,9 @@ describe('POST /api/projects', () => {
     }))
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { memberCount: number; isMember: boolean }
+    const body = await res.json() as { memberCount: number; isJoined: boolean }
     expect(body.memberCount).toBe(0)
-    expect(body.isMember).toBe(false)
+    expect(body.isJoined).toBe(false)
     expect(mockDb.insert).toHaveBeenCalledTimes(2)
   })
 
@@ -197,10 +197,10 @@ describe('POST /api/projects', () => {
     }))
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { memberCount: number; memberNames: string[]; isMember: boolean }
+    const body = await res.json() as { memberCount: number; memberNames: string[]; isJoined: boolean }
     expect(body.memberCount).toBe(2)
     expect(body.memberNames).toEqual(['Alice', 'Bob'])
-    expect(body.isMember).toBe(false)
+    expect(body.isJoined).toBe(false)
     expect(mockDb.insert).toHaveBeenCalledTimes(3)
   })
 })

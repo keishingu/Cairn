@@ -6,6 +6,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import { findProjectChannelById, useProjectChannels } from '@/lib/chat/client'
 import { ChatThread } from '../../chat-thread'
+import { useT } from '@/components/locale-provider'
 
 export function filterProjectChatTabChannels(
   channels: ProjectChannelDto[] | undefined,
@@ -18,6 +19,7 @@ export function filterProjectChatTabChannels(
 }
 
 export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?: boolean }) => {
+  const t = useT()
   const { data: projectChannels, isLoading, isError } = useProjectChannels()
   const [selectedChannelId, setSelectedChannelId] = React.useState<string | null>(null)
 
@@ -41,13 +43,13 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
   }, [generalChannel, projectScopedChannels, selectedChannelId])
 
   if (isLoading) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading…')}</div>
   }
   if (isError) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>チャンネルの取得に失敗しました</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load channels')}</div>
   }
   if (!activeChannel) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>チャンネルが見つかりません</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Channel not found')}</div>
   }
 
   return (

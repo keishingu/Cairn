@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { translate } from '@cairn/shared'
 import {
   ChatMessage,
   ChatThread,
@@ -12,6 +13,8 @@ import {
   copyMessageLink,
   isNearMessageTimelineEnd,
 } from './chat-thread'
+
+const copyT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
 
 const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadState } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
@@ -22,9 +25,10 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
-    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' }>,
+    workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' | 'guest' }>,
     projectChannels: [] as Array<{ channelId: string; projectId: string }>,
     projectMembers: [] as Array<{ userId: string }>,
+    profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
 }))
 
@@ -47,7 +51,6 @@ vi.mock('@/lib/chat/client', () => ({
     isSuccess: true,
     error: null,
   }),
-  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Kei', avatarUrl: null } }),
   useDeleteMessage: () => ({ mutate: vi.fn() }),
   useEditMessage: () => ({ mutate: vi.fn() }),
   useEnsureMessageLoaded: () => vi.fn(),
@@ -60,13 +63,19 @@ vi.mock('@/lib/chat/client', () => ({
   useWorkspaceMembers: () => ({ data: chatThreadState.workspaceMembers }),
 }))
 
+vi.mock('@/hooks/use-current-user', () => ({
+  useCurrentUser: () => ({ data: { id: 'user-1', displayName: 'Kei', avatarUrl: null } }),
+}))
+
 vi.mock('@/hooks/use-ai-nudges', () => ({
   aiNudgeQueryKey: () => ['ai-nudges'],
   useAiNudgeFeedback: () => ({ mutate: vi.fn(), isPending: false }),
   useAiNudges: () => ({ data: [], isError: false }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data: chatThreadState.projectMembers }) }))
-vi.mock('@/hooks/use-profile-attributes', () => ({ useProfileAttributes: () => ({ data: [] }) }))
+vi.mock('@/hooks/use-profile-attributes', () => ({
+  useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -136,7 +145,7 @@ describe('ChatMessage copy action', () => {
   it('元の本文をそのままコピーして成功トーストを出す', async () => {
     const content = 'https://example.com/very/long/path?token=abcdef1234567890&next=%2Fprojects%2Falpha'
 
-    await expect(copyMessageContent(content)).resolves.toBe(true)
+    await expect(copyMessageContent(content, copyT)).resolves.toBe(true)
 
     expect(clipboardWriteText).toHaveBeenCalledWith(content)
     expect(toastSuccess).toHaveBeenCalledWith('メッセージをコピーしました')
@@ -149,7 +158,7 @@ describe('ChatMessage copy action', () => {
       value: { writeText },
     })
 
-    await expect(copyMessageContent('hello')).resolves.toBe(false)
+    await expect(copyMessageContent('hello', copyT)).resolves.toBe(false)
 
     expect(writeText).toHaveBeenCalledWith('hello')
     expect(toastError).toHaveBeenCalledWith('メッセージをコピーできませんでした')
@@ -158,7 +167,7 @@ describe('ChatMessage copy action', () => {
   it('メッセージのリンクをコピーして成功トーストを出す', async () => {
     const url = 'https://develop.oss-cairn.com/chats/channel-1?m=message-1'
 
-    await expect(copyMessageLink(url)).resolves.toBe(true)
+    await expect(copyMessageLink(url, copyT)).resolves.toBe(true)
 
     expect(clipboardWriteText).toHaveBeenCalledWith(url)
     expect(toastSuccess).toHaveBeenCalledWith('リンクをコピーしました')
@@ -167,7 +176,7 @@ describe('ChatMessage copy action', () => {
   it('メッセージのリンクをコピーできなければエラートーストを出す', async () => {
     clipboardWriteText.mockRejectedValue(new Error('denied'))
 
-    await expect(copyMessageLink('https://develop.oss-cairn.com/chats/1')).resolves.toBe(false)
+    await expect(copyMessageLink('https://develop.oss-cairn.com/chats/1', copyT)).resolves.toBe(false)
 
     expect(toastError).toHaveBeenCalledWith('リンクをコピーできませんでした')
   })
@@ -370,6 +379,7 @@ describe('ChatThreadのメンション候補', () => {
     chatThreadState.historyIsError = false
     chatThreadState.projectChannels = []
     chatThreadState.projectMembers = []
+    chatThreadState.profileAttributes = []
     chatThreadState.workspaceMembers = [
       ...Array.from({ length: 6 }, (_, index) => ({
         userId: `user-${index + 2}`,
@@ -383,6 +393,10 @@ describe('ChatThreadのメンション候補', () => {
 
   it('全候補をスクロール表示し、プロジェクトメンバー取得後は選択を先頭へ戻す', () => {
     chatThreadState.projectChannels = [{ channelId: 'channel-1', projectId: 'project-1' }]
+    chatThreadState.profileAttributes = [
+      { id: 'attr-coach', name: 'コーチ', color: 'blue' },
+      { id: 'attr-grade', name: '3年生', color: 'emerald' },
+    ]
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -407,6 +421,8 @@ describe('ChatThreadのメンション候補', () => {
       '@project_membersプロジェクトメンバー',
       '@鈴木',
       ...Array.from({ length: 6 }, (_, index) => `@候補${index + 1}`),
+      '@コーチ属性',
+      '@3年生属性',
     ])
     expect(picker).toHaveStyle({ maxHeight: '240px', overflowY: 'auto' })
     fireEvent.keyDown(input, { key: 'Enter' })

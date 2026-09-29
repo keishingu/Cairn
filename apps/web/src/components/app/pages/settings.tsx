@@ -7,14 +7,22 @@ import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
+import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import { RowActionMenu } from '../row-action-menu'
 import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import {
+  CURRENT_USER_FETCH_ERROR_MESSAGE,
+  invalidateCurrentUserProfile,
+  patchCurrentUserCache,
+  useCurrentUser,
+  useWorkspacePermissions,
+} from '@/hooks/use-current-user'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { processImageForUpload } from '@/lib/process-image'
@@ -23,8 +31,16 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
-import type { AccentId } from '@cairn/shared'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import {
+  DEFAULT_CALENDAR_WEEK_START,
+  FEATURE_FLAGS,
+  formatAppDate,
+  isCalendarWeekStart,
+  type AccentId,
+  type CalendarWeekStart,
+  type LocalePreference,
+} from '@cairn/shared'
+import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
@@ -78,33 +94,34 @@ const Toggle = ({ on }: { on: boolean }) => (
 type ThemeValue = 'light' | 'dark' | 'system'
 
 const THEME_OPTIONS: { value: ThemeValue; label: string; icon: string }[] = [
-  { value: 'light', label: 'ライト', icon: 'sun' },
-  { value: 'system', label: 'システム', icon: 'monitor' },
-  { value: 'dark', label: 'ダーク', icon: 'moon' },
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'system', label: 'System', icon: 'monitor' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
 ]
 
 const LEGAL_SUPPORT_LINKS = [
-  { label: 'プライバシーポリシー', href: '/privacy' },
-  { label: '利用規約', href: '/terms' },
-  { label: '非公開のお問い合わせ', href: 'https://moru.tech/#consultation' },
+  { label: 'Privacy policy', href: '/privacy' },
+  { label: 'Terms', href: '/terms' },
+  { label: 'Private inquiry', href: 'https://moru.tech/#consultation' },
 ]
 
 const SettingsSafety = () => {
+  const t = useT()
   const queryClient = useQueryClient()
   const { data = [], isLoading } = useQuery({ queryKey: ['user-blocks'], queryFn: async () => {
     const res = await fetchWithAuth('/api/me/blocks')
-    if (!res.ok) throw new Error('ブロック済みユーザーを取得できません')
+    if (!res.ok) throw new Error(t('Could not load blocked users'))
     return res.json() as Promise<Array<{ userId: string; displayName: string }>>
   }})
   const unblock = useMutation({ mutationFn: async (userId: string) => {
     const res = await fetchWithAuth(`/api/me/blocks/${userId}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error('ブロックを解除できません')
+    if (!res.ok) throw new Error(t('Could not unblock the user'))
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-blocks'] }) })
   return <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>安全・サポート</h1>
-    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>ブロックしたユーザーと法務・お問い合わせ先を管理します。</p>
-    <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 14 }}>ブロック済みユーザー</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>読み込み中…</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>ブロックしているユーザーはいません。</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>解除</button></div>)}</div></section>
-    <section><h2 style={{ fontSize: 14 }}>法務・サポート</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{link.label}</a>)}</div></section>
+    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>{t('Safety and support')}</h1>
+    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Manage blocked users and legal or contact links.')}</p>
+    <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 14 }}>{t('Blocked users')}</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>{t('Loading...')}</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>{t('You have not blocked anyone.')}</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>{t('Unblock')}</button></div>)}</div></section>
+    <section><h2 style={{ fontSize: 14 }}>{t('Legal and support')}</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{t(link.label)}</a>)}</div></section>
   </div>
 }
 
@@ -226,13 +243,14 @@ async function isAnimatedAvatarImage(file: File): Promise<boolean> {
   return isGifImage(file) || (await isAnimatedPngImage(file)) || (await isAnimatedWebpImage(file))
 }
 
+// アカウント削除 API は確認文字列「削除」を要求する。
+const DELETE_ACCOUNT_CONFIRMATION_WORD = '削除'
+
 const SettingsAccount = () => {
+  const t = useT()
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { data: user, isLoading } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then((r) => r.json()),
-  })
+  const { data: user, isLoading, isError } = useCurrentUser()
 
   const [displayName, setDisplayName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
@@ -246,19 +264,21 @@ const SettingsAccount = () => {
 
   const nameMutation = useMutation({
     mutationFn: async () => {
+      const nextName = displayName.trim()
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName }),
+        body: JSON.stringify({ displayName: nextName }),
       })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
+        throw new Error(d.error ?? t('Could not update'))
       }
+      return nextName
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (nextName) => {
+      patchCurrentUserCache(queryClient, { displayName: nextName })
+      void invalidateCurrentUserProfile(queryClient)
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
     },
@@ -268,7 +288,7 @@ const SettingsAccount = () => {
     mutationFn: async (file: File) => {
       if (await isAnimatedAvatarImage(file)) {
         throw new Error(
-          'アニメーション画像のアバターには未対応です。静止 JPEG / PNG / WebP / HEIC を選んでください',
+          t('Animated avatars are not supported. Choose a still JPEG / PNG / WebP / HEIC image'),
         )
       }
 
@@ -276,7 +296,7 @@ const SettingsAccount = () => {
       try {
         uploadFile = (await processImageForUpload(file)).file
       } catch {
-        throw new Error('画像の準備に失敗しました。別の写真でお試しください')
+        throw new Error(t('Could not prepare the image. Try another photo'))
       }
 
       const fd = new FormData()
@@ -284,12 +304,14 @@ const SettingsAccount = () => {
       const res = await fetchWithAuth('/api/me/avatar', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? 'アップロードに失敗しました')
+        throw new Error(d.error ?? t('Could not upload'))
       }
+      const body = (await res.json().catch(() => ({}))) as { avatarUrl?: string }
+      return body.avatarUrl ?? null
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['me'] })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+    onSuccess: (avatarUrl) => {
+      if (avatarUrl) patchCurrentUserCache(queryClient, { avatarUrl })
+      void invalidateCurrentUserProfile(queryClient)
     },
   })
 
@@ -302,14 +324,12 @@ const SettingsAccount = () => {
       })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
+        throw new Error(d.error ?? t('Could not update'))
       }
       return enabled
     },
     onSuccess: (enabled) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], (current) =>
-        current ? { ...current, aiNudgesEnabled: enabled } : current,
-      )
+      patchCurrentUserCache(queryClient, { aiNudgesEnabled: enabled })
       void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
       void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
@@ -330,8 +350,8 @@ const SettingsAccount = () => {
         const workspaceNames = data.workspaces?.map((workspace) => workspace.name).join('、')
         throw new Error(
           workspaceNames
-            ? `${data.error ?? 'アカウントを削除できませんでした'} 対象: ${workspaceNames}`
-            : (data.error ?? 'アカウントを削除できませんでした'),
+            ? t('{reason} Targets: {names}', { reason: data.error ?? t('Could not delete the account'), names: workspaceNames })
+            : (data.error ?? t('Could not delete the account')),
         )
       }
     },
@@ -370,19 +390,25 @@ const SettingsAccount = () => {
   }
 
   if (isLoading)
-    return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+    return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+  if (isError)
+    return (
+      <div style={{ padding: 40, color: 'var(--red-text)', fontSize: 13 }}>
+        {CURRENT_USER_FETCH_ERROR_MESSAGE}
+      </div>
+    )
 
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        アカウント
+        {t('Account')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        プロフィールや通知などの個人設定です。
+        {t('Personal settings such as your profile and notifications.')}
       </p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>プロフィール</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Profile')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {/* アバター */}
           <div
@@ -398,10 +424,10 @@ const SettingsAccount = () => {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.displayName}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                プロフィール写真
+                {t('Profile photo')}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
-                大きい写真は自動で縮小してアップロードします
+                {t('Large photos are resized automatically before upload')}
               </div>
             </div>
             <input
@@ -425,7 +451,7 @@ const SettingsAccount = () => {
               disabled={avatarMutation.isPending}
             >
               <Icon name="image" size={12} />
-              {avatarMutation.isPending ? 'アップロード中…' : '写真を変更'}
+              {avatarMutation.isPending ? t('Uploading…') : t('Change photo')}
             </button>
           </div>
 
@@ -440,9 +466,9 @@ const SettingsAccount = () => {
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>表示名</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Display name')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                チームメンバーに表示される名前
+                {t('The name shown to your team')}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -460,27 +486,23 @@ const SettingsAccount = () => {
                 className="btn btn-primary"
                 style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
               >
-                {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
+                {nameSaved ? t('Saved') : nameMutation.isPending ? t('Saving...') : t('Save')}
               </button>
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
           {avatarMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(avatarMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(avatarMutation.error as Error).message}</InlineError>
           )}
 
           {/* メール（読み取り専用） */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>メールアドレス</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Email')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ログインに使用するアドレス
+                {t('The address used to sign in')}
               </div>
             </div>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
@@ -492,22 +514,22 @@ const SettingsAccount = () => {
 
       {FEATURE_FLAGS.aiPmo && (
         <section style={{ marginBottom: 24 }}>
-          <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>通知</h2>
+          <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Notifications')}</h2>
           <div className="card" style={{ padding: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>AI PMO ナッジ</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('AI PMO nudges')}</div>
                 <div
                   style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
-                  期限や停滞について、あなただけに見えるリマインドをチャットに表示します
+                  {t('Shows reminders only you can see in chat about due dates and stalled work')}
                 </div>
               </div>
               <button
                 type="button"
                 role="switch"
                 aria-checked={user?.aiNudgesEnabled ?? true}
-                aria-label="AI PMO ナッジ"
+                aria-label={t('AI PMO nudges')}
                 disabled={aiNudgesMutation.isPending}
                 onClick={() => aiNudgesMutation.mutate(!(user?.aiNudgesEnabled ?? true))}
                 style={{ border: 'none', background: 'transparent', padding: 0, flexShrink: 0 }}
@@ -516,16 +538,14 @@ const SettingsAccount = () => {
               </button>
             </div>
             {aiNudgesMutation.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(aiNudgesMutation.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(aiNudgesMutation.error as Error).message}</InlineError>
             )}
           </div>
         </section>
       )}
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>危険な操作</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Dangerous actions')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div
             style={{
@@ -538,12 +558,12 @@ const SettingsAccount = () => {
           >
             <div style={{ flex: '1 1 260px', minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-text)' }}>
-                アカウントを削除
+                {t('Delete account')}
               </div>
               <div
                 style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.6 }}
               >
-                ログイン情報と個人データを削除し、すべてのワークスペースから退会します。
+                {t('Deletes your sign-in details and personal data, and removes you from every workspace.')}
               </div>
             </div>
             <button
@@ -555,7 +575,7 @@ const SettingsAccount = () => {
                 setDeleteDialogOpen(true)
               }}
             >
-              アカウントを削除
+              {t('Delete account')}
             </button>
           </div>
         </div>
@@ -563,10 +583,10 @@ const SettingsAccount = () => {
 
       <ConfirmDialog
         open={deleteDialogOpen}
-        title="アカウントを完全に削除しますか？"
-        confirmLabel="完全に削除する"
-        busyLabel="削除中…"
-        confirmDisabled={deleteConfirmation !== '削除'}
+        title={t('Delete your account permanently?')}
+        confirmLabel={t('Delete permanently')}
+        busyLabel={t('Deleting...')}
+        confirmDisabled={deleteConfirmation !== DELETE_ACCOUNT_CONFIRMATION_WORD}
         onClose={() => {
           setDeleteDialogOpen(false)
           setDeleteConfirmation('')
@@ -575,20 +595,20 @@ const SettingsAccount = () => {
         message={
           <div>
             <p style={{ margin: '0 0 8px' }}>
-              この操作は取り消せません。ログイン情報、プロフィール、外部連携、通知先が削除され、すべてのワークスペースへアクセスできなくなります。
+              {t('This cannot be undone. Your sign-in details, profile, integrations, and notification destinations will be deleted, and you will lose access to every workspace.')}
             </p>
             <p style={{ margin: '0 0 12px' }}>
-              あなたが投稿したメッセージ、写真、添付ファイル、コメントも削除されます。プロジェクトやタスクなど共同作業の構造は、個人を識別できない「退会済みユーザー」名義で保持されます。支援中の購読は自動的に停止します。
+              {t('Messages, photos, attachments, and comments you posted are also deleted. Shared work such as projects and tasks is kept under an unidentifiable “Deleted user” name. Active support subscriptions stop automatically.')}
             </p>
             <label
               htmlFor="delete-account-confirmation"
               style={{ display: 'block', fontWeight: 700 }}
             >
-              確認のため「削除」と入力してください
+              {t('Type "{word}" to confirm', { word: DELETE_ACCOUNT_CONFIRMATION_WORD })}
             </label>
             <input
               id="delete-account-confirmation"
-              aria-label="アカウント削除の確認"
+              aria-label={t('Confirm account deletion')}
               value={deleteConfirmation}
               onChange={(event) => setDeleteConfirmation(event.target.value)}
               autoComplete="off"
@@ -606,7 +626,7 @@ const SettingsAccount = () => {
       />
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>法務・サポート</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Legal and support')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {LEGAL_SUPPORT_LINKS.map((item, index, items) => (
             <a
@@ -627,7 +647,7 @@ const SettingsAccount = () => {
                 textDecoration: 'none',
               }}
             >
-              {item.label}
+              {t(item.label)}
               <span aria-hidden="true" style={{ color: 'var(--text-4)' }}>
                 →
               </span>
@@ -639,34 +659,53 @@ const SettingsAccount = () => {
   )
 }
 
+const WEEK_START_OPTIONS: { value: CalendarWeekStart; label: string }[] = [
+  { value: 'sunday', label: 'Sunday' },
+  { value: 'monday', label: 'Monday' },
+]
+
 const SettingsAppearance = () => {
+  const t = useT()
   const { theme, setTheme } = useTheme()
   const { accentId, setAccentId } = useAccentColor()
+  const { preference, setPreference } = useLocale()
+  const { data: me, isSuccess: meLoaded } = useCurrentUser()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
+  const weekStart = isCalendarWeekStart(me?.calendarWeekStart)
+    ? me.calendarWeekStart
+    : DEFAULT_CALENDAR_WEEK_START
 
   const appearanceMutation = useMutation({
-    mutationFn: async (patch: { theme?: ThemeValue; accentId?: AccentId }) => {
+    mutationFn: async (patch: {
+      theme?: ThemeValue
+      accentId?: AccentId
+      locale?: LocalePreference
+      calendarWeekStart?: CalendarWeekStart
+    }) => {
       const res = await fetchWithAuth('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       })
-      if (!res.ok) throw new Error('外観設定の保存に失敗しました')
+      if (!res.ok) { throw new Error(patch.locale ? 'Could not save the language. Check your connection and try again.' : 'Could not save appearance. Check your connection and try again.')
+      }
       return patch
     },
     onSuccess: (patch) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], (current) =>
-        current ? { ...current, ...patch } : current,
-      )
+      patchCurrentUserCache(queryClient, patch)
 
-      // WebView内で変更したときは、再読込を待たずネイティブの配色も更新する。
+      // WebView内で変更したときは、再読込を待たずネイティブの配色と言語も更新する。
       const nativeBridge = (
         window as typeof window & {
           ReactNativeWebView?: { postMessage: (message: string) => void }
         }
       ).ReactNativeWebView
+      if (patch.locale) {
+        nativeBridge?.postMessage(JSON.stringify({ type: 'locale-changed', locale: patch.locale }))
+        return
+      }
       nativeBridge?.postMessage(
         JSON.stringify({
           type: 'appearance-changed',
@@ -691,17 +730,52 @@ const SettingsAppearance = () => {
     appearanceMutation.mutate({ accentId: value }, { onError: () => setAccentId(previous) })
   }
 
+  const changeLocale = (value: LocalePreference) => {
+    if (appearanceMutation.isPending) return
+    const previous = preference
+    patchCurrentUserCache(queryClient, { locale: value })
+    setPreference(value)
+    appearanceMutation.mutate(
+      { locale: value },
+      {
+        onError: () => {
+          patchCurrentUserCache(queryClient, { locale: previous })
+          setPreference(previous)
+        },
+      },
+    )
+  }
+
+  const changeWeekStart = (value: CalendarWeekStart) => {
+    if (!meLoaded || appearanceMutation.isPending || value === weekStart) return
+    const previous = weekStart
+    patchCurrentUserCache(queryClient, { calendarWeekStart: value })
+    writeStoredCalendarWeekStart(value)
+    appearanceMutation.mutate(
+      { calendarWeekStart: value },
+      {
+        onError: () => {
+          patchCurrentUserCache(queryClient, { calendarWeekStart: previous })
+          writeStoredCalendarWeekStart(previous)
+        },
+      },
+    )
+  }
+
+  const localeOptions: { value: LocalePreference; label: string }[] = [
+    { value: 'system', label: t('Browser') },
+    { value: 'ja', label: '日本語' },
+    { value: 'en', label: 'English' },
+    { value: 'ko', label: '한국어' },
+  ]
+
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        外観
-      </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        テーマやカラーなど、表示に関する個人設定です。
-      </p>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Appearance')}</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>テーマ・カラー</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Theme and color')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div
             style={{
@@ -713,10 +787,59 @@ const SettingsAppearance = () => {
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>テーマ</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ライト・ダーク・システム設定に従う
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Language')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Choose the language used in the app.')}</div>
+            </div>
+            {mounted && (
+              <div
+                role="group"
+                aria-label={t('Language')}
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-elev)',
+                  borderRadius: 10,
+                  padding: 4,
+                }}
+              >
+                {localeOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => changeLocale(opt.value)}
+                    disabled={appearanceMutation.isPending}
+                    aria-pressed={preference === opt.value}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: 'none',
+                      background: preference === opt.value ? 'var(--card)' : 'transparent',
+                      color: preference === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: preference === opt.value ? 600 : 500,
+                      fontSize: 12.5,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      boxShadow: preference === opt.value ? 'var(--shadow-sm)' : 'none',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
+            )}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--divider)',
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Theme')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Light, dark, or match the system')}</div>
             </div>
             {mounted && (
               <div
@@ -750,7 +873,7 @@ const SettingsAppearance = () => {
                       transition: 'all .12s',
                     }}
                   >
-                    <Icon name={opt.icon} size={13} /> {opt.label}
+                    <Icon name={opt.icon} size={13} /> {t(opt.label)}
                   </button>
                 ))}
               </div>
@@ -759,17 +882,15 @@ const SettingsAppearance = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>ハイライトカラー</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ボタン・アクティブ状態などのアクセントカラー
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Highlight color')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Accent color for buttons and active states')}</div>
             </div>
             {mounted && (
               <div style={{ display: 'flex', gap: 8 }}>
                 {ACCENT_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
-                    title={preset.label}
+                    title={t(preset.label)}
                     onClick={() => changeAccent(preset.id)}
                     disabled={appearanceMutation.isPending}
                     style={{
@@ -801,9 +922,59 @@ const SettingsAppearance = () => {
                 fontSize: 12,
               }}
             >
-              外観設定を保存できませんでした。通信状態を確認して再度お試しください。
+              {t(appearanceMutation.error instanceof Error ? appearanceMutation.error.message : 'Could not save appearance. Check your connection and try again.')}
             </div>
           )}
+        </div>
+      </section>
+
+      <section>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Calendar')}</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Week start')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                {t('Start month and week views on Sunday or Monday.')}
+              </div>
+            </div>
+            {mounted && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-elev)',
+                  borderRadius: 10,
+                  padding: 4,
+                }}
+              >
+                {WEEK_START_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={weekStart === opt.value}
+                    onClick={() => changeWeekStart(opt.value)}
+                    disabled={!meLoaded || appearanceMutation.isPending}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: 'none',
+                      background: weekStart === opt.value ? 'var(--card)' : 'transparent',
+                      color: weekStart === opt.value ? 'var(--text)' : 'var(--text-3)',
+                      fontWeight: weekStart === opt.value ? 600 : 500,
+                      fontSize: 12.5,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      boxShadow: weekStart === opt.value ? 'var(--shadow-sm)' : 'none',
+                      transition: 'all .12s',
+                    }}
+                  >
+                    {t(opt.label)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </div>
@@ -840,6 +1011,7 @@ const StatusRow = ({
   onSaved: () => void
   onDeleted: () => void
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [name, setName] = React.useState(status.name)
   const [color, setColor] = React.useState(status.color)
@@ -852,7 +1024,7 @@ const StatusRow = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), color }),
       })
-      if (!res.ok) throw new Error('更新に失敗しました')
+      if (!res.ok) throw new Error(t('Could not update'))
     },
     onSuccess: () => {
       setEditing(false)
@@ -863,7 +1035,7 @@ const StatusRow = ({
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const res = await fetchWithAuth(`/api/projects/statuses/${status.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('削除に失敗しました')
+      if (!res.ok) throw new Error(t('Could not delete'))
     },
     onSuccess: onDeleted,
   })
@@ -883,14 +1055,14 @@ const StatusRow = ({
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
         <RowActionMenu
           actions={[
-            { icon: 'edit', label: '編集', onSelect: () => setEditing(true) },
-            { icon: 'trash', label: '削除', danger: true, onSelect: () => setConfirmDel(true) },
+            { icon: 'edit', label: t('Edit'), onSelect: () => setEditing(true) },
+            { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setConfirmDel(true) },
           ]}
         />
         <ConfirmDialog
           open={confirmDel}
-          title="ステータスを削除"
-          message={`ステータス「${status.name}」を削除しますか？この操作は取り消せません。`}
+          title={t('Delete status')}
+          message={t('Delete the status "{name}"? This cannot be undone.', { name: status.name })}
           onConfirm={() => deleteMutation.mutateAsync()}
           onClose={() => setConfirmDel(false)}
         />
@@ -946,7 +1118,7 @@ const StatusRow = ({
         ))}
       </div>
       {saveMutation.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ 更新に失敗しました</div>
+        <InlineError style={{ fontSize: 11.5 }}>{t('Could not update')}</InlineError>
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -954,7 +1126,7 @@ const StatusRow = ({
           style={{ height: 28, fontSize: 12, padding: '0 10px' }}
           onClick={() => setEditing(false)}
         >
-          キャンセル
+          {t('Cancel')}
         </button>
         <button
           onClick={() => saveMutation.mutate()}
@@ -967,7 +1139,7 @@ const StatusRow = ({
             opacity: saveMutation.isPending || !name.trim() ? 0.6 : 1,
           }}
         >
-          {saveMutation.isPending ? '保存中…' : '保存'}
+          {saveMutation.isPending ? t('Saving...') : t('Save')}
         </button>
       </div>
     </div>
@@ -975,6 +1147,7 @@ const StatusRow = ({
 }
 
 const SettingsWorkflow = () => {
+  const t = useT()
   const queryClient = useQueryClient()
   const { data: statuses = [], isLoading } = useQuery({
     queryKey: ['statuses'],
@@ -993,7 +1166,7 @@ const SettingsWorkflow = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim(), color: newColor }),
       })
-      if (!res.ok) throw new Error('追加に失敗しました')
+      if (!res.ok) throw new Error(t('Could not add'))
     },
     onSuccess: () => {
       setShowAdd(false)
@@ -1006,18 +1179,18 @@ const SettingsWorkflow = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        ワークフロー
+        {t('Workflow')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        プロジェクトのステータスを管理します。
+        {t('Manage project statuses.')}
       </p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ステータス一覧</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Status list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {isLoading ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-              読み込み中…
+              {t('Loading...')}
             </div>
           ) : (
             statuses.map((s, i) => (
@@ -1046,7 +1219,7 @@ const SettingsWorkflow = () => {
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="ステータス名を入力…"
+                placeholder={t('Enter a status name...')}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newName.trim()) addMutation.mutate()
@@ -1083,7 +1256,7 @@ const SettingsWorkflow = () => {
                 ))}
               </div>
               {addMutation.isError && (
-                <div style={{ fontSize: 11.5, color: 'var(--red-text)' }}>⚠ 追加に失敗しました</div>
+                <InlineError style={{ fontSize: 11.5 }}>{t('Could not add')}</InlineError>
               )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
@@ -1094,7 +1267,7 @@ const SettingsWorkflow = () => {
                     setNewName('')
                   }}
                 >
-                  キャンセル
+                  {t('Cancel')}
                 </button>
                 <button
                   onClick={() => addMutation.mutate()}
@@ -1107,7 +1280,7 @@ const SettingsWorkflow = () => {
                     opacity: addMutation.isPending || !newName.trim() ? 0.6 : 1,
                   }}
                 >
-                  {addMutation.isPending ? '追加中…' : '追加'}
+                  {addMutation.isPending ? t('Adding...') : t('Add')}
                 </button>
               </div>
             </div>
@@ -1137,7 +1310,7 @@ const SettingsWorkflow = () => {
                   gap: 6,
                 }}
               >
-                <Icon name="plus" size={13} /> ステータスを追加
+                <Icon name="plus" size={13} /> {t('Add status')}
               </button>
             </div>
           )}
@@ -1147,24 +1320,26 @@ const SettingsWorkflow = () => {
   )
 }
 
-const SettingsAI = () => (
+const SettingsAI = () => {
+  const t = useT()
+  return (
   <div style={{ maxWidth: 780 }}>
     <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-      AIエージェント
+      {t('AI agent')}
     </h1>
     <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-      各プロジェクトに常駐するAIアシスタントの動作を設定します。
+      {t('Configure the AI assistant that stays with each project.')}
     </p>
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>モデル</h2>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
       <div
         className="card"
         style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
       >
         {[
-          { n: 'GPT-5', d: '高精度・推奨', on: true },
-          { n: 'GPT-5 mini', d: '高速・低コスト', on: false },
+          { n: 'GPT-5', d: t('High accuracy, recommended'), on: true },
+          { n: 'GPT-5 mini', d: t('Fast and lower cost'), on: false },
         ].map((m, i) => (
           <div
             key={i}
@@ -1192,7 +1367,7 @@ const SettingsAI = () => (
                     color: 'var(--accent-text)',
                   }}
                 >
-                  選択中
+                  {t('Selected')}
                 </span>
               )}
             </div>
@@ -1203,12 +1378,12 @@ const SettingsAI = () => (
     </section>
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>動作</h2>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Behavior')}</h2>
       <div className="card">
         {[
-          { l: 'ファイルアップロード時に自動要約', s: 'PDF / XLSX / GPX', on: true },
-          { l: 'ダッシュボードに自動サマリー生成', s: '毎日 7:00 / 22:00', on: true },
-          { l: '危険情報を検知して通知', s: '天候・遭難情報・装備不足', on: false },
+          { l: t('Summarize files automatically on upload'), s: 'PDF / XLSX / GPX', on: true },
+          { l: t('Generate a dashboard summary automatically'), s: t('Daily at 7:00 / 22:00'), on: true },
+          { l: t('Detect hazards and notify'), s: t('Weather, distress reports, and missing gear'), on: false },
         ].map((r, i) => (
           <div
             key={i}
@@ -1231,9 +1406,9 @@ const SettingsAI = () => (
     </section>
 
     <section>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>システムプロンプト</h2>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
       <textarea
-        defaultValue="山岳部の活動を支援するアシスタントとして、安全を最優先に、計画書・装備・気象情報をもとに具体的な提案を行ってください。"
+        defaultValue={t('As an assistant for alpine club activities, put safety first and make specific suggestions from plans, gear, and weather.')}
         rows={5}
         style={{
           width: '100%',
@@ -1250,9 +1425,11 @@ const SettingsAI = () => (
       />
     </section>
   </div>
-)
+  )
+}
 
 const SettingsWorkspaceGeneral = () => {
+  const t = useT()
   const queryClient = useQueryClient()
   const { data: wsSettings } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
@@ -1291,7 +1468,7 @@ const SettingsWorkspaceGeneral = () => {
       })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
+        throw new Error(d.error ?? t('Could not update'))
       }
     },
     onSuccess: () => {
@@ -1310,7 +1487,7 @@ const SettingsWorkspaceGeneral = () => {
       })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? '更新に失敗しました')
+        throw new Error(d.error ?? t('Could not update'))
       }
     },
     onSuccess: () => {
@@ -1327,7 +1504,7 @@ const SettingsWorkspaceGeneral = () => {
       const res = await fetchWithAuth('/api/workspaces/logo', { method: 'POST', body: fd })
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(d.error ?? 'アップロードに失敗しました')
+        throw new Error(d.error ?? t('Could not upload'))
       }
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['workspace'] }),
@@ -1370,10 +1547,10 @@ const SettingsWorkspaceGeneral = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        ワークスペース設定
+        {t('Workspace settings')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        ワークスペース全体の表示・動作に関する設定です。
+        {t('Settings for how the whole workspace looks and behaves.')}
       </p>
 
       {readOnly && (
@@ -1392,13 +1569,13 @@ const SettingsWorkspaceGeneral = () => {
           }}
         >
           <Icon name="alertTriangle" size={14} />
-          ワークスペース設定の変更にはオーナー権限が必要です。閲覧のみ可能です。
+          {t('Changing workspace settings requires the owner role. You can only view them.')}
         </div>
       )}
 
       {/* ワークスペース情報 */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>ワークスペース情報</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Workspace info')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {/* ロゴ */}
           <div
@@ -1441,7 +1618,7 @@ const SettingsWorkspaceGeneral = () => {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{ws?.name ?? '—'}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ワークスペースのアイコン
+                {t('Workspace icon')}
               </div>
             </div>
             <input
@@ -1464,24 +1641,22 @@ const SettingsWorkspaceGeneral = () => {
               }}
               onClick={() => logoInputRef.current?.click()}
               disabled={logoMutation.isPending || readOnly}
-              title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
             >
               <Icon name="image" size={12} />
-              {logoMutation.isPending ? 'アップロード中…' : 'アイコンを変更'}
+              {logoMutation.isPending ? t('Uploading…') : t('Change icon')}
             </button>
           </div>
           {logoMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(logoMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(logoMutation.error as Error).message}</InlineError>
           )}
 
           {/* ワークスペース名 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>ワークスペース名</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Workspace name')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                ナビゲーションに表示される名称
+                {t('The name shown in navigation')}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1497,7 +1672,7 @@ const SettingsWorkspaceGeneral = () => {
                 disabled={
                   nameMutation.isPending || !wsName.trim() || wsName === ws?.name || readOnly
                 }
-                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+                title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
                 className="btn btn-primary"
                 style={{
                   height: 32,
@@ -1507,14 +1682,12 @@ const SettingsWorkspaceGeneral = () => {
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
               >
-                {nameSaved ? '保存済み' : nameMutation.isPending ? '保存中…' : '保存'}
+                {nameSaved ? t('Saved') : nameMutation.isPending ? t('Saving...') : t('Save')}
               </button>
             </div>
           </div>
           {nameMutation.isError && (
-            <div style={{ padding: '6px 16px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(nameMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
 
           {/* 説明 */}
@@ -1528,9 +1701,9 @@ const SettingsWorkspaceGeneral = () => {
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>説明</div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Description')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                組織名・所属など。ナビゲーションのワークスペース名の下に表示されます。
+                {t('Organization or affiliation. Shown under the workspace name in navigation.')}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1538,14 +1711,14 @@ const SettingsWorkspaceGeneral = () => {
                 value={wsDesc}
                 onChange={(e) => setWsDesc(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && descMutation.mutate()}
-                placeholder="例: 東京工科大学"
+                placeholder={t('e.g. Example University')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
                 onClick={() => descMutation.mutate()}
                 disabled={descMutation.isPending || wsDesc === (ws?.description ?? '') || readOnly}
-                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+                title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
                 className="btn btn-primary"
                 style={{
                   height: 32,
@@ -1555,27 +1728,25 @@ const SettingsWorkspaceGeneral = () => {
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
               >
-                {descSaved ? '保存済み' : descMutation.isPending ? '保存中…' : '保存'}
+                {descSaved ? t('Saved') : descMutation.isPending ? t('Saving...') : t('Save')}
               </button>
             </div>
           </div>
           {descMutation.isError && (
-            <div style={{ padding: '6px 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-              ⚠ {(descMutation.error as Error).message}
-            </div>
+            <InlineError style={{ padding: '6px 16px 10px' }}>{(descMutation.error as Error).message}</InlineError>
           )}
         </div>
       </section>
 
       {/* 用語のカスタマイズ */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>用語のカスタマイズ</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Customize terminology')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>プロジェクトの呼び名</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Name for projects')}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                ナビゲーションやページタイトルに表示される名称。空欄の場合は「プロジェクト」が使われます。
+                {t('The name shown in navigation and page titles. If empty, "Projects" is used.')}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1583,7 +1754,7 @@ const SettingsWorkspaceGeneral = () => {
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="プロジェクト"
+                placeholder={t('Projects')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleLabelSave()}
@@ -1591,7 +1762,7 @@ const SettingsWorkspaceGeneral = () => {
               <button
                 onClick={handleLabelSave}
                 disabled={updateSettings.isPending || readOnly}
-                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+                title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
                 className="btn btn-primary"
                 style={{
                   height: 32,
@@ -1600,7 +1771,7 @@ const SettingsWorkspaceGeneral = () => {
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
               >
-                {labelSaved ? '保存済み' : '保存'}
+                {labelSaved ? t('Saved') : t('Save')}
               </button>
             </div>
           </div>
@@ -1648,20 +1819,20 @@ const SettingsWorkspaceGeneral = () => {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Phase 1: タスクのリマインダー</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Phase 1: Task reminders')}</div>
                 <div
                   style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
-                  期限・停滞を毎朝確認するルールベースのリマインダーです。生成AIは使わず、トークンは消費しません。
+                  {t('A rules-based reminder that checks due dates and stalled work every morning. It does not use generative AI and spends no tokens.')}
                 </div>
               </div>
               <button
                 type="button"
                 role="switch"
                 aria-checked={phaseOneEnabled}
-                aria-label="Phase 1: タスクのリマインダー"
+                aria-label={t('Phase 1: Task reminders')}
                 disabled={updateSettings.isPending || readOnly}
-                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+                title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
                 onClick={() => updateAiNudgesEnabled('one', !phaseOneEnabled)}
                 style={{
                   border: 'none',
@@ -1676,11 +1847,11 @@ const SettingsWorkspaceGeneral = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Phase 2: チャットのAI巡回</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Phase 2: AI review of chat')}</div>
                 <div
                   style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
-                  チャットの未回答依頼やリスクをAIで分析します。AIモデルのトークンを消費するため、既定ではオフです。
+                  {t('AI analyzes unanswered requests and risks in chat. This spends model tokens, so it is off by default.')}
                 </div>
                 {isOwner && phaseTwoUsage && (
                   <div
@@ -1691,10 +1862,12 @@ const SettingsWorkspaceGeneral = () => {
                       lineHeight: 1.6,
                     }}
                   >
-                    累計: {formatTokens(phaseTwoUsage.totalTokens)} トークン （入力{' '}
-                    {formatTokens(phaseTwoUsage.inputTokens)} / 出力{' '}
-                    {formatTokens(phaseTwoUsage.outputTokens)}、
-                    {formatTokens(phaseTwoUsage.requestCount)} 回）
+                    {t('Total: {total} tokens (input {input} / output {output}, {count} requests)', {
+                      total: formatTokens(phaseTwoUsage.totalTokens),
+                      input: formatTokens(phaseTwoUsage.inputTokens),
+                      output: formatTokens(phaseTwoUsage.outputTokens),
+                      count: formatTokens(phaseTwoUsage.requestCount),
+                    })}
                   </div>
                 )}
               </div>
@@ -1702,9 +1875,9 @@ const SettingsWorkspaceGeneral = () => {
                 type="button"
                 role="switch"
                 aria-checked={phaseTwoEnabled}
-                aria-label="Phase 2: チャットのAI巡回"
+                aria-label={t('Phase 2: AI review of chat')}
                 disabled={updateSettings.isPending || readOnly}
-                title={readOnly ? 'ワークスペース設定の変更にはオーナー権限が必要です' : undefined}
+                title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
                 onClick={() => updateAiNudgesEnabled('two', !phaseTwoEnabled)}
                 style={{
                   border: 'none',
@@ -1718,9 +1891,7 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
             {updateSettings.isError && (
-              <div style={{ padding: '0 16px 10px', fontSize: 12, color: 'var(--red-text)' }}>
-                ⚠ {(updateSettings.error as Error).message}
-              </div>
+              <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
             )}
           </div>
         </section>
@@ -1730,13 +1901,15 @@ const SettingsWorkspaceGeneral = () => {
 }
 
 const ApiTokenSettings = () => {
+  const t = useT()
+  const { locale } = useLocale()
   const queryClient = useQueryClient()
   const { isGuest } = useWorkspacePermissions()
   const [name, setName] = React.useState('MCP client')
   const [scope, setScope] = React.useState<'read' | 'write'>('read')
   const [expiresInDays, setExpiresInDays] = React.useState(90)
   const [issuedToken, setIssuedToken] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
+  const [revokeTarget, setRevokeTarget] = React.useState<ApiTokenDto | null>(null)
 
   const {
     data: tokens = [],
@@ -1746,7 +1919,7 @@ const ApiTokenSettings = () => {
     queryKey: ['api-tokens'],
     queryFn: async () => {
       const response = await fetchWithAuth('/api/api-tokens')
-      if (!response.ok) throw new Error('APIトークンの取得に失敗しました')
+      if (!response.ok) throw new Error(t('Could not load API tokens'))
       return response.json()
     },
   })
@@ -1760,7 +1933,7 @@ const ApiTokenSettings = () => {
       })
       const body = (await response.json()) as { token?: string; error?: string }
       if (!response.ok || !body.token)
-        throw new Error(body.error ?? 'APIトークンの発行に失敗しました')
+        throw new Error(body.error ?? t('Could not issue the API token'))
       return body.token
     },
     onSuccess: (token) => {
@@ -1771,36 +1944,22 @@ const ApiTokenSettings = () => {
   const revoke = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetchWithAuth(`/api/api-tokens/${id}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('APIトークンの取り消しに失敗しました')
+      if (!response.ok) throw new Error(t('Could not revoke the API token'))
     },
     onSuccess: (_data, revokedId) => {
-      toast.success('APIトークンを取り消しました')
+      toast.success(t('API token revoked'))
       queryClient.setQueryData<ApiTokenDto[]>(['api-tokens'], (current) =>
         current?.filter((token) => token.id !== revokedId),
       )
       void queryClient.invalidateQueries({ queryKey: ['api-tokens'] })
     },
-    onError: (error) => toast.error((error as Error).message),
   })
-
-  const copyToken = async () => {
-    if (!issuedToken) return
-    try {
-      await navigator.clipboard.writeText(issuedToken)
-      setCopied(true)
-      toast.success('APIトークンをコピーしました')
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setCopied(false)
-      toast.error('APIトークンをコピーできませんでした')
-    }
-  }
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP / APIトークン</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('MCP / API tokens')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-        ChatGPT や Claude から、あなた本人としてこのワークスペースの Cairn を操作します。
+        {t('Use ChatGPT or Claude to operate this workspace in Cairn as yourself.')}
       </p>
 
       {issuedToken && (
@@ -1809,10 +1968,10 @@ const ApiTokenSettings = () => {
           style={{ padding: 16, marginBottom: 12, borderColor: 'var(--accent)' }}
         >
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-            トークンを今すぐ保存してください
+            {t('Save this token now')}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
-            この値は閉じると二度と表示できません。
+            {t('This value cannot be shown again after you close it.')}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <code
@@ -1828,11 +1987,9 @@ const ApiTokenSettings = () => {
             >
               {issuedToken}
             </code>
-            <button type="button" className="btn btn-primary" onClick={() => void copyToken()}>
-              {copied ? 'コピー済み' : 'コピー'}
-            </button>
+            <CopyButton text={issuedToken} className="btn btn-primary" errorMessage={t('Could not copy the API token')} />
             <button type="button" className="btn btn-ghost" onClick={() => setIssuedToken(null)}>
-              閉じる
+              {t('Close')}
             </button>
           </div>
         </div>
@@ -1841,7 +1998,7 @@ const ApiTokenSettings = () => {
       <div className="card" style={{ padding: 16 }}>
         {isGuest ? (
           <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
-            ゲストはAPIトークンを発行できません。
+            {t('Guests cannot issue API tokens.')}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1849,31 +2006,31 @@ const ApiTokenSettings = () => {
               className="form-control"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              aria-label="トークン名"
+              aria-label={t('Token name')}
               maxLength={100}
-              placeholder="トークン名"
+              placeholder={t('Token name')}
               style={{ flex: '1 1 240px', minWidth: 0 }}
             />
             <select
               className="form-control"
               value={scope}
               onChange={(event) => setScope(event.target.value as 'read' | 'write')}
-              aria-label="権限"
+              aria-label={t('Permission')}
               style={{ minWidth: 104, cursor: 'pointer' }}
             >
-              <option value="read">読み取り</option>
-              <option value="write">読み書き</option>
+              <option value="read">{t('Read')}</option>
+              <option value="write">{t('Read and write')}</option>
             </select>
             <select
               className="form-control"
               value={expiresInDays}
               onChange={(event) => setExpiresInDays(Number(event.target.value))}
-              aria-label="有効期間"
+              aria-label={t('Validity period')}
               style={{ minWidth: 84, cursor: 'pointer' }}
             >
-              <option value={30}>30日</option>
-              <option value={90}>90日</option>
-              <option value={365}>1年</option>
+              <option value={30}>{t('For 30 days')}</option>
+              <option value={90}>{t('For 90 days')}</option>
+              <option value={365}>{t('For 1 year')}</option>
             </select>
             <button
               type="button"
@@ -1881,7 +2038,7 @@ const ApiTokenSettings = () => {
               disabled={!name.trim() || issue.isPending}
               onClick={() => issue.mutate()}
             >
-              {issue.isPending ? '発行中…' : '発行'}
+              {issue.isPending ? t('Issuing...') : t('Issue')}
             </button>
           </div>
         )}
@@ -1892,16 +2049,14 @@ const ApiTokenSettings = () => {
           </div>
         )}
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
-          読み書き権限は読み取りを含みます。既定90日・最長1年、1トークンあたり毎分120リクエストです。
+          {t('Read and write includes read. The default is 90 days, the maximum is 1 year, and each token allows 120 requests per minute.')}
         </div>
         {isLoading ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : tokensError ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>
-            ⚠ {(tokensError as Error).message}
-          </div>
+          <InlineError>{(tokensError as Error).message}</InlineError>
         ) : visibleTokens.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>発行済みトークンはありません。</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No tokens have been issued.')}</div>
         ) : (
           visibleTokens.map((token) => {
             const inactive = new Date(token.expiresAt) <= new Date()
@@ -1919,13 +2074,17 @@ const ApiTokenSettings = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{token.name}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                    <code>{token.prefix}…</code> ・{' '}
-                    {token.scope === 'write' ? '読み書き' : '読み取り'} ・ 有効期限{' '}
-                    {new Date(token.expiresAt).toLocaleDateString('ja-JP')}
+                    <code>{token.prefix}…</code>
+                    {t(' · {scope} · Expires {date}', {
+                      scope: token.scope === 'write' ? t('Read and write') : t('Read'),
+                      date: formatAppDate(locale, token.expiresAt),
+                    })}
                     {token.lastUsedAt
-                      ? ` ・ 最終利用 ${new Date(token.lastUsedAt).toLocaleDateString('ja-JP')}`
+                      ? t(' · Last used {date}', {
+                          date: formatAppDate(locale, token.lastUsedAt),
+                        })
                       : ''}
-                    {inactive ? ' ・ 無効' : ''}
+                    {inactive ? t(' · Inactive') : ''}
                   </div>
                 </div>
                 {!inactive && (
@@ -1934,12 +2093,9 @@ const ApiTokenSettings = () => {
                     className="btn btn-ghost"
                     style={{ color: 'var(--red-text)' }}
                     disabled={revoke.isPending}
-                    onClick={() => {
-                      if (window.confirm(`「${token.name}」を取り消しますか？`))
-                        revoke.mutate(token.id)
-                    }}
+                    onClick={() => setRevokeTarget(token)}
                   >
-                    取り消す
+                    {t('Revoke access')}
                   </button>
                 )}
               </div>
@@ -1947,13 +2103,25 @@ const ApiTokenSettings = () => {
           })
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke "{name}"?', { name: revokeTarget?.name ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }
 
 const McpOAuthConnectionSettings = () => {
+  const t = useT()
+  const { locale } = useLocale()
   const queryClient = useQueryClient()
   const [mcpUrl, setMcpUrl] = React.useState('/api/mcp')
+  const [revokeTarget, setRevokeTarget] = React.useState<McpOAuthConnectionDto | null>(null)
   React.useEffect(() => setMcpUrl(`${window.location.origin}/api/mcp`), [])
   const {
     data: connections = [],
@@ -1963,40 +2131,39 @@ const McpOAuthConnectionSettings = () => {
     queryKey: ['mcp-oauth-connections'],
     queryFn: async () => {
       const response = await fetchWithAuth('/api/oauth/connections')
-      if (!response.ok) throw new Error('OAuth接続の取得に失敗しました')
+      if (!response.ok) throw new Error(t('Could not load OAuth connections'))
       return response.json()
     },
   })
   const revoke = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetchWithAuth(`/api/oauth/connections/${id}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('OAuth接続の取り消しに失敗しました')
+      if (!response.ok) throw new Error(t('Could not revoke the OAuth connection'))
     },
     onSuccess: (_data, revokedId) => {
-      toast.success('OAuth接続を取り消しました')
+      toast.success(t('OAuth connection revoked'))
       queryClient.setQueryData<McpOAuthConnectionDto[]>(['mcp-oauth-connections'], (current) =>
         current?.filter((connection) => connection.id !== revokedId),
       )
     },
-    onError: (mutationError) => toast.error((mutationError as Error).message),
   })
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>MCP OAuth接続</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('MCP OAuth connections')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-        Claude Web／Desktopには次のURLだけを登録し、Cairnで接続を許可します。
+        {t('Register only this URL in Claude Web/Desktop, then allow the connection in Cairn.')}
       </p>
       <div className="card" style={{ padding: 16 }}>
         <code style={{ display: 'block', overflow: 'auto', fontSize: 11.5, marginBottom: 14 }}>
           {mcpUrl}
         </code>
         {isLoading ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>読み込み中…</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
-          <div style={{ fontSize: 12, color: 'var(--red-text)' }}>⚠ {(error as Error).message}</div>
+          <InlineError>{(error as Error).message}</InlineError>
         ) : connections.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>有効なOAuth接続はありません。</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('There are no active OAuth connections.')}</div>
         ) : (
           connections.map((connection) => (
             <div
@@ -2012,8 +2179,10 @@ const McpOAuthConnectionSettings = () => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{connection.clientName}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  {connection.scope === 'write' ? '読み取り・書き込み' : '読み取り'} ・ 接続日{' '}
-                  {new Date(connection.createdAt).toLocaleDateString('ja-JP')}
+                  {t('{scope} · Connected {date}', {
+                    scope: connection.scope === 'write' ? t('Read and write access') : t('Read'),
+                    date: formatAppDate(locale, connection.createdAt),
+                  })}
                 </div>
               </div>
               <button
@@ -2021,23 +2190,29 @@ const McpOAuthConnectionSettings = () => {
                 className="btn btn-ghost"
                 style={{ color: 'var(--red-text)' }}
                 disabled={revoke.isPending}
-                onClick={() => {
-                  if (window.confirm(`「${connection.clientName}」との接続を取り消しますか？`)) {
-                    revoke.mutate(connection.id)
-                  }
-                }}
+                onClick={() => setRevokeTarget(connection)}
               >
-                取り消す
+                {t('Revoke access')}
               </button>
             </div>
           ))
         )}
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke the connection with "{name}"?', { name: revokeTarget?.clientName ?? '' })}
+        message={t('Apps using this access will stop working. This cannot be undone.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
     </section>
   )
 }
 
 const SettingsIntegrations = () => {
+  const t = useT()
   // ── iCal 出力 ──────────────────────────────────────────────────────
   const { data: ws } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
@@ -2052,7 +2227,6 @@ const SettingsIntegrations = () => {
       fetchWithAuth('/api/calendar/token', { method: 'POST' }).then((r) => r.json()),
     onSuccess: () => refetch(),
   })
-  const [copiedScope, setCopiedScope] = React.useState<string | null>(null)
 
   const buildUrl = (scope: 'me' | 'workspace') => {
     if (!data?.token || !ws?.id) return ''
@@ -2060,43 +2234,33 @@ const SettingsIntegrations = () => {
     return `${base}/api/calendar/ical?token=${data.token}&scope=${scope}&workspaceId=${ws.id}`
   }
 
-  const copy = (scope: 'me' | 'workspace') => {
-    void navigator.clipboard.writeText(buildUrl(scope))
-    setCopiedScope(scope)
-    setTimeout(() => setCopiedScope(null), 2000)
-  }
-
   const feeds: { scope: 'me' | 'workspace'; label: string; desc: string }[] = [
     {
       scope: 'me',
-      label: '自分が参加しているプロジェクト',
-      desc: 'メンバーとして参加しているプロジェクトの期間とマイルストーン予定',
+      label: t('Projects you belong to'),
+      desc: t('Dates and milestone schedules for projects you belong to'),
     },
     {
       scope: 'workspace',
-      label: 'ワークスペース全体',
-      desc: 'ワークスペース内のすべてのプロジェクト期間とマイルストーン予定',
+      label: t('Entire workspace'),
+      desc: t('Dates and milestone schedules for every project in the workspace'),
     },
   ]
 
   // ── Google カレンダー読み込み ───────────────────────────────────────
   const queryClient = useQueryClient()
-  const [gcalMsg, setGcalMsg] = React.useState<{ text: string; ok: boolean } | null>(null)
-
+  // OAuth コールバックから戻ったときの結果をトーストで知らせる（処理後に URL からパラメータを消すので再実行されても重複しない）
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const gcal = params.get('gcal')
-    if (gcal === 'connected') setGcalMsg({ text: 'Google カレンダーと接続しました', ok: true })
-    else if (gcal === 'error')
-      setGcalMsg({ text: '接続に失敗しました。再試行してください。', ok: false })
-    else if (gcal === 'denied') setGcalMsg({ text: '接続がキャンセルされました。', ok: false })
-    if (gcal) {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('gcal')
-      window.history.replaceState({}, '', url.toString())
-      setTimeout(() => setGcalMsg(null), 5000)
-    }
-  }, [])
+    if (!gcal) return
+    if (gcal === 'connected') toast.success(t('Connected to Google Calendar'))
+    else if (gcal === 'error') toast.error(t('Could not connect. Try again.'))
+    else if (gcal === 'denied') toast.info(t('The connection was canceled.'))
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gcal')
+    window.history.replaceState({}, '', url.toString())
+  }, [t])
 
   const { data: gcalStatus, isLoading: gcalLoading } = useQuery<GcalStatusDto>({
     queryKey: ['gcal-status'],
@@ -2111,19 +2275,18 @@ const SettingsIntegrations = () => {
     queryKey: ['gcal-calendars'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/calendar/google/calendars')
-      const body = (await res.json().catch(() => null)) as
-        | GcalCalendarDto[]
+      const body = (await res.json().catch(() => null)) as GcalCalendarDto[]
         | { error?: string; code?: string }
         | null
       if (!res.ok) {
         throw new GcalCalendarsError(
           (body && !Array.isArray(body) && body.error) ||
-            'Google カレンダー一覧の取得に失敗しました',
+            t('Could not load the Google Calendar list'),
           body && !Array.isArray(body) ? body.code : undefined,
         )
       }
       if (!Array.isArray(body)) {
-        throw new GcalCalendarsError('Google カレンダー一覧の形式が不正です')
+        throw new GcalCalendarsError(t('The Google Calendar list format is invalid'))
       }
       return body
     },
@@ -2174,10 +2337,10 @@ const SettingsIntegrations = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        連携
+        {t('Integrations')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        外部サービスとの連携を設定します。
+        {t('Configure connections to external services.')}
       </p>
 
       <McpOAuthConnectionSettings />
@@ -2186,11 +2349,10 @@ const SettingsIntegrations = () => {
       {/* ── iCal 出力セクション ───────────────────────────────────── */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>
-          Cairn → Google カレンダー（iCal 出力）
+          {t('Cairn → Google Calendar (iCal export)')}
         </h2>
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-          URLをコピーして Google
-          カレンダーの「他のカレンダーを追加」→「URLで追加」に貼り付けてください。
+          {t('Copy the URL and paste it into Google Calendar under “Add other calendars” → “From URL”.')}
         </p>
         <div className="card" style={{ padding: 0 }}>
           {feeds.map((f, i) => (
@@ -2231,25 +2393,14 @@ const SettingsIntegrations = () => {
                         fontFamily: 'monospace',
                       }}
                     >
-                      {data?.token ? buildUrl(f.scope) : '読み込み中…'}
+                      {data?.token ? buildUrl(f.scope) : t('Loading...')}
                     </span>
-                    <button
-                      onClick={() => copy(f.scope)}
+                    <CopyButton
+                      text={data?.token ? buildUrl(f.scope) : ''}
                       disabled={!data?.token}
-                      className="btn btn-ghost"
-                      style={{
-                        height: 26,
-                        fontSize: 11.5,
-                        padding: '0 8px',
-                        flexShrink: 0,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <Icon name={copiedScope === f.scope ? 'check' : 'copy'} size={12} />
-                      {copiedScope === f.scope ? 'コピー済み' : 'コピー'}
-                    </button>
+                      className="btn btn-ghost btn-sm"
+                      style={{ flexShrink: 0 }}
+                    />
                   </div>
                 </div>
               </div>
@@ -2265,7 +2416,7 @@ const SettingsIntegrations = () => {
             }}
           >
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-              URLを知っている人は誰でもカレンダーを閲覧できます。漏洩した場合は再生成してください。
+              {t('Anyone with the URL can view the calendar. If it leaks, regenerate it.')}
             </span>
             <button
               onClick={() => regenerate.mutate()}
@@ -2281,7 +2432,7 @@ const SettingsIntegrations = () => {
                 gap: 4,
               }}
             >
-              <Icon name="refresh" size={12} /> URL を再生成
+              <Icon name="refresh" size={12} /> {t('Regenerate URL')}
             </button>
           </div>
         </div>
@@ -2299,7 +2450,7 @@ const SettingsIntegrations = () => {
             gap: 6,
           }}
         >
-          Google カレンダー → Cairn（イベント読み込み）
+          {t('Google Calendar → Cairn (import events)')}
           <span
             style={{
               display: 'inline-flex',
@@ -2318,39 +2469,18 @@ const SettingsIntegrations = () => {
           </span>
         </h2>
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-          Google
-          カレンダーの予定をカレンダービューにオーバーレイ表示します。試験的な機能のため、今後仕様が変更される場合があります。
+          {t('Overlays Google Calendar events on the calendar view. This is experimental and may change.')}
         </p>
-
-        {gcalMsg && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '10px 14px',
-              borderRadius: 8,
-              fontSize: 12.5,
-              background: gcalMsg.ok ? 'var(--emerald-soft)' : 'var(--red-soft)',
-              color: gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)',
-              border: `1px solid ${gcalMsg.ok ? 'var(--emerald-text)' : 'var(--red-text)'}22`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Icon name={gcalMsg.ok ? 'check-circle' : 'alert-circle'} size={14} />
-            {gcalMsg.text}
-          </div>
-        )}
 
         <div className="card" style={{ padding: 0 }}>
           {gcalLoading ? (
             <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 13 }}>
-              読み込み中…
+              {t('Loading...')}
             </div>
           ) : !gcalStatus?.configured ? (
             <div style={{ padding: '16px', fontSize: 12.5, color: 'var(--text-3)' }}>
-              <Icon name="alert-circle" size={13} style={{ marginRight: 6 }} />
-              環境変数{' '}
+              <Icon name="alertTriangle" size={13} style={{ marginRight: 6 }} />
+              {t('Environment variables')}{' '}
               <code
                 style={{
                   fontFamily: 'monospace',
@@ -2372,7 +2502,7 @@ const SettingsIntegrations = () => {
               >
                 GOOGLE_CALENDAR_CLIENT_SECRET
               </code>{' '}
-              が未設定です。
+              {t('are not set.')}
             </div>
           ) : !gcalStatus.connected ? (
             <div
@@ -2384,9 +2514,9 @@ const SettingsIntegrations = () => {
               }}
             >
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>未接続</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Not connected')}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  Google アカウントを連携してカレンダーを読み込みます。
+                  {t('Connect a Google account to load calendars.')}
                 </div>
               </div>
               <button
@@ -2402,7 +2532,7 @@ const SettingsIntegrations = () => {
                 }}
                 onClick={() => void connectGcal()}
               >
-                <Icon name="calendar" size={13} /> Google で接続
+                <Icon name="calendar" size={13} /> {t('Connect with Google')}
               </button>
             </div>
           ) : (
@@ -2432,7 +2562,7 @@ const SettingsIntegrations = () => {
                     <Icon name="check" size={15} color="var(--emerald-text)" />
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>接続済み</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Connected')}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{gcalStatus.email}</div>
                   </div>
                 </div>
@@ -2442,7 +2572,7 @@ const SettingsIntegrations = () => {
                   onClick={() => disconnectGcal.mutate()}
                   disabled={disconnectGcal.isPending}
                 >
-                  接続を解除
+                  {t('Disconnect')}
                 </button>
               </div>
 
@@ -2456,10 +2586,10 @@ const SettingsIntegrations = () => {
                     marginBottom: 10,
                   }}
                 >
-                  表示するカレンダー
+                  {t('Calendars to show')}
                 </div>
                 {gcalCalendarsLoading ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>読み込み中…</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading...')}</div>
                 ) : gcalCalendarsError ? (
                   <div
                     style={{
@@ -2487,13 +2617,13 @@ const SettingsIntegrations = () => {
                         }}
                         onClick={() => void connectGcal()}
                       >
-                        <Icon name="calendar" size={13} /> Google を再接続
+                        <Icon name="calendar" size={13} /> {t('Reconnect Google')}
                       </button>
                     )}
                   </div>
                 ) : !gcalCalendars ? (
                   <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
-                    Google カレンダー一覧を取得できませんでした。
+                    {t('Could not get the Google Calendar list.')}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2546,7 +2676,7 @@ const SettingsIntegrations = () => {
                                 padding: '1px 5px',
                               }}
                             >
-                              メイン
+                              {t('Primary')}
                             </span>
                           )}
                         </span>
@@ -2571,7 +2701,7 @@ const SettingsIntegrations = () => {
                     onClick={() => void saveCalendarSelection()}
                     disabled={savingCalendars}
                   >
-                    {savingCalendars ? '保存中…' : '保存'}
+                    {savingCalendars ? t('Saving...') : t('Save')}
                   </button>
                 </div>
               )}
@@ -2607,6 +2737,7 @@ export function resolveCreditPackFulfillmentPolling(input: {
 }
 
 const SettingsBilling = () => {
+  const t = useT()
   const [billingAction, setBillingAction] = React.useState<
     'checkout' | 'credit-pack' | 'portal' | null
   >(null)
@@ -2619,7 +2750,7 @@ const SettingsBilling = () => {
     queryKey: ['workspace-storage-usage'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/workspaces/storage-usage')
-      if (!res.ok) throw new Error('取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not load'))
       return res.json() as Promise<WorkspaceStorageUsageDto>
     },
   })
@@ -2630,7 +2761,7 @@ const SettingsBilling = () => {
         ? `/api/billing/summary?credit_pack_session_id=${encodeURIComponent(creditPackSessionId)}`
         : '/api/billing/summary'
       const res = await fetchWithAuth(summaryUrl)
-      if (!res.ok) throw new Error('請求情報の取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not load billing information'))
       return res.json() as Promise<BillingSummaryDto>
     },
     refetchInterval: (query) =>
@@ -2662,11 +2793,11 @@ const SettingsBilling = () => {
         body: JSON.stringify({ quantity: 1 }),
       })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
-      if (!res.ok || !result.url) throw new Error(result.error ?? '決済画面を開けませんでした')
+      if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
       window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
-      setBillingActionError(err instanceof Error ? err.message : '決済画面を開けませんでした')
+      setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
     }
   }
 
@@ -2676,11 +2807,11 @@ const SettingsBilling = () => {
     try {
       const res = await fetchWithAuth('/api/billing/portal', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
-      if (!res.ok || !result.url) throw new Error(result.error ?? '請求管理画面を開けませんでした')
+      if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open the billing portal'))
       window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
-      setBillingActionError(err instanceof Error ? err.message : '請求管理画面を開けませんでした')
+      setBillingActionError(err instanceof Error ? err.message : t('Could not open the billing portal'))
     }
   }
 
@@ -2690,11 +2821,11 @@ const SettingsBilling = () => {
     try {
       const res = await fetchWithAuth('/api/billing/credit-packs/checkout', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
-      if (!res.ok || !result.url) throw new Error(result.error ?? '決済画面を開けませんでした')
+      if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
       window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
-      setBillingActionError(err instanceof Error ? err.message : '決済画面を開けませんでした')
+      setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
     }
   }
 
@@ -2704,18 +2835,16 @@ const SettingsBilling = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        請求
+        {t('Billing')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
         {billingQuery.data?.billingEnabled
-          ? 'オリジナルの保管とストレージ家賃を、ワークスペースのクレジットで管理します。'
-          : '現在はストレージ使用量を計測しているのみで、上限は設けていません。'}
+          ? t('Manage original-file storage and storage rent with workspace credits.')
+          : t('Storage usage is only being measured, and no limit is set.')}
       </p>
 
       {billingQuery.isError ? (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ 請求情報を取得できませんでした
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not load billing')}</InlineError>
       ) : billingQuery.data?.billingEnabled ? (
         <section className="card" style={{ padding: 20, marginBottom: 16 }}>
           <div
@@ -2729,10 +2858,10 @@ const SettingsBilling = () => {
           >
             <div>
               <h2 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700 }}>
-                ワークスペースのケルン
+                {t('Workspace Cairn')}
               </h2>
               <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>
-                {billingQuery.data.creditBalance} 石
+                {t('{count} stones', { count: billingQuery.data.creditBalance })}
               </div>
               <div
                 style={{
@@ -2745,8 +2874,8 @@ const SettingsBilling = () => {
                 }}
               >
                 {billingQuery.data.workspaceState === 'weathered'
-                  ? '風化中です。オリジナルは圧縮版で閲覧できます。'
-                  : 'クレジットでオリジナルを保管できます。'}
+                  ? t('Weathering. Originals can be viewed as compressed copies.')
+                  : t('Credits can keep originals stored.')}
               </div>
             </div>
             {billingQuery.data.hasManageableSubscription ? (
@@ -2759,8 +2888,8 @@ const SettingsBilling = () => {
                     disabled={billingAction !== null}
                   >
                     {billingAction === 'credit-pack'
-                      ? '移動中…'
-                      : `石を追加（¥${BILLING_CONFIG.creditPackPriceJpy} / ${BILLING_CONFIG.creditPackCredits} 石）`}
+                      ? t('Opening...')
+                      : t('Add stones (¥{price} / {credits} stones)', { price: BILLING_CONFIG.creditPackPriceJpy, credits: BILLING_CONFIG.creditPackCredits })}
                   </button>
                 )}
                 <button
@@ -2769,7 +2898,7 @@ const SettingsBilling = () => {
                   onClick={() => void openPortal()}
                   disabled={billingAction !== null}
                 >
-                  {billingAction === 'portal' ? '移動中…' : '購読を管理'}
+                  {billingAction === 'portal' ? t('Opening...') : t('Manage subscription')}
                 </button>
               </div>
             ) : (
@@ -2779,7 +2908,7 @@ const SettingsBilling = () => {
                 onClick={() => void beginCheckout()}
                 disabled={billingAction !== null}
               >
-                {billingAction === 'checkout' ? '移動中…' : '石を積む（月額 ¥300）'}
+                {billingAction === 'checkout' ? t('Opening...') : t('Stack stones (¥300 per month)')}
               </button>
             )}
           </div>
@@ -2791,33 +2920,26 @@ const SettingsBilling = () => {
       )}
 
       {billingActionError && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠ {billingActionError}
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{billingActionError}</InlineError>
       )}
 
       {creditPackFulfillmentState === 'polling' && (
         <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-3)' }}>
-          決済を確認しています。クレジット残高は自動で更新されます。
+          {t('Confirming the payment. The credit balance updates automatically.')}
         </div>
       )}
 
       {creditPackFulfillmentState === 'timed_out' && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--red-text)' }}>
-          ⚠
-          決済の反映を確認できませんでした。数分後に再読み込みし、解消しない場合はサポートへお問い合わせください。
-        </div>
+        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}</InlineError>
       )}
 
       <section className="card" style={{ padding: 20 }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>ストレージ使用量</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>{t('Storage usage')}</h2>
         {isLoading ? (
-          <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+          <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
         ) : isError ? (
           // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
-          <div style={{ fontSize: 13, color: 'var(--red-text)' }}>
-            ⚠ ストレージ使用量を取得できませんでした
-          </div>
+          <InlineError style={{ fontSize: 13 }}>{t('Could not load storage usage')}</InlineError>
         ) : (
           <>
             <div
@@ -2839,7 +2961,7 @@ const SettingsBilling = () => {
               />
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-              {totalGb.toFixed(2)} GB 使用中（参考ライン: {FREE_TIER_REFERENCE_GB} GB）
+              {t('{amount} GB in use (reference line: {reference} GB)', { amount: totalGb.toFixed(2), reference: FREE_TIER_REFERENCE_GB })}
             </div>
           </>
         )}
@@ -2849,21 +2971,22 @@ const SettingsBilling = () => {
 }
 
 const SettingsContributions = () => {
+  const t = useT()
   const billingQuery = useQuery({
     queryKey: ['billing-summary'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/billing/summary')
-      if (!res.ok) throw new Error('請求情報の取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not load billing information'))
       return res.json() as Promise<BillingSummaryDto>
     },
   })
 
   if (billingQuery.isLoading) {
-    return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+    return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
   }
   if (billingQuery.isError) {
     return (
-      <div style={{ color: 'var(--red-text)', fontSize: 13 }}>⚠ ケルンを取得できませんでした</div>
+      <InlineError style={{ fontSize: 13 }}>{t('Could not load Cairn')}</InlineError>
     )
   }
   if (!billingQuery.data?.billingEnabled) return null
@@ -2877,12 +3000,12 @@ import type { DevStatusDto, ServiceStatus } from '@/app/api/dev/status/route'
 
 const STATUS_CONFIG: Record<ServiceStatus['status'], { label: string; color: string; bg: string }> =
   {
-    ok: { label: '接続済み', color: 'var(--emerald-text)', bg: 'var(--emerald-soft)' },
-    error: { label: 'エラー', color: 'var(--red-text)', bg: 'var(--red-soft)' },
-    unconfigured: { label: '未設定', color: 'var(--text-4)', bg: 'var(--card-2)' },
+    ok: { label: 'Connected', color: 'var(--emerald-text)', bg: 'var(--emerald-soft)' },
+    error: { label: 'Error', color: 'var(--red-text)', bg: 'var(--red-soft)' },
+    unconfigured: { label: 'Not configured', color: 'var(--text-4)', bg: 'var(--card-2)' },
   }
 
-const MANUAL_OK_STATUS = { label: '未確認', color: 'var(--text-4)', bg: 'var(--card-2)' }
+const MANUAL_OK_STATUS = { label: 'Not checked', color: 'var(--text-4)', bg: 'var(--card-2)' }
 
 function getStatusBadgeConfig(status: ServiceStatus, hasLiveDiagnostic: boolean) {
   if (status.status !== 'ok') return STATUS_CONFIG[status.status]
@@ -2899,41 +3022,42 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
     key: 'supabaseDb',
     label: 'Supabase Database',
     icon: 'database',
-    purpose: 'プロジェクト・タスク・メッセージなど全データの永続化に必要',
+    purpose: 'Required to store all data such as projects, tasks, and messages',
   },
   {
     key: 'supabaseStorage',
     label: 'Supabase Storage',
     icon: 'archive',
-    purpose: 'カバー写真・ギャラリー画像・添付ファイルの保存に必要',
+    purpose: 'Required to store cover photos, gallery images, and attachments',
   },
   {
     key: 'inngest',
     label: 'Inngest',
     icon: 'sparkles',
-    purpose: 'AI エージェント・通知・外部連携などの非同期ジョブ実行に必要',
+    purpose: 'Required to run async jobs such as the AI agent, notifications, and integrations',
   },
   {
     key: 'openai',
     label: 'OpenAI',
     icon: 'sparkles',
-    purpose: 'AI アシスタント・ドキュメント要約・ベクトル検索に必要',
+    purpose: 'Required for the AI assistant, document summaries, and vector search',
   },
   {
     key: 'googleMaps',
     label: 'Google Maps Platform',
     icon: 'map-pin',
-    purpose: 'プロジェクト作成時の場所オートコンプリートとカバー写真取得に必要',
+    purpose: 'Required for place autocomplete and cover photos when creating a project',
   },
   {
     key: 'tavily',
     label: 'Tavily',
     icon: 'search',
-    purpose: 'AI エージェントのウェブ検索機能に必要（省略可）',
+    purpose: 'Required for AI agent web search (optional)',
   },
 ]
 
 const SettingsDeveloper = () => {
+  const t = useT()
   const { isOwner } = useWorkspacePermissions()
   const { data: staticData, isLoading } = useQuery<DevStatusDto>({
     queryKey: ['dev-status'],
@@ -2947,7 +3071,7 @@ const SettingsDeveloper = () => {
       const res = await fetchWithAuth('/api/dev/status', { method: 'POST' })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(body.error ?? '診断の実行に失敗しました')
+        throw new Error(body.error ?? t('Could not run diagnostics'))
       }
       return res.json() as Promise<DevStatusDto>
     },
@@ -2961,10 +3085,10 @@ const SettingsDeveloper = () => {
     return (
       <div>
         <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-          開発者情報
+          {t('Developer info')}
         </h1>
         <p style={{ color: 'var(--text-3)', fontSize: 13 }}>
-          このセクションはワークスペースのオーナーのみ利用できます。
+          {t('Only the workspace owner can use this section.')}
         </p>
       </div>
     )
@@ -2976,7 +3100,7 @@ const SettingsDeveloper = () => {
         <h1
           style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}
         >
-          開発者情報
+          {t('Developer info')}
         </h1>
         <button
           className="btn"
@@ -2989,20 +3113,20 @@ const SettingsDeveloper = () => {
             size={13}
             style={diagnose.isPending ? { animation: 'spin 1s linear infinite' } : {}}
           />
-          手動診断
+          {t('Manual diagnostics')}
         </button>
       </div>
       <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 10 }}>
-        初期表示は設定状況のみを表示し、外部サービスへの疎通確認は手動診断時にだけ実行されます。
+        {t('The initial view shows configuration only. Live checks of external services run only during manual diagnostics.')}
       </p>
       {diagnose.error && (
         <p style={{ color: 'var(--red-text)', fontSize: 12.5, margin: '0 0 18px' }}>
-          {diagnose.error instanceof Error ? diagnose.error.message : '診断の実行に失敗しました'}
+          {diagnose.error instanceof Error ? diagnose.error.message : t('Could not run diagnostics')}
         </p>
       )}
       {!diagnose.data && (
         <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>
-          OpenAI などの実接続確認は「手動診断」でのみ行います。
+          {t('Live checks such as OpenAI run only from "Manual diagnostics".')}
         </p>
       )}
 
@@ -3017,7 +3141,7 @@ const SettingsDeveloper = () => {
             marginBottom: 10,
           }}
         >
-          外部サービス
+          {t('External services')}
         </div>
         <div
           style={{
@@ -3063,7 +3187,7 @@ const SettingsDeveloper = () => {
                     {label}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
-                    {purpose}
+                    {t(purpose)}
                   </div>
                   {s?.detail && (
                     <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
@@ -3085,7 +3209,7 @@ const SettingsDeveloper = () => {
                         background: 'var(--card-2)',
                       }}
                     >
-                      確認中...
+                      {t('Checking...')}
                     </span>
                   ) : cfg && s ? (
                     <span
@@ -3098,7 +3222,7 @@ const SettingsDeveloper = () => {
                         background: cfg.bg,
                       }}
                     >
-                      {getStatusBadgeLabel(s, hasLiveDiagnostic)}
+                      {t(getStatusBadgeLabel(s, hasLiveDiagnostic))}
                     </span>
                   ) : (
                     <span
@@ -3132,12 +3256,12 @@ const SettingsDeveloper = () => {
               marginBottom: 10,
             }}
           >
-            環境変数
+            {t('Environment variables')}
           </div>
           <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
             {[
               { label: 'NODE_ENV', value: data.env.nodeEnv },
-              { label: 'VAPID', value: data.env.hasVapid ? '設定済み' : '未設定（Push 通知無効）' },
+              { label: 'VAPID', value: data.env.hasVapid ? t('Configured') : t('Not configured (push notifications off)') },
             ].map(({ label, value }, i, arr) => (
               <div
                 key={label}
@@ -3176,39 +3300,39 @@ export function getSettingsNavGroups(
   options: { isMobile?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
-    { id: 'general', label: 'ワークスペース設定', icon: 'settings' },
-    { id: 'workflow', label: 'ワークフロー', icon: 'flag' },
-    { id: 'project-roles', label: '役割', icon: 'users' },
-    { id: 'profile-attributes', label: 'プロフィール属性', icon: 'hash' },
-    { id: 'ai', label: 'AIエージェント', icon: 'sparkles' },
-    { id: 'members', label: 'メンバー', icon: 'users' },
-    { id: 'integrations', label: '連携', icon: 'layers' },
+    { id: 'general', label: 'Workspace settings', icon: 'settings' },
+    { id: 'workflow', label: 'Workflow', icon: 'flag' },
+    { id: 'project-roles', label: 'Roles', icon: 'users' },
+    { id: 'profile-attributes', label: 'Profile attributes', icon: 'hash' },
+    { id: 'ai', label: 'AI agent', icon: 'sparkles' },
+    { id: 'members', label: 'Members', icon: 'users' },
+    { id: 'integrations', label: 'Integrations', icon: 'layers' },
     ...(options.isMobile
-      ? [{ id: 'contributions', label: 'ケルン', icon: 'layers' } satisfies SettingsSectionMeta]
+      ? [{ id: 'contributions', label: 'Cairn', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
     ...(!options.isMobile
-      ? [{ id: 'billing', label: '請求', icon: 'archive' } satisfies SettingsSectionMeta]
+      ? [{ id: 'billing', label: 'Billing', icon: 'archive' } satisfies SettingsSectionMeta]
       : []),
   ]
 
   return [
     {
-      label: '個人',
+      label: 'Personal',
       items: [
-        { id: 'account', label: 'アカウント', icon: 'user' },
-        { id: 'appearance', label: '外観', icon: 'sun' },
-        { id: 'safety', label: '安全・サポート', icon: 'shield' },
+        { id: 'account', label: 'Account', icon: 'user' },
+        { id: 'appearance', label: 'Appearance', icon: 'sun' },
+        { id: 'safety', label: 'Safety and support', icon: 'shield' },
       ],
     },
     {
-      label: 'ワークスペース',
+      label: 'Workspace',
       items: workspaceItems,
     },
     ...(isOwner
       ? [
           {
-            label: '開発者',
-            items: [{ id: 'developer', label: '開発者情報', icon: 'code' }],
+            label: 'Developer',
+            items: [{ id: 'developer', label: 'Developer info', icon: 'code' }],
           },
         ]
       : []),
@@ -3259,24 +3383,24 @@ export function settingsSectionLabel(
     const item = g.items.find((i) => i.id === id)
     if (item) return item.label
   }
-  return '設定'
+  return 'Settings'
 }
 
 // セクションのメインカラム本体（PC・モバイル共通）。
 export function SettingsSectionContent({ section }: { section: string }) {
+  const t = useT()
   const Comp = SETTINGS_SECTION_COMPONENTS[section]
   if (Comp) return <Comp />
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        {settingsSectionLabel(section)}
-      </h1>
-      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>このセクションの設定は準備中です。</p>
+      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t(settingsSectionLabel(section))}</h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Settings for this section are not ready yet.')}</p>
     </div>
   )
 }
 
 export const PageSettings = () => {
+  const t = useT()
   const pathname = usePathname()
   const router = useRouter()
   const { isOwner } = useWorkspacePermissions()
@@ -3285,7 +3409,7 @@ export const PageSettings = () => {
   const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TopBar title="設定" />
+      <TopBar title={t('Settings')} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <aside
           style={{
@@ -3308,7 +3432,7 @@ export const PageSettings = () => {
                   marginBottom: 4,
                 }}
               >
-                {group.label}
+                {t(group.label)}
               </div>
               {group.items.map((s) => (
                 <button
@@ -3331,7 +3455,7 @@ export const PageSettings = () => {
                     textAlign: 'left',
                   }}
                 >
-                  <Icon name={s.icon} size={14} /> {s.label}
+                  <Icon name={s.icon} size={14} /> {t(s.label)}
                 </button>
               ))}
             </div>

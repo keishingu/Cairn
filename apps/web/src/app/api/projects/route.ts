@@ -22,8 +22,10 @@ export interface ProjectDto {
   memberAvatarUrls: (string | null)[]
   taskCount: number
   completedTaskCount: number
-  isOwner: boolean
-  isMember: boolean
+  /** 自分がプロジェクトメンバーのとき true（一覧の「参加中」フィルタ用） */
+  isJoined: boolean
+  /** 自分がリーダーまたはサブリーダーのとき true（一覧の「主催」フィルタ用） */
+  isHosting: boolean
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null
@@ -74,7 +76,6 @@ export async function GET() {
         startDate: projects.startDate,
         endDate: projects.endDate,
         archived: projects.archived,
-        createdBy: projects.createdBy,
         coverPhotoUrl: projects.coverPhotoUrl,
         location: projects.location,
         placeId: projects.placeId,
@@ -116,7 +117,7 @@ export async function GET() {
         .where(inArray(projectMembers.projectId, visibleProjectIds))
         .orderBy(projectMembers.createdAt),
       db
-        .select({ projectId: projectMembers.projectId })
+        .select({ projectId: projectMembers.projectId, role: projectMembers.role })
         .from(projectMembers)
         .where(eq(projectMembers.userId, ctx.userId)),
       db
@@ -148,30 +149,33 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
+    const userProjectRoleMap = new Map(userMemberRows.map(r => [r.projectId, r.role]))
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
-    const result: ProjectDto[] = rows.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      statusName: r.statusName ?? null,
-      statusColor: r.statusColor ?? null,
-      startDate: r.startDate,
-      endDate: r.endDate,
-      archived: r.archived,
-      memberCount: countMap.get(r.id) ?? 0,
-      memberNames: memberNamesMap.get(r.id) ?? [],
-      memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
-      taskCount: taskMap.get(r.id)?.total ?? 0,
-      completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
-      isOwner: r.createdBy === ctx.userId,
-      isMember: userProjectIds.has(r.id),
-      coverPhotoIdx: coverPhotoIdxFromId(r.id),
-      coverPhotoUrl: r.coverPhotoUrl ?? null,
-      location: r.location ?? null,
-      placeId: r.placeId ?? null,
-    }))
+    const result: ProjectDto[] = rows.map(r => {
+      const myRole = userProjectRoleMap.get(r.id)
+      return {
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        statusName: r.statusName ?? null,
+        statusColor: r.statusColor ?? null,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        archived: r.archived,
+        memberCount: countMap.get(r.id) ?? 0,
+        memberNames: memberNamesMap.get(r.id) ?? [],
+        memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
+        taskCount: taskMap.get(r.id)?.total ?? 0,
+        completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
+        isJoined: myRole !== undefined,
+        isHosting: myRole === 'leader' || myRole === 'subleader',
+        coverPhotoIdx: coverPhotoIdxFromId(r.id),
+        coverPhotoUrl: r.coverPhotoUrl ?? null,
+        location: r.location ?? null,
+        placeId: r.placeId ?? null,
+      }
+    })
 
     return NextResponse.json(result)
   } catch (err) {
@@ -320,8 +324,9 @@ export async function POST(req: Request) {
       memberAvatarUrls,
       taskCount: 0,
       completedTaskCount: 0,
-      isOwner: true,
-      isMember: selectedMemberIds.includes(ctx.userId),
+      // 作成時のメンバーは常に member ロールで追加するため、主催（leader/subleader）にはならない
+      isJoined: selectedMemberIds.includes(ctx.userId),
+      isHosting: false,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,

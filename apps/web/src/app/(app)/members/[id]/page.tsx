@@ -4,6 +4,7 @@
 'use client'
 
 import React, { use } from 'react'
+import { useT } from '@/components/locale-provider'
 import { TopBar } from '@/components/app/sidebar'
 import { TopBarSearch } from '@/components/app/primitives'
 import { PageMembers } from '@/components/app/pages/members-page'
@@ -13,12 +14,13 @@ interface Props {
 }
 
 export default function MemberDetailPage({ params }: Props) {
+  const t = useT()
   const { id } = use(params)
   const [search, setSearch] = React.useState('')
   return (
     <>
-      <TopBar title="メンバー">
-        <TopBarSearch value={search} onChange={setSearch} placeholder="メンバーを検索…"/>
+      <TopBar title={t('Members')}>
+        <TopBarSearch value={search} onChange={setSearch} placeholder={t('Search members…')} />
       </TopBar>
       <PageMembers initialUserId={id} externalSearch={search}/>
     </>

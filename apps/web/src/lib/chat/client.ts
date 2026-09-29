@@ -22,8 +22,10 @@ export const chatQueryKeys = {
   messagesRoot: ['messages'] as const,
   messages: (channelId: string | null) => ['messages', channelId] as const,
   messageHistory: (channelId: string | null, messageId: string | null) => ['message-history', channelId, messageId] as const,
+  messageSearch: (channelId: string, query: string) => ['message-search', channelId, query] as const,
+  globalMessageSearch: (query: string) => ['global-message-search', query] as const,
+  bookmarks: ['bookmarks'] as const,
   initialMessage: (channelId: string | null) => ['channel-initial-message', channelId] as const,
-  currentUser: ['current-user'] as const,
 }
 
 const CHANNEL_LISTS = [
@@ -97,6 +99,27 @@ async function createWorkspaceChannel(body: { name: string; isPrivate: boolean }
     throw new Error(data.error ?? 'チャンネルの作成に失敗しました')
   }
   return res.json()
+}
+
+async function renameWorkspaceChannel(channelId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? '名前の変更に失敗しました')
+  }
+  return res.json()
+}
+
+async function deleteWorkspaceChannel(channelId: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? '削除に失敗しました')
+  }
 }
 
 async function createChannelThread(channelId: string, name: string): Promise<{ id: string }> {
@@ -228,12 +251,6 @@ async function toggleMessageReaction(messageId: string, emoji: string): Promise<
   if (!res.ok) throw new Error('リアクションの更新に失敗しました')
 }
 
-async function fetchCurrentUser(): Promise<CurrentUserDto> {
-  const res = await fetchWithAuth('/api/me')
-  if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました')
-  return res.json()
-}
-
 // 未読バッジの更新は RealtimeProvider 経由（messages / channel_read_states の購読）。
 // 配線は apps/web/src/components/realtime/realtime-provider.tsx を参照
 export function useProjectChannels() {
@@ -295,6 +312,32 @@ export function useCreateChannel() {
   })
 }
 
+export function useRenameWorkspaceChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, name }: { channelId: string; name: string }) => renameWorkspaceChannel(channelId, name),
+    onSuccess: updated => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.map(channel => channel.id === updated.id ? { ...channel, name: updated.name } : channel),
+      )
+    },
+  })
+}
+
+export function useDeleteWorkspaceChannel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (channelId: string) => deleteWorkspaceChannel(channelId),
+    onSuccess: (_result, channelId) => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.filter(channel => channel.id !== channelId && channel.parentChannelId !== channelId),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
 export function useCreateChannelThread() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -312,14 +355,6 @@ export function useCreateDm() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: chatQueryKeys.dms })
     },
-  })
-}
-
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: chatQueryKeys.currentUser,
-    queryFn: fetchCurrentUser,
-    staleTime: Infinity,
   })
 }
 
@@ -630,14 +665,14 @@ export function useToggleBookmark(channelId: string | null) {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bookmarks'] })
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.bookmarks })
     },
   })
 }
 
 export function useBookmarks(enabled: boolean) {
   return useQuery({
-    queryKey: ['bookmarks'] as const,
+    queryKey: chatQueryKeys.bookmarks,
     queryFn: fetchBookmarks,
     enabled,
   })

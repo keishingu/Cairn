@@ -6,9 +6,10 @@
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
+import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import type { CurrentUserDto } from '@/app/api/me/route'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 
 interface MobileNavProps {
@@ -19,39 +20,36 @@ interface MobileNavProps {
 }
 
 const BASE_TABS = [
-  { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'チャット' },
+  { id: 'chats',     path: '/chats',     icon: 'chat',      label: 'Chats' },
   { id: 'projects',  path: '/projects',  icon: 'kanban',    label: null },
-  { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'タスク' },
+  { id: 'tasks',     path: '/tasks',     icon: 'check',     label: 'Tasks' },
   { id: 'ai',        path: '/ai',        icon: 'sparkles',  label: 'AI' },
-  { id: 'menu',      path: null,         icon: 'list',      label: 'メニュー' },
+  { id: 'menu',      path: null,         icon: 'list',      label: 'Menu' },
 ] as const
 
 const PROJECTS_VIEWS = [
-  { id: 'list',     label: '一覧',       icon: 'list'    },
-  { id: 'calendar', label: 'カレンダー', icon: 'calendar' },
-  { id: 'kanban',   label: 'カンバン',   icon: 'kanban'  },
+  { id: 'list',     label: 'List',       icon: 'list'    },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar' },
+  { id: 'kanban',   label: 'Kanban',   icon: 'kanban'  },
 ]
 
 const MENU_ITEMS = [
-  { label: 'ファイル',   icon: 'file',     path: '/files' },
-  { label: 'ギャラリー', icon: 'image',    path: '/gallery' },
-  { label: 'メンバー',   icon: 'users',    path: '/members' },
-  { label: '設定',       icon: 'gear',     path: '/settings' },
+  { label: 'Files',   icon: 'file',     path: '/files' },
+  { label: 'Gallery', icon: 'image',    path: '/gallery' },
+  { label: 'Members',   icon: 'users',    path: '/members' },
+  { label: 'Settings',       icon: 'gear',     path: '/settings' },
 ]
 
 const MENU_PAGES = new Set(['settings', 'files', 'gallery', 'members'])
 
 export function MobileNav({ page, projectsView, onNavigate, onChangeView }: MobileNavProps) {
+  const t = useT()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
-  const TABS = BASE_TABS.map(t => ({ ...t, label: t.label ?? projectLabel }))
+  const TABS = BASE_TABS.map((tab) => ({ ...tab, label: tab.label ? t(tab.label) : projectLabel }))
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: me } = useCurrentUser()
   const { data: workspace } = useQuery<WorkspaceDto>({
     queryKey: ['workspace'],
     queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
@@ -85,7 +83,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       {/* Overlay backdrop for any open popup */}
       {(menuOpen || projectsPickerOpen) && (
         <div
-          style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-nav-backdrop)' }}
           onClick={closeAll}
         />
       )}
@@ -96,7 +94,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
           position: 'fixed',
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
           left: 'calc(8px + env(safe-area-inset-left))',
-          zIndex: 50,
+          zIndex: 'var(--z-nav)',
           background: 'var(--card)',
           border: '1px solid var(--border)',
           borderRadius: 14,
@@ -120,7 +118,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 }}
               >
                 <Icon name={v.icon} size={16} color={active ? 'var(--accent-text)' : 'var(--text-3)'} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{v.label}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{t(v.label)}</span>
                 {active && <Icon name="check" size={14} color="var(--accent-text)" strokeWidth={2.5} />}
               </button>
             )
@@ -135,7 +133,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
           bottom: 'calc(65px + env(safe-area-inset-bottom))',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
-          zIndex: 50,
+          zIndex: 'var(--z-nav)',
           background: 'var(--card)',
           border: '1px solid var(--border)',
           borderRadius: 16,
@@ -164,7 +162,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {workspace?.name ?? '…'}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>ワークスペース</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>{t('Workspace')}</div>
               </div>
             </div>
 
@@ -209,7 +207,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
               }}>
                 <Icon name={item.icon} size={18} color="var(--text-2)" />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{item.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{t(item.label)}</span>
               <Icon name="chevRight" size={14} color="var(--text-4)" style={{ marginLeft: 'auto' }} />
             </button>
           ))}
@@ -217,7 +215,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       )}
 
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 'var(--z-nav)',
         background: 'var(--card)', borderTop: '1px solid var(--border)',
         display: 'flex',
         paddingBottom: 'env(safe-area-inset-bottom)',

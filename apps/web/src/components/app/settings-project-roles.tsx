@@ -3,6 +3,7 @@
 import React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ProjectRoleDto } from '@/app/api/projects/roles/route'
+import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectRoles } from '@/hooks/use-project-roles'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -30,13 +31,15 @@ async function apiError(res: Response, fallback: string) {
   return data.error ?? fallback
 }
 
-const ColorPicker = ({ value, onChange }: { value: string; onChange: (color: string) => void }) => (
+const ColorPicker = ({ value, onChange }: { value: string; onChange: (color: string) => void }) => {
+  const t = useT()
+  return (
   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
     {COLORS.map((color) => (
       <button
         key={color}
         type="button"
-        aria-label={`色 ${color}`}
+        aria-label={t('Color {color}', { color })}
         aria-pressed={value === color}
         onClick={() => onChange(color)}
         style={{
@@ -53,9 +56,11 @@ const ColorPicker = ({ value, onChange }: { value: string; onChange: (color: str
       />
     ))}
   </div>
-)
+  )
+}
 
 const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
@@ -70,7 +75,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), color }),
       })
-      if (!res.ok) throw new Error(await apiError(res, '更新に失敗しました'))
+      if (!res.ok) throw new Error(await apiError(res, t('Could not update')))
     },
     onSuccess: async () => {
       setEditing(false)
@@ -80,7 +85,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
   const remove = useMutation({
     mutationFn: async () => {
       const res = await fetchWithAuth(`/api/projects/roles/${role.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error(await apiError(res, '削除に失敗しました'))
+      if (!res.ok) throw new Error(await apiError(res, t('Could not delete')))
     },
     onSuccess: async () => {
       setConfirmDelete(false)
@@ -103,17 +108,17 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         />
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600 }}>{role.name}</span>
         {role.isDefault && (
-          <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>新規参加時のデフォルト</span>
+          <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{t('Default for new members')}</span>
         )}
         {canEdit && (
           <RowActionMenu
             actions={[
-              { icon: 'edit', label: '編集', onSelect: () => setEditing(true) },
+              { icon: 'edit', label: 'Edit', onSelect: () => setEditing(true) },
               ...(!role.isDefault
                 ? [
                     {
                       icon: 'trash',
-                      label: '削除',
+                      label: 'Delete',
                       danger: true,
                       onSelect: () => setConfirmDelete(true),
                     },
@@ -124,8 +129,8 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         )}
         <ConfirmDialog
           open={confirmDelete}
-          title="役割を削除"
-          message={`役割「${role.name}」を削除しますか？使用中の場合は削除できません。`}
+          title={t('Delete role')}
+          message={t('Delete role "{name}"? You cannot delete a role that is in use.', { name: role.name })}
           onConfirm={() => remove.mutateAsync()}
           onClose={() => setConfirmDelete(false)}
         />
@@ -144,7 +149,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
       }}
     >
       <input
-        aria-label="役割名"
+        aria-label={t('Role name')}
         name="roleName"
         autoComplete="off"
         value={name}
@@ -173,7 +178,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
           style={{ height: 28, fontSize: 12 }}
           onClick={() => setEditing(false)}
         >
-          キャンセル
+          {t('Cancel')}
         </button>
         <button
           className="btn btn-primary"
@@ -181,7 +186,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
           disabled={!name.trim() || save.isPending}
           onClick={() => save.mutate()}
         >
-          {save.isPending ? '保存中…' : '保存'}
+          {save.isPending ? t('Saving...') : t('Save')}
         </button>
       </div>
     </div>
@@ -189,6 +194,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
 }
 
 export const SettingsProjectRoles = () => {
+  const t = useT()
   const { isAdmin } = useWorkspacePermissions()
   const queryClient = useQueryClient()
   const { data: roles = [], isLoading, error } = useProjectRoles()
@@ -202,7 +208,7 @@ export const SettingsProjectRoles = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), color }),
       })
-      if (!res.ok) throw new Error(await apiError(res, '追加に失敗しました'))
+      if (!res.ok) throw new Error(await apiError(res, t('Could not add')))
     },
     onSuccess: async () => {
       setAdding(false)
@@ -215,22 +221,22 @@ export const SettingsProjectRoles = () => {
   return (
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
-        役割
+        {t('Roles')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
-        プロジェクトメンバーの役割を管理します。
+        {t('Manage roles for project members.')}
       </p>
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>役割一覧</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Role list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {isLoading && (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-              読み込み中…
+              {t('Loading...')}
             </div>
           )}
           {error && (
             <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 12 }}>
-              役割を読み込めませんでした
+              {t('Could not load roles')}
             </div>
           )}
           {roles.map((role, index) => (
@@ -255,12 +261,12 @@ export const SettingsProjectRoles = () => {
               }}
             >
               <input
-                aria-label="新しい役割名"
+                aria-label={t('New role name')}
                 name="newRoleName"
                 autoComplete="off"
                 maxLength={30}
                 value={name}
-                placeholder="役割名を入力…"
+                placeholder={t('Enter a role name…')}
                 onChange={(event) => setName(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && name.trim()) add.mutate()
@@ -291,7 +297,7 @@ export const SettingsProjectRoles = () => {
                     setName('')
                   }}
                 >
-                  キャンセル
+                  {t('Cancel')}
                 </button>
                 <button
                   className="btn btn-primary"
@@ -299,7 +305,7 @@ export const SettingsProjectRoles = () => {
                   disabled={!name.trim() || add.isPending}
                   onClick={() => add.mutate()}
                 >
-                  {add.isPending ? '追加中…' : '追加'}
+                  {add.isPending ? t('Adding...') : t('Add')}
                 </button>
               </div>
             </div>
@@ -329,7 +335,7 @@ export const SettingsProjectRoles = () => {
                   gap: 6,
                 }}
               >
-                <Icon name="plus" size={13} /> 役割を追加
+                <Icon name="plus" size={13} /> {t('Add a role')}
               </button>
             </div>
           ) : null}

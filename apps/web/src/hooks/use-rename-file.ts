@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
 import { chatQueryKeys } from '@/lib/chat/client'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 
@@ -21,6 +22,7 @@ interface FileNameDto {
 
 export function useRenameFile() {
   const queryClient = useQueryClient()
+  const t = useT()
 
   return useMutation<RenameFileResponse, Error, RenameFileInput>({
     mutationFn: async ({ fileId, fileName }) => {
@@ -31,7 +33,7 @@ export function useRenameFile() {
       })
       if (!response.ok) {
         const data = await response.json().catch(() => ({})) as { error?: string }
-        throw new Error(data.error ?? 'ファイル名の変更に失敗しました')
+        throw new Error(data.error ?? t('Could not rename the file'))
       }
       return response.json() as Promise<RenameFileResponse>
     },
@@ -50,7 +52,7 @@ export function useRenameFile() {
         })),
       )
 
-      toast.success('ファイル名を変更しました')
+      toast.success(t('Renamed the file'))
     },
     onError: error => toast.error(error.message),
   })

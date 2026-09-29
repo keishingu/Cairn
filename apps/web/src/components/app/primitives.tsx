@@ -1,6 +1,8 @@
 'use client'
 
 import React from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
 
 const PHOTO_IDS = [
@@ -97,6 +99,8 @@ const PATHS: Record<string, React.ReactNode> = {
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
   reply:       <><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></>,
   bookmark:    <><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></>,
+  'external-link': <><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></>,
+  loader:      <><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></>,
   info:        <><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
 }
 
@@ -221,16 +225,19 @@ interface ArchivedBadgeProps {
   onDark?: boolean
 }
 
-export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => {
+  const t = useT()
+  return (
   <span
     className="chip"
     style={onDark
       ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
       : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
   >
-    アーカイブ
+    {t('Archive')}
   </span>
-)
+  )
+}
 
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
@@ -320,11 +327,13 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+export const TopBarSearch = ({ value, onChange, placeholder }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
 }) => {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('Search…')
   const inputRef = React.useRef<HTMLInputElement>(null)
   // ⌥S: 検索フォーカス
   useCommand('ctx.searchFocus', () => inputRef.current?.focus())
@@ -335,7 +344,7 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         ref={inputRef}
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
@@ -353,7 +362,9 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
 }
 
 // ─── Placeholder page ─────────────────────────────────────────────
-export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
+export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => {
+  const t = useT()
+  return (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
     <div style={{ maxWidth: 360, textAlign: 'center' }}>
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -361,32 +372,71 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
       </div>
       <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
-        このセクションはサイドバーから他のページへ移動できることを示すプレースホルダーです。実装時にはここに専用のビューが表示されます。
+        {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
     </div>
   </div>
-)
+  )
+}
 
 // ─── Modal ────────────────────────────────────────────────────────
-export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+// フォーカスの閉じ込め・背後の非表示（aria-hidden）・スクロール固定・重なったときの Escape は
+// Radix Dialog に任せる。自前で持つと portal・入れ子・無効ボタンなどの端のケースを追い切れないため。
+const visuallyHidden: React.CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
+}
+
+export const Modal = ({ onClose, label, role = 'dialog', children }: {
+  onClose: () => void
+  /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
+  label: string
+  role?: 'dialog' | 'alertdialog'
+  children: React.ReactNode
+}) => {
+  // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
+  const [opener] = React.useState(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  )
 
   return (
-    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-      {children}
-    </div>
+    <DialogPrimitive.Root open onOpenChange={open => { if (!open) onClose() }}>
+      {/* portal にすると .app / .app-root のテーマ変数・ボタン用クラスが効かなくなるため、その場に描画する */}
+      <DialogPrimitive.Content
+        data-cairn-modal
+        role={role}
+        aria-describedby={undefined}
+        // 背景幕のクリックは下の div で扱う。トーストなど中身の外にある要素への操作では閉じない
+        onInteractOutside={e => e.preventDefault()}
+        onCloseAutoFocus={e => {
+          e.preventDefault()
+          if (opener && document.contains(opener)) opener.focus()
+        }}
+        style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      >
+        {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
+        <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
+        <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Root>
   )
+}
+
+/**
+ * createPortal の出し先。モーダルの中ならモーダル内に出して、フォーカスの閉じ込めや背後の非表示の
+ * 対象に含める（外に出すとフォーカスできない・読み上げられない）。それ以外はテーマ変数の効く .app-root。
+ */
+export function portalHostFor(el: Element | null | undefined): HTMLElement | null {
+  return el?.closest<HTMLElement>('[data-cairn-modal]') ?? el?.closest<HTMLElement>('.app-root') ?? null
 }
 
 export const ModalHeader = ({ icon, title, subtitle, onClose }: {
   icon?: string; title: string; subtitle?: string; onClose: () => void
-}) => (
-  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
+}) => {
+  const t = useT()
+  return (
+  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
     {icon && (
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={16}/>
@@ -396,14 +446,12 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" aria-label="閉じる" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-    >
+    <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
     </button>
   </header>
-)
+  )
+}
 
 // ─── Form field ───────────────────────────────────────────────────
 interface FieldProps {
@@ -469,8 +517,8 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
       background: 'var(--accent)', color: 'var(--on-accent)',
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-      zIndex: 50,
+      boxShadow: 'var(--shadow-fab)',
+      zIndex: 'var(--z-nav)',
     }}
   >
     <Icon name="plus" size={22}/>

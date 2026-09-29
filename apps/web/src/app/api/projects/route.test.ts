@@ -26,7 +26,7 @@ vi.mock('@cairn/db', () => ({
   db: mockDb,
   projects:       { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', description: 'p.description', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdBy: 'p.createdBy', coverPhotoUrl: 'p.coverPhotoUrl', location: 'p.location', placeId: 'p.placeId' },
   projectStatuses:{ id: 'ps.id', name: 'ps.name', color: 'ps.color' },
-  projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', createdAt: 'pm.createdAt' },
+  projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', role: 'pm.role', createdAt: 'pm.createdAt' },
   tasks:          { projectId: 'tk.projectId', channelId: 'tk.channelId', status: 'tk.status' },
   channels:       { id: 'ch.id', isPrivate: 'ch.isPrivate' },
   channelMembers: { channelId: 'cm.channelId', userId: 'cm.userId' },
@@ -79,14 +79,14 @@ describe('GET /api/projects', () => {
   it('ゲストは参加プロジェクトのみ取得できる', async () => {
     // ロールは ctx.role で判定するため WSロール確認クエリは発行しない（P2）
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'guest' }, error: null })
-    const project = { id: PROJ_1, title: 'テスト', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+    const project = { id: PROJ_1, title: 'テスト', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
 
     mockDb.select
       .mockReturnValueOnce(chain([{ projectId: PROJ_1 }]))   // 1. ゲストのプロジェクトID取得
       .mockReturnValueOnce(chain([project]))                  // 2. プロジェクト一覧
       .mockReturnValueOnce(chain([]))                         // 3. メンバー数
       .mockReturnValueOnce(chain([]))                         // 4. メンバー名
-      .mockReturnValueOnce(chain([{ projectId: PROJ_1 }]))   // 5. 自分の参加プロジェクト
+      .mockReturnValueOnce(chain([{ projectId: PROJ_1, role: 'member' }]))   // 5. 自分の参加プロジェクト
       .mockReturnValueOnce(chain([]))                         // 6. タスク数
 
     const { GET } = await import('./route')
@@ -115,8 +115,8 @@ describe('GET /api/projects', () => {
 
   it('通常メンバーはすべてのプロジェクトを取得できる（ゲストフィルタなし）', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
-    const proj1 = { id: PROJ_1, title: 'プロジェクト1', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
-    const proj2 = { id: PROJ_2, title: 'プロジェクト2', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+    const proj1 = { id: PROJ_1, title: 'プロジェクト1', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
+    const proj2 = { id: PROJ_2, title: 'プロジェクト2', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
 
     mockDb.select
       .mockReturnValueOnce(chain([proj1, proj2]))              // 1. プロジェクト一覧（フィルタなし）
@@ -136,14 +136,14 @@ describe('GET /api/projects', () => {
 
   it('可視プロジェクトのみに集計クエリを絞る', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
-    const proj1 = { id: PROJ_1, title: 'プロジェクト1', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
-    const proj2 = { id: PROJ_2, title: 'プロジェクト2', description: null, startDate: null, endDate: null, archived: false, createdBy: USER_ID, coverPhotoUrl: null, location: null, placeId: null }
+    const proj1 = { id: PROJ_1, title: 'プロジェクト1', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
+    const proj2 = { id: PROJ_2, title: 'プロジェクト2', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
 
     mockDb.select
       .mockReturnValueOnce(chain([proj1, proj2]))
       .mockReturnValueOnce(chain([{ projectId: PROJ_1, n: 3 }]))
       .mockReturnValueOnce(chain([]))
-      .mockReturnValueOnce(chain([{ projectId: PROJ_1 }]))
+      .mockReturnValueOnce(chain([{ projectId: PROJ_1, role: 'member' }]))
       .mockReturnValueOnce(chain([{ projectId: PROJ_1, total: 5, completed: 2 }]))
 
     const drizzle = await import('drizzle-orm')
@@ -155,5 +155,33 @@ describe('GET /api/projects', () => {
     expect(selectChains[1]?.['where']).toHaveBeenCalledTimes(1)
     expect(selectChains[2]?.['where']).toHaveBeenCalledTimes(1)
     expect(selectChains[4]?.['where']).toHaveBeenCalledTimes(1)
+  })
+
+  it('参加中はメンバー、主催はリーダー/サブリーダーでフラグを立てる', async () => {
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
+    const proj1 = { id: PROJ_1, title: 'リーダー案件', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
+    const proj2 = { id: PROJ_2, title: 'メンバー案件', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
+    const proj3 = { id: 'proj-00000003', title: 'サブリーダー案件', description: null, startDate: null, endDate: null, archived: false, coverPhotoUrl: null, location: null, placeId: null }
+
+    mockDb.select
+      .mockReturnValueOnce(chain([proj1, proj2, proj3]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([
+        { projectId: PROJ_1, role: 'leader' },
+        { projectId: PROJ_2, role: 'member' },
+        { projectId: 'proj-00000003', role: 'subleader' },
+      ]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const body = await res.json() as { id: string; isJoined: boolean; isHosting: boolean }[]
+    expect(body).toEqual([
+      expect.objectContaining({ id: PROJ_1, isJoined: true, isHosting: true }),
+      expect.objectContaining({ id: PROJ_2, isJoined: true, isHosting: false }),
+      expect.objectContaining({ id: 'proj-00000003', isJoined: true, isHosting: true }),
+    ])
   })
 })

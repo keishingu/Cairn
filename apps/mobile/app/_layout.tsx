@@ -4,8 +4,10 @@ import * as SplashScreen from 'expo-splash-screen'
 import { SQLiteProvider } from 'expo-sqlite'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { shouldClearAccountCache } from '../lib/account-cache'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
+import { LocaleProvider } from '../components/locale-provider'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -17,22 +19,35 @@ void SplashScreen.preventAutoHideAsync()
 
 function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElement | null {
   const [session, setSession] = React.useState<Session | null | undefined>(undefined)
+  const knownUserId = React.useRef<string | null | undefined>(undefined)
   const segments = useSegments()
   const router = useRouter()
 
+  const applySession = React.useCallback((event: string, newSession: Session | null) => {
+    const nextUserId = newSession?.user.id ?? null
+    const previousUserId = knownUserId.current
+    if (previousUserId !== undefined && shouldClearAccountCache(event, previousUserId, nextUserId)) {
+      queryClient.clear()
+    }
+    knownUserId.current = nextUserId
+    setSession(newSession)
+  }, [])
+
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
+      if (knownUserId.current === undefined) {
+        applySession('INITIAL_SESSION', data.session)
+      }
     })
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession)
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      applySession(event, newSession)
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [applySession])
 
   React.useEffect(() => {
     if (session === undefined) return
@@ -62,7 +77,9 @@ export default function RootLayout() {
       <SQLiteProvider databaseName={OFFLINE_DATABASE_NAME} onInit={initializeOfflineDatabase}>
         <QueryClientProvider client={queryClient}>
           <AuthGuard>
-            <Slot />
+            <LocaleProvider>
+              <Slot />
+            </LocaleProvider>
           </AuthGuard>
         </QueryClientProvider>
       </SQLiteProvider>

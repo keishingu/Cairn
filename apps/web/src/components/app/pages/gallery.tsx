@@ -6,6 +6,7 @@ import { Icon } from '../primitives'
 import { TopBar } from '../sidebar'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDate(takenAt: string | null, createdAt: string): string {
@@ -18,6 +19,7 @@ function formatDate(takenAt: string | null, createdAt: string): string {
 }
 
 export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
@@ -40,7 +42,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* PC ヘッダー */}
       {!isMobile && (
-        <TopBar title="ギャラリー" subtitle={items.length > 0 ? `${items.length} 枚` : null}/>
+        <TopBar title={t('Gallery')} subtitle={items.length > 0 ? t('{count} photos', { count: items.length }) : null}/>
       )}
 
       {/* コンテンツ */}
@@ -50,21 +52,21 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
       }}>
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
-            読み込み中...
+            {t('Loading…')}
           </div>
         )}
 
         {isError && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 13 }}>
-            ギャラリーの取得に失敗しました
+            {t('Could not load the gallery')}
           </div>
         )}
 
         {!isLoading && !isError && items.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
             <Icon name="image" size={36}/>
-            <span style={{ fontSize: 14 }}>まだ写真がありません</span>
-            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクトのギャラリータブから写真を追加してください</span>
+            <span style={{ fontSize: 14 }}>{t('No photos yet')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
           </div>
         )}
 

@@ -3,8 +3,10 @@ import { Redirect } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSession } from '../lib/session-context'
 import { apiFetch } from '../lib/api-fetch'
+import { useT } from '../components/locale-provider'
 
 export default function Index() {
+  const t = useT()
   const session = useSession()
   const [needsWorkspace, setNeedsWorkspace] = React.useState<boolean | null>(null)
   const [setupFailed, setSetupFailed] = React.useState(false)
@@ -28,9 +30,9 @@ export default function Index() {
   if (session && setupFailed) {
     return (
       <View style={styles.container}>
-        <Text style={styles.message}>アカウントの準備状況を確認できませんでした。</Text>
+        <Text style={styles.message}>{t('Could not check whether your account is ready.')}</Text>
         <Pressable style={styles.button} onPress={() => setRetry((value) => value + 1)}>
-          <Text style={styles.buttonText}>再試行</Text>
+          <Text style={styles.buttonText}>{t('Retry')}</Text>
         </Pressable>
       </View>
     )

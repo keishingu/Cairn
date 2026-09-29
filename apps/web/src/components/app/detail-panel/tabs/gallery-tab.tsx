@@ -4,12 +4,18 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
+import { InlineError } from '../../inline-error'
 import { RowActionMenu } from '../../row-action-menu'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
+import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/locale-provider'
+
+type Translate = (message: string, values?: Record<string, string | number>) => string
 
 interface UploadState {
   total: number
@@ -17,7 +23,7 @@ interface UploadState {
   errors: string[]
 }
 
-async function uploadFile(projectId: string, original: File): Promise<void> {
+async function uploadFile(projectId: string, original: File, t: Translate): Promise<void> {
   const {
     file: derivedFile,
     originalFile,
@@ -35,7 +41,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   })
   if (!urlRes.ok) {
     const data = (await urlRes.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `${original.name} のアップロード準備に失敗しました`)
+    throw new Error(data.error ?? t('Could not prepare the upload'))
   }
 
   const signed = (await urlRes.json()) as {
@@ -58,7 +64,7 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   ]
   const uploadResults = await Promise.all(uploads)
   const uploadError = uploadResults.find((result) => result.error)?.error
-  if (uploadError) throw new Error(`${original.name} のアップロードに失敗しました`)
+  if (uploadError) throw new Error(t('Could not upload'))
 
   const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/finalize`, {
     method: 'POST',
@@ -72,11 +78,12 @@ async function uploadFile(projectId: string, original: File): Promise<void> {
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `${original.name} のアップロードに失敗しました`)
+    throw new Error(data.error ?? t('Could not upload'))
   }
 }
 
 export const GalleryTab = ({ projectId }: { projectId: string }) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
@@ -105,29 +112,26 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
     const results = await Promise.allSettled(
       files.map((file) =>
-        uploadFile(projectId, file).then(() => {
+        uploadFile(projectId, file, t).then(() => {
           setUploadState((s) => (s ? { ...s, done: s.done + 1 } : s))
         }),
       ),
     )
 
-    const errors = results
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : 'アップロードに失敗しました'))
+    const errors = describeUploadFailures(files, results, t('Could not upload'))
 
-    setUploadState((s) => (s ? { ...s, errors } : s))
+    const succeeded = files.length - errors.length
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
-
-    if (errors.length === 0) {
-      setTimeout(() => setUploadState(null), 1500)
-    }
+    if (succeeded > 0) toast.success(t('Added {count} photos', { count: succeeded }))
+    // 失敗は一過性にせず、どのファイルかを閉じるまで残す。完了後に「アップロード中」の文言を残さない
+    setUploadState(errors.length > 0 ? { total: files.length, done: files.length, errors } : null)
   }
 
   const deleteItem = async (itemId: string) => {
     const res = await fetchWithAuth(`/api/projects/${projectId}/gallery/${itemId}`, {
       method: 'DELETE',
     })
-    if (!res.ok) throw new Error('削除に失敗しました')
+    if (!res.ok) throw new Error(t('Could not delete'))
     void queryClient.invalidateQueries({ queryKey: ['project-gallery', projectId] })
   }
 
@@ -154,7 +158,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           fontSize: 13,
         }}
       >
-        読み込み中...
+        {t('Loading…')}
       </div>
     )
   }
@@ -171,7 +175,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           fontSize: 13,
         }}
       >
-        ギャラリーの取得に失敗しました
+        {t('Could not load the gallery')}
       </div>
     )
   }
@@ -190,64 +194,24 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             onChange={handleFileChange}
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '5px 10px',
-              borderRadius: 7,
-              border: '1px solid var(--border)',
-              background: 'var(--card)',
-              color: 'var(--text-2)',
-              fontSize: 12,
-              cursor: isUploading ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              opacity: isUploading ? 0.6 : 1,
-            }}
+            className="btn btn-sm"
           >
             <Icon name="plus" size={13} />
             {isUploading
-              ? `${uploadState.done}/${uploadState.total} 枚アップロード中...`
-              : '写真を追加'}
+              ? t('Uploading {done}/{total} photos...', { done: uploadState.done, total: uploadState.total })
+              : t('Add photos')}
           </button>
         </div>
 
         {uploadState?.errors && uploadState.errors.length > 0 && (
-          <div
-            style={{
-              marginBottom: 8,
-              padding: '6px 10px',
-              borderRadius: 6,
-              background: 'var(--red-soft)',
-              color: 'var(--red-text)',
-              fontSize: 12,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-            }}
-          >
+          <InlineError variant="box" onDismiss={() => setUploadState(null)} style={{ marginBottom: 8 }}>
             {uploadState.errors.map((err, i) => (
-              <span key={i}>{err}</span>
+              <div key={i}>{err}</div>
             ))}
-            <button
-              onClick={() => setUploadState(null)}
-              style={{
-                alignSelf: 'flex-end',
-                marginTop: 4,
-                fontSize: 11,
-                background: 'none',
-                border: 'none',
-                color: 'var(--red-text)',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontFamily: 'inherit',
-              }}
-            >
-              閉じる
-            </button>
-          </div>
+          </InlineError>
         )}
 
         {items.length === 0 && !isUploading ? (
@@ -263,7 +227,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             }}
           >
             <Icon name="image" size={28} />
-            <span style={{ fontSize: 13 }}>まだ写真がありません</span>
+            <span style={{ fontSize: 13 }}>{t('No photos yet')}</span>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
@@ -303,7 +267,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                     actions={[
                       {
                         icon: 'trash',
-                        label: '削除',
+                        label: t('Delete'),
                         danger: true,
                         onSelect: () => setDeleteTargetId(item.id),
                       },
@@ -318,8 +282,8 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
 
       <ConfirmDialog
         open={deleteTargetId !== null}
-        title="写真を削除"
-        message="この写真を削除しますか？この操作は取り消せません。"
+        title={t('Delete photo')}
+        message={t('Delete this photo? This cannot be undone.')}
         onConfirm={async () => {
           if (deleteTargetId) await deleteItem(deleteTargetId)
         }}

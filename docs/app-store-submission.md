@@ -43,12 +43,6 @@ ExpoアプリはiOSのログイン・新規登録画面にApple公式の「Sign 
 
 Supabase Authは検証済みで同じメールアドレスのOAuth identityを既存userへ自動紐付けする。Apple relay emailは実メールアドレスとは別のため、自動紐付けだけでは既存アカウントへは入らない。その場合はログイン後に設定 → アカウント → ログイン方法で「Apple を連携」または「Google を連携」する（Webは OAuth `linkIdentity`、Expo の設定 WebView はネイティブ bridge）。PreviewとProductionで、同一メールの自動紐付け・手動連携・relay emailの挙動を実機で確認する。
 
-### Appleログインの確認状況
-
-- 2026-08-14: iPhone 17（iOS 26.2）シミュレータ向けDevelopment BuildをCNGで生成し、`com.apple.developer.applesignin = Default` entitlementの出力を確認した。
-- 同日: シミュレータのログイン画面・Apple公式ボタン表示とキャンセルは、ローカルSupabase Docker起動が応答待ちとなり、既存セッションの復元が完了しないため未確認。完了済みとは扱わない。
-- 未確認: 実機またはTestFlightでのAppleログイン成功、キャンセル、初回氏名保存、relay email、同一メール既存アカウントの自動紐付け、設定画面からの手動Apple連携、メール・パスワード／Googleログインへの回帰。
-
 ## App Store Connectメタデータ
 
 `store.config.json` の内容を検証してから同期する。
@@ -166,7 +160,6 @@ App Review Notesには、審査アカウントでチャットを開き、他者�
 ## App Review送信前のブロッカー
 
 - [ ] Issue #469のアカウント削除機能をmainへ反映し、TestFlightで一般メンバー／最後のownerの両方を確認する
-- [x] ユーザー投稿型チャットの報告・ブロック・モデレーションを実装する（Issue #471、PR作成時点で完了扱い。TestFlight実機確認は不要）
 - [ ] 運営者の正式名称、非公開問い合わせ先、法務文面を最終確認する
 - [ ] App Store ConnectのApp Privacyを本番構成に合わせて公開する
 - [ ] 専用審査アカウントとサンプルワークスペースを作成する

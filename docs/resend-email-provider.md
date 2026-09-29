@@ -1,10 +1,6 @@
 # Resend Auth メール配信運用
 
-> ステータス: **現行リファレンス** ／ 最終更新: 2026-08-22
->
-> Supabase Auth が生成する認証メールを Resend のカスタム SMTP で配送するための設定と運用をまとめる。
-
-導入状況（2026-08-22）: DNS 検証と Supabase Preview / Production の SMTP 設定・配信確認まで完了。レート制限の運用確認は未完了。
+> ステータス: **現行リファレンス**。Supabase Auth の認証メールを Resend のカスタム SMTP で配送する設定と運用。Preview / Production とも設定・配信確認済み。
 
 ## 方針
 
@@ -21,7 +17,7 @@
 - `auth.oss-cairn.com` は将来の Supabase Custom Domain 候補として予約し、メール送信には使わない。
 - 認証メールと将来のマーケティングメールは送信ドメインを共用しない。
 
-## 導入手順
+## 設定手順（新規環境・再設定時）
 
 ### 1. Resend
 
@@ -55,8 +51,6 @@ Supabase の `cairn-preview` で Authentication の SMTP 設定を開き、Custo
 3. From、Return-Path、SPF、DKIM、DMARC の結果を確認する。
 4. メール内リンクの遷移先ホストが `develop.oss-cairn.com` であることを確認する。
 
-パスワード再設定 UI は現時点で提供していないため、リンク先でのパスワード変更完了は SMTP 移行の完了条件に含めない。再設定導線を実装する場合は、要求から変更完了までを別途検証する。
-
 ### 4. Supabase Production
 
 Preview の検証完了後、Supabase の `cairn-production` に同じ SMTP 設定を Production 用 Resend API キーで登録する。Auth の Site URL / Redirect URLs とメールテンプレート内リンクが `https://oss-cairn.com` を向くことを確認する。
@@ -80,16 +74,10 @@ Preview の検証完了後、Supabase の `cairn-production` に同じ SMTP 設�
 
 Resend 障害時は、Supabase の Custom SMTP を無効化してデフォルト SMTP に戻す。ただしデフォルト SMTP は送信先とレートが厳しく制限されるため、一般ユーザー向けの恒久運用には使わない。長期障害に備えた代替 SMTP は別途検討する。
 
-## 完了条件
+## 残課題
 
-- [x] `mail.oss-cairn.com` を Resend に登録
-- [x] Resend 指定の DNS レコードを追加し、ステータスが Verified
-- [x] Preview 用と Production 用の Resend API キーを分離
-- [x] `cairn-preview` の Custom SMTP を設定
-- [x] Preview でパスワードリセットメールの送信・受信・リンク先ホストを確認
-- [x] `cairn-production` の Custom SMTP を設定
-- [x] Production で管理下アドレスへの送信・受信・リンク先ホストを確認
-- [ ] Supabase / Resend のレート制限と障害時確認先を運用担当者間で共有
+- Supabase / Resend のレート制限と障害時の確認先を運用担当者間で共有する
+- パスワード再設定 UI を実装したら、要求から変更完了までを検証する
 
 ## 公式リファレンス
 

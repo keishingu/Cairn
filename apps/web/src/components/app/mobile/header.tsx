@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon, UnreadBadge } from '../primitives'
 import { useAppShell } from '../app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
@@ -20,6 +21,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderProps) {
+  const t = useT()
   const { openNotif, isWebView } = useAppShell()
   const unreadCount = useUnreadNotificationCount()
   const [wsSwitcherOpen, setWsSwitcherOpen] = React.useState(false)
@@ -62,7 +64,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
     if (!right) return null
     return (
       <div
-        aria-label={`${title}の操作`}
+        aria-label={t('Actions for {title}', { title })}
         style={{
           minHeight: 42,
           padding: '5px 12px',
@@ -86,7 +88,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
       paddingLeft: 'calc(16px + env(safe-area-inset-left))',
       paddingRight: 'calc(16px + env(safe-area-inset-right))',
       background: 'var(--card)', borderBottom: '1px solid var(--border)',
-      position: 'sticky', top: 0, zIndex: 20,
+      position: 'sticky', top: 0, zIndex: 'var(--z-sticky)',
     }}>
       {/* バックボタンがない最上位ページではワークスペースロゴを表示 */}
       {!onBack ? (
@@ -116,12 +118,12 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
           {wsSwitcherOpen && (
             <>
               <div
-                style={{ position: 'fixed', inset: 0, zIndex: 29 }}
+                style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }}
                 onClick={() => setWsSwitcherOpen(false)}
               />
               <div style={{
                 position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                zIndex: 30,
+                zIndex: 'var(--z-dropdown)',
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 12,

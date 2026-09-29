@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LoginMethodsSettings } from './login-methods-settings'
+import { Toaster } from './toaster'
+import { __resetToastsForTest } from '@/lib/toast'
 
 const mocks = vi.hoisted(() => ({
   getUserIdentities: vi.fn(),
@@ -36,12 +38,14 @@ function renderLoginMethods() {
   return render(
     <QueryClientProvider client={queryClient}>
       <LoginMethodsSettings />
+      <Toaster />
     </QueryClientProvider>,
   )
 }
 
 describe('LoginMethodsSettings', () => {
   beforeEach(() => {
+    __resetToastsForTest()
     mocks.getUserIdentities.mockReset()
     mocks.linkIdentity.mockReset()
     mocks.unlinkIdentity.mockReset()
@@ -177,5 +181,19 @@ describe('LoginMethodsSettings', () => {
       )
     })
     expect(await screen.findByText('Google 連携を解除しました')).toBeInTheDocument()
+  })
+
+  it('コールバックからの連携失敗キーを日本語エラーとして表示する', async () => {
+    mocks.searchParamsGet.mockImplementation((key: string) => {
+      if (key === 'loginLinkError') return 'identity_already_exists'
+      if (key === 'loginLinkProvider') return 'apple'
+      return null
+    })
+
+    renderLoginMethods()
+
+    expect(
+      await screen.findByText(/この Apple アカウントは別の Cairn アカウントに連携済み/),
+    ).toBeInTheDocument()
   })
 })

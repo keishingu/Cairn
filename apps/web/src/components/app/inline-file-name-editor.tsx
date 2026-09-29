@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 
 export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13 }: {
   fileName: string
@@ -8,6 +9,7 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
   onCancel: () => void
   fontSize?: number
 }) => {
+  const t = useT()
   const [draft, setDraft] = React.useState(fileName)
   const [isSaving, setIsSaving] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -45,7 +47,7 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
   return (
     <input
       ref={inputRef}
-      aria-label="ファイル名を変更"
+      aria-label={t('Change file name')}
       value={draft}
       disabled={isSaving}
       onChange={event => setDraft(event.target.value)}

@@ -8,6 +8,7 @@ import { TaskFormFields } from './task-form-fields'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import type { TaskDto } from '@/app/api/tasks/route'
+import { useT } from '@/components/locale-provider'
 
 interface TaskEditDialogProps {
   open: boolean
@@ -17,6 +18,7 @@ interface TaskEditDialogProps {
 }
 
 export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: TaskEditDialogProps) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
@@ -47,7 +49,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'タスクの更新に失敗しました')
+        throw new Error(d.error ?? t('Could not update the task'))
       }
     },
     onSuccess: async () => {
@@ -65,7 +67,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       const res = await fetchWithAuth(`/api/tasks/${task.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'タスクの削除に失敗しました')
+        throw new Error(d.error ?? t('Could not delete the task'))
       }
     },
     onSuccess: async () => {
@@ -110,34 +112,34 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       color: titleChanged ? 'var(--amber-text)' : 'var(--text-3)',
     }}>
       {titleChanged
-        ? 'このタスクはチャットメッセージから作成されています。あなたが投稿したメッセージの場合は、タイトル変更に合わせて元のチャットのチェックボックス文言も書き換わります。'
-        : 'このタスクはチャットメッセージと紐付いています。あなたが投稿したメッセージなら、タイトル変更で元のチャットのチェックボックス文言も書き換わります。'}
+        ? t('This task was created from a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')
+        : t('This task is linked to a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')}
     </div>
   ) : null
 
   const errorMessage = updateMutation.isError
     ? updateMutation.error instanceof Error
       ? updateMutation.error.message
-      : 'タスクの更新に失敗しました。'
+      : t('Could not update the task.')
     : undefined
 
   return (
     <>
       {showEditDialog && (
         <TaskDialog
-          title="タスクを編集"
-          subtitle={task.projectTitle ?? task.channelName ?? 'プロジェクトなし'}
+          title={t('Edit task')}
+          subtitle={task.projectTitle ?? task.channelName ?? t('No project')}
           onClose={onClose}
           onSubmit={handleSubmit}
-          submitLabel="保存"
-          submittingLabel="保存中..."
+          submitLabel={t('Save')}
+          submittingLabel={t('Saving…')}
           isSubmitting={updateMutation.isPending}
           submitDisabled={!title.trim() || deleteMutation.isPending}
           {...(task.isLinkedToMessage
             ? {}
             : {
                 leadingAction: {
-                  label: '削除',
+                  label: t('Delete'),
                   className: 'btn btn-danger',
                   onClick: () => setConfirmDelete(true),
                   disabled: updateMutation.isPending || deleteMutation.isPending,
@@ -159,7 +161,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             assigneeChannelId={task.channelId}
             assigneeChannelIsPrivate={task.channelIsPrivate}
             {...(task.assigneeId
-              ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? '不明なメンバー', avatarUrl: task.assigneeAvatarUrl } }
+              ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? t('Unknown member'), avatarUrl: task.assigneeAvatarUrl } }
               : {})}
             {...(chatLinkedNote ? { titleNote: chatLinkedNote } : {})}
           />
@@ -167,8 +169,8 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       )}
       <ConfirmDialog
         open={confirmDelete}
-        title="タスクを削除しますか？"
-        message={`「${formatTaskTitleForDisplay(task.title)}」を削除します。この操作は元に戻せません。`}
+        title={t('Delete this task?')}
+        message={t('This deletes "{name}". This cannot be undone.', { name: formatTaskTitleForDisplay(task.title) })}
         onClose={handleDeleteDialogClose}
         onConfirm={async () => { await deleteMutation.mutateAsync() }}
       />

@@ -4,6 +4,7 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
+  const t = useT()
   const [loadingProvider, setLoadingProvider] = React.useState<'google' | 'apple' | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -34,7 +36,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
       // SDKまたはネットワークエラーは同じ復帰導線へ進む
     }
 
-    setError('サインインを開始できませんでした。しばらくしてからもう一度お試しください。')
+    setError(t('Could not start sign-in. Please try again in a moment.'))
     setLoadingProvider(null)
   }
 
@@ -62,11 +64,11 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
         }}
       >
         {loadingProvider === 'google' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>リダイレクト中...</span>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <GoogleIcon />
-            Google でサインイン
+            {t('Sign in with Google')}
           </>
         )}
       </button>
@@ -93,11 +95,11 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
         }}
       >
         {loadingProvider === 'apple' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>リダイレクト中...</span>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <AppleIcon />
-            Apple でサインイン
+            {t('Sign in with Apple')}
           </>
         )}
       </button>

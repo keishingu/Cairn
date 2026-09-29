@@ -3,13 +3,21 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { mockGetUnreadNotificationCount, mockSendNotification, mockSetVapidDetails, mockWhere } =
-  vi.hoisted(() => ({
-    mockGetUnreadNotificationCount: vi.fn(),
-    mockSendNotification: vi.fn(),
-    mockSetVapidDetails: vi.fn(),
-    mockWhere: vi.fn(),
-  }))
+const {
+  mockGetUnreadNotificationCount,
+  mockSendNotification,
+  mockSetVapidDetails,
+  mockWhere,
+  mockChunkPushNotifications,
+  mockSendPushNotificationsAsync,
+} = vi.hoisted(() => ({
+  mockGetUnreadNotificationCount: vi.fn(),
+  mockSendNotification: vi.fn(),
+  mockSetVapidDetails: vi.fn(),
+  mockWhere: vi.fn(),
+  mockChunkPushNotifications: vi.fn((messages: unknown[]) => [messages]),
+  mockSendPushNotificationsAsync: vi.fn((_chunk: unknown) => Promise.resolve([])),
+}))
 
 vi.mock('web-push', () => ({
   default: {
@@ -20,12 +28,12 @@ vi.mock('web-push', () => ({
 
 vi.mock('expo-server-sdk', () => ({
   Expo: class {
-    chunkPushNotifications() {
-      return []
+    chunkPushNotifications(messages: unknown[]) {
+      return mockChunkPushNotifications(messages)
     }
 
-    sendPushNotificationsAsync() {
-      return Promise.resolve([])
+    sendPushNotificationsAsync(chunk: unknown) {
+      return mockSendPushNotificationsAsync(chunk)
     }
   },
 }))
@@ -88,6 +96,36 @@ describe('sendPushToUser', () => {
       body: '本文',
       badgeCount: 3,
     })
+  })
+
+  test('Expo の data には遷移先とワークスペースを載せる', async () => {
+    mockWhere.mockResolvedValue([
+      {
+        id: 'expo-1',
+        deviceType: 'expo',
+        endpoint: null,
+        keys: null,
+        expoToken: 'ExponentPushToken[abc]',
+      },
+    ])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', {
+      title: 'メンション',
+      body: '本文',
+      url: '/chats/ch-1',
+      workspaceId: 'ws-1',
+    })
+
+    expect(mockChunkPushNotifications).toHaveBeenCalledWith([
+      {
+        to: 'ExponentPushToken[abc]',
+        title: 'メンション',
+        body: '本文',
+        data: { url: '/chats/ch-1', workspaceId: 'ws-1' },
+      },
+    ])
+    expect(mockSendNotification).not.toHaveBeenCalled()
   })
 
   test('バッジ更新なしのPushは通知だけを送り未読数を取得しない', async () => {

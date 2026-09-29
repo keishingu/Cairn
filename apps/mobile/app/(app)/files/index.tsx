@@ -1,5 +1,7 @@
 import { NativeWebViewScreen } from '../../../components/native-webview-screen'
+import { useT } from '../../../components/locale-provider'
 
 export default function FilesScreen() {
-  return <NativeWebViewScreen path="/files" title="ファイル" />
+  const t = useT()
+  return <NativeWebViewScreen path="/files" title={t('Files')} />
 }

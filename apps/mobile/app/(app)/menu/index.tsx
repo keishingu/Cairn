@@ -1,14 +1,16 @@
 import { useRouter } from 'expo-router'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+import { useT } from '../../../components/locale-provider'
 
 const MENU_ITEMS = [
-  { label: 'ファイル', route: '/(app)/files' },
-  { label: 'ギャラリー', route: '/(app)/gallery' },
-  { label: 'メンバー', route: '/(app)/members' },
-  { label: '設定', route: '/(app)/settings' },
+  { label: 'Files', route: '/(app)/files' },
+  { label: 'Gallery', route: '/(app)/gallery' },
+  { label: 'Members', route: '/(app)/members' },
+  { label: 'Settings', route: '/(app)/settings' },
 ] as const
 
 export default function MenuScreen() {
+  const t = useT()
   const router = useRouter()
 
   function handleSignOut() {
@@ -17,16 +19,16 @@ export default function MenuScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>メニュー</Text>
+      <Text style={styles.heading}>{t('Menu')}</Text>
       <View style={styles.section}>
         {MENU_ITEMS.map((item) => (
           <TouchableOpacity key={item.route} style={styles.menuButton} onPress={() => router.push(item.route)}>
-            <Text style={styles.menuLabel}>{item.label}</Text>
+            <Text style={styles.menuLabel}>{t(item.label)}</Text>
           </TouchableOpacity>
         ))}
       </View>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>サインアウト</Text>
+        <Text style={styles.signOutText}>{t('Sign out')}</Text>
       </TouchableOpacity>
     </View>
   )

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { translate } from '@cairn/shared'
 import { ChannelList, formatChannelPeriod } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -34,13 +35,15 @@ const workspaceChannel = (overrides: Partial<WorkspaceChannelDto>): WorkspaceCha
   ...overrides,
 })
 
+const periodT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
+
 describe('formatChannelPeriod', () => {
   it('開始日と終了日が同じなら開いた期間に見せない', () => {
-    expect(formatChannelPeriod('2026-07-14', '2026-07-14')).toBe('7/14')
+    expect(formatChannelPeriod('2026-07-14', '2026-07-14', undefined, undefined, periodT)).toBe('7/14')
   })
 
   it('単日でも終了時刻があれば時刻範囲を表示する', () => {
-    expect(formatChannelPeriod('2026-07-14', '2026-07-14', '10:00', '12:00')).toBe('7/14 10:00〜12:00')
+    expect(formatChannelPeriod('2026-07-14', '2026-07-14', '10:00', '12:00', periodT)).toBe('7/14 10:00〜12:00')
   })
 })
 
@@ -66,6 +69,43 @@ describe('ChannelList', () => {
     fireEvent.click(screen.getByRole('button', { name: 'プロジェクトを追加' }))
 
     expect(onAddProject).toHaveBeenCalledOnce()
+  })
+
+  it('チャンネル見出しの追加ボタンから作成を開始する', () => {
+    const onAddChannel = vi.fn()
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onAddChannel={onAddChannel}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'チャンネルを追加' }))
+
+    expect(onAddChannel).toHaveBeenCalledOnce()
+  })
+
+  it('作成ハンドラーを受け取らない場合はプロジェクト・チャンネルの追加ボタンを表示しない', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'プロジェクトを追加' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'チャンネルを追加' })).toBeNull()
   })
 
   it('未読があるチャンネル名を明確な太字で表示する', () => {
@@ -291,5 +331,64 @@ describe('ChannelList', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'スレッドを作成' }))
 
     expect(onCreateThread).toHaveBeenCalledWith({ id: 'workspace-channel-1', name: '雑談' })
+  })
+
+  it('メンバーはスレッドだけ名称変更と削除ができる', () => {
+    const onRenameWorkspaceChannel = vi.fn()
+    const onDeleteWorkspaceChannel = vi.fn()
+    const thread = workspaceChannel({ id: 'thread-1', name: 'リリース準備', parentChannelId: 'workspace-channel-1' })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({}), thread]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onCreateThread={vi.fn()}
+        onRenameWorkspaceChannel={onRenameWorkspaceChannel}
+        onDeleteWorkspaceChannel={onDeleteWorkspaceChannel}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    expect(screen.getByRole('menuitem', { name: 'スレッドを作成' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '名前を変更' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '名前を変更' }))
+    expect(onRenameWorkspaceChannel).toHaveBeenCalledWith(thread)
+
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
+    expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(thread)
+  })
+
+  it('管理者はチャンネルの名称変更と削除もできる', () => {
+    const onRenameWorkspaceChannel = vi.fn()
+    const onDeleteWorkspaceChannel = vi.fn()
+    const channel = workspaceChannel({})
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[channel]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onRenameWorkspaceChannel={onRenameWorkspaceChannel}
+        onDeleteWorkspaceChannel={onDeleteWorkspaceChannel}
+        canManageWorkspaceChannel
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    expect(screen.getByRole('menuitem', { name: '名前を変更' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'スレッドを作成' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
+    expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(channel)
   })
 })

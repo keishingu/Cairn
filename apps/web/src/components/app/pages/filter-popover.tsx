@@ -2,6 +2,7 @@
 
 import React from 'react'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
+import { useT } from '@/components/locale-provider'
 
 export interface FilterPopoverProps {
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -24,6 +25,7 @@ export const FilterPopover = ({
   allMembers = [], selectedMembers = [], onChangeMembers,
   onClose,
 }: FilterPopoverProps) => {
+  const t = useT()
   const ref = React.useRef<HTMLDivElement>(null)
   const totalItems = allStatuses.length + allMembers.length
   const [focusIndex, setFocusIndex] = React.useState(0)
@@ -75,10 +77,10 @@ export const FilterPopover = ({
     <div ref={ref} style={{
       position: 'absolute', top: '100%', right: 0, marginTop: 4,
       width: 240, background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 200, padding: 12,
+      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', padding: 12,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-        ステータス
+        {t('Status')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {allStatuses.map((s, i) => {
@@ -88,8 +90,7 @@ export const FilterPopover = ({
             <label
               key={s.id}
               style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-              onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className={!focused ? 'hover-bg' : undefined}
             >
               <input
                 type="checkbox"
@@ -107,7 +108,7 @@ export const FilterPopover = ({
       {allMembers.length > 0 && (
         <>
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
-            参加者
+            {t('Participants')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {allMembers.map((name, i) => {
@@ -117,8 +118,7 @@ export const FilterPopover = ({
                 <label
                   key={name}
                   style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-                  onMouseEnter={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { if (!focused) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  className={!focused ? 'hover-bg' : undefined}
                 >
                   <input
                     type="checkbox"
@@ -143,13 +143,8 @@ export const FilterPopover = ({
       )}
 
       {hasAny && (
-        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} style={{
-          marginTop: 10, width: '100%', padding: '7px 0',
-          border: '1px solid var(--border)', borderRadius: 6,
-          background: 'transparent', color: 'var(--text-3)',
-          fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-        }}>
-          すべてクリア
+        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} className="btn btn-sm btn-block" style={{ marginTop: 10 }}>
+          {t('Clear all')}
         </button>
       )}
     </div>

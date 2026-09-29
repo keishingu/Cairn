@@ -9,6 +9,7 @@ import { FocusWarmup } from '@/components/app/focus-warmup'
 import { AppBadgeSync } from '@/components/app/app-badge-sync'
 import { PostHogUserIdentity } from '@/components/posthog-user-identity'
 import { AppearanceDbSync } from '@/components/app/appearance-db-sync'
+import { LocaleDbSync } from '@/components/app/locale-db-sync'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers()
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <RealtimeProvider>
       <PostHogUserIdentity />
       <AppearanceDbSync />
+      <LocaleDbSync />
       <FocusWarmup />
       <AppBadgeSync />
       {isMobile ? (
