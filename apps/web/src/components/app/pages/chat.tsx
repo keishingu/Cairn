@@ -591,11 +591,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       ? `${currentChannel.projectTitle} / ${currentChannel.channelName}`
       : currentChannel.projectTitle
     : currentGeneral?.name ?? currentDm?.participantName ?? ''
-  const channelSubtitle = currentGeneral
-    ? currentGeneral.isPrivate
-      ? t('{count} participating', { count: currentGeneral.memberCount })
-      : t('Open to everyone')
-    : undefined
+  const channelSubtitle = isProject
+    ? t('Participating members')
+    : isDm
+      ? t('Direct messages')
+      : currentGeneral?.isPrivate
+        ? t('{count} participating', { count: currentGeneral.memberCount })
+        : currentGeneral
+          ? t('Open to everyone')
+          : undefined
 
   const { data: currentUser } = useCurrentUser()
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
@@ -912,7 +916,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {isProject ? t('Participating members') : isDm ? t('Direct messages') : isPrivate ? t('Invite-only') : t('Workspace-wide channel')}
+                {channelSubtitle}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
