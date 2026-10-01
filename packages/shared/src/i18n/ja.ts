@@ -858,6 +858,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Purpose, schedule, and notes': '目的・日程の概要・備考など',
   'Push notifications': 'Push通知',
   Reaction: 'リアクション',
+  'Reactions ({count})': 'リアクション ({count})',
   Read: '読み取り',
   'Read and write': '読み書き',
   'Read and write access': '読み取り・書き込み',

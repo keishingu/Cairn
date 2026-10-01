@@ -858,6 +858,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Purpose, schedule, and notes': '목적·일정·메모',
   'Push notifications': '푸시 알림',
   Reaction: '반응',
+  'Reactions ({count})': '반응 ({count})',
   Read: '읽기',
   'Read and write': '읽기 및 쓰기',
   'Read and write access': '읽기·쓰기 권한',
