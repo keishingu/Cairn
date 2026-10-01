@@ -1773,7 +1773,7 @@ const styles = StyleSheet.create({
   reactionPeopleChips: { flexGrow: 0, maxHeight: 40, marginBottom: 8 },
   reactionPeopleChipsContent: { gap: 8, alignItems: 'center' },
   reactionPeopleChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 18, borderWidth: 1 },
-  reactionPeopleList: { flexGrow: 0, maxHeight: 400 },
+  reactionPeopleList: { flexGrow: 0, flexShrink: 1, minHeight: 0, maxHeight: 400 },
   reactionPeopleListContent: { paddingBottom: 8 },
   reactionPeopleRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth },
   reactionPeopleAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
