@@ -188,7 +188,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
-  const [mobileReactionPeople, setMobileReactionPeople] = React.useState<{ emoji: string; userNames: string[] } | null>(null)
+  const [mobileReactionEmoji, setMobileReactionEmoji] = React.useState<string | null>(null)
+  const mobileReactionPeople = reactions.find(reaction => reaction.emoji === mobileReactionEmoji)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -468,7 +469,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   aria-label={t('Show reactors for {emoji}', { emoji: r.emoji })}
                   aria-haspopup="dialog"
                   className="icon-btn"
-                  onClick={() => setMobileReactionPeople({ emoji: r.emoji, userNames: r.userNames })}
+                  onClick={() => setMobileReactionEmoji(r.emoji)}
                   style={{
                     width: 32, height: 32, minWidth: 32, minHeight: 32, padding: 0, borderRadius: 12,
                     background: 'var(--card-2)', border: '1px solid var(--border)',
@@ -503,9 +504,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       </div>
       {!isMobile && messageActions}
       {mobileReactionPeople && (
-        <Modal onClose={() => setMobileReactionPeople(null)} label={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })}>
+        <Modal onClose={() => setMobileReactionEmoji(null)} label={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })}>
           <div className="card" style={{ width: '100%', maxWidth: 360, maxHeight: 'min(70vh, 480px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <ModalHeader title={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })} onClose={() => setMobileReactionPeople(null)} />
+            <ModalHeader title={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })} onClose={() => setMobileReactionEmoji(null)} />
             <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px 16px' }}>
               {mobileReactionPeople.userNames.map((name, index) => (
                 <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>

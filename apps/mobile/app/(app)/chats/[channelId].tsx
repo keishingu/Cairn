@@ -191,7 +191,7 @@ function ChatMessageRow({
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
-  onShowReactors: (emoji: string, reactions: MessageDto['reactions']) => void
+  onShowReactors: (emoji: string, messageId: string) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
   onOpenImage: (attachment: MessageDto['attachments'][number]) => void
@@ -333,7 +333,7 @@ function ChatMessageRow({
                 accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
                 accessibilityHint={t('Long-press to see who reacted')}
                 onPress={() => onToggleReaction(message.id, reaction.emoji)}
-                onLongPress={() => onShowReactors(reaction.emoji, message.reactions)}
+                onLongPress={() => onShowReactors(reaction.emoji, message.id)}
                 delayLongPress={350}
                 style={({ pressed }) => [
                   styles.reaction,
@@ -532,17 +532,18 @@ export default function ChatThreadScreen() {
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
-    reactions: MessageDto['reactions']
+    messageId: string
   } | null>(null)
-  const reactionPeopleSummary = reactionPeople
-    ? getReactionPeopleSummary(reactionPeople.reactions, reactionPeople.selectedEmoji)
-    : null
   const [imagePreview, setImagePreview] = React.useState<MessageDto['attachments'][number] | null>(
     null,
   )
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
+  const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
+  const reactionPeopleSummary = reactionPeople && reactionPeopleMessage
+    ? getReactionPeopleSummary(reactionPeopleMessage.reactions, reactionPeople.selectedEmoji)
+    : null
   const queuedMessages = offlineQueue.messages.filter((message) => message.channelId === channelId)
   const mentionRange = React.useMemo(
     () => findMentionQuery(draft, selection.start),
@@ -714,6 +715,7 @@ export default function ChatThreadScreen() {
     setEditingMessage(null)
     setActionTarget(null)
     setReactionTarget(null)
+    setReactionPeople(null)
     setImagePreview(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
@@ -1167,7 +1169,7 @@ export default function ChatThreadScreen() {
                     palette={palette}
                     onToggleReaction={handleToggleReaction}
                     onAddReaction={setReactionTarget}
-                    onShowReactors={(selectedEmoji, reactions) => setReactionPeople({ selectedEmoji, reactions })}
+                    onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
                     onOpenImage={setImagePreview}
@@ -1602,7 +1604,7 @@ export default function ChatThreadScreen() {
 
         <Modal
           transparent
-          visible={reactionPeople !== null}
+          visible={reactionPeopleSummary !== null}
           animationType="slide"
           onRequestClose={() => setReactionPeople(null)}
         >
@@ -1622,14 +1624,14 @@ export default function ChatThreadScreen() {
               {t('Reactions ({count})', { count: reactionPeopleSummary?.totalCount ?? 0 })}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reactionPeopleChips} contentContainerStyle={styles.reactionPeopleChipsContent}>
-              {reactionPeople?.reactions.map((reaction) => (
+              {reactionPeopleMessage?.reactions.map((reaction) => (
                 <Pressable
                   key={reaction.emoji}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: reaction.emoji === reactionPeople.selectedEmoji }}
+                  accessibilityState={{ selected: reaction.emoji === reactionPeople?.selectedEmoji }}
                   accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
                   onPress={() => setReactionPeople((current) => current ? { ...current, selectedEmoji: reaction.emoji } : current)}
-                  style={[styles.reactionPeopleChip, { backgroundColor: reaction.emoji === reactionPeople.selectedEmoji ? palette.accentSoft : palette.card2, borderColor: reaction.emoji === reactionPeople.selectedEmoji ? palette.accent : palette.border }]}
+                  style={[styles.reactionPeopleChip, { backgroundColor: reaction.emoji === reactionPeople?.selectedEmoji ? palette.accentSoft : palette.card2, borderColor: reaction.emoji === reactionPeople?.selectedEmoji ? palette.accent : palette.border }]}
                 >
                   <Text style={{ color: palette.text2 }}>{reaction.emoji} {reaction.count}</Text>
                 </Pressable>

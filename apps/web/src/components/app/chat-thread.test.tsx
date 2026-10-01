@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { cloneElement } from 'react'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
@@ -296,7 +297,7 @@ describe('モバイルWebのリアクション表示', () => {
   it('人型ボタンで全員を表示し、リアクション切替は別操作のまま', async () => {
     const user = userEvent.setup()
     const onReact = vi.fn()
-    render(
+    const message = (
       <ChatMessage
         messageId="message-reactions"
         messageType="text"
@@ -320,14 +321,18 @@ describe('モバイルWebのリアクション表示', () => {
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
         isMobile
-      />,
+      />
     )
+    const { rerender } = render(message)
 
     await user.click(screen.getByRole('button', { name: '👍 を付けた人を表示' }))
     expect(onReact).not.toHaveBeenCalled()
     const dialog = screen.getByRole('dialog', { name: '👍 を付けた人' })
     expect(dialog).toHaveTextContent('長い名前のメンバーA')
     expect(dialog).toHaveTextContent('長い名前のメンバーB')
+    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['長い名前のメンバーB', '新しいメンバーC'] }] }))
+    expect(dialog).not.toHaveTextContent('長い名前のメンバーA')
+    expect(dialog).toHaveTextContent('新しいメンバーC')
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
     await user.click(screen.getByRole('button', { name: /👍 2/ }))
     expect(onReact).toHaveBeenCalledWith('message-reactions', '👍')
