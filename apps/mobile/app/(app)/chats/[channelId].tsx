@@ -14,6 +14,7 @@ import {
   Platform,
   Pressable,
   Share,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -50,6 +51,7 @@ import { apiActionError, apiFetch } from '../../../lib/api-fetch'
 import {
   filterProjectMentionMembers,
   findMentionQuery,
+  getReactionPeopleSummary,
   insertMention,
   parseEditableMentions,
   rebaseMentionSelections,
@@ -189,7 +191,7 @@ function ChatMessageRow({
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
-  onShowReactors: (emoji: string, userNames: string[]) => void
+  onShowReactors: (emoji: string, messageId: string) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
   onOpenImage: (attachment: MessageDto['attachments'][number]) => void
@@ -331,7 +333,7 @@ function ChatMessageRow({
                 accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
                 accessibilityHint={t('Long-press to see who reacted')}
                 onPress={() => onToggleReaction(message.id, reaction.emoji)}
-                onLongPress={() => onShowReactors(reaction.emoji, reaction.userNames)}
+                onLongPress={() => onShowReactors(reaction.emoji, message.id)}
                 delayLongPress={350}
                 style={({ pressed }) => [
                   styles.reaction,
@@ -529,8 +531,8 @@ export default function ChatThreadScreen() {
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
-    emoji: string
-    userNames: string[]
+    selectedEmoji: string
+    messageId: string
   } | null>(null)
   const [imagePreview, setImagePreview] = React.useState<MessageDto['attachments'][number] | null>(
     null,
@@ -538,6 +540,10 @@ export default function ChatThreadScreen() {
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
+  const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
+  const reactionPeopleSummary = reactionPeople && reactionPeopleMessage
+    ? getReactionPeopleSummary(reactionPeopleMessage.reactions, reactionPeople.selectedEmoji)
+    : null
   const queuedMessages = offlineQueue.messages.filter((message) => message.channelId === channelId)
   const mentionRange = React.useMemo(
     () => findMentionQuery(draft, selection.start),
@@ -709,6 +715,7 @@ export default function ChatThreadScreen() {
     setEditingMessage(null)
     setActionTarget(null)
     setReactionTarget(null)
+    setReactionPeople(null)
     setImagePreview(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
@@ -1162,7 +1169,7 @@ export default function ChatThreadScreen() {
                     palette={palette}
                     onToggleReaction={handleToggleReaction}
                     onAddReaction={setReactionTarget}
-                    onShowReactors={(emoji, userNames) => setReactionPeople({ emoji, userNames })}
+                    onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
                     onOpenImage={setImagePreview}
@@ -1597,8 +1604,8 @@ export default function ChatThreadScreen() {
 
         <Modal
           transparent
-          visible={reactionPeople !== null}
-          animationType="fade"
+          visible={reactionPeopleSummary !== null}
+          animationType="slide"
           onRequestClose={() => setReactionPeople(null)}
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setReactionPeople(null)} />
@@ -1609,32 +1616,38 @@ export default function ChatThreadScreen() {
                 backgroundColor: palette.card,
                 borderColor: palette.border,
                 paddingBottom: insets.bottom + 16,
+                maxHeight: '80%',
               },
             ]}
           >
             <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>
-              {t('People who reacted with {emoji}', { emoji: reactionPeople?.emoji ?? '' })}
+              {t('Reactions ({count})', { count: reactionPeopleSummary?.totalCount ?? 0 })}
             </Text>
-            {reactionPeople && reactionPeople.userNames.length > 0 ? (
-              reactionPeople.userNames.map((name, index) => (
-                <Text
-                  key={`${name}-${index}`}
-                  style={[
-                    styles.reactionPerson,
-                    { color: palette.text, borderTopColor: palette.divider },
-                  ]}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reactionPeopleChips} contentContainerStyle={styles.reactionPeopleChipsContent}>
+              {reactionPeopleMessage?.reactions.map((reaction) => (
+                <Pressable
+                  key={reaction.emoji}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: reaction.emoji === reactionPeople?.selectedEmoji }}
+                  accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
+                  onPress={() => setReactionPeople((current) => current ? { ...current, selectedEmoji: reaction.emoji } : current)}
+                  style={[styles.reactionPeopleChip, { backgroundColor: reaction.emoji === reactionPeople?.selectedEmoji ? palette.accentSoft : palette.card2, borderColor: reaction.emoji === reactionPeople?.selectedEmoji ? palette.accent : palette.border }]}
                 >
-                  {name}
-                </Text>
-              ))
-            ) : (
-              <Text
-                style={[
-                  styles.reactionPerson,
-                  { color: palette.text3, borderTopColor: palette.divider },
-                ]}
-              >{t('Could not show who reacted')}</Text>
-            )}
+                  <Text style={{ color: palette.text2 }}>{reaction.emoji} {reaction.count}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <ScrollView style={styles.reactionPeopleList} contentContainerStyle={styles.reactionPeopleListContent}>
+              {reactionPeopleSummary && reactionPeopleSummary.userNames.length > 0 ? reactionPeopleSummary.userNames.map((name, index) => (
+                <View key={`${name}-${index}`} style={[styles.reactionPeopleRow, { borderTopColor: palette.divider }]}>
+                  <View style={[styles.reactionPeopleAvatar, { backgroundColor: palette.accentSoft }]}>
+                    <Text style={{ color: palette.accentText, fontWeight: '600' }}>{initials(name)}</Text>
+                  </View>
+                  <Text style={[styles.reactionPerson, { color: palette.text }]}>{name}</Text>
+                  <Text style={styles.reactionPeopleEmoji}>{reactionPeople?.selectedEmoji}</Text>
+                </View>
+              )) : <Text style={[styles.reactionPersonEmpty, { color: palette.text3 }]}>{t('Could not show who reacted')}</Text>}
+            </ScrollView>
           </View>
         </Modal>
         {imagePreview && session?.access_token && (
@@ -1753,13 +1766,19 @@ const styles = StyleSheet.create({
   },
   reactionText: { fontSize: 11, fontWeight: '600' },
   reactionPerson: {
-    minHeight: 44,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 4,
-    paddingVertical: 12,
+    flex: 1,
     fontSize: 15,
     fontWeight: '600',
   },
+  reactionPeopleChips: { flexGrow: 0, maxHeight: 40, marginBottom: 8 },
+  reactionPeopleChipsContent: { gap: 8, alignItems: 'center' },
+  reactionPeopleChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 18, borderWidth: 1 },
+  reactionPeopleList: { flexGrow: 0, flexShrink: 1, minHeight: 0, maxHeight: 400 },
+  reactionPeopleListContent: { paddingBottom: 8 },
+  reactionPeopleRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  reactionPeopleAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  reactionPeopleEmoji: { fontSize: 20 },
+  reactionPersonEmpty: { minHeight: 44, textAlignVertical: 'center' },
   reactionAddStandalone: {
     alignSelf: 'flex-start',
     minHeight: 24,

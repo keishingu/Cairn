@@ -29,6 +29,16 @@ export function hasFailedUploads(uploads: ReadonlyArray<{ status: string }>): bo
   return uploads.some((upload) => upload.status === 'error')
 }
 
+export function getReactionPeopleSummary(
+  reactions: ReadonlyArray<{ emoji: string; count: number; userNames: string[] }>,
+  selectedEmoji: string,
+) {
+  return {
+    totalCount: reactions.reduce((total, reaction) => total + reaction.count, 0),
+    userNames: reactions.find((reaction) => reaction.emoji === selectedEmoji)?.userNames ?? [],
+  }
+}
+
 export function findMentionQuery(text: string, cursor: number) {
   const beforeCursor = text.slice(0, cursor)
   const match = /@([^\s@]*)$/.exec(beforeCursor)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   filterProjectMentionMembers,
   findMentionQuery,
+  getReactionPeopleSummary,
   hasFailedUploads,
   insertMention,
   matchMarkdownMention,
@@ -16,6 +17,13 @@ import {
 } from './mobile-chat-state'
 
 describe('モバイルチャット状態', () => {
+  it('リアクション数はcountを合計し、選択emojiの参加者を返す', () => {
+    expect(getReactionPeopleSummary([
+      { emoji: '👍', count: 3, userNames: ['A'] },
+      { emoji: '❤️', count: 2, userNames: ['B', 'C'] },
+    ], '❤️')).toEqual({ totalCount: 5, userNames: ['B', 'C'] })
+  })
+
   it('JOIN が TIMED_OUT したら Realtime 購読を再接続する', () => {
     expect(shouldRetryRealtime('TIMED_OUT')).toBe(true)
   })
