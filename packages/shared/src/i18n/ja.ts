@@ -965,6 +965,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Show all': 'すべて表示',
   'Show archived projects': 'アーカイブ済みプロジェクトを開く',
   'Show less': 'たたむ',
+  'Show reactors for {emoji}': '{emoji} を付けた人を表示',
   'Show message temporarily': 'メッセージを一時表示',
   'Shown in the list and panel': '一覧・パネルで表示',
   'Shows reminders only you can see in chat about due dates and stalled work': '期限や停滞について、あなただけに見えるリマインドをチャットに表示します',

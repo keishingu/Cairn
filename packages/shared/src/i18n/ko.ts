@@ -965,6 +965,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Show all': '모두 표시',
   'Show archived projects': '보관한 프로젝트 표시',
   'Show less': '간략히',
+  'Show reactors for {emoji}': '{emoji}(으)로 반응한 사람 표시',
   'Show message temporarily': '메시지 일시 표시',
   'Shown in the list and panel': '목록과 패널에 표시됨',
   'Shows reminders only you can see in chat about due dates and stalled work': '기한과 정체된 작업에 대해 나만 볼 수 있는 채팅 리마인더를 표시합니다',

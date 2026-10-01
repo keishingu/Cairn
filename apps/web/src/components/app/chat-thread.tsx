@@ -8,7 +8,7 @@ import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type Profil
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
-import { Avatar } from './primitives'
+import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
 import { InlineError } from './inline-error'
 import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
@@ -188,6 +188,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
+  const [mobileReactionPeople, setMobileReactionPeople] = React.useState<{ emoji: string; userNames: string[] } | null>(null)
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -461,8 +462,22 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {/* PC: ホバーでリアクションしたユーザーを一覧表示（モバイルはネイティブ長押しで表示するため不要） */}
-              {hoveredReaction === i && r.userNames.length > 0 && (
+              {isMobile && r.userNames.length > 0 && (
+                <button
+                  type="button"
+                  aria-label={t('Show reactors for {emoji}', { emoji: r.emoji })}
+                  aria-haspopup="dialog"
+                  className="icon-btn"
+                  onClick={() => setMobileReactionPeople({ emoji: r.emoji, userNames: r.userNames })}
+                  style={{
+                    width: 32, height: 32, minWidth: 32, minHeight: 32, padding: 0, borderRadius: 12,
+                    background: 'var(--card-2)', border: '1px solid var(--border)',
+                    color: 'var(--text-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit', touchAction: 'manipulation',
+                  }}
+                ><Icon name="users" size={13}/></button>
+              )}
+              {/* PCはホバー、モバイルWebは隣のボタンで表示 */}
+              {!isMobile && hoveredReaction === i && r.userNames.length > 0 && (
                 <span style={{
                   position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
@@ -487,6 +502,20 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         </div>
       </div>
       {!isMobile && messageActions}
+      {mobileReactionPeople && (
+        <Modal onClose={() => setMobileReactionPeople(null)} label={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })}>
+          <div className="card" style={{ width: '100%', maxWidth: 360, maxHeight: 'min(70vh, 480px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <ModalHeader title={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })} onClose={() => setMobileReactionPeople(null)} />
+            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px 16px' }}>
+              {mobileReactionPeople.userNames.map((name, index) => (
+                <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>
+                  {name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <ConfirmDialog
         open={deleteConfirm}
