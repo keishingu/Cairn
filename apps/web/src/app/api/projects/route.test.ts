@@ -35,6 +35,7 @@ vi.mock('@cairn/db', () => ({
   profiles:       { id: 'pr.id', displayName: 'pr.displayName' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
+  workspaceProfileAttributes: { id: 'attr.id', name: 'attr.name', workspaceId: 'attr.workspaceId' },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -198,15 +199,16 @@ describe('GET /api/projects', () => {
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([{ id: 'mentioned-user', displayName: '現在の名前' }]))
+      .mockReturnValueOnce(chain([{ id: 'coach', name: 'コーチ' }]))
     mockDb.selectDistinctOn.mockReturnValueOnce(chain([{
-      projectId: PROJ_1, senderName: '送信者', content: '<@mentioned-user>\n集合しましょう',
+      projectId: PROJ_1, senderName: '送信者', content: '<@mentioned-user> <@outside-user> <@attr:coach>\n集合しましょう',
     }]))
 
     const { GET } = await import('./route')
     const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body[0].latestMessage).toEqual({ senderName: '送信者', content: '@現在の名前 集合しましょう' })
+    expect(body[0].latestMessage).toEqual({ senderName: '送信者', content: '@現在の名前 @不明なメンバー @コーチ 集合しましょう' })
     expect(body[1].latestMessage).toBeNull()
   })
 
