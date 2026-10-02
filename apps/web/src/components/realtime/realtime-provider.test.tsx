@@ -282,6 +282,26 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
   })
 
+  it('メッセージの新着・編集・削除通知と再接続でプロジェクト一覧を更新する', async () => {
+    workspaceChannels.push({ id: 'channel-1' })
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    await act(async () => { await Promise.resolve() })
+    act(() => { channelRecords[0]?.callback?.('SUBSCRIBED') })
+    await act(async () => { await Promise.resolve() })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+
+    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
+    for (const event of ['INSERT', 'UPDATE', 'DELETE']) {
+      invalidate.mockClear()
+      act(() => {
+        topic?.broadcastCallback?.({ event, payload: { table: 'messages' } })
+        vi.advanceTimersByTime(800)
+      })
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    }
+  })
+
   it('Unauthorized のチャンネル購読は破棄して再JOINしない', async () => {
     workspaceChannels.push({ id: 'private-1' })
     renderProvider()

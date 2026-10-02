@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY, photoUrl } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
@@ -35,12 +35,23 @@ function formatDates(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
+function LatestMessagePreview({ message }: { message: ProjectDto['latestMessage'] }) {
+  const t = useT()
+  const content = message?.content || t('(Attachment)')
+  const text = message ? `${message.senderName}: ${content}` : t('No messages yet')
+  return (
+    <div title={text} style={{ fontSize: 12, lineHeight: '18px', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {message ? <><span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{message.senderName}: </span>{content}</> : text}
+    </div>
+  )
+}
+
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
   const t = useT()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
-  const { data: projects = [], isLoading } = useProjects()
+  const { data: projects = [], isLoading, isError } = useProjects()
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -328,6 +339,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       }}>
         {isLoading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>
+        ) : isError ? (
+          <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Could not load projects. Please reload.')}</div>
         ) : filteredProjects.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No projects found')}</div>
         ) : view === 'table' && !isMobile ? (
@@ -408,9 +421,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             gap: isMobile ? 10 : 16,
           }}>
             {filteredProjects.map((p, i) => {
-              const accent = p.statusColor ?? 'var(--text-3)'
-              const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
-
               if (isMobile) {
                 return (
                   <div key={p.id} onClick={() => openPanel?.(p)} style={{
@@ -421,10 +431,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
-                      {p.coverPhotoUrl
-                        ? <img src={p.coverPhotoUrl} alt="" style={{ width: 88, height: 88, objectFit: 'cover', display: 'block' }}/>
-                        : <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
-                      }
+                      <img src={p.coverPhotoUrl ?? photoUrl(p.coverPhotoIdx, 800, 141)} alt="" width={88} height={88} style={{ position: 'absolute', inset: 0, width: 88, height: '100%', objectFit: 'cover', display: 'block' }}/>
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
@@ -440,6 +447,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
                         <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{t('{count} people', { count: p.memberCount })}</span>
                       </div>
+                      <div style={{ marginTop: 8 }}><LatestMessagePreview message={p.latestMessage}/></div>
                     </div>
                   </div>
                 )
@@ -477,11 +485,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                         </span>
                       )}
                     </div>
-                    {p.taskCount > 0 && (
-                      <div style={{ marginTop: 10, height: 5, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
-                      </div>
-                    )}
+                    <div style={{ marginTop: 8 }}><LatestMessagePreview message={p.latestMessage}/></div>
                   </div>
                 </div>
               )

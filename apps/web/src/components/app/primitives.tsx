@@ -15,7 +15,7 @@ const PHOTO_IDS = [
   '1517524008697-84bbe3c3fd98', '1483356046701-7565d31be5c5',
 ]
 
-const photoUrl = (idx: number, w = 600, h = 400) => {
+export const photoUrl = (idx: number, w = 600, h = 400) => {
   const id = PHOTO_IDS[Math.abs(idx) % PHOTO_IDS.length]
   return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&auto=format&q=70`
 }
