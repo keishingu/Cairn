@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY, photoUrl } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
@@ -431,7 +431,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
-                      <img src={p.coverPhotoUrl ?? photoUrl(p.coverPhotoIdx, 800, 141)} alt="" width={88} height={88} style={{ position: 'absolute', inset: 0, width: 88, height: '100%', objectFit: 'cover', display: 'block' }}/>
+                      <div style={{ position: 'absolute', inset: 0 }}>
+                        {p.coverPhotoUrl
+                          ? <img src={p.coverPhotoUrl} alt="" width={88} height={88} style={{ width: 88, height: '100%', objectFit: 'cover', display: 'block' }}/>
+                          : <MountainPhoto idx={p.coverPhotoIdx} height="100%" imageWidth={88} flat radius={0}/>
+                        }
+                      </div>
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>

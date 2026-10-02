@@ -36,6 +36,11 @@ describe('プロジェクト一覧の最新チャット', () => {
     expect(preview).toHaveTextContent(`送信者: ${content}`)
     expect(preview).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' })
     expect(container.querySelector('[style*="height: 5px"]')).toBeNull()
+    if (isMobile) {
+      const photo = container.querySelector<HTMLElement>('[style*="background-image"]')
+      expect(photo?.style.backgroundImage).toContain('w=88&h=88')
+      expect(photo).toHaveStyle({ height: '100%', backgroundColor: '#1f2937' })
+    }
   })
 
   it.each([false, true])('投稿がない場合は空状態を表示する（モバイル: %s）', isMobile => {

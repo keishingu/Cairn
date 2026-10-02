@@ -15,7 +15,7 @@ const PHOTO_IDS = [
   '1517524008697-84bbe3c3fd98', '1483356046701-7565d31be5c5',
 ]
 
-export const photoUrl = (idx: number, w = 600, h = 400) => {
+const photoUrl = (idx: number, w = 600, h = 400) => {
   const id = PHOTO_IDS[Math.abs(idx) % PHOTO_IDS.length]
   return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&auto=format&q=70`
 }
@@ -311,15 +311,16 @@ export const Switch = ({ checked, onChange, disabled = false, size = 'md', title
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
-  height?: number
+  height?: number | string
+  imageWidth?: number
   flat?: boolean
   radius?: number | string
 }
 
-export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: MountainPhotoProps) => (
+export const MountainPhoto = ({ idx = 0, height = 200, imageWidth = 800, flat = false, radius }: MountainPhotoProps) => (
   <div style={{
     width: '100%', height,
-    backgroundImage: `url("${photoUrl(idx, 800, Math.round(height * 1.6))}")`,
+    backgroundImage: `url("${photoUrl(idx, imageWidth, typeof height === 'number' ? Math.round(height * 1.6) : imageWidth)}")`,
     backgroundSize: 'cover', backgroundPosition: 'center',
     borderRadius: radius != null ? radius : (flat ? 0 : '10px 10px 0 0'),
     backgroundColor: '#1f2937',
