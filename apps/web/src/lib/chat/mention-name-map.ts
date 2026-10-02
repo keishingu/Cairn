@@ -39,7 +39,8 @@ export async function buildMentionNameMap(
         ),
       })
       .from(profiles)
-      .leftJoin(
+      // 表示用の所属履歴は非活性も含めるが、別ワークスペースの名前は解決しない。
+      .innerJoin(
         workspaceMembers,
         and(
           eq(workspaceMembers.userId, profiles.id),
