@@ -111,6 +111,14 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`[${url}](${url})`)).toBe(`[${label}](${url})`)
   })
 
+  test('URL の一部である対応済みの括弧は残し、文末の句読点と対応しない閉じ括弧だけを外す', () => {
+    const paren = 'https://en.wikipedia.org/wiki/Mathematical_analysis_(mathematics)'
+    const label = 'https://en\\.wikipedia\\.org/wiki/Mathematical\\_analysi…'
+    expect(convert(paren)).toBe(`[${label}](<${paren}>)`)
+    expect(convert(`(${paren})`)).toBe(`([${label}](<${paren}>))`)
+    expect(convert(`${paren}。`)).toBe(`[${label}](<${paren}>)。`)
+  })
+
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
     const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
     expect(convert('https://example.com/a')).toBe('https://example.com/a')

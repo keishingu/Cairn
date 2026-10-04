@@ -26,7 +26,34 @@ const IMAGE_BREAK = '\u2060'
 // Web（markdown-content.tsx）と同じく、長い URL は見た目だけ「…」で省略する。リンク先は元のまま
 const URL_DISPLAY_MAX = 50
 const BARE_URL_PATTERN = /^https?:\/\/[^\s<>"']+/
-const URL_TRAILING_PUNCTUATION = /[.,;:!?)>\]。、，；：！？）〉》】］]+$/
+const URL_TRAILING_SENTENCE_PUNCTUATION = /[.,;:!?>。、，；：！？〉》】］）]$/
+
+function countChar(value: string, char: string): number {
+  return value.split(char).length - 1
+}
+
+// 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
+// `.../Function_(mathematics)` のように URL の一部である対応済みの括弧は残す
+function trimUrlTrailingPunctuation(url: string): string {
+  let result = url
+  for (;;) {
+    const last = result.at(-1)
+    if (!last) return result
+    if (last === ')' && countChar(result, ')') > countChar(result, '(')) {
+      result = result.slice(0, -1)
+      continue
+    }
+    if (last === ']' && countChar(result, ']') > countChar(result, '[')) {
+      result = result.slice(0, -1)
+      continue
+    }
+    if (URL_TRAILING_SENTENCE_PUNCTUATION.test(last)) {
+      result = result.slice(0, -1)
+      continue
+    }
+    return result
+  }
+}
 
 export function truncateUrlForDisplay(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
@@ -223,7 +250,7 @@ function transformInline(
     ) {
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
-        const url = match[0].replace(URL_TRAILING_PUNCTUATION, '')
+        const url = trimUrlTrailingPunctuation(match[0])
         output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
         index += url.length
         continue
