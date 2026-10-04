@@ -275,7 +275,12 @@ function transformInline(
     ) {
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
-        const openingMarkers = /[*_~]*$/.exec(line.slice(0, index))?.[0] ?? ''
+        const before = line.slice(0, index)
+        let openingMarkers = /[*_~]*$/.exec(before)?.[0] ?? ''
+        // `_` は単語の途中（`prefix_https://…` など）では強調を開かないため、閉じ記号の根拠にしない
+        if (/[\p{L}\p{N}]/u.test(before.at(-openingMarkers.length - 1) ?? '')) {
+          openingMarkers = openingMarkers.replaceAll('_', '')
+        }
         const url = trimUrlTrailingPunctuation(match[0], openingMarkers)
         output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
         index += url.length

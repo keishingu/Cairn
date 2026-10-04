@@ -139,6 +139,7 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(underscore)).toBe(`[${label}](<${underscore}>)`)
     expect(convert(`${tilde}。`)).toBe(`[${label}](<${tilde}>)。`)
     expect(convert(`**${underscore}**`)).toBe(`**[${label}](<${underscore}>)**`)
+    expect(convert(`prefix_${underscore}`)).toBe(`prefix_[${label}](<${underscore}>)`)
   })
 
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
