@@ -104,6 +104,12 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('コードブロック内の定義に見える行は参照定義として扱わず、同じラベルのメンションはリンクのまま', () => {
+    expect(convert('[ask <@user-1>]\n\n```\n[ask <@user-1>]: /tasks/1\n```')).toBe(
+      '[ask [@山田 太郎](cairn-mention:user-1)]\n\n```\n[ask <@user-1>]: /tasks/1\n```',
+    )
+  })
+
   test('リンクにならない [ があっても、後ろのメンションはリンクのまま', () => {
     expect(convert('see arr[0 and <@user-1>')).toBe('see arr[0 and [@山田 太郎](cairn-mention:user-1)')
     expect(convert('[メモ] <@user-1>')).toBe('[メモ] [@山田 太郎](cairn-mention:user-1)')

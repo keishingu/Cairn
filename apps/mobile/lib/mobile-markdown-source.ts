@@ -107,17 +107,14 @@ function findClosingBackticks(line: string, from: number, length: number): numbe
 
 // `[` から対応する `]` を探し、直後が `(` か `[` ならリンク文字列の閉じ位置を返す
 // CommonMark の参照ラベルは大文字小文字と連続する空白を区別しない
+// markdown-it が認識した参照定義（`[ラベル]: リンク先`）のラベル一覧。省略形の参照リンク `[ラベル]` を判別するために使う。
+// コードブロック内など定義にならない行は含まれない。照合は CommonMark と同じ正規化（大文字小文字・連続空白を区別しない）
 function normalizeReferenceLabel(label: string): string {
-  return label.trim().replace(/\s+/g, ' ').toLowerCase()
+  return blockParser.utils.normalizeReference(label)
 }
 
-// 本文中の参照定義（`[ラベル]: リンク先`）のラベル一覧。省略形の参照リンク `[ラベル]` を判別するために使う
-function collectReferenceLabels(content: string): Set<string> {
-  const labels = new Set<string>()
-  for (const match of content.matchAll(/^ {0,3}\[((?:\\.|[^\]\\\n])+)\]:/gm)) {
-    labels.add(normalizeReferenceLabel(match[1]!))
-  }
-  return labels
+function collectReferenceLabels(env: { references?: Record<string, unknown> }): Set<string> {
+  return new Set(Object.keys(env.references ?? {}))
 }
 
 function findLinkLabelEnd(line: string, start: number, referenceLabels: Set<string>): number {
@@ -310,14 +307,15 @@ export function toEnrichedMarkdown(
   },
 ): string {
   const lines = content.split('\n')
-  const referenceLabels = collectReferenceLabels(content)
   // 行ごとの所属ブロック。コードはそのまま残し、表は `||` を空セルとして残す。
   // 段落・見出しは複数行にまたがるインラインコードを扱えるよう、まとめて変換する
   const blocks: Array<{ kind: 'text' | 'table' | 'code'; id: number }> = lines.map((_, index) => ({
     kind: 'text',
     id: -1 - index,
   }))
-  const tokens = blockParser.parse(content, {})
+  const env: { references?: Record<string, unknown> } = {}
+  const tokens = blockParser.parse(content, env)
+  const referenceLabels = collectReferenceLabels(env)
   tokens.forEach((token, tokenIndex) => {
     if (!token.map) return
     const [from, to] = token.map
