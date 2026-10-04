@@ -1,12 +1,10 @@
 import { translate } from '@cairn/shared'
-import type * as FileSystemTypes from 'expo-file-system/build/legacy/index'
+import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'
 import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './attachment-file'
 
-// SDK 54 の legacy download API は安定した進捗不要ダウンロードに使える。
-// 型定義だけ build 配下から参照し、アプリコード側の exactOptionalPropertyTypes の影響を避ける。
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const FileSystem = require('expo-file-system/legacy') as typeof FileSystemTypes
+// legacy download API は安定した進捗不要ダウンロードに使える。
+// SDK 55 からは package exports の types 条件で build 配下の型定義が解決される。
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
