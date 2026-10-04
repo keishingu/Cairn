@@ -23,5 +23,6 @@ export function avatarGradient(name: string): readonly [string, string] {
 }
 
 export function avatarInitial(name: string): string {
-  return name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() || '?' : '?'
+  // 絵文字などのサロゲートペアを分割しないよう、UTF-16 の位置ではなく文字単位で先頭を取る
+  return Array.from(name.replace(/\s/g, ''))[0]?.toUpperCase() ?? '?'
 }

@@ -18,5 +18,6 @@ describe('avatarInitial', () => {
     expect(avatarInitial(' 山田')).toBe('山')
     expect(avatarInitial('')).toBe('?')
     expect(avatarInitial('   ')).toBe('?')
+    expect(avatarInitial('😀田中')).toBe('😀')
   })
 })
