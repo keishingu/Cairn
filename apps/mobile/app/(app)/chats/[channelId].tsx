@@ -37,13 +37,14 @@ import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { isImageMime } from '../../../lib/attachment-file'
+import { isImageMime, isPdfMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -122,26 +123,27 @@ function AttachmentChip({
   attachment,
   palette,
   accessToken,
-  onOpenImage,
+  onOpenPreview,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
   accessToken?: string
-  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
   const isImage = isImageMime(attachment.mimeType)
+  const isPreviewable = isPreviewableAttachment(attachment.mimeType)
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
-        isImage ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
+        isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
       }
       disabled={!accessToken}
       onPress={() => {
         if (!accessToken) return
-        if (isImage) {
-          onOpenImage(attachment)
+        if (isPreviewable) {
+          onOpenPreview(attachment)
           return
         }
         void openAttachmentFile(
@@ -184,7 +186,7 @@ function ChatMessageRow({
   onShowReactors,
   onLinkPress,
   onOpenActions,
-  onOpenImage,
+  onOpenPreview,
 }: {
   message: MessageDto
   palette: Palette
@@ -194,7 +196,7 @@ function ChatMessageRow({
   onShowReactors: (emoji: string, messageId: string) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
-  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
@@ -316,7 +318,7 @@ function ChatMessageRow({
                   key={attachment.id}
                   attachment={attachment}
                   palette={palette}
-                  onOpenImage={onOpenImage}
+                  onOpenPreview={onOpenPreview}
                   {...(accessToken ? { accessToken } : {})}
                 />
               ))}
@@ -534,9 +536,9 @@ export default function ChatThreadScreen() {
     selectedEmoji: string
     messageId: string
   } | null>(null)
-  const [imagePreview, setImagePreview] = React.useState<MessageDto['attachments'][number] | null>(
-    null,
-  )
+  const [attachmentPreview, setAttachmentPreview] = React.useState<
+    MessageDto['attachments'][number] | null
+  >(null)
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
@@ -660,8 +662,8 @@ export default function ChatThreadScreen() {
   React.useEffect(() => {
     if (!isFocused) return
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (imagePreview || reactionPeople || reactionTarget || actionTarget) {
-        setImagePreview(null)
+      if (attachmentPreview || reactionPeople || reactionTarget || actionTarget) {
+        setAttachmentPreview(null)
         setReactionPeople(null)
         setReactionTarget(null)
         setActionTarget(null)
@@ -671,7 +673,7 @@ export default function ChatThreadScreen() {
       return true
     })
     return () => subscription.remove()
-  }, [actionTarget, goBackToList, imagePreview, isFocused, reactionPeople, reactionTarget])
+  }, [actionTarget, attachmentPreview, goBackToList, isFocused, reactionPeople, reactionTarget])
 
   // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
   // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
@@ -716,7 +718,7 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setReactionPeople(null)
-    setImagePreview(null)
+    setAttachmentPreview(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
     upload.clearUploads()
@@ -1035,6 +1037,26 @@ export default function ChatThreadScreen() {
     [channelId, channelName, channelType, isPrivate, projectId, router, t],
   )
 
+  // PDF 内のリンクもチャット本文と同じ規則で開く。アプリ内の画面へ移るときは
+  // モーダルが遷移先を覆わないよう閉じ、外部ブラウザへ渡すときは読んでいた位置を残す。
+  // 送信欄のエラーはモーダルの裏に隠れるため、PDF 表示中の失敗は Alert で伝える
+  const openPdfLink = React.useCallback(
+    (url: string) => {
+      const target = resolveMobileMarkdownLink(url, API_BASE_URL)
+      if (!target) {
+        Alert.alert(t('This link cannot be opened.'))
+        return
+      }
+      if (target.kind === 'external') {
+        void Linking.openURL(target.url).catch(() => Alert.alert(t('Could not open the link.')))
+        return
+      }
+      setAttachmentPreview(null)
+      openMarkdownLink(url)
+    },
+    [openMarkdownLink, t],
+  )
+
   const shareMessage = async (message: MessageDto) => {
     setActionTarget(null)
     const body = parseMentions(message.content, t).trim()
@@ -1172,7 +1194,7 @@ export default function ChatThreadScreen() {
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
-                    onOpenImage={setImagePreview}
+                    onOpenPreview={setAttachmentPreview}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1650,15 +1672,27 @@ export default function ChatThreadScreen() {
             </ScrollView>
           </View>
         </Modal>
-        {imagePreview && session?.access_token && (
-          <ChatImageViewer
-            fileUrl={attachmentUrl(imagePreview.fileId)}
-            fileId={imagePreview.fileId}
-            fileName={imagePreview.fileName}
-            mimeType={imagePreview.mimeType}
-            accessToken={session.access_token}
-            onClose={() => setImagePreview(null)}
-          />
+        {attachmentPreview && session?.access_token && (
+          isPdfMime(attachmentPreview.mimeType) ? (
+            <ChatPdfViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+              onPressLink={openPdfLink}
+            />
+          ) : (
+            <ChatImageViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+            />
+          )
         )}
       </Animated.View>
     </KeyboardAvoidingView>

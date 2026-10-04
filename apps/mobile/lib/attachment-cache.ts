@@ -33,6 +33,15 @@ export async function ensureCachedAttachment(
   return result.uri
 }
 
+// 表示できなかったキャッシュを消し、再試行で取り直せるようにする
+export async function removeCachedAttachment(fileId: string, fileName: string): Promise<void> {
+  const cacheDirectory = FileSystem.cacheDirectory
+  if (!cacheDirectory) return
+  await FileSystem.deleteAsync(`${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`, {
+    idempotent: true,
+  })
+}
+
 export async function shareCachedAttachment(input: {
   fileUrl: string
   fileId: string

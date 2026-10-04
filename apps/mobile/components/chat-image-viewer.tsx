@@ -138,7 +138,7 @@ export function ChatImageViewer({
   )
 }
 
-function ViewerAction({
+export function ViewerAction({
   icon,
   label,
   busy,

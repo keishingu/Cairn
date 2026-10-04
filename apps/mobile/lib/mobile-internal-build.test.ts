@@ -58,4 +58,16 @@ describe('モバイルInternal Distribution', () => {
     expect(app.expo.runtimeVersion).toBe('1.3.0')
     expect(app.expo.plugins).toContainEqual(['expo-sqlite', { enableFTS: true }])
   })
+
+  it('PDF ビューアのネイティブモジュールと config plugin を含む', () => {
+    const app = JSON.parse(appConfig) as { expo: { plugins: unknown[] } }
+    const packageJson = JSON.parse(mobilePackage) as {
+      dependencies: Record<string, string>
+    }
+
+    expect(packageJson.dependencies['react-native-pdf']).toBeDefined()
+    expect(packageJson.dependencies['react-native-blob-util']).toBeDefined()
+    expect(app.expo.plugins).toContain('@config-plugins/react-native-blob-util')
+    expect(app.expo.plugins).toContain('@config-plugins/react-native-pdf')
+  })
 })
