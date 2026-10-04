@@ -93,21 +93,64 @@ function shortenedUrlLink(url: string): string {
   return `[${escapeMarkdownText(truncateUrlForDisplay(url))}](<${url}>)`
 }
 
-// `(` の位置からリンク先を読み、対応する `)` の位置を返す（括弧の入れ子とエスケープを考慮）
+// `(` の位置からリンク先（とタイトル）を CommonMark に沿って読み、閉じ `)` の位置を返す。
+// 山括弧のリンク先、対応の取れた括弧、エスケープ、引用符・括弧で囲んだタイトル内の `)` を考慮する
 function findDestinationEnd(line: string, open: number): number {
-  let depth = 0
-  for (let index = open; index < line.length; index += 1) {
-    const char = line[index]
-    if (char === '\\') {
+  let index = open + 1
+  const skipSpaces = () => {
+    while (line[index] === ' ' || line[index] === '\t' || line[index] === '\n') index += 1
+  }
+  skipSpaces()
+  if (line[index] === '<') {
+    index += 1
+    while (index < line.length && line[index] !== '>') {
+      if (line[index] === '\n' || line[index] === '<') return -1
+      index += line[index] === '\\' ? 2 : 1
+    }
+    if (line[index] !== '>') return -1
+    index += 1
+  } else {
+    let depth = 0
+    while (index < line.length && !/\s/.test(line[index]!)) {
+      const char = line[index]
+      if (char === '\\') {
+        index += 2
+        continue
+      }
+      if (char === '(') depth += 1
+      if (char === ')') {
+        if (depth === 0) break
+        depth -= 1
+      }
+      index += 1
+    }
+    if (depth !== 0) return -1
+  }
+  const beforeTitle = index
+  skipSpaces()
+  const opener = line[index]
+  if (index > beforeTitle && (opener === '"' || opener === "'" || opener === '(')) {
+    const closer = opener === '(' ? ')' : opener
+    index += 1
+    while (index < line.length && line[index] !== closer) {
+      index += line[index] === '\\' ? 2 : 1
+    }
+    if (line[index] !== closer) return -1
+    index += 1
+    skipSpaces()
+  }
+  return line[index] === ')' ? index : -1
+}
+
+// `[` の位置から参照ラベルの閉じ `]` の位置を返す（エスケープを考慮）
+function findReferenceEnd(line: string, open: number): number {
+  for (let index = open + 1; index < line.length; index += 1) {
+    if (line[index] === '\\') {
       index += 1
       continue
     }
-    if (char === '\n') return -1
-    if (char === '(') depth += 1
-    if (char === ')') {
-      depth -= 1
-      if (depth === 0) return index
-    }
+    if (line[index] === '[') return -1
+    if (line[index] === ']') return index
   }
   return -1
 }
@@ -245,7 +288,7 @@ function transformInline(
       if (altEnd !== -1) {
         let imageEnd = altEnd
         if (line[altEnd + 1] === '(') imageEnd = findDestinationEnd(line, altEnd + 1)
-        else if (line[altEnd + 1] === '[') imageEnd = line.indexOf(']', altEnd + 2)
+        else if (line[altEnd + 1] === '[') imageEnd = findReferenceEnd(line, altEnd + 1)
         if (imageEnd !== -1) {
           const alt = line.slice(index + 2, altEnd)
           output += alt ? escapeMarkdownText(alt) : escapeMarkdownText(options.imageLabel)

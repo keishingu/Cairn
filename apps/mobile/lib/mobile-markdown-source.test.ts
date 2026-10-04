@@ -170,6 +170,10 @@ describe('toEnrichedMarkdown', () => {
     expect(convert('[![logo][img]](https://dest.example)\n\n[img]: https://img.example/x')).toBe(
       '[logo](https://dest.example)\n\n[img]: https://img.example/x',
     )
+    expect(convert('[![alt](img "a)b")](https://dest.example)')).toBe('[alt](https://dest.example)')
+    expect(convert('[![logo][a\\]b]](https://dest.example)\n\n[a\\]b]: https://img.example/x')).toBe(
+      '[logo](https://dest.example)\n\n[a\\]b]: https://img.example/x',
+    )
   })
 
   test('代替テキストが空の参照形式の画像にもラベルを補う', () => {
