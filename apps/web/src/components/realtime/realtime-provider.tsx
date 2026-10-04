@@ -16,6 +16,7 @@ import {
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
+import { projectQueryKeys } from '@/hooks/use-projects'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -41,6 +42,7 @@ const CHANNEL_LIST_KEYS = [
   chatQueryKeys.projectChannels,
   chatQueryKeys.workspaceChannels,
   chatQueryKeys.dms,
+  projectQueryKeys.all,
 ] as const
 
 function invalidateChannelLists(queryClient: QueryClient) {
