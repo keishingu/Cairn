@@ -100,7 +100,21 @@ function findClosingBackticks(line: string, from: number, length: number): numbe
 }
 
 // `[` から対応する `]` を探し、直後が `(` か `[` ならリンク文字列の閉じ位置を返す
-function findLinkLabelEnd(line: string, start: number): number {
+// CommonMark の参照ラベルは大文字小文字と連続する空白を区別しない
+function normalizeReferenceLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+// 本文中の参照定義（`[ラベル]: リンク先`）のラベル一覧。省略形の参照リンク `[ラベル]` を判別するために使う
+function collectReferenceLabels(content: string): Set<string> {
+  const labels = new Set<string>()
+  for (const match of content.matchAll(/^ {0,3}\[((?:\\.|[^\]\\\n])+)\]:/gm)) {
+    labels.add(normalizeReferenceLabel(match[1]!))
+  }
+  return labels
+}
+
+function findLinkLabelEnd(line: string, start: number, referenceLabels: Set<string>): number {
   let depth = 0
   for (let index = start; index < line.length; index += 1) {
     const char = line[index]
@@ -113,7 +127,10 @@ function findLinkLabelEnd(line: string, start: number): number {
       depth -= 1
       if (depth === 0) {
         const next = line[index + 1]
-        return next === '(' || next === '[' ? index : -1
+        if (next === '(' || next === '[') return index
+        // 参照定義の行そのもの、または定義のある省略形の参照リンク
+        const label = normalizeReferenceLabel(line.slice(start + 1, index))
+        return next === ':' || referenceLabels.has(label) ? index : -1
       }
     }
   }
@@ -126,6 +143,7 @@ function transformInline(
     resolveMentionName: (userId: string, displayName: string | undefined) => string
     imageLabel: string
     inTableRow: boolean
+    referenceLabels: Set<string>
   },
 ): string {
   let output = ''
@@ -197,7 +215,7 @@ function transformInline(
     }
 
     if (char === '[') {
-      const end = findLinkLabelEnd(line, index)
+      const end = findLinkLabelEnd(line, index, options.referenceLabels)
       // `[URL](URL)` のように表示文字がリンク先そのものなら、生の URL と同じく省略する
       if (end !== -1 && line[end + 1] === '(') {
         const destinationEnd = findDestinationEnd(line, end + 1)
@@ -280,6 +298,7 @@ export function toEnrichedMarkdown(
   },
 ): string {
   const lines = content.split('\n')
+  const referenceLabels = collectReferenceLabels(content)
   // 行ごとの所属ブロック。コードはそのまま残し、表は `||` を空セルとして残す。
   // 段落・見出しは複数行にまたがるインラインコードを扱えるよう、まとめて変換する
   const blocks: Array<{ kind: 'text' | 'table' | 'code'; id: number }> = lines.map((_, index) => ({
@@ -318,7 +337,7 @@ export function toEnrichedMarkdown(
     output.push(
       block.kind === 'code'
         ? chunk
-        : transformInline(chunk, { ...options, inTableRow: block.kind === 'table' }),
+        : transformInline(chunk, { ...options, inTableRow: block.kind === 'table', referenceLabels }),
     )
     index = end
   }

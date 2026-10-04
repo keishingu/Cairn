@@ -98,6 +98,12 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('省略形の参照リンクと参照定義のラベル内のメンションも、入れ子にならないよう文字として出す', () => {
+    expect(convert('[ask <@user-1>]\n\n[ask <@user-1>]: /tasks/1')).toBe(
+      '[ask @山田 太郎]\n\n[ask @山田 太郎]: /tasks/1',
+    )
+  })
+
   test('リンクにならない [ があっても、後ろのメンションはリンクのまま', () => {
     expect(convert('see arr[0 and <@user-1>')).toBe('see arr[0 and [@山田 太郎](cairn-mention:user-1)')
     expect(convert('[メモ] <@user-1>')).toBe('[メモ] [@山田 太郎](cairn-mention:user-1)')
