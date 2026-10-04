@@ -14,9 +14,26 @@ function escapeMarkdownText(value: string): string {
   return value.replace(/[\\`*_{}[\]()<>#+\-.!|~$]/g, (char) => `\\${char}`)
 }
 
+// 画像構文を必ず壊すために `!` と `[` の間へ挟む不可視文字（U+2060 WORD JOINER）。
+// コードの内側でも見た目は変わらず、バックスラッシュのように文字として表示されない
+const IMAGE_BREAK = '\u2060'
+
 const FENCE_PATTERN = /^ {0,3}(`{3,}|~{3,})/
 const AUTOLINK_PATTERN = /^<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>/
 const EMAIL_AUTOLINK_PATTERN = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*>/
+
+function findClosingBackticks(line: string, from: number, length: number): number {
+  let index = from
+  while (index < line.length) {
+    const start = line.indexOf('`', index)
+    if (start === -1) return -1
+    let end = start
+    while (line[end] === '`') end += 1
+    if (end - start === length) return start
+    index = end
+  }
+  return -1
+}
 
 function transformInline(
   line: string,
@@ -38,10 +55,11 @@ function transformInline(
       continue
     }
 
-    // インラインコードの中身は書かれたとおりに見せる
+    // インラインコードの中身は書かれたとおりに見せる。CommonMark と同じく、
+    // 開きと同じ長さのバッククォート列だけを閉じとみなす（長い列の一部では閉じない）
     if (char === '`') {
       const run = /^`+/.exec(line.slice(index))![0]
-      const closing = line.indexOf(run, index + run.length)
+      const closing = findClosingBackticks(line, index + run.length, run.length)
       if (closing === -1) {
         output += run
         index += run.length
@@ -73,15 +91,10 @@ function transformInline(
       continue
     }
 
-    // 画像は送信者指定の URL を自動取得しない。リンクに変え、タップしたときだけ通常のリンク判定で開く
-    if (char === '!' && line[index + 1] === '[') {
-      if (line[index + 2] === ']') {
-        output += `\\![${escapeMarkdownText(options.imageLabel)}]`
-        index += 3
-        continue
-      }
-      output += '\\!'
-      index += 1
+    // 代替テキストが空の画像は、リンクに変えたあと文字が無く見えなくなるためラベルを補う
+    if (line.startsWith('![](', index)) {
+      output += `![${escapeMarkdownText(options.imageLabel)}](`
+      index += 4
       continue
     }
 
@@ -135,4 +148,10 @@ export function toEnrichedMarkdown(
       return transformInline(line, { ...options, inTableRow: /^\s*\|/.test(line) })
     })
     .join('\n')
+    // 画像は送信者指定の URL を自動取得しない。md4c のブロック解釈（コードの範囲など）を JS で
+    // 完全には再現できないため、行ごとの判定に頼らず本文全体で画像構文を壊す。
+    // 結果はリンクになり、タップしたときだけ通常のリンク判定で開く
+    .replaceAll('![', `!${IMAGE_BREAK}[`)
+    // <video> だけは HTML ブロックとして動画プレイヤーになるため、同じく本文全体で無効にする
+    .replace(/<(\s*\/?\s*video)/gi, `<${IMAGE_BREAK}$1`)
 }

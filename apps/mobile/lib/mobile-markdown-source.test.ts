@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { isMentionLink, toEnrichedMarkdown } from './mobile-markdown-source'
 
+const WJ = '\u2060'
 const names: Record<string, string> = { 'user-1': '山田 太郎' }
 
 function convert(content: string) {
@@ -29,11 +30,27 @@ describe('toEnrichedMarkdown', () => {
   })
 
   test('画像は自動取得させず、タップで開くリンクに変える', () => {
-    expect(convert('![図](https://example.com/a.png)')).toBe('\\![図](https://example.com/a.png)')
-    expect(convert('![](https://example.com/a.png)')).toBe('\\![画像](https://example.com/a.png)')
+    expect(convert('![図](https://example.com/a.png)')).toBe(`!${WJ}[図](https://example.com/a.png)`)
+    expect(convert('![](https://example.com/a.png)')).toBe(`!${WJ}[画像](https://example.com/a.png)`)
     expect(convert('![図][ref]\n\n[ref]: https://example.com/a.png')).toBe(
-      '\\![図][ref]\n\n[ref]: https://example.com/a.png',
+      `!${WJ}[図][ref]\n\n[ref]: https://example.com/a.png`,
     )
+  })
+
+  test('コード判定が md4c とずれても画像構文が残らないよう、コードの中でも画像を無効にする', () => {
+    // リスト項目内のフェンスは項目の終わりで閉じるが、行単位の判定では開いたままに見える
+    expect(convert('- a\n\n  ```\n![x](https://evil.example/p.png)')).toBe(
+      `- a\n\n  \`\`\`\n!${WJ}[x](https://evil.example/p.png)`,
+    )
+    expect(convert('`` ` ![x](y)')).toBe(`\`\` \` !${WJ}[x](y)`)
+    expect(convert('```\n![x](y)\n```')).toBe(`\`\`\`\n!${WJ}[x](y)\n\`\`\``)
+  })
+
+  test('動画の HTML ブロックはコードの中かどうかに関係なく無効にする', () => {
+    expect(convert('```\n<video src="https://evil.example/v.mp4">\n```')).toBe(
+      `\`\`\`\n<${WJ}video src="https://evil.example/v.mp4">\n\`\`\``,
+    )
+    expect(convert('<VIDEO src="x">')).toBe(`\\<${WJ}VIDEO src="x">`)
   })
 
   test('二重パイプはスポイラーにせず文字として残し、表の行では触らない', () => {
@@ -49,15 +66,16 @@ describe('toEnrichedMarkdown', () => {
   })
 
   test('コードの中は書かれたとおりに残す', () => {
-    expect(convert('`<@user-1> ![x](y) a || b`')).toBe('`<@user-1> ![x](y) a || b`')
-    expect(convert('```\n<@user-1>\n![x](y)\n```\n<@user-1>')).toBe(
-      '```\n<@user-1>\n![x](y)\n```\n[@山田 太郎](cairn-mention:user-1)',
+    expect(convert('`<@user-1> a || b`')).toBe('`<@user-1> a || b`')
+    expect(convert('```\n<@user-1>\n```\n<@user-1>')).toBe(
+      '```\n<@user-1>\n```\n[@山田 太郎](cairn-mention:user-1)',
     )
+    expect(convert('``a ` <@user-1>``')).toBe('``a ` <@user-1>``')
     expect(convert('~~~~\n```\n<div>\n~~~~\n<div>')).toBe('~~~~\n```\n<div>\n~~~~\n\\<div>')
   })
 
   test('閉じていないバッククォートやエスケープ済みの記号は変換しない', () => {
     expect(convert('`未完 <@user-1>')).toBe('`未完 [@山田 太郎](cairn-mention:user-1)')
-    expect(convert('\\<@user-1> \\![x](y)')).toBe('\\<@user-1> \\![x](y)')
+    expect(convert('\\<@user-1> \\|\\|')).toBe('\\<@user-1> \\|\\|')
   })
 })
