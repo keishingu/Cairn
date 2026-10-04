@@ -47,6 +47,7 @@
     "expo-sqlite": "~55.0.20",
     "expo-updates": "~55.0.33",
     "expo-web-browser": "~55.0.20",
+    "markdown-it": "^14",
     "react": "19.2.0",
     "react-native": "0.83.10",
     "react-native-blob-util": "0.24.7",
@@ -58,6 +59,7 @@
   },
   "devDependencies": {
     "@cairn/config": "workspace:*",
+    "@types/markdown-it": "^14",
     "@types/node": "^20",
     "@types/react": "^19.2.0",
     "typescript": "^5",

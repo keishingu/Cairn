@@ -55,7 +55,9 @@ describe('toEnrichedMarkdown', () => {
 
   test('二重パイプはスポイラーにせず文字として残し、表の行では触らない', () => {
     expect(convert('a || b || c')).toBe('a \\|\\| b \\|\\| c')
-    expect(convert('| a || b |')).toBe('| a || b |')
+    expect(convert('| a || b |\n|---|---|---|\n| 1 || 2 |')).toBe('| a || b |\n|---|---|---|\n| 1 || 2 |')
+    // 区切り行がなければ表ではないため、段落としてエスケープする
+    expect(convert('| a || b |')).toBe('| a \\|\\| b |')
   })
 
   test('HTML は捨てられないよう文字として出し、自動リンクはそのまま残す', () => {
@@ -72,6 +74,22 @@ describe('toEnrichedMarkdown', () => {
     )
     expect(convert('``a ` <@user-1>``')).toBe('``a ` <@user-1>``')
     expect(convert('~~~~\n```\n<div>\n~~~~\n<div>')).toBe('~~~~\n```\n<div>\n~~~~\n\\<div>')
+  })
+
+  test('先頭の | がない表でも空セルの区切りを残す', () => {
+    expect(convert('A || B\n---|---|---\n1 || 2')).toBe('A || B\n---|---|---\n1 || 2')
+  })
+
+  test('複数行にまたがるインラインコードの中は変換しない', () => {
+    expect(convert('`<@user-1>\ntext` <@user-1>')).toBe(
+      '`<@user-1>\ntext` [@山田 太郎](cairn-mention:user-1)',
+    )
+  })
+
+  test('4スペースのインデントによるコードブロックの中は変換しない（画像だけは無効にする）', () => {
+    expect(convert('説明\n\n    <@user-1> a || b\n    ![x](y)\n\n<@user-1>')).toBe(
+      `説明\n\n    <@user-1> a || b\n    !${WJ}[x](y)\n\n[@山田 太郎](cairn-mention:user-1)`,
+    )
   })
 
   test('閉じていないバッククォートやエスケープ済みの記号は変換しない', () => {

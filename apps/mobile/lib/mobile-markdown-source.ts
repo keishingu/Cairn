@@ -1,3 +1,4 @@
+import MarkdownIt from 'markdown-it'
 import { matchMarkdownMention } from './mobile-chat-state'
 
 // react-native-enriched-markdown はネイティブの md4c でパースするため、JS からパーサーへ
@@ -14,11 +15,14 @@ function escapeMarkdownText(value: string): string {
   return value.replace(/[\\`*_{}[\]()<>#+\-.!|~$]/g, (char) => `\\${char}`)
 }
 
+// コード・表・段落の範囲を決めるためだけに使う。md4c と完全には一致しないため、
+// ずれても通信が起きない表示上の変換（メンション、`||`、HTML）だけをこの範囲に依存させる
+const blockParser = new MarkdownIt()
+
 // 画像構文を必ず壊すために `!` と `[` の間へ挟む不可視文字（U+2060 WORD JOINER）。
 // コードの内側でも見た目は変わらず、バックスラッシュのように文字として表示されない
 const IMAGE_BREAK = '\u2060'
 
-const FENCE_PATTERN = /^ {0,3}(`{3,}|~{3,})/
 const AUTOLINK_PATTERN = /^<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>/
 const EMAIL_AUTOLINK_PATTERN = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*>/
 
@@ -120,33 +124,50 @@ export function toEnrichedMarkdown(
   },
 ): string {
   const lines = content.split('\n')
-  let openFence: { char: string; length: number } | null = null
+  // 行ごとの所属ブロック。コードはそのまま残し、表は `||` を空セルとして残す。
+  // 段落・見出しは複数行にまたがるインラインコードを扱えるよう、まとめて変換する
+  const blocks: Array<{ kind: 'text' | 'table' | 'code'; id: number }> = lines.map((_, index) => ({
+    kind: 'text',
+    id: -1 - index,
+  }))
+  const tokens = blockParser.parse(content, {})
+  tokens.forEach((token, tokenIndex) => {
+    if (!token.map) return
+    const [from, to] = token.map
+    const kind =
+      token.type === 'fence' || token.type === 'code_block'
+        ? 'code'
+        : token.type === 'table_open'
+          ? 'table'
+          : token.type === 'inline'
+            ? 'text'
+            : null
+    if (!kind) return
+    for (let line = from; line < to && line < lines.length; line += 1) {
+      // 表の中のセルも inline を持つため、先に決まった表・コードを上書きしない
+      if (kind === 'text' && blocks[line]!.kind !== 'text') continue
+      blocks[line] = { kind, id: kind === 'table' ? -1 - line : tokenIndex }
+    }
+  })
 
-  return lines
-    .map((line) => {
-      const fence = FENCE_PATTERN.exec(line)
-      if (openFence) {
-        const run = fence?.[1]
-        if (
-          run &&
-          run[0] === openFence.char &&
-          run.length >= openFence.length &&
-          line.trim() === run
-        ) {
-          openFence = null
-        }
-        return line
-      }
-      if (fence) {
-        const run = fence[1]!
-        // バッククォートの info string にバッククォートは含められない（CommonMark）
-        if (run[0] !== '`' || !line.slice(fence[0].length).includes('`')) {
-          openFence = { char: run[0]!, length: run.length }
-          return line
-        }
-      }
-      return transformInline(line, { ...options, inTableRow: /^\s*\|/.test(line) })
-    })
+  const output: string[] = []
+  let index = 0
+  while (index < lines.length) {
+    const block = blocks[index]!
+    let end = index + 1
+    while (end < lines.length && blocks[end]!.kind === block.kind && blocks[end]!.id === block.id) {
+      end += 1
+    }
+    const chunk = lines.slice(index, end).join('\n')
+    output.push(
+      block.kind === 'code'
+        ? chunk
+        : transformInline(chunk, { ...options, inTableRow: block.kind === 'table' }),
+    )
+    index = end
+  }
+
+  return output
     .join('\n')
     // 画像は送信者指定の URL を自動取得しない。md4c のブロック解釈（コードの範囲など）を JS で
     // 完全には再現できないため、行ごとの判定に頼らず本文全体で画像構文を壊す。
