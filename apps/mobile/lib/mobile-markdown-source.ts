@@ -49,6 +49,9 @@ function transformInline(
 ): string {
   let output = ''
   let index = 0
+  // リンク文字列（`[...]`）の中にいる深さ。CommonMark はリンクの入れ子を許さないため、
+  // この中のメンションはリンクにせず文字として出す
+  let labelDepth = 0
   while (index < line.length) {
     const char = line[index]!
 
@@ -77,8 +80,13 @@ function transformInline(
     if (char === '<') {
       const mention = matchMarkdownMention(line, index)
       if (mention) {
-        const name = options.resolveMentionName(mention.userId, mention.displayName)
-        output += `[${escapeMarkdownText(`@${name}`)}](${MENTION_LINK_SCHEME}${encodeURIComponent(mention.userId)})`
+        const label = escapeMarkdownText(
+          `@${options.resolveMentionName(mention.userId, mention.displayName)}`,
+        )
+        output +=
+          labelDepth > 0
+            ? label
+            : `[${label}](${MENTION_LINK_SCHEME}${encodeURIComponent(mention.userId)})`
         index += mention.length
         continue
       }
@@ -95,10 +103,31 @@ function transformInline(
       continue
     }
 
-    // 代替テキストが空の画像は、リンクに変えたあと文字が無く見えなくなるためラベルを補う
-    if (line.startsWith('![](', index)) {
-      output += `![${escapeMarkdownText(options.imageLabel)}](`
-      index += 4
+    // 代替テキストが空の画像（インライン・参照形式とも）は、リンクに変えたあと文字が無く
+    // 見えなくなるためラベルを補う
+    if (line.startsWith('![]', index) && (line[index + 3] === '(' || line[index + 3] === '[')) {
+      output += `![${escapeMarkdownText(options.imageLabel)}]`
+      index += 3
+      continue
+    }
+
+    if (char === '[') {
+      labelDepth += 1
+      output += char
+      index += 1
+      continue
+    }
+
+    if (char === ']') {
+      if (labelDepth > 0) labelDepth -= 1
+      output += char
+      index += 1
+      // `](<...>)` と参照定義の `]: <...>` の山括弧付きリンク先は HTML ではないので、そのまま残す
+      const destination = /^(\(|:)([ \t]*)<[^<>\n]*>/.exec(line.slice(index))
+      if (destination) {
+        output += destination[0]
+        index += destination[0].length
+      }
       continue
     }
 

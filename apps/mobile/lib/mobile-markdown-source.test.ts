@@ -92,6 +92,23 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('リンク文字列の中のメンションは、リンクの入れ子にならないよう文字として出す', () => {
+    expect(convert('[ask <@user-1>](/tasks/1) <@user-1>')).toBe(
+      '[ask @山田 太郎](/tasks/1) [@山田 太郎](cairn-mention:user-1)',
+    )
+  })
+
+  test('代替テキストが空の参照形式の画像にもラベルを補う', () => {
+    expect(convert('![][asset]\n\n[asset]: https://example.com/a.png')).toBe(
+      `!${WJ}[画像][asset]\n\n[asset]: https://example.com/a.png`,
+    )
+  })
+
+  test('山括弧で囲んだリンク先は HTML としてエスケープしない', () => {
+    expect(convert('[task](</tasks/123>) <div>')).toBe('[task](</tasks/123>) \\<div>')
+    expect(convert('[ref]: </tasks/1>\n\n[x][ref]')).toBe('[ref]: </tasks/1>\n\n[x][ref]')
+  })
+
   test('閉じていないバッククォートやエスケープ済みの記号は変換しない', () => {
     expect(convert('`未完 <@user-1>')).toBe('`未完 [@山田 太郎](cairn-mention:user-1)')
     expect(convert('\\<@user-1> \\|\\|')).toBe('\\<@user-1> \\|\\|')
