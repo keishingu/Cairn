@@ -39,6 +39,27 @@ function findClosingBackticks(line: string, from: number, length: number): numbe
   return -1
 }
 
+// `[` から対応する `]` を探し、直後が `(` か `[` ならリンク文字列の閉じ位置を返す
+function findLinkLabelEnd(line: string, start: number): number {
+  let depth = 0
+  for (let index = start; index < line.length; index += 1) {
+    const char = line[index]
+    if (char === '\\') {
+      index += 1
+      continue
+    }
+    if (char === '[') depth += 1
+    if (char === ']') {
+      depth -= 1
+      if (depth === 0) {
+        const next = line[index + 1]
+        return next === '(' || next === '[' ? index : -1
+      }
+    }
+  }
+  return -1
+}
+
 function transformInline(
   line: string,
   options: {
@@ -49,9 +70,9 @@ function transformInline(
 ): string {
   let output = ''
   let index = 0
-  // リンク文字列（`[...]`）の中にいる深さ。CommonMark はリンクの入れ子を許さないため、
-  // この中のメンションはリンクにせず文字として出す
-  let labelDepth = 0
+  // リンク文字列（`[...](` / `[...][`）の閉じ位置のスタック。CommonMark はリンクの入れ子を
+  // 許さないため、この中のメンションはリンクにせず文字として出す。リンクにならない `[` は数えない
+  const labelEnds: number[] = []
   while (index < line.length) {
     const char = line[index]!
 
@@ -84,7 +105,7 @@ function transformInline(
           `@${options.resolveMentionName(mention.userId, mention.displayName)}`,
         )
         output +=
-          labelDepth > 0
+          labelEnds.length > 0
             ? label
             : `[${label}](${MENTION_LINK_SCHEME}${encodeURIComponent(mention.userId)})`
         index += mention.length
@@ -112,14 +133,15 @@ function transformInline(
     }
 
     if (char === '[') {
-      labelDepth += 1
+      const end = findLinkLabelEnd(line, index)
+      if (end !== -1) labelEnds.push(end)
       output += char
       index += 1
       continue
     }
 
     if (char === ']') {
-      if (labelDepth > 0) labelDepth -= 1
+      if (labelEnds[labelEnds.length - 1] === index) labelEnds.pop()
       output += char
       index += 1
       // `](<...>)` と参照定義の `]: <...>` の山括弧付きリンク先は HTML ではないので、そのまま残す

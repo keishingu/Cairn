@@ -98,6 +98,11 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('リンクにならない [ があっても、後ろのメンションはリンクのまま', () => {
+    expect(convert('see arr[0 and <@user-1>')).toBe('see arr[0 and [@山田 太郎](cairn-mention:user-1)')
+    expect(convert('[メモ] <@user-1>')).toBe('[メモ] [@山田 太郎](cairn-mention:user-1)')
+  })
+
   test('代替テキストが空の参照形式の画像にもラベルを補う', () => {
     expect(convert('![][asset]\n\n[asset]: https://example.com/a.png')).toBe(
       `!${WJ}[画像][asset]\n\n[asset]: https://example.com/a.png`,
