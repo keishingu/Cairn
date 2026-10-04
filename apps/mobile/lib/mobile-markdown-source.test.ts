@@ -119,6 +119,13 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`${paren}。`)).toBe(`[${label}](<${paren}>)。`)
   })
 
+  test('強調や取り消し線で囲んだ長い URL は、閉じ記号をリンクの外に残す', () => {
+    const url = 'https://example.com/a/very/long/resource/path/that/exceeds/fifty'
+    const label = 'https://example\\.com/a/very/long/resource/path/that…'
+    expect(convert(`**${url}**`)).toBe(`**[${label}](<${url}>)**`)
+    expect(convert(`~~${url}~~`)).toBe(`~~[${label}](<${url}>)~~`)
+  })
+
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
     const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
     expect(convert('https://example.com/a')).toBe('https://example.com/a')

@@ -26,7 +26,8 @@ const IMAGE_BREAK = '\u2060'
 // Web（markdown-content.tsx）と同じく、長い URL は見た目だけ「…」で省略する。リンク先は元のまま
 const URL_DISPLAY_MAX = 50
 const BARE_URL_PATTERN = /^https?:\/\/[^\s<>"']+/
-const URL_TRAILING_SENTENCE_PUNCTUATION = /[.,;:!?>。、，；：！？〉》】］）]$/
+// GFM の自動リンクと同じく、末尾の強調・取り消し線の記号（`**URL**` の閉じ側など）も URL に含めない
+const URL_TRAILING_SENTENCE_PUNCTUATION = /[.,;:!?>*_~。、，；：！？〉》】］）]$/
 
 function countChar(value: string, char: string): number {
   return value.split(char).length - 1
