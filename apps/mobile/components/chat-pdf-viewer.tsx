@@ -43,12 +43,17 @@ export function ChatPdfViewer({
   const [page, setPage] = React.useState<{ current: number; total: number } | null>(null)
   const [busyAction, setBusyAction] = React.useState<'save' | 'share' | null>(null)
 
+  // トークンはおよそ1時間ごとや前面復帰時に更新される。依存に含めると読んでいる途中の PDF が
+  // 1ページ目から読み込み直されるため、取得時点の最新値を参照するだけにする
+  const accessTokenRef = React.useRef(accessToken)
+  accessTokenRef.current = accessToken
+
   React.useEffect(() => {
     let cancelled = false
     setLoadState({ kind: 'downloading' })
     setRendered(false)
     setPage(null)
-    ensureCachedAttachment(fileUrl, fileId, fileName, accessToken, t)
+    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t)
       .then((localUri) => {
         if (!cancelled) setLoadState({ kind: 'ready', localUri })
       })
@@ -64,7 +69,7 @@ export function ChatPdfViewer({
       cancelled = true
     }
     // t は言語切替で変わるが、取得し直す必要はないため依存に含めない
-  }, [accessToken, attempt, fileId, fileName, fileUrl])
+  }, [attempt, fileId, fileName, fileUrl])
 
   const handleRenderError = (error: object) => {
     console.error('[chat] PDF を表示できませんでした:', error)
