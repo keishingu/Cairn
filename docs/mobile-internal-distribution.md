@@ -72,7 +72,7 @@ pnpm build:internal:ios
 
 ## ネイティブ runtime と EAS Update
 
-Apple Sign Inを含む現在の runtime version は `1.2.0`。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
+現在の runtime version は `1.3.0`（Expo SDK 55 / React Native 0.83）。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
 
 1. `app.json` の `runtimeVersion` を上げる
 2. Development Build / Internal Distribution build を作り直して端末へ再インストールする
