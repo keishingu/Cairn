@@ -55,7 +55,7 @@ describe('モバイルInternal Distribution', () => {
 
     expect(packageJson.dependencies['expo-network']).toBe('~55.0.18')
     expect(packageJson.dependencies['expo-sqlite']).toBe('~55.0.20')
-    expect(app.expo.runtimeVersion).toBe('1.4.0')
+    expect(app.expo.runtimeVersion).toBe('1.5.0')
     expect(app.expo.plugins).toContainEqual(['expo-sqlite', { enableFTS: true }])
   })
 
@@ -69,5 +69,20 @@ describe('モバイルInternal Distribution', () => {
     expect(packageJson.dependencies['react-native-blob-util']).toBeDefined()
     expect(app.expo.plugins).toContain('@config-plugins/react-native-blob-util')
     expect(app.expo.plugins).toContain('@config-plugins/react-native-pdf')
+  })
+
+  it('Markdown のネイティブレンダラーは不要なネイティブ資産を含めない', () => {
+    const packageJson = JSON.parse(mobilePackage) as {
+      dependencies: Record<string, string>
+      'enriched-markdown': Record<string, boolean>
+    }
+
+    expect(packageJson.dependencies['react-native-enriched-markdown']).toBeDefined()
+    expect(packageJson.dependencies['react-native-markdown-display']).toBeUndefined()
+    expect(packageJson['enriched-markdown']).toEqual({
+      enableCodeHighlight: false,
+      enableMath: false,
+      enableVideo: false,
+    })
   })
 })

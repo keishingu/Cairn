@@ -61,16 +61,17 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 
 ## React NativeチャットのMarkdown本文
 
-- メッセージ本文は `MobileMarkdown` を再利用し、React Nativeのネイティブ要素で描画する。本文ごとにWebViewやHTMLレンダラーを追加しない。
+- メッセージ本文は `MobileMarkdown` を再利用し、`react-native-enriched-markdown`（md4c によるネイティブ描画、`flavor="github"`）で描画する。本文ごとにWebViewやHTMLレンダラーを追加しない。パーサーはネイティブ側にあるため、Cairn 固有の規則は `lib/mobile-markdown-source.ts` で描画前の Markdown 文字列を変換して実現する。
 - 本文は14px・行高22px・`palette.text2`を基準にする。見出しはh1が18px/24px、h2が16px/22px、h3が14px/20pxで、いずれも700。サイズ差を増やしすぎず、ウェイトと既存の`palette.text`で階層を作る。
 - 段落下4px、見出し前後2〜8px、リスト上下2px、区切り線上下8pxを基準とし、既存の4pxグリッドから外れる余白を増やさない。
 - 引用は`palette.card2`、左境界3px、角丸4px、左右10px・上下4px。インラインコードは角丸3px、コードブロックは角丸8px・左右10px・上下8pxとし、`palette.card2` / `palette.border`とOS標準の等幅フォントを使う。
-- メンションは Web と同じく `palette.accentSoft` の背景と `palette.accentText`、太字で本文から区別する。
+- メンションは Web と同じく `palette.accentSoft` の背景と `palette.accentText` で本文から区別する。`cairn-mention:` スキームのリンクに変換して `linkVariants` で装飾し、タップしても遷移しない（リンク装飾に太字の指定がないため、太字にはしない）。
 - 画像添付はタップで全画面の `Image` を開く。表示のためのファイル保存はしない。PDF 添付はタップで全画面の `react-native-pdf` ビューアを開き、共有シートと同じ端末キャッシュから描画してページ番号をヘッダーに出す。保存と共有は全画面からの操作にし、画像と PDF 以外は従来どおり端末の共有シートで開く。
 - リンクは`palette.accentText`と下線で本文から判別できるようにする。相対URLと同一originのCairn内リンクは、許可したパスだけを認証済み`AppWebView`で開く。外部の`http` / `https` / `mailto` / `tel`はOSへ渡し、`javascript:`、`data:`、protocol-relative URL、未許可の内部パスは開かない。
-- Markdown画像は外部URLを自動取得せず、既存の認証付き添付UIを使う。送信者が指定したURLへの意図しない通信と、添付権限制御の迂回を防ぐ。
-- タスクリストは`☐` / `☑`の読み取り専用表示とする。編集可能なチェック項目とMermaid図はWeb版の機能であり、ネイティブ対応を追加する場合は操作・アクセシビリティ・OTA互換性を別途設計する。
-- 現行のReact Native 0.81系ではJSのみのレンダラーを使い、`runtimeVersion`やネイティブ依存を変更しない。ネイティブレンダラーへの移行はDevelopment Build更新を伴う別PRに分離する。
+- Markdown画像は外部URLを自動取得せず、既存の認証付き添付UIを使う。送信者が指定したURLへの意図しない通信と、添付権限制御の迂回を防ぐ。描画前に本文全体（コードの内側も含む）の `![` へ不可視の U+2060 を挟んで画像構文を壊し、リンクとして表示してタップしたときだけ通常のリンク判定で開く。md4c のブロック解釈を JS で完全には再現できないため、コード判定に依存させない。`<video>` も同様に無効にする。
+- タスクリストはネイティブのチェックボックスで読み取り専用表示とする（`enableTaskListItemToggle={false}`）。編集可能なチェック項目とMermaid図はWeb版の機能であり、ネイティブ対応を追加する場合は操作・アクセシビリティを別途設計する。
+- md4c が常に解釈する `||`（スポイラー）と、`<video>` 以外を描画せず捨てる HTML は、本文が隠れたり消えたりしないよう文字としてエスケープする。`$` は数式として解釈しない。メッセージの長押しはアクションメニューに使うため、本文の文字選択・リンクプレビュー・ブロックのコピーメニューは無効にする。
+- レンダラーはネイティブモジュールなので、Markdown 描画の変更でネイティブ設定（`package.json` の `enriched-markdown` ブロックなど）を変えるときは `runtimeVersion` を上げて Development Build を作り直す。コードハイライト・数式・動画は無効にしてネイティブ資産のダウンロードとバイナリ増加を避けている。
 - 変更時はライト/ダークとアクセント色、長文・長いURL・コード・引用・リスト、内部リンクの認証済み遷移、危険なURLの拒否を確認する。
 
 ## 操作性と検証

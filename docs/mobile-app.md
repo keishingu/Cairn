@@ -13,6 +13,7 @@
 - **カレンダーの週の始まりは `profiles.calendar_week_start`（`sunday` / `monday`、既定は日曜）が共有元**。設定 → 外観で選び `PATCH /api/me` へ保存する。Web の `cairn:calendar_week_start` は取得前の即時描画用キャッシュに留める。カレンダー画面自体は WebView
 - ネイティブチャットも Web と同じ private Realtime Broadcast（`user:{userId}` / `channel:{channelId}`）で更新し、ポーリングは使わない
 - **チャット添付の画像と PDF はアプリ内のモーダルで開く**（`chat-image-viewer.tsx` / `chat-pdf-viewer.tsx`）。PDF は `react-native-pdf`（iOS は PDFKit、Android は Pdfium）で描画し、取得は共有シートと同じ `attachment-cache.ts` のキャッシュを使う。それ以外の形式は共有シートで外部アプリに渡す。PDF 内リンクはチャット本文と同じ `resolveMobileMarkdownLink` で判定する
+- **チャット本文の Markdown は `react-native-enriched-markdown` でネイティブ描画する**（`mobile-markdown.tsx`）。パーサー（md4c）はネイティブ側にあるため、メンション・画像の自動取得禁止・`||` と HTML のエスケープは `lib/mobile-markdown-source.ts` で描画前に変換する。コードハイライト・数式・動画はルートと `apps/mobile` の `package.json` の `enriched-markdown` ブロックで無効にし、install 時のネイティブ資産ダウンロードも止めている。表示規則は [`.interface-design/system.md`](../.interface-design/system.md) の「React NativeチャットのMarkdown本文」
 
 ## 開発
 
