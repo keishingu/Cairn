@@ -20,6 +20,7 @@ export function ensureCachedAttachment(
   fileName: string,
   accessToken: string,
   t: Translate = translateJa,
+  options: { refresh?: boolean } = {},
 ): Promise<string> {
   const cacheDirectory = FileSystem.cacheDirectory
   if (!cacheDirectory) return Promise.reject(new Error(t('This device cannot save files')))
@@ -28,8 +29,11 @@ export function ensureCachedAttachment(
   if (pending) return pending
 
   const download = (async () => {
-    const info = await FileSystem.getInfoAsync(target)
-    if (shouldReuseCachedFile(info)) return info.uri
+    // refresh は表示に失敗したキャッシュの取り直し。削除の成否に関係なく必ずダウンロードする
+    if (!options.refresh) {
+      const info = await FileSystem.getInfoAsync(target)
+      if (shouldReuseCachedFile(info)) return info.uri
+    }
 
     // 保存先へ直接書き込むと、取得途中のファイルが「サイズのあるキャッシュ」として
     // 再利用されてしまう。一時ファイルに取り切ってから保存先へ移す

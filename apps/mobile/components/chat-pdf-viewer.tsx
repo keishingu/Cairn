@@ -53,7 +53,10 @@ export function ChatPdfViewer({
     setLoadState({ kind: 'downloading' })
     setRendered(false)
     setPage(null)
-    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t)
+    // 再試行（attempt > 0）は壊れたキャッシュを再利用しないよう必ず取り直す
+    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t, {
+      refresh: attempt > 0,
+    })
       .then((localUri) => {
         if (!cancelled) setLoadState({ kind: 'ready', localUri })
       })
@@ -73,8 +76,11 @@ export function ChatPdfViewer({
 
   const handleRenderError = (error: object) => {
     console.error('[chat] PDF を表示できませんでした:', error)
-    // 壊れたファイルをキャッシュに残すと、再試行しても同じファイルを開いてしまう
-    void removeCachedAttachment(fileId, fileName).catch(() => undefined)
+    // 再試行は refresh で必ず取り直すため、ここでの削除は保存・共有など他の経路で
+    // 壊れたファイルを使わないための後始末。失敗しても再試行には影響しないが、黙って捨てない
+    void removeCachedAttachment(fileId, fileName).catch((cleanupError: unknown) => {
+      console.error('[chat] 表示できなかった PDF のキャッシュを削除できませんでした:', cleanupError)
+    })
     setLoadState({
       kind: 'failed',
       message: error instanceof Error ? error.message : t('Please try again in a moment.'),
