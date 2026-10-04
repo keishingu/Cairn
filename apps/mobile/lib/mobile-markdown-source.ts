@@ -105,8 +105,6 @@ function findClosingBackticks(line: string, from: number, length: number): numbe
   return -1
 }
 
-// `[` から対応する `]` を探し、直後が `(` か `[` ならリンク文字列の閉じ位置を返す
-// CommonMark の参照ラベルは大文字小文字と連続する空白を区別しない
 // markdown-it が認識した参照定義（`[ラベル]: リンク先`）のラベル一覧。省略形の参照リンク `[ラベル]` を判別するために使う。
 // コードブロック内など定義にならない行は含まれない。照合は CommonMark と同じ正規化（大文字小文字・連続空白を区別しない）
 function normalizeReferenceLabel(label: string): string {
@@ -117,12 +115,20 @@ function collectReferenceLabels(env: { references?: Record<string, unknown> }): 
   return new Set(Object.keys(env.references ?? {}))
 }
 
+// `[` から対応する `]` を探し、リンク文字列（インライン・参照・参照定義）ならその閉じ位置を返す。
+// インラインコードの中の括弧はラベルの区切りにならないため読み飛ばす
 function findLinkLabelEnd(line: string, start: number, referenceLabels: Set<string>): number {
   let depth = 0
   for (let index = start; index < line.length; index += 1) {
     const char = line[index]
     if (char === '\\') {
       index += 1
+      continue
+    }
+    if (char === '`') {
+      const run = /^`+/.exec(line.slice(index))![0]
+      const closing = findClosingBackticks(line, index + run.length, run.length)
+      index = closing === -1 ? index + run.length - 1 : closing + run.length - 1
       continue
     }
     if (char === '[') depth += 1

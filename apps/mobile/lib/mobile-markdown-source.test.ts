@@ -110,6 +110,10 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('リンク文字列内のインラインコードに ] があっても、後ろのメンションは文字として出す', () => {
+    expect(convert('[see `]` <@user-1>](/tasks/1)')).toBe('[see `]` @山田 太郎](/tasks/1)')
+  })
+
   test('リンクにならない [ があっても、後ろのメンションはリンクのまま', () => {
     expect(convert('see arr[0 and <@user-1>')).toBe('see arr[0 and [@山田 太郎](cairn-mention:user-1)')
     expect(convert('[メモ] <@user-1>')).toBe('[メモ] [@山田 太郎](cairn-mention:user-1)')
