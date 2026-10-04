@@ -26,7 +26,14 @@ export function ensureCachedAttachment(
   if (!cacheDirectory) return Promise.reject(new Error(t('This device cannot save files')))
   const target = `${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`
   const pending = pendingDownloads.get(target)
-  if (pending) return pending
+  if (pending) {
+    if (!options.refresh) return pending
+    // 取り直しの要求は、進行中の取得の結果（壊れたキャッシュの再利用かもしれない）を使わず、
+    // その完了を待ってから改めてダウンロードする
+    return pending
+      .catch(() => undefined)
+      .then(() => ensureCachedAttachment(fileUrl, fileId, fileName, accessToken, t, options))
+  }
 
   const download = (async () => {
     // refresh は表示に失敗したキャッシュの取り直し。削除の成否に関係なく必ずダウンロードする
