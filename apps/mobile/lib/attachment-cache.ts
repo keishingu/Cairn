@@ -10,7 +10,11 @@ type Translate = (message: string, values?: Record<string, string | number>) => 
 
 const translateJa: Translate = (message, values) => translate('ja', message, values)
 
-export async function ensureCachedAttachment(
+// 同じファイルの取得中に別の画面（共有ボタン、ビューアの開き直しなど）から呼ばれても、
+// ダウンロードを1本にまとめて同じ結果を待たせる
+const pendingDownloads = new Map<string, Promise<string>>()
+
+export function ensureCachedAttachment(
   fileUrl: string,
   fileId: string,
   fileName: string,
@@ -18,19 +22,33 @@ export async function ensureCachedAttachment(
   t: Translate = translateJa,
 ): Promise<string> {
   const cacheDirectory = FileSystem.cacheDirectory
-  if (!cacheDirectory) throw new Error(t('This device cannot save files'))
+  if (!cacheDirectory) return Promise.reject(new Error(t('This device cannot save files')))
   const target = `${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`
-  const info = await FileSystem.getInfoAsync(target)
-  if (shouldReuseCachedFile(info)) return info.uri
+  const pending = pendingDownloads.get(target)
+  if (pending) return pending
 
-  const result = await FileSystem.downloadAsync(fileUrl, target, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (result.status !== 200) {
-    await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined)
-    throw new Error(t('Download failed ({status})', { status: result.status }))
-  }
-  return result.uri
+  const download = (async () => {
+    const info = await FileSystem.getInfoAsync(target)
+    if (shouldReuseCachedFile(info)) return info.uri
+
+    // 保存先へ直接書き込むと、取得途中のファイルが「サイズのあるキャッシュ」として
+    // 再利用されてしまう。一時ファイルに取り切ってから保存先へ移す
+    const partial = `${target}.download`
+    await FileSystem.deleteAsync(partial, { idempotent: true })
+    const result = await FileSystem.downloadAsync(fileUrl, partial, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (result.status !== 200) {
+      await FileSystem.deleteAsync(partial, { idempotent: true }).catch(() => undefined)
+      throw new Error(t('Download failed ({status})', { status: result.status }))
+    }
+    await FileSystem.deleteAsync(target, { idempotent: true })
+    await FileSystem.moveAsync({ from: partial, to: target })
+    return target
+  })().finally(() => pendingDownloads.delete(target))
+
+  pendingDownloads.set(target, download)
+  return download
 }
 
 // 表示できなかったキャッシュを消し、再試行で取り直せるようにする
