@@ -87,8 +87,9 @@ export function ChatPdfViewer({
     })
   }
 
-  // 初回ダウンロード中に保存・共有すると、書き込み途中のキャッシュを共有シートへ渡してしまう
-  const actionsDisabled = busyAction !== null || loadState.kind === 'downloading'
+  // 取得中は書き込み途中のファイルを、表示失敗後は壊れたキャッシュ（削除が終わる前や削除に失敗した場合）を
+  // 共有シートへ渡してしまうため、取得して表示できる状態のときだけ保存・共有を許す
+  const actionsDisabled = busyAction !== null || loadState.kind !== 'ready'
 
   const runFileAction = async (action: 'save' | 'share') => {
     if (busyAction) return
