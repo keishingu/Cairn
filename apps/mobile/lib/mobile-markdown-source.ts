@@ -215,6 +215,23 @@ function transformInline(
       continue
     }
 
+    // リンク文字列の中の画像（`[![alt](画像)](リンク先)` など）は、後段で画像構文を壊すと内側のリンクになり、
+    // 入れ子のリンクとして外側のリンク先が失われる。代替テキストだけを文字として残す
+    if (char === '!' && line[index + 1] === '[' && labelEnds.length > 0) {
+      const altEnd = findLinkLabelEnd(line, index + 1, options.referenceLabels)
+      if (altEnd !== -1) {
+        let imageEnd = altEnd
+        if (line[altEnd + 1] === '(') imageEnd = findDestinationEnd(line, altEnd + 1)
+        else if (line[altEnd + 1] === '[') imageEnd = line.indexOf(']', altEnd + 2)
+        if (imageEnd !== -1) {
+          const alt = line.slice(index + 2, altEnd)
+          output += alt ? escapeMarkdownText(alt) : escapeMarkdownText(options.imageLabel)
+          index = imageEnd + 1
+          continue
+        }
+      }
+    }
+
     // 代替テキストが空の画像（インライン・参照形式とも）は、リンクに変えたあと文字が無く
     // 見えなくなるためラベルを補う
     if (line.startsWith('![]', index) && (line[index + 3] === '(' || line[index + 3] === '[')) {

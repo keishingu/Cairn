@@ -160,6 +160,16 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`\`${url}\``)).toBe(`\`${url}\``)
   })
 
+  test('リンク文字列の中の画像は代替テキストだけを残し、外側のリンク先を保つ', () => {
+    expect(convert('[see ![alt](https://img.example/x)](https://dest.example)')).toBe(
+      '[see alt](https://dest.example)',
+    )
+    expect(convert('[![](https://img.example/x)](https://dest.example)')).toBe('[画像](https://dest.example)')
+    expect(convert('[![logo][img]](https://dest.example)\n\n[img]: https://img.example/x')).toBe(
+      '[logo](https://dest.example)\n\n[img]: https://img.example/x',
+    )
+  })
+
   test('代替テキストが空の参照形式の画像にもラベルを補う', () => {
     expect(convert('![][asset]\n\n[asset]: https://example.com/a.png')).toBe(
       `!${WJ}[画像][asset]\n\n[asset]: https://example.com/a.png`,
