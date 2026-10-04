@@ -70,4 +70,19 @@ describe('モバイルInternal Distribution', () => {
     expect(app.expo.plugins).toContain('@config-plugins/react-native-blob-util')
     expect(app.expo.plugins).toContain('@config-plugins/react-native-pdf')
   })
+
+  it('Markdown のネイティブレンダラーは不要なネイティブ資産を含めない', () => {
+    const packageJson = JSON.parse(mobilePackage) as {
+      dependencies: Record<string, string>
+      'enriched-markdown': Record<string, boolean>
+    }
+
+    expect(packageJson.dependencies['react-native-enriched-markdown']).toBeDefined()
+    expect(packageJson.dependencies['react-native-markdown-display']).toBeUndefined()
+    expect(packageJson['enriched-markdown']).toEqual({
+      enableCodeHighlight: false,
+      enableMath: false,
+      enableVideo: false,
+    })
+  })
 })
