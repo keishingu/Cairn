@@ -76,6 +76,9 @@ export function ChatPdfViewer({
     })
   }
 
+  // 初回ダウンロード中に保存・共有すると、書き込み途中のキャッシュを共有シートへ渡してしまう
+  const actionsDisabled = busyAction !== null || loadState.kind === 'downloading'
+
   const runFileAction = async (action: 'save' | 'share') => {
     if (busyAction) return
     setBusyAction(action)
@@ -163,14 +166,14 @@ export function ChatPdfViewer({
             icon="download-outline"
             label={t('Save entry')}
             busy={busyAction === 'save'}
-            disabled={busyAction !== null}
+            disabled={actionsDisabled}
             onPress={() => void runFileAction('save')}
           />
           <ViewerAction
             icon="share-outline"
             label={t('Share')}
             busy={busyAction === 'share'}
-            disabled={busyAction !== null}
+            disabled={actionsDisabled}
             onPress={() => void runFileAction('share')}
           />
         </View>
