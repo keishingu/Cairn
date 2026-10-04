@@ -8,6 +8,8 @@ import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
+import { stripMentionsToText } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 
 export interface ProjectDto {
   id: string
@@ -31,6 +33,7 @@ export interface ProjectDto {
   coverPhotoUrl: string | null
   location: string | null
   placeId: string | null
+  latestMessage?: { senderName: string; content: string } | null
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -48,8 +51,8 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, channels, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, count, and, inArray } = await import('drizzle-orm')
+    const { projects, projectStatuses, projectMembers, tasks, channels, channelMembers, messages, userBlocks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, count, and, inArray, isNull, desc } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
     const channelSchemaReady = await hasTaskChannelSchema(db)
 
@@ -91,7 +94,7 @@ export async function GET() {
     visibleProjectIds = rows.map(r => r.id)
     if (visibleProjectIds.length === 0) return NextResponse.json([])
 
-    const [counts, memberRows, userMemberRows, taskRows] = await Promise.all([
+    const [counts, memberRows, userMemberRows, taskRows, latestMessageRows] = await Promise.all([
       db
         .select({ projectId: projectMembers.projectId, n: count() })
         .from(projectMembers)
@@ -132,7 +135,40 @@ export async function GET() {
           ? and(inArray(tasks.projectId, visibleProjectIds), taskChannelVisibilityCondition(ctx.userId))
           : inArray(tasks.projectId, visibleProjectIds))
         .groupBy(tasks.projectId),
+      db
+        .selectDistinctOn([channels.projectId], {
+          projectId: channels.projectId,
+          senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          content: messages.content,
+        })
+        .from(messages)
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        // 履歴上の発言者は非活性メンバーでも本人名義を維持する。
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(and(
+          inArray(channels.projectId, visibleProjectIds),
+          eq(channels.type, 'project'),
+          sql`coalesce(${channels.workspaceId}, ${ctx.workspaceId}) = ${ctx.workspaceId}`,
+          isNull(messages.deletedAt),
+          sql`(${channels.isPrivate} = false or exists (
+            select 1 from ${channelMembers}
+            where ${channelMembers.channelId} = ${channels.id} and ${channelMembers.userId} = ${ctx.userId}
+          ))`,
+          sql`not exists (
+            select 1 from ${userBlocks}
+            where (${userBlocks.blockerId} = ${ctx.userId} and ${userBlocks.blockedId} = ${messages.senderId})
+               or (${userBlocks.blockedId} = ${ctx.userId} and ${userBlocks.blockerId} = ${messages.senderId})
+          )`,
+        ))
+        .orderBy(channels.projectId, desc(messages.createdAt), desc(messages.id)),
     ])
+
+    const mentionNameMap = await buildMentionNameMap(ctx.workspaceId, latestMessageRows.map(row => row.content))
+    const latestMessageMap = new Map(latestMessageRows.map(row => [row.projectId, {
+      senderName: row.senderName,
+      content: stripMentionsToText(row.content, id => mentionNameMap.get(id)).replace(/\s+/g, ' ').trim(),
+    }]))
 
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
@@ -174,6 +210,7 @@ export async function GET() {
         coverPhotoUrl: r.coverPhotoUrl ?? null,
         location: r.location ?? null,
         placeId: r.placeId ?? null,
+        latestMessage: latestMessageMap.get(r.id) ?? null,
       }
     })
 
@@ -332,6 +369,7 @@ export async function POST(req: Request) {
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
       location: inserted.location ?? null,
       placeId: parsed.data.placeId ?? null,
+      latestMessage: null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

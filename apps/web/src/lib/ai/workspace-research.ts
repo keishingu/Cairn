@@ -4,7 +4,8 @@
 import type { AuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { getGuestVisibleProjectIds } from '@/lib/permissions'
-import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { hydrateMentions } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { DUE_SOON_DAYS, STALLED_DAYS } from '@/lib/ai-nudges/rules'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
@@ -713,25 +714,7 @@ export async function searchResearchChannelMessages(
       .map((row) => row.parentMessageId)
       .filter((id): id is string => typeof id === 'string'),
   )
-  const mentionIds = [...new Set(selected.flatMap((row) => extractMentionIds(row.content)))]
-  const mentionNameMap = new Map<string, string>()
-  if (mentionIds.length > 0) {
-    const names = await db
-      .select({
-        id: profiles.id,
-        name: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-      })
-      .from(profiles)
-      .leftJoin(
-        workspaceMembers,
-        and(
-          eq(workspaceMembers.userId, profiles.id),
-          eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        ),
-      )
-      .where(inArray(profiles.id, mentionIds))
-    for (const name of names) mentionNameMap.set(name.id, name.name)
-  }
+  const mentionNameMap = await buildMentionNameMap(ctx.workspaceId, selected.map(row => row.content))
 
   // The SQL query is newest-first so it can cap efficiently; tools receive chronological data.
   const items: ResearchMessage[] = selected.reverse().map((row) => {

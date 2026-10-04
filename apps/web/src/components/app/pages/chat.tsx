@@ -591,7 +591,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       ? `${currentChannel.projectTitle} / ${currentChannel.channelName}`
       : currentChannel.projectTitle
     : currentGeneral?.name ?? currentDm?.participantName ?? ''
-  const currentChannelMemberCount = currentGeneral?.memberCount
+  const channelSubtitle = isProject
+    ? t('Participating members')
+    : isDm
+      ? t('Direct messages')
+      : currentGeneral?.isPrivate
+        ? t('{count} participating', { count: currentGeneral.memberCount })
+        : currentGeneral
+          ? t('Open to everyone')
+          : undefined
 
   const { data: currentUser } = useCurrentUser()
   const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
@@ -811,7 +819,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
-          subtitle={currentChannelMemberCount != null ? t('{count} participating', { count: currentChannelMemberCount }) : undefined}
+          subtitle={channelSubtitle}
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
@@ -908,7 +916,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {isProject ? t('Participating members') : isDm ? t('Direct messages') : isPrivate ? t('Invite-only') : t('Workspace-wide channel')}
+                {channelSubtitle}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>

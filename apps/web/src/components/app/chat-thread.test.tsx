@@ -1,7 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { cloneElement } from 'react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -289,6 +290,53 @@ describe('ChatMessage copy action', () => {
       />,
     )
     expect(screen.queryByText('メンバー')).toBeNull()
+  })
+})
+
+describe('モバイルWebのリアクション表示', () => {
+  it('人型ボタンで全員を表示し、リアクション切替は別操作のまま', async () => {
+    const user = userEvent.setup()
+    const onReact = vi.fn()
+    const message = (
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[{ emoji: '👍', count: 2, mine: false, userNames: ['長い名前のメンバーA', '長い名前のメンバーB'] }]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={onReact}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+        isMobile
+      />
+    )
+    const { rerender } = render(message)
+
+    await user.click(screen.getByRole('button', { name: '👍 を付けた人を表示' }))
+    expect(onReact).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('dialog', { name: '👍 を付けた人' })
+    expect(dialog).toHaveTextContent('長い名前のメンバーA')
+    expect(dialog).toHaveTextContent('長い名前のメンバーB')
+    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['長い名前のメンバーB', '新しいメンバーC'] }] }))
+    expect(dialog).not.toHaveTextContent('長い名前のメンバーA')
+    expect(dialog).toHaveTextContent('新しいメンバーC')
+    await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    await user.click(screen.getByRole('button', { name: /👍 2/ }))
+    expect(onReact).toHaveBeenCalledWith('message-reactions', '👍')
+    expect(screen.queryByRole('dialog', { name: '👍 を付けた人' })).not.toBeInTheDocument()
   })
 })
 

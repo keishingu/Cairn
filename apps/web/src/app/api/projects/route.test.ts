@@ -14,7 +14,7 @@ const { mockGetAuthContext, mockDb, selectChains } = vi.hoisted(() => {
     ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: 'ws-00000001', role: 'member' },
     error: null,
   })
-  const mockDb = { select: vi.fn() }
+  const mockDb = { select: vi.fn(), selectDistinctOn: vi.fn() }
   const selectChains: Record<string, unknown>[] = []
   return { mockGetAuthContext, mockDb, selectChains }
 })
@@ -28,11 +28,14 @@ vi.mock('@cairn/db', () => ({
   projectStatuses:{ id: 'ps.id', name: 'ps.name', color: 'ps.color' },
   projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', role: 'pm.role', createdAt: 'pm.createdAt' },
   tasks:          { projectId: 'tk.projectId', channelId: 'tk.channelId', status: 'tk.status' },
-  channels:       { id: 'ch.id', isPrivate: 'ch.isPrivate' },
+  channels:       { id: 'ch.id', projectId: 'ch.projectId', workspaceId: 'ch.workspaceId', type: 'ch.type', isPrivate: 'ch.isPrivate' },
   channelMembers: { channelId: 'cm.channelId', userId: 'cm.userId' },
+  messages:       { id: 'msg.id', channelId: 'msg.channelId', senderId: 'msg.senderId', content: 'msg.content', deletedAt: 'msg.deletedAt', createdAt: 'msg.createdAt' },
+  userBlocks:     { blockerId: 'ub.blockerId', blockedId: 'ub.blockedId' },
   profiles:       { id: 'pr.id', displayName: 'pr.displayName' },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', displayName: 'wm.displayName', avatarUrl: 'wm.avatarUrl' },
   activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
+  workspaceProfileAttributes: { id: 'attr.id', name: 'attr.name', workspaceId: 'attr.workspaceId' },
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -40,6 +43,8 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn((a: unknown, b: unknown) => ({ and: [a, b] })),
   count: vi.fn(() => 'count'),
   inArray: vi.fn(() => 'inArray'),
+  isNull: vi.fn(() => 'isNull'),
+  desc: vi.fn((column: unknown) => ({ desc: column })),
   sql: Object.assign(vi.fn(() => 'sql'), { raw: vi.fn() }),
 }))
 
@@ -61,6 +66,7 @@ function chain(result: unknown[]) {
 describe('GET /api/projects', () => {
   beforeEach(() => {
     process.env['DATABASE_URL'] = 'postgresql://test'
+    mockDb.selectDistinctOn.mockImplementation(() => chain([]))
   })
   afterEach(() => {
     delete process.env['DATABASE_URL']
@@ -183,5 +189,48 @@ describe('GET /api/projects', () => {
       expect.objectContaining({ id: PROJ_2, isJoined: true, isHosting: false }),
       expect.objectContaining({ id: 'proj-00000003', isJoined: true, isHosting: true }),
     ])
+  })
+
+  it('最新投稿の送信者と本文を返し、メンションと改行を表示用に整える', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJ_1 }, { id: PROJ_2 }]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([{ id: 'mentioned-user', displayName: '現在の名前' }]))
+      .mockReturnValueOnce(chain([{ id: 'coach', name: 'コーチ' }]))
+    mockDb.selectDistinctOn.mockReturnValueOnce(chain([{
+      projectId: PROJ_1, senderName: '送信者', content: '<@mentioned-user> <@outside-user> <@attr:coach>\n集合しましょう',
+    }]))
+
+    const { GET } = await import('./route')
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body[0].latestMessage).toEqual({ senderName: '送信者', content: '@現在の名前 @不明なメンバー @コーチ 集合しましょう' })
+    expect(body[1].latestMessage).toBeNull()
+  })
+
+  it('最新投稿は可視プロジェクトに限定し、削除・非公開・ブロックの条件を適用する', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: PROJ_1 }]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+    const drizzle = await import('drizzle-orm')
+    const { GET } = await import('./route')
+    await GET()
+
+    expect(drizzle.inArray).toHaveBeenCalledWith('ch.projectId', [PROJ_1])
+    expect(drizzle.eq).toHaveBeenCalledWith('ch.type', 'project')
+    expect(drizzle.isNull).toHaveBeenCalledWith('msg.deletedAt')
+    expect(selectChains[5]?.['orderBy']).toHaveBeenCalledWith('ch.projectId', { desc: 'msg.createdAt' }, { desc: 'msg.id' })
+    const calls = vi.mocked(drizzle.sql).mock.calls
+    const privateCheck = calls.find(([parts]) => (parts as TemplateStringsArray).join('').includes('= false or exists'))
+    expect(privateCheck).toEqual(expect.arrayContaining(['ch.isPrivate', 'cm.channelId', 'ch.id', 'cm.userId', USER_ID]))
+    const blockCheck = calls.find(([parts]) => (parts as TemplateStringsArray).join('').includes('not exists'))
+    expect(blockCheck).toEqual(expect.arrayContaining(['ub.blockerId', 'ub.blockedId', USER_ID, 'msg.senderId']))
   })
 })

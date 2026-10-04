@@ -21,7 +21,7 @@
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
 | キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
-| LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware） |
+| LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware）、`../marketing/ad-30s/README.md`（30 秒広告の素材と書き出し手順） |
 | パフォーマンス | `performance-improvement-plan.md`（残作業） | — |
 | Web Push 通知（VAPID） | `web-push.md`（現行） | — |
 | Electron デスクトップ | `desktop-app.md`（現行） | — |
