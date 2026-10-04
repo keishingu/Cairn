@@ -140,6 +140,8 @@ describe('toEnrichedMarkdown', () => {
     const label = 'https://example\\.com/a/very/long/resource/path/that…'
     expect(convert(`**${url}**`)).toBe(`**[${label}](<${url}>)**`)
     expect(convert(`~~${url}~~`)).toBe(`~~[${label}](<${url}>)~~`)
+    expect(convert(`**See ${url}**`)).toBe(`**See [${label}](<${url}>)**`)
+    expect(convert(`**a** see ${url}**`)).toBe(`**a** see [${label}](<${url}**>)`)
   })
 
   test('強調で囲まれていない長い URL は、末尾の `_` や `~` も URL の一部として残す', () => {

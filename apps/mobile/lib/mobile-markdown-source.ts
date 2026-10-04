@@ -33,11 +33,31 @@ function countChar(value: string, char: string): number {
   return value.split(char).length - 1
 }
 
+// URL より前に、同じ長さの記号列（`**` / `_` / `~~` など）が奇数個あれば、強調・取り消し線が開いたままとみなす。
+// `_` は単語の途中（`snake_case` や `prefix_https://…`）では強調を開かないため数えない
+function hasOpenDelimiter(before: string, run: string): boolean {
+  const char = run[0]!
+  let count = 0
+  let index = 0
+  while (index < before.length) {
+    if (before[index] !== char) {
+      index += 1
+      continue
+    }
+    let end = index
+    while (before[end] === char) end += 1
+    const intraword = char === '_' && /[\p{L}\p{N}]/u.test(before[index - 1] ?? '')
+    if (end - index === run.length && !intraword) count += 1
+    index = end
+  }
+  return count % 2 === 1
+}
+
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
 // `.../Function_(mathematics)` のように URL の一部である対応済みの括弧は残す。
-// 末尾の `*` `_` `~` は URL に使える文字なので、直前に同じ記号があって強調・取り消し線の
-// 閉じ側（`**URL**` など）とみなせるときだけ外す
-function trimUrlTrailingPunctuation(url: string, openingMarkers: string): string {
+// 末尾の `*` `_` `~` は URL に使える文字なので、URL より前で開いた強調・取り消し線の
+// 閉じ側（`**URL**` や `**See URL**` など）とみなせるときだけ外す
+function trimUrlTrailingPunctuation(url: string, before: string): string {
   let result = url
   for (;;) {
     const last = result.at(-1)
@@ -54,9 +74,12 @@ function trimUrlTrailingPunctuation(url: string, openingMarkers: string): string
       result = result.slice(0, -1)
       continue
     }
-    if (EMPHASIS_MARKER.test(last) && openingMarkers.includes(last)) {
-      result = result.slice(0, -1)
-      continue
+    if (EMPHASIS_MARKER.test(last)) {
+      const run = new RegExp(`\\${last}+$`).exec(result)![0]
+      if (hasOpenDelimiter(before, run)) {
+        result = result.slice(0, -run.length)
+        continue
+      }
     }
     return result
   }
@@ -295,13 +318,7 @@ function transformInline(
     ) {
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
-        const before = line.slice(0, index)
-        let openingMarkers = /[*_~]*$/.exec(before)?.[0] ?? ''
-        // `_` は単語の途中（`prefix_https://…` など）では強調を開かないため、閉じ記号の根拠にしない
-        if (/[\p{L}\p{N}]/u.test(before.at(-openingMarkers.length - 1) ?? '')) {
-          openingMarkers = openingMarkers.replaceAll('_', '')
-        }
-        const url = trimUrlTrailingPunctuation(match[0], openingMarkers)
+        const url = trimUrlTrailingPunctuation(match[0], line.slice(0, index))
         output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
         index += url.length
         continue
