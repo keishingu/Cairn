@@ -23,6 +23,38 @@ const blockParser = new MarkdownIt()
 // コードの内側でも見た目は変わらず、バックスラッシュのように文字として表示されない
 const IMAGE_BREAK = '\u2060'
 
+// Web（markdown-content.tsx）と同じく、長い URL は見た目だけ「…」で省略する。リンク先は元のまま
+const URL_DISPLAY_MAX = 50
+const BARE_URL_PATTERN = /^https?:\/\/[^\s<>"']+/
+const URL_TRAILING_PUNCTUATION = /[.,;:!?)>\]。、，；：！？）〉》】］]+$/
+
+export function truncateUrlForDisplay(url: string): string {
+  return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
+}
+
+function shortenedUrlLink(url: string): string {
+  return `[${escapeMarkdownText(truncateUrlForDisplay(url))}](<${url}>)`
+}
+
+// `(` の位置からリンク先を読み、対応する `)` の位置を返す（括弧の入れ子とエスケープを考慮）
+function findDestinationEnd(line: string, open: number): number {
+  let depth = 0
+  for (let index = open; index < line.length; index += 1) {
+    const char = line[index]
+    if (char === '\\') {
+      index += 1
+      continue
+    }
+    if (char === '\n') return -1
+    if (char === '(') depth += 1
+    if (char === ')') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
 const AUTOLINK_PATTERN = /^<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>/
 const EMAIL_AUTOLINK_PATTERN = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*>/
 
@@ -114,7 +146,11 @@ function transformInline(
       const rest = line.slice(index)
       const autolink = AUTOLINK_PATTERN.exec(rest) ?? EMAIL_AUTOLINK_PATTERN.exec(rest)
       if (autolink) {
-        output += autolink[0]
+        const url = autolink[0].slice(1, -1)
+        output +=
+          labelEnds.length === 0 && /^https?:\/\//i.test(url) && url.length > URL_DISPLAY_MAX
+            ? shortenedUrlLink(url)
+            : autolink[0]
         index += autolink[0].length
         continue
       }
@@ -134,6 +170,22 @@ function transformInline(
 
     if (char === '[') {
       const end = findLinkLabelEnd(line, index)
+      // `[URL](URL)` のように表示文字がリンク先そのものなら、生の URL と同じく省略する
+      if (end !== -1 && line[end + 1] === '(') {
+        const destinationEnd = findDestinationEnd(line, end + 1)
+        const label = line.slice(index + 1, end)
+        const destination = destinationEnd === -1 ? '' : line.slice(end + 2, destinationEnd).trim()
+        if (
+          destinationEnd !== -1 &&
+          label === destination &&
+          BARE_URL_PATTERN.test(label) &&
+          label.length > URL_DISPLAY_MAX
+        ) {
+          output += `[${escapeMarkdownText(truncateUrlForDisplay(label))}](${line.slice(end + 2, destinationEnd)})`
+          index = destinationEnd + 1
+          continue
+        }
+      }
       if (end !== -1) labelEnds.push(end)
       output += char
       index += 1
@@ -144,13 +196,38 @@ function transformInline(
       if (labelEnds[labelEnds.length - 1] === index) labelEnds.pop()
       output += char
       index += 1
-      // `](<...>)` と参照定義の `]: <...>` の山括弧付きリンク先は HTML ではないので、そのまま残す
-      const destination = /^(\(|:)([ \t]*)<[^<>\n]*>/.exec(line.slice(index))
-      if (destination) {
-        output += destination[0]
-        index += destination[0].length
+      // `](...)` のリンク先と参照定義の `]: ...` は、そのまま残す。山括弧付きのリンク先を
+      // HTML としてエスケープしたり、リンク先の URL を省略表示のリンクに変えたりしない
+      if (line[index] === '(') {
+        const destinationEnd = findDestinationEnd(line, index)
+        if (destinationEnd !== -1) {
+          output += line.slice(index, destinationEnd + 1)
+          index = destinationEnd + 1
+        }
+        continue
+      }
+      const definition = /^:[ \t]*(?:<[^<>\n]*>|\S+)/.exec(line.slice(index))
+      if (definition) {
+        output += definition[0]
+        index += definition[0].length
       }
       continue
+    }
+
+    // 生の URL（md4c が自動リンクにするもの）は長ければ省略表示のリンクにする。
+    // リンク文字列の中や単語の途中は対象外
+    if (
+      (char === 'h' || char === 'H') &&
+      labelEnds.length === 0 &&
+      !/[A-Za-z0-9]/.test(line[index - 1] ?? '')
+    ) {
+      const match = BARE_URL_PATTERN.exec(line.slice(index))
+      if (match) {
+        const url = match[0].replace(URL_TRAILING_PUNCTUATION, '')
+        output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
+        index += url.length
+        continue
+      }
     }
 
     // md4c は `||` を常にスポイラーとして扱う。チャットでは意図しない伏せ字になるため文字として出す。

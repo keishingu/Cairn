@@ -103,6 +103,22 @@ describe('toEnrichedMarkdown', () => {
     expect(convert('[メモ] <@user-1>')).toBe('[メモ] [@山田 太郎](cairn-mention:user-1)')
   })
 
+  test('長い生の URL は Web と同じく50文字で省略し、リンク先は元のまま残す', () => {
+    const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
+    const label = `${url.slice(0, 50)}…`.replace(/[.\-_?&=/:]/g, (c) => (/[.\-_]/.test(c) ? `\\${c}` : c))
+    expect(convert(`見て ${url} 。`)).toBe(`見て [${label}](<${url}>) 。`)
+    expect(convert(`<${url}>`)).toBe(`[${label}](<${url}>)`)
+    expect(convert(`[${url}](${url})`)).toBe(`[${label}](${url})`)
+  })
+
+  test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
+    const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
+    expect(convert('https://example.com/a')).toBe('https://example.com/a')
+    expect(convert(`[資料](${url})`)).toBe(`[資料](${url})`)
+    expect(convert(`[x]: ${url}\n\n[資料][x]`)).toBe(`[x]: ${url}\n\n[資料][x]`)
+    expect(convert(`\`${url}\``)).toBe(`\`${url}\``)
+  })
+
   test('代替テキストが空の参照形式の画像にもラベルを補う', () => {
     expect(convert('![][asset]\n\n[asset]: https://example.com/a.png')).toBe(
       `!${WJ}[画像][asset]\n\n[asset]: https://example.com/a.png`,
