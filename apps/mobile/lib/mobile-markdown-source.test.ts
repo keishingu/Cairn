@@ -132,6 +132,15 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`~~${url}~~`)).toBe(`~~[${label}](<${url}>)~~`)
   })
 
+  test('強調で囲まれていない長い URL は、末尾の `_` や `~` も URL の一部として残す', () => {
+    const underscore = 'https://example.com/a/very/long/resource/path/that/exceeds/fifty_'
+    const tilde = 'https://example.com/a/very/long/resource/path/that/exceeds/fifty~'
+    const label = 'https://example\\.com/a/very/long/resource/path/that…'
+    expect(convert(underscore)).toBe(`[${label}](<${underscore}>)`)
+    expect(convert(`${tilde}。`)).toBe(`[${label}](<${tilde}>)。`)
+    expect(convert(`**${underscore}**`)).toBe(`**[${label}](<${underscore}>)**`)
+  })
+
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
     const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
     expect(convert('https://example.com/a')).toBe('https://example.com/a')

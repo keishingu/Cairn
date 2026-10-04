@@ -26,16 +26,18 @@ const IMAGE_BREAK = '\u2060'
 // Web（markdown-content.tsx）と同じく、長い URL は見た目だけ「…」で省略する。リンク先は元のまま
 const URL_DISPLAY_MAX = 50
 const BARE_URL_PATTERN = /^https?:\/\/[^\s<>"']+/
-// GFM の自動リンクと同じく、末尾の強調・取り消し線の記号（`**URL**` の閉じ側など）も URL に含めない
-const URL_TRAILING_SENTENCE_PUNCTUATION = /[.,;:!?>*_~。、，；：！？〉》】］）]$/
+const URL_TRAILING_SENTENCE_PUNCTUATION = /[.,;:!?>。、，；：！？〉》】］）]$/
+const EMPHASIS_MARKER = /[*_~]/
 
 function countChar(value: string, char: string): number {
   return value.split(char).length - 1
 }
 
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
-// `.../Function_(mathematics)` のように URL の一部である対応済みの括弧は残す
-function trimUrlTrailingPunctuation(url: string): string {
+// `.../Function_(mathematics)` のように URL の一部である対応済みの括弧は残す。
+// 末尾の `*` `_` `~` は URL に使える文字なので、直前に同じ記号があって強調・取り消し線の
+// 閉じ側（`**URL**` など）とみなせるときだけ外す
+function trimUrlTrailingPunctuation(url: string, openingMarkers: string): string {
   let result = url
   for (;;) {
     const last = result.at(-1)
@@ -49,6 +51,10 @@ function trimUrlTrailingPunctuation(url: string): string {
       continue
     }
     if (URL_TRAILING_SENTENCE_PUNCTUATION.test(last)) {
+      result = result.slice(0, -1)
+      continue
+    }
+    if (EMPHASIS_MARKER.test(last) && openingMarkers.includes(last)) {
       result = result.slice(0, -1)
       continue
     }
@@ -269,7 +275,8 @@ function transformInline(
     ) {
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
-        const url = trimUrlTrailingPunctuation(match[0])
+        const openingMarkers = /[*_~]*$/.exec(line.slice(0, index))?.[0] ?? ''
+        const url = trimUrlTrailingPunctuation(match[0], openingMarkers)
         output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
         index += url.length
         continue
