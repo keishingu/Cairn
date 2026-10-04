@@ -69,6 +69,7 @@ import {
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { useT } from '../../../components/locale-provider'
+import { UserAvatar } from '../../../components/user-avatar'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -76,10 +77,6 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 function formatTime(value: string) {
   const source = new Date(value)
   return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
-}
-
-function initials(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || '?'
 }
 
 function attachmentIcon(mimeType: string | null): IoniconName {
@@ -223,17 +220,7 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      {message.senderAvatarUrl ? (
-        <Image source={{ uri: message.senderAvatarUrl }} style={styles.avatar} />
-      ) : (
-        <View
-          style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}
-        >
-          <Text style={[styles.avatarInitial, { color: palette.accentText }]}>
-            {initials(message.senderName)}
-          </Text>
-        </View>
-      )}
+      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
@@ -413,11 +400,7 @@ function QueuedMessageRow({
         : t('Waiting for a connection. It will send automatically.')
   return (
     <View style={styles.messageRow}>
-      <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}>
-        <Text style={[styles.avatarInitial, { color: palette.accentText }]}>
-          {initials(senderName)}
-        </Text>
-      </View>
+      <UserAvatar name={senderName} size={36} />
       <View style={styles.messageBody}>
         <View style={styles.messageMeta}>
           <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
@@ -1410,21 +1393,7 @@ export default function ChatThreadScreen() {
                       { backgroundColor: pressed ? palette.card2 : palette.card },
                     ]}
                   >
-                    {member.avatarUrl ? (
-                      <Image source={{ uri: member.avatarUrl }} style={styles.mentionAvatar} />
-                    ) : (
-                      <View
-                        style={[
-                          styles.mentionAvatar,
-                          styles.avatarFallback,
-                          { backgroundColor: palette.accentSoft },
-                        ]}
-                      >
-                        <Text style={[styles.mentionInitial, { color: palette.accentText }]}>
-                          {initials(member.displayName)}
-                        </Text>
-                      </View>
-                    )}
+                    <UserAvatar name={member.displayName} url={member.avatarUrl} size={26} />
                     <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
                       {member.displayName}
                     </Text>
@@ -1662,9 +1631,7 @@ export default function ChatThreadScreen() {
             <ScrollView style={styles.reactionPeopleList} contentContainerStyle={styles.reactionPeopleListContent}>
               {reactionPeopleSummary && reactionPeopleSummary.userNames.length > 0 ? reactionPeopleSummary.userNames.map((name, index) => (
                 <View key={`${name}-${index}`} style={[styles.reactionPeopleRow, { borderTopColor: palette.divider }]}>
-                  <View style={[styles.reactionPeopleAvatar, { backgroundColor: palette.accentSoft }]}>
-                    <Text style={{ color: palette.accentText, fontWeight: '600' }}>{initials(name)}</Text>
-                  </View>
+                  <UserAvatar name={name} size={40} />
                   <Text style={[styles.reactionPerson, { color: palette.text }]}>{name}</Text>
                   <Text style={styles.reactionPeopleEmoji}>{reactionPeople?.selectedEmoji}</Text>
                 </View>
@@ -1729,9 +1696,6 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 48, paddingHorizontal: 20 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 7 },
   messageBody: { flex: 1, minWidth: 0 },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 13, fontWeight: '700' },
   messageMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1810,7 +1774,6 @@ const styles = StyleSheet.create({
   reactionPeopleList: { flexGrow: 0, flexShrink: 1, minHeight: 0, maxHeight: 400 },
   reactionPeopleListContent: { paddingBottom: 8 },
   reactionPeopleRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  reactionPeopleAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   reactionPeopleEmoji: { fontSize: 20 },
   reactionPersonEmpty: { minHeight: 44, textAlignVertical: 'center' },
   reactionAddStandalone: {
@@ -1901,8 +1864,6 @@ const styles = StyleSheet.create({
     gap: 9,
     paddingHorizontal: 10,
   },
-  mentionAvatar: { width: 26, height: 26, borderRadius: 13 },
-  mentionInitial: { fontSize: 10.5, fontWeight: '700' },
   mentionName: { flex: 1, fontSize: 13, fontWeight: '600' },
   composer: {
     flexDirection: 'row',

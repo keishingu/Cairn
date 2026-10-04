@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -39,6 +38,7 @@ import { useNotificationPanel } from '../../../components/notification-panel-pro
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
 import { useT } from '../../../components/locale-provider'
+import { UserAvatar } from '../../../components/user-avatar'
 
 type ChannelItemProps = {
   channel: ProjectChannelDto
@@ -200,17 +200,7 @@ function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
       }
       activeOpacity={0.7}
     >
-      {channel.participantAvatarUrl ? (
-        <Image source={{ uri: channel.participantAvatarUrl }} style={styles.avatar} />
-      ) : (
-        <View
-          style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}
-        >
-          <Text style={[styles.avatarInitial, { color: palette.accentText }]}>
-            {channel.participantName.slice(0, 1)}
-          </Text>
-        </View>
-      )}
+      <UserAvatar name={channel.participantName} url={channel.participantAvatarUrl} size={36} />
       <Text
         style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
         numberOfLines={1}
@@ -996,21 +986,7 @@ export default function ChatsScreen() {
                         })
                       }
                     >
-                      {member.avatarUrl ? (
-                        <Image source={{ uri: member.avatarUrl }} style={styles.memberAvatar} />
-                      ) : (
-                        <View
-                          style={[
-                            styles.memberAvatar,
-                            styles.avatarFallback,
-                            { backgroundColor: palette.accentSoft },
-                          ]}
-                        >
-                          <Text style={{ color: palette.accentText }}>
-                            {member.displayName.slice(0, 1)}
-                          </Text>
-                        </View>
-                      )}
+                      <UserAvatar name={member.displayName} url={member.avatarUrl} size={36} />
                       <View style={styles.memberCopy}>
                         <Text style={[styles.memberName, { color: palette.text }]}>
                           {member.displayName}
@@ -1265,9 +1241,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeText: { fontSize: 11, fontWeight: '700' },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 13, fontWeight: '700' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { fontSize: 14, textAlign: 'center', padding: 24 },
   empty: { textAlign: 'center', marginTop: 48 },
@@ -1332,13 +1305,6 @@ const styles = StyleSheet.create({
     gap: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 4,
-  },
-  memberAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   memberCopy: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 14, fontWeight: '600' },
