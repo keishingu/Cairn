@@ -154,6 +154,9 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`prefix_${underscore}`)).toBe(`prefix_[${label}](<${underscore}>)`)
     expect(convert(`Use \`_\` then ${underscore}`)).toBe(`Use \`_\` then [${label}](<${underscore}>)`)
     expect(convert(`\\_ ${underscore}`)).toBe(`\\_ [${label}](<${underscore}>)`)
+    expect(convert(`Use _ as a separator, then ${underscore}`)).toBe(
+      `Use _ as a separator, then [${label}](<${underscore}>)`,
+    )
   })
 
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
@@ -178,6 +181,11 @@ describe('toEnrichedMarkdown', () => {
     expect(convert('[![logo][a\\]b]](https://dest.example)\n\n[a\\]b]: https://img.example/x')).toBe(
       '[logo](https://dest.example)\n\n[a\\]b]: https://img.example/x',
     )
+  })
+
+  test('リンク先の ![ は画像の無効化で書き換えず、URL として同じ意味の %21[ にする', () => {
+    expect(convert('[artifact](/tasks?query=![x])')).toBe('[artifact](/tasks?query=%21[x])')
+    expect(convert('[a]\n\n[a]: /tasks?query=![x]')).toBe('[a]\n\n[a]: /tasks?query=%21[x]')
   })
 
   test('代替テキストが空の参照形式の画像にもラベルを補う', () => {

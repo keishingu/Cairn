@@ -33,11 +33,11 @@ function countChar(value: string, char: string): number {
   return value.split(char).length - 1
 }
 
-// URL より前に、同じ長さの記号列（`**` / `_` / `~~` など）が奇数個あれば、強調・取り消し線が開いたままとみなす。
-// エスケープ・インラインコード内の記号と、単語の途中（`snake_case` や `prefix_https://…`）では強調を開かないため数えない
+// URL より前で、同じ長さの記号列（`**` / `_` / `~~` など）による強調・取り消し線が開いたままかを返す。
+// エスケープ・インラインコード内の記号、直後が空白の記号（`_ as a separator`）、単語途中の `_` は強調を開かない
 function hasOpenDelimiter(before: string, run: string): boolean {
   const char = run[0]!
-  let count = 0
+  let open = false
   let index = 0
   while (index < before.length) {
     // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
@@ -57,11 +57,19 @@ function hasOpenDelimiter(before: string, run: string): boolean {
     }
     let end = index
     while (before[end] === char) end += 1
-    const intraword = char === '_' && /[\p{L}\p{N}]/u.test(before[index - 1] ?? '')
-    if (end - index === run.length && !intraword) count += 1
+    if (end - index === run.length) {
+      const previous = before[index - 1] ?? ''
+      // `before` の末尾の記号の直後は URL（空白ではない）
+      const next = before[end] ?? 'h'
+      // 直前が空白でなければ閉じられ、直後が空白でなければ開ける（CommonMark の flanking の簡略版）
+      const canClose = previous !== '' && !/\s/.test(previous)
+      const canOpen = !/\s/.test(next) && !(char === '_' && /[\p{L}\p{N}]/u.test(previous))
+      if (open && canClose) open = false
+      else if (!open && canOpen) open = true
+    }
     index = end
   }
-  return count % 2 === 1
+  return open
 }
 
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
@@ -100,8 +108,14 @@ export function truncateUrlForDisplay(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
 }
 
+// 画像構文の無効化（`![` の間に不可視文字を挟む）がリンク先を書き換えないよう、
+// リンク先の `![` は URL として同じ意味の `%21[` にしておく
+function protectDestination(destination: string): string {
+  return destination.replaceAll('![', '%21[')
+}
+
 function shortenedUrlLink(url: string): string {
-  return `[${escapeMarkdownText(truncateUrlForDisplay(url))}](<${url}>)`
+  return `[${escapeMarkdownText(truncateUrlForDisplay(url))}](<${protectDestination(url)}>)`
 }
 
 // `(` の位置からリンク先（とタイトル）を CommonMark に沿って読み、閉じ `)` の位置を返す。
@@ -296,7 +310,7 @@ function transformInline(
         output +=
           labelEnds.length === 0 && /^https?:\/\//i.test(url) && url.length > URL_DISPLAY_MAX
             ? shortenedUrlLink(url)
-            : autolink[0]
+            : protectDestination(autolink[0])
         index += autolink[0].length
         continue
       }
@@ -344,7 +358,7 @@ function transformInline(
           BARE_URL_PATTERN.test(label) &&
           label.length > URL_DISPLAY_MAX
         ) {
-          output += `[${escapeMarkdownText(truncateUrlForDisplay(label))}](${line.slice(end + 2, destinationEnd)})`
+          output += `[${escapeMarkdownText(truncateUrlForDisplay(label))}](${protectDestination(line.slice(end + 2, destinationEnd))})`
           index = destinationEnd + 1
           continue
         }
@@ -364,14 +378,14 @@ function transformInline(
       if (line[index] === '(') {
         const destinationEnd = findDestinationEnd(line, index)
         if (destinationEnd !== -1) {
-          output += line.slice(index, destinationEnd + 1)
+          output += protectDestination(line.slice(index, destinationEnd + 1))
           index = destinationEnd + 1
         }
         continue
       }
       const definition = /^:[ \t]*(?:<[^<>\n]*>|\S+)/.exec(line.slice(index))
       if (definition) {
-        output += definition[0]
+        output += protectDestination(definition[0])
         index += definition[0].length
       }
       continue
@@ -387,7 +401,7 @@ function transformInline(
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
         const url = trimUrlTrailingPunctuation(match[0], line.slice(0, index))
-        output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : url
+        output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : protectDestination(url)
         index += url.length
         continue
       }
