@@ -158,7 +158,9 @@ export function ChatOfficeViewer({
               source={{ uri: loadState.localUri }}
               // 読めるのは表示中のファイルだけにし、文書に埋め込まれたスクリプトも動かさない
               allowingReadAccessToURL={loadState.localUri}
-              originWhitelist={['file://*']}
+              // 既定の許可リストに合わない URL は react-native-webview が判定前に外部で開いてしまうため、
+              // すべての遷移を handleNavigation に通して表示中のファイル以外はそこで止める
+              originWhitelist={['*']}
               javaScriptEnabled={false}
               style={styles.document}
               onShouldStartLoadWithRequest={handleNavigation}
