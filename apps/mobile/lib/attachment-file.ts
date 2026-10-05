@@ -15,18 +15,28 @@ export function isOfficeDocument(fileName: string): boolean {
   return OFFICE_EXTENSIONS.test(fileName)
 }
 
-// 画面内で開ける添付。それ以外は共有シートで外部アプリに渡す。
+export type AttachmentViewer = 'image' | 'pdf' | 'office'
+
+// 画面内で開くときのビューア。null は共有シートで外部アプリに渡す。
+// 画像と PDF は MIME を優先し、拡張子だけ Office の画像などを WebView で開いて失敗させない。
 // Office ファイルは iOS の WebView（OS 標準のプレビュー）だけが表示できるため iOS に限る
+export function attachmentViewer(
+  mimeType: string | null | undefined,
+  fileName: string,
+  platform: string,
+): AttachmentViewer | null {
+  if (isPdfMime(mimeType)) return 'pdf'
+  if (isImageMime(mimeType)) return 'image'
+  if (platform === 'ios' && isOfficeDocument(fileName)) return 'office'
+  return null
+}
+
 export function isPreviewableAttachment(
   mimeType: string | null | undefined,
   fileName: string,
   platform: string,
 ): boolean {
-  return (
-    isImageMime(mimeType) ||
-    isPdfMime(mimeType) ||
-    (platform === 'ios' && isOfficeDocument(fileName))
-  )
+  return attachmentViewer(mimeType, fileName, platform) !== null
 }
 
 export function attachmentCacheFileName(fileId: string, fileName: string): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   attachmentCacheFileName,
+  attachmentViewer,
   isImageMime,
   isOfficeDocument,
   isPdfMime,
@@ -43,6 +44,13 @@ describe('添付ファイルの表示とキャッシュ', () => {
     expect(isPreviewableAttachment('application/msword', 'a.doc', 'android')).toBe(false)
     // MIME だけ Office でも、拡張子が違えば HTML などとして描画されうるため画面内では開かない
     expect(isPreviewableAttachment('application/msword', 'a.html', 'ios')).toBe(false)
+  })
+
+  it('画像と PDF は MIME を拡張子より優先してビューアを選ぶ', () => {
+    expect(attachmentViewer('image/png', 'scan.docx', 'ios')).toBe('image')
+    expect(attachmentViewer('application/pdf', 'report.xlsx', 'ios')).toBe('pdf')
+    expect(attachmentViewer('application/octet-stream', 'report.xlsx', 'ios')).toBe('office')
+    expect(attachmentViewer('application/octet-stream', 'report.xlsx', 'android')).toBeNull()
   })
 
   it('キャッシュ名はファイル ID を残し、パスに使えない文字を除く', () => {

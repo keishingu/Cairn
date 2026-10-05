@@ -46,7 +46,7 @@ import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { isImageMime, isOfficeDocument, isPdfMime, isPreviewableAttachment } from '../../../lib/attachment-file'
+import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -525,6 +525,9 @@ export default function ChatThreadScreen() {
   const [attachmentPreview, setAttachmentPreview] = React.useState<
     MessageDto['attachments'][number] | null
   >(null)
+  const previewViewer = attachmentPreview
+    ? attachmentViewer(attachmentPreview.mimeType, attachmentPreview.fileName, Platform.OS)
+    : null
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
@@ -1642,7 +1645,7 @@ export default function ChatThreadScreen() {
           </View>
         </Modal>
         {attachmentPreview && session?.access_token && (
-          isPdfMime(attachmentPreview.mimeType) ? (
+          previewViewer === 'pdf' ? (
             <ChatPdfViewer
               fileUrl={attachmentUrl(attachmentPreview.fileId)}
               fileId={attachmentPreview.fileId}
@@ -1652,7 +1655,16 @@ export default function ChatThreadScreen() {
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
-          ) : isOfficeDocument(attachmentPreview.fileName) ? (
+          ) : previewViewer === 'image' ? (
+            <ChatImageViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+            />
+          ) : previewViewer === 'office' ? (
             <ChatOfficeViewer
               fileUrl={attachmentUrl(attachmentPreview.fileId)}
               fileId={attachmentPreview.fileId}
@@ -1662,16 +1674,7 @@ export default function ChatThreadScreen() {
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
-          ) : (
-            <ChatImageViewer
-              fileUrl={attachmentUrl(attachmentPreview.fileId)}
-              fileId={attachmentPreview.fileId}
-              fileName={attachmentPreview.fileName}
-              mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
-              onClose={() => setAttachmentPreview(null)}
-            />
-          )
+          ) : null
         )}
       </Animated.View>
     </KeyboardAvoidingView>
