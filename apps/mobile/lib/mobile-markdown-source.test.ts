@@ -141,6 +141,7 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`**${url}**`)).toBe(`**[${label}](<${url}>)**`)
     expect(convert(`~~${url}~~`)).toBe(`~~[${label}](<${url}>)~~`)
     expect(convert(`**See ${url}**`)).toBe(`**See [${label}](<${url}>)**`)
+    expect(convert(`**bold *See ${url}***`)).toBe(`**bold *See [${label}](<${url}>)***`)
     expect(convert(`**a** see ${url}**`)).toBe(`**a** see [${label}](<${url}**>)`)
   })
 

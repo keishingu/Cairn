@@ -94,9 +94,14 @@ function trimUrlTrailingPunctuation(url: string, before: string): string {
       continue
     }
     if (EMPHASIS_MARKER.test(last)) {
-      const run = new RegExp(`\\${last}+$`).exec(result)![0]
-      if (hasOpenDelimiter(before, run)) {
-        result = result.slice(0, -run.length)
+      // `***` が `**` と `*` の閉じを兼ねる場合もあるため、開いている長さの分だけ外して繰り返す
+      const runLength = new RegExp(`\\${last}+$`).exec(result)![0].length
+      let closed = 0
+      for (let length = runLength; length > 0 && closed === 0; length -= 1) {
+        if (hasOpenDelimiter(before, last.repeat(length))) closed = length
+      }
+      if (closed > 0) {
+        result = result.slice(0, -closed)
         continue
       }
     }
