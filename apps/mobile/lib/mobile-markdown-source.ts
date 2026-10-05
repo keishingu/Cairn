@@ -34,12 +34,23 @@ function countChar(value: string, char: string): number {
 }
 
 // URL より前に、同じ長さの記号列（`**` / `_` / `~~` など）が奇数個あれば、強調・取り消し線が開いたままとみなす。
-// `_` は単語の途中（`snake_case` や `prefix_https://…`）では強調を開かないため数えない
+// エスケープ・インラインコード内の記号と、単語の途中（`snake_case` や `prefix_https://…`）では強調を開かないため数えない
 function hasOpenDelimiter(before: string, run: string): boolean {
   const char = run[0]!
   let count = 0
   let index = 0
   while (index < before.length) {
+    // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
+    if (before[index] === '\\') {
+      index += 2
+      continue
+    }
+    if (before[index] === '`') {
+      const tick = /^`+/.exec(before.slice(index))![0]
+      const closing = findClosingBackticks(before, index + tick.length, tick.length)
+      index = closing === -1 ? index + tick.length : closing + tick.length
+      continue
+    }
     if (before[index] !== char) {
       index += 1
       continue
