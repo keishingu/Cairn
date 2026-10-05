@@ -12,7 +12,7 @@ import { isMentionLink, MENTION_LINK_SCHEME, toEnrichedMarkdown } from '../lib/m
 import type { ThemePalette } from '../lib/theme'
 import { useT } from './locale-provider'
 
-// 改行1つでも改行として見せる（従来の markdown-it の breaks: true と同じ）。
+// 改行1つでも改行として見せる（Web の remark-breaks と同じ）。
 // `$` は金額などで頻出するため数式として解釈しない。`> [!NOTE]` は Web と同じく通常の引用にする
 const MD4C_FLAGS: Md4cFlags = {
   hardSoftBreaks: true,
