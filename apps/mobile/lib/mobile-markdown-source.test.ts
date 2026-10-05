@@ -143,6 +143,8 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`**See ${url}**`)).toBe(`**See [${label}](<${url}>)**`)
     expect(convert(`**bold *See ${url}***`)).toBe(`**bold *See [${label}](<${url}>)***`)
     expect(convert(`***bold** See ${url}*`)).toBe(`***bold** See [${label}](<${url}>)*`)
+    const doubled = `${url}**`
+    expect(convert(`a*${doubled}`)).toBe(`a*[${label}](<${doubled}>)`)
     const asterisk = `${url}*`
     expect(convert(`glob*.json: ${asterisk}`)).toBe(`glob*.json: [${label}](<${asterisk}>)`)
     expect(convert(`**a** see ${url}**`)).toBe(`**a** see [${label}](<${url}**>)`)

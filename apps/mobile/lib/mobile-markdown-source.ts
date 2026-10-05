@@ -33,11 +33,43 @@ function countChar(value: string, char: string): number {
   return value.split(char).length - 1
 }
 
-// URL より前で開いたまま閉じていない強調・取り消し線の記号（`*` / `_` / `~`）の個数を返す。
+// URL より前で開いたまま閉じていない強調・取り消し線の記号（`*` / `_` / `~`）を返す。
 // 開き記号の列を積み、閉じ記号の列で後ろから消費する（`***a** b` は `*` が1つ残る）。
 // エスケープ・インラインコード内の記号、flanking 規則で開閉できない記号、単語途中の `_` は数えない
-function countOpenDelimiters(before: string, char: string): number {
-  const stack: number[] = []
+type OpenDelimiter = { units: number; length: number; canClose: boolean }
+
+// 閉じ記号の列（長さ closerLength、開閉両用なら closerCanOpen）で、開いたままの記号を後ろから消費する。
+// CommonMark の「3の倍数」規則（開閉両用の記号が絡むと長さの和が3の倍数の組は対にならない）を適用し、
+// 対になった記号の数を返す
+function consumeOpenDelimiters(
+  stack: OpenDelimiter[],
+  closerLength: number,
+  closerCanOpen: boolean,
+): number {
+  let units = closerLength
+  let matched = 0
+  for (let position = stack.length - 1; position >= 0 && units > 0; position -= 1) {
+    const opener = stack[position]!
+    const bothFlanking = opener.canClose || closerCanOpen
+    if (
+      bothFlanking &&
+      (opener.length + closerLength) % 3 === 0 &&
+      !(opener.length % 3 === 0 && closerLength % 3 === 0)
+    ) {
+      continue
+    }
+    const used = Math.min(opener.units, units)
+    opener.units -= used
+    units -= used
+    matched += used
+    // 対になった開き記号より後に積まれたものは、もう閉じられない
+    stack.splice(opener.units === 0 ? position : position + 1)
+  }
+  return matched
+}
+
+function openDelimiterStack(before: string, char: string): OpenDelimiter[] {
+  const stack: OpenDelimiter[] = []
   let index = 0
   while (index < before.length) {
     // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
@@ -69,19 +101,12 @@ function countOpenDelimiters(before: string, char: string): number {
     // `_` は単語の途中では開閉しない
     const canOpen = char === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
     const canClose = char === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
-    let units = end - index
-    if (canClose) {
-      while (units > 0 && stack.length > 0) {
-        const used = Math.min(stack[stack.length - 1]!, units)
-        stack[stack.length - 1]! -= used
-        units -= used
-        if (stack[stack.length - 1] === 0) stack.pop()
-      }
-    }
-    if (units > 0 && canOpen) stack.push(units)
+    const length = end - index
+    const units = canClose ? length - consumeOpenDelimiters(stack, length, canOpen) : length
+    if (units > 0 && canOpen) stack.push({ units, length, canClose })
     index = end
   }
-  return stack.reduce((total, units) => total + units, 0)
+  return stack
 }
 
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
@@ -90,6 +115,8 @@ function countOpenDelimiters(before: string, char: string): number {
 // 閉じ側（`**URL**` や `**See URL**` など）とみなせるときだけ外す
 function trimUrlTrailingPunctuation(url: string, before: string): string {
   let result = url
+  // 同じ種類の記号は一度だけ判定する（外した記号の分の開き記号を二重に使わない）
+  const checkedMarkers = new Set<string>()
   for (;;) {
     const last = result.at(-1)
     if (!last) return result
@@ -105,10 +132,12 @@ function trimUrlTrailingPunctuation(url: string, before: string): string {
       result = result.slice(0, -1)
       continue
     }
-    if (EMPHASIS_MARKER.test(last)) {
-      // 開いたままの記号の数だけ閉じとして外す（`***` が `**` と `*` の閉じを兼ねる場合も含む）
+    if (EMPHASIS_MARKER.test(last) && !checkedMarkers.has(last)) {
+      checkedMarkers.add(last)
+      // 開いたままの記号と対になる数だけ閉じとして外す（`***` が `**` と `*` の閉じを兼ねる場合も含む）。
+      // URL 末尾の記号の直後は空白か文末なので、開き記号にはならない
       const runLength = new RegExp(`\\${last}+$`).exec(result)![0].length
-      const closed = Math.min(runLength, countOpenDelimiters(before, last))
+      const closed = consumeOpenDelimiters(openDelimiterStack(before, last), runLength, false)
       if (closed > 0) {
         result = result.slice(0, -closed)
         continue
