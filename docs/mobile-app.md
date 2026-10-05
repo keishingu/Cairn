@@ -12,6 +12,9 @@
 - **表示言語は `profiles.locale`（`ja` / `en` / `ko` / `system`）が共有元**。`system` はブラウザまたは端末の言語に従う。設定 WebView は `locale-changed` を bridge へ通知し、Expo のタブとログインも同じ設定に合わせる
 - **カレンダーの週の始まりは `profiles.calendar_week_start`（`sunday` / `monday`、既定は日曜）が共有元**。設定 → 外観で選び `PATCH /api/me` へ保存する。Web の `cairn:calendar_week_start` は取得前の即時描画用キャッシュに留める。カレンダー画面自体は WebView
 - ネイティブチャットも Web と同じ private Realtime Broadcast（`user:{userId}` / `channel:{channelId}`）で更新し、ポーリングは使わない
+- **チャット添付の画像と PDF はアプリ内のモーダルで開く**（`chat-image-viewer.tsx` / `chat-pdf-viewer.tsx`）。PDF は `react-native-pdf`（iOS は PDFKit、Android は Pdfium）で描画し、取得は共有シートと同じ `attachment-cache.ts` のキャッシュを使う。iOS では Word / Excel / PowerPoint も `chat-office-viewer.tsx` で開く。WKWebView が OS 標準のプレビューで Office ファイルを描画できるため、ネイティブ依存を足さずに同じキャッシュのファイルを `file://` で読み込む（Android の WebView は描画できないため共有シートのまま）。WebView は描画方法をファイルの拡張子で決めるため、Office 判定は MIME ではなく拡張子だけで行い、読み取りは表示中のファイルだけに絞って JavaScript を無効にする（MIME だけ Office の HTML などをキャッシュ内の他ファイルが読める状態で描画させない）。それ以外の形式は共有シートで外部アプリに渡す。PDF と Office ファイル内のリンクはチャット本文と同じ `resolveMobileMarkdownLink` で判定する
+- **チャット本文の Markdown は `react-native-enriched-markdown` でネイティブ描画する**（`mobile-markdown.tsx`）。パーサー（md4c）はネイティブ側にあるため、メンション・画像の自動取得禁止・長い URL の省略・`||` と HTML のエスケープは `lib/mobile-markdown-source.ts` で、Web と同じ mdast（GFM）の構文木の上で適用してから Markdown に戻す。コードハイライト・数式・動画はルートと `apps/mobile` の `package.json` の `enriched-markdown` ブロックで無効にし、install 時のネイティブ資産ダウンロードも止めている。表示規則は [`.interface-design/system.md`](../.interface-design/system.md) の「React NativeチャットのMarkdown本文」
+- **Mermaid 図はタップで全画面表示する**（`components/mermaid-diagram.tsx`）。md4c では描画できないため、本文最上位の ```` ```mermaid ```` を `splitMermaidSegments` で本文から分けてカードにし、全画面の WebView で Web と同じ設定の mermaid を描画する。mermaid は Web と同じバージョンに固定して CDN から Subresource Integrity 付きで読み込むため、Web の mermaid を上げたら `lib/mermaid-html.ts` のバージョンと integrity も更新する
 
 ## 開発
 
