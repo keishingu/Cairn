@@ -37,6 +37,7 @@ import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -44,7 +45,7 @@ import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { isImageMime, isPdfMime, isPreviewableAttachment } from '../../../lib/attachment-file'
+import { isImageMime, isOfficeDocument, isPdfMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -129,7 +130,7 @@ function AttachmentChip({
 }) {
   const t = useT()
   const isImage = isImageMime(attachment.mimeType)
-  const isPreviewable = isPreviewableAttachment(attachment.mimeType)
+  const isPreviewable = isPreviewableAttachment(attachment.mimeType, attachment.fileName, Platform.OS)
   return (
     <Pressable
       accessibilityRole="button"
@@ -1023,7 +1024,7 @@ export default function ChatThreadScreen() {
   // PDF 内のリンクもチャット本文と同じ規則で開く。アプリ内の画面へ移るときは
   // モーダルが遷移先を覆わないよう閉じ、外部ブラウザへ渡すときは読んでいた位置を残す。
   // 送信欄のエラーはモーダルの裏に隠れるため、PDF 表示中の失敗は Alert で伝える
-  const openPdfLink = React.useCallback(
+  const openDocumentLink = React.useCallback(
     (url: string) => {
       const target = resolveMobileMarkdownLink(url, API_BASE_URL)
       if (!target) {
@@ -1648,7 +1649,17 @@ export default function ChatThreadScreen() {
               mimeType={attachmentPreview.mimeType}
               accessToken={session.access_token}
               onClose={() => setAttachmentPreview(null)}
-              onPressLink={openPdfLink}
+              onPressLink={openDocumentLink}
+            />
+          ) : isOfficeDocument(attachmentPreview.mimeType, attachmentPreview.fileName) ? (
+            <ChatOfficeViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+              onPressLink={openDocumentLink}
             />
           ) : (
             <ChatImageViewer

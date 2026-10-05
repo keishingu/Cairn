@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   attachmentCacheFileName,
   isImageMime,
+  isOfficeDocument,
   isPdfMime,
   isPreviewableAttachment,
   shouldReuseCachedFile,
@@ -23,10 +24,24 @@ describe('添付ファイルの表示とキャッシュ', () => {
   })
 
   it('画像と PDF は画面内で開き、それ以外は共有シートに回す', () => {
-    expect(isPreviewableAttachment('image/jpeg')).toBe(true)
-    expect(isPreviewableAttachment('application/pdf')).toBe(true)
-    expect(isPreviewableAttachment('text/plain')).toBe(false)
-    expect(isPreviewableAttachment(undefined)).toBe(false)
+    expect(isPreviewableAttachment('image/jpeg', 'a.jpg', 'android')).toBe(true)
+    expect(isPreviewableAttachment('application/pdf', 'a.pdf', 'android')).toBe(true)
+    expect(isPreviewableAttachment('text/plain', 'a.txt', 'ios')).toBe(false)
+    expect(isPreviewableAttachment(undefined, 'a', 'ios')).toBe(false)
+  })
+
+  it('Office ファイルを MIME または拡張子で判定する', () => {
+    expect(
+      isOfficeDocument('application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'a.docx'),
+    ).toBe(true)
+    expect(isOfficeDocument('application/octet-stream', '見積.XLSX')).toBe(true)
+    expect(isOfficeDocument('application/vnd.ms-powerpoint', 'slides')).toBe(true)
+    expect(isOfficeDocument('text/plain', 'memo.txt')).toBe(false)
+  })
+
+  it('Office ファイルは iOS では画面内で開き、Android では共有シートに回す', () => {
+    expect(isPreviewableAttachment('application/msword', 'a.doc', 'ios')).toBe(true)
+    expect(isPreviewableAttachment('application/msword', 'a.doc', 'android')).toBe(false)
   })
 
   it('キャッシュ名はファイル ID を残し、パスに使えない文字を除く', () => {
