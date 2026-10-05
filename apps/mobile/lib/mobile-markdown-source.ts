@@ -35,7 +35,7 @@ function countChar(value: string, char: string): number {
 
 // URL より前で開いたまま閉じていない強調・取り消し線の記号（`*` / `_` / `~`）を返す。
 // 開き記号の列を積み、閉じ記号の列で後ろから消費する（`***a** b` は `*` が1つ残る）。
-// エスケープ・インラインコード内の記号、flanking 規則で開閉できない記号、単語途中の `_` は数えない
+// エスケープ・インラインコード・リンク先・URL 内の記号、flanking 規則で開閉できない記号、単語途中の `_` は数えない
 type OpenDelimiter = { units: number; length: number; canClose: boolean }
 
 // 閉じ記号の列（長さ closerLength、開閉両用なら closerCanOpen）で、開いたままの記号を後ろから消費する。
@@ -82,6 +82,28 @@ function openDelimiterStack(before: string, char: string): OpenDelimiter[] {
       const closing = findClosingBackticks(before, index + tick.length, tick.length)
       index = closing === -1 ? index + tick.length : closing + tick.length
       continue
+    }
+    // リンク先（`](...)`）・自動リンク（`<...>`）・生の URL の中の記号も強調にならない
+    if (before[index] === ']' && before[index + 1] === '(') {
+      const destinationEnd = findDestinationEnd(before, index + 1)
+      if (destinationEnd !== -1) {
+        index = destinationEnd + 1
+        continue
+      }
+    }
+    if (before[index] === '<') {
+      const autolink = AUTOLINK_PATTERN.exec(before.slice(index))
+      if (autolink) {
+        index += autolink[0].length
+        continue
+      }
+    }
+    if (/[hH]/.test(before[index]!) && !/[A-Za-z0-9]/.test(before[index - 1] ?? '')) {
+      const url = BARE_URL_PATTERN.exec(before.slice(index))
+      if (url) {
+        index += url[0].length
+        continue
+      }
     }
     if (before[index] !== char) {
       index += 1

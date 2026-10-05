@@ -160,6 +160,12 @@ describe('toEnrichedMarkdown', () => {
     expect(convert(`prefix_${underscore}`)).toBe(`prefix_[${label}](<${underscore}>)`)
     expect(convert(`Use \`_\` then ${underscore}`)).toBe(`Use \`_\` then [${label}](<${underscore}>)`)
     expect(convert(`\\_ ${underscore}`)).toBe(`\\_ [${label}](<${underscore}>)`)
+    expect(convert(`[draft](https://example.com/_open) then ${underscore}`)).toBe(
+      `[draft](https://example.com/_open) then [${label}](<${underscore}>)`,
+    )
+    expect(convert(`https://example.com/_open then ${underscore}`)).toBe(
+      `https://example.com/_open then [${label}](<${underscore}>)`,
+    )
     expect(convert(`Use _ as a separator, then ${underscore}`)).toBe(
       `Use _ as a separator, then [${label}](<${underscore}>)`,
     )
