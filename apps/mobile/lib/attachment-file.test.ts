@@ -33,6 +33,7 @@ describe('添付ファイルの表示とキャッシュ', () => {
   it('Office ファイルは WebView が描画方法を決める拡張子だけで判定する', () => {
     expect(isOfficeDocument('a.docx')).toBe(true)
     expect(isOfficeDocument('見積.XLSX')).toBe(true)
+    expect(isOfficeDocument('slides.pptx')).toBe(true)
     expect(isOfficeDocument('slides')).toBe(false)
     expect(isOfficeDocument('memo.txt')).toBe(false)
   })

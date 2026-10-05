@@ -6,7 +6,8 @@ export function isPdfMime(mimeType: string | null | undefined): boolean {
   return mimeType === 'application/pdf'
 }
 
-const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx?)$/i
+// アップロードで受け付ける形式に合わせる（PowerPoint は .pptx のみ。apps/web/src/lib/attachments.ts）
+const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx)$/i
 
 // Word / Excel / PowerPoint。iOS の WebView はキャッシュしたファイルの拡張子で描画方法を決めるため、
 // MIME ではなく拡張子だけで判定する（MIME だけ Office で名前が .html などのファイルを HTML として開かせない）
