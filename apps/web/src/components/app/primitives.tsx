@@ -4,6 +4,7 @@ import React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { avatarGradient, avatarInitial } from '@cairn/shared'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -115,22 +116,6 @@ export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.
 )
 
 // ─── Avatar ───────────────────────────────────────────────────────
-const AV_GRADS = [
-  ['#34D399', '#10B981'],
-  ['#60A5FA', '#3B82F6'],
-  ['#F59E0B', '#F97316'],
-  ['#F472B6', '#EC4899'],
-  ['#A78BFA', '#7C3AED'],
-  ['#FB7185', '#E11D48'],
-  ['#22D3EE', '#0891B2'],
-  ['#FBBF24', '#D97706'],
-]
-function hashName(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
-
 interface AvatarProps {
   name?: string
   url?: string | null
@@ -140,8 +125,8 @@ interface AvatarProps {
 }
 
 export const Avatar = ({ name = '', url, size = 28, ring = false, style }: AvatarProps) => {
-  const initials = name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() : '?'
-  const g = AV_GRADS[hashName(name) % AV_GRADS.length]!
+  const initials = avatarInitial(name)
+  const g = avatarGradient(name)
   const base: React.CSSProperties = {
     width: size, height: size, borderRadius: '50%',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

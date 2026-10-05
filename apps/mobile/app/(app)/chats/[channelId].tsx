@@ -37,13 +37,14 @@ import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { isImageMime } from '../../../lib/attachment-file'
+import { isImageMime, isPdfMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -68,6 +69,7 @@ import {
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { useT } from '../../../components/locale-provider'
+import { UserAvatar } from '../../../components/user-avatar'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -75,10 +77,6 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name']
 function formatTime(value: string) {
   const source = new Date(value)
   return `${source.getMonth() + 1}/${source.getDate()} ${String(source.getHours()).padStart(2, '0')}:${String(source.getMinutes()).padStart(2, '0')}`
-}
-
-function initials(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || '?'
 }
 
 function attachmentIcon(mimeType: string | null): IoniconName {
@@ -122,26 +120,27 @@ function AttachmentChip({
   attachment,
   palette,
   accessToken,
-  onOpenImage,
+  onOpenPreview,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
   accessToken?: string
-  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
   const isImage = isImageMime(attachment.mimeType)
+  const isPreviewable = isPreviewableAttachment(attachment.mimeType)
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
-        isImage ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
+        isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
       }
       disabled={!accessToken}
       onPress={() => {
         if (!accessToken) return
-        if (isImage) {
-          onOpenImage(attachment)
+        if (isPreviewable) {
+          onOpenPreview(attachment)
           return
         }
         void openAttachmentFile(
@@ -184,7 +183,7 @@ function ChatMessageRow({
   onShowReactors,
   onLinkPress,
   onOpenActions,
-  onOpenImage,
+  onOpenPreview,
 }: {
   message: MessageDto
   palette: Palette
@@ -194,7 +193,7 @@ function ChatMessageRow({
   onShowReactors: (emoji: string, messageId: string) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
-  onOpenImage: (attachment: MessageDto['attachments'][number]) => void
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
@@ -221,17 +220,7 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      {message.senderAvatarUrl ? (
-        <Image source={{ uri: message.senderAvatarUrl }} style={styles.avatar} />
-      ) : (
-        <View
-          style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}
-        >
-          <Text style={[styles.avatarInitial, { color: palette.accentText }]}>
-            {initials(message.senderName)}
-          </Text>
-        </View>
-      )}
+      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
@@ -316,7 +305,7 @@ function ChatMessageRow({
                   key={attachment.id}
                   attachment={attachment}
                   palette={palette}
-                  onOpenImage={onOpenImage}
+                  onOpenPreview={onOpenPreview}
                   {...(accessToken ? { accessToken } : {})}
                 />
               ))}
@@ -411,11 +400,7 @@ function QueuedMessageRow({
         : t('Waiting for a connection. It will send automatically.')
   return (
     <View style={styles.messageRow}>
-      <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.accentSoft }]}>
-        <Text style={[styles.avatarInitial, { color: palette.accentText }]}>
-          {initials(senderName)}
-        </Text>
-      </View>
+      <UserAvatar name={senderName} size={36} />
       <View style={styles.messageBody}>
         <View style={styles.messageMeta}>
           <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
@@ -534,9 +519,9 @@ export default function ChatThreadScreen() {
     selectedEmoji: string
     messageId: string
   } | null>(null)
-  const [imagePreview, setImagePreview] = React.useState<MessageDto['attachments'][number] | null>(
-    null,
-  )
+  const [attachmentPreview, setAttachmentPreview] = React.useState<
+    MessageDto['attachments'][number] | null
+  >(null)
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
@@ -660,8 +645,8 @@ export default function ChatThreadScreen() {
   React.useEffect(() => {
     if (!isFocused) return
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (imagePreview || reactionPeople || reactionTarget || actionTarget) {
-        setImagePreview(null)
+      if (attachmentPreview || reactionPeople || reactionTarget || actionTarget) {
+        setAttachmentPreview(null)
         setReactionPeople(null)
         setReactionTarget(null)
         setActionTarget(null)
@@ -671,7 +656,7 @@ export default function ChatThreadScreen() {
       return true
     })
     return () => subscription.remove()
-  }, [actionTarget, goBackToList, imagePreview, isFocused, reactionPeople, reactionTarget])
+  }, [actionTarget, attachmentPreview, goBackToList, isFocused, reactionPeople, reactionTarget])
 
   // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
   // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
@@ -716,7 +701,7 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setReactionPeople(null)
-    setImagePreview(null)
+    setAttachmentPreview(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
     upload.clearUploads()
@@ -1035,6 +1020,26 @@ export default function ChatThreadScreen() {
     [channelId, channelName, channelType, isPrivate, projectId, router, t],
   )
 
+  // PDF 内のリンクもチャット本文と同じ規則で開く。アプリ内の画面へ移るときは
+  // モーダルが遷移先を覆わないよう閉じ、外部ブラウザへ渡すときは読んでいた位置を残す。
+  // 送信欄のエラーはモーダルの裏に隠れるため、PDF 表示中の失敗は Alert で伝える
+  const openPdfLink = React.useCallback(
+    (url: string) => {
+      const target = resolveMobileMarkdownLink(url, API_BASE_URL)
+      if (!target) {
+        Alert.alert(t('This link cannot be opened.'))
+        return
+      }
+      if (target.kind === 'external') {
+        void Linking.openURL(target.url).catch(() => Alert.alert(t('Could not open the link.')))
+        return
+      }
+      setAttachmentPreview(null)
+      openMarkdownLink(url)
+    },
+    [openMarkdownLink, t],
+  )
+
   const shareMessage = async (message: MessageDto) => {
     setActionTarget(null)
     const body = parseMentions(message.content, t).trim()
@@ -1172,7 +1177,7 @@ export default function ChatThreadScreen() {
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
-                    onOpenImage={setImagePreview}
+                    onOpenPreview={setAttachmentPreview}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1388,21 +1393,7 @@ export default function ChatThreadScreen() {
                       { backgroundColor: pressed ? palette.card2 : palette.card },
                     ]}
                   >
-                    {member.avatarUrl ? (
-                      <Image source={{ uri: member.avatarUrl }} style={styles.mentionAvatar} />
-                    ) : (
-                      <View
-                        style={[
-                          styles.mentionAvatar,
-                          styles.avatarFallback,
-                          { backgroundColor: palette.accentSoft },
-                        ]}
-                      >
-                        <Text style={[styles.mentionInitial, { color: palette.accentText }]}>
-                          {initials(member.displayName)}
-                        </Text>
-                      </View>
-                    )}
+                    <UserAvatar name={member.displayName} url={member.avatarUrl} size={26} />
                     <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
                       {member.displayName}
                     </Text>
@@ -1640,9 +1631,7 @@ export default function ChatThreadScreen() {
             <ScrollView style={styles.reactionPeopleList} contentContainerStyle={styles.reactionPeopleListContent}>
               {reactionPeopleSummary && reactionPeopleSummary.userNames.length > 0 ? reactionPeopleSummary.userNames.map((name, index) => (
                 <View key={`${name}-${index}`} style={[styles.reactionPeopleRow, { borderTopColor: palette.divider }]}>
-                  <View style={[styles.reactionPeopleAvatar, { backgroundColor: palette.accentSoft }]}>
-                    <Text style={{ color: palette.accentText, fontWeight: '600' }}>{initials(name)}</Text>
-                  </View>
+                  <UserAvatar name={name} size={40} />
                   <Text style={[styles.reactionPerson, { color: palette.text }]}>{name}</Text>
                   <Text style={styles.reactionPeopleEmoji}>{reactionPeople?.selectedEmoji}</Text>
                 </View>
@@ -1650,15 +1639,27 @@ export default function ChatThreadScreen() {
             </ScrollView>
           </View>
         </Modal>
-        {imagePreview && session?.access_token && (
-          <ChatImageViewer
-            fileUrl={attachmentUrl(imagePreview.fileId)}
-            fileId={imagePreview.fileId}
-            fileName={imagePreview.fileName}
-            mimeType={imagePreview.mimeType}
-            accessToken={session.access_token}
-            onClose={() => setImagePreview(null)}
-          />
+        {attachmentPreview && session?.access_token && (
+          isPdfMime(attachmentPreview.mimeType) ? (
+            <ChatPdfViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+              onPressLink={openPdfLink}
+            />
+          ) : (
+            <ChatImageViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+            />
+          )
         )}
       </Animated.View>
     </KeyboardAvoidingView>
@@ -1695,9 +1696,6 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 48, paddingHorizontal: 20 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 7 },
   messageBody: { flex: 1, minWidth: 0 },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 13, fontWeight: '700' },
   messageMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1776,7 +1774,6 @@ const styles = StyleSheet.create({
   reactionPeopleList: { flexGrow: 0, flexShrink: 1, minHeight: 0, maxHeight: 400 },
   reactionPeopleListContent: { paddingBottom: 8 },
   reactionPeopleRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  reactionPeopleAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   reactionPeopleEmoji: { fontSize: 20 },
   reactionPersonEmpty: { minHeight: 44, textAlignVertical: 'center' },
   reactionAddStandalone: {
@@ -1867,8 +1864,6 @@ const styles = StyleSheet.create({
     gap: 9,
     paddingHorizontal: 10,
   },
-  mentionAvatar: { width: 26, height: 26, borderRadius: 13 },
-  mentionInitial: { fontSize: 10.5, fontWeight: '700' },
   mentionName: { flex: 1, fontSize: 13, fontWeight: '600' },
   composer: {
     flexDirection: 'row',

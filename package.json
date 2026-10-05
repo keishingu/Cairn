@@ -23,5 +23,10 @@
   "engines": {
     "node": ">=20.19.4",
     "pnpm": ">=9.0.0"
+  },
+  "enriched-markdown": {
+    "enableCodeHighlight": false,
+    "enableMath": false,
+    "enableVideo": false
   }
 }
