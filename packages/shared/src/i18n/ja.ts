@@ -801,6 +801,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Open {title} in Google Calendar': '{title}（Google カレンダーで開く）',
   'Open chat': 'チャットを開く',
   'Open file': 'ファイルを開く',
+  'Open in another app': '他のアプリで開く',
   'Open in a new tab': '別タブで開く',
   'Open member': 'メンバーを開く',
   'Open message': 'メッセージを開く',

@@ -66,7 +66,7 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 - 段落下4px、見出し前後2〜8px、リスト上下2px、区切り線上下8pxを基準とし、既存の4pxグリッドから外れる余白を増やさない。
 - 引用は`palette.card2`、左境界3px、角丸4px、左右10px・上下4px。インラインコードは角丸3px、コードブロックは角丸8px・左右10px・上下8pxとし、`palette.card2` / `palette.border`とOS標準の等幅フォントを使う。
 - メンションは Web と同じく `palette.accentSoft` の背景と `palette.accentText` で本文から区別する。`cairn-mention:` スキームのリンクに変換して `linkVariants` で装飾し、タップしても遷移しない（リンク装飾に太字の指定がないため、太字にはしない）。
-- 画像添付はタップで全画面の `Image` を開く。表示のためのファイル保存はしない。PDF 添付はタップで全画面の `react-native-pdf` ビューアを開き、共有シートと同じ端末キャッシュから描画してページ番号をヘッダーに出す。iOS では拡張子が Word / Excel / PowerPoint の添付もタップで全画面の WebView（WKWebView の OS 標準プレビュー）に表示し、文書内のリンクはタップされたときだけ本文と同じ判定で開く。保存と共有は全画面からの操作にし、それ以外の形式と Android の Office ファイルは従来どおり端末の共有シートで開く。
+- 画像添付はタップで全画面の `Image` を開く。表示のためのファイル保存はしない。PDF 添付はタップで全画面の `react-native-pdf` ビューアを開き、共有シートと同じ端末キャッシュから描画してページ番号をヘッダーに出す。iOS では拡張子が Word / Excel / PowerPoint の添付もタップで全画面の WebView（WKWebView の OS 標準プレビュー）に表示し、文書内のリンクはタップされたときだけ本文と同じ判定で開く。描画できない文書（パスワード付きなど）は失敗表示に再試行と「他のアプリで開く」を出す。保存と共有は全画面からの操作にし、それ以外の形式と Android の Office ファイルは従来どおり端末の共有シートで開く。
 - アバター画像が未設定のユーザーは、Web の `Avatar` と同じく名前から決まるグラデーション（`@cairn/shared` の `avatarGradient`）と白い頭文字で表示する（`components/user-avatar.tsx`）。テーマのアクセント色で塗りつぶさない。
 - 50文字を超える生の URL（GFM の自動リンク、`<URL>`、表示文字がリンク先と同じ `[URL](URL)`）は Web と同じく見た目だけ「…」で省略し、リンク先は元のまま残す。URL の終わり（末尾の句読点や強調記号）は GFM の自動リンク規則に従う。
 - リンクは`palette.accentText`と下線で本文から判別できるようにする。相対URLと同一originのCairn内リンクは、許可したパスだけを認証済み`AppWebView`で開く。外部の`http` / `https` / `mailto` / `tel`はOSへ渡し、`javascript:`、`data:`、protocol-relative URL、未許可の内部パスは開かない。

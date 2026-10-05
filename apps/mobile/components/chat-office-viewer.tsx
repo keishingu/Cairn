@@ -151,6 +151,19 @@ export function ChatOfficeViewer({
               >
                 <Text style={styles.retryText}>{t('Retry')}</Text>
               </Pressable>
+              {/* パスワード付きなど OS のプレビューで描画できない文書は、従来どおり Word などのアプリへ渡せるようにする */}
+              <Pressable
+                accessibilityRole="button"
+                disabled={busyAction !== null}
+                onPress={() => void runFileAction('share')}
+                style={styles.retry}
+              >
+                {busyAction === 'share' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.retryText}>{t('Open in another app')}</Text>
+                )}
+              </Pressable>
             </View>
           ) : loadState.kind === 'ready' ? (
             <WebView

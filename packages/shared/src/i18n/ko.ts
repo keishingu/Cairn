@@ -801,6 +801,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Open {title} in Google Calendar': 'Google 캘린더에서 {title} 열기',
   'Open chat': '채팅 열기',
   'Open file': '파일 열기',
+  'Open in another app': '다른 앱에서 열기',
   'Open in a new tab': '새 탭에서 열기',
   'Open member': '멤버 열기',
   'Open message': '메시지 열기',
