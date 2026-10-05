@@ -13,6 +13,9 @@ const translateJa: Translate = (message, values) => translate('ja', message, val
 // 同じファイルの取得中に別の画面（共有ボタン、ビューアの開き直しなど）から呼ばれても、
 // ダウンロードを1本にまとめて同じ結果を待たせる
 const pendingDownloads = new Map<string, Promise<string>>()
+// 表示に失敗したキャッシュの削除。削除が終わる前に再試行の取得が保存先へ移したファイルを
+// 消さないよう、取得はこの削除の完了を待ってから始める
+const pendingRemovals = new Map<string, Promise<void>>()
 
 export function ensureCachedAttachment(
   fileUrl: string,
@@ -36,6 +39,8 @@ export function ensureCachedAttachment(
   }
 
   const download = (async () => {
+    // 削除の失敗は removeCachedAttachment の呼び出し側で扱う。ここでは完了を待つだけ
+    await pendingRemovals.get(target)?.catch(() => undefined)
     // refresh は表示に失敗したキャッシュの取り直し。削除の成否に関係なく必ずダウンロードする
     if (!options.refresh) {
       const info = await FileSystem.getInfoAsync(target)
@@ -62,13 +67,16 @@ export function ensureCachedAttachment(
   return download
 }
 
-// 表示できなかったキャッシュを消し、再試行で取り直せるようにする
-export async function removeCachedAttachment(fileId: string, fileName: string): Promise<void> {
+// 表示できなかったキャッシュを消し、保存・共有で壊れたファイルを使わないようにする
+export function removeCachedAttachment(fileId: string, fileName: string): Promise<void> {
   const cacheDirectory = FileSystem.cacheDirectory
-  if (!cacheDirectory) return
-  await FileSystem.deleteAsync(`${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`, {
-    idempotent: true,
+  if (!cacheDirectory) return Promise.resolve()
+  const target = `${cacheDirectory}${attachmentCacheFileName(fileId, fileName)}`
+  const removal = FileSystem.deleteAsync(target, { idempotent: true }).finally(() => {
+    if (pendingRemovals.get(target) === removal) pendingRemovals.delete(target)
   })
+  pendingRemovals.set(target, removal)
+  return removal
 }
 
 export async function shareCachedAttachment(input: {
