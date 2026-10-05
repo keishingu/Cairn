@@ -33,11 +33,11 @@ function countChar(value: string, char: string): number {
   return value.split(char).length - 1
 }
 
-// URL より前で、同じ長さの記号列（`**` / `_` / `~~` など）による強調・取り消し線が開いたままかを返す。
-// エスケープ・インラインコード内の記号、直後が空白の記号（`_ as a separator`）、単語途中の `_` は強調を開かない
-function hasOpenDelimiter(before: string, run: string): boolean {
-  const char = run[0]!
-  let open = false
+// URL より前で開いたまま閉じていない強調・取り消し線の記号（`*` / `_` / `~`）の個数を返す。
+// 開き記号の列を積み、閉じ記号の列で後ろから消費する（`***a** b` は `*` が1つ残る）。
+// エスケープ・インラインコード内の記号、flanking 規則で開閉できない記号、単語途中の `_` は数えない
+function countOpenDelimiters(before: string, char: string): number {
+  const stack: number[] = []
   let index = 0
   while (index < before.length) {
     // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
@@ -57,25 +57,31 @@ function hasOpenDelimiter(before: string, run: string): boolean {
     }
     let end = index
     while (before[end] === char) end += 1
-    if (end - index === run.length) {
-      // CommonMark の flanking 規則。行頭と URL（`before` の末尾の記号の直後）は空白・記号以外として扱う
-      const previous = before[index - 1] ?? ' '
-      const next = before[end] ?? 'h'
-      const isSpace = (value: string) => /\s/u.test(value)
-      const isPunct = (value: string) => /[\p{P}\p{S}]/u.test(value)
-      const leftFlanking =
-        !isSpace(next) && (!isPunct(next) || isSpace(previous) || isPunct(previous))
-      const rightFlanking =
-        !isSpace(previous) && (!isPunct(previous) || isSpace(next) || isPunct(next))
-      // `_` は単語の途中では開閉しない
-      const canOpen = char === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
-      const canClose = char === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
-      if (open && canClose) open = false
-      else if (!open && canOpen) open = true
+    // CommonMark の flanking 規則。行頭と URL（`before` の末尾の記号の直後）は空白・記号以外として扱う
+    const previous = before[index - 1] ?? ' '
+    const next = before[end] ?? 'h'
+    const isSpace = (value: string) => /\s/u.test(value)
+    const isPunct = (value: string) => /[\p{P}\p{S}]/u.test(value)
+    const leftFlanking =
+      !isSpace(next) && (!isPunct(next) || isSpace(previous) || isPunct(previous))
+    const rightFlanking =
+      !isSpace(previous) && (!isPunct(previous) || isSpace(next) || isPunct(next))
+    // `_` は単語の途中では開閉しない
+    const canOpen = char === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
+    const canClose = char === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
+    let units = end - index
+    if (canClose) {
+      while (units > 0 && stack.length > 0) {
+        const used = Math.min(stack[stack.length - 1]!, units)
+        stack[stack.length - 1]! -= used
+        units -= used
+        if (stack[stack.length - 1] === 0) stack.pop()
+      }
     }
+    if (units > 0 && canOpen) stack.push(units)
     index = end
   }
-  return open
+  return stack.reduce((total, units) => total + units, 0)
 }
 
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
@@ -100,12 +106,9 @@ function trimUrlTrailingPunctuation(url: string, before: string): string {
       continue
     }
     if (EMPHASIS_MARKER.test(last)) {
-      // `***` が `**` と `*` の閉じを兼ねる場合もあるため、開いている長さの分だけ外して繰り返す
+      // 開いたままの記号の数だけ閉じとして外す（`***` が `**` と `*` の閉じを兼ねる場合も含む）
       const runLength = new RegExp(`\\${last}+$`).exec(result)![0].length
-      let closed = 0
-      for (let length = runLength; length > 0 && closed === 0; length -= 1) {
-        if (hasOpenDelimiter(before, last.repeat(length))) closed = length
-      }
+      const closed = Math.min(runLength, countOpenDelimiters(before, last))
       if (closed > 0) {
         result = result.slice(0, -closed)
         continue
