@@ -58,12 +58,18 @@ function hasOpenDelimiter(before: string, run: string): boolean {
     let end = index
     while (before[end] === char) end += 1
     if (end - index === run.length) {
-      const previous = before[index - 1] ?? ''
-      // `before` の末尾の記号の直後は URL（空白ではない）
+      // CommonMark の flanking 規則。行頭と URL（`before` の末尾の記号の直後）は空白・記号以外として扱う
+      const previous = before[index - 1] ?? ' '
       const next = before[end] ?? 'h'
-      // 直前が空白でなければ閉じられ、直後が空白でなければ開ける（CommonMark の flanking の簡略版）
-      const canClose = previous !== '' && !/\s/.test(previous)
-      const canOpen = !/\s/.test(next) && !(char === '_' && /[\p{L}\p{N}]/u.test(previous))
+      const isSpace = (value: string) => /\s/u.test(value)
+      const isPunct = (value: string) => /[\p{P}\p{S}]/u.test(value)
+      const leftFlanking =
+        !isSpace(next) && (!isPunct(next) || isSpace(previous) || isPunct(previous))
+      const rightFlanking =
+        !isSpace(previous) && (!isPunct(previous) || isSpace(next) || isPunct(next))
+      // `_` は単語の途中では開閉しない
+      const canOpen = char === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
+      const canClose = char === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
       if (open && canClose) open = false
       else if (!open && canOpen) open = true
     }
