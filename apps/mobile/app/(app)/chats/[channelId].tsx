@@ -289,6 +289,7 @@ function ChatMessageRow({
                 content={message.content}
                 palette={palette}
                 onLinkPress={onLinkPress}
+                onLongPress={() => onOpenActions(message)}
               />
             )
           )}

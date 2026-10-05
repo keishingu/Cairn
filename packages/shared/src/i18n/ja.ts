@@ -224,6 +224,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Close add members': 'メンバー追加を閉じる',
   'Close external guest invite': '外部ゲスト招待を閉じる',
   'Close image': '画像を閉じる',
+  'Close Mermaid diagram': 'Mermaid図を閉じる',
   'Close PDF': 'PDFを閉じる',
   'Close notifications': '通知を閉じる',
   'Close preview': 'プレビューを閉じる',
@@ -282,6 +283,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not delete the message': 'メッセージの削除に失敗しました',
   'Could not delete the task': 'タスクの削除に失敗しました',
   'Could not display the image': '画像を表示できませんでした',
+  'Could not load the diagram renderer. Check your connection and try again.': '図の描画に必要なデータを読み込めませんでした。通信状況を確認して再試行してください。',
   'Could not display the PDF': 'PDFを表示できませんでした',
   'Could not display the Mermaid diagram': 'Mermaid図を表示できません',
   'Could not edit the message': 'メッセージの編集に失敗しました',
@@ -1174,4 +1176,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Your account has been deleted.': 'アカウントを削除しました。',
   'Your session has expired': 'セッションが切れました',
   'Your session has expired. Please sign in again.': 'セッションが切れました。再度ログインしてください。',
+  'Open Mermaid diagram': 'Mermaid図を開く',
+  'Tap to view': 'タップで表示',
 }

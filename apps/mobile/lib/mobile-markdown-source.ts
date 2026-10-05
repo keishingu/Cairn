@@ -170,3 +170,43 @@ export function toEnrichedMarkdown(content: string, options: Options): string {
       .replace(/<(\s*\/?\s*video)/gi, `<${IMAGE_BREAK}$1`)
   )
 }
+
+export type MarkdownSegment =
+  | { type: 'markdown'; content: string }
+  | { type: 'mermaid'; definition: string }
+
+// 本文の最上位にある ```mermaid のコードブロックを図として分けて扱う。
+// 図はネイティブの Markdown 描画で表示できないため、タップで全画面の図を開く部品に置き換える。
+// 分割した本文どうしで参照リンクが切れないよう、参照定義は各本文の末尾にも付ける
+export function splitMermaidSegments(content: string): MarkdownSegment[] {
+  const tree: Root = fromMarkdown(content, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  })
+  const diagrams = tree.children.filter(
+    (node) => node.type === 'code' && node.lang?.toLowerCase() === 'mermaid' && node.position,
+  )
+  if (diagrams.length === 0) return [{ type: 'markdown', content }]
+
+  const definitions = tree.children
+    .filter((node) => node.type === 'definition' && node.position)
+    .map((node) => content.slice(node.position!.start.offset, node.position!.end.offset))
+    .join('\n')
+  const markdownSegment = (text: string): MarkdownSegment[] =>
+    text.trim()
+      ? [{ type: 'markdown', content: definitions ? `${text}\n\n${definitions}` : text }]
+      : []
+
+  const segments: MarkdownSegment[] = []
+  let last = 0
+  for (const node of diagrams) {
+    if (node.type !== 'code') continue
+    const start = node.position!.start.offset!
+    const end = node.position!.end.offset!
+    segments.push(...markdownSegment(content.slice(last, start)))
+    segments.push({ type: 'mermaid', definition: node.value })
+    last = end
+  }
+  segments.push(...markdownSegment(content.slice(last)))
+  return segments
+}

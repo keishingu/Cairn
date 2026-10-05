@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
+import { View } from 'react-native'
 import {
   EnrichedMarkdownText,
   type LinkPressEvent,
   type MarkdownStyle,
   type Md4cFlags,
 } from 'react-native-enriched-markdown'
-import { isMentionLink, MENTION_LINK_SCHEME, toEnrichedMarkdown } from '../lib/mobile-markdown-source'
+import {
+  isMentionLink,
+  MENTION_LINK_SCHEME,
+  splitMermaidSegments,
+  toEnrichedMarkdown,
+} from '../lib/mobile-markdown-source'
 import type { ThemePalette } from '../lib/theme'
 import { useT } from './locale-provider'
+import { MermaidDiagramCard } from './mermaid-diagram'
 
 // 改行1つでも改行として見せる（Web の remark-breaks と同じ）。
 // `$` は金額などで頻出するため数式として解釈しない。`> [!NOTE]` は Web と同じく通常の引用にする
@@ -25,20 +32,31 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   palette,
   onLinkPress,
   mentionNames,
+  onLongPress,
 }: {
   content: string
   palette: ThemePalette
   onLinkPress: (url: string) => boolean
   mentionNames?: Readonly<Record<string, string>>
+  // Mermaid 図のカードは独自にタップを受けるため、メッセージの長押しメニューを渡して塞がないようにする
+  onLongPress?: () => void
 }) {
   const t = useT()
-  const markdown = React.useMemo(
+  // Mermaid 図はネイティブの Markdown では描画できないため、本文から分けてタップで全画面表示する
+  const segments = React.useMemo(
     () =>
-      toEnrichedMarkdown(content, {
-        resolveMentionName: (userId, displayName) =>
-          mentionNames?.[userId] ?? displayName ?? t('Member'),
-        imageLabel: t('Image'),
-      }),
+      splitMermaidSegments(content).map((segment) =>
+        segment.type === 'mermaid'
+          ? segment
+          : {
+              type: 'markdown' as const,
+              markdown: toEnrichedMarkdown(segment.content, {
+                resolveMentionName: (userId, displayName) =>
+                  mentionNames?.[userId] ?? displayName ?? t('Member'),
+                imageLabel: t('Image'),
+              }),
+            },
+      ),
     [content, mentionNames, t],
   )
 
@@ -137,8 +155,9 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
     [palette],
   )
 
-  return (
+  const renderMarkdown = (markdown: string, key?: number) => (
     <EnrichedMarkdownText
+      key={key}
       markdown={markdown}
       flavor="github"
       md4cFlags={MD4C_FLAGS}
@@ -151,5 +170,23 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
       enableLinkPreview={false}
       enableBlockContextMenu={false}
     />
+  )
+
+  if (segments.length === 1 && segments[0]!.type === 'markdown') return renderMarkdown(segments[0]!.markdown)
+  return (
+    <View>
+      {segments.map((segment, index) =>
+        segment.type === 'mermaid' ? (
+          <MermaidDiagramCard
+            key={index}
+            definition={segment.definition}
+            palette={palette}
+            {...(onLongPress ? { onLongPress } : {})}
+          />
+        ) : (
+          renderMarkdown(segment.markdown, index)
+        ),
+      )}
+    </View>
   )
 })
