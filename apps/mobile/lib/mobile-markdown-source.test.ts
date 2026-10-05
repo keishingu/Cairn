@@ -171,6 +171,14 @@ describe('toEnrichedMarkdown', () => {
     )
   })
 
+  test('URL やリンクが多い長文でも、URL ごとに行頭から数え直さず短時間で変換する', () => {
+    const url = 'https://example.com/a/very/long/resource/path/that/exceeds/fifty_'
+    const content = Array.from({ length: 150 }, () => `[a](https://example.com/_x) ](( ${url}`).join(' ')
+    const started = performance.now()
+    convert(content)
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
   test('短い URL・表示名付きリンク・リンク先・コード内の URL は省略しない', () => {
     const url = 'https://example.com/path/to/a/very/long/resource?query=1&utm_source=chat'
     expect(convert('https://example.com/a')).toBe('https://example.com/a')

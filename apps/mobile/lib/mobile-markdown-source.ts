@@ -68,74 +68,97 @@ function consumeOpenDelimiters(
   return matched
 }
 
-function openDelimiterStack(before: string, char: string): OpenDelimiter[] {
-  const stack: OpenDelimiter[] = []
+type DelimiterScanner = (position: number, char: string) => OpenDelimiter[]
+
+// 行の先頭から一度だけ前へ進めながら、位置ごとに開いたままの記号を返す。
+// URL ごとに行頭から数え直すと、URL やリンクの多い長文で計算量が膨らみ表示が固まるため
+function createDelimiterScanner(line: string): DelimiterScanner {
+  const stacks: Record<string, OpenDelimiter[]> = { '*': [], _: [], '~': [] }
+  const tickPattern = /`+/y
+  const autolinkPattern = new RegExp(AUTOLINK_PATTERN.source.slice(1), 'y')
+  const urlPattern = new RegExp(BARE_URL_PATTERN.source.slice(1), 'y')
+  const isSpace = (value: string) => /\s/u.test(value)
+  const isPunct = (value: string) => /[\p{P}\p{S}]/u.test(value)
   let index = 0
-  while (index < before.length) {
-    // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
-    if (before[index] === '\\') {
-      index += 2
-      continue
-    }
-    if (before[index] === '`') {
-      const tick = /^`+/.exec(before.slice(index))![0]
-      const closing = findClosingBackticks(before, index + tick.length, tick.length)
-      index = closing === -1 ? index + tick.length : closing + tick.length
-      continue
-    }
-    // リンク先（`](...)`）・自動リンク（`<...>`）・生の URL の中の記号も強調にならない
-    if (before[index] === ']' && before[index + 1] === '(') {
-      const destinationEnd = findDestinationEnd(before, index + 1)
-      if (destinationEnd !== -1) {
-        index = destinationEnd + 1
+
+  const advance = (limit: number) => {
+    while (index < limit) {
+      const current = line[index]!
+      // エスケープされた記号とインラインコードの中の記号は強調にならないため数えない
+      if (current === '\\') {
+        index += 2
         continue
       }
-    }
-    if (before[index] === '<') {
-      const autolink = AUTOLINK_PATTERN.exec(before.slice(index))
-      if (autolink) {
-        index += autolink[0].length
+      if (current === '`') {
+        tickPattern.lastIndex = index
+        const tick = tickPattern.exec(line)![0]
+        const closing = findClosingBackticks(line, index + tick.length, tick.length)
+        index = closing === -1 ? index + tick.length : closing + tick.length
         continue
       }
-    }
-    if (/[hH]/.test(before[index]!) && !/[A-Za-z0-9]/.test(before[index - 1] ?? '')) {
-      const url = BARE_URL_PATTERN.exec(before.slice(index))
-      if (url) {
-        index += url[0].length
+      // リンク先（`](...)`）・自動リンク（`<...>`）・生の URL の中の記号も強調にならない
+      if (current === ']' && line[index + 1] === '(') {
+        const destinationEnd = findDestinationEnd(line, index + 1)
+        if (destinationEnd !== -1) {
+          index = destinationEnd + 1
+          continue
+        }
+      }
+      if (current === '<') {
+        autolinkPattern.lastIndex = index
+        const autolink = autolinkPattern.exec(line)
+        if (autolink) {
+          index += autolink[0].length
+          continue
+        }
+      }
+      if ((current === 'h' || current === 'H') && !/[A-Za-z0-9]/.test(line[index - 1] ?? '')) {
+        urlPattern.lastIndex = index
+        const url = urlPattern.exec(line)
+        if (url) {
+          // 末尾の記号は強調の閉じになり得るため、URL の本体だけを読み飛ばす
+          index += url[0].replace(/[*_~]+$/, '').length
+          continue
+        }
+      }
+      const stack = stacks[current]
+      if (!stack) {
+        index += 1
         continue
       }
+      let end = index
+      while (line[end] === current) end += 1
+      // CommonMark の flanking 規則。行頭は空白として扱う
+      const previous = line[index - 1] ?? ' '
+      const next = line[end] ?? ' '
+      const leftFlanking =
+        !isSpace(next) && (!isPunct(next) || isSpace(previous) || isPunct(previous))
+      const rightFlanking =
+        !isSpace(previous) && (!isPunct(previous) || isSpace(next) || isPunct(next))
+      // `_` は単語の途中では開閉しない
+      const canOpen =
+        current === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
+      const canClose =
+        current === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
+      const length = end - index
+      const units = canClose ? length - consumeOpenDelimiters(stack, length, canOpen) : length
+      if (units > 0 && canOpen) stack.push({ units, length, canClose })
+      index = end
     }
-    if (before[index] !== char) {
-      index += 1
-      continue
-    }
-    let end = index
-    while (before[end] === char) end += 1
-    // CommonMark の flanking 規則。行頭と URL（`before` の末尾の記号の直後）は空白・記号以外として扱う
-    const previous = before[index - 1] ?? ' '
-    const next = before[end] ?? 'h'
-    const isSpace = (value: string) => /\s/u.test(value)
-    const isPunct = (value: string) => /[\p{P}\p{S}]/u.test(value)
-    const leftFlanking =
-      !isSpace(next) && (!isPunct(next) || isSpace(previous) || isPunct(previous))
-    const rightFlanking =
-      !isSpace(previous) && (!isPunct(previous) || isSpace(next) || isPunct(next))
-    // `_` は単語の途中では開閉しない
-    const canOpen = char === '_' ? leftFlanking && (!rightFlanking || isPunct(previous)) : leftFlanking
-    const canClose = char === '_' ? rightFlanking && (!leftFlanking || isPunct(next)) : rightFlanking
-    const length = end - index
-    const units = canClose ? length - consumeOpenDelimiters(stack, length, canOpen) : length
-    if (units > 0 && canOpen) stack.push({ units, length, canClose })
-    index = end
   }
-  return stack
+
+  return (position, char) => {
+    advance(position)
+    // 呼び出し側の消費で状態を壊さないよう写しを返す
+    return (stacks[char] ?? []).map((opener) => ({ ...opener }))
+  }
 }
 
 // 文末の句読点や、URL 内で対応の取れない閉じ括弧だけを外す。
 // `.../Function_(mathematics)` のように URL の一部である対応済みの括弧は残す。
 // 末尾の `*` `_` `~` は URL に使える文字なので、URL より前で開いた強調・取り消し線の
 // 閉じ側（`**URL**` や `**See URL**` など）とみなせるときだけ外す
-function trimUrlTrailingPunctuation(url: string, before: string): string {
+function trimUrlTrailingPunctuation(url: string, openDelimiters: (char: string) => OpenDelimiter[]): string {
   let result = url
   // 同じ種類の記号は一度だけ判定する（外した記号の分の開き記号を二重に使わない）
   const checkedMarkers = new Set<string>()
@@ -159,7 +182,7 @@ function trimUrlTrailingPunctuation(url: string, before: string): string {
       // 開いたままの記号と対になる数だけ閉じとして外す（`***` が `**` と `*` の閉じを兼ねる場合も含む）。
       // URL 末尾の記号の直後は空白か文末なので、開き記号にはならない
       const runLength = new RegExp(`\\${last}+$`).exec(result)![0].length
-      const closed = consumeOpenDelimiters(openDelimiterStack(before, last), runLength, false)
+      const closed = consumeOpenDelimiters(openDelimiters(last), runLength, false)
       if (closed > 0) {
         result = result.slice(0, -closed)
         continue
@@ -330,6 +353,7 @@ function transformInline(
   // リンク文字列（`[...](` / `[...][`）の閉じ位置のスタック。CommonMark はリンクの入れ子を
   // 許さないため、この中のメンションはリンクにせず文字として出す。リンクにならない `[` は数えない
   const labelEnds: number[] = []
+  const delimiters = createDelimiterScanner(line)
   while (index < line.length) {
     const char = line[index]!
 
@@ -465,7 +489,7 @@ function transformInline(
     ) {
       const match = BARE_URL_PATTERN.exec(line.slice(index))
       if (match) {
-        const url = trimUrlTrailingPunctuation(match[0], line.slice(0, index))
+        const url = trimUrlTrailingPunctuation(match[0], (char) => delimiters(index, char))
         output += url.length > URL_DISPLAY_MAX ? shortenedUrlLink(url) : protectDestination(url)
         index += url.length
         continue
