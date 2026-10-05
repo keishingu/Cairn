@@ -153,6 +153,20 @@ function findDestinationEnd(line: string, open: number): number {
   return line[index] === ')' ? index : -1
 }
 
+// 画像の代替テキストのように Markdown を含み得る文字列を、表示される文字だけにする（エスケープや記号を外す）
+function markdownToPlainText(source: string): string {
+  const collect = (tokens: ReturnType<typeof blockParser.parseInline>): string =>
+    tokens
+      .map((token) => {
+        if (token.children) return collect(token.children)
+        if (token.type === 'text' || token.type === 'code_inline') return token.content
+        if (token.type === 'softbreak' || token.type === 'hardbreak') return ' '
+        return ''
+      })
+      .join('')
+  return collect(blockParser.parseInline(source, {}))
+}
+
 // `[` の位置から参照ラベルの閉じ `]` の位置を返す（エスケープを考慮）
 function findReferenceEnd(line: string, open: number): number {
   for (let index = open + 1; index < line.length; index += 1) {
@@ -301,8 +315,8 @@ function transformInline(
         if (line[altEnd + 1] === '(') imageEnd = findDestinationEnd(line, altEnd + 1)
         else if (line[altEnd + 1] === '[') imageEnd = findReferenceEnd(line, altEnd + 1)
         if (imageEnd !== -1) {
-          const alt = line.slice(index + 2, altEnd)
-          output += alt ? escapeMarkdownText(alt) : escapeMarkdownText(options.imageLabel)
+          const alt = markdownToPlainText(line.slice(index + 2, altEnd))
+          output += escapeMarkdownText(alt || options.imageLabel)
           index = imageEnd + 1
           continue
         }

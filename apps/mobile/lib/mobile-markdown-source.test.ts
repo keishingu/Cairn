@@ -173,6 +173,8 @@ describe('toEnrichedMarkdown', () => {
       '[logo](https://dest.example)\n\n[img]: https://img.example/x',
     )
     expect(convert('[![alt](img "a)b")](https://dest.example)')).toBe('[alt](https://dest.example)')
+    expect(convert('[![a\\]b](img)](https://dest.example)')).toBe('[a\\]b](https://dest.example)')
+    expect(convert('[![`logo` *v2*](img)](https://dest.example)')).toBe('[logo v2](https://dest.example)')
     expect(convert('[![logo][a\\]b]](https://dest.example)\n\n[a\\]b]: https://img.example/x')).toBe(
       '[logo](https://dest.example)\n\n[a\\]b]: https://img.example/x',
     )
