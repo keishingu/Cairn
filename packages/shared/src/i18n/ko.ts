@@ -224,6 +224,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Close add members': '멤버 추가 닫기',
   'Close external guest invite': '외부 게스트 초대 닫기',
   'Close image': '이미지 닫기',
+  'Close Mermaid diagram': 'Mermaid 다이어그램 닫기',
   'Close PDF': 'PDF 닫기',
   'Close notifications': '알림 닫기',
   'Close preview': '미리보기 닫기',
@@ -282,6 +283,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not delete the message': '메시지를 삭제하지 못했습니다',
   'Could not delete the task': '작업을 삭제하지 못했습니다',
   'Could not display the image': '이미지를 표시하지 못했습니다',
+  'Could not load the diagram renderer. Check your connection and try again.': '다이어그램을 그리는 데 필요한 데이터를 불러오지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.',
   'Could not display the PDF': 'PDF를 표시하지 못했습니다',
   'Could not display the Mermaid diagram': 'Mermaid 다이어그램을 표시할 수 없습니다',
   'Could not edit the message': '메시지를 편집하지 못했습니다',
@@ -1174,4 +1176,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Your account has been deleted.': '계정이 삭제되었습니다.',
   'Your session has expired': '세션이 만료되었습니다',
   'Your session has expired. Please sign in again.': '세션이 만료되었습니다. 다시 로그인해 주세요.',
+  'Open Mermaid diagram': 'Mermaid 다이어그램 열기',
+  'Tap to view': '탭하여 보기',
 }
