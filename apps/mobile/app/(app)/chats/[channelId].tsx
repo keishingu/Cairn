@@ -35,6 +35,7 @@ import {
 } from '../../../hooks/use-messages'
 import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
+import { isEdgeBackSwipe } from '../../../lib/edge-back-swipe'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -290,6 +291,7 @@ function ChatMessageRow({
                 content={message.content}
                 palette={palette}
                 onLinkPress={onLinkPress}
+                onLongPress={() => onOpenActions(message)}
               />
             )
           )}
@@ -591,8 +593,7 @@ export default function ChatThreadScreen() {
     () =>
       PanResponder.create({
         // 左端から右へ動かしたときだけ一覧へ戻す。縦スクロールと戻るボタンのタップは奪わない。
-        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          gesture.x0 <= 28 && gesture.dx > 14 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+        onMoveShouldSetPanResponderCapture: (_event, gesture) => isEdgeBackSwipe(gesture),
         onPanResponderMove: (_event, gesture) => {
           swipeX.setValue(Math.max(0, gesture.dx))
         },

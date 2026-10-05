@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { isMentionLink, toEnrichedMarkdown } from './mobile-markdown-source'
+import { isMentionLink, splitMermaidSegments, toEnrichedMarkdown } from './mobile-markdown-source'
 
 const WJ = '⁠'
 const names: Record<string, string> = { 'user-1': '山田 太郎' }
@@ -142,5 +142,27 @@ describe('toEnrichedMarkdown', () => {
     const started = performance.now()
     convert(content)
     expect(performance.now() - started).toBeLessThan(1000)
+  })
+})
+
+describe('splitMermaidSegments', () => {
+  test('最上位の mermaid コードブロックを図として分け、前後の本文は Markdown のまま残す', () => {
+    expect(splitMermaidSegments('前\n\n```mermaid\ngraph TD\n  A-->B\n```\n\n後')).toEqual([
+      { type: 'markdown', content: '前\n\n' },
+      { type: 'mermaid', definition: 'graph TD\n  A-->B' },
+      { type: 'markdown', content: '\n\n後' },
+    ])
+  })
+
+  test('図がなければ本文全体を1つの Markdown として返し、他の言語のコードは分けない', () => {
+    expect(splitMermaidSegments('```ts\nconst a = 1\n```')).toEqual([
+      { type: 'markdown', content: '```ts\nconst a = 1\n```' },
+    ])
+  })
+
+  test('分けた本文どうしで参照リンクが切れないよう、参照定義を各本文に付ける', () => {
+    const segments = splitMermaidSegments('[資料][doc]\n\n```Mermaid\ngraph TD\n```\n\n[doc]: https://example.com')
+    expect(segments[0]).toEqual({ type: 'markdown', content: '[資料][doc]\n\n\n\n[doc]: https://example.com' })
+    expect(segments[1]).toEqual({ type: 'mermaid', definition: 'graph TD' })
   })
 })
