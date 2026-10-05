@@ -1,9 +1,8 @@
 import React from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import * as FileSystem from 'expo-file-system/legacy'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { WebView, type WebViewNavigation } from 'react-native-webview'
+import { WebView, type WebViewProps } from 'react-native-webview'
 import {
   ensureCachedAttachment,
   removeCachedAttachment,
@@ -11,6 +10,10 @@ import {
 } from '../lib/attachment-cache'
 import { ViewerAction } from './chat-image-viewer'
 import { useT } from './locale-provider'
+
+type ShouldStartLoadRequest = Parameters<
+  NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
+>[0]
 
 type LoadState =
   | { kind: 'downloading' }
@@ -82,10 +85,12 @@ export function ChatOfficeViewer({
     setLoadState({ kind: 'failed', message: description || t('Please try again in a moment.') })
   }
 
-  // 文書の中のリンクはこの WebView で開かず、チャット本文と同じ判定で外部ブラウザや画面遷移に渡す
-  const handleNavigation = (request: WebViewNavigation) => {
-    if (request.url.startsWith('file://') || request.url === 'about:blank') return true
-    onPressLink(request.url)
+  // 表示中のファイル以外は読み込ませない。文書の中のリンクはユーザーがタップしたときだけ、
+  // チャット本文と同じ判定で外部ブラウザや画面遷移に渡す（自動の遷移やフレームの読み込みは黙って止める）
+  const handleNavigation = (request: ShouldStartLoadRequest) => {
+    if (loadState.kind === 'ready' && request.url === loadState.localUri) return true
+    if (request.url === 'about:blank') return true
+    if (request.navigationType === 'click' && request.isTopFrame) onPressLink(request.url)
     return false
   }
 
@@ -151,9 +156,10 @@ export function ChatOfficeViewer({
             <WebView
               key={attempt}
               source={{ uri: loadState.localUri }}
-              // キャッシュディレクトリの添付ファイルだけを読めるようにする
-              allowingReadAccessToURL={FileSystem.cacheDirectory ?? undefined}
+              // 読めるのは表示中のファイルだけにし、文書に埋め込まれたスクリプトも動かさない
+              allowingReadAccessToURL={loadState.localUri}
               originWhitelist={['file://*']}
+              javaScriptEnabled={false}
               style={styles.document}
               onShouldStartLoadWithRequest={handleNavigation}
               onLoadEnd={() => setRendered(true)}

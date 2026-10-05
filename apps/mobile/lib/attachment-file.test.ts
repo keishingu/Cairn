@@ -30,18 +30,18 @@ describe('添付ファイルの表示とキャッシュ', () => {
     expect(isPreviewableAttachment(undefined, 'a', 'ios')).toBe(false)
   })
 
-  it('Office ファイルを MIME または拡張子で判定する', () => {
-    expect(
-      isOfficeDocument('application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'a.docx'),
-    ).toBe(true)
-    expect(isOfficeDocument('application/octet-stream', '見積.XLSX')).toBe(true)
-    expect(isOfficeDocument('application/vnd.ms-powerpoint', 'slides')).toBe(true)
-    expect(isOfficeDocument('text/plain', 'memo.txt')).toBe(false)
+  it('Office ファイルは WebView が描画方法を決める拡張子だけで判定する', () => {
+    expect(isOfficeDocument('a.docx')).toBe(true)
+    expect(isOfficeDocument('見積.XLSX')).toBe(true)
+    expect(isOfficeDocument('slides')).toBe(false)
+    expect(isOfficeDocument('memo.txt')).toBe(false)
   })
 
   it('Office ファイルは iOS では画面内で開き、Android では共有シートに回す', () => {
     expect(isPreviewableAttachment('application/msword', 'a.doc', 'ios')).toBe(true)
     expect(isPreviewableAttachment('application/msword', 'a.doc', 'android')).toBe(false)
+    // MIME だけ Office でも、拡張子が違えば HTML などとして描画されうるため画面内では開かない
+    expect(isPreviewableAttachment('application/msword', 'a.html', 'ios')).toBe(false)
   })
 
   it('キャッシュ名はファイル ID を残し、パスに使えない文字を除く', () => {

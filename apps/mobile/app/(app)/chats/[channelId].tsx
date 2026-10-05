@@ -1651,7 +1651,7 @@ export default function ChatThreadScreen() {
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
-          ) : isOfficeDocument(attachmentPreview.mimeType, attachmentPreview.fileName) ? (
+          ) : isOfficeDocument(attachmentPreview.fileName) ? (
             <ChatOfficeViewer
               fileUrl={attachmentUrl(attachmentPreview.fileId)}
               fileId={attachmentPreview.fileId}
