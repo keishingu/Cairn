@@ -6,9 +6,37 @@ export function isPdfMime(mimeType: string | null | undefined): boolean {
   return mimeType === 'application/pdf'
 }
 
-// 画面内で開ける添付。それ以外は共有シートで外部アプリに渡す
-export function isPreviewableAttachment(mimeType: string | null | undefined): boolean {
-  return isImageMime(mimeType) || isPdfMime(mimeType)
+// アップロードで受け付ける形式に合わせる（PowerPoint は .pptx のみ。apps/web/src/lib/attachments.ts）
+const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx)$/i
+
+// Word / Excel / PowerPoint。iOS の WebView はキャッシュしたファイルの拡張子で描画方法を決めるため、
+// MIME ではなく拡張子だけで判定する（MIME だけ Office で名前が .html などのファイルを HTML として開かせない）
+export function isOfficeDocument(fileName: string): boolean {
+  return OFFICE_EXTENSIONS.test(fileName)
+}
+
+export type AttachmentViewer = 'image' | 'pdf' | 'office'
+
+// 画面内で開くときのビューア。null は共有シートで外部アプリに渡す。
+// 画像と PDF は MIME を優先し、拡張子だけ Office の画像などを WebView で開いて失敗させない。
+// Office ファイルは iOS の WebView（OS 標準のプレビュー）だけが表示できるため iOS に限る
+export function attachmentViewer(
+  mimeType: string | null | undefined,
+  fileName: string,
+  platform: string,
+): AttachmentViewer | null {
+  if (isPdfMime(mimeType)) return 'pdf'
+  if (isImageMime(mimeType)) return 'image'
+  if (platform === 'ios' && isOfficeDocument(fileName)) return 'office'
+  return null
+}
+
+export function isPreviewableAttachment(
+  mimeType: string | null | undefined,
+  fileName: string,
+  platform: string,
+): boolean {
+  return attachmentViewer(mimeType, fileName, platform) !== null
 }
 
 export function attachmentCacheFileName(fileId: string, fileName: string): string {
