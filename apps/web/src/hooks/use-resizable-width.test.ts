@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { clampWidth, parseStoredWidth } from './use-resizable-width'
 
-describe('clampWidth', () => {
+describe('clampWidth: 幅の範囲制限', () => {
   it('最小・最大の範囲に収め、整数に丸める', () => {
     expect(clampWidth(100, 200, 480)).toBe(200)
     expect(clampWidth(900, 200, 480)).toBe(480)
@@ -12,7 +12,7 @@ describe('clampWidth', () => {
   })
 })
 
-describe('parseStoredWidth', () => {
+describe('parseStoredWidth: 保存した幅の読み取り', () => {
   it('保存値がなければ既定幅を返す', () => {
     expect(parseStoredWidth(null, 240, 200, 480)).toBe(240)
   })

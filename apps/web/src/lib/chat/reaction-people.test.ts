@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { summarizeReactionPeople } from './reaction-people'
 
-describe('summarizeReactionPeople', () => {
+describe('summarizeReactionPeople: リアクションした人の要約', () => {
   it('2人までは全員の名前を返す', () => {
     expect(summarizeReactionPeople([{ userNames: ['Alice', 'Bob'] }])).toEqual({ names: ['Alice', 'Bob'], restCount: 0 })
   })
