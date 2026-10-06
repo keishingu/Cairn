@@ -509,8 +509,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               aria-haspopup="dialog"
               onClick={openReactionPeople}
               style={{
-                // 見た目はチップと同じ高さの枠なしテキスト。上下の余白を負のマージンで打ち消し、行の高さを変えずにタップ領域だけ広げる
-                padding: '14px 6px', margin: '-14px 0', minWidth: 0, maxWidth: '100%',
+                // 枠なしテキストだがタップ領域は 32px 確保する。負のマージンで行の外へ広げると、隣の行のチップや本文へのタップを奪う
+                padding: '8px 6px', minWidth: 0, maxWidth: '100%',
                 border: 'none', background: 'transparent', color: 'var(--text-3)',
                 fontSize: 11, fontWeight: 500, lineHeight: '16px', fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', touchAction: 'manipulation',
