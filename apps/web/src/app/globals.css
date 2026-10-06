@@ -195,8 +195,7 @@
 /* パネル幅変更のつまみ。普段は見せず、ホバー・ドラッグ・フォーカス中だけ線を出す */
 .app .resize-handle::after { content:''; position:absolute; top:0; bottom:0; left:3px; width:2px; background:transparent; transition: background .12s; }
 .app .resize-handle:hover::after, .app .resize-handle[data-dragging]::after { background: var(--accent); }
-.app .resize-handle:focus-visible { outline:none; }
-.app .resize-handle:focus-visible::after { background: var(--accent); }
+.app .resize-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-1px; }
 /* 行・メニュー項目のホバー。インラインの background/color より優先させるため !important を付ける */
 .app .hover-bg:not(:disabled):hover { background: var(--card-hover) !important; }
 .app .hover-bg-card:not(:disabled):hover { background: var(--card) !important; }

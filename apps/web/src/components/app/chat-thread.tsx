@@ -192,17 +192,19 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // モバイルWebの「リアクションした人」シートで選択中の絵文字。null は閉じている
   const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
   const reactionPeopleSummary = React.useMemo(() => summarizeReactionPeople(reactions), [reactions])
-  // 選択中の絵文字が Realtime 更新で消えたら、残っている先頭の絵文字を表示する
+  // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、要約に名前が出ているのに「表示できません」から始まる）
+  const defaultReaction = reactions.find(reaction => reaction.userNames.length > 0) ?? reactions[0]
+  // 選択中の絵文字が Realtime 更新で消えたら、残っている既定の絵文字を表示する
   const selectedReaction = reactionPeopleEmoji === null
     ? undefined
-    : reactions.find(reaction => reaction.emoji === reactionPeopleEmoji) ?? reactions[0]
+    : reactions.find(reaction => reaction.emoji === reactionPeopleEmoji) ?? defaultReaction
   const selectedEmoji = selectedReaction?.emoji ?? null
   React.useEffect(() => {
     // 選択状態も表示中の絵文字へ揃える。消えた絵文字を覚えたままだと、同じ絵文字が付け直された時に操作なしで表示が戻る。
     // 全て消えたら閉じる（残すと次に誰かが付けた時に勝手に開く）
     if (reactionPeopleEmoji !== null && reactionPeopleEmoji !== selectedEmoji) setReactionPeopleEmoji(selectedEmoji)
   }, [reactionPeopleEmoji, selectedEmoji])
-  const openReactionPeople = () => { if (reactions[0]) setReactionPeopleEmoji(reactions[0].emoji) }
+  const openReactionPeople = () => { if (defaultReaction) setReactionPeopleEmoji(defaultReaction.emoji) }
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36

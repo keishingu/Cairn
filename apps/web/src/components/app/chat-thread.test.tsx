@@ -294,6 +294,44 @@ describe('ChatMessage copy action', () => {
 })
 
 describe('モバイルWebのリアクション表示', () => {
+  it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[
+          { emoji: '👍', count: 1, mine: false, userNames: [] },
+          { emoji: '🎉', count: 1, mine: false, userNames: ['メンバーC'] },
+        ]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+        isMobile
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
+    expect(within(dialog).getByRole('button', { name: '🎉 1件のリアクション' })).toHaveAttribute('aria-pressed', 'true')
+    expect(dialog).not.toHaveTextContent('このリアクションを付けた人を表示できませんでした')
+  })
+
   it('行末の名前の要約から絵文字ごとの全員を表示し、リアクション切替は別操作のまま', async () => {
     const user = userEvent.setup()
     const onReact = vi.fn()
