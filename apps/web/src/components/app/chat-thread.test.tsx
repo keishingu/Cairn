@@ -347,6 +347,10 @@ describe('モバイルWebのリアクション表示', () => {
     rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['メンバーB', '新しいメンバーD'] }] }))
     expect(dialog).toHaveTextContent('新しいメンバーD')
     expect(dialog).not.toHaveTextContent('メンバーC')
+    // 消えた絵文字が付け直されても、操作なしで表示を戻さない
+    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['メンバーB', '新しいメンバーD'] }, { emoji: '🎉', count: 1, mine: false, userNames: ['メンバーC'] }] }))
+    expect(dialog).toHaveTextContent('新しいメンバーD')
+    expect(within(dialog).getByRole('button', { name: '👍 2件のリアクション' })).toHaveAttribute('aria-pressed', 'true')
 
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
     await user.click(screen.getByRole('button', { name: /👍 2/ }))

@@ -196,10 +196,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const selectedReaction = reactionPeopleEmoji === null
     ? undefined
     : reactions.find(reaction => reaction.emoji === reactionPeopleEmoji) ?? reactions[0]
+  const selectedEmoji = selectedReaction?.emoji ?? null
   React.useEffect(() => {
-    // 開いている間にリアクションが全て消えたら閉じる。残すと次に誰かが付けた時に勝手に開く
-    if (reactionPeopleEmoji !== null && reactions.length === 0) setReactionPeopleEmoji(null)
-  }, [reactionPeopleEmoji, reactions.length])
+    // 選択状態も表示中の絵文字へ揃える。消えた絵文字を覚えたままだと、同じ絵文字が付け直された時に操作なしで表示が戻る。
+    // 全て消えたら閉じる（残すと次に誰かが付けた時に勝手に開く）
+    if (reactionPeopleEmoji !== null && reactionPeopleEmoji !== selectedEmoji) setReactionPeopleEmoji(selectedEmoji)
+  }, [reactionPeopleEmoji, selectedEmoji])
   const openReactionPeople = () => { if (reactions[0]) setReactionPeopleEmoji(reactions[0].emoji) }
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
