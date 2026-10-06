@@ -43,6 +43,7 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { summarizeReactionPeople } from '@/lib/chat/reaction-people'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -188,8 +189,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
-  const [mobileReactionEmoji, setMobileReactionEmoji] = React.useState<string | null>(null)
-  const mobileReactionPeople = reactions.find(reaction => reaction.emoji === mobileReactionEmoji)
+  // モバイルWebの「リアクションした人」シートで選択中の絵文字。null は閉じている
+  const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
+  const reactionPeopleSummary = React.useMemo(() => summarizeReactionPeople(reactions), [reactions])
+  // 選択中の絵文字が Realtime 更新で消えたら、残っている先頭の絵文字を表示する
+  const selectedReaction = reactionPeopleEmoji === null
+    ? undefined
+    : reactions.find(reaction => reaction.emoji === reactionPeopleEmoji) ?? reactions[0]
+  React.useEffect(() => {
+    // 開いている間にリアクションが全て消えたら閉じる。残すと次に誰かが付けた時に勝手に開く
+    if (reactionPeopleEmoji !== null && reactions.length === 0) setReactionPeopleEmoji(null)
+  }, [reactionPeopleEmoji, reactions.length])
+  const openReactionPeople = () => { if (reactions[0]) setReactionPeopleEmoji(reactions[0].emoji) }
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
@@ -293,6 +304,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    ...(isMobile && reactionPeopleSummary ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
@@ -463,21 +475,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {isMobile && r.userNames.length > 0 && (
-                <button
-                  type="button"
-                  aria-label={t('Show reactors for {emoji}', { emoji: r.emoji })}
-                  aria-haspopup="dialog"
-                  className="icon-btn"
-                  onClick={() => setMobileReactionEmoji(r.emoji)}
-                  style={{
-                    width: 32, height: 32, minWidth: 32, minHeight: 32, padding: 0, borderRadius: 12,
-                    background: 'var(--card-2)', border: '1px solid var(--border)',
-                    color: 'var(--text-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', fontFamily: 'inherit', touchAction: 'manipulation',
-                  }}
-                ><Icon name="users" size={13}/></button>
-              )}
-              {/* PCはホバー、モバイルWebは隣のボタンで表示 */}
+              {/* PCはホバー、モバイルWebは行末の名前の要約から表示 */}
               {!isMobile && hoveredReaction === i && r.userNames.length > 0 && (
                 <span style={{
                   position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
@@ -500,19 +498,71 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           {showPicker && (
             <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>
           )}
+          {isMobile && reactionPeopleSummary && (
+            <button
+              type="button"
+              aria-label={t('Show who reacted')}
+              aria-haspopup="dialog"
+              onClick={openReactionPeople}
+              style={{
+                // 見た目はチップと同じ高さの枠なしテキスト。上下の余白を負のマージンで打ち消し、行の高さを変えずにタップ領域だけ広げる
+                padding: '14px 6px', margin: '-14px 0', minWidth: 0, maxWidth: '100%',
+                border: 'none', background: 'transparent', color: 'var(--text-3)',
+                fontSize: 11, fontWeight: 500, lineHeight: '16px', fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', touchAction: 'manipulation',
+              }}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {reactionPeopleSummary.restCount > 0
+                  ? t('{names} and {count} more', { names: reactionPeopleSummary.names.join(t(', ')), count: reactionPeopleSummary.restCount })
+                  : reactionPeopleSummary.names.join(t(', '))}
+              </span>
+              <Icon name="chevRight" size={11}/>
+            </button>
+          )}
         </div>
       </div>
       {!isMobile && messageActions}
-      {mobileReactionPeople && (
-        <Modal onClose={() => setMobileReactionEmoji(null)} label={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })}>
-          <div className="card" style={{ width: '100%', maxWidth: 360, maxHeight: 'min(70vh, 480px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <ModalHeader title={t('People who reacted with {emoji}', { emoji: mobileReactionPeople.emoji })} onClose={() => setMobileReactionEmoji(null)} />
-            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px 16px' }}>
-              {mobileReactionPeople.userNames.map((name, index) => (
+      {selectedReaction && (
+        <Modal onClose={() => setReactionPeopleEmoji(null)} label={t('Show who reacted')}>
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '70dvh',
+            background: 'var(--card)', borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
+          }}>
+            <ModalHeader title={t('Reactions ({count})', { count: reactions.reduce((total, reaction) => total + reaction.count, 0) })} onClose={() => setReactionPeopleEmoji(null)} />
+            <div style={{ display: 'flex', gap: 6, padding: '12px 20px', overflowX: 'auto', flexShrink: 0 }}>
+              {reactions.map(reaction => {
+                const selected = reaction.emoji === selectedReaction.emoji
+                return (
+                  <button
+                    key={reaction.emoji}
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
+                    onClick={() => setReactionPeopleEmoji(reaction.emoji)}
+                    style={{
+                      height: 32, padding: '0 12px', borderRadius: 16, flexShrink: 0,
+                      background: selected ? 'var(--accent-soft)' : 'var(--card-2)',
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      color: selected ? 'var(--accent-text)' : 'var(--text-2)',
+                      fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', touchAction: 'manipulation',
+                    }}
+                  >{reaction.emoji} {reaction.count}</button>
+                )
+              })}
+            </div>
+            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px calc(16px + env(safe-area-inset-bottom))' }}>
+              {selectedReaction.userNames.length > 0 ? selectedReaction.userNames.map((name, index) => (
                 <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>
                   {name}
                 </div>
-              ))}
+              )) : (
+                <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-3)', fontSize: 13 }}>
+                  {t('Could not show who reacted')}
+                </div>
+              )}
             </div>
           </div>
         </Modal>
