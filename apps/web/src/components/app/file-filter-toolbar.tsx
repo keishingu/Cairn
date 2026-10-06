@@ -155,7 +155,7 @@ export function FileFilterToolbar({
             return (
               <button
                 key={filter.id}
-                onClick={() => update('type', filter.id)}
+                onClick={() => (filter.id === 'all' ? onClear() : update('type', filter.id))}
                 aria-pressed={active}
                 style={{
                   padding: isMobile ? '6px 8px' : '6px 10px',
@@ -189,7 +189,7 @@ export function FileFilterToolbar({
                 }}
               >
                 <button
-                  onClick={() => onApplySavedFilter(filter)}
+                  onClick={() => (active ? onClear() : onApplySavedFilter(filter))}
                   aria-pressed={active}
                   style={{
                     border: 'none',
