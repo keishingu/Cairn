@@ -129,6 +129,8 @@ function MermaidDiagramViewer({ definition, onClose }: { definition: string; onC
               key={attempt}
               originWhitelist={['*']}
               source={{ html }}
+              // 中央寄せの親の中で WebView の container の幅が 0 にならないよう、container 側を全面に広げる
+              containerStyle={StyleSheet.absoluteFill}
               style={[styles.webview, { backgroundColor: palette.bg }]}
               javaScriptEnabled
               scalesPageToFit
@@ -204,7 +206,7 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1, fontSize: 14, fontWeight: '600' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  webview: { ...StyleSheet.absoluteFillObject },
+  webview: { flex: 1 },
   spinner: { position: 'absolute' },
   failure: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   failureText: { fontSize: 15, fontWeight: '600', textAlign: 'center' },
