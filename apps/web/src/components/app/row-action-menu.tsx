@@ -20,12 +20,13 @@ const MENU_GAP = 4
 export function placeMenuVertically(
   trigger: { top: number; bottom: number },
   menuHeight: number,
-  viewportHeight: number,
+  // 実際に見えている範囲（fixed 配置と同じ座標系）。ソフトウェアキーボードが出ている間は画面全体より狭い
+  visible: { top: number; bottom: number },
   // ノッチやホームインジケーターに隠れる領域。viewport-fit=cover のため、画面端まで使うと最後の項目が隠れる
   safeArea: { top: number; bottom: number } = { top: 0, bottom: 0 },
 ): number {
-  const minTop = safeArea.top + MENU_GAP
-  const maxBottom = viewportHeight - safeArea.bottom - MENU_GAP
+  const minTop = visible.top + safeArea.top + MENU_GAP
+  const maxBottom = visible.bottom - safeArea.bottom - MENU_GAP
   const below = trigger.bottom + MENU_GAP
   if (below + menuHeight <= maxBottom) return below
   const above = trigger.top - MENU_GAP - menuHeight
@@ -41,7 +42,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
 }) => {
   const t = useT()
   const [open, setOpen] = React.useState(false)
-  const [position, setPosition] = React.useState({ top: 0, right: 0 })
+  const [position, setPosition] = React.useState<{ top: number; right: number; maxHeight?: number }>({ top: 0, right: 0 })
   const btnRef = React.useRef<HTMLButtonElement>(null)
   const menuRef = React.useRef<HTMLDivElement>(null)
   const menuId = React.useId()
@@ -68,7 +69,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
   }, [open])
 
   // 開いた直後に実際の高さを測り、画面に収まる位置へ描画前に直す。
-  // 開いたまま画面の回転などでビューポートが変わると位置が古くなるため、resize でも測り直す
+  // 開いたまま画面の回転やキーボードの開閉で見える範囲が変わると位置が古くなるため、その都度測り直す
   React.useLayoutEffect(() => {
     if (!open) return
     const reposition = () => {
@@ -77,17 +78,30 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
       // env(safe-area-inset-*) は JS から直接読めないため、レイアウトに影響しない scroll-margin に入れて px に解決させる
       const computed = getComputedStyle(menuRef.current)
       const safeArea = { top: parseFloat(computed.scrollMarginTop) || 0, bottom: parseFloat(computed.scrollMarginBottom) || 0 }
-      const top = placeMenuVertically(rect, menuRef.current.offsetHeight, window.innerHeight, safeArea)
+      // iOS のキーボードは window.innerHeight を縮めないため、visualViewport があればそちらを見える範囲とする
+      const viewport = window.visualViewport
+      const visible = viewport
+        ? { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height }
+        : { top: 0, bottom: window.innerHeight }
+      const maxHeight = Math.max(0, visible.bottom - visible.top - safeArea.top - safeArea.bottom - MENU_GAP * 2)
+      const top = placeMenuVertically(rect, Math.min(menuRef.current.scrollHeight, maxHeight), visible, safeArea)
       const right = window.innerWidth - rect.right
-      setPosition(current => current.top === top && current.right === right ? current : { top, right })
+      setPosition(current => current.top === top && current.right === right && current.maxHeight === maxHeight ? current : { top, right, maxHeight })
     }
     reposition()
+    const viewport = window.visualViewport
     window.addEventListener('resize', reposition)
-    return () => window.removeEventListener('resize', reposition)
+    viewport?.addEventListener('resize', reposition)
+    viewport?.addEventListener('scroll', reposition)
+    return () => {
+      window.removeEventListener('resize', reposition)
+      viewport?.removeEventListener('resize', reposition)
+      viewport?.removeEventListener('scroll', reposition)
+    }
   }, [open, actions.length])
 
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
-  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, maxHeight: `calc(100dvh - ${MENU_GAP * 2}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`, overflowY: 'auto', scrollMarginTop: 'env(safe-area-inset-top)', scrollMarginBottom: 'env(safe-area-inset-bottom)' }
+  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, overflowY: 'auto', scrollMarginTop: 'env(safe-area-inset-top)', scrollMarginBottom: 'env(safe-area-inset-bottom)' }
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>

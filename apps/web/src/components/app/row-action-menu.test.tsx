@@ -38,24 +38,31 @@ describe('行の操作メニュー', () => {
 
 describe('行の操作メニューの縦位置', () => {
   it('下に収まるときはトリガーの下に出す', () => {
-    expect(placeMenuVertically({ top: 100, bottom: 120 }, 150, 800)).toBe(124)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 150, { top: 0, bottom: 800 })).toBe(124)
   })
 
   it('下に収まらないときはトリガーの上に出す', () => {
-    expect(placeMenuVertically({ top: 700, bottom: 720 }, 150, 800)).toBe(546)
+    expect(placeMenuVertically({ top: 700, bottom: 720 }, 150, { top: 0, bottom: 800 })).toBe(546)
   })
 
   it('上下どちらにも収まらないときは画面内に寄せる', () => {
-    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, 300)).toBe(106)
-    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, 300)).toBe(4)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, { top: 0, bottom: 300 })).toBe(106)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, { top: 0, bottom: 300 })).toBe(4)
   })
 
   it('セーフエリアに重ならない範囲に収める', () => {
     // 下のセーフエリアを除くと下には収まらないので上へ出す
-    expect(placeMenuVertically({ top: 600, bottom: 620 }, 150, 800, { top: 0, bottom: 34 })).toBe(446)
+    expect(placeMenuVertically({ top: 600, bottom: 620 }, 150, { top: 0, bottom: 800 }, { top: 0, bottom: 34 })).toBe(446)
     // 上下どちらにも収まらないときは、下のセーフエリアの手前に寄せる
-    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, 300, { top: 0, bottom: 34 })).toBe(72)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, { top: 0, bottom: 300 }, { top: 0, bottom: 34 })).toBe(72)
     // 上のセーフエリアより上へは出さない
-    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, 300, { top: 20, bottom: 34 })).toBe(24)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, { top: 0, bottom: 300 }, { top: 20, bottom: 34 })).toBe(24)
+  })
+
+  it('キーボードなどで見える範囲が狭いときは、その範囲に収める', () => {
+    // 画面全体（800）なら下に収まるが、見える範囲の下端（500）を越えるので上へ出す
+    expect(placeMenuVertically({ top: 400, bottom: 420 }, 150, { top: 0, bottom: 500 })).toBe(246)
+    // 見える範囲が下へずれているときは、その上端より上へ出さない
+    expect(placeMenuVertically({ top: 250, bottom: 270 }, 400, { top: 200, bottom: 500 })).toBe(204)
   })
 })
