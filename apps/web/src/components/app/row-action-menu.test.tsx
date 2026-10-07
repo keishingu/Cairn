@@ -49,4 +49,13 @@ describe('行の操作メニューの縦位置', () => {
     expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, 300)).toBe(106)
     expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, 300)).toBe(4)
   })
+
+  it('セーフエリアに重ならない範囲に収める', () => {
+    // 下のセーフエリアを除くと下には収まらないので上へ出す
+    expect(placeMenuVertically({ top: 600, bottom: 620 }, 150, 800, { top: 0, bottom: 34 })).toBe(446)
+    // 上下どちらにも収まらないときは、下のセーフエリアの手前に寄せる
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, 300, { top: 0, bottom: 34 })).toBe(72)
+    // 上のセーフエリアより上へは出さない
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, 300, { top: 20, bottom: 34 })).toBe(24)
+  })
 })

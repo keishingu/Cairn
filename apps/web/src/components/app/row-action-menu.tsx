@@ -17,12 +17,20 @@ const MENU_GAP = 4
  * メニューの縦位置。トリガーの下に収まらなければ上へ出し、上下どちらにも収まらなければ画面内に寄せる。
  * 常に下へ出すと、画面下端に近い行（チャットの最新メッセージなど）で下の項目が画面外に切れて押せない。
  */
-export function placeMenuVertically(trigger: { top: number; bottom: number }, menuHeight: number, viewportHeight: number): number {
+export function placeMenuVertically(
+  trigger: { top: number; bottom: number },
+  menuHeight: number,
+  viewportHeight: number,
+  // ノッチやホームインジケーターに隠れる領域。viewport-fit=cover のため、画面端まで使うと最後の項目が隠れる
+  safeArea: { top: number; bottom: number } = { top: 0, bottom: 0 },
+): number {
+  const minTop = safeArea.top + MENU_GAP
+  const maxBottom = viewportHeight - safeArea.bottom - MENU_GAP
   const below = trigger.bottom + MENU_GAP
-  if (below + menuHeight <= viewportHeight - MENU_GAP) return below
+  if (below + menuHeight <= maxBottom) return below
   const above = trigger.top - MENU_GAP - menuHeight
-  if (above >= MENU_GAP) return above
-  return Math.max(MENU_GAP, viewportHeight - MENU_GAP - menuHeight)
+  if (above >= minTop) return above
+  return Math.max(minTop, maxBottom - menuHeight)
 }
 
 // リスト行の「…」アクションメニュー。リスト系エンティティの編集・削除は
@@ -66,7 +74,10 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
     const reposition = () => {
       if (!btnRef.current || !menuRef.current) return
       const rect = btnRef.current.getBoundingClientRect()
-      const top = placeMenuVertically(rect, menuRef.current.offsetHeight, window.innerHeight)
+      // env(safe-area-inset-*) は JS から直接読めないため、レイアウトに影響しない scroll-margin に入れて px に解決させる
+      const computed = getComputedStyle(menuRef.current)
+      const safeArea = { top: parseFloat(computed.scrollMarginTop) || 0, bottom: parseFloat(computed.scrollMarginBottom) || 0 }
+      const top = placeMenuVertically(rect, menuRef.current.offsetHeight, window.innerHeight, safeArea)
       const right = window.innerWidth - rect.right
       setPosition(current => current.top === top && current.right === right ? current : { top, right })
     }
@@ -76,7 +87,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
   }, [open, actions.length])
 
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
-  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, maxHeight: `calc(100dvh - ${MENU_GAP * 2}px)`, overflowY: 'auto' }
+  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, maxHeight: `calc(100dvh - ${MENU_GAP * 2}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`, overflowY: 'auto', scrollMarginTop: 'env(safe-area-inset-top)', scrollMarginBottom: 'env(safe-area-inset-bottom)' }
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
