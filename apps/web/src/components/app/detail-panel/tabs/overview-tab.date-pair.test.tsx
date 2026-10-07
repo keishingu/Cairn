@@ -14,7 +14,7 @@ function openEditor(onSave = vi.fn()) {
   return onSave
 }
 
-describe('InlineDatePair', () => {
+describe('日程のインライン編集（InlineDatePair）', () => {
   it('ネイティブピッカーを閉じた時の移動先のない blur では編集を閉じず、終了日を入力できる', () => {
     const onSave = openEditor()
 
@@ -80,7 +80,7 @@ describe('InlineDatePair', () => {
   })
 })
 
-describe('MilestoneCreateForm', () => {
+describe('マイルストーン追加フォーム（MilestoneCreateForm）', () => {
   it('終了日が開始日より前の間は作成できず、入力を残したままエラーを表示する', () => {
     const onCreate = vi.fn()
     render(<MilestoneCreateForm onCreate={onCreate}/>)

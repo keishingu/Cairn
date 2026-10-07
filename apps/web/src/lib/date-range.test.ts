@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'vitest'
 import { isEndBeforeStart } from './date-range'
 
-describe('isEndBeforeStart', () => {
+describe('期間の逆転判定（isEndBeforeStart）', () => {
   test('終了日が開始日より前の時だけ true', () => {
     expect(isEndBeforeStart('2026-10-18', '2026-10-17')).toBe(true)
     expect(isEndBeforeStart('2026-10-17', '2026-10-17')).toBe(false)

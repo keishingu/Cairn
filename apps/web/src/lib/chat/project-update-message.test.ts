@@ -27,7 +27,7 @@ const stored = (id: string, minutes: number, change: ProjectUpdateChange) => ({
   update: { kind: change.kind, milestoneId: change.milestoneId ?? null },
 })
 
-describe('supersededProjectUpdateMessageIds', () => {
+describe('上書きされる更新通知の選択（supersededProjectUpdateMessageIds）', () => {
   test('同じ項目を続けて変更したら、前の通知をすべて消して最後の1件だけ残す', () => {
     const recent = [
       stored('m3', 1, dates('2026-10-18', '2026-10-17')),
@@ -115,7 +115,7 @@ describe('supersededProjectUpdateMessageIds', () => {
   })
 })
 
-describe('projectUpdateChange', () => {
+describe('更新通知の組み立て（projectUpdateChange）', () => {
   test('項目は本文ではなく kind と milestoneId で決まり、名前に何が入っていても変わらない', () => {
     expect(projectUpdateKey(projectUpdateChange.title('春 / 期間を 夏合宿'))).toBe('title')
     expect(projectUpdateKey(projectUpdateChange.location('期間を A 〜 B に変更しました'))).toBe('location')
