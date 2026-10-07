@@ -594,7 +594,8 @@ describe('ChatThreadのメンション候補', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(input.value).toBe('@')
 
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'メンション候補を再読み込み' }))
+    // キーボードの Enter / Space も click として届くため、mousedown ではなく click で再試行できること
+    fireEvent.click(screen.getByRole('button', { name: 'メンション候補を再読み込み' }))
     expect(chatThreadState.refetchProjectChannels).toHaveBeenCalledTimes(1)
   })
 

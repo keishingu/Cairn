@@ -796,8 +796,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             type="button"
             aria-label={t('Reload mention suggestions')}
             disabled={isRetryingMentionMembers}
-            // 入力欄のフォーカスを保ったまま再読み込みする
-            onMouseDown={e => { e.preventDefault(); onRetryMentionMembers?.() }}
+            // 押しても入力欄のフォーカスを奪わない。再読み込み自体は、キーボード操作でも発火する click で行う
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onRetryMentionMembers?.()}
             style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: isRetryingMentionMembers ? 'default' : 'pointer', opacity: isRetryingMentionMembers ? 0.5 : 1 }}
           >
             {t('Retry')}
