@@ -326,13 +326,14 @@ describe('モバイルWebのリアクション表示', () => {
       />,
     )
 
+    await user.click(screen.getByRole('button', { name: '操作' }))
     await user.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
     const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
     expect(within(dialog).getByRole('button', { name: '🎉 1件のリアクション' })).toHaveAttribute('aria-pressed', 'true')
     expect(dialog).not.toHaveTextContent('このリアクションを付けた人を表示できませんでした')
   })
 
-  it('行末の名前の要約から絵文字ごとの全員を表示し、リアクション切替は別操作のまま', async () => {
+  it('「…」メニューから絵文字ごとの全員を表示し、リアクション切替は別操作のまま', async () => {
     const user = userEvent.setup()
     const onReact = vi.fn()
     const reactions = [
@@ -367,10 +368,10 @@ describe('モバイルWebのリアクション表示', () => {
     )
     const { rerender } = render(message)
 
-    // 絵文字ごとのボタンは出さず、メッセージに1つだけ入口を置く
-    const summary = screen.getByRole('button', { name: 'リアクションした人を表示' })
-    expect(summary).toHaveTextContent('メンバーA、メンバーB ほか1人')
-    await user.click(summary)
+    // リアクション行には入口を置かず、メッセージの「…」メニューから開く
+    expect(screen.queryByRole('button', { name: 'リアクションした人を表示' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '操作' }))
+    await user.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
     expect(onReact).not.toHaveBeenCalled()
     const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
     expect(dialog).toHaveTextContent('リアクション (4)')

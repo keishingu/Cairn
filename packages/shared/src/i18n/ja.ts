@@ -52,7 +52,6 @@ export const JA_MESSAGES: Record<string, string> = {
   '{count} selected': '{count}件選択',
   '{count} selected members': '{count}人選択',
   '{count} stacked': '積み済み {count} 個',
-  '{names} and {count} more': '{names} ほか{count}人',
   '{count} stones': '{count} 石',
   '{count}/{max} uses': '{count}/{max}回使用',
   '{count}/5 items': '{count}/5件',

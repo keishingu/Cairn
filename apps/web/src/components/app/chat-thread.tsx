@@ -43,7 +43,6 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { summarizeReactionPeople } from '@/lib/chat/reaction-people'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -191,8 +190,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
   // モバイルWebの「リアクションした人」シートで選択中の絵文字。null は閉じている
   const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
-  const reactionPeopleSummary = React.useMemo(() => summarizeReactionPeople(reactions), [reactions])
-  // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、要約に名前が出ているのに「表示できません」から始まる）
+  // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、他の絵文字には名前があるのに「表示できません」から始まる）
   const defaultReaction = reactions.find(reaction => reaction.userNames.length > 0) ?? reactions[0]
   // 選択中の絵文字が Realtime 更新で消えたら、残っている既定の絵文字を表示する
   const selectedReaction = reactionPeopleEmoji === null
@@ -308,7 +306,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
-    ...(isMobile && reactionPeopleSummary ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
+    ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
@@ -479,7 +477,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {/* PCはホバー、モバイルWebは行末の名前の要約から表示 */}
+              {/* PCはホバー、モバイルWebはメッセージの「…」メニューから表示 */}
               {!isMobile && hoveredReaction === i && r.userNames.length > 0 && (
                 <span style={{
                   position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
@@ -501,28 +499,6 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           }}>+</button>
           {showPicker && (
             <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>
-          )}
-          {isMobile && reactionPeopleSummary && (
-            <button
-              type="button"
-              aria-label={t('Show who reacted')}
-              aria-haspopup="dialog"
-              onClick={openReactionPeople}
-              style={{
-                // 枠なしテキストだがタップ領域は 32px 確保する。負のマージンで行の外へ広げると、隣の行のチップや本文へのタップを奪う
-                padding: '8px 6px', minWidth: 0, maxWidth: '100%',
-                border: 'none', background: 'transparent', color: 'var(--text-3)',
-                fontSize: 11, fontWeight: 500, lineHeight: '16px', fontFamily: 'inherit',
-                display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', touchAction: 'manipulation',
-              }}
-            >
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {reactionPeopleSummary.restCount > 0
-                  ? t('{names} and {count} more', { names: reactionPeopleSummary.names.join(t(', ')), count: reactionPeopleSummary.restCount })
-                  : reactionPeopleSummary.names.join(t(', '))}
-              </span>
-              <Icon name="chevRight" size={11}/>
-            </button>
           )}
         </div>
       </div>

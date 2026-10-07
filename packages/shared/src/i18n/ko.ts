@@ -52,7 +52,6 @@ export const KO_MESSAGES: Record<string, string> = {
   '{count} selected': '{count}개 선택',
   '{count} selected members': '{count}명 선택',
   '{count} stacked': '쌓은 돌 {count}개',
-  '{names} and {count} more': '{names} 외 {count}명',
   '{count} stones': '돌 {count}개',
   '{count}/{max} uses': '{count}/{max}회 사용',
   '{count}/5 items': '{count}/5개',
