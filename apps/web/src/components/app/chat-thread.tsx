@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -571,7 +571,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -588,6 +588,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  /** 候補の絞り込みに必要なデータを取得できなかった時のメッセージ。候補の代わりに表示する */
+  mentionMembersError?: string | null
+  onRetryMentionMembers?: () => void
+  isRetryingMentionMembers?: boolean
   mentionAttributes?: { id: string; name: string }[]
   /** DM ではグループメンションを展開しないため候補から外す */
   includeAllMention?: boolean
@@ -688,7 +692,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }, [draft])
 
   const mentionCandidates = React.useMemo(() => {
-    if (mentionQuery === null) return []
+    // 絞り込みに失敗したまま一部の候補だけを出すと、出てこない人が「居ない」ように見える
+    if (mentionQuery === null || mentionMembersError) return []
     const q = mentionQuery.toLowerCase()
     type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
     // 優先度: @all → @project_members → ユーザー（プロジェクト参加者は呼び出し側で先頭）→ 属性
@@ -721,7 +726,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       }
     }
     return [...specials, ...users, ...attributes]
-  }, [mentionQuery, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention])
+  }, [mentionQuery, mentionMembers, mentionMembersError, mentionAttributes, includeAllMention, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
@@ -776,12 +781,31 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const MentionPicker = (() => {
-    if (mentionCandidates.length === 0) return null
+    const showError = mentionQuery !== null && !!mentionMembersError
+    if (!showError && mentionCandidates.length === 0) return null
     const el = textareaRef.current ?? compactInputRef.current
     const rect = el?.getBoundingClientRect()
     const style: React.CSSProperties = rect
       ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 'var(--z-popover)' }
       : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 'var(--z-dropdown)' }
+    if (showError) {
+      return (
+        <div style={{ ...style, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)' }}>
+          <InlineError style={{ flex: 1 }}>{mentionMembersError}</InlineError>
+          <button
+            type="button"
+            aria-label={t('Reload mention suggestions')}
+            disabled={isRetryingMentionMembers}
+            // 押しても入力欄のフォーカスを奪わない。再読み込み自体は、キーボード操作でも発火する click で行う
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onRetryMentionMembers?.()}
+            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: isRetryingMentionMembers ? 'default' : 'pointer', opacity: isRetryingMentionMembers ? 0.5 : 1 }}
+          >
+            {t('Retry')}
+          </button>
+        </div>
+      )
+    }
     return (
       <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
@@ -1345,15 +1369,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
   const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
-  const { data: wsMembers = [] } = useWorkspaceMembers()
-  const { data: chMemberIds = [] } = useChannelMembers(channelId)
-  const { data: projectChannels = [] } = useProjectChannels()
+  const wsMembersQuery = useWorkspaceMembers()
+  const chMembersQuery = useChannelMembers(channelId)
+  const projectChannelsQuery = useProjectChannels()
+  const { data: wsMembers = [] } = wsMembersQuery
+  const { data: chMemberIds = [] } = chMembersQuery
+  const { data: projectChannels = [], isSuccess: projectChannelsResolved } = projectChannelsQuery
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
     [projectChannels, channelId],
   )
-  const { data: projectMembers = [] } = useProjectMembers(projectId)
+  const projectMembersQuery = useProjectMembers(projectId)
+  const { data: projectMembers = [] } = projectMembersQuery
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -1538,10 +1566,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
-    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
-    if (chMemberIds.length > 0) {
-      const idSet = new Set(chMemberIds.map(m => m.userId))
-      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    const others = wsMembers.filter(m => m.userId !== currentUser?.id)
+    const channelMemberIds = new Set(chMemberIds.map(m => m.userId))
+    if (isPrivate || isDm) {
+      return filterMentionCandidates(others, { kind: 'members_only', channelMemberIds })
     }
     // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
     // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
@@ -1549,11 +1577,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return wsMembers
-        .filter(m =>
-          m.userId !== currentUser?.id &&
-          (m.role !== 'guest' || projectMemberIds.has(m.userId)),
-        )
+      return filterMentionCandidates(others, { kind: 'project', projectMemberIds })
         .sort((a, b) => {
           const aIn = projectMemberIds.has(a.userId) ? 0 : 1
           const bIn = projectMemberIds.has(b.userId) ? 0 : 1
@@ -1561,8 +1585,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           return a.displayName.localeCompare(b.displayName, 'ja')
         })
     }
-    return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
+    // プロジェクトチャンネル一覧の取得前は、ここがプロジェクトチャンネルかどうか分からない。
+    // その間に公開チャンネル扱いにすると、未参加のゲストまで候補に出てしまう
+    if (!projectChannelsResolved) return filterMentionCandidates(others, { kind: 'unresolved' })
+    return filterMentionCandidates(others, { kind: 'workspace', channelMemberIds })
+  }, [chMemberIds, wsMembers, currentUser?.id, isPrivate, isDm, projectId, projectMembers, projectChannelsResolved])
+
+  // 候補の絞り込みに使うデータのうち、このチャンネルで実際に必要なものだけを見る。
+  // 取得に失敗したまま候補を出すと、条件付きで出るはずのゲストが黙って消える
+  const mentionScopeQueries = [
+    wsMembersQuery,
+    ...(isPrivate || isDm
+      ? [chMembersQuery]
+      : [projectChannelsQuery, projectId ? projectMembersQuery : chMembersQuery]),
+  ]
+  const mentionMembersError = mentionScopeQueries.find(query => query.error)?.error?.message ?? null
+  const isRetryingMentionMembers = mentionScopeQueries.some(query => query.error && query.isFetching)
+  const retryMentionMembers = () => {
+    for (const query of mentionScopeQueries) if (query.error) void query.refetch()
+  }
 
   const { data: profileAttributes = [] } = useProfileAttributes()
 
@@ -2082,6 +2123,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionMembersError={mentionMembersError}
+        onRetryMentionMembers={retryMentionMembers}
+        isRetryingMentionMembers={isRetryingMentionMembers}
         mentionAttributes={isDm ? [] : profileAttributes}
         includeAllMention={!isDm}
         includeProjectMembersMention={!isDm && !!projectId}
