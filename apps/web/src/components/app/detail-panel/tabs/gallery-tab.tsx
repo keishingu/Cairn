@@ -9,7 +9,7 @@ import { RowActionMenu } from '../../row-action-menu'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
 import { normalizeGalleryImageMimeType } from '@/lib/gallery-upload'
-import { processImageForUpload } from '@/lib/process-image'
+import { HeicConversionError, processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
 import { describeUploadFailures } from '@/lib/files/upload-failures'
@@ -31,7 +31,14 @@ async function uploadFile(projectId: string, original: File, t: Translate): Prom
     takenAt,
     latitude,
     longitude,
-  } = await processImageForUpload(original)
+  } = await processImageForUpload(original).catch((error: unknown) => {
+    // 変換ライブラリの内部メッセージではなく、次に何をすればよいかを案内する
+    if (error instanceof HeicConversionError) {
+      console.error('[GalleryTab] HEIC の変換に失敗:', error)
+      throw new Error(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+    }
+    throw error
+  })
   // ブラウザが MIME を空で渡した原本（Windows の .heic 等）は、Storage のバケットに拒否される。
   // 拡張子から補った MIME を持つ File に包み直して送る
   const originalMimeType = normalizeGalleryImageMimeType(rawOriginalFile.name, rawOriginalFile.type)

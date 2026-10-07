@@ -103,7 +103,15 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       const results = await Promise.allSettled(
         files.map(async (picked) => {
           // iPhone の写真（HEIC）は Safari 以外で表示できず、添付の許可形式にも無いため JPEG にして送る
-          const file = isHeicLike(picked) ? await convertHeicToJpeg(picked) : picked
+          let file = picked
+          if (isHeicLike(picked)) {
+            try {
+              file = await convertHeicToJpeg(picked)
+            } catch (error) {
+              console.error('[FilesTab] HEIC の変換に失敗:', error)
+              throw new Error(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+            }
+          }
           const formData = new FormData()
           formData.append('file', file)
           formData.append('channelId', channelId)

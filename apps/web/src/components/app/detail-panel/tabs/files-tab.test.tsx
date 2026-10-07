@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -10,6 +10,8 @@ import { FilesTab } from './files-tab'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 vi.mock('@/lib/fetch-with-auth')
+const heic2anyMock = vi.hoisted(() => vi.fn())
+vi.mock('heic2any', () => ({ default: heic2anyMock }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('@/lib/toast', () => ({ toast: toastMocks }))
 vi.mock('@/hooks/use-project-files', () => ({
@@ -66,6 +68,19 @@ describe('ファイルタブ', () => {
     expect(alert).toHaveTextContent('a.pdf: a.zip は対応していない形式です')
     expect(alert).toHaveTextContent('b.pdf: b.zip は対応していない形式です')
     expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
+  })
+
+  it('HEIC の変換に失敗したら、ライブラリの内部メッセージではなく JPEG への変換を案内する', async () => {
+    heic2anyMock.mockRejectedValueOnce(new Error('ERR_LIBHEIF format not supported'))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['heic'], 'IMG_0001.heic', { type: 'image/heic' })] } })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('IMG_0001.heic: HEIC 画像を変換できませんでした。JPEG に変換してからアップロードしてください')
+    expect(alert).not.toHaveTextContent('ERR_LIBHEIF')
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('detail panel の file picker が CSV と pptx を許可する', () => {
