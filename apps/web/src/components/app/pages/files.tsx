@@ -568,7 +568,10 @@ export const PageFiles = ({
       dir === 'next'
         ? (idx + 1) % filterDefs.length
         : (idx - 1 + filterDefs.length) % filterDefs.length
-    setConditions((current) => ({ ...current, type: filterDefs[next]! }))
+    const nextType = filterDefs[next]!
+    setConditions((current) =>
+      nextType === 'all' ? DEFAULT_FILE_FILTER_CONDITIONS : { ...current, type: nextType },
+    )
     setActiveSavedFilterId(null)
   }
   useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
@@ -617,8 +620,9 @@ export const PageFiles = ({
   }
 
   const handleSaveFilter = async (name: string) => {
-    const created = await createSavedFilter.mutateAsync({ name, conditions })
-    setActiveSavedFilterId(created.id)
+    await createSavedFilter.mutateAsync({ name, conditions })
+    setConditions(DEFAULT_FILE_FILTER_CONDITIONS)
+    setActiveSavedFilterId(null)
   }
 
   const handleDeleteSavedFilter = (filterId: string) => {
