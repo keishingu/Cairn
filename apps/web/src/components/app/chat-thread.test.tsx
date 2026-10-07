@@ -294,9 +294,52 @@ describe('ChatMessage copy action', () => {
 })
 
 describe('モバイルWebのリアクション表示', () => {
-  it('人型ボタンで全員を表示し、リアクション切替は別操作のまま', async () => {
+  it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[
+          { emoji: '👍', count: 1, mine: false, userNames: [] },
+          { emoji: '🎉', count: 1, mine: false, userNames: ['メンバーC'] },
+        ]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+        isMobile
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '操作' }))
+    await user.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
+    expect(within(dialog).getByRole('button', { name: '🎉 1件のリアクション' })).toHaveAttribute('aria-pressed', 'true')
+    expect(dialog).not.toHaveTextContent('このリアクションを付けた人を表示できませんでした')
+  })
+
+  it('「…」メニューから絵文字ごとの全員を表示し、リアクション切替は別操作のまま', async () => {
     const user = userEvent.setup()
     const onReact = vi.fn()
+    const reactions = [
+      { emoji: '👍', count: 2, mine: false, userNames: ['メンバーA', 'メンバーB'] },
+      { emoji: '🎉', count: 2, mine: false, userNames: ['メンバーB', 'メンバーC'] },
+    ]
     const message = (
       <ChatMessage
         messageId="message-reactions"
@@ -307,7 +350,7 @@ describe('モバイルWebのリアクション表示', () => {
         createdAt="2026-06-25T12:00:00.000Z"
         isEdited={false}
         content="hello"
-        reactions={[{ emoji: '👍', count: 2, mine: false, userNames: ['長い名前のメンバーA', '長い名前のメンバーB'] }]}
+        reactions={reactions}
         attachments={[]}
         replyTo={null}
         bookmarked={false}
@@ -325,18 +368,33 @@ describe('モバイルWebのリアクション表示', () => {
     )
     const { rerender } = render(message)
 
-    await user.click(screen.getByRole('button', { name: '👍 を付けた人を表示' }))
+    // リアクション行には入口を置かず、メッセージの「…」メニューから開く
+    expect(screen.queryByRole('button', { name: 'リアクションした人を表示' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '操作' }))
+    await user.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
     expect(onReact).not.toHaveBeenCalled()
-    const dialog = screen.getByRole('dialog', { name: '👍 を付けた人' })
-    expect(dialog).toHaveTextContent('長い名前のメンバーA')
-    expect(dialog).toHaveTextContent('長い名前のメンバーB')
-    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['長い名前のメンバーB', '新しいメンバーC'] }] }))
-    expect(dialog).not.toHaveTextContent('長い名前のメンバーA')
-    expect(dialog).toHaveTextContent('新しいメンバーC')
+    const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
+    expect(dialog).toHaveTextContent('リアクション (4)')
+    expect(dialog).toHaveTextContent('メンバーA')
+    expect(dialog).not.toHaveTextContent('メンバーC')
+
+    await user.click(within(dialog).getByRole('button', { name: '🎉 2件のリアクション' }))
+    expect(dialog).not.toHaveTextContent('メンバーA')
+    expect(dialog).toHaveTextContent('メンバーC')
+
+    // 選択中の絵文字が消えたら、残っている絵文字の人を表示する
+    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['メンバーB', '新しいメンバーD'] }] }))
+    expect(dialog).toHaveTextContent('新しいメンバーD')
+    expect(dialog).not.toHaveTextContent('メンバーC')
+    // 消えた絵文字が付け直されても、操作なしで表示を戻さない
+    rerender(cloneElement(message, { reactions: [{ emoji: '👍', count: 2, mine: false, userNames: ['メンバーB', '新しいメンバーD'] }, { emoji: '🎉', count: 1, mine: false, userNames: ['メンバーC'] }] }))
+    expect(dialog).toHaveTextContent('新しいメンバーD')
+    expect(within(dialog).getByRole('button', { name: '👍 2件のリアクション' })).toHaveAttribute('aria-pressed', 'true')
+
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
     await user.click(screen.getByRole('button', { name: /👍 2/ }))
     expect(onReact).toHaveBeenCalledWith('message-reactions', '👍')
-    expect(screen.queryByRole('dialog', { name: '👍 を付けた人' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'リアクションした人を表示' })).not.toBeInTheDocument()
   })
 })
 

@@ -173,16 +173,62 @@ describe('ファイル一覧ページ', () => {
     )
     const filterGroup = screen.getByRole('group', { name: 'ファイル表示フィルター' })
     const savedFilter = await within(filterGroup).findByRole('button', { name: '計画書' })
-    expect(savedFilter).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByText('保存済み')).toBeNull()
-
-    await userEvent.click(screen.getByRole('button', { name: 'クリア' }))
-    expect(await screen.findByText('general.pdf')).toBeInTheDocument()
 
     await userEvent.click(savedFilter)
     expect(savedFilter).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('notes.txt')).toBeInTheDocument()
     expect(screen.queryByText('general.pdf')).toBeNull()
+  })
+
+  it('保存直後は条件を解除し、保存フィルターを自動適用しない', async () => {
+    renderPageFiles()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
+    await userEvent.selectOptions(screen.getByLabelText('プロジェクト'), 'project-1')
+    await userEvent.type(screen.getByLabelText('現在の条件を保存'), '計画書')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    const filterGroup = screen.getByRole('group', { name: 'ファイル表示フィルター' })
+    const savedFilter = await within(filterGroup).findByRole('button', { name: '計画書' })
+    expect(savedFilter).toHaveAttribute('aria-pressed', 'false')
+    expect(within(filterGroup).getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('general.pdf')).toBeInTheDocument()
+  })
+
+  it('適用中の保存フィルターを再度押すと解除する', async () => {
+    renderPageFiles()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
+    await userEvent.selectOptions(screen.getByLabelText('プロジェクト'), 'project-1')
+    await userEvent.type(screen.getByLabelText('現在の条件を保存'), '計画書')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    const filterGroup = screen.getByRole('group', { name: 'ファイル表示フィルター' })
+    const savedFilter = await within(filterGroup).findByRole('button', { name: '計画書' })
+    await userEvent.click(savedFilter)
+    expect(screen.queryByText('general.pdf')).toBeNull()
+
+    await userEvent.click(savedFilter)
+    expect(savedFilter).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('general.pdf')).toBeInTheDocument()
+  })
+
+  it('「すべて」を押すと保存フィルターの詳細条件も解除する', async () => {
+    renderPageFiles()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'フィルター' }))
+    await userEvent.selectOptions(screen.getByLabelText('プロジェクト'), 'project-1')
+    await userEvent.type(screen.getByLabelText('現在の条件を保存'), '計画書')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    const filterGroup = screen.getByRole('group', { name: 'ファイル表示フィルター' })
+    await userEvent.click(await within(filterGroup).findByRole('button', { name: '計画書' }))
+    expect(screen.queryByText('general.pdf')).toBeNull()
+
+    await userEvent.click(within(filterGroup).getByRole('button', { name: /すべて/ }))
+    expect(screen.getByText('general.pdf')).toBeInTheDocument()
+    expect(screen.getByLabelText('プロジェクト')).toHaveValue('all')
   })
 
   it('保存フィルターは確認後だけ削除し、失敗時は再試行できる', async () => {

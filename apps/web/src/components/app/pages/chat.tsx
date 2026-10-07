@@ -34,6 +34,8 @@ import { RenameWorkspaceChannelModal } from './rename-workspace-channel-modal'
 import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
@@ -322,6 +324,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const router = useRouter()
   const pathname = usePathname()
   const queryClient = useQueryClient()
+  // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
+  const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -878,7 +882,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {createThreadUI}
       {renameWorkspaceChannelUI}
       {deleteWorkspaceChannelUI}
-      <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <aside style={{ width: sidebarResize.width, flexShrink: 0, position: 'relative', background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        {/* 幅変更のつまみ。境界線をまたぐ位置に置き、掴める幅だけ線より広くする */}
+        <div
+          {...sidebarResize.handleProps}
+          aria-label={t('Resize the chat list')}
+          title={t('Drag to resize, double-click to reset')}
+          className="resize-handle"
+          data-dragging={sidebarResize.dragging || undefined}
+          style={{ position: 'absolute', top: 0, bottom: 0, right: -4, width: 7, cursor: 'col-resize', zIndex: 1, touchAction: 'none' }}
+        />
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Chats')}</h2>
           <div style={{ display: 'flex', gap: 4 }}>
@@ -900,7 +913,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </button>
           </div>
         </div>
-        {channelListNode}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {channelListNode}
+        </div>
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>

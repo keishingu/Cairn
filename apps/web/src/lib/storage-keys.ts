@@ -31,6 +31,7 @@ export const STORAGE_KEYS = {
   webview_mode:              'cairn:webview_mode',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
+  chat_sidebar_width:        'cairn:chat_sidebar_width',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
