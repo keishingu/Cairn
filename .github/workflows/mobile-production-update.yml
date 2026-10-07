@@ -1,0 +1,81 @@
+name: Mobile Production Update
+
+# main へ merge されたモバイルの JS 変更を、ストア版アプリ（production チャンネル）へ
+# EAS Update（OTA）で配信する。届くのは app.json の runtimeVersion が一致するバイナリだけ。
+# ネイティブモジュールを追加・更新したときは runtimeVersion を上げてストア版を作り直す
+# （上げずに merge すると、互換性のない JS が既存のストア版へ届く）。
+#
+# paths で絞らず main への push ごとに配信する。paths は変更ファイルの先頭 300 件しか見ないため、
+# develop → main のリリースのように大きな merge ではモバイルの変更があっても起動しないことがある。
+# また待機中の実行は置き換えられるため、job 内で差分を見て省くと配信漏れが起きうる。
+# Web だけのリリースでも同じ bundle を配信し直すだけで、端末側の再取得は manifest に留まる
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# 配信は直列化し、実行中の配信は取り消さない。ただし待機中の実行は新しい push に置き換えられ、
+# その順序も保証されないため、push 時の SHA ではなく実行開始時点の main の先頭を配信する。
+# これにより、最後に動いた実行が常に最新の main を配信し、古い commit で本番を巻き戻さない
+concurrency:
+  group: mobile-production-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Publish Mobile EAS Update to production
+    runs-on: ubuntu-latest
+    # EXPO_TOKEN は production Environment から渡す（Deployment branch policy で main 以外を拒否する）
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check required settings
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "GitHub Actions secret EXPO_TOKEN is required in the production environment."
+            exit 1
+          fi
+
+      - name: Checkout latest main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          # 後続の pnpm install で依存のスクリプトが GITHUB_TOKEN を読めないよう、認証情報を残さない
+          persist-credentials: false
+
+      # 本番へ配信する EXPO_TOKEN を扱うため、サードパーティの Action はタグではなくコミットで固定する
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: 24.10.0
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # 接続先は EAS の production Environment の値を使う（ストア版ビルドと同じ）。
+      # app.config.ts が本番の Bundle ID / scheme を選ぶよう、variant も明示する
+      - name: Publish EAS Update
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: production
+        run: |
+          eas update \
+            --channel production \
+            --environment production \
+            --message "main $(git rev-parse --short HEAD): $(git log -1 --format=%s)" \
+            --non-interactive
