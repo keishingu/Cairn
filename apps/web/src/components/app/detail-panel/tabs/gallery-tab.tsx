@@ -8,6 +8,7 @@ import { InlineError } from '../../inline-error'
 import { RowActionMenu } from '../../row-action-menu'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { GalleryItemDto } from '@/app/api/projects/[id]/gallery/route'
+import { normalizeGalleryImageMimeType } from '@/lib/gallery-upload'
 import { processImageForUpload } from '@/lib/process-image'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
@@ -26,11 +27,21 @@ interface UploadState {
 async function uploadFile(projectId: string, original: File, t: Translate): Promise<void> {
   const {
     file: derivedFile,
-    originalFile,
+    originalFile: rawOriginalFile,
     takenAt,
     latitude,
     longitude,
   } = await processImageForUpload(original)
+  // ブラウザが MIME を空で渡した原本（Windows の .heic 等）は、Storage のバケットに拒否される。
+  // 拡張子から補った MIME を持つ File に包み直して送る
+  const originalMimeType = normalizeGalleryImageMimeType(rawOriginalFile.name, rawOriginalFile.type)
+  const originalFile =
+    rawOriginalFile.type === originalMimeType
+      ? rawOriginalFile
+      : new File([rawOriginalFile], rawOriginalFile.name, {
+          type: originalMimeType,
+          lastModified: rawOriginalFile.lastModified,
+        })
   const urlRes = await fetchWithAuth(`/api/projects/${projectId}/gallery/upload-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

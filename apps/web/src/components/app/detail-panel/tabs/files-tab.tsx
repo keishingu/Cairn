@@ -14,6 +14,8 @@ import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useProjectFiles } from '@/hooks/use-project-files'
 import { useT } from '@/components/locale-provider'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -75,6 +77,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [isUploading, setIsUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState<string[] | null>(null)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
@@ -98,7 +101,9 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
     try {
       const results = await Promise.allSettled(
-        files.map(async (file) => {
+        files.map(async (picked) => {
+          // iPhone の写真（HEIC）は Safari 以外で表示できず、添付の許可形式にも無いため JPEG にして送る
+          const file = isHeicLike(picked) ? await convertHeicToJpeg(picked) : picked
           const formData = new FormData()
           formData.append('file', file)
           formData.append('channelId', channelId)
@@ -149,7 +154,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         <input
           ref={fileInputRef}
           type="file"
-          accept={ACCEPT_FILE_TYPES}
+          accept={fileAccept}
           multiple
           style={{ display: 'none' }}
           onChange={(e) => {

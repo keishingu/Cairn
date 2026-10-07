@@ -21,6 +21,27 @@ export function isGalleryImageMimeType(mimeType: string): boolean {
   return GALLERY_IMAGE_MIME_TYPES.has(mimeType)
 }
 
+const GALLERY_EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+}
+
+/**
+ * ブラウザが MIME を判定できなかった画像（Windows の .heic は空文字で渡される等）を、拡張子から補う。
+ * そのままだと対応形式なのに「対応していない形式」として弾かれ、Storage のバケットにも拒否される。
+ * 判定できている MIME は書き換えない。
+ */
+export function normalizeGalleryImageMimeType(fileName: string, mimeType: string): string {
+  if (mimeType !== '' && mimeType !== 'application/octet-stream') return mimeType
+  const extension = fileName.includes('.') ? (fileName.split('.').pop()?.toLowerCase() ?? '') : ''
+  return GALLERY_EXTENSION_TO_MIME[extension] ?? mimeType
+}
+
 export function galleryStoragePath(
   workspaceId: string,
   projectId: string,

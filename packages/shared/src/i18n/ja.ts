@@ -271,6 +271,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not copy the message': 'メッセージをコピーできませんでした',
   'Could not create the channel': 'チャンネルの作成に失敗しました',
   'Could not create the invite link': '招待リンクの生成に失敗しました',
+  'Could not convert the HEIC image. Convert it to JPEG and upload again.': 'HEIC 画像を変換できませんでした。JPEG に変換してからアップロードしてください',
   'Could not create the milestone': 'マイルストーンの作成に失敗しました',
   'Could not create the project': 'プロジェクトの作成に失敗しました',
   'Could not create the task. Please try again.': 'タスクの作成に失敗しました。もう一度お試しください。',

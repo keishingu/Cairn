@@ -52,6 +52,8 @@ import {
   stripMentionsToText,
 } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
@@ -654,6 +656,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const [showPicker, setShowPicker] = React.useState(false)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
@@ -891,7 +894,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={fileInputRef}
       type="file"
-      accept={ACCEPT_FILE_TYPES}
+      accept={fileAccept}
       multiple
       style={{ display: 'none' }}
       onChange={makeFileHandler()}
@@ -1744,8 +1747,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     void copyMessageLink(url, t)
   }, [channelId, t])
 
-  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+  const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    let file = picked
+    // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
+    if (isHeicLike(picked)) {
+      try {
+        file = await convertHeicToJpeg(picked)
+      } catch (error) {
+        console.error('[ChatThread] HEIC の変換に失敗:', error)
+        setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+        return null
+      }
+    }
     try {
       let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
       if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
