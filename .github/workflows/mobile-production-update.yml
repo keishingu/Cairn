@@ -14,7 +14,9 @@ on:
       - '.github/workflows/mobile-production-update.yml'
   workflow_dispatch: {}
 
-# 配信は merge 順に直列化し、途中の配信を取り消さない（後の配信が最新として残る）
+# 配信は直列化し、実行中の配信は取り消さない。ただし待機中の実行は新しい push に置き換えられ、
+# その順序も保証されないため、push 時の SHA ではなく実行開始時点の main の先頭を配信する。
+# これにより、最後に動いた実行が常に最新の main を配信し、古い commit で本番を巻き戻さない
 concurrency:
   group: mobile-production-update
   cancel-in-progress: false
@@ -39,8 +41,10 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout
+      - name: Checkout latest main
         uses: actions/checkout@v5
+        with:
+          ref: main
 
       # 本番へ配信する EXPO_TOKEN を扱うため、サードパーティの Action はタグではなくコミットで固定する
       - name: Setup pnpm
@@ -67,11 +71,9 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: production
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          subject=$(printf '%s' "${COMMIT_MESSAGE:-manual}" | head -n 1)
           eas update \
             --channel production \
             --environment production \
-            --message "main ${GITHUB_SHA::7}: ${subject}" \
+            --message "main $(git rev-parse --short HEAD): $(git log -1 --format=%s)" \
             --non-interactive

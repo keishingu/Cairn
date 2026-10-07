@@ -24,9 +24,12 @@ describe('ストア版への自動 OTA 配信', () => {
     expect(workflow).not.toContain('eas env:set')
   })
 
-  test('配信を直列化し、途中の配信を取り消さない', () => {
+  test('配信を直列化し、実行開始時点の main の先頭を配信して古い commit で巻き戻さない', () => {
     expect(workflow).toContain('group: mobile-production-update')
     expect(workflow).toContain('cancel-in-progress: false')
+    expect(workflow).toContain('ref: main')
+    expect(workflow).not.toContain('GITHUB_SHA')
+    expect(workflow).not.toContain('head_commit')
   })
 
   test('本番の EXPO_TOKEN を扱うサードパーティの Action と EAS CLI はバージョンを固定する', () => {
