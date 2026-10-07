@@ -3,6 +3,9 @@
 
 import { NextResponse } from 'next/server'
 import { patchMilestoneSchema } from '@cairn/shared'
+import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
+import { projectUpdateChange } from '@/lib/chat/project-update-message'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import type { MilestoneDto } from '../route'
@@ -41,6 +44,28 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
+    const [previous] = await db
+      .select({
+        startDate: milestones.startDate,
+        endDate: milestones.endDate,
+        startTime: milestones.startTime,
+        endTime: milestones.endTime,
+        completed: milestones.completed,
+      })
+      .from(milestones)
+      .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
+      .limit(1)
+
+    if (!previous) return new NextResponse(null, { status: 404 })
+
+    // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
+    const datesInBody = 'startDate' in parsed.data || 'endDate' in parsed.data
+    const nextStartDate = 'startDate' in parsed.data ? (parsed.data.startDate ?? null) : previous.startDate
+    const nextEndDate = 'endDate' in parsed.data ? (parsed.data.endDate ?? null) : previous.endDate
+    if (datesInBody && isEndBeforeStart(nextStartDate, nextEndDate)) {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+    }
+
     const set: {
       title?: string
       description?: string | null
@@ -75,6 +100,20 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!channel) throw new Error('milestone channel not found')
+
+    // 期日と完了はプロジェクト全体の予定に関わるため、プロジェクトチャンネルへ残す。
+    // 値が変わらない保存では通知しない
+    const changes: string[] = []
+    const periodChanged =
+      updated.startDate !== previous.startDate ||
+      updated.endDate !== previous.endDate ||
+      updated.startTime !== previous.startTime ||
+      updated.endTime !== previous.endTime
+    if (periodChanged) changes.push(projectUpdateChange.milestoneDates(updated.title, updated))
+    if (updated.completed !== previous.completed) {
+      changes.push(projectUpdateChange.milestoneCompleted(updated.title, updated.completed))
+    }
+    await postProjectUpdateMessage({ projectId, actorId: ctx.userId, changes })
 
     return NextResponse.json({
       id: updated.id,

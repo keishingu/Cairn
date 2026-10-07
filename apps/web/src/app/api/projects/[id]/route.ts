@@ -297,10 +297,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and, isNull, sql } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
-      .select({ id: projects.id })
+      .select({
+        id: projects.id,
+        startDate: projects.startDate,
+        endDate: projects.endDate,
+        location: projects.location,
+        archived: projects.archived,
+      })
       .from(projects)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -311,6 +317,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
+
+    // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
+    const nextStartDate = 'startDate' in b ? (b.startDate ?? null) : project.startDate
+    const nextEndDate = 'endDate' in b ? (b.endDate ?? null) : project.endDate
+    const nextLocation = 'location' in b ? (b.location ?? null) : project.location
+    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+    if (('startDate' in b || 'endDate' in b) && isEndBeforeStart(nextStartDate, nextEndDate)) {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+    }
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
@@ -368,63 +383,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // プロジェクトのステータス・日程・概要・名称の変更をプロジェクトチャンネルに system メッセージで通知する。
-    // チーム共通の重要情報（決定事項）をチャットに残すための仕組み。失敗しても PATCH 自体は成功させる
-    try {
-      const datesChanged = 'startDate' in b || 'endDate' in b
-      const changes: string[] = []
-      if (b.statusName !== undefined) changes.push(`ステータスを「${b.statusName}」に変更しました`)
-      if (datesChanged) {
-        const [p] = await db
-          .select({ startDate: projects.startDate, endDate: projects.endDate })
-          .from(projects)
-          .where(eq(projects.id, id))
-        const s = p?.startDate ?? '未設定'
-        const e = p?.endDate ?? '未設定'
-        changes.push(`期間を ${s} 〜 ${e} に変更しました`)
-      }
-      if ('description' in b) changes.push('概要を更新しました')
-      if (b.title !== undefined) changes.push(`プロジェクト名を「${b.title}」に変更しました`)
-
-      if (changes.length > 0) {
-        const { channels, messages, profiles } = await import('@cairn/db')
-        const [channel] = await db
-          .select({ id: channels.id })
-          .from(channels)
-          .where(
-            and(
-              eq(channels.projectId, id),
-              eq(channels.type, 'project'),
-              isNull(channels.milestoneId),
-            ),
-          )
-          .limit(1)
-        if (channel) {
-          const [actor] = await db
-            .select({ displayName: profiles.displayName })
-            .from(profiles)
-            .where(eq(profiles.id, ctx.userId))
-          const actorName = actor?.displayName ?? '不明'
-          await db.transaction(async (tx) => {
-            await tx
-              .select({ id: channels.id })
-              .from(channels)
-              .where(eq(channels.id, channel.id))
-              .for('update')
-            await tx.insert(messages).values({
-              channelId: channel.id,
-              senderId: ctx.userId,
-              messageType: 'system',
-              content: `${actorName}さんがプロジェクトを更新しました：${changes.join(' / ')}`,
-              createdAt: sql`clock_timestamp()`,
-              updatedAt: sql`clock_timestamp()`,
-            })
-          })
-        }
-      }
-    } catch (e) {
-      console.warn('[PATCH /api/projects/[id]] system message insert failed (skipped):', e)
+    // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
+    // 日程・場所・アーカイブは、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
+    const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
+    const changes: string[] = []
+    if (b.statusName !== undefined) changes.push(projectUpdateChange.status(b.statusName))
+    if (nextStartDate !== project.startDate || nextEndDate !== project.endDate) {
+      changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
     }
+    if (nextLocation !== project.location) changes.push(projectUpdateChange.location(nextLocation))
+    if ('description' in b) changes.push(projectUpdateChange.description())
+    if (b.title !== undefined) changes.push(projectUpdateChange.title(b.title))
+    if (b.archived !== undefined && b.archived !== project.archived) {
+      changes.push(projectUpdateChange.archived(b.archived))
+    }
+    const { postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
+    await postProjectUpdateMessage({ projectId: id, actorId: ctx.userId, changes })
 
     const resp: { id: string; coverPhotoUrl?: string | null } = { id: updated.id }
     if (resolvedCoverPhotoUrl !== undefined) resp.coverPhotoUrl = resolvedCoverPhotoUrl

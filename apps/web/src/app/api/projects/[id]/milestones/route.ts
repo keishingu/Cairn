@@ -3,6 +3,9 @@
 
 import { NextResponse } from 'next/server'
 import { createMilestoneSchema } from '@cairn/shared'
+import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
+import { projectUpdateChange } from '@/lib/chat/project-update-message'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
 
@@ -82,6 +85,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
+    return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+  }
 
   try {
     const { db, channels, milestones, projects } = await import('@cairn/db')
@@ -130,6 +136,12 @@ export async function POST(req: Request, { params }: RouteContext) {
       if (!channel) throw new Error('channels insert returned no rows')
 
       return { milestone, channelId: channel.id }
+    })
+
+    await postProjectUpdateMessage({
+      projectId,
+      actorId: ctx.userId,
+      changes: [projectUpdateChange.milestoneAdded(inserted.milestone.title)],
     })
 
     const result: MilestoneDto = {

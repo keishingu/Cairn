@@ -541,7 +541,8 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
   const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
     milestones.patchMutation.mutate(
       { id, input },
-      { onError: () => toast.error(t('Could not update this milestone')) },
+      // 期間の前後が逆などサーバーが理由を返した時は、それをそのまま見せる
+      { onError: error => toast.error(error instanceof Error ? error.message : t('Could not update this milestone')) },
     )
   }
 
