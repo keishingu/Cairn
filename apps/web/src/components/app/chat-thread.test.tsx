@@ -29,6 +29,8 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, chatThreadSt
     workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' | 'guest' }>,
     projectChannels: [] as Array<{ channelId: string; projectId: string }>,
     projectChannelsResolved: true,
+    projectChannelsError: null as Error | null,
+    refetchProjectChannels: vi.fn(),
     projectMembers: [] as Array<{ userId: string }>,
     profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
@@ -58,7 +60,12 @@ vi.mock('@/lib/chat/client', () => ({
   useEnsureMessageLoaded: () => vi.fn(),
   useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
-  useProjectChannels: () => ({ data: chatThreadState.projectChannels, isSuccess: chatThreadState.projectChannelsResolved }),
+  useProjectChannels: () => ({
+    data: chatThreadState.projectChannels,
+    isSuccess: chatThreadState.projectChannelsResolved,
+    error: chatThreadState.projectChannelsError,
+    refetch: chatThreadState.refetchProjectChannels,
+  }),
   useSendChannelMessage: () => ({ mutate: vi.fn(), isError: false, isSuccess: false, isPending: false, error: null }),
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
@@ -486,6 +493,8 @@ describe('ChatThreadのメンション候補', () => {
     chatThreadState.historyIsError = false
     chatThreadState.projectChannels = []
     chatThreadState.projectChannelsResolved = true
+    chatThreadState.projectChannelsError = null
+    chatThreadState.refetchProjectChannels.mockClear()
     chatThreadState.projectMembers = []
     chatThreadState.profileAttributes = []
     chatThreadState.workspaceMembers = [
@@ -566,6 +575,27 @@ describe('ChatThreadのメンション候補', () => {
 
     expect(screen.getByRole('button', { name: /@参加ゲスト/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /@未参加ゲスト/ })).toBeNull()
+  })
+
+  it('チャンネル一覧を取得できない時は、一部の候補だけを出さずにエラーと再試行を表示する', () => {
+    chatThreadState.projectChannelsResolved = false
+    chatThreadState.projectChannelsError = new Error('チャンネルの取得に失敗しました')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" isMobile />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '@' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('チャンネルの取得に失敗しました')
+    expect(screen.queryByRole('button', { name: /@鈴木/ })).toBeNull()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.value).toBe('@')
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'メンション候補を再読み込み' }))
+    expect(chatThreadState.refetchProjectChannels).toHaveBeenCalledTimes(1)
   })
 
   it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {
