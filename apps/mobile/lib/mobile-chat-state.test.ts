@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  filterProjectMentionMembers,
   findMentionQuery,
   getReactionPeopleSummary,
   hasFailedUploads,
@@ -13,6 +12,7 @@ import {
   resolveInternalAppPath,
   resolveMobileMarkdownLink,
   serializeMentions,
+  splitMentionSegments,
   shouldRetryRealtime,
 } from './mobile-chat-state'
 
@@ -115,16 +115,19 @@ describe('モバイルチャット状態', () => {
     expect(nextMessagePageCursor({ messages: old, hasMore: false })).toBeUndefined()
   })
 
-  it('プロジェクトでは非guest全員と参加guestだけをメンション候補にする', () => {
-    const members = [
-      { userId: 'member-1', role: 'member' as const },
-      { userId: 'guest-1', role: 'guest' as const },
-      { userId: 'guest-2', role: 'guest' as const },
+  it('入力欄のハイライト用に、有効なメンションだけを区切る', () => {
+    const text = 'こんにちは @山田 太郎 と @佐藤'
+    const mentions = [
+      { start: 6, end: 12, userId: 'user-1', displayName: '山田 太郎' },
+      // 名前を書き換えて送信時にトークン化されなくなったものは、ハイライトしない
+      { start: 15, end: 18, userId: 'user-2', displayName: '鈴木' },
     ]
-    expect(filterProjectMentionMembers(members, [{ userId: 'guest-1' }])).toEqual([
-      members[0],
-      members[1],
+    expect(splitMentionSegments(text, mentions)).toEqual([
+      { text: 'こんにちは ', mention: false },
+      { text: '@山田 太郎', mention: true },
+      { text: ' と @佐藤', mention: false },
     ])
+    expect(splitMentionSegments('', [])).toEqual([])
   })
 
   it('MarkdownリンクはCairn内導線と安全な外部URLだけを許可する', () => {

@@ -44,7 +44,7 @@ import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, openChannelDisappeared } from '@cairn/shared'
+import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -52,7 +52,6 @@ import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { apiActionError, apiFetch } from '../../../lib/api-fetch'
 import {
-  filterProjectMentionMembers,
   findMentionQuery,
   getReactionPeopleSummary,
   insertMention,
@@ -60,6 +59,7 @@ import {
   rebaseMentionSelections,
   resolveMobileMarkdownLink,
   serializeMentions,
+  splitMentionSegments,
 } from '../../../lib/mobile-chat-state'
 import type { MentionSelection } from '../../../lib/mobile-chat-state'
 import {
@@ -507,7 +507,11 @@ export default function ChatThreadScreen() {
           ? t('Open to everyone')
           : undefined
   const workspaceMembers = useWorkspaceMembers()
-  const channelMembers = useChannelMembers(channelId ?? null, isPrivate === '1')
+  // 公開チャンネルでも、ゲストを候補に出してよいかの判定に channel_members が要る
+  const channelMembers = useChannelMembers(
+    channelId ?? null,
+    isPrivate === '1' || channelType === 'workspace',
+  )
   const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
   const offlineQueue = useOfflineMessageQueue()
@@ -540,27 +544,58 @@ export default function ChatThreadScreen() {
     () => findMentionQuery(draft, selection.start),
     [draft, selection.start],
   )
-  const mentionMembers = React.useMemo(() => {
-    if (channelType === 'dm') return []
-    const candidates =
+  // 候補の種類と並び（グループ → メンバー）は Web の入力欄と揃える
+  const mentionCandidates = React.useMemo(() => {
+    if (channelType === 'dm' || !mentionRange) return []
+    const channelMemberIds = new Set((channelMembers.data ?? []).map((member) => member.userId))
+    const members =
       isPrivate === '1'
         ? (channelMembers.data ?? [])
-        : projectId
-          ? filterProjectMentionMembers(workspaceMembers.data ?? [], projectMembers.data ?? [])
-          : (workspaceMembers.data ?? [])
-    const query = mentionRange?.query.toLocaleLowerCase() ?? ''
-    return candidates
-      .filter((member) => member.userId !== me?.id)
-      .filter((member) => member.displayName.toLocaleLowerCase().includes(query))
-      .slice(0, 6)
+        : filterMentionCandidates(
+            workspaceMembers.data ?? [],
+            projectId
+              ? {
+                  kind: 'project',
+                  projectMemberIds: new Set((projectMembers.data ?? []).map((member) => member.userId)),
+                }
+              : channelType === 'workspace'
+                ? { kind: 'workspace', channelMemberIds }
+                : { kind: 'unresolved' },
+          )
+    const query = mentionRange.query.toLocaleLowerCase()
+    type MentionCandidate = { tokenId: string; displayName: string; avatarUrl: string | null; hint?: string }
+    const groups: MentionCandidate[] = []
+    if ('all'.startsWith(query)) {
+      groups.push({ tokenId: 'all', displayName: 'all', avatarUrl: null, hint: t('Everyone') })
+    }
+    if (projectId && 'project_members'.startsWith(query)) {
+      groups.push({
+        tokenId: 'project_members',
+        displayName: 'project_members',
+        avatarUrl: null,
+        hint: t('Project members'),
+      })
+    }
+    return [
+      ...groups,
+      ...members
+        .filter((member) => member.userId !== me?.id)
+        .filter((member) => member.displayName.toLocaleLowerCase().includes(query))
+        .map((member): MentionCandidate => ({
+          tokenId: member.userId,
+          displayName: member.displayName,
+          avatarUrl: member.avatarUrl,
+        })),
+    ]
   }, [
     channelMembers.data,
     channelType,
     isPrivate,
     me?.id,
-    mentionRange?.query,
+    mentionRange,
     projectId,
     projectMembers.data,
+    t,
     workspaceMembers.data,
   ])
   const mentionMembersError =
@@ -568,13 +603,15 @@ export default function ChatThreadScreen() {
       ? null
       : isPrivate === '1'
         ? channelMembers.error
-        : (workspaceMembers.error ?? (projectId ? projectMembers.error : null))
+        : (workspaceMembers.error ??
+          (projectId ? projectMembers.error : channelType === 'workspace' ? channelMembers.error : null))
   const isFetchingMentionMembers =
     channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching
 
   const retryMentionMembers = () => {
     if (isPrivate === '1') return channelMembers.refetch()
     if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch()])
+    if (channelType === 'workspace') return Promise.all([workspaceMembers.refetch(), channelMembers.refetch()])
     return workspaceMembers.refetch()
   }
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
@@ -925,8 +962,9 @@ export default function ChatThreadScreen() {
     )
   }
 
-  const selectMention = (member: { userId: string; displayName: string }) => {
+  const selectMention = (candidate: { tokenId: string; displayName: string }) => {
     if (!mentionRange) return
+    const member = { userId: candidate.tokenId, displayName: candidate.displayName }
     const inserted = insertMention(draft, mentionRange, member.displayName)
     mentionSelectionsRef.current = [
       ...rebaseMentionSelections(draft, inserted.text, mentionSelectionsRef.current),
@@ -1380,31 +1418,37 @@ export default function ChatThreadScreen() {
                 </Pressable>
               </View>
             )}
-            {mentionRange && !mentionMembersError && mentionMembers.length > 0 && (
-              <View
+            {mentionRange && !mentionMembersError && mentionCandidates.length > 0 && (
+              <ScrollView
                 style={[
                   styles.mentionSuggestions,
                   { backgroundColor: palette.card, borderColor: palette.border },
                 ]}
+                // 候補を押してもキーボードを閉じず、そのまま入力を続けられるようにする
+                keyboardShouldPersistTaps="always"
+                nestedScrollEnabled
               >
-                {mentionMembers.map((member) => (
+                {mentionCandidates.map((candidate) => (
                   <Pressable
-                    key={member.userId}
+                    key={candidate.tokenId}
                     accessibilityRole="button"
-                    accessibilityLabel={t('Mention {name}', { name: member.displayName })}
-                    onPress={() => selectMention(member)}
+                    accessibilityLabel={t('Mention {name}', { name: candidate.displayName })}
+                    onPress={() => selectMention(candidate)}
                     style={({ pressed }) => [
                       styles.mentionSuggestion,
                       { backgroundColor: pressed ? palette.card2 : palette.card },
                     ]}
                   >
-                    <UserAvatar name={member.displayName} url={member.avatarUrl} size={26} />
+                    <UserAvatar name={candidate.displayName} url={candidate.avatarUrl} size={26} />
                     <Text style={[styles.mentionName, { color: palette.text }]} numberOfLines={1}>
-                      {member.displayName}
+                      @{candidate.displayName}
+                      {candidate.hint ? (
+                        <Text style={[styles.mentionHint, { color: palette.text4 }]}>  {candidate.hint}</Text>
+                      ) : null}
                     </Text>
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             )}
             <View
               style={[
@@ -1415,7 +1459,6 @@ export default function ChatThreadScreen() {
               <TextInput
                 accessibilityLabel={t('Enter a message')}
                 style={[styles.input, { color: palette.text }]}
-                value={draft}
                 selection={selection}
                 onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
                 onChangeText={(value) => {
@@ -1430,7 +1473,21 @@ export default function ChatThreadScreen() {
                 placeholder={t('Write a message…')}
                 placeholderTextColor={palette.text4}
                 multiline
-              />
+              >
+                {/* value の代わりに子要素で本文を渡し、候補から挿入したメンションだけ色を変える */}
+                {splitMentionSegments(draft, mentionSelectionsRef.current).map((segment, index) =>
+                  segment.mention ? (
+                    <Text
+                      key={index}
+                      style={{ color: palette.accent, backgroundColor: palette.accentSoft }}
+                    >
+                      {segment.text}
+                    </Text>
+                  ) : (
+                    <Text key={index}>{segment.text}</Text>
+                  ),
+                )}
+              </TextInput>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('Send message')}
@@ -1866,10 +1923,11 @@ const styles = StyleSheet.create({
   },
   uploadName: { flex: 1, fontSize: 11.5 },
   mentionSuggestions: {
-    maxHeight: 220,
+    // 件数で切らず、Web と同じ高さまで出して残りはスクロールで選ぶ
+    maxHeight: 240,
+    flexGrow: 0,
     borderWidth: 1,
     borderRadius: 10,
-    overflow: 'hidden',
     marginBottom: 7,
   },
   mentionSuggestion: {
@@ -1880,6 +1938,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   mentionName: { flex: 1, fontSize: 13, fontWeight: '600' },
+  mentionHint: { fontSize: 11, fontWeight: '500' },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

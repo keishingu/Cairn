@@ -104,7 +104,7 @@ const InlineText = ({
   )
 }
 
-const InlineDatePair = ({
+export const InlineDatePair = ({
   startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false,
 }: {
   startDate: string | null
@@ -129,7 +129,12 @@ const InlineDatePair = ({
     setEndClock(formatTime(endTime) ?? '')
   }, [startDate, endDate, startTime, endTime])
 
+  // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
+  const openRef = React.useRef(false)
+
   const commit = () => {
+    if (!openRef.current) return
+    openRef.current = false
     setEditing(false)
     const ns = start || null
     const ne = end || null
@@ -139,6 +144,7 @@ const InlineDatePair = ({
   }
 
   const cancel = () => {
+    openRef.current = false
     setEditing(false)
     setStart(startDate ?? '')
     setEnd(endDate ?? '')
@@ -146,22 +152,49 @@ const InlineDatePair = ({
     setEndClock(formatTime(endTime) ?? '')
   }
 
-  // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
+  // フォーカスが別の要素へ移った時だけ確定する（開始↔終了の移動では確定しない）。
+  // スマホのネイティブピッカーを閉じると移動先のない blur が来るため、そこで確定すると
+  // 終了日に触れる前に編集欄が閉じてしまう
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    if (wrapRef.current?.contains(e.relatedTarget as Node | null)) return
+    const next = e.relatedTarget as Node | null
+    if (!next || wrapRef.current?.contains(next)) return
     commit()
   }
 
+  // 移動先のない blur では確定しない代わりに、ペアの外を押した時に確定する
+  const commitRef = React.useRef(commit)
+  commitRef.current = commit
+  React.useEffect(() => {
+    if (!editing) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (wrapRef.current?.contains(e.target as Node | null)) return
+      commitRef.current()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [editing])
+
+  // タッチ端末では押しやすい高さにし、iOS が 16px 未満の入力欄をフォーカス時に拡大するのを避ける
+  const [coarse, setCoarse] = React.useState(false)
+  React.useEffect(() => {
+    setCoarse(window.matchMedia?.('(pointer: coarse)').matches ?? false)
+  }, [])
+
   const inputStyle: React.CSSProperties = {
-    height: 30, padding: '0 8px', borderRadius: 6,
+    height: coarse ? 40 : 30, padding: coarse ? '0 6px' : '0 8px', borderRadius: 6, minWidth: 0, boxSizing: 'border-box',
     border: '1px solid var(--border)', background: 'var(--card)',
-    color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    color: 'var(--text)', fontSize: coarse ? 16 : 12.5, fontFamily: 'inherit', outline: 'none',
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') cancel()
+    if (e.key === 'Enter') commit()
   }
 
   if (!editing) {
     return (
       <button
-        onClick={() => { if (!readOnly) setEditing(true) }}
+        onClick={() => { if (!readOnly) { openRef.current = true; setEditing(true) } }}
         disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 4,
@@ -178,42 +211,68 @@ const InlineDatePair = ({
     )
   }
 
+  const dateStyle: React.CSSProperties = { ...inputStyle, flex: '1 1 132px' }
+  const timeStyle: React.CSSProperties = { ...inputStyle, flex: '1 1 96px' }
+  const rowStyle: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4 }
+
+  // 開始と終了を別の行に分ける。スマホの概要カードは日付1つ分の幅しかなく、
+  // 4つを1列に流すとどれが終了日か分からなくなる
   return (
     <div
       ref={wrapRef}
       onBlur={handleBlur}
-      style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
-      <input
-        type="date"
-        value={start}
-        autoFocus
-        onChange={e => setStart(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={inputStyle}
-      />
-      <input
-        type="time"
-        value={startClock}
-        onChange={e => setStartClock(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={{ ...inputStyle, width: 104 }}
-      />
-      <span style={{ color: 'var(--text-4)'}}>{t('to')}</span>
-      <input
-        type="date"
-        value={end}
-        onChange={e => setEnd(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={inputStyle}
-      />
-      <input
-        type="time"
-        value={endClock}
-        onChange={e => setEndClock(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={{ ...inputStyle, width: 104 }}
-      />
+      <div style={rowStyle}>
+        <input
+          type="date"
+          value={start}
+          autoFocus
+          aria-label={t('Start date')}
+          onChange={e => setStart(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={dateStyle}
+        />
+        <input
+          type="time"
+          value={startClock}
+          aria-label={t('Start time')}
+          onChange={e => setStartClock(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={timeStyle}
+        />
+      </div>
+      <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
+      <div style={rowStyle}>
+        <input
+          type="date"
+          value={end}
+          aria-label={t('End date')}
+          onChange={e => setEnd(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={dateStyle}
+        />
+        <input
+          type="time"
+          value={endClock}
+          aria-label={t('End time')}
+          onChange={e => setEndClock(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={timeStyle}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={commit}
+        style={{
+          alignSelf: 'flex-end', marginTop: 2,
+          height: coarse ? 36 : 26, padding: '0 12px', borderRadius: 6, border: 'none',
+          background: 'var(--accent)', color: 'var(--on-accent)',
+          fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+        }}
+      >
+        {t('Done')}
+      </button>
     </div>
   )
 }
