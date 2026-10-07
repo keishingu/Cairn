@@ -320,7 +320,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
     // 下でカバー写真を Storage へ保存する前に、拒否すると分かっている入力を返しておく。
     // 保存した後で 422 / 404 にすると、どのプロジェクトからも参照されない画像が残る。
-    // 同時更新まで含めた最終的な判定は、行をロックしたトランザクションの中でもう一度行う
+    // 同時更新まで含めた最終的な判定は、行をロックしたトランザクションの中でもう一度行う。
+    // そこで拒否された場合に保存済みの写真を消してはいけない。保存先は Place の写真ごとに決まる
+    // 共有のキャッシュ（place-photos/{写真名}.jpg を upsert）で、同じ場所を使う他のプロジェクトが参照し得る
     if (
       ('startDate' in b || 'endDate' in b) &&
       isEndBeforeStart(
