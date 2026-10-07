@@ -23,7 +23,7 @@ describe('galleryStoragePath', () => {
   })
 })
 
-describe('normalizeGalleryImageMimeType', () => {
+describe('ギャラリー画像の MIME 補完（normalizeGalleryImageMimeType）', () => {
   it('ブラウザが MIME を判定できなかった HEIC は、拡張子から補う', () => {
     expect(normalizeGalleryImageMimeType('IMG_0001.HEIC', '')).toBe('image/heic')
     expect(normalizeGalleryImageMimeType('IMG_0001.heif', 'application/octet-stream')).toBe('image/heif')

@@ -15,7 +15,7 @@ const mockFetch = vi.mocked(fetchWithAuth)
 const signed = { token: 'token-1', path: 'signed/path', storagePath: 'ws/ch/user/file.pdf', mimeType: 'application/pdf' }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
-describe('uploadAttachment', () => {
+describe('添付ファイルのアップロード（uploadAttachment）', () => {
   beforeEach(() => {
     mockFetch.mockReset()
     uploadToSignedUrl.mockReset()
