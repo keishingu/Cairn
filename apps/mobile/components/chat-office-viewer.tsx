@@ -175,6 +175,9 @@ export function ChatOfficeViewer({
               // すべての遷移を handleNavigation に通して表示中のファイル以外はそこで止める
               originWhitelist={['*']}
               javaScriptEnabled={false}
+              // react-native-webview は WebView を flex: 1 の container で包む。中央寄せの親の中では
+              // container の幅が 0 になり何も見えないため、container 側を全面に広げる
+              containerStyle={StyleSheet.absoluteFill}
               style={styles.document}
               onShouldStartLoadWithRequest={handleNavigation}
               onLoadEnd={() => setRendered(true)}
@@ -228,7 +231,7 @@ const styles = StyleSheet.create({
   fileName: { flex: 1, color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // Office の描画は白背景前提のため、文書の領域だけ白にする
-  document: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FFFFFF' },
+  document: { flex: 1, backgroundColor: '#FFFFFF' },
   spinner: { position: 'absolute' },
   failure: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   failureText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', textAlign: 'center' },
