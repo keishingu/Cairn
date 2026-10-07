@@ -16,7 +16,16 @@ const HEIC_ACCEPT = '.heic,.heif,image/heic,image/heif'
 export function useHeicAccept(accept: string): string {
   const [withHeic, setWithHeic] = React.useState(false)
   React.useEffect(() => {
-    setWithHeic(!/iPhone|iPad|iPod/.test(navigator.userAgent))
+    setWithHeic(!isIosLike(navigator.userAgent, navigator.maxTouchPoints))
   }, [])
   return withHeic ? `${accept},${HEIC_ACCEPT}` : accept
+}
+
+/**
+ * iPadOS 13 以降の Safari は既定で Mac の UA を名乗るため、UA だけでは iPad を見落とす。
+ * Mac にはタッチ画面が無いので、Mac の UA で複数のタッチ点を持つ端末は iPad とみなす。
+ */
+export function isIosLike(userAgent: string, maxTouchPoints: number): boolean {
+  if (/iPhone|iPad|iPod/.test(userAgent)) return true
+  return /Macintosh/.test(userAgent) && maxTouchPoints > 1
 }
