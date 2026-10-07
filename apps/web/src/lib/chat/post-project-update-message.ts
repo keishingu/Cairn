@@ -14,6 +14,23 @@ type Database = (typeof import('@cairn/db'))['db']
 export type ProjectUpdateTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 
 /**
+ * 通知先（プロジェクトの General チャンネル）の行をロックする。
+ * リソースを更新するトランザクションは、**プロジェクトやマイルストーンの行より先に**これを呼ぶこと。
+ * チャットの投稿はチャンネルをロックしてから、タスクの外部キー検査でプロジェクトの行を参照する。
+ * 更新側が逆順（プロジェクト → チャンネル）で取ると、同時に走った時にデッドロックして、
+ * 投稿が 500 になるか通知が黙って落ちる。
+ */
+export async function lockProjectUpdateChannel(tx: ProjectUpdateTransaction, projectId: string): Promise<void> {
+  const { channels } = await import('@cairn/db')
+  const { and, eq, isNull } = await import('drizzle-orm')
+  await tx
+    .select({ id: channels.id })
+    .from(channels)
+    .where(and(eq(channels.projectId, projectId), eq(channels.type, 'project'), isNull(channels.milestoneId)))
+    .for('update')
+}
+
+/**
  * プロジェクトの決定事項（ステータス・日程・場所・マイルストーンなど）の変更を、
  * プロジェクトチャンネルへ system メッセージで残す。
  * 通知は補助なので、失敗しても呼び出し元の更新は成功のままにする（例外を投げない）。

@@ -37,7 +37,7 @@
 
 2026-09-24 時点で Open の Issue。
 
-- [#453](https://github.com/keishingu/Cairn/issues/453): 開始・終了の順序を共有スキーマで検証する。現状は日付・時刻の形式検証のみで、API に逆転した期間を送れる。
+- [#453](https://github.com/keishingu/Cairn/issues/453): 開始・終了の順序の検証。日付の逆転（終了日が開始日より前）は、作成・更新 API が保存済みの値と合わせて検証して 422 で拒否し、概要タブの入力欄でもその場で止める。残りは、同じ日の中での時刻の逆転（開始時刻が終了時刻より後）の検証と、共有スキーマ（`packages/shared`）への集約。
 - [#455](https://github.com/keishingu/Cairn/issues/455): 同時編集の競合検出。現状の PATCH は更新バージョンを比較せず、他ユーザーの変更を上書きし得る。
 - [#454](https://github.com/keishingu/Cairn/issues/454): チャンネル構成変更（マイルストーン・スレッドの作成等）の他クライアントへの Realtime 反映。作成者側のキャッシュ invalidate だけでは他クライアントの一覧に反映されない。
 

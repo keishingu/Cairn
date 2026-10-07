@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { patchMilestoneSchema } from '@cairn/shared'
-import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
+import { lockProjectUpdateChannel, postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
 import { projectUpdateChange, type ProjectUpdateChange } from '@/lib/chat/project-update-message'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
@@ -67,6 +67,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
     // 逆転した期間が保存される。通知も確定順と食い違い、古い値の通知が最後に残る
     const outcome = await db.transaction(async (tx) => {
+      // ロックは「チャンネル → マイルストーン」の順に取る（チャットの投稿と同じ順。逆にするとデッドロックする）
+      await lockProjectUpdateChannel(tx, projectId)
       const [previous] = await tx
         .select({
           startDate: milestones.startDate,
@@ -77,7 +79,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         })
         .from(milestones)
         .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
-        .for('update')
+        // キーは変えないので NO KEY UPDATE で足りる（外部キー検査を待たせない）
+        .for('no key update')
         .limit(1)
       if (!previous) return { kind: 'not_found' as const }
 

@@ -133,6 +133,7 @@ export const InlineDatePair = ({
   // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
   const openRef = React.useRef(false)
   const reversed = isEndBeforeStart(start, end)
+  const dateErrorId = React.useId()
 
   const commit = () => {
     if (!openRef.current) return
@@ -255,6 +256,7 @@ export const InlineDatePair = ({
           min={start || undefined}
           aria-label={t('End date')}
           aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
           onChange={e => setEnd(e.target.value)}
           onKeyDown={handleKeyDown}
           style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
@@ -269,7 +271,10 @@ export const InlineDatePair = ({
         />
       </div>
       {reversed && (
-        <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
@@ -454,6 +459,7 @@ export const MilestoneCreateForm = ({ onCreate, disabled }: {
   const [endTime, setEndTime] = React.useState('')
 
   const reversed = isEndBeforeStart(startDate, endDate)
+  const dateErrorId = React.useId()
 
   const reset = () => {
     setTitle('')
@@ -527,11 +533,15 @@ export const MilestoneCreateForm = ({ onCreate, disabled }: {
           onChange={e => setEndDate(e.target.value)}
           aria-label={t('End date')}
           aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
           style={reversed ? { ...inputStyle, border: '1px solid var(--red)' } : inputStyle}
         />
       </div>
       {reversed && (
-        <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>

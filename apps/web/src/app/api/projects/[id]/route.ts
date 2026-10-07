@@ -360,12 +360,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
     const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
-    const { postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
+    const { lockProjectUpdateChannel, postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
 
     // 行をロックしてから「保存済みの値と合わせた検証 → 更新 → 通知」までを1つのトランザクションで行う。
     // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
     // 逆転した期間が保存される。通知も確定順と食い違い、古い値の通知が最後に残る
     const outcome = await db.transaction(async (tx) => {
+      // ロックは「チャンネル → プロジェクト」の順に取る（チャットの投稿と同じ順。逆にするとデッドロックする）
+      await lockProjectUpdateChannel(tx, id)
       const [current] = await tx
         .select({
           title: projects.title,
@@ -378,7 +380,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
         .from(projects)
         .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
-        .for('update')
+        // キーは変えないので NO KEY UPDATE で足りる。FOR UPDATE だと、このプロジェクトを参照する行の
+        // 追加（タスクなどの外部キー検査）まで待たせてしまう
+        .for('no key update')
         .limit(1)
       if (!current) return { kind: 'not_found' as const }
 
