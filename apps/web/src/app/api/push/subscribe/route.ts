@@ -14,7 +14,11 @@ const webSchema = z.object({
 
 const expoSchema = z.object({
   deviceType: z.literal('expo'),
-  expoToken: z.string().refine(Expo.isExpoPushToken, { message: 'Invalid Expo push token' }),
+  // SDK は角括弧内が空でも受理するため、空白だけの本体も登録前に拒否する。
+  expoToken: z.string().refine(
+    (token) => Expo.isExpoPushToken(token) && !/^Expo(nent)?PushToken\[\s*\]$/.test(token),
+    { message: 'Invalid Expo push token' },
+  ),
 })
 
 const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])

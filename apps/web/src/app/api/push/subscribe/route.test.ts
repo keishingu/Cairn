@@ -47,7 +47,8 @@ describe('Push購読の登録', () => {
   test.each([
     'ExpoPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
     'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
-  ])('Expoの新旧トークン形式を保存できる: %s', async (expoToken) => {
+    '12345678-1234-1234-1234-123456789abc',
+  ])('SDKが対応するExpoトークン形式を保存できる: %s', async (expoToken) => {
     const response = await subscribe({ deviceType: 'expo', expoToken })
 
     expect(response.status).toBe(200)
@@ -59,6 +60,10 @@ describe('Push購読の登録', () => {
 
   test.each([
     'not-a-token',
+    'ExpoPushToken[]',
+    'ExponentPushToken[]',
+    'ExpoPushToken[   ]',
+    'ExponentPushToken[\t]',
     'ExpoPushToken[xxxxxxxxxxxxxxxxxxxxxx',
     'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx',
     'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]suffix',
