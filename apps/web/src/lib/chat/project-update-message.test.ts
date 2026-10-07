@@ -5,9 +5,9 @@ import { describe, expect, test } from 'vitest'
 import {
   buildProjectUpdateMessage,
   projectUpdateChange,
-  projectUpdateChangeKind,
-  projectUpdateMessageKind,
+  projectUpdateKey,
   supersededProjectUpdateMessageIds,
+  type ProjectUpdateChange,
 } from './project-update-message'
 
 const now = new Date('2026-10-07T12:00:00Z')
@@ -16,129 +16,125 @@ const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_00
 
 const { dates, status } = projectUpdateChange
 const newDates = [dates('2026-10-20', '2026-10-21')]
-const system = (id: string, minutes: number, change: string) => ({
+const period = { startDate: '2026-10-17', endDate: '2026-10-18', startTime: '10:00:00', endTime: null }
+const milestone = (id: string, title: string) => ({ id, title, ...period })
+
+/** 保存済みの通知。DB では本文とは別に kind / milestoneId を持つ */
+const stored = (id: string, minutes: number, change: ProjectUpdateChange) => ({
   id,
   messageType: 'system',
-  content: buildProjectUpdateMessage('山田', change),
   createdAt: minutesAgo(minutes),
+  update: { kind: change.kind, milestoneId: change.milestoneId ?? null },
 })
 
 describe('supersededProjectUpdateMessageIds', () => {
   test('同じ項目を続けて変更したら、前の通知をすべて消して最後の1件だけ残す', () => {
     const recent = [
-      system('m3', 1, dates('2026-10-18', '2026-10-17')),
-      system('m2', 2, dates('2026-10-17', '2026-10-17')),
-      system('m1', 3, dates('2026-10-18', '2026-10-17')),
+      stored('m3', 1, dates('2026-10-18', '2026-10-17')),
+      stored('m2', 2, dates('2026-10-17', '2026-10-17')),
+      stored('m1', 3, dates('2026-10-18', '2026-10-17')),
     ]
     expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual(['m3', 'm2', 'm1'])
   })
 
   test('別の項目の通知は残し、その先にある同じ項目の通知は消す', () => {
-    const recent = [system('m2', 1, status('実施待ち')), system('m1', 2, dates('2026-10-17', '2026-10-17'))]
+    const recent = [stored('m2', 1, status('実施待ち')), stored('m1', 2, dates('2026-10-17', '2026-10-17'))]
     expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual(['m1'])
   })
 
   test('間に誰かの投稿があれば、それより前の通知は会話の記録として残す', () => {
     const recent = [
-      system('m3', 1, dates('2026-10-18', '2026-10-19')),
-      { id: 'm2', messageType: 'text', content: '日程了解です', createdAt: minutesAgo(2) },
-      system('m1', 3, dates('2026-10-17', '2026-10-17')),
+      stored('m3', 1, dates('2026-10-18', '2026-10-19')),
+      { id: 'm2', messageType: 'text', createdAt: minutesAgo(2), update: null },
+      stored('m1', 3, dates('2026-10-17', '2026-10-17')),
     ]
     expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual(['m3'])
   })
 
   test('24時間より前の通知は残す', () => {
-    const recent = [system('m1', 25 * 60, dates('2026-10-17', '2026-10-17'))]
+    const recent = [stored('m1', 25 * 60, dates('2026-10-17', '2026-10-17'))]
     expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual([])
   })
 
-  test('プロジェクト更新以外の system メッセージには手を付けない', () => {
-    const recent = [{ id: 'm1', messageType: 'system', content: '期間を 過ぎました', createdAt: minutesAgo(1) }]
-    expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual([])
-  })
-
-  test('別のマイルストーンの期日変更は、同じ項目として扱わない', () => {
-    const period = { startDate: '2026-10-17', endDate: null, startTime: null, endTime: null }
+  test('項目を持たない system メッセージ（更新通知以外・この仕組みより前の通知）には手を付けず、そこで止まる', () => {
     const recent = [
-      system('m2', 1, projectUpdateChange.milestoneDates('本番', period)),
-      system('m1', 2, projectUpdateChange.milestoneDates('下見', period)),
+      { id: 'm2', messageType: 'system', createdAt: minutesAgo(1), update: null },
+      stored('m1', 2, dates('2026-10-17', '2026-10-17')),
+    ]
+    expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual([])
+  })
+
+  test('同名でも別のマイルストーンの通知は消さない', () => {
+    const recent = [
+      stored('m2', 1, projectUpdateChange.milestoneDates(milestone('ms-b', '下見'))),
+      stored('m1', 2, projectUpdateChange.milestoneDates(milestone('ms-a', '下見'))),
     ]
     expect(
-      supersededProjectUpdateMessageIds(recent, [projectUpdateChange.milestoneDates('下見', period)], notBefore),
+      supersededProjectUpdateMessageIds(
+        recent,
+        [projectUpdateChange.milestoneDates(milestone('ms-a', '下見'))],
+        notBefore,
+      ),
     ).toEqual(['m1'])
   })
 
-  test('21件以上続いた通知の先にある同じ項目も消す', () => {
-    const period = { startDate: '2026-10-17', endDate: null, startTime: null, endTime: null }
-    const others = Array.from({ length: 21 }, (_, index) =>
-      system(`other-${index}`, index + 1, projectUpdateChange.milestoneDates(`M${index}`, period)),
-    )
-    const recent = [...others, system('first', 30, projectUpdateChange.milestoneDates('最初', period))]
+  test('マイルストーンの名前を変えた後も、同じマイルストーンの通知として集約する', () => {
+    const recent = [stored('m1', 1, projectUpdateChange.milestoneDates(milestone('ms-a', '下見')))]
     expect(
-      supersededProjectUpdateMessageIds(recent, [projectUpdateChange.milestoneDates('最初', period)], notBefore),
+      supersededProjectUpdateMessageIds(
+        recent,
+        [projectUpdateChange.milestoneDates(milestone('ms-a', '現地確認'))],
+        notBefore,
+      ),
+    ).toEqual(['m1'])
+  })
+
+  test('同じマイルストーンでも、期間の変更で完了の通知は消さない', () => {
+    const recent = [stored('m1', 1, projectUpdateChange.milestoneCompleted(milestone('ms-a', '下見'), true))]
+    expect(
+      supersededProjectUpdateMessageIds(
+        recent,
+        [projectUpdateChange.milestoneDates(milestone('ms-a', '下見'))],
+        notBefore,
+      ),
+    ).toEqual([])
+  })
+
+  test('21件以上続いた通知の先にある同じ項目も消す', () => {
+    const others = Array.from({ length: 21 }, (_, index) =>
+      stored(`other-${index}`, index + 1, projectUpdateChange.milestoneDates(milestone(`ms-${index}`, `M${index}`))),
+    )
+    const recent = [...others, stored('first', 30, projectUpdateChange.milestoneDates(milestone('ms-first', '最初')))]
+    expect(
+      supersededProjectUpdateMessageIds(
+        recent,
+        [projectUpdateChange.milestoneDates(milestone('ms-first', '最初'))],
+        notBefore,
+      ),
     ).toEqual(['first'])
   })
 })
 
-describe('projectUpdateChangeKind', () => {
-  const period = { startDate: '2026-10-17', endDate: '2026-10-18', startTime: '10:00:00', endTime: null }
-
-  test('組み立てた文はすべて項目として読み戻せる', () => {
-    expect([
-      status('計画中'),
-      dates(null, '2026-10-18'),
-      projectUpdateChange.description(),
-      projectUpdateChange.title('夏合宿'),
-      projectUpdateChange.location('上高地'),
-      projectUpdateChange.location(null),
-      projectUpdateChange.archived(true),
-      projectUpdateChange.archived(false),
-      projectUpdateChange.milestoneAdded('下見'),
-      projectUpdateChange.milestoneDates('下見', period),
-      projectUpdateChange.milestoneCompleted('下見', true),
-      projectUpdateChange.milestoneCompleted('下見', false),
-      projectUpdateChange.galleryAdded(),
-    ].map(projectUpdateChangeKind)).toEqual([
-      'status', 'dates', 'description', 'title', 'location', 'location', 'archived', 'archived',
-      'milestone-added:下見', 'milestone-dates:下見', 'milestone-completed:下見', 'milestone-completed:下見',
-      'gallery',
-    ])
-    expect(projectUpdateChange.milestoneDates('下見', period)).toBe(
-      'マイルストーン「下見」の期間を 2026-10-17 10:00 〜 2026-10-18 に変更しました',
+describe('projectUpdateChange', () => {
+  test('項目は本文ではなく kind と milestoneId で決まり、名前に何が入っていても変わらない', () => {
+    expect(projectUpdateKey(projectUpdateChange.title('春 / 期間を 夏合宿'))).toBe('title')
+    expect(projectUpdateKey(projectUpdateChange.location('期間を A 〜 B に変更しました'))).toBe('location')
+    expect(projectUpdateKey(projectUpdateChange.milestoneDates(milestone('ms-a', '設計 / 実装')))).toBe(
+      'milestone_dates:ms-a',
     )
+    expect(projectUpdateKey(projectUpdateChange.milestoneAdded(milestone('ms-a', '下見')))).toBe('milestone_added:ms-a')
+    expect(projectUpdateKey(projectUpdateChange.galleryAdded())).toBe('gallery')
   })
 
-  test('名前の中身が別の項目や区切りに見えても、名前として扱う', () => {
-    expect(projectUpdateChangeKind(projectUpdateChange.title('春 / 期間を 夏合宿'))).toBe('title')
-    expect(projectUpdateChangeKind(projectUpdateChange.title('場所を「山」に変更しました'))).toBe('title')
-    expect(projectUpdateChangeKind(projectUpdateChange.location('期間を A 〜 B に変更しました'))).toBe('location')
-    expect(projectUpdateChangeKind(projectUpdateChange.milestoneDates('設計 / 実装', period))).toBe(
-      'milestone-dates:設計 / 実装',
+  test('通知の本文を組み立てる', () => {
+    expect(buildProjectUpdateMessage('山田', projectUpdateChange.milestoneDates(milestone('ms-a', '下見')))).toBe(
+      '山田さんがプロジェクトを更新しました：マイルストーン「下見」の期間を 2026-10-17 10:00 〜 2026-10-18 に変更しました',
     )
-    expect(projectUpdateChangeKind(projectUpdateChange.milestoneCompleted('設計 / 実装', true))).toBe(
-      'milestone-completed:設計 / 実装',
+    expect(buildProjectUpdateMessage('山田', projectUpdateChange.location(null))).toBe(
+      '山田さんがプロジェクトを更新しました：場所を未設定にしました',
     )
-  })
-
-  test('項目に見える名前のプロジェクト名変更を、期間の通知で消さない', () => {
-    const recent = [system('m1', 1, projectUpdateChange.title('春 / 期間を 夏合宿'))]
-    expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual([])
-  })
-})
-
-describe('projectUpdateMessageKind', () => {
-  test('通知の本文から項目を読み、通知でない本文は null にする', () => {
-    expect(projectUpdateMessageKind(buildProjectUpdateMessage('山田', status('計画中')))).toBe('status')
-    expect(projectUpdateMessageKind('山田さんがプロジェクトを更新しました：よく分からない文')).toBeNull()
-    expect(projectUpdateMessageKind('日程了解です')).toBeNull()
-  })
-
-  test('表示名に見出しと同じ文字列が入っていても、項目を読める', () => {
-    const actorName = '山田さんがプロジェクトを更新しました：太郎'
-    expect(projectUpdateMessageKind(buildProjectUpdateMessage(actorName, status('計画中')))).toBe('status')
-    const recent = [
-      { id: 'm1', messageType: 'system', content: buildProjectUpdateMessage(actorName, dates('2026-10-17', '2026-10-18')), createdAt: minutesAgo(1) },
-    ]
-    expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual(['m1'])
+    expect(buildProjectUpdateMessage('山田', dates(null, '2026-10-18'))).toBe(
+      '山田さんがプロジェクトを更新しました：期間を 未設定 〜 2026-10-18 に変更しました',
+    )
   })
 })

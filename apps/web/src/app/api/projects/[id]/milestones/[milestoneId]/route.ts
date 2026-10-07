@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchMilestoneSchema } from '@cairn/shared'
 import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
-import { projectUpdateChange } from '@/lib/chat/project-update-message'
+import { projectUpdateChange, type ProjectUpdateChange } from '@/lib/chat/project-update-message'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
@@ -98,15 +98,15 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
       // 期日と完了はプロジェクト全体の予定に関わるため、プロジェクトチャンネルへ残す。
       // 値が変わらない保存では通知しない
-      const changes: string[] = []
+      const changes: ProjectUpdateChange[] = []
       const periodChanged =
         row.startDate !== previous.startDate ||
         row.endDate !== previous.endDate ||
         row.startTime !== previous.startTime ||
         row.endTime !== previous.endTime
-      if (periodChanged) changes.push(projectUpdateChange.milestoneDates(row.title, row))
+      if (periodChanged) changes.push(projectUpdateChange.milestoneDates(row))
       if (row.completed !== previous.completed) {
-        changes.push(projectUpdateChange.milestoneCompleted(row.title, row.completed))
+        changes.push(projectUpdateChange.milestoneCompleted(row, row.completed))
       }
       await postProjectUpdateMessage({ projectId, actorId: ctx.userId, changes, tx })
 

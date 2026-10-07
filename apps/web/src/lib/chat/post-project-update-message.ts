@@ -5,6 +5,7 @@ import {
   PROJECT_UPDATE_SUPERSEDE_WINDOW_MS,
   buildProjectUpdateMessage,
   supersededProjectUpdateMessageIds,
+  type ProjectUpdateChange,
 } from './project-update-message'
 
 type Database = (typeof import('@cairn/db'))['db']
@@ -24,14 +25,14 @@ export type ProjectUpdateTransaction = Parameters<Parameters<Database['transacti
 export async function postProjectUpdateMessage(params: {
   projectId: string
   actorId: string
-  changes: ReadonlyArray<string>
+  changes: ReadonlyArray<ProjectUpdateChange>
   tx?: ProjectUpdateTransaction
 }): Promise<void> {
   const { projectId, actorId, changes, tx: outerTx } = params
   if (changes.length === 0) return
 
   try {
-    const { db, channels, messages, profiles } = await import('@cairn/db')
+    const { db, channels, messageProjectUpdates, messages, profiles } = await import('@cairn/db')
     const { and, desc, eq, gte, inArray, isNull, sql } = await import('drizzle-orm')
 
     await (outerTx ?? db).transaction(async (tx) => {
@@ -55,14 +56,16 @@ export async function postProjectUpdateMessage(params: {
       // 対象は「最後の通常の投稿より後・24時間以内」の通知すべて。件数で打ち切ると、
       // 多くの項目を続けて更新した時に古い通知が取り残される
       const notBefore = new Date(Date.now() - PROJECT_UPDATE_SUPERSEDE_WINDOW_MS)
-      const recent = await tx
+      const recentRows = await tx
         .select({
           id: messages.id,
           messageType: messages.messageType,
-          content: messages.content,
           createdAt: messages.createdAt,
+          kind: messageProjectUpdates.kind,
+          milestoneId: messageProjectUpdates.milestoneId,
         })
         .from(messages)
+        .leftJoin(messageProjectUpdates, eq(messageProjectUpdates.messageId, messages.id))
         .where(
           and(
             eq(messages.channelId, channel.id),
@@ -76,7 +79,16 @@ export async function postProjectUpdateMessage(params: {
           ),
         )
         .orderBy(desc(messages.createdAt))
-      const supersededIds = supersededProjectUpdateMessageIds(recent, changes, notBefore)
+      const supersededIds = supersededProjectUpdateMessageIds(
+        recentRows.map((row) => ({
+          id: row.id,
+          messageType: row.messageType,
+          createdAt: row.createdAt,
+          update: row.kind ? { kind: row.kind, milestoneId: row.milestoneId } : null,
+        })),
+        changes,
+        notBefore,
+      )
       if (supersededIds.length > 0) {
         await tx
           .update(messages)
@@ -85,13 +97,22 @@ export async function postProjectUpdateMessage(params: {
       }
 
       for (const change of changes) {
-        await tx.insert(messages).values({
-          channelId: channel.id,
-          senderId: actorId,
-          messageType: 'system',
-          content: buildProjectUpdateMessage(actorName, change),
-          createdAt: sql`clock_timestamp()`,
-          updatedAt: sql`clock_timestamp()`,
+        const [inserted] = await tx
+          .insert(messages)
+          .values({
+            channelId: channel.id,
+            senderId: actorId,
+            messageType: 'system',
+            content: buildProjectUpdateMessage(actorName, change),
+            createdAt: sql`clock_timestamp()`,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .returning({ id: messages.id })
+        if (!inserted) throw new Error('messages insert returned no rows')
+        await tx.insert(messageProjectUpdates).values({
+          messageId: inserted.id,
+          kind: change.kind,
+          milestoneId: change.milestoneId ?? null,
         })
       }
     })

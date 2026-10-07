@@ -141,7 +141,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     await postProjectUpdateMessage({
       projectId,
       actorId: ctx.userId,
-      changes: [projectUpdateChange.milestoneAdded(inserted.milestone.title)],
+      changes: [projectUpdateChange.milestoneAdded(inserted.milestone)],
     })
 
     const result: MilestoneDto = {

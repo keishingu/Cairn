@@ -399,7 +399,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
       // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
       // どの項目も、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
-      const changes: string[] = []
+      const changes: import('@/lib/chat/project-update-message').ProjectUpdateChange[] = []
       if (b.statusName !== undefined && set.statusId !== current.statusId) {
         changes.push(projectUpdateChange.status(b.statusName))
       }
