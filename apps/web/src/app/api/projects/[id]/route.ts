@@ -94,8 +94,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
+    const { lockProjectUpdateChannel } = await import('@/lib/chat/post-project-update-message')
     const deleted = await db.transaction(async (tx) => {
       let deletionJobId: string | null = null
+      // プロジェクトの更新（PATCH）と同じ「チャンネル → プロジェクト」の順にロックを取る。
+      // 削除は CASCADE でこのチャンネルも消すため、プロジェクトを先に取ると、同時に走った更新と
+      // 互いのロックを待ち合ってデッドロックする
+      await lockProjectUpdateChannel(tx, projectId)
       // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
       // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
       const [lockedProject] = await tx
