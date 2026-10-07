@@ -79,6 +79,37 @@ describe('parseProjectUpdateMessage', () => {
   })
 })
 
+describe('区切り文字を含むマイルストーン名', () => {
+  const period = { startDate: '2026-10-17', endDate: '2026-10-18', startTime: null, endTime: null }
+  const name = '設計 / 実装'
+
+  test('名前に区切り文字があっても、項目として読み戻せる', () => {
+    const content = buildProjectUpdateMessage('山田', [
+      status('計画中'),
+      projectUpdateChange.milestoneDates(name, period),
+      projectUpdateChange.milestoneCompleted(name, true),
+    ])
+    expect(parseProjectUpdateMessage(content)?.changes.map(projectUpdateChangeKind)).toEqual([
+      'status',
+      `milestone-dates:${name}`,
+      `milestone-completed:${name}`,
+    ])
+  })
+
+  test('期間を続けて変更したら、前の通知を消して最後の1件だけ残す', () => {
+    const recent = [
+      { id: 'm1', messageType: 'system', content: buildProjectUpdateMessage('山田', [projectUpdateChange.milestoneDates(name, period)]), createdAt: minutesAgo(1) },
+    ]
+    expect(
+      supersedeProjectUpdateMessages(
+        recent,
+        [projectUpdateChange.milestoneDates(name, { ...period, endDate: '2026-10-20' })],
+        notBefore,
+      ).deleteIds,
+    ).toEqual(['m1'])
+  })
+})
+
 describe('projectUpdateChangeKind', () => {
   test('組み立てた文はすべて項目として読み戻せる', () => {
     const period = { startDate: '2026-10-17', endDate: '2026-10-18', startTime: '10:00:00', endTime: null }

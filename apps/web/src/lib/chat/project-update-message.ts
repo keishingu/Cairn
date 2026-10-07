@@ -72,21 +72,39 @@ export function buildProjectUpdateMessage(actorName: string, changes: ReadonlyAr
   return `${actorName}${HEADER}${changes.join(SEPARATOR)}`
 }
 
+// 項目の書き出し。名前に区切り文字（" / "）を含む項目を、分割された断片から組み立て直す手がかりにする
+const CHANGE_START = /^(?:ステータスを「|期間を |概要を更新しました|プロジェクト名を「|場所を|プロジェクトをアーカイブ|ギャラリーに写真を|マイルストーン「)/
+
 /** プロジェクト更新の通知でなければ null */
 export function parseProjectUpdateMessage(content: string): { actorName: string; changes: string[] } | null {
   const headerIndex = content.indexOf(HEADER)
   if (headerIndex < 0) return null
 
+  // プロジェクト名やマイルストーン名は " / " を含められるため、区切りで割っただけでは項目にならない。
+  // 項目として読めるまで断片をつなぎ、書き出しでない断片は直前の項目の続きとして戻す
   const changes: string[] = []
+  let pending: string | null = null
   for (const piece of content.slice(headerIndex + HEADER.length).split(SEPARATOR)) {
-    if (projectUpdateChangeKind(piece)) {
-      changes.push(piece)
+    if (pending !== null) {
+      pending += `${SEPARATOR}${piece}`
+      if (projectUpdateChangeKind(pending)) {
+        changes.push(pending)
+        pending = null
+      }
       continue
     }
-    // 名前に区切り文字が含まれていた場合は、直前の項目の続きとして戻す
-    if (changes.length === 0) return null
-    changes[changes.length - 1] += `${SEPARATOR}${piece}`
+    if (projectUpdateChangeKind(piece)) {
+      changes.push(piece)
+    } else if (CHANGE_START.test(piece)) {
+      pending = piece
+    } else if (changes.length > 0) {
+      changes[changes.length - 1] += `${SEPARATOR}${piece}`
+    } else {
+      return null
+    }
   }
+  // 最後まで項目として読めなかった断片が残るなら、通知の文ではない
+  if (pending !== null) return null
   return { actorName: content.slice(0, headerIndex), changes }
 }
 
