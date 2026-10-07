@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -1347,7 +1347,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
   const { data: wsMembers = [] } = useWorkspaceMembers()
   const { data: chMemberIds = [] } = useChannelMembers(channelId)
-  const { data: projectChannels = [] } = useProjectChannels()
+  const { data: projectChannels = [], isSuccess: projectChannelsResolved } = useProjectChannels()
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
@@ -1538,10 +1538,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
-    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
-    if (chMemberIds.length > 0) {
-      const idSet = new Set(chMemberIds.map(m => m.userId))
-      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    const others = wsMembers.filter(m => m.userId !== currentUser?.id)
+    const channelMemberIds = new Set(chMemberIds.map(m => m.userId))
+    if (isPrivate || isDm) {
+      return filterMentionCandidates(others, { kind: 'members_only', channelMemberIds })
     }
     // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
     // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
@@ -1549,11 +1549,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return wsMembers
-        .filter(m =>
-          m.userId !== currentUser?.id &&
-          (m.role !== 'guest' || projectMemberIds.has(m.userId)),
-        )
+      return filterMentionCandidates(others, { kind: 'project', projectMemberIds })
         .sort((a, b) => {
           const aIn = projectMemberIds.has(a.userId) ? 0 : 1
           const bIn = projectMemberIds.has(b.userId) ? 0 : 1
@@ -1561,8 +1557,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           return a.displayName.localeCompare(b.displayName, 'ja')
         })
     }
-    return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
+    // プロジェクトチャンネル一覧の取得前は、ここがプロジェクトチャンネルかどうか分からない。
+    // その間に公開チャンネル扱いにすると、未参加のゲストまで候補に出てしまう
+    if (!projectChannelsResolved) return filterMentionCandidates(others, { kind: 'unresolved' })
+    return filterMentionCandidates(others, { kind: 'workspace', channelMemberIds })
+  }, [chMemberIds, wsMembers, currentUser?.id, isPrivate, isDm, projectId, projectMembers, projectChannelsResolved])
 
   const { data: profileAttributes = [] } = useProfileAttributes()
 
