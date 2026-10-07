@@ -16,6 +16,7 @@
 
 - 保存値は常に canonical に固定する。POST / PATCH（編集）は `canonicalizeMentions()` で `<@id|name>` → `<@id>` に正規化してから保存する（hydrate で一時的に埋め込んだ名前が再保存されても剥がす）。
 - 旧データに残る `<@userId|displayName>` 形式も後方互換で受理する（解決時は最新名を優先し、解決できない退会ユーザーは埋め込み名 → `不明なメンバー`、削除済み属性は `不明な属性`）。
+- ユーザー名のread時解決は同じワークスペースの `workspace_members` 所属履歴に限定し、非活性メンバーの名前は維持する。所属履歴のないIDから別ワークスペースの最新グローバル名は取得しない。メッセージ取得・検索・通知プレビュー・プロジェクト一覧・AIのメッセージ調査は共有の名前マップを使う。
 - 解決ロジックは `apps/web/src/lib/chat/mentions.ts`（`canonicalizeMentions` / `hydrateMentions` / `extractMentionIds` / `stripMentionsToText`）に集約。グループ展開は `mention-expand.ts`、read 時の名前マップは `mention-name-map.ts`。
 - 手打ちの `@名前` はメンション通知の対象外（構造化トークンではないため）。ピッカー経由でのみトークン化する。
 - 通知本文（`notifications.body`）は送信時点の最新名で解決したスナップショット（イベントの記録のため read 時の再解決はしない）。

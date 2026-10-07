@@ -8,7 +8,8 @@ import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
-import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import { stripMentionsToText } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 
 export interface ProjectDto {
   id: string
@@ -163,17 +164,7 @@ export async function GET() {
         .orderBy(channels.projectId, desc(messages.createdAt), desc(messages.id)),
     ])
 
-    const mentionIds = [...new Set(latestMessageRows.flatMap(row => extractMentionIds(row.content)))]
-    const mentionNames = mentionIds.length > 0
-      ? await db.select({
-          id: profiles.id,
-          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
-        })
-        .from(profiles)
-        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-        .where(inArray(profiles.id, mentionIds))
-      : []
-    const mentionNameMap = new Map(mentionNames.map(row => [row.id, row.displayName]))
+    const mentionNameMap = await buildMentionNameMap(ctx.workspaceId, latestMessageRows.map(row => row.content))
     const latestMessageMap = new Map(latestMessageRows.map(row => [row.projectId, {
       senderName: row.senderName,
       content: stripMentionsToText(row.content, id => mentionNameMap.get(id)).replace(/\s+/g, ' ').trim(),
