@@ -7,7 +7,7 @@ export interface ReactionDto {
   emoji: string
   count: number
   mine: boolean
-  // リアクションしたユーザーの表示名（PC ではホバー、モバイルWebでは行末の要約とシートで表示する）
+  // リアクションしたユーザーの表示名（PC ではホバー、モバイルWebでは「…」メニューから開くシートで表示する）
   userNames: string[]
 }
 
