@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { RowActionMenu } from './row-action-menu'
+import { RowActionMenu, placeMenuVertically } from './row-action-menu'
 
 describe('行の操作メニュー', () => {
   it.each(['{Enter}', ' '])('%sで操作を一度だけ実行し、行のクリックへ伝播しない', async key => {
@@ -33,5 +33,20 @@ describe('行の操作メニュー', () => {
     expect(onSelect).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '操作' })).toHaveFocus()
     expect(screen.getByRole('button', { name: '操作' })).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+describe('行の操作メニューの縦位置', () => {
+  it('下に収まるときはトリガーの下に出す', () => {
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 150, 800)).toBe(124)
+  })
+
+  it('下に収まらないときはトリガーの上に出す', () => {
+    expect(placeMenuVertically({ top: 700, bottom: 720 }, 150, 800)).toBe(546)
+  })
+
+  it('上下どちらにも収まらないときは画面内に寄せる', () => {
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 190, 300)).toBe(106)
+    expect(placeMenuVertically({ top: 100, bottom: 120 }, 400, 300)).toBe(4)
   })
 })

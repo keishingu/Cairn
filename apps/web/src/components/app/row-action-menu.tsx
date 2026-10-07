@@ -11,6 +11,20 @@ export interface RowAction {
   onSelect: () => void
 }
 
+const MENU_GAP = 4
+
+/**
+ * メニューの縦位置。トリガーの下に収まらなければ上へ出し、上下どちらにも収まらなければ画面内に寄せる。
+ * 常に下へ出すと、画面下端に近い行（チャットの最新メッセージなど）で下の項目が画面外に切れて押せない。
+ */
+export function placeMenuVertically(trigger: { top: number; bottom: number }, menuHeight: number, viewportHeight: number): number {
+  const below = trigger.bottom + MENU_GAP
+  if (below + menuHeight <= viewportHeight - MENU_GAP) return below
+  const above = trigger.top - MENU_GAP - menuHeight
+  if (above >= MENU_GAP) return above
+  return Math.max(MENU_GAP, viewportHeight - MENU_GAP - menuHeight)
+}
+
 // リスト行の「…」アクションメニュー。リスト系エンティティの編集・削除は
 // ホバー依存の小アイコンではなく、常時表示のこのメニューに統一する
 export const RowActionMenu = ({ actions, triggerStyle }: {
@@ -45,8 +59,15 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
     }
   }, [open])
 
+  // 開いた直後に実際の高さを測り、画面に収まる位置へ描画前に直す
+  React.useLayoutEffect(() => {
+    if (!open || !btnRef.current || !menuRef.current) return
+    const top = placeMenuVertically(btnRef.current.getBoundingClientRect(), menuRef.current.offsetHeight, window.innerHeight)
+    setPosition(current => current.top === top ? current : { ...current, top })
+  }, [open, actions.length])
+
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
-  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120 }
+  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, maxHeight: `calc(100dvh - ${MENU_GAP * 2}px)`, overflowY: 'auto' }
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -73,7 +94,7 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
           ref={menuRef}
           id={menuId}
           onClick={e => e.stopPropagation()}
-          style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', padding: '4px 0' }}
+          style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', padding: '4px 0' }}
         >
           {actions.map(a => (
             <button
