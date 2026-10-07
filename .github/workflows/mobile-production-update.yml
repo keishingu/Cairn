@@ -45,6 +45,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: main
+          # 後続の pnpm install で依存のスクリプトが GITHUB_TOKEN を読めないよう、認証情報を残さない
+          persist-credentials: false
 
       # 本番へ配信する EXPO_TOKEN を扱うため、サードパーティの Action はタグではなくコミットで固定する
       - name: Setup pnpm

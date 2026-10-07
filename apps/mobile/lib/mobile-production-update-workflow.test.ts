@@ -35,5 +35,6 @@ describe('ストア版への自動 OTA 配信', () => {
     expect(workflow).toMatch(/pnpm\/action-setup@[0-9a-f]{40}/)
     expect(workflow).toMatch(/expo\/expo-github-action@[0-9a-f]{40}/)
     expect(workflow).not.toContain('eas-version: latest')
+    expect(workflow).toContain('persist-credentials: false')
   })
 })
