@@ -7,37 +7,47 @@ import {
   supersedeProjectUpdateMessages,
 } from './project-update-message'
 
+type Database = (typeof import('@cairn/db'))['db']
+/** 呼び出し元のトランザクション。リソースの更新と通知を同じ順序で確定させるために渡す */
+export type ProjectUpdateTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
+
 /**
  * プロジェクトの決定事項（ステータス・日程・場所・マイルストーンなど）の変更を、
  * プロジェクトチャンネルへ system メッセージで残す。
  * 通知は補助なので、失敗しても呼び出し元の更新は成功のままにする（例外を投げない）。
+ *
+ * 値を持つ通知（期間など）は、リソースを更新したトランザクションを `tx` で渡すこと。
+ * 別々に確定させると、同時に来た更新どうしで「後から確定した値」と「最後に出た通知」が食い違い、
+ * 古い値の通知が新しい通知を消してしまう。`tx` の中ではセーブポイントを切るので、
+ * 通知が失敗しても呼び出し元の更新は巻き戻らない。
  */
 export async function postProjectUpdateMessage(params: {
   projectId: string
   actorId: string
   changes: ReadonlyArray<string>
+  tx?: ProjectUpdateTransaction
 }): Promise<void> {
-  const { projectId, actorId, changes } = params
+  const { projectId, actorId, changes, tx: outerTx } = params
   if (changes.length === 0) return
 
   try {
     const { db, channels, messages, profiles } = await import('@cairn/db')
     const { and, desc, eq, inArray, isNull, sql } = await import('drizzle-orm')
 
-    const [channel] = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(and(eq(channels.projectId, projectId), eq(channels.type, 'project'), isNull(channels.milestoneId)))
-      .limit(1)
-    if (!channel) return
+    await (outerTx ?? db).transaction(async (tx) => {
+      const [channel] = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(and(eq(channels.projectId, projectId), eq(channels.type, 'project'), isNull(channels.milestoneId)))
+        .limit(1)
+      if (!channel) return
 
-    const [actor] = await db
-      .select({ displayName: profiles.displayName })
-      .from(profiles)
-      .where(eq(profiles.id, actorId))
-    const actorName = actor?.displayName ?? '不明'
+      const [actor] = await tx
+        .select({ displayName: profiles.displayName })
+        .from(profiles)
+        .where(eq(profiles.id, actorId))
+      const actorName = actor?.displayName ?? '不明'
 
-    await db.transaction(async (tx) => {
       // 同時に来た更新どうしで、整理と投稿の順序が入れ替わらないようにする
       await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, channel.id)).for('update')
 

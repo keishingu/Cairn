@@ -44,28 +44,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
-    const [previous] = await db
-      .select({
-        startDate: milestones.startDate,
-        endDate: milestones.endDate,
-        startTime: milestones.startTime,
-        endTime: milestones.endTime,
-        completed: milestones.completed,
-      })
-      .from(milestones)
-      .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
-      .limit(1)
-
-    if (!previous) return new NextResponse(null, { status: 404 })
-
-    // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
-    const datesInBody = 'startDate' in parsed.data || 'endDate' in parsed.data
-    const nextStartDate = 'startDate' in parsed.data ? (parsed.data.startDate ?? null) : previous.startDate
-    const nextEndDate = 'endDate' in parsed.data ? (parsed.data.endDate ?? null) : previous.endDate
-    if (datesInBody && isEndBeforeStart(nextStartDate, nextEndDate)) {
-      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
-    }
-
     const set: {
       title?: string
       description?: string | null
@@ -85,13 +63,61 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     if ('endTime' in parsed.data) set.endTime = parsed.data.endTime ?? null
     if (parsed.data.completed !== undefined) set.completed = parsed.data.completed
 
-    const [updated] = await db
-      .update(milestones)
-      .set(set)
-      .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
-      .returning()
+    // 行をロックしてから「保存済みの値と合わせた検証 → 更新 → 通知」までを1つのトランザクションで行う。
+    // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
+    // 逆転した期間が保存される。通知も確定順と食い違い、古い値の通知が最後に残る
+    const outcome = await db.transaction(async (tx) => {
+      const [previous] = await tx
+        .select({
+          startDate: milestones.startDate,
+          endDate: milestones.endDate,
+          startTime: milestones.startTime,
+          endTime: milestones.endTime,
+          completed: milestones.completed,
+        })
+        .from(milestones)
+        .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
+        .for('update')
+        .limit(1)
+      if (!previous) return { kind: 'not_found' as const }
 
-    if (!updated) return new NextResponse(null, { status: 404 })
+      // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
+      const datesInBody = 'startDate' in parsed.data || 'endDate' in parsed.data
+      const nextStartDate = 'startDate' in parsed.data ? (parsed.data.startDate ?? null) : previous.startDate
+      const nextEndDate = 'endDate' in parsed.data ? (parsed.data.endDate ?? null) : previous.endDate
+      if (datesInBody && isEndBeforeStart(nextStartDate, nextEndDate)) {
+        return { kind: 'date_order' as const }
+      }
+
+      const [row] = await tx
+        .update(milestones)
+        .set(set)
+        .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
+        .returning()
+      if (!row) return { kind: 'not_found' as const }
+
+      // 期日と完了はプロジェクト全体の予定に関わるため、プロジェクトチャンネルへ残す。
+      // 値が変わらない保存では通知しない
+      const changes: string[] = []
+      const periodChanged =
+        row.startDate !== previous.startDate ||
+        row.endDate !== previous.endDate ||
+        row.startTime !== previous.startTime ||
+        row.endTime !== previous.endTime
+      if (periodChanged) changes.push(projectUpdateChange.milestoneDates(row.title, row))
+      if (row.completed !== previous.completed) {
+        changes.push(projectUpdateChange.milestoneCompleted(row.title, row.completed))
+      }
+      await postProjectUpdateMessage({ projectId, actorId: ctx.userId, changes, tx })
+
+      return { kind: 'ok' as const, row }
+    })
+
+    if (outcome.kind === 'not_found') return new NextResponse(null, { status: 404 })
+    if (outcome.kind === 'date_order') {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+    }
+    const updated = outcome.row
 
     const [channel] = await db
       .select({ id: channels.id })
@@ -100,20 +126,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!channel) throw new Error('milestone channel not found')
-
-    // 期日と完了はプロジェクト全体の予定に関わるため、プロジェクトチャンネルへ残す。
-    // 値が変わらない保存では通知しない
-    const changes: string[] = []
-    const periodChanged =
-      updated.startDate !== previous.startDate ||
-      updated.endDate !== previous.endDate ||
-      updated.startTime !== previous.startTime ||
-      updated.endTime !== previous.endTime
-    if (periodChanged) changes.push(projectUpdateChange.milestoneDates(updated.title, updated))
-    if (updated.completed !== previous.completed) {
-      changes.push(projectUpdateChange.milestoneCompleted(updated.title, updated.completed))
-    }
-    await postProjectUpdateMessage({ projectId, actorId: ctx.userId, changes })
 
     return NextResponse.json({
       id: updated.id,

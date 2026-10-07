@@ -300,13 +300,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
-      .select({
-        id: projects.id,
-        startDate: projects.startDate,
-        endDate: projects.endDate,
-        location: projects.location,
-        archived: projects.archived,
-      })
+      .select({ id: projects.id })
       .from(projects)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -317,15 +311,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
-
-    // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
-    const nextStartDate = 'startDate' in b ? (b.startDate ?? null) : project.startDate
-    const nextEndDate = 'endDate' in b ? (b.endDate ?? null) : project.endDate
-    const nextLocation = 'location' in b ? (b.location ?? null) : project.location
-    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
-    if (('startDate' in b || 'endDate' in b) && isEndBeforeStart(nextStartDate, nextEndDate)) {
-      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
-    }
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
@@ -373,32 +358,67 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       set.statusId = status.id
     }
 
-    const [updated] = await db
-      .update(projects)
-      .set(set)
-      .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
-      .returning({ id: projects.id })
+    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+    const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
+    const { postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
 
-    if (!updated) {
+    // 行をロックしてから「保存済みの値と合わせた検証 → 更新 → 通知」までを1つのトランザクションで行う。
+    // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
+    // 逆転した期間が保存される。通知も確定順と食い違い、古い値の通知が最後に残る
+    const outcome = await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          startDate: projects.startDate,
+          endDate: projects.endDate,
+          location: projects.location,
+          archived: projects.archived,
+        })
+        .from(projects)
+        .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+        .for('update')
+        .limit(1)
+      if (!current) return { kind: 'not_found' as const }
+
+      // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
+      const nextStartDate = 'startDate' in b ? (b.startDate ?? null) : current.startDate
+      const nextEndDate = 'endDate' in b ? (b.endDate ?? null) : current.endDate
+      const nextLocation = 'location' in b ? (b.location ?? null) : current.location
+      if (('startDate' in b || 'endDate' in b) && isEndBeforeStart(nextStartDate, nextEndDate)) {
+        return { kind: 'date_order' as const }
+      }
+
+      const [row] = await tx
+        .update(projects)
+        .set(set)
+        .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+        .returning({ id: projects.id })
+      if (!row) return { kind: 'not_found' as const }
+
+      // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
+      // 日程・場所・アーカイブは、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
+      const changes: string[] = []
+      if (b.statusName !== undefined) changes.push(projectUpdateChange.status(b.statusName))
+      if (nextStartDate !== current.startDate || nextEndDate !== current.endDate) {
+        changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
+      }
+      if (nextLocation !== current.location) changes.push(projectUpdateChange.location(nextLocation))
+      if ('description' in b) changes.push(projectUpdateChange.description())
+      if (b.title !== undefined) changes.push(projectUpdateChange.title(b.title))
+      if (b.archived !== undefined && b.archived !== current.archived) {
+        changes.push(projectUpdateChange.archived(b.archived))
+      }
+      await postProjectUpdateMessage({ projectId: id, actorId: ctx.userId, changes, tx })
+
+      return { kind: 'ok' as const, id: row.id }
+    })
+
+    if (outcome.kind === 'not_found') {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
-
-    // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
-    // 日程・場所・アーカイブは、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
-    const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
-    const changes: string[] = []
-    if (b.statusName !== undefined) changes.push(projectUpdateChange.status(b.statusName))
-    if (nextStartDate !== project.startDate || nextEndDate !== project.endDate) {
-      changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
+    if (outcome.kind === 'date_order') {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
     }
-    if (nextLocation !== project.location) changes.push(projectUpdateChange.location(nextLocation))
-    if ('description' in b) changes.push(projectUpdateChange.description())
-    if (b.title !== undefined) changes.push(projectUpdateChange.title(b.title))
-    if (b.archived !== undefined && b.archived !== project.archived) {
-      changes.push(projectUpdateChange.archived(b.archived))
-    }
-    const { postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
-    await postProjectUpdateMessage({ projectId: id, actorId: ctx.userId, changes })
+    const updated = { id: outcome.id }
 
     const resp: { id: string; coverPhotoUrl?: string | null } = { id: updated.id }
     if (resolvedCoverPhotoUrl !== undefined) resp.coverPhotoUrl = resolvedCoverPhotoUrl
