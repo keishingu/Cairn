@@ -11,7 +11,7 @@ import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { useProjectFiles } from '@/hooks/use-project-files'
 import { useT } from '@/components/locale-provider'
 import { useHeicAccept } from '@/hooks/use-heic-accept'
@@ -112,13 +112,17 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
               throw new Error(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
             }
           }
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('channelId', channelId)
-          const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({})) as { error?: string }
-            throw new Error(data.error ?? t('Could not upload'))
+          try {
+            await uploadAttachment(channelId, file)
+          } catch (error) {
+            if (!(error instanceof AttachmentUploadError)) throw error
+            throw new Error(
+              error.failure === 'unsupported_type'
+                ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+                : error.failure === 'unknown_type'
+                  ? t('Unknown file type. Add an extension and upload again.')
+                  : (error.serverMessage ?? t('Could not upload')),
+            )
           }
         }),
       )
