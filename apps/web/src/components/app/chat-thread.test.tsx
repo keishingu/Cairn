@@ -577,7 +577,8 @@ describe('ChatThreadのメンション候補', () => {
     expect(screen.queryByRole('button', { name: /@未参加ゲスト/ })).toBeNull()
   })
 
-  it('チャンネル一覧を取得できない時は、一部の候補だけを出さずにエラーと再試行を表示する', () => {
+  it('チャンネル一覧を取得できない時は、一部の候補だけを出さずにエラーと再試行を表示する', async () => {
+    const user = userEvent.setup()
     chatThreadState.projectChannelsResolved = false
     chatThreadState.projectChannelsError = new Error('チャンネルの取得に失敗しました')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -594,9 +595,15 @@ describe('ChatThreadのメンション候補', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(input.value).toBe('@')
 
-    // キーボードの Enter / Space も click として届くため、mousedown ではなく click で再試行できること
-    fireEvent.click(screen.getByRole('button', { name: 'メンション候補を再読み込み' }))
+    // マウスだけでなく、キーボードの Enter / Space でも再試行できること
+    const retryButton = screen.getByRole('button', { name: 'メンション候補を再読み込み' })
+    await user.click(retryButton)
     expect(chatThreadState.refetchProjectChannels).toHaveBeenCalledTimes(1)
+    retryButton.focus()
+    await user.keyboard('{Enter}')
+    expect(chatThreadState.refetchProjectChannels).toHaveBeenCalledTimes(2)
+    await user.keyboard(' ')
+    expect(chatThreadState.refetchProjectChannels).toHaveBeenCalledTimes(3)
   })
 
   it('日本語変換中は候補を選ばず、確定後に入力済みの名前で絞り込む', () => {
