@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { Expo } from 'expo-server-sdk'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 const webSchema = z.object({
@@ -13,7 +14,7 @@ const webSchema = z.object({
 
 const expoSchema = z.object({
   deviceType: z.literal('expo'),
-  expoToken: z.string().startsWith('ExponentPushToken['),
+  expoToken: z.string().refine(Expo.isExpoPushToken, { message: 'Invalid Expo push token' }),
 })
 
 const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])
