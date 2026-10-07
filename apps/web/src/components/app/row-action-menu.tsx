@@ -59,11 +59,20 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
     }
   }, [open])
 
-  // 開いた直後に実際の高さを測り、画面に収まる位置へ描画前に直す
+  // 開いた直後に実際の高さを測り、画面に収まる位置へ描画前に直す。
+  // 開いたまま画面の回転などでビューポートが変わると位置が古くなるため、resize でも測り直す
   React.useLayoutEffect(() => {
-    if (!open || !btnRef.current || !menuRef.current) return
-    const top = placeMenuVertically(btnRef.current.getBoundingClientRect(), menuRef.current.offsetHeight, window.innerHeight)
-    setPosition(current => current.top === top ? current : { ...current, top })
+    if (!open) return
+    const reposition = () => {
+      if (!btnRef.current || !menuRef.current) return
+      const rect = btnRef.current.getBoundingClientRect()
+      const top = placeMenuVertically(rect, menuRef.current.offsetHeight, window.innerHeight)
+      const right = window.innerWidth - rect.right
+      setPosition(current => current.top === top && current.right === right ? current : { top, right })
+    }
+    reposition()
+    window.addEventListener('resize', reposition)
+    return () => window.removeEventListener('resize', reposition)
   }, [open, actions.length])
 
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
