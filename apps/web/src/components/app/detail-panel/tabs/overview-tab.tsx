@@ -11,7 +11,7 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { isEndBeforeStart } from '@/lib/date-range'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
@@ -648,11 +648,18 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
 
+  // API のエラー文は日本語固定で、通信失敗ではブラウザの英語文も来る。そのまま出すと表示言語と食い違うため、
+  // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
+  // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
+  const milestoneErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message === DATE_ORDER_ERROR
+      ? t('End date must be on or after the start date')
+      : fallback
+
   const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
     milestones.patchMutation.mutate(
       { id, input },
-      // 期間の前後が逆などサーバーが理由を返した時は、それをそのまま見せる
-      { onError: error => toast.error(error instanceof Error ? error.message : t('Could not update this milestone')) },
+      { onError: error => toast.error(milestoneErrorMessage(error, t('Could not update this milestone'))) },
     )
   }
 
@@ -665,8 +672,7 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
             disabled={!canEdit || milestones.createMutation.isPending}
             onCreate={input => milestones.createMutation.mutate(input, {
               onSuccess: () => toast.success(t('Milestone created')),
-              // サーバーが理由を返した時は、汎用の文言ではなくそれを見せる
-              onError: error => toast.error(error instanceof Error ? error.message : t('Could not create the milestone')),
+              onError: error => toast.error(milestoneErrorMessage(error, t('Could not create the milestone'))),
             })}
           />
         </div>
