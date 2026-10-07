@@ -1,0 +1,76 @@
+name: Mobile Production Update
+
+# main へ merge されたモバイルの JS 変更を、ストア版アプリ（production チャンネル）へ
+# EAS Update（OTA）で配信する。届くのは app.json の runtimeVersion が一致するバイナリだけ。
+# ネイティブモジュールを追加・更新したときは runtimeVersion を上げてストア版を作り直す
+# （上げずに merge すると、互換性のない JS が既存のストア版へ届く）。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/mobile-production-update.yml'
+  workflow_dispatch: {}
+
+# 配信は merge 順に直列化し、途中の配信を取り消さない（後の配信が最新として残る）
+concurrency:
+  group: mobile-production-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Publish Mobile EAS Update to production
+    runs-on: ubuntu-latest
+    # EXPO_TOKEN は production Environment から渡す（Deployment branch policy で main 以外を拒否する）
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check required settings
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "GitHub Actions secret EXPO_TOKEN is required in the production environment."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # 接続先は EAS の production Environment の値を使う（ストア版ビルドと同じ）。
+      # app.config.ts が本番の Bundle ID / scheme を選ぶよう、variant も明示する
+      - name: Publish EAS Update
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV: production
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          subject=$(printf '%s' "${COMMIT_MESSAGE:-manual}" | head -n 1)
+          eas update \
+            --channel production \
+            --environment production \
+            --message "main ${GITHUB_SHA::7}: ${subject}" \
+            --non-interactive

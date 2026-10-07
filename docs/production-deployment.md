@@ -59,6 +59,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 確実に防ぐには `pull_request_target` への変更か、コラボレーターの信頼範囲の見直しが必要（未対応）。
 
 - **必要な Secrets**: `SUPABASE_DB_URL_PRODUCTION`（`production` Environment）/ `SUPABASE_DB_URL_PREVIEW`（`preview` Environment）
+  - モバイルのストア版 OTA（`mobile-production-update.yml`）は `EXPO_TOKEN`（`production` Environment）も使う
   - **Session Pooler（ポート 5432）** の接続文字列を使う: `postgresql://postgres.<ref>:<password>@aws-X-ap-northeast-1.pooler.supabase.com:5432/postgres`
   - GitHub-hosted runner は IPv4 のみのため、Direct connection（IPv6 専用）は使えない。Transaction pooler（6543）もマイグレーションには不可
   - パスワードに記号が含まれる場合は URL エンコードする
