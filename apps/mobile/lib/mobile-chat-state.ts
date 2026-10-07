@@ -109,6 +109,21 @@ export function serializeMentions(text: string, mentions: ReadonlyArray<MentionS
     }, text)
 }
 
+/** 入力欄でメンション部分だけ色を変えるため、本文をメンションとそれ以外に分ける */
+export function splitMentionSegments(text: string, mentions: ReadonlyArray<MentionSelection>) {
+  const segments: { text: string; mention: boolean }[] = []
+  let cursor = 0
+  for (const mention of [...mentions].sort((left, right) => left.start - right.start)) {
+    // 送信時にトークンへ変換されないもの（名前を書き換えた等）は、メンションとして見せない
+    if (mention.start < cursor || text.slice(mention.start, mention.end) !== `@${mention.displayName}`) continue
+    if (mention.start > cursor) segments.push({ text: text.slice(cursor, mention.start), mention: false })
+    segments.push({ text: text.slice(mention.start, mention.end), mention: true })
+    cursor = mention.end
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), mention: false })
+  return segments
+}
+
 export function parseEditableMentions(content: string, t: Translate = translateJa) {
   let text = ''
   let cursor = 0
@@ -155,15 +170,6 @@ export function nextMessagePageCursor(page: {
   hasMore: boolean
 }) {
   return page.hasMore ? page.messages[0]?.id : undefined
-}
-
-export function filterProjectMentionMembers<
-  T extends { userId: string; role: 'owner' | 'admin' | 'member' | 'guest' },
->(workspaceMembers: ReadonlyArray<T>, projectMembers: ReadonlyArray<{ userId: string }>) {
-  const projectMemberIds = new Set(projectMembers.map((member) => member.userId))
-  return workspaceMembers.filter(
-    (member) => member.role !== 'guest' || projectMemberIds.has(member.userId),
-  )
 }
 
 const INTERNAL_MARKDOWN_PATHS = [
