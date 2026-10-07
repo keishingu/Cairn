@@ -11,7 +11,6 @@
 export const PROJECT_UPDATE_SUPERSEDE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 const HEADER = 'さんがプロジェクトを更新しました：'
-const SEPARATOR = ' / '
 const UNSET = '未設定'
 
 function formatPeriod(start: string | null, end: string | null): string {
@@ -45,18 +44,20 @@ export const projectUpdateChange = {
   galleryAdded: () => 'ギャラリーに写真を追加しました',
 }
 
+// 文の先頭から末尾までで判定する。名前（プロジェクト名・マイルストーン名・場所）には何でも入れられるため、
+// 書き出しだけで判定すると、名前の中身が別の項目に見えてしまう。
 // マイルストーンは名前ごとに別の項目として扱う（A の期日変更で B の通知を消さない）
 const CHANGE_PATTERNS: ReadonlyArray<readonly [RegExp, (match: RegExpExecArray) => string]> = [
-  [/^ステータスを「/, () => 'status'],
-  [/^期間を /, () => 'dates'],
+  [/^ステータスを「[\s\S]*」に変更しました$/, () => 'status'],
+  [/^期間を [\s\S]+ 〜 [\s\S]+ に変更しました$/, () => 'dates'],
   [/^概要を更新しました$/, () => 'description'],
-  [/^プロジェクト名を「/, () => 'title'],
-  [/^場所を/, () => 'location'],
-  [/^プロジェクトをアーカイブ/, () => 'archived'],
+  [/^プロジェクト名を「[\s\S]*」に変更しました$/, () => 'title'],
+  [/^場所を(?:「[\s\S]*」に変更しました|未設定にしました)$/, () => 'location'],
+  [/^プロジェクトをアーカイブ(?:しました|から復元しました)$/, () => 'archived'],
   [/^ギャラリーに写真を追加しました$/, () => 'gallery'],
-  [/^マイルストーン「(.+)」を追加しました$/, match => `milestone-added:${match[1]}`],
-  [/^マイルストーン「(.+)」の期間を /, match => `milestone-dates:${match[1]}`],
-  [/^マイルストーン「(.+)」を(?:完了にしました|未完了に戻しました)$/, match => `milestone-completed:${match[1]}`],
+  [/^マイルストーン「([\s\S]+)」を追加しました$/, match => `milestone-added:${match[1]}`],
+  [/^マイルストーン「([\s\S]+)」の期間を [\s\S]+ 〜 [\s\S]+ に変更しました$/, match => `milestone-dates:${match[1]}`],
+  [/^マイルストーン「([\s\S]+)」を(?:完了にしました|未完了に戻しました)$/, match => `milestone-completed:${match[1]}`],
 ]
 
 /** 同じ値を返す変更どうしが「同じ項目」。通知の文でなければ null */
@@ -68,69 +69,36 @@ export function projectUpdateChangeKind(text: string): string | null {
   return null
 }
 
-export function buildProjectUpdateMessage(actorName: string, changes: ReadonlyArray<string>): string {
-  return `${actorName}${HEADER}${changes.join(SEPARATOR)}`
+// 変更1つにつき通知1件。複数の変更を1つの文につなぐと、名前に区切りと同じ文字列が入った時に
+// どこまでが名前か決められず、集約で別の項目を巻き込む
+export function buildProjectUpdateMessage(actorName: string, change: string): string {
+  return `${actorName}${HEADER}${change}`
 }
 
-// 項目の書き出し。名前に区切り文字（" / "）を含む項目を、分割された断片から組み立て直す手がかりにする
-const CHANGE_START = /^(?:ステータスを「|期間を |概要を更新しました|プロジェクト名を「|場所を|プロジェクトをアーカイブ|ギャラリーに写真を|マイルストーン「)/
-
-/** プロジェクト更新の通知でなければ null */
-export function parseProjectUpdateMessage(content: string): { actorName: string; changes: string[] } | null {
+/** 通知が表す項目。プロジェクト更新の通知でなければ null */
+export function projectUpdateMessageKind(content: string): string | null {
   const headerIndex = content.indexOf(HEADER)
   if (headerIndex < 0) return null
-
-  // プロジェクト名やマイルストーン名は " / " を含められるため、区切りで割っただけでは項目にならない。
-  // 項目として読めるまで断片をつなぎ、書き出しでない断片は直前の項目の続きとして戻す
-  const changes: string[] = []
-  let pending: string | null = null
-  for (const piece of content.slice(headerIndex + HEADER.length).split(SEPARATOR)) {
-    if (pending !== null) {
-      pending += `${SEPARATOR}${piece}`
-      if (projectUpdateChangeKind(pending)) {
-        changes.push(pending)
-        pending = null
-      }
-      continue
-    }
-    if (projectUpdateChangeKind(piece)) {
-      changes.push(piece)
-    } else if (CHANGE_START.test(piece)) {
-      pending = piece
-    } else if (changes.length > 0) {
-      changes[changes.length - 1] += `${SEPARATOR}${piece}`
-    } else {
-      return null
-    }
-  }
-  // 最後まで項目として読めなかった断片が残るなら、通知の文ではない
-  if (pending !== null) return null
-  return { actorName: content.slice(0, headerIndex), changes }
+  return projectUpdateChangeKind(content.slice(headerIndex + HEADER.length))
 }
 
 /**
- * 新しい通知が上書きする項目を、直前に並んでいる通知から取り除く。
+ * 新しい通知と同じ項目の通知を、直前に並んでいる通知の中から選ぶ（呼び出し側で消す）。
  * `recentMessages` は新しい順。通知以外の投稿や `notBefore` より古い通知に当たったら、
  * そこから前は会話の流れの一部として手を付けない。
  */
-export function supersedeProjectUpdateMessages(
+export function supersededProjectUpdateMessageIds(
   recentMessages: ReadonlyArray<{ id: string; messageType: string; content: string; createdAt: Date }>,
   newChanges: ReadonlyArray<string>,
   notBefore: Date,
-): { deleteIds: string[]; rewrites: { id: string; content: string }[] } {
+): string[] {
   const newKinds = new Set(newChanges.map(projectUpdateChangeKind))
-  const deleteIds: string[] = []
-  const rewrites: { id: string; content: string }[] = []
-
+  const ids: string[] = []
   for (const message of recentMessages) {
     if (message.messageType !== 'system' || message.createdAt < notBefore) break
-    const parsed = parseProjectUpdateMessage(message.content)
-    if (!parsed) break
-
-    const remaining = parsed.changes.filter(change => !newKinds.has(projectUpdateChangeKind(change)))
-    if (remaining.length === parsed.changes.length) continue
-    if (remaining.length === 0) deleteIds.push(message.id)
-    else rewrites.push({ id: message.id, content: buildProjectUpdateMessage(parsed.actorName, remaining) })
+    const kind = projectUpdateMessageKind(message.content)
+    if (!kind) break
+    if (newKinds.has(kind)) ids.push(message.id)
   }
-  return { deleteIds, rewrites }
+  return ids
 }

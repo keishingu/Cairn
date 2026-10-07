@@ -4,7 +4,7 @@
 import {
   PROJECT_UPDATE_SUPERSEDE_WINDOW_MS,
   buildProjectUpdateMessage,
-  supersedeProjectUpdateMessages,
+  supersededProjectUpdateMessageIds,
 } from './project-update-message'
 
 type Database = (typeof import('@cairn/db'))['db']
@@ -32,7 +32,7 @@ export async function postProjectUpdateMessage(params: {
 
   try {
     const { db, channels, messages, profiles } = await import('@cairn/db')
-    const { and, desc, eq, inArray, isNull, sql } = await import('drizzle-orm')
+    const { and, desc, eq, gte, inArray, isNull, sql } = await import('drizzle-orm')
 
     await (outerTx ?? db).transaction(async (tx) => {
       const [channel] = await tx
@@ -51,7 +51,10 @@ export async function postProjectUpdateMessage(params: {
       // 同時に来た更新どうしで、整理と投稿の順序が入れ替わらないようにする
       await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, channel.id)).for('update')
 
-      // 同じ項目を続けて直した時に通知が何行も並ばないよう、直前に並ぶ通知から上書きされた項目を取り除く
+      // 同じ項目を続けて直した時に通知が何行も並ばないよう、直前に並ぶ通知のうち同じ項目のものを消す。
+      // 対象は「最後の通常の投稿より後・24時間以内」の通知すべて。件数で打ち切ると、
+      // 多くの項目を続けて更新した時に古い通知が取り残される
+      const notBefore = new Date(Date.now() - PROJECT_UPDATE_SUPERSEDE_WINDOW_MS)
       const recent = await tx
         .select({
           id: messages.id,
@@ -60,32 +63,37 @@ export async function postProjectUpdateMessage(params: {
           createdAt: messages.createdAt,
         })
         .from(messages)
-        .where(and(eq(messages.channelId, channel.id), isNull(messages.deletedAt)))
+        .where(
+          and(
+            eq(messages.channelId, channel.id),
+            isNull(messages.deletedAt),
+            eq(messages.messageType, 'system'),
+            gte(messages.createdAt, notBefore),
+            sql`${messages.createdAt} > coalesce((
+              select max(m.created_at) from messages m
+              where m.channel_id = ${channel.id} and m.deleted_at is null and m.message_type <> 'system'
+            ), '-infinity'::timestamptz)`,
+          ),
+        )
         .orderBy(desc(messages.createdAt))
-        .limit(20)
-      const superseded = supersedeProjectUpdateMessages(
-        recent,
-        changes,
-        new Date(Date.now() - PROJECT_UPDATE_SUPERSEDE_WINDOW_MS),
-      )
-      if (superseded.deleteIds.length > 0) {
+      const supersededIds = supersededProjectUpdateMessageIds(recent, changes, notBefore)
+      if (supersededIds.length > 0) {
         await tx
           .update(messages)
           .set({ deletedAt: sql`clock_timestamp()` })
-          .where(inArray(messages.id, superseded.deleteIds))
-      }
-      for (const rewrite of superseded.rewrites) {
-        await tx.update(messages).set({ content: rewrite.content }).where(eq(messages.id, rewrite.id))
+          .where(inArray(messages.id, supersededIds))
       }
 
-      await tx.insert(messages).values({
-        channelId: channel.id,
-        senderId: actorId,
-        messageType: 'system',
-        content: buildProjectUpdateMessage(actorName, changes),
-        createdAt: sql`clock_timestamp()`,
-        updatedAt: sql`clock_timestamp()`,
-      })
+      for (const change of changes) {
+        await tx.insert(messages).values({
+          channelId: channel.id,
+          senderId: actorId,
+          messageType: 'system',
+          content: buildProjectUpdateMessage(actorName, change),
+          createdAt: sql`clock_timestamp()`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+      }
     })
   } catch (e) {
     console.warn('[postProjectUpdateMessage] system message insert failed (skipped):', e)

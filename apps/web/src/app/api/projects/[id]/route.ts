@@ -368,6 +368,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const outcome = await db.transaction(async (tx) => {
       const [current] = await tx
         .select({
+          title: projects.title,
+          description: projects.description,
+          statusId: projects.statusId,
           startDate: projects.startDate,
           endDate: projects.endDate,
           location: projects.location,
@@ -395,15 +398,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!row) return { kind: 'not_found' as const }
 
       // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
-      // 日程・場所・アーカイブは、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
+      // どの項目も、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
       const changes: string[] = []
-      if (b.statusName !== undefined) changes.push(projectUpdateChange.status(b.statusName))
+      if (b.statusName !== undefined && set.statusId !== current.statusId) {
+        changes.push(projectUpdateChange.status(b.statusName))
+      }
       if (nextStartDate !== current.startDate || nextEndDate !== current.endDate) {
         changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
       }
       if (nextLocation !== current.location) changes.push(projectUpdateChange.location(nextLocation))
-      if ('description' in b) changes.push(projectUpdateChange.description())
-      if (b.title !== undefined) changes.push(projectUpdateChange.title(b.title))
+      if ('description' in b && (b.description ?? null) !== current.description) {
+        changes.push(projectUpdateChange.description())
+      }
+      if (b.title !== undefined && b.title !== current.title) changes.push(projectUpdateChange.title(b.title))
       if (b.archived !== undefined && b.archived !== current.archived) {
         changes.push(projectUpdateChange.archived(b.archived))
       }
