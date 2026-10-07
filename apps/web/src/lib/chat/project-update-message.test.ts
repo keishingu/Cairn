@@ -132,4 +132,13 @@ describe('projectUpdateMessageKind', () => {
     expect(projectUpdateMessageKind('山田さんがプロジェクトを更新しました：よく分からない文')).toBeNull()
     expect(projectUpdateMessageKind('日程了解です')).toBeNull()
   })
+
+  test('表示名に見出しと同じ文字列が入っていても、項目を読める', () => {
+    const actorName = '山田さんがプロジェクトを更新しました：太郎'
+    expect(projectUpdateMessageKind(buildProjectUpdateMessage(actorName, status('計画中')))).toBe('status')
+    const recent = [
+      { id: 'm1', messageType: 'system', content: buildProjectUpdateMessage(actorName, dates('2026-10-17', '2026-10-18')), createdAt: minutesAgo(1) },
+    ]
+    expect(supersededProjectUpdateMessageIds(recent, newDates, notBefore)).toEqual(['m1'])
+  })
 })

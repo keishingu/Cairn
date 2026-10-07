@@ -46,7 +46,9 @@ export const projectUpdateChange = {
 
 // 文の先頭から末尾までで判定する。名前（プロジェクト名・マイルストーン名・場所）には何でも入れられるため、
 // 書き出しだけで判定すると、名前の中身が別の項目に見えてしまう。
-// マイルストーンは名前ごとに別の項目として扱う（A の期日変更で B の通知を消さない）
+// マイルストーンは名前ごとに別の項目として扱う（A の期日変更で B の通知を消さない）。
+// 同じプロジェクトに同名のマイルストーンが複数ある場合は区別できず、片方の更新でもう片方の直前の通知も消える。
+// 通知の文にも名前しか出ないため読み手にも区別はつかないが、ID で分けるにはメッセージに構造化データが要る
 const CHANGE_PATTERNS: ReadonlyArray<readonly [RegExp, (match: RegExpExecArray) => string]> = [
   [/^ステータスを「[\s\S]*」に変更しました$/, () => 'status'],
   [/^期間を [\s\S]+ 〜 [\s\S]+ に変更しました$/, () => 'dates'],
@@ -77,9 +79,15 @@ export function buildProjectUpdateMessage(actorName: string, change: string): st
 
 /** 通知が表す項目。プロジェクト更新の通知でなければ null */
 export function projectUpdateMessageKind(content: string): string | null {
-  const headerIndex = content.indexOf(HEADER)
-  if (headerIndex < 0) return null
-  return projectUpdateChangeKind(content.slice(headerIndex + HEADER.length))
+  // 表示名にも見出しと同じ文字列を入れられるため、最初に見つかった位置を区切りと決めつけない。
+  // 見出しの候補を順に試し、後ろが項目として読める位置を区切りとする
+  let headerIndex = content.indexOf(HEADER)
+  while (headerIndex >= 0) {
+    const kind = projectUpdateChangeKind(content.slice(headerIndex + HEADER.length))
+    if (kind) return kind
+    headerIndex = content.indexOf(HEADER, headerIndex + 1)
+  }
+  return null
 }
 
 /**
