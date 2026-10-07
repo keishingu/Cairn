@@ -50,4 +50,32 @@ describe('InlineDatePair', () => {
     expect(onSave).not.toHaveBeenCalled()
     expect(screen.getByLabelText('End date')).toBeTruthy()
   })
+
+  it('終了日が開始日より前の間はエラーを表示し、完了でも外側の押下でも保存しない', () => {
+    const onSave = openEditor()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date')
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
+    fireEvent.pointerDown(document.body)
+    fireEvent.keyDown(screen.getByLabelText('End date'), { key: 'Enter' })
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('End date')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-14' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onSave).toHaveBeenCalledWith('2026-06-12', '2026-06-14', null, null)
+  })
+
+  it('逆転したままでもキャンセルで編集をやめられ、保存しない', () => {
+    const onSave = openEditor()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('End date')).toBeNull()
+  })
 })

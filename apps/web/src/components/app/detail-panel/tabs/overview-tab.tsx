@@ -11,6 +11,7 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
@@ -131,9 +132,12 @@ export const InlineDatePair = ({
 
   // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
   const openRef = React.useRef(false)
+  const reversed = isEndBeforeStart(start, end)
 
   const commit = () => {
     if (!openRef.current) return
+    // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
+    if (reversed) return
     openRef.current = false
     setEditing(false)
     const ns = start || null
@@ -247,10 +251,13 @@ export const InlineDatePair = ({
         <input
           type="date"
           value={end}
+          // ピッカー側でも開始日より前を選びにくくする（手入力や開始日の変更では超えられるので、下でも判定する）
+          min={start || undefined}
           aria-label={t('End date')}
+          aria-invalid={reversed}
           onChange={e => setEnd(e.target.value)}
           onKeyDown={handleKeyDown}
-          style={dateStyle}
+          style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
         />
         <input
           type="time"
@@ -261,18 +268,37 @@ export const InlineDatePair = ({
           style={timeStyle}
         />
       </div>
-      <button
-        type="button"
-        onClick={commit}
-        style={{
-          alignSelf: 'flex-end', marginTop: 2,
-          height: coarse ? 36 : 26, padding: '0 12px', borderRadius: 6, border: 'none',
-          background: 'var(--accent)', color: 'var(--on-accent)',
-          fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-        }}
-      >
-        {t('Done')}
-      </button>
+      {reversed && (
+        <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+        {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
+        <button
+          type="button"
+          onClick={cancel}
+          style={{
+            // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+          }}
+        >
+          {t('Cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={commit}
+          disabled={reversed}
+          style={{
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
+            background: 'var(--accent)', color: 'var(--on-accent)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            cursor: reversed ? 'default' : 'pointer', opacity: reversed ? 0.5 : 1,
+          }}
+        >
+          {t('Done')}
+        </button>
+      </div>
     </div>
   )
 }
