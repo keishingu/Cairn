@@ -7,6 +7,7 @@ import {
   supersededProjectUpdateMessageIds,
   type ProjectUpdateChange,
 } from './project-update-message'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 type Database = (typeof import('@cairn/db'))['db']
 /** 呼び出し元のトランザクション。リソースの更新と通知を同じ順序で確定させるために渡す */
@@ -32,7 +33,7 @@ export async function postProjectUpdateMessage(params: {
   if (changes.length === 0) return
 
   try {
-    const { db, channels, messageProjectUpdates, messages, profiles } = await import('@cairn/db')
+    const { db, channels, messageProjectUpdates, messages, profiles, projects, workspaceMembers } = await import('@cairn/db')
     const { and, desc, eq, gte, inArray, isNull, sql } = await import('drizzle-orm')
 
     await (outerTx ?? db).transaction(async (tx) => {
@@ -43,10 +44,20 @@ export async function postProjectUpdateMessage(params: {
         .limit(1)
       if (!channel) return
 
+      // 通知の本文に名前を埋め込むため、チャットの他の表示と同じワークスペース内の表示名を使う。
+      // 履歴として残る文なので、非活性になったメンバーも当時の名義で出せるよう workspace_members を直接引く
       const [actor] = await tx
-        .select({ displayName: profiles.displayName })
+        .select({
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        })
         .from(profiles)
+        .leftJoin(projects, eq(projects.id, projectId))
+        .leftJoin(
+          workspaceMembers,
+          and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, projects.workspaceId)),
+        )
         .where(eq(profiles.id, actorId))
+        .limit(1)
       const actorName = actor?.displayName ?? '不明'
 
       // 同時に来た更新どうしで、整理と投稿の順序が入れ替わらないようにする

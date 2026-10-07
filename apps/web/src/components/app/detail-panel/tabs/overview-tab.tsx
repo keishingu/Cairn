@@ -440,7 +440,7 @@ const isPastDue = (milestone: MilestoneDto) => {
   return milestone.endDate < `${yyyy}-${mm}-${dd}`
 }
 
-const MilestoneCreateForm = ({ onCreate, disabled }: {
+export const MilestoneCreateForm = ({ onCreate, disabled }: {
   onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
   disabled?: boolean
 }) => {
@@ -452,6 +452,8 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
   const [endDate, setEndDate] = React.useState('')
   const [startTime, setStartTime] = React.useState('')
   const [endTime, setEndTime] = React.useState('')
+
+  const reversed = isEndBeforeStart(startDate, endDate)
 
   const reset = () => {
     setTitle('')
@@ -466,6 +468,8 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
     e.preventDefault()
     const trimmed = title.trim()
     if (!trimmed) return
+    // 送信するとフォームを閉じて入力を消すため、サーバーに拒否される逆転した期間は送る前に止める
+    if (reversed) return
     onCreate({
       title: trimmed,
       ...(description.trim() ? { description: description.trim() } : {}),
@@ -516,15 +520,26 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} aria-label={t('End date')} style={inputStyle}/>
+        <input
+          type="date"
+          value={endDate}
+          min={startDate || undefined}
+          onChange={e => setEndDate(e.target.value)}
+          aria-label={t('End date')}
+          aria-invalid={reversed}
+          style={reversed ? { ...inputStyle, border: '1px solid var(--red)' } : inputStyle}
+        />
       </div>
+      {reversed && (
+        <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
         <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>
-        <button type="submit" className="btn btn-primary" disabled={!title.trim()}>{t('Create entry')}</button>
+        <button type="submit" className="btn btn-primary" disabled={!title.trim() || reversed}>{t('Create entry')}</button>
       </div>
     </form>
   )
@@ -640,7 +655,8 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
             disabled={!canEdit || milestones.createMutation.isPending}
             onCreate={input => milestones.createMutation.mutate(input, {
               onSuccess: () => toast.success(t('Milestone created')),
-              onError: () => toast.error(t('Could not create the milestone')),
+              // サーバーが理由を返した時は、汎用の文言ではなくそれを見せる
+              onError: error => toast.error(error instanceof Error ? error.message : t('Could not create the milestone')),
             })}
           />
         </div>
