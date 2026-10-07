@@ -4,14 +4,14 @@ name: Mobile Production Update
 # EAS Update（OTA）で配信する。届くのは app.json の runtimeVersion が一致するバイナリだけ。
 # ネイティブモジュールを追加・更新したときは runtimeVersion を上げてストア版を作り直す
 # （上げずに merge すると、互換性のない JS が既存のストア版へ届く）。
+#
+# paths で絞らず main への push ごとに配信する。paths は変更ファイルの先頭 300 件しか見ないため、
+# develop → main のリリースのように大きな merge ではモバイルの変更があっても起動しないことがある。
+# また待機中の実行は置き換えられるため、job 内で差分を見て省くと配信漏れが起きうる。
+# Web だけのリリースでも同じ bundle を配信し直すだけで、端末側の再取得は manifest に留まる
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - 'packages/shared/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/mobile-production-update.yml'
   workflow_dispatch: {}
 
 # 配信は直列化し、実行中の配信は取り消さない。ただし待機中の実行は新しい push に置き換えられ、

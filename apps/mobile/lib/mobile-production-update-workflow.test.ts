@@ -7,10 +7,9 @@ const workflow = readFileSync(
 )
 
 describe('ストア版への自動 OTA 配信', () => {
-  test('main へのモバイル関連の merge と手動実行だけで起動する', () => {
+  test('大きなリリースで起動漏れしないよう、paths で絞らず main への push と手動実行で起動する', () => {
     expect(workflow).toContain('branches: [main]')
-    expect(workflow).toContain("- 'apps/mobile/**'")
-    expect(workflow).toContain("- 'packages/shared/**'")
+    expect(workflow).not.toMatch(/^\s+paths:/m)
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).not.toContain('pull_request')
     expect(workflow).toContain("if: github.ref == 'refs/heads/main'")
