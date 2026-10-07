@@ -28,4 +28,10 @@ describe('ストア版への自動 OTA 配信', () => {
     expect(workflow).toContain('group: mobile-production-update')
     expect(workflow).toContain('cancel-in-progress: false')
   })
+
+  test('本番の EXPO_TOKEN を扱うサードパーティの Action と EAS CLI はバージョンを固定する', () => {
+    expect(workflow).toMatch(/pnpm\/action-setup@[0-9a-f]{40}/)
+    expect(workflow).toMatch(/expo\/expo-github-action@[0-9a-f]{40}/)
+    expect(workflow).not.toContain('eas-version: latest')
+  })
 })
