@@ -305,7 +305,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, startDate: projects.startDate, endDate: projects.endDate })
       .from(projects)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -316,6 +316,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
+
+    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+    // 下でカバー写真を Storage へ保存する前に、拒否すると分かっている入力を返しておく。
+    // 保存した後で 422 / 404 にすると、どのプロジェクトからも参照されない画像が残る。
+    // 同時更新まで含めた最終的な判定は、行をロックしたトランザクションの中でもう一度行う
+    if (
+      ('startDate' in b || 'endDate' in b) &&
+      isEndBeforeStart(
+        'startDate' in b ? (b.startDate ?? null) : project.startDate,
+        'endDate' in b ? (b.endDate ?? null) : project.endDate,
+      )
+    ) {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+    }
+
+    let statusId: string | undefined
+    if (b.statusName !== undefined) {
+      const [status] = await db
+        .select({ id: projectStatuses.id })
+        .from(projectStatuses)
+        .where(
+          and(
+            eq(projectStatuses.workspaceId, ctx.workspaceId),
+            eq(projectStatuses.name, b.statusName),
+          ),
+        )
+      if (!status) {
+        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+      }
+      statusId = status.id
+    }
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
@@ -347,23 +378,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if ('location' in b) set.location = b.location ?? null
     if ('placeId' in b) set.placeId = b.placeId ?? null
 
-    if (b.statusName !== undefined) {
-      const [status] = await db
-        .select({ id: projectStatuses.id })
-        .from(projectStatuses)
-        .where(
-          and(
-            eq(projectStatuses.workspaceId, ctx.workspaceId),
-            eq(projectStatuses.name, b.statusName),
-          ),
-        )
-      if (!status) {
-        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
-      }
-      set.statusId = status.id
-    }
+    if (statusId !== undefined) set.statusId = statusId
 
-    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
     const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
     const { lockProjectUpdateChannel, postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
 
