@@ -124,6 +124,9 @@ export function useAttachmentUpload(channelId: string) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.9,
+      // iPhone の HEIC をそのまま受け取ると添付の許可形式に無く弾かれるため、JPEG に変換された形で受け取る
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     })
     const asset = result.assets?.[0]
     if (result.canceled || !asset) return

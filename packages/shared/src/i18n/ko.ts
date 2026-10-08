@@ -271,6 +271,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not copy the message': '메시지를 복사하지 못했습니다',
   'Could not create the channel': '채널을 만들지 못했습니다',
   'Could not create the invite link': '초대 링크를 만들지 못했습니다',
+  'Could not convert the HEIC image. Convert it to JPEG and upload again.': 'HEIC 이미지를 변환할 수 없습니다. JPEG로 변환한 후 다시 업로드해 주세요',
   'Could not create the milestone': '마일스톤을 만들지 못했습니다',
   'Could not create the project': '프로젝트를 만들지 못했습니다',
   'Could not create the task. Please try again.': '작업을 만들지 못했습니다. 다시 시도해 주세요.',

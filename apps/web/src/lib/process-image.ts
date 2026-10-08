@@ -19,20 +19,10 @@ export interface ProcessedImage {
 export async function processImageForUpload(original: File): Promise<ProcessedImage> {
   const [takenAt, gps] = await Promise.all([extractExifDate(original), extractExifGps(original)])
 
-  let blob: Blob = original
-  let fileName = original.name
-
   // HEIC/HEIF → JPEG
-  if (isHeicLike(original)) {
-    const heic2any = await import('heic2any')
-    const converted = await heic2any.default({
-      blob: original,
-      toType: JPEG_OUTPUT_TYPE,
-      quality: JPEG_QUALITY,
-    })
-    blob = Array.isArray(converted) ? converted[0]! : converted
-    fileName = fileName.replace(/\.(heic|heif)$/i, '.jpg')
-  }
+  const source = isHeicLike(original) ? await convertHeicToJpeg(original) : original
+  const blob: Blob = source
+  const fileName = source.name
 
   // リサイズ（最長辺が MAX_DIMENSION を超える場合のみ）
   const outputType = getOutputType(original, blob)
@@ -54,7 +44,42 @@ function getOutputType(original: File, blob: Blob): string {
   return JPEG_OUTPUT_TYPE
 }
 
-function isHeicLike(file: File): boolean {
+/**
+ * HEIC の変換に失敗したことを表す。変換ライブラリの例外は英語の内部メッセージで、そのまま見せても
+ * 利用者は次に何をすればよいか分からないため、呼び出し側でこの型を見分けて専用の案内に置き換える。
+ */
+export class HeicConversionError extends Error {
+  constructor(cause: unknown) {
+    super('HEIC conversion failed', { cause })
+    this.name = 'HeicConversionError'
+  }
+}
+
+/**
+ * HEIC/HEIF を、どのブラウザでも表示できる JPEG に変換する（リサイズはしない）。
+ * iPhone の写真は既定で HEIC だが、Safari 以外は表示できず、添付バケットも受け付けない。
+ */
+export async function convertHeicToJpeg(original: File): Promise<File> {
+  let converted: Blob | Blob[]
+  try {
+    const heic2any = await import('heic2any')
+    converted = await heic2any.default({
+      blob: original,
+      toType: JPEG_OUTPUT_TYPE,
+      quality: JPEG_QUALITY,
+    })
+  } catch (cause) {
+    throw new HeicConversionError(cause)
+  }
+  const blob = Array.isArray(converted) ? converted[0]! : converted
+  const fileName = /\.(heic|heif)$/i.test(original.name)
+    ? original.name.replace(/\.(heic|heif)$/i, '.jpg')
+    : `${original.name}.jpg`
+  return new File([blob], fileName, { type: JPEG_OUTPUT_TYPE, lastModified: original.lastModified })
+}
+
+// Windows や一部のブラウザは HEIC の MIME を空で渡すため、拡張子でも判定する
+export function isHeicLike(file: Pick<File, 'name' | 'type'>): boolean {
   return (
     file.type === 'image/heic' ||
     file.type === 'image/heif' ||

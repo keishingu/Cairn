@@ -52,11 +52,13 @@ import {
   stripMentionsToText,
 } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 
@@ -658,6 +660,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const [showPicker, setShowPicker] = React.useState(false)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
@@ -915,7 +918,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={fileInputRef}
       type="file"
-      accept={ACCEPT_FILE_TYPES}
+      accept={fileAccept}
       multiple
       style={{ display: 'none' }}
       onChange={makeFileHandler()}
@@ -1785,82 +1788,32 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     void copyMessageLink(url, t)
   }, [channelId, t])
 
-  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+  const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    let file = picked
+    // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
+    if (isHeicLike(picked)) {
+      try {
+        file = await convertHeicToJpeg(picked)
+      } catch (error) {
+        console.error('[ChatThread] HEIC の変換に失敗:', error)
+        setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+        return null
+      }
+    }
     try {
-      let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
-      if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
-        const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
-        uploadMimeType = resolveAttachmentMimeType(file.name, file.type, head)
-      }
-      if (!uploadMimeType) {
-        const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
-        setSendError(identifiable
-          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
-          : t('Unknown file type. Add an extension and upload again.'))
-        return null
-      }
-
-      // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
-      //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
-      //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
-      const urlRes = await fetchWithAuth('/api/attachments/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          fileName: file.name,
-          mimeType: uploadMimeType,
-          fileSize: file.size,
-        }),
-      })
-      if (!urlRes.ok) {
-        const data = await urlRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? t('Could not upload the file'))
-        return null
-      }
-      const { token, path, storagePath, mimeType } = await urlRes.json() as {
-        token: string; path: string; storagePath: string; mimeType: string
-      }
-
-      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
-      //    storage-js は Blob/File を渡すと FormData 化し fileOptions.contentType を無視するため、
-      //    Storage はファイル自身の File.type を見る。upload-url が正規化した MIME
-      //    (例: .csv の application/octet-stream → text/csv) を反映させるには
-      //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
-      //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
-      const uploadBody = file.type === mimeType ? file : new File([file], file.name, { type: mimeType })
-      const supabase = createSupabaseClient()
-      const { error: uploadError } = await supabase.storage
-        .from('chat-attachments')
-        .uploadToSignedUrl(path, token, uploadBody)
-      if (uploadError) {
-        setSendError(t('Could not upload the file'))
-        return null
-      }
-
-      // 3. files レコードを登録し検索インデックスジョブを発火する
-      const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          storagePath,
-          fileName: file.name,
-          mimeType: mimeType,
-          fileSize: file.size,
-        }),
-      })
-      if (!finalizeRes.ok) {
-        const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? t('Could not upload the file'))
-        return null
-      }
-      const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
+      const data = await uploadAttachment(channelId, file)
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
-    } catch {
-      setSendError(t('Could not upload the file'))
+    } catch (error) {
+      const failure = error instanceof AttachmentUploadError ? error.failure : null
+      setSendError(
+        failure === 'unsupported_type'
+          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+          : failure === 'unknown_type'
+            ? t('Unknown file type. Add an extension and upload again.')
+            : ((error instanceof AttachmentUploadError ? error.serverMessage : undefined) ?? t('Could not upload the file')),
+      )
       return null
     }
   }
