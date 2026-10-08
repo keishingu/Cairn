@@ -236,6 +236,10 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+  if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
+    return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+  }
 
   const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden

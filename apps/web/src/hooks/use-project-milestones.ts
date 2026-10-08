@@ -29,8 +29,9 @@ interface PatchProjectMilestoneVariables {
 }
 
 async function parseError(res: Response, fallback: string) {
-  const data = await res.json().catch(() => ({})) as { error?: string }
-  return new Error(data.error ?? fallback)
+  const data = await res.json().catch(() => ({})) as { error?: unknown }
+  // 入力検証の失敗は error がオブジェクトで返るため、そのまま文言にしない
+  return new Error(typeof data.error === 'string' ? data.error : fallback)
 }
 
 async function patchProjectMilestone({ projectId, id, input }: PatchProjectMilestoneVariables) {

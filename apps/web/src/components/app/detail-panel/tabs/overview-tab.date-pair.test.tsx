@@ -4,7 +4,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { InlineDatePair } from './overview-tab'
+import { InlineDatePair, MilestoneCreateForm } from './overview-tab'
 
 vi.mock('@/components/locale-provider', () => ({ useT: () => (message: string) => message }))
 
@@ -14,7 +14,7 @@ function openEditor(onSave = vi.fn()) {
   return onSave
 }
 
-describe('InlineDatePair', () => {
+describe('日程のインライン編集（InlineDatePair）', () => {
   it('ネイティブピッカーを閉じた時の移動先のない blur では編集を閉じず、終了日を入力できる', () => {
     const onSave = openEditor()
 
@@ -49,5 +49,55 @@ describe('InlineDatePair', () => {
 
     expect(onSave).not.toHaveBeenCalled()
     expect(screen.getByLabelText('End date')).toBeTruthy()
+  })
+
+  it('終了日が開始日より前の間はエラーを表示し、完了でも外側の押下でも保存しない', () => {
+    const onSave = openEditor()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date')
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
+    fireEvent.pointerDown(document.body)
+    fireEvent.keyDown(screen.getByLabelText('End date'), { key: 'Enter' })
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('End date')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-14' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onSave).toHaveBeenCalledWith('2026-06-12', '2026-06-14', null, null)
+  })
+
+  it('逆転したままでもキャンセルで編集をやめられ、保存しない', () => {
+    const onSave = openEditor()
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('End date')).toBeNull()
+  })
+})
+
+describe('マイルストーン追加フォーム（MilestoneCreateForm）', () => {
+  it('終了日が開始日より前の間は作成できず、入力を残したままエラーを表示する', () => {
+    const onCreate = vi.fn()
+    render(<MilestoneCreateForm onCreate={onCreate}/>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: '下見' } })
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-06-12' } })
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date')
+    expect(screen.getByRole('button', { name: 'Create entry' })).toBeDisabled()
+    fireEvent.submit(screen.getByPlaceholderText('Title').closest('form')!)
+    expect(onCreate).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('Title')).toHaveValue('下見')
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-13' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create entry' }))
+    expect(onCreate).toHaveBeenCalledWith({ title: '下見', startDate: '2026-06-12', endDate: '2026-06-13' })
   })
 })

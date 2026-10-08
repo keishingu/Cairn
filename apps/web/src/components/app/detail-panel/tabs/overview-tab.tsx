@@ -11,6 +11,7 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
@@ -131,9 +132,13 @@ export const InlineDatePair = ({
 
   // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
   const openRef = React.useRef(false)
+  const reversed = isEndBeforeStart(start, end)
+  const dateErrorId = React.useId()
 
   const commit = () => {
     if (!openRef.current) return
+    // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
+    if (reversed) return
     openRef.current = false
     setEditing(false)
     const ns = start || null
@@ -247,10 +252,14 @@ export const InlineDatePair = ({
         <input
           type="date"
           value={end}
+          // ピッカー側でも開始日より前を選びにくくする（手入力や開始日の変更では超えられるので、下でも判定する）
+          min={start || undefined}
           aria-label={t('End date')}
+          aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
           onChange={e => setEnd(e.target.value)}
           onKeyDown={handleKeyDown}
-          style={dateStyle}
+          style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
         />
         <input
           type="time"
@@ -261,18 +270,40 @@ export const InlineDatePair = ({
           style={timeStyle}
         />
       </div>
-      <button
-        type="button"
-        onClick={commit}
-        style={{
-          alignSelf: 'flex-end', marginTop: 2,
-          height: coarse ? 36 : 26, padding: '0 12px', borderRadius: 6, border: 'none',
-          background: 'var(--accent)', color: 'var(--on-accent)',
-          fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-        }}
-      >
-        {t('Done')}
-      </button>
+      {reversed && (
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+        {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
+        <button
+          type="button"
+          onClick={cancel}
+          style={{
+            // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+          }}
+        >
+          {t('Cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={commit}
+          disabled={reversed}
+          style={{
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
+            background: 'var(--accent)', color: 'var(--on-accent)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            cursor: reversed ? 'default' : 'pointer', opacity: reversed ? 0.5 : 1,
+          }}
+        >
+          {t('Done')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -414,7 +445,7 @@ const isPastDue = (milestone: MilestoneDto) => {
   return milestone.endDate < `${yyyy}-${mm}-${dd}`
 }
 
-const MilestoneCreateForm = ({ onCreate, disabled }: {
+export const MilestoneCreateForm = ({ onCreate, disabled }: {
   onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
   disabled?: boolean
 }) => {
@@ -426,6 +457,9 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
   const [endDate, setEndDate] = React.useState('')
   const [startTime, setStartTime] = React.useState('')
   const [endTime, setEndTime] = React.useState('')
+
+  const reversed = isEndBeforeStart(startDate, endDate)
+  const dateErrorId = React.useId()
 
   const reset = () => {
     setTitle('')
@@ -440,6 +474,8 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
     e.preventDefault()
     const trimmed = title.trim()
     if (!trimmed) return
+    // 送信するとフォームを閉じて入力を消すため、サーバーに拒否される逆転した期間は送る前に止める
+    if (reversed) return
     onCreate({
       title: trimmed,
       ...(description.trim() ? { description: description.trim() } : {}),
@@ -490,15 +526,30 @@ const MilestoneCreateForm = ({ onCreate, disabled }: {
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} aria-label={t('End date')} style={inputStyle}/>
+        <input
+          type="date"
+          value={endDate}
+          min={startDate || undefined}
+          onChange={e => setEndDate(e.target.value)}
+          aria-label={t('End date')}
+          aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
+          style={reversed ? { ...inputStyle, border: '1px solid var(--red)' } : inputStyle}
+        />
       </div>
+      {reversed && (
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
         <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>
-        <button type="submit" className="btn btn-primary" disabled={!title.trim()}>{t('Create entry')}</button>
+        <button type="submit" className="btn btn-primary" disabled={!title.trim() || reversed}>{t('Create entry')}</button>
       </div>
     </form>
   )
@@ -597,10 +648,18 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
 
+  // API のエラー文は日本語固定で、通信失敗ではブラウザの英語文も来る。そのまま出すと表示言語と食い違うため、
+  // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
+  // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
+  const milestoneErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message === DATE_ORDER_ERROR
+      ? t('End date must be on or after the start date')
+      : fallback
+
   const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
     milestones.patchMutation.mutate(
       { id, input },
-      { onError: () => toast.error(t('Could not update this milestone')) },
+      { onError: error => toast.error(milestoneErrorMessage(error, t('Could not update this milestone'))) },
     )
   }
 
@@ -613,7 +672,7 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
             disabled={!canEdit || milestones.createMutation.isPending}
             onCreate={input => milestones.createMutation.mutate(input, {
               onSuccess: () => toast.success(t('Milestone created')),
-              onError: () => toast.error(t('Could not create the milestone')),
+              onError: error => toast.error(milestoneErrorMessage(error, t('Could not create the milestone'))),
             })}
           />
         </div>
