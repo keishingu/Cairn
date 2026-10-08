@@ -9,6 +9,7 @@ import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
 import { useT } from '@/components/locale-provider'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 async function createProject(body: {
   title: string
@@ -386,7 +387,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>{t('Start date')}</label>
-              <input
+              <DateTimeInput
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -395,7 +396,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
             </div>
             <div>
               <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>{t('End date')}</label>
-              <input
+              <DateTimeInput
                 type="date"
                 value={endDate}
                 onChange={e => { setEndDate(e.target.value); if (endDateError) setEndDateError('') }}

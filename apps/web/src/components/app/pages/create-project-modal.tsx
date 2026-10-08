@@ -10,6 +10,7 @@ import { LocationInput } from '../location-input'
 import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useT } from '@/components/locale-provider'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 // ─── Tag presets ──────────────────────────────────────────────────
 const TAG_PRESETS = [
@@ -465,7 +466,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
           <div style={{ padding: '20px 22px', borderLeft: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <Field label={t('Start date')} htmlFor="cpm-start">
-                <input id="cpm-start" type="date"
+                <DateTimeInput id="cpm-start" type="date"
                   value={form.startDate}
                   onChange={e => set('startDate', e.target.value)}
                   style={{ ...fieldInputStyle(false), background: 'var(--card)' }}
@@ -474,7 +475,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                 />
               </Field>
               <Field label={t('End date')} error={errors.endDate} htmlFor="cpm-end">
-                <input id="cpm-end" type="date"
+                <DateTimeInput id="cpm-end" type="date"
                   value={form.endDate}
                   onChange={e => { set('endDate', e.target.value); if (errors.endDate) clearError('endDate') }}
                   min={form.startDate || undefined}

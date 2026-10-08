@@ -14,6 +14,7 @@ import {
 import { useCreateProjectMilestone, useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 interface CreateMilestoneModalProps {
   projectId: string
@@ -150,7 +151,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
             <legend style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Period')}</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
               <Field label={t('Start date')} htmlFor="milestone-start-date">
-                <input
+                <DateTimeInput
                   id="milestone-start-date"
                   type="date"
                   value={startDate}
@@ -161,7 +162,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                 />
               </Field>
               <Field label={t('End date')} error={endDateError} htmlFor="milestone-end-date">
-                <input
+                <DateTimeInput
                   id="milestone-end-date"
                   type="date"
                   value={endDate}
@@ -172,7 +173,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                 />
               </Field>
               <Field label={t('Start time')} htmlFor="milestone-start-time">
-                <input
+                <DateTimeInput
                   id="milestone-start-time"
                   type="time"
                   value={startTime}
@@ -183,7 +184,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
                 />
               </Field>
               <Field label={t('End time')} htmlFor="milestone-end-time">
-                <input
+                <DateTimeInput
                   id="milestone-end-time"
                   type="time"
                   value={endTime}

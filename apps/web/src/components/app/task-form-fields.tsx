@@ -5,6 +5,7 @@ import { fieldInputStyle } from './primitives'
 import { TaskAssigneeField } from './task-assignee-field'
 import { useT } from '@/components/locale-provider'
 import type { TaskDto } from '@/app/api/tasks/route'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 interface TaskFormFieldsProps {
   title: string
@@ -104,7 +105,7 @@ export const TaskFormFields = ({
         </div>
         <div style={{ flex: 1 }}>
           <label htmlFor={`${id}-due`} style={labelStyle}>{t('Due date')}</label>
-          <input
+          <DateTimeInput
             id={`${id}-due`}
             className="form-control"
             type="date"

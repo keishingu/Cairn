@@ -15,6 +15,7 @@ import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
@@ -229,7 +230,7 @@ export const InlineDatePair = ({
       style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
       <div style={rowStyle}>
-        <input
+        <DateTimeInput
           type="date"
           value={start}
           autoFocus
@@ -238,7 +239,7 @@ export const InlineDatePair = ({
           onKeyDown={handleKeyDown}
           style={dateStyle}
         />
-        <input
+        <DateTimeInput
           type="time"
           value={startClock}
           aria-label={t('Start time')}
@@ -249,7 +250,7 @@ export const InlineDatePair = ({
       </div>
       <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
       <div style={rowStyle}>
-        <input
+        <DateTimeInput
           type="date"
           value={end}
           // ピッカー側でも開始日より前を選びにくくする（手入力や開始日の変更では超えられるので、下でも判定する）
@@ -261,7 +262,7 @@ export const InlineDatePair = ({
           onKeyDown={handleKeyDown}
           style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
         />
-        <input
+        <DateTimeInput
           type="time"
           value={endClock}
           aria-label={t('End time')}
@@ -525,8 +526,8 @@ export const MilestoneCreateForm = ({ onCreate, disabled }: {
         style={{ ...inputStyle, height: 'auto', resize: 'vertical', paddingTop: 8, lineHeight: 1.5 }}
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
-        <input
+        <DateTimeInput type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
+        <DateTimeInput
           type="date"
           value={endDate}
           min={startDate || undefined}
@@ -544,8 +545,8 @@ export const MilestoneCreateForm = ({ onCreate, disabled }: {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
-        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
+        <DateTimeInput type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
+        <DateTimeInput type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>

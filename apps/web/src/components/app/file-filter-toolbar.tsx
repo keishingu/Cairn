@@ -8,6 +8,7 @@ import type {
   SavedFileFilterDto,
 } from '@/lib/files/saved-file-filter'
 import { useT } from '@/components/locale-provider'
+import { DateTimeInput } from '@/components/app/date-time-input'
 
 interface FilterOption {
   id: string
@@ -361,7 +362,7 @@ export function FileFilterToolbar({
             }}
           >
             {t('Start date')}
-            <input
+            <DateTimeInput
               className="form-control"
               type="date"
               value={conditions.createdFrom ?? ''}
@@ -378,7 +379,7 @@ export function FileFilterToolbar({
             }}
           >
             {t('End date')}
-            <input
+            <DateTimeInput
               className="form-control"
               type="date"
               value={conditions.createdTo ?? ''}
