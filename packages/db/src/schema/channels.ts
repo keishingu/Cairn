@@ -70,6 +70,24 @@ export const messages = pgTable(
   ],
 )
 
+// プロジェクト更新を知らせる system メッセージが「どの項目の通知か」を持つ。
+// 通知の本文は表示用の文で、名前や表示名に任意の文字列が入るため、本文から項目を読み戻さない。
+// messages にカラムを足さず別テーブルにしているのは、マイグレーションより先に新コードが動いた時間に
+// チャットの投稿（messages への INSERT）まで失敗させないため。
+export const messageProjectUpdates = pgTable(
+  'message_project_updates',
+  {
+    messageId: uuid('message_id')
+      .primaryKey()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    // status / dates / description / title / location / archived / gallery /
+    // milestone_added / milestone_dates / milestone_completed
+    kind: text('kind').notNull(),
+    // マイルストーンの通知だけ持つ。同名のマイルストーンを区別して集約するためのキー
+    milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'set null' }),
+  },
+).enableRLS()
+
 export const messageReactions = pgTable(
   'message_reactions',
   {

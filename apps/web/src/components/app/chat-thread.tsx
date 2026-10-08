@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -52,11 +52,13 @@ import {
   stripMentionsToText,
 } from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
+import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 
@@ -571,7 +573,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -588,6 +590,10 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
   mentionMembers?: { userId: string; displayName: string }[]
+  /** 候補の絞り込みに必要なデータを取得できなかった時のメッセージ。候補の代わりに表示する */
+  mentionMembersError?: string | null
+  onRetryMentionMembers?: () => void
+  isRetryingMentionMembers?: boolean
   mentionAttributes?: { id: string; name: string }[]
   /** DM ではグループメンションを展開しないため候補から外す */
   includeAllMention?: boolean
@@ -654,6 +660,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const [showPicker, setShowPicker] = React.useState(false)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
@@ -688,7 +695,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }, [draft])
 
   const mentionCandidates = React.useMemo(() => {
-    if (mentionQuery === null) return []
+    // 絞り込みに失敗したまま一部の候補だけを出すと、出てこない人が「居ない」ように見える
+    if (mentionQuery === null || mentionMembersError) return []
     const q = mentionQuery.toLowerCase()
     type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'user' }
     // 優先度: @all → @project_members → ユーザー（プロジェクト参加者は呼び出し側で先頭）→ 属性
@@ -721,7 +729,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       }
     }
     return [...specials, ...users, ...attributes]
-  }, [mentionQuery, mentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention])
+  }, [mentionQuery, mentionMembers, mentionMembersError, mentionAttributes, includeAllMention, includeProjectMembersMention])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
@@ -776,12 +784,31 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const MentionPicker = (() => {
-    if (mentionCandidates.length === 0) return null
+    const showError = mentionQuery !== null && !!mentionMembersError
+    if (!showError && mentionCandidates.length === 0) return null
     const el = textareaRef.current ?? compactInputRef.current
     const rect = el?.getBoundingClientRect()
     const style: React.CSSProperties = rect
       ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 'var(--z-popover)' }
       : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 'var(--z-dropdown)' }
+    if (showError) {
+      return (
+        <div style={{ ...style, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)' }}>
+          <InlineError style={{ flex: 1 }}>{mentionMembersError}</InlineError>
+          <button
+            type="button"
+            aria-label={t('Reload mention suggestions')}
+            disabled={isRetryingMentionMembers}
+            // 押しても入力欄のフォーカスを奪わない。再読み込み自体は、キーボード操作でも発火する click で行う
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onRetryMentionMembers?.()}
+            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: isRetryingMentionMembers ? 'default' : 'pointer', opacity: isRetryingMentionMembers ? 0.5 : 1 }}
+          >
+            {t('Retry')}
+          </button>
+        </div>
+      )
+    }
     return (
       <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
@@ -891,7 +918,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={fileInputRef}
       type="file"
-      accept={ACCEPT_FILE_TYPES}
+      accept={fileAccept}
       multiple
       style={{ display: 'none' }}
       onChange={makeFileHandler()}
@@ -1345,15 +1372,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
   const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
-  const { data: wsMembers = [] } = useWorkspaceMembers()
-  const { data: chMemberIds = [] } = useChannelMembers(channelId)
-  const { data: projectChannels = [] } = useProjectChannels()
+  const wsMembersQuery = useWorkspaceMembers()
+  const chMembersQuery = useChannelMembers(channelId)
+  const projectChannelsQuery = useProjectChannels()
+  const { data: wsMembers = [] } = wsMembersQuery
+  const { data: chMemberIds = [] } = chMembersQuery
+  const { data: projectChannels = [], isSuccess: projectChannelsResolved } = projectChannelsQuery
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
     [projectChannels, channelId],
   )
-  const { data: projectMembers = [] } = useProjectMembers(projectId)
+  const projectMembersQuery = useProjectMembers(projectId)
+  const { data: projectMembers = [] } = projectMembersQuery
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -1538,10 +1569,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
-    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
-    if (chMemberIds.length > 0) {
-      const idSet = new Set(chMemberIds.map(m => m.userId))
-      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    const others = wsMembers.filter(m => m.userId !== currentUser?.id)
+    const channelMemberIds = new Set(chMemberIds.map(m => m.userId))
+    if (isPrivate || isDm) {
+      return filterMentionCandidates(others, { kind: 'members_only', channelMemberIds })
     }
     // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
     // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
@@ -1549,11 +1580,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return wsMembers
-        .filter(m =>
-          m.userId !== currentUser?.id &&
-          (m.role !== 'guest' || projectMemberIds.has(m.userId)),
-        )
+      return filterMentionCandidates(others, { kind: 'project', projectMemberIds })
         .sort((a, b) => {
           const aIn = projectMemberIds.has(a.userId) ? 0 : 1
           const bIn = projectMemberIds.has(b.userId) ? 0 : 1
@@ -1561,8 +1588,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           return a.displayName.localeCompare(b.displayName, 'ja')
         })
     }
-    return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
+    // プロジェクトチャンネル一覧の取得前は、ここがプロジェクトチャンネルかどうか分からない。
+    // その間に公開チャンネル扱いにすると、未参加のゲストまで候補に出てしまう
+    if (!projectChannelsResolved) return filterMentionCandidates(others, { kind: 'unresolved' })
+    return filterMentionCandidates(others, { kind: 'workspace', channelMemberIds })
+  }, [chMemberIds, wsMembers, currentUser?.id, isPrivate, isDm, projectId, projectMembers, projectChannelsResolved])
+
+  // 候補の絞り込みに使うデータのうち、このチャンネルで実際に必要なものだけを見る。
+  // 取得に失敗したまま候補を出すと、条件付きで出るはずのゲストが黙って消える
+  const mentionScopeQueries = [
+    wsMembersQuery,
+    ...(isPrivate || isDm
+      ? [chMembersQuery]
+      : [projectChannelsQuery, projectId ? projectMembersQuery : chMembersQuery]),
+  ]
+  const mentionMembersError = mentionScopeQueries.find(query => query.error)?.error?.message ?? null
+  const isRetryingMentionMembers = mentionScopeQueries.some(query => query.error && query.isFetching)
+  const retryMentionMembers = () => {
+    for (const query of mentionScopeQueries) if (query.error) void query.refetch()
+  }
 
   const { data: profileAttributes = [] } = useProfileAttributes()
 
@@ -1744,82 +1788,32 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     void copyMessageLink(url, t)
   }, [channelId, t])
 
-  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+  const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    let file = picked
+    // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
+    if (isHeicLike(picked)) {
+      try {
+        file = await convertHeicToJpeg(picked)
+      } catch (error) {
+        console.error('[ChatThread] HEIC の変換に失敗:', error)
+        setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+        return null
+      }
+    }
     try {
-      let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
-      if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
-        const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
-        uploadMimeType = resolveAttachmentMimeType(file.name, file.type, head)
-      }
-      if (!uploadMimeType) {
-        const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
-        setSendError(identifiable
-          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
-          : t('Unknown file type. Add an extension and upload again.'))
-        return null
-      }
-
-      // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
-      //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
-      //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
-      const urlRes = await fetchWithAuth('/api/attachments/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          fileName: file.name,
-          mimeType: uploadMimeType,
-          fileSize: file.size,
-        }),
-      })
-      if (!urlRes.ok) {
-        const data = await urlRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? t('Could not upload the file'))
-        return null
-      }
-      const { token, path, storagePath, mimeType } = await urlRes.json() as {
-        token: string; path: string; storagePath: string; mimeType: string
-      }
-
-      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
-      //    storage-js は Blob/File を渡すと FormData 化し fileOptions.contentType を無視するため、
-      //    Storage はファイル自身の File.type を見る。upload-url が正規化した MIME
-      //    (例: .csv の application/octet-stream → text/csv) を反映させるには
-      //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
-      //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
-      const uploadBody = file.type === mimeType ? file : new File([file], file.name, { type: mimeType })
-      const supabase = createSupabaseClient()
-      const { error: uploadError } = await supabase.storage
-        .from('chat-attachments')
-        .uploadToSignedUrl(path, token, uploadBody)
-      if (uploadError) {
-        setSendError(t('Could not upload the file'))
-        return null
-      }
-
-      // 3. files レコードを登録し検索インデックスジョブを発火する
-      const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          storagePath,
-          fileName: file.name,
-          mimeType: mimeType,
-          fileSize: file.size,
-        }),
-      })
-      if (!finalizeRes.ok) {
-        const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? t('Could not upload the file'))
-        return null
-      }
-      const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
+      const data = await uploadAttachment(channelId, file)
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
-    } catch {
-      setSendError(t('Could not upload the file'))
+    } catch (error) {
+      const failure = error instanceof AttachmentUploadError ? error.failure : null
+      setSendError(
+        failure === 'unsupported_type'
+          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+          : failure === 'unknown_type'
+            ? t('Unknown file type. Add an extension and upload again.')
+            : ((error instanceof AttachmentUploadError ? error.serverMessage : undefined) ?? t('Could not upload the file')),
+      )
       return null
     }
   }
@@ -2082,6 +2076,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
         mentionMembers={mentionMembers}
+        mentionMembersError={mentionMembersError}
+        onRetryMentionMembers={retryMentionMembers}
+        isRetryingMentionMembers={isRetryingMentionMembers}
         mentionAttributes={isDm ? [] : profileAttributes}
         includeAllMention={!isDm}
         includeProjectMembersMention={!isDm && !!projectId}

@@ -14,6 +14,7 @@ import {
   UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
   UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
   isGalleryImageMimeType,
+  normalizeGalleryImageMimeType,
 } from '@/lib/gallery-upload'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
@@ -49,8 +50,15 @@ export async function POST(req: Request, { params }: RouteContext) {
       { status: 400 },
     )
   }
-  const originalMetadata = body.original
-  const derivedMetadata = body.derived
+  // MIME を判定できないブラウザから来た対応形式（.heic 等）を弾かないよう、拡張子で補ってから検証する
+  const originalMetadata = {
+    ...body.original,
+    mimeType: normalizeGalleryImageMimeType(body.original.fileName, body.original.mimeType),
+  }
+  const derivedMetadata = {
+    ...body.derived,
+    mimeType: normalizeGalleryImageMimeType(body.derived.fileName, body.derived.mimeType),
+  }
   if (!isGalleryImageMimeType(derivedMetadata.mimeType)) {
     return NextResponse.json({ error: '対応していない圧縮版の画像形式です' }, { status: 400 })
   }

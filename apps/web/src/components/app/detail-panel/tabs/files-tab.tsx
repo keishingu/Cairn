@@ -11,9 +11,11 @@ import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../../image-lightbox'
 import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { useProjectFiles } from '@/hooks/use-project-files'
 import { useT } from '@/components/locale-provider'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -75,6 +77,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [isUploading, setIsUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState<string[] | null>(null)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
   const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
@@ -98,14 +101,28 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
     try {
       const results = await Promise.allSettled(
-        files.map(async (file) => {
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('channelId', channelId)
-          const res = await fetchWithAuth('/api/attachments/upload', { method: 'POST', body: formData })
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({})) as { error?: string }
-            throw new Error(data.error ?? t('Could not upload'))
+        files.map(async (picked) => {
+          // iPhone の写真（HEIC）は Safari 以外で表示できず、添付の許可形式にも無いため JPEG にして送る
+          let file = picked
+          if (isHeicLike(picked)) {
+            try {
+              file = await convertHeicToJpeg(picked)
+            } catch (error) {
+              console.error('[FilesTab] HEIC の変換に失敗:', error)
+              throw new Error(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+            }
+          }
+          try {
+            await uploadAttachment(channelId, file)
+          } catch (error) {
+            if (!(error instanceof AttachmentUploadError)) throw error
+            throw new Error(
+              error.failure === 'unsupported_type'
+                ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+                : error.failure === 'unknown_type'
+                  ? t('Unknown file type. Add an extension and upload again.')
+                  : (error.serverMessage ?? t('Could not upload')),
+            )
           }
         }),
       )
@@ -149,7 +166,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         <input
           ref={fileInputRef}
           type="file"
-          accept={ACCEPT_FILE_TYPES}
+          accept={fileAccept}
           multiple
           style={{ display: 'none' }}
           onChange={(e) => {

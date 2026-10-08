@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { processImageForUpload } from './process-image'
+import { HeicConversionError, processImageForUpload } from './process-image'
 
 const heic2any = vi.fn()
 const parse = vi.fn()
@@ -82,6 +82,13 @@ describe('processImageForUpload', () => {
     expect(result.file.name).toBe('avatar.jpg')
     expect(result.file.type).toBe('image/jpeg')
     expect(result.originalFile).toBe(original)
+  })
+
+  it('HEIC の変換に失敗したら、ライブラリの例外ではなく変換失敗を表すエラーを投げる', async () => {
+    heic2any.mockRejectedValueOnce(new Error('ERR_LIBHEIF format not supported'))
+    const original = new File(['heic'], 'IMG_0001.heic', { type: '' })
+
+    await expect(processImageForUpload(original)).rejects.toBeInstanceOf(HeicConversionError)
   })
 
   it('透過 PNG は PNG のまま維持する', async () => {

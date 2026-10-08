@@ -94,8 +94,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const forbidden = requireRole(ctx.role, 'admin')
     if (forbidden) return forbidden
 
+    const { lockProjectUpdateChannel } = await import('@/lib/chat/post-project-update-message')
     const deleted = await db.transaction(async (tx) => {
       let deletionJobId: string | null = null
+      // プロジェクトの更新（PATCH）と同じ「チャンネル → プロジェクト」の順にロックを取る。
+      // 削除は CASCADE でこのチャンネルも消すため、プロジェクトを先に取ると、同時に走った更新と
+      // 互いのロックを待ち合ってデッドロックする
+      await lockProjectUpdateChannel(tx, projectId)
       // CASCADE の直前にプロジェクトをロックし、同じトランザクションで対象ファイルを
       // 集計・家賃精算する。日次 reconciliation まで古い使用量を請求し続けない。
       const [lockedProject] = await tx
@@ -297,10 +302,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { db } = await import('@cairn/db')
     const { projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and, isNull, sql } = await import('drizzle-orm')
+    const { eq, and } = await import('drizzle-orm')
 
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, startDate: projects.startDate, endDate: projects.endDate })
       .from(projects)
       .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
       .limit(1)
@@ -311,6 +316,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
+
+    const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+    // 下でカバー写真を Storage へ保存する前に、拒否すると分かっている入力を返しておく。
+    // 保存した後で 422 / 404 にすると、どのプロジェクトからも参照されない画像が残る。
+    // 同時更新まで含めた最終的な判定は、行をロックしたトランザクションの中でもう一度行う。
+    // そこで拒否された場合に保存済みの写真を消してはいけない。保存先は Place の写真ごとに決まる
+    // 共有のキャッシュ（place-photos/{写真名}.jpg を upsert）で、同じ場所を使う他のプロジェクトが参照し得る
+    if (
+      ('startDate' in b || 'endDate' in b) &&
+      isEndBeforeStart(
+        'startDate' in b ? (b.startDate ?? null) : project.startDate,
+        'endDate' in b ? (b.endDate ?? null) : project.endDate,
+      )
+    ) {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+    }
+
+    let statusId: string | undefined
+    if (b.statusName !== undefined) {
+      const [status] = await db
+        .select({ id: projectStatuses.id })
+        .from(projectStatuses)
+        .where(
+          and(
+            eq(projectStatuses.workspaceId, ctx.workspaceId),
+            eq(projectStatuses.name, b.statusName),
+          ),
+        )
+      if (!status) {
+        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+      }
+      statusId = status.id
+    }
 
     let resolvedCoverPhotoUrl: string | null | undefined = undefined
 
@@ -342,89 +380,79 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if ('location' in b) set.location = b.location ?? null
     if ('placeId' in b) set.placeId = b.placeId ?? null
 
-    if (b.statusName !== undefined) {
-      const [status] = await db
-        .select({ id: projectStatuses.id })
-        .from(projectStatuses)
-        .where(
-          and(
-            eq(projectStatuses.workspaceId, ctx.workspaceId),
-            eq(projectStatuses.name, b.statusName),
-          ),
-        )
-      if (!status) {
-        return NextResponse.json({ error: 'Status not found' }, { status: 404 })
+    if (statusId !== undefined) set.statusId = statusId
+
+    const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
+    const { lockProjectUpdateChannel, postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
+
+    // 行をロックしてから「保存済みの値と合わせた検証 → 更新 → 通知」までを1つのトランザクションで行う。
+    // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
+    // 逆転した期間が保存される。通知も確定順と食い違い、古い値の通知が最後に残る
+    const outcome = await db.transaction(async (tx) => {
+      // ロックは「チャンネル → プロジェクト」の順に取る（チャットの投稿と同じ順。逆にするとデッドロックする）
+      await lockProjectUpdateChannel(tx, id)
+      const [current] = await tx
+        .select({
+          title: projects.title,
+          description: projects.description,
+          statusId: projects.statusId,
+          startDate: projects.startDate,
+          endDate: projects.endDate,
+          location: projects.location,
+          archived: projects.archived,
+        })
+        .from(projects)
+        .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+        // キーは変えないので NO KEY UPDATE で足りる。FOR UPDATE だと、このプロジェクトを参照する行の
+        // 追加（タスクなどの外部キー検査）まで待たせてしまう
+        .for('no key update')
+        .limit(1)
+      if (!current) return { kind: 'not_found' as const }
+
+      // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
+      const nextStartDate = 'startDate' in b ? (b.startDate ?? null) : current.startDate
+      const nextEndDate = 'endDate' in b ? (b.endDate ?? null) : current.endDate
+      const nextLocation = 'location' in b ? (b.location ?? null) : current.location
+      if (('startDate' in b || 'endDate' in b) && isEndBeforeStart(nextStartDate, nextEndDate)) {
+        return { kind: 'date_order' as const }
       }
-      set.statusId = status.id
-    }
 
-    const [updated] = await db
-      .update(projects)
-      .set(set)
-      .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
-      .returning({ id: projects.id })
+      const [row] = await tx
+        .update(projects)
+        .set(set)
+        .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)))
+        .returning({ id: projects.id })
+      if (!row) return { kind: 'not_found' as const }
 
-    if (!updated) {
+      // チーム共通の決定事項の変更をプロジェクトチャンネルに system メッセージで残す。
+      // どの項目も、値が変わらない保存（編集欄を開いて閉じただけ等）では通知しない
+      const changes: import('@/lib/chat/project-update-message').ProjectUpdateChange[] = []
+      if (b.statusName !== undefined && set.statusId !== current.statusId) {
+        changes.push(projectUpdateChange.status(b.statusName))
+      }
+      if (nextStartDate !== current.startDate || nextEndDate !== current.endDate) {
+        changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
+      }
+      if (nextLocation !== current.location) changes.push(projectUpdateChange.location(nextLocation))
+      if ('description' in b && (b.description ?? null) !== current.description) {
+        changes.push(projectUpdateChange.description())
+      }
+      if (b.title !== undefined && b.title !== current.title) changes.push(projectUpdateChange.title(b.title))
+      if (b.archived !== undefined && b.archived !== current.archived) {
+        changes.push(projectUpdateChange.archived(b.archived))
+      }
+      await postProjectUpdateMessage({ projectId: id, actorId: ctx.userId, changes, tx })
+
+      return { kind: 'ok' as const, id: row.id }
+    })
+
+    if (outcome.kind === 'not_found') {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
-
-    // プロジェクトのステータス・日程・概要・名称の変更をプロジェクトチャンネルに system メッセージで通知する。
-    // チーム共通の重要情報（決定事項）をチャットに残すための仕組み。失敗しても PATCH 自体は成功させる
-    try {
-      const datesChanged = 'startDate' in b || 'endDate' in b
-      const changes: string[] = []
-      if (b.statusName !== undefined) changes.push(`ステータスを「${b.statusName}」に変更しました`)
-      if (datesChanged) {
-        const [p] = await db
-          .select({ startDate: projects.startDate, endDate: projects.endDate })
-          .from(projects)
-          .where(eq(projects.id, id))
-        const s = p?.startDate ?? '未設定'
-        const e = p?.endDate ?? '未設定'
-        changes.push(`期間を ${s} 〜 ${e} に変更しました`)
-      }
-      if ('description' in b) changes.push('概要を更新しました')
-      if (b.title !== undefined) changes.push(`プロジェクト名を「${b.title}」に変更しました`)
-
-      if (changes.length > 0) {
-        const { channels, messages, profiles } = await import('@cairn/db')
-        const [channel] = await db
-          .select({ id: channels.id })
-          .from(channels)
-          .where(
-            and(
-              eq(channels.projectId, id),
-              eq(channels.type, 'project'),
-              isNull(channels.milestoneId),
-            ),
-          )
-          .limit(1)
-        if (channel) {
-          const [actor] = await db
-            .select({ displayName: profiles.displayName })
-            .from(profiles)
-            .where(eq(profiles.id, ctx.userId))
-          const actorName = actor?.displayName ?? '不明'
-          await db.transaction(async (tx) => {
-            await tx
-              .select({ id: channels.id })
-              .from(channels)
-              .where(eq(channels.id, channel.id))
-              .for('update')
-            await tx.insert(messages).values({
-              channelId: channel.id,
-              senderId: ctx.userId,
-              messageType: 'system',
-              content: `${actorName}さんがプロジェクトを更新しました：${changes.join(' / ')}`,
-              createdAt: sql`clock_timestamp()`,
-              updatedAt: sql`clock_timestamp()`,
-            })
-          })
-        }
-      }
-    } catch (e) {
-      console.warn('[PATCH /api/projects/[id]] system message insert failed (skipped):', e)
+    if (outcome.kind === 'date_order') {
+      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
     }
+    const updated = { id: outcome.id }
 
     const resp: { id: string; coverPhotoUrl?: string | null } = { id: updated.id }
     if (resolvedCoverPhotoUrl !== undefined) resp.coverPhotoUrl = resolvedCoverPhotoUrl

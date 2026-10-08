@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
+import { projectUpdateChange } from '@/lib/chat/project-update-message'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -310,6 +312,15 @@ export async function POST(req: Request, { params }: RouteContext) {
         throw transactionError
       }
     })()
+
+    // 再送で既に確定済みだった場合は、同じ写真を二度知らせない
+    if (!finalized.reused) {
+      await postProjectUpdateMessage({
+        projectId,
+        actorId: ctx.userId,
+        changes: [projectUpdateChange.galleryAdded()],
+      })
+    }
 
     return toResponse(finalized.fileId, finalized.reused ? 200 : 201)
   } catch (err) {
