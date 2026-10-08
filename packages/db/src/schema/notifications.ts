@@ -62,7 +62,7 @@ export const pushSubscriptions = pgTable(
     // web: Web Push 購読 URL。expo: null
     endpoint: text('endpoint'),
     keys: jsonb('keys').$type<{ p256dh: string; auth: string }>(),
-    // expo: Expo Push Token ("ExponentPushToken[...]")。web: null
+    // expo: Expo Push Token ("ExpoPushToken[...]" / "ExponentPushToken[...]")。web: null
     expoToken: text('expo_token'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

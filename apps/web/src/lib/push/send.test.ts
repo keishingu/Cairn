@@ -98,14 +98,14 @@ describe('sendPushToUser', () => {
     })
   })
 
-  test('Expo の data には遷移先とワークスペースを載せる', async () => {
+  test.each(['ExpoPushToken[abc]', 'ExponentPushToken[abc]'])('Expo の新旧トークンで遷移先とワークスペースを送る: %s', async (expoToken) => {
     mockWhere.mockResolvedValue([
       {
         id: 'expo-1',
         deviceType: 'expo',
         endpoint: null,
         keys: null,
-        expoToken: 'ExponentPushToken[abc]',
+        expoToken,
       },
     ])
     const { sendPushToUser } = await import('./send')
@@ -119,7 +119,7 @@ describe('sendPushToUser', () => {
 
     expect(mockChunkPushNotifications).toHaveBeenCalledWith([
       {
-        to: 'ExponentPushToken[abc]',
+        to: expoToken,
         title: 'メンション',
         body: '本文',
         data: { url: '/chats/ch-1', workspaceId: 'ws-1' },
