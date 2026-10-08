@@ -69,6 +69,35 @@ describe('日程のインライン編集（InlineDatePair）', () => {
     expect(onSave).toHaveBeenCalledWith('2026-06-12', '2026-06-14', null, null)
   })
 
+  it('「削除」で日付と時刻をすべて空にし、「完了」を押した時に保存する', () => {
+    const onSave = vi.fn()
+    render(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" startTime="10:00:00" endTime="12:00:00" onSave={onSave}/>)
+    fireEvent.click(screen.getByRole('button'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(screen.getByLabelText('Start date')).toHaveValue('')
+    expect(screen.getByLabelText('End date')).toHaveValue('')
+    expect(screen.getByLabelText('Start time')).toHaveValue('')
+    expect(screen.getByLabelText('End time')).toHaveValue('')
+    // 誤って押しても取り消せるよう、押しただけでは保存しない
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(onSave).toHaveBeenCalledWith(null, null, null, null)
+  })
+
+  it('「削除」の後でも、キャンセルすれば元の日程のまま保存しない', () => {
+    const onSave = openEditor()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByRole('button')).toHaveTextContent('6/12')
+  })
+
   it('逆転したままでもキャンセルで編集をやめられ、保存しない', () => {
     const onSave = openEditor()
 

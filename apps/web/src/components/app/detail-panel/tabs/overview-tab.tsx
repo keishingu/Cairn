@@ -149,6 +149,14 @@ export const InlineDatePair = ({
     if (ns !== startDate || ne !== endDate || nst !== formatTime(startTime) || net !== formatTime(endTime)) onSave(ns, ne, nst, net)
   }
 
+  const isEmpty = !start && !end && !startClock && !endClock
+  const clearAll = () => {
+    setStart('')
+    setEnd('')
+    setStartClock('')
+    setEndClock('')
+  }
+
   const cancel = () => {
     openRef.current = false
     setEditing(false)
@@ -278,6 +286,24 @@ export const InlineDatePair = ({
         </div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+        {/* 日程を空にする。ピッカーの中の「削除」「リセット」はブラウザごとに名前も挙動も違い、
+            無い環境もあるため、どの端末でも同じ操作で消せるよう自前で用意する。保存は「完了」で行う */}
+        <button
+          type="button"
+          onClick={clearAll}
+          disabled={isEmpty}
+          style={{
+            marginRight: 'auto',
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
+            background: 'transparent', color: 'var(--red-text)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            cursor: isEmpty ? 'default' : 'pointer', opacity: isEmpty ? 0.4 : 1,
+          }}
+        >
+          {t('Delete')}
+        </button>
+        {/* 狭いカードで折り返す時も、「キャンセル」と「完了」は離さない */}
+        <div style={{ display: 'flex', gap: 6 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
         <button
           type="button"
@@ -304,6 +330,7 @@ export const InlineDatePair = ({
         >
           {t('Done')}
         </button>
+        </div>
       </div>
     </div>
   )
