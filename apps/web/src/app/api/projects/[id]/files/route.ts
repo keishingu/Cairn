@@ -17,6 +17,7 @@ export interface ProjectFileDto {
   externalUrl?: string
   indexingStatus?: string
   isLatest: boolean
+  latestChangeNote?: string
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -69,6 +70,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
       .where(and(
         eq(files.projectId, projectId),
+        eq(files.workspaceId, ctx.workspaceId),
         isNull(galleryItems.id),
       ))
       .orderBy(desc(files.createdAt))
@@ -91,6 +93,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
       rows.map(r => {
         const meta = (r.metadata ?? {}) as Record<string, unknown>
         const externalUrl = meta['externalUrl']
+        const history = Array.isArray(meta['latestChangeNotes']) ? meta['latestChangeNotes'] : []
+        const lastChange = history.length > 0 ? history[history.length - 1] : null
+        const latestChangeNote = typeof lastChange === 'object' && lastChange !== null &&
+          typeof (lastChange as Record<string, unknown>)['note'] === 'string'
+          ? (lastChange as Record<string, unknown>)['note'] as string
+          : undefined
 
         // リンク: metadata の indexingStatus をそのまま使う
         // アップロードファイル: indexable なら chunk の有無でステータスを決定
@@ -111,6 +119,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           uploaderName: r.uploaderName,
           createdAt: r.createdAt.toISOString(),
           isLatest: meta['isLatest'] === true,
+          ...(latestChangeNote ? { latestChangeNote } : {}),
           ...(typeof externalUrl === 'string' ? { externalUrl } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),
         }
@@ -118,6 +127,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
     )
   } catch (err) {
     console.error('[/api/projects/[id]/files GET] DB query failed:', err)
-    return NextResponse.json([] satisfies ProjectFileDto[])
+    return NextResponse.json({ error: 'Could not load project files' }, { status: 500 })
   }
 }

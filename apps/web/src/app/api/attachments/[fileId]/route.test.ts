@@ -10,6 +10,7 @@ const FILE_ID = '30000000-0000-0000-0000-000000000001'
 const {
   mockGetAuthContext,
   mockCanAccessFile,
+  mockRequireRole,
   mockDownload,
   mockDeleteWhere,
   mockUpdateSet,
@@ -21,6 +22,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockRequireRole: vi.fn(),
   mockDownload: vi.fn(),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
   mockUpdateSet: vi.fn(),
@@ -42,7 +44,7 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
+vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile, requireRole: mockRequireRole }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
@@ -71,6 +73,7 @@ vi.mock('@cairn/db', () => {
       transaction: mockTransaction,
     },
     files: {},
+    projects: {},
     documentChunks: {},
   }
 })
@@ -93,6 +96,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
+    mockRequireRole.mockReturnValue(null)
     mockDownload.mockResolvedValue({
       data: 'file body',
       error: null,
@@ -142,6 +146,26 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     })
     const res = await PATCH(req, routeParams())
     expect(res.status).toBe(403)
+  })
+
+  it('最新版マークの変更はmember以上に制限する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'guest' },
+      error: null,
+    })
+    mockRequireRole.mockReturnValue(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 }))
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isLatest: true }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(403)
+    expect(mockRequireRole).toHaveBeenCalledWith('guest', 'member')
+    expect(mockUpdateSet).not.toHaveBeenCalled()
   })
 
   it('ファイル名を変更する', async () => {

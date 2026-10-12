@@ -44,5 +44,23 @@ export function useProjectFiles(projectId: string) {
     },
   })
 
-  return { ...query, deleteMutation, setLatestMutation }
+  const replaceLatestMutation = useMutation({
+    mutationFn: async ({ fileId, replaceFileId, note }: { fileId: string; replaceFileId?: string; note?: string }) => {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/current-files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId, ...(replaceFileId ? { replaceFileId } : {}), note }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null
+        throw new Error(body?.error ?? '確定資料の更新に失敗しました')
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['files'] })
+    },
+  })
+
+  return { ...query, deleteMutation, setLatestMutation, replaceLatestMutation }
 }

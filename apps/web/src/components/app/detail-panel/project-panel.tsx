@@ -14,6 +14,7 @@ import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pin
 import { useProjectChannels } from '@/lib/chat/client'
 import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
 import { useT } from '@/components/locale-provider'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 
 
 
@@ -112,6 +113,8 @@ interface ProjectPanelProps {
 
 export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: tabProp, onTabChange }: ProjectPanelProps) => {
   const t = useT()
+  const { isMember, isAdmin } = useWorkspacePermissions()
+  const canManageLatest = project.archived ? isAdmin : isMember
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
@@ -133,7 +136,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
     switch (id) {
       case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
       case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
-      case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
+      case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null} canManageLatest={canManageLatest}/>
       case 'tasks':    return <TasksTab project={project}/>
       case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
       case 'gallery':  return <GalleryTab projectId={project.id}/>

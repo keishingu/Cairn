@@ -15,6 +15,7 @@ import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
+import { CurrentDocumentsSection } from './current-documents-section'
 
 
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
@@ -746,6 +747,8 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {patch.isError && (
         <InlineError style={{ fontSize: 11.5, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
+
+      <CurrentDocumentsSection projectId={project.id} canEdit={project.archived ? canDelete : canEdit} />
 
       {/* 日程 + ステータス */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
