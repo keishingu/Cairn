@@ -7,7 +7,7 @@ import { PageKanban } from './projects-kanban'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface PageProjectsProps {
-  openPanel: (project?: ProjectDto) => void
+  openPanel: (project?: ProjectDto, tab?: string) => void
   search?: string
 }
 

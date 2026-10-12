@@ -22,6 +22,14 @@ export interface ProjectDto {
   memberCount: number
   memberNames: string[]
   memberAvatarUrls: (string | null)[]
+  roleAssignments?: {
+    roleId: string
+    roleName: string
+    roleColor: string
+    roleSortOrder: number
+    memberNames: string[]
+    memberAvatarUrls: (string | null)[]
+  }[]
   taskCount: number
   completedTaskCount: number
   /** 自分がプロジェクトメンバーのとき true（一覧の「参加中」フィルタ用） */
@@ -51,8 +59,8 @@ export async function GET() {
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, channels, channelMembers, messages, userBlocks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, count, and, inArray, isNull, desc } = await import('drizzle-orm')
+    const { projects, projectStatuses, projectMembers, projectRoles, tasks, channels, channelMembers, messages, userBlocks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, count, and, or, inArray, isNull, desc } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
     const channelSchemaReady = await hasTaskChannelSchema(db)
 
@@ -109,6 +117,10 @@ export async function GET() {
           projectId: projectMembers.projectId,
           displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           avatarUrl: workspaceMembers.avatarUrl,
+          roleId: projectRoles.id,
+          roleName: projectRoles.name,
+          roleColor: projectRoles.color,
+          roleSortOrder: projectRoles.sortOrder,
         })
         .from(projectMembers)
         .innerJoin(activeWorkspaceMembers, and(
@@ -117,6 +129,13 @@ export async function GET() {
         ))
         .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
         .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .leftJoin(projectRoles, and(
+          eq(projectRoles.workspaceId, ctx.workspaceId),
+          or(
+            eq(projectMembers.roleId, projectRoles.id),
+            and(isNull(projectMembers.roleId), eq(projectMembers.role, projectRoles.legacyRole)),
+          ),
+        ))
         .where(inArray(projectMembers.projectId, visibleProjectIds))
         .orderBy(projectMembers.createdAt),
       db
@@ -174,6 +193,14 @@ export async function GET() {
 
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
+    const roleAssignmentsMap = new Map<string, Map<string, {
+      roleId: string
+      roleName: string
+      roleColor: string
+      roleSortOrder: number
+      memberNames: string[]
+      memberAvatarUrls: (string | null)[]
+    }>>()
     for (const row of memberRows) {
       const names = memberNamesMap.get(row.projectId) ?? []
       const avatarUrls = memberAvatarUrlsMap.get(row.projectId) ?? []
@@ -183,6 +210,22 @@ export async function GET() {
       }
       memberNamesMap.set(row.projectId, names)
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
+
+      if (row.roleId && row.roleName && row.roleColor && row.roleSortOrder !== null) {
+        const projectRolesMap = roleAssignmentsMap.get(row.projectId) ?? new Map()
+        const assignment = projectRolesMap.get(row.roleId) ?? {
+          roleId: row.roleId,
+          roleName: row.roleName,
+          roleColor: row.roleColor,
+          roleSortOrder: row.roleSortOrder,
+          memberNames: [],
+          memberAvatarUrls: [],
+        }
+        assignment.memberNames.push(row.displayName)
+        assignment.memberAvatarUrls.push(row.avatarUrl ?? null)
+        projectRolesMap.set(row.roleId, assignment)
+        roleAssignmentsMap.set(row.projectId, projectRolesMap)
+      }
     }
 
     const userProjectRoleMap = new Map(userMemberRows.map(r => [r.projectId, r.role]))
@@ -202,6 +245,8 @@ export async function GET() {
         memberCount: countMap.get(r.id) ?? 0,
         memberNames: memberNamesMap.get(r.id) ?? [],
         memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
+        roleAssignments: [...(roleAssignmentsMap.get(r.id)?.values() ?? [])]
+          .sort((a, b) => a.roleSortOrder - b.roleSortOrder || a.roleName.localeCompare(b.roleName, 'ja')),
         taskCount: taskMap.get(r.id)?.total ?? 0,
         completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
         isJoined: myRole !== undefined,

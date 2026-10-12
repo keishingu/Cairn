@@ -7,7 +7,7 @@ import { createContext, useContext } from 'react'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 interface AppShellContextValue {
-  openPanel: (project?: ProjectDto) => void
+  openPanel: (project?: ProjectDto, tab?: string) => void
   openMember: (userId: string) => void
   openNotif: () => void
   isWebView: boolean
