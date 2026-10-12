@@ -927,6 +927,29 @@ export default function ChatThreadScreen() {
       },
       { text: t('Cancel'), style: 'cancel' },
     ])
+  const openTaskFormFromMessage = (message: MessageDto) => {
+    setActionTarget(null)
+    if (!channelId || channelType === 'dm') return
+    const sourceParams = new URLSearchParams({
+      sourceMessageId: message.id,
+      sourceChannelId: channelId,
+      sourceChannelName: typeof channelName === 'string' ? channelName : '',
+      sourceChannelIsPrivate: isPrivate === '1' ? '1' : '0',
+      ...(typeof projectId === 'string' ? { sourceProjectId: projectId } : {}),
+    })
+    router.push({
+      pathname: '/(app)/chat-tools',
+      params: {
+        path: `/tasks?${sourceParams.toString()}`,
+        title: t('Create task'),
+        returnChannelId: channelId,
+        ...(typeof channelName === 'string' ? { returnChannelName: channelName } : {}),
+        ...(channelType ? { returnChannelType: channelType } : {}),
+        ...(typeof projectId === 'string' ? { returnProjectId: projectId } : {}),
+        ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
+      },
+    })
+  }
   const blockUser = async (message: MessageDto) => {
     setActionTarget(null)
     const error = await apiActionError(
@@ -1539,6 +1562,14 @@ export default function ChatThreadScreen() {
               palette={palette}
               onPress={() => actionTarget && beginReply(actionTarget)}
             />
+            {actionTarget && (actionTarget.messageType === 'text' || actionTarget.messageType === 'html') && channelType !== 'dm' && (
+              <ActionButton
+                icon="checkbox-outline"
+                label={t('Create task')}
+                palette={palette}
+                onPress={() => actionTarget && openTaskFormFromMessage(actionTarget)}
+              />
+            )}
             {actionTarget?.blocked && (
               <ActionButton
                 icon="eye-outline"

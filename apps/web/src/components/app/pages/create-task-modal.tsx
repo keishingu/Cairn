@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { fieldInputStyle } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { TaskDialog } from '../task-dialog'
@@ -10,19 +10,21 @@ import type { TaskDto } from '@/app/api/tasks/route'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCreateTaskMutation } from '@/hooks/use-project-tasks'
 
 interface CreateTaskModalProps {
   onClose: () => void
   channel?: CreateTaskChannel
+  sourceMessageId?: string
+  initialTitle?: string
 }
 
-export type CreateTaskChannel = { id: string; name: string; isPrivate: boolean }
+export type CreateTaskChannel = { id: string; name: string; isPrivate: boolean; projectId?: string | null }
 
-export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
+export const CreateTaskModal = ({ onClose, channel, sourceMessageId, initialTitle }: CreateTaskModalProps) => {
   const t = useT()
   const projectSelectId = React.useId()
-  const queryClient = useQueryClient()
-  const [title, setTitle] = React.useState('')
+  const [title, setTitle] = React.useState(initialTitle ?? '')
   const [projectId, setProjectId] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
@@ -37,24 +39,7 @@ export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
     enabled: !channel,
   })
 
-  const mutation = useMutation({
-    mutationFn: async (data: { title: string; projectId?: string; channelId?: string; priority: string; dueDate?: string; assigneeId?: string }) => {
-      const res = await fetchWithAuth('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create task')
-      return res.json() as Promise<TaskDto>
-    },
-    onSuccess: (newTask) => {
-      queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
-      if (channel) {
-        queryClient.setQueryData<TaskDto[]>(['tasks', 'channel', channel.id], old => old ? [newTask, ...old] : [newTask])
-      }
-      onClose()
-    },
-  })
+  const mutation = useCreateTaskMutation(() => onClose())
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,6 +47,7 @@ export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
     mutation.mutate({
       title: title.trim(),
       ...(channel ? { channelId: channel.id } : projectId ? { projectId } : {}),
+      ...(sourceMessageId ? { sourceMessageId } : {}),
       priority,
       ...(dueDate ? { dueDate } : {}),
       ...(assigneeId ? { assigneeId } : {}),
@@ -92,10 +78,18 @@ export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
         onDueDateChange={setDueDate}
         assigneeId={assigneeId}
         onAssigneeChange={setAssigneeId}
-        assigneeProjectId={channel ? null : projectId || null}
+        assigneeProjectId={channel?.projectId ?? (channel ? null : projectId || null)}
         assigneeChannelId={channel?.id ?? null}
         assigneeChannelIsPrivate={channel?.isPrivate ?? false}
         titlePlaceholder={t('Enter a task name...')}
+        {...(sourceMessageId ? {
+          titleNote: (
+            <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+              {t('Created from a chat message. Changes to this task do not edit the message.')}{' '}
+              {channel && <a href={`/chats/${encodeURIComponent(channel.id)}?m=${encodeURIComponent(sourceMessageId)}`} style={{ color: 'var(--accent-text)' }}>{t('Open source message')}</a>}
+            </div>
+          ),
+        } : {})}
         afterTitle={channel ? null : (
           <div>
             <label htmlFor={projectSelectId} style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>

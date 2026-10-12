@@ -3,6 +3,7 @@ import {
   createMilestoneSchema,
   createProjectSchema,
   createTaskSchema,
+  updateTaskSchema,
   patchMilestoneSchema,
   patchMeSchema,
   patchProfileAttributesSchema,
@@ -161,6 +162,27 @@ describe('createTaskSchema', () => {
       title: '曖昧な所属',
     })
     expect(result.success).toBe(false)
+  })
+
+  it('共有元メッセージがある場合はプロジェクトとチャンネルを両方保持できる', () => {
+    const result = createTaskSchema.safeParse({
+      projectId: '00000000-0000-0000-0000-000000000001',
+      channelId: '00000000-0000-0000-0000-000000000002',
+      sourceMessageId: '00000000-0000-0000-0000-000000000003',
+      title: '元メッセージの確認事項',
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('updateTaskSchema', () => {
+  it('説明の保存と空値による消去を受け付ける', () => {
+    expect(updateTaskSchema.safeParse({ description: '対応結果' }).success).toBe(true)
+    expect(updateTaskSchema.safeParse({ description: null }).success).toBe(true)
+  })
+
+  it('2000文字を超える説明を拒否する', () => {
+    expect(updateTaskSchema.safeParse({ description: 'a'.repeat(2001) }).success).toBe(false)
   })
 })
 

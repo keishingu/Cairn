@@ -296,7 +296,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
                         triggerStyle={{ padding: '3px 4px' }}
                         actions={[
                           { icon: 'edit', label: t('Edit'), onSelect: () => { setDialogMode('edit'); setEditingTask(task) } },
-                          ...(task.isLinkedToMessage ? [] : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(task) } }]),
+                          ...(task.isCheckboxTask ? [] : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(task) } }]),
                         ]}
                       />
                     </div>

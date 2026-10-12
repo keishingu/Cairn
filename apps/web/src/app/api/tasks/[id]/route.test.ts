@@ -125,13 +125,24 @@ describe('DELETE /api/tasks/[id]', () => {
 
   afterEach(() => vi.clearAllMocks())
 
-  it('チャット由来タスクの削除は 409 で拒否する', async () => {
-    mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: 'm1' }])
+  it('チェックボックス同期タスクの削除は 409 で拒否する', async () => {
+    mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: 'm1', sourceCheckboxIndex: 0 }])
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
       params: Promise.resolve({ id: TASK_ID }),
     })
     expect(res.status).toBe(409)
+  })
+
+  it('通常メッセージ由来タスクは元メッセージを残して単独削除できる', async () => {
+    mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: 'm1', sourceCheckboxIndex: null }])
+    mockDbDeleteReturning.mockResolvedValue([{ id: TASK_ID }])
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id: TASK_ID }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockDbDeleteReturning).toHaveBeenCalledOnce()
   })
 
   it('手動タスクは削除できる', async () => {
@@ -479,5 +490,27 @@ describe('PATCH /api/tasks/[id]', () => {
     expect(response.status).toBe(200)
     expect(db.update).toHaveBeenCalledWith(aiNudges)
     expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
+  })
+
+  it('タスク説明は更新時に空値で消去できる', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID, projectId: 'project-1', projectTitle: 'proj', title: 'task',
+      description: 'old result', priority: 'medium', dueDate: null, status: 'done',
+      assigneeId: null, sourceMessageId: 'message-1', sourceCheckboxIndex: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValueOnce([{
+      id: TASK_ID, title: 'task', description: null, priority: 'medium', dueDate: null,
+      status: 'done', assigneeId: null, sourceMessageId: 'message-1', sourceCheckboxIndex: null,
+    }])
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH', body: JSON.stringify({ description: null }),
+      headers: { 'content-type': 'application/json' },
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockDbUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ description: null }))
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({ description: null }))
   })
 })

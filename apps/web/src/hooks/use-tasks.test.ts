@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_TASKS: TaskDto[] = [
-  { id: 't1', projectId: 'p1', projectTitle: 'P', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク1', status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
-  { id: 't2', projectId: 'p2', projectTitle: 'Q', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク2', status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isLinkedToMessage: false },
+  { id: 't1', projectId: 'p1', projectTitle: 'P', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク1', description: null, status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isCheckboxTask: false, isLinkedToMessage: false },
+  { id: 't2', projectId: 'p2', projectTitle: 'Q', channelId: null, channelName: null, channelIsPrivate: false, title: 'タスク2', description: null, status: 'done', priority: 'low', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null, isCheckboxTask: false, isLinkedToMessage: false },
 ]
 
 describe('useTasks', () => {

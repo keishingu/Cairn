@@ -37,6 +37,15 @@ vi.mock('../task-edit-dialog', () => ({
   TaskEditDialog: ({ open }: { open: boolean }) => open ? <div data-testid="task-edit-dialog" /> : null,
 }))
 vi.mock('@/hooks/use-project-tasks', () => ({
+  useCreateTaskMutation: () => ({
+    mutate: (payload: Record<string, unknown>) => fetchWithAuthMock('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    isError: false,
+    isPending: false,
+  }),
   useTasksByScope: vi.fn(() => ({
     data: [],
     isLoading: false,
@@ -221,12 +230,12 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
         {
           id: 'linked-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: 'メッセージ由来のタスク',
           status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null,
-          sourceMessageId: 'message-1', isLinkedToMessage: true,
+          description: null, sourceMessageId: 'message-1', isCheckboxTask: false, isLinkedToMessage: true,
         },
         {
           id: 'standalone-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: '通常のタスク',
           status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null,
-          sourceMessageId: null, isLinkedToMessage: false,
+          description: null, sourceMessageId: null, isCheckboxTask: false, isLinkedToMessage: false,
         },
       ],
       isLoading: false,

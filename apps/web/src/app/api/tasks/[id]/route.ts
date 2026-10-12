@@ -48,6 +48,7 @@ export async function PATCH(
         projectTitle: projects.title,
         channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
         title: tasks.title,
+        description: tasks.description,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         status: tasks.status,
@@ -101,9 +102,11 @@ export async function PATCH(
       dueDate?: string | null
       status?: 'todo' | 'in_progress' | 'done'
       assigneeId?: string | null
+      description?: string | null
       updatedAt: Date
     } = { updatedAt: new Date() }
     if (parsed.data.title !== undefined) updates.title = parsed.data.title
+    if (parsed.data.description !== undefined) updates.description = parsed.data.description
     if (parsed.data.priority !== undefined) updates.priority = parsed.data.priority
     if (parsed.data.dueDate !== undefined) updates.dueDate = parsed.data.dueDate
     if (parsed.data.status !== undefined) updates.status = parsed.data.status
@@ -116,6 +119,7 @@ export async function PATCH(
       .returning({
         id: tasks.id,
         title: tasks.title,
+        description: tasks.description,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         status: tasks.status,
@@ -226,6 +230,7 @@ export async function DELETE(
         projectId: tasks.projectId,
         channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
         sourceMessageId: tasks.sourceMessageId,
+        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
       })
       .from(tasks)
       .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
@@ -250,9 +255,9 @@ export async function DELETE(
       if (forbidden) return forbidden
     }
 
-    // チャット由来タスクは単体削除しない。紐付いたチャットメッセージ（またはチェックボックス行）を
-    // 消したときにタスクも消える運用のため、ここでは 409 で拒否する。
-    if (taskRow.sourceMessageId != null) {
+    // チェックボックス由来タスクは本文との同期を保つため、元メッセージ側から削除する。
+    // 通常メッセージ由来タスクは独立したタスクとして単体削除できる。
+    if (taskRow.sourceMessageId != null && taskRow.sourceCheckboxIndex != null) {
       return NextResponse.json(
         { error: 'チャット由来タスクは単体で削除できません。元のチャットメッセージ側で削除してください' },
         { status: 409 },

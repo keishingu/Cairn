@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { TaskDto } from '@/app/api/tasks/route'
+import { useT } from '@/components/locale-provider'
 
 type TaskScope = { projectId: string } | { channelId: string }
 
@@ -62,6 +63,44 @@ export function useProjectTasks(projectId: string) {
 
 export function useCreateTask(projectId: string, onSuccess: () => void) {
   return useCreateTaskByScope({ projectId }, onSuccess)
+}
+
+export function useCreateTaskMutation(onSuccess: (task: TaskDto) => void) {
+  const queryClient = useQueryClient()
+  const t = useT()
+  return useMutation({
+    mutationFn: async (data: {
+      title: string
+      projectId?: string
+      channelId?: string
+      sourceMessageId?: string
+      priority: TaskDto['priority']
+      dueDate?: string
+      assigneeId?: string
+    }) => {
+      const res = await fetchWithAuth('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: unknown }
+        throw new Error(typeof body.error === 'string' ? body.error : t('Could not create the task. Please try again.'))
+      }
+      return res.json() as Promise<TaskDto>
+    },
+    onSuccess: (newTask) => {
+      queryClient.setQueryData<TaskDto[]>(['tasks'], old => old ? [newTask, ...old] : [newTask])
+      if (newTask.channelId) {
+        queryClient.setQueryData<TaskDto[]>(['tasks', 'channel', newTask.channelId], old => old ? [newTask, ...old] : [newTask])
+      }
+      if (newTask.projectId) {
+        void queryClient.invalidateQueries({ queryKey: ['tasks', newTask.projectId] })
+      }
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      onSuccess(newTask)
+    },
+  })
 }
 
 export function useCreateTaskByScope(scope: TaskScope, onSuccess: () => void) {

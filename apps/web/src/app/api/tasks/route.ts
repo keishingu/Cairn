@@ -18,6 +18,7 @@ export interface TaskDto {
   channelName: string | null
   channelIsPrivate: boolean
   title: string
+  description: string | null
   status: 'todo' | 'in_progress' | 'done'
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
@@ -26,6 +27,8 @@ export interface TaskDto {
   assigneeAvatarUrl: string | null
   /** チャット由来タスクの共有元メッセージ。未紐付けなら null。 */
   sourceMessageId?: string | null
+  /** チェックボックスとの双方向同期を行うタスクか。 */
+  isCheckboxTask: boolean
   isLinkedToMessage: boolean
 }
 
@@ -104,11 +107,13 @@ export async function GET(req: Request) {
         channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
         channelIsPrivate: channelSchemaReady ? channels.isPrivate : sql<boolean>`false`,
         title: tasks.title,
+        description: tasks.description,
         status: tasks.status,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
+        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
@@ -127,6 +132,7 @@ export async function GET(req: Request) {
       channelName: r.channelName ?? null,
       channelIsPrivate: r.channelIsPrivate ?? false,
       title: r.title,
+      description: r.description,
       status: r.status,
       priority: r.priority,
       dueDate: r.dueDate,
@@ -134,6 +140,7 @@ export async function GET(req: Request) {
       assigneeName: r.assigneeName ?? null,
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
       sourceMessageId: r.sourceMessageId,
+      isCheckboxTask: r.sourceCheckboxIndex != null,
       isLinkedToMessage: r.sourceMessageId != null,
     }))
 
@@ -164,25 +171,71 @@ export async function POST(req: Request) {
   }
 
   try {
-    const projectId = parsed.data.projectId ?? null
-    const channelId = parsed.data.channelId ?? null
-    if (projectId) {
+    let projectId = parsed.data.projectId ?? null
+    let channelId = parsed.data.channelId ?? null
+    const { db } = await import('@cairn/db')
+    const { tasks, projects, channels, messages, profiles, workspaceMembers } = await import('@cairn/db')
+    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+    let sourceMessageId: string | null = null
+
+    if (parsed.data.sourceMessageId) {
+      if (!channelSchemaReady) {
+        return NextResponse.json({ error: 'チャット連携タスクを準備中です' }, { status: 503 })
+      }
+      const [source] = await db
+        .select({
+          id: messages.id,
+          channelId: messages.channelId,
+          projectId: channels.projectId,
+          channelType: channels.type,
+        })
+        .from(messages)
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .where(and(
+          eq(messages.id, parsed.data.sourceMessageId),
+          inArray(messages.messageType, ['text', 'html']),
+          eq(channels.workspaceId, ctx.workspaceId),
+          isNull(messages.deletedAt),
+        ))
+        .limit(1)
+
+      if (!source) return NextResponse.json({ error: '共有元メッセージが見つかりません' }, { status: 404 })
+      if (source.channelType === 'dm') {
+        return NextResponse.json({ error: 'DMのメッセージからタスクは作成できません' }, { status: 422 })
+      }
+      if (source.channelType !== 'workspace' && source.channelType !== 'project') {
+        return NextResponse.json({ error: '通常チャンネルのメッセージを指定してください' }, { status: 422 })
+      }
+      if (
+        (parsed.data.channelId != null && parsed.data.channelId !== source.channelId)
+        || (parsed.data.projectId != null && parsed.data.projectId !== source.projectId)
+      ) {
+        return NextResponse.json({ error: 'タスクの範囲は共有元メッセージと一致させてください' }, { status: 422 })
+      }
+
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, source.channelId, ctx.role)
+      if (forbidden) return forbidden
+
+      // クライアント指定の範囲に依存せず、元メッセージのチャンネル範囲を保持する。
+      projectId = source.projectId
+      channelId = source.channelId
+      sourceMessageId = source.id
+    }
+
+    if (!sourceMessageId && projectId) {
       // ゲストは参加プロジェクトにのみタスクを作成できる
       const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
       if (forbidden) return forbidden
-    } else if (channelId) {
+    } else if (!sourceMessageId && channelId) {
       const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
       if (forbidden) return forbidden
-    } else {
+    } else if (!sourceMessageId) {
       // プロジェクト未所属タスクは member 以上のみ作成可（ゲストはプロジェクト必須）
       const forbidden = requireRole(ctx.role, 'member')
       if (forbidden) return forbidden
     }
 
-    const { db } = await import('@cairn/db')
-    const { tasks, projects, channels, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
-    const channelSchemaReady = await hasTaskChannelSchema(db)
     if (channelId && !channelSchemaReady) {
       return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
     }
@@ -212,7 +265,7 @@ export async function POST(req: Request) {
         .from(channels)
         .where(and(eq(channels.id, channelId), eq(channels.workspaceId, ctx.workspaceId)))
         .limit(1)
-      if (!channelRow || channelRow.type !== 'workspace') {
+      if (!channelRow || (!sourceMessageId && channelRow.type !== 'workspace')) {
         return NextResponse.json({ error: '通常チャンネルが見つかりません' }, { status: 404 })
       }
       channelName = channelRow.name
@@ -236,6 +289,8 @@ export async function POST(req: Request) {
         assigneeId,
         dueDate: parsed.data.dueDate ?? null,
         createdBy: ctx.userId,
+        sourceMessageId,
+        sourceCheckboxIndex: null,
       }
     const [inserted] = channelSchemaReady
       ? await db
@@ -249,6 +304,8 @@ export async function POST(req: Request) {
             priority: tasks.priority,
             dueDate: tasks.dueDate,
             assigneeId: tasks.assigneeId,
+            sourceMessageId: tasks.sourceMessageId,
+            sourceCheckboxIndex: tasks.sourceCheckboxIndex,
           })
       : await insertLegacyTasks(db, [taskValues])
 
@@ -273,14 +330,16 @@ export async function POST(req: Request) {
       channelName,
       channelIsPrivate,
       title: inserted.title,
+      description: parsed.data.description ?? null,
       status: inserted.status,
       priority: inserted.priority,
       dueDate: inserted.dueDate,
       assigneeId: inserted.assigneeId,
       assigneeName: assigneeRow?.displayName ?? null,
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
-      sourceMessageId: null,
-      isLinkedToMessage: false,
+      sourceMessageId,
+      isCheckboxTask: false,
+      isLinkedToMessage: sourceMessageId != null,
     }
 
     if (inserted.assigneeId) {

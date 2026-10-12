@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { CreateTaskModal } from './create-task-modal'
@@ -135,7 +135,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
         actions={[
           { icon: 'edit', label: t('Edit'), onSelect: () => onEdit(task, 'edit') },
           // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-          ...(task.isLinkedToMessage
+          ...(task.isCheckboxTask
             ? []
             : [{ icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => onEdit(task, 'delete') }]),
         ]}
@@ -206,8 +206,11 @@ const Section = ({ label, count, tasks, onToggle, onEdit, togglingId, open, onTo
 
 export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const openedTaskIdRef = React.useRef<string | null>(null)
+  const openedSourceMessageIdRef = React.useRef<string | null>(null)
   const [filter, setFilter] = React.useState<FilterKey>('todo')
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
@@ -215,6 +218,27 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
+  const sourceMessageId = searchParams.get('sourceMessageId')
+  const sourceChannelId = searchParams.get('sourceChannelId')
+  const sourceChannelName = searchParams.get('sourceChannelName') ?? ''
+  const sourceChannelIsPrivate = searchParams.get('sourceChannelIsPrivate') === '1'
+  const sourceProjectId = searchParams.get('sourceProjectId')
+  const sourceQueryPresent = ['sourceMessageId', 'sourceChannelId', 'sourceChannelName', 'sourceChannelIsPrivate', 'sourceProjectId']
+    .some(key => searchParams.has(key))
+  const sourceQueryValid = Boolean(
+    sourceMessageId && sourceChannelId &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sourceMessageId) &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sourceChannelId) &&
+    (!sourceProjectId || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sourceProjectId)) &&
+    ['0', '1'].includes(searchParams.get('sourceChannelIsPrivate') ?? '')
+  )
+  const sourceQueryError = sourceQueryPresent && !sourceQueryValid
+
+  React.useEffect(() => {
+    if (!sourceQueryValid || !sourceMessageId || openedSourceMessageIdRef.current === sourceMessageId) return
+    openedSourceMessageIdRef.current = sourceMessageId
+    setShowAddModal(true)
+  }, [sourceMessageId, sourceQueryValid])
 
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
@@ -232,6 +256,17 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     setDialogMode('edit')
     setEditingTask(task)
   }, [searchParams, tasks])
+
+  const handleCloseAddModal = () => {
+    setShowAddModal(false)
+    if (!sourceMessageId) return
+    const params = new URLSearchParams(searchParams.toString())
+    for (const key of ['sourceMessageId', 'sourceChannelId', 'sourceChannelName', 'sourceChannelIsPrivate', 'sourceProjectId']) {
+      params.delete(key)
+    }
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
@@ -362,6 +397,12 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
       </div>
 
+      {sourceQueryError && (
+        <div role="alert" style={{ margin: '12px 20px 0', color: 'var(--red)', fontSize: 13 }}>
+          {t('Could not open the source message. Return to chat and try again.')}
+        </div>
+      )}
+
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
         {isLoading ? (
@@ -400,7 +441,20 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {isMobile && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
-      {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      {showAddModal && !sourceQueryError && (
+        <CreateTaskModal
+          onClose={handleCloseAddModal}
+          {...(sourceMessageId ? { sourceMessageId } : {})}
+          {...(sourceMessageId && sourceChannelId ? {
+            channel: {
+              id: sourceChannelId,
+              name: sourceChannelName,
+              isPrivate: sourceChannelIsPrivate,
+              projectId: sourceProjectId,
+            },
+          } : {})}
+        />
+      )}
       <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
     </div>
   )

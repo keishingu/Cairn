@@ -61,6 +61,7 @@ import { toast } from '@/lib/toast'
 import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
+import { CreateTaskModal } from './pages/create-task-modal'
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -147,7 +148,7 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onCreateTask, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -174,6 +175,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
+  onCreateTask?: (messageId: string, content: string) => void
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
@@ -308,6 +310,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    ...(onCreateTask ? [{ icon: 'check' as const, label: t('Create task'), onSelect: () => onCreateTask(messageId, content) }] : []),
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
@@ -1256,6 +1259,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
   const [completingNudgeId, setCompletingNudgeId] = React.useState<string | null>(null)
   const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
+  const [createTaskSource, setCreateTaskSource] = React.useState<{ messageId: string; title: string } | null>(null)
   const [jumpMessageId, setJumpMessageId] = React.useState<string | null>(null)
   const [showLatestMessages, setShowLatestMessages] = React.useState(false)
   const [initialPositioned, setInitialPositioned] = React.useState(false)
@@ -1762,6 +1766,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation, leaveHistoryView])
 
+  const handleCreateTaskFromMessage = React.useCallback((messageId: string, content: string) => {
+    if (!channelId || messageId.startsWith('optimistic-')) return
+    const title = stripMentionsToText(content).trim().replace(/\s+/g, ' ').slice(0, 200)
+    setCreateTaskSource({ messageId, title })
+  }, [channelId])
+
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
   const reactMutate = reactMutation.mutate
@@ -2030,6 +2040,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
+              {...(!isDm ? { onCreateTask: handleCreateTaskFromMessage } : {})}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
@@ -2097,6 +2108,19 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           index={Math.min(lightboxIndex, lightboxImages.length - 1)}
           onIndexChange={setLightboxIndex}
           onClose={() => setLightboxIndex(null)}
+        />
+      )}
+      {createTaskSource && channelId && !isDm && (
+        <CreateTaskModal
+          onClose={() => setCreateTaskSource(null)}
+          sourceMessageId={createTaskSource.messageId}
+          initialTitle={createTaskSource.title}
+          channel={{
+            id: channelId,
+            name: channelName ?? '',
+            isPrivate: isPrivate ?? false,
+            projectId,
+          }}
         />
       )}
     </div>

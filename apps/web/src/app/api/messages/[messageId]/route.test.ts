@@ -191,4 +191,62 @@ describe('PATCH /api/messages/[messageId]', () => {
     expect(mockEq).toHaveBeenCalledWith('tasks.id', 'task-b')
     expect(mockEq).toHaveBeenCalledWith('tasks.id', 'task-a')
   })
+
+  it('通常メッセージ由来タスクは元メッセージ編集でチェックボックス同期されない', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-id', workspaceId: 'workspace-id', role: 'member' },
+      error: null,
+    })
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockDb.select.mockReturnValue({
+      from: () => ({
+        innerJoin: () => ({
+          where: () => ({
+            limit: async () => [{
+              id: 'message-id', content: '- [ ] Existing task', channelId: 'channel-id',
+              projectId: null, channelType: 'workspace',
+            }],
+          }),
+        }),
+      }),
+    })
+
+    const checkboxTaskUpdate = vi.fn()
+    const txUpdate = vi.fn((..._args: unknown[]) => ({
+      set: (values: Record<string, unknown>) => {
+        if ('content' in values) {
+          return { where: () => ({ returning: async () => [{ id: 'message-id', content: '- [x] Existing task' }] }) }
+        }
+        checkboxTaskUpdate(values)
+        return { where: async () => undefined }
+      },
+    }))
+    const tx = {
+      select: vi.fn(() => ({
+        from: () => ({ where: async () => [
+          { id: 'message-task', sourceCheckboxIndex: null },
+          { id: 'checkbox-task', sourceCheckboxIndex: 0 },
+        ] }),
+      })),
+      update: txUpdate,
+      insert: vi.fn(),
+      delete: vi.fn(),
+    }
+    mockDb.transaction.mockImplementation(callback => callback(tx))
+
+    const { PATCH } = await import('./route')
+    const response = await PATCH(
+      new Request('http://localhost/api/messages/message-id', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '- [x] Existing task' }),
+      }),
+      { params: Promise.resolve({ messageId: 'message-id' }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(checkboxTaskUpdate).toHaveBeenCalledOnce()
+    expect(checkboxTaskUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      sourceCheckboxIndex: 0, title: 'Existing task', status: 'done',
+    }))
+  })
 })

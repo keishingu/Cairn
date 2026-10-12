@@ -24,6 +24,8 @@ interface TaskFormFieldsProps {
   currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
   // タイトル欄の直下に出す注記（チャット由来タスクの逆同期警告など）
   titleNote?: React.ReactNode
+  description?: string
+  onDescriptionChange?: (value: string) => void
 }
 
 const labelStyle: React.CSSProperties = {
@@ -50,6 +52,8 @@ export const TaskFormFields = ({
   assigneeChannelIsPrivate,
   currentAssignee,
   titleNote,
+  description,
+  onDescriptionChange,
 }: TaskFormFieldsProps) => {
   const t = useT()
   const id = React.useId()
@@ -75,6 +79,22 @@ export const TaskFormFields = ({
       </div>
 
       {afterTitle}
+
+      {onDescriptionChange && (
+        <div>
+          <label htmlFor={`${id}-description`} style={labelStyle}>{t('Description')}</label>
+          <textarea
+            id={`${id}-description`}
+            className="form-control"
+            value={description ?? ''}
+            onChange={e => onDescriptionChange(e.target.value)}
+            placeholder={t('Enter a description…')}
+            maxLength={2000}
+            rows={4}
+            style={{ ...fieldInputStyle(false), height: 'auto', minHeight: 96, resize: 'vertical' }}
+          />
+        </div>
+      )}
 
       {onAssigneeChange && (
         <TaskAssigneeField

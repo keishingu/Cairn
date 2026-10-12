@@ -21,6 +21,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
   const t = useT()
   const queryClient = useQueryClient()
   const [title, setTitle] = React.useState('')
+  const [description, setDescription] = React.useState('')
   const [priority, setPriority] = React.useState<TaskDto['priority']>('medium')
   const [dueDate, setDueDate] = React.useState('')
   const [assigneeId, setAssigneeId] = React.useState<string | null>(null)
@@ -29,6 +30,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
   React.useEffect(() => {
     if (!open || !task) return
     setTitle(task.title)
+    setDescription(task.description ?? '')
     setPriority(task.priority)
     setDueDate(task.dueDate ?? '')
     setAssigneeId(task.assigneeId ?? null)
@@ -40,7 +42,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
   }, [initialMode, open, task])
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { title: string; priority: TaskDto['priority']; dueDate: string | null; assigneeId: string | null }) => {
+    mutationFn: async (payload: { title: string; description: string | null; priority: TaskDto['priority']; dueDate: string | null; assigneeId: string | null }) => {
       if (!task) throw new Error('Task not found')
       const res = await fetchWithAuth(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -97,6 +99,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
     if (!title.trim()) return
     updateMutation.mutate({
       title: title.trim(),
+      description: description.trim() || null,
       priority,
       dueDate: dueDate || null,
       assigneeId,
@@ -111,9 +114,19 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       lineHeight: 1.5,
       color: titleChanged ? 'var(--amber-text)' : 'var(--text-3)',
     }}>
-      {titleChanged
-        ? t('This task was created from a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')
-        : t('This task is linked to a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')}
+      {task.isCheckboxTask
+        ? titleChanged
+          ? t('This task was created from a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')
+          : t('This task is linked to a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')
+        : t('Created from a chat message. Changes to this task do not edit the message.')}
+      {task.sourceMessageId && task.channelId && (
+        <>
+          {' '}
+          <a href={`/chats/${encodeURIComponent(task.channelId)}?m=${encodeURIComponent(task.sourceMessageId)}`} style={{ color: 'var(--accent-text)' }}>
+            {t('Open source message')}
+          </a>
+        </>
+      )}
     </div>
   ) : null
 
@@ -135,7 +148,7 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
           submittingLabel={t('Saving…')}
           isSubmitting={updateMutation.isPending}
           submitDisabled={!title.trim() || deleteMutation.isPending}
-          {...(task.isLinkedToMessage
+          {...(task.isCheckboxTask
             ? {}
             : {
                 leadingAction: {
@@ -155,6 +168,8 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             onPriorityChange={setPriority}
             dueDate={dueDate}
             onDueDateChange={setDueDate}
+            description={description}
+            onDescriptionChange={setDescription}
             assigneeId={assigneeId}
             onAssigneeChange={setAssigneeId}
             assigneeProjectId={task.projectId}
