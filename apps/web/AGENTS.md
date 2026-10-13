@@ -21,6 +21,8 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 
 ## その他
 
+- `files.metadata` の部分変更は更新時点のJSONBに対するSQL式で対象キーだけを更新する。行ロックを保持するトランザクション内を除き、事前取得したmetadata全体を書き戻さない（確定資料・インデックス・チャンネルの並行更新が消失する）。
+
 - FEATURE_FLAGS は市場投入判断のためのもので、インフラの環境差には使わない
 - AI 機能は Vercel AI SDK + OpenAI（gpt-5 / gpt-5-mini）。AI PMO Phase 2 の判定だけ Vercel AI Gateway の `typesafe-ai/jev` を HTTP で直接呼ぶ（AI SDK v4 に Evaluation API がないため）
 - **機能・UI 導線・権限を変えたら、同じ変更で `/ai` のプロダクトヘルプ `src/lib/ai/product-help.ts`（`PRODUCT_HELP_CONTEXT`）も更新する**。`/ai` が製品の使い方に答える唯一の情報源で、古いままだと利用者に誤った手順を案内する

@@ -47,3 +47,11 @@ export async function POST(req: Request) {
 ## API サーバーの分離
 
 Web も Expo も Next.js Route Handlers を共有する。Hono などへの API 分離は、Next.js から独立したスケール・デプロイ分離が必要になった時点で改めて検討する。
+
+## ファイルメタデータの部分更新
+
+`files.metadata` は確定資料（`isLatest`・`latestChangeNotes`）、インデックス状態、関連チャンネル、サムネイルが共有するJSONB。インデックス生成や認可確認の前に読んだ値を丸ごと書き戻すと、その間の変更が消失する。部分変更は `jsonb_set` / JSONB結合 / キー削除など、更新時点の列値を参照するSQL式で行う。配列への追加も現在の配列をDBで読み、既存要素を保持する。
+
+確定資料の差し替えはプロジェクトとファイルを `FOR UPDATE` でロックし、そのトランザクション内で読んだ変更履歴を引き継ぐ。ロック外の更新側も対象キーだけを変更する必要がある。
+
+回帰テストは `apps/web/src/lib/inngest/functions.metadata.test.ts`。PGliteでPostgreSQLのJSONB式と実際のAPIを実行し、`embedMany` を保留して差し替えを先に完了させる。外部API・本番DBへの接続は不要。
