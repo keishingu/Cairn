@@ -73,14 +73,16 @@ function screenFromUrl(url: string): NotificationDestination | null {
 export function routeFromNotification(item: NotificationRouteInput): NotificationDestination {
   const url = item.data?.['url']
   const channelId = item.data?.['channelId']
+  // 通知を受け取った後にメッセージがスレッドへ移動しても、移動先を辿れるようにメッセージ ID も渡す。
+  const messageId = item.data?.['messageId']
 
   // タスクカードはネイティブのチャットに無い。タスク付き AI 通知はマイタスクへ送る。
   if (item.type === 'ai' && item.data?.['taskId']) return screen('/(app)/tasks')
 
   const channelFromUrl = url ? channelIdFromChatUrl(url) : null
   if (channelFromUrl) return channel(channelFromUrl, url ? messageIdFromChatUrl(url) : null)
-  if (CHANNEL_NOTIFICATION_TYPES.has(item.type) && channelId) return channel(channelId)
-  if (item.type === 'ai' && channelId) return channel(channelId)
+  if (CHANNEL_NOTIFICATION_TYPES.has(item.type) && channelId) return channel(channelId, messageId)
+  if (item.type === 'ai' && channelId) return channel(channelId, messageId)
 
   if (url) {
     const fromUrl = screenFromUrl(url)

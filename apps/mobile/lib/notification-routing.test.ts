@@ -51,6 +51,25 @@ describe('通知からの画面遷移', () => {
     ).toEqual({ kind: 'channel', channelId: 'ch-2' })
   })
 
+  it('通知にメッセージ ID があれば、スレッドへの移動後も辿れるよう遷移先に渡す', () => {
+    expect(
+      routeFromNotification(
+        notification({
+          type: 'mention',
+          data: { channelId: 'ch-1', messageId: 'msg-1' },
+        }),
+      ),
+    ).toEqual({ kind: 'channel', channelId: 'ch-1', messageId: 'msg-1' })
+    expect(
+      routeFromNotification(
+        notification({
+          type: 'ai',
+          data: { channelId: 'ch-1', messageId: 'msg-2' },
+        }),
+      ),
+    ).toEqual({ kind: 'channel', channelId: 'ch-1', messageId: 'msg-2' })
+  })
+
   it('task 通知は url がなくても tasks へ送る', () => {
     expect(routeFromNotification(notification({ type: 'task' }))).toEqual({
       kind: 'screen',
