@@ -21,6 +21,7 @@ import {
   useCreateDm,
   useBookmarks,
   useDeleteWorkspaceChannel,
+  useSetWorkspaceThreadArchived,
   chatQueryKeys,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
@@ -353,6 +354,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [deletingWorkspaceChannel, setDeletingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const patchMilestone = usePatchProjectMilestone()
   const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
+  const setWorkspaceThreadArchived = useSetWorkspaceThreadArchived()
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
@@ -584,6 +586,17 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     )
   }
 
+  const handleSetWorkspaceThreadArchived = (thread: WorkspaceChannelDto, archived: boolean) => {
+    if (setWorkspaceThreadArchived.isPending) return
+    setWorkspaceThreadArchived.mutate(
+      { channelId: thread.id, archived },
+      {
+        onSuccess: () => toast.success(archived ? t('Archived the thread') : t('Unarchived the thread')),
+        onError: error => toast.error(error.message),
+      },
+    )
+  }
+
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
   const currentGeneral = workspaceChannels.find(c => c.id === channelId)
   const currentDm = dms.find(d => d.id === channelId)
@@ -690,6 +703,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
       {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
       {...(canCreateChildChannel ? { onRenameWorkspaceChannel: setRenamingWorkspaceChannel } : {})}
+      {...(canCreateChildChannel ? { onSetWorkspaceThreadArchived: handleSetWorkspaceThreadArchived } : {})}
       {...(canCreateChildChannel ? { onDeleteWorkspaceChannel: setDeletingWorkspaceChannel } : {})}
       canManageWorkspaceChannel={canCreateWorkspaceChannel}
     />

@@ -26,6 +26,7 @@ import {
   useDeleteWorkspaceChannel,
   usePatchProjectMilestone,
   useRenameWorkspaceChannel,
+  useSetWorkspaceThreadArchived,
   useWorkspaceChannels,
   useWorkspaceDms,
   useWorkspaceMembers,
@@ -119,10 +120,13 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
 function WorkspaceChannelItem({
   channel,
   thread = false,
+  parentName,
   onOpenActions,
 }: {
   channel: WorkspaceChannelDto
   thread?: boolean
+  // アーカイブ欄では親から離れて並ぶため、どのチャンネルのスレッドかを添える。
+  parentName?: string | null
   onOpenActions?: () => void
 }) {
   const t = useT()
@@ -133,7 +137,7 @@ function WorkspaceChannelItem({
     <TouchableOpacity
       style={[
         styles.channelRow,
-        thread && styles.threadRow,
+        thread && !parentName && styles.threadRow,
         { borderBottomColor: palette.divider },
       ]}
       onPress={() =>
@@ -176,6 +180,11 @@ function WorkspaceChannelItem({
       >
         {channel.name ?? t('Untitled channel')}
       </Text>
+      {parentName && (
+        <Text style={[styles.parentChannelName, { color: palette.text4 }]} numberOfLines={1}>
+          # {parentName}
+        </Text>
+      )}
       {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
@@ -247,6 +256,7 @@ export default function ChatsScreen() {
   const createThread = useCreateChannelThread()
   const renameChannel = useRenameWorkspaceChannel()
   const deleteChannel = useDeleteWorkspaceChannel()
+  const setThreadArchived = useSetWorkspaceThreadArchived()
   const patchMilestone = usePatchProjectMilestone()
   const meQuery = useMe()
   const me = meQuery.data
@@ -265,7 +275,7 @@ export default function ChatsScreen() {
   const [expandedCompletedProjects, setExpandedCompletedProjects] = React.useState<Set<string>>(
     () => new Set(),
   )
-  const [showArchivedProjects, setShowArchivedProjects] = React.useState(false)
+  const [showArchived, setShowArchived] = React.useState(false)
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
   const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
   const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
@@ -306,15 +316,26 @@ export default function ChatsScreen() {
       ),
     }
   }, [channels])
-  const workspaceChannelGroups = React.useMemo(() => {
+  const { workspaceChannelGroups, archivedThreads } = React.useMemo(() => {
     const allChannels = workspaceChannelsQuery.data ?? []
-    return allChannels
-      .filter((channel) => channel.parentChannelId == null)
-      .map((channel) => ({
+    const parents = allChannels.filter((channel) => channel.parentChannelId == null)
+    return {
+      workspaceChannelGroups: parents.map((channel) => ({
         channel,
-        threads: allChannels.filter((candidate) => candidate.parentChannelId === channel.id),
-      }))
+        threads: allChannels.filter(
+          (candidate) => candidate.parentChannelId === channel.id && candidate.archived !== true,
+        ),
+      })),
+      // Web の ChannelList と同じく、アーカイブしたスレッドはアーカイブ済みプロジェクトと同じ欄に並べる。
+      archivedThreads: allChannels
+        .filter((channel) => channel.parentChannelId != null && channel.archived === true)
+        .map((thread) => ({
+          thread,
+          parentName: parents.find((parent) => parent.id === thread.parentChannelId)?.name ?? null,
+        })),
+    }
   }, [workspaceChannelsQuery.data])
+  const archivedCount = archivedProjects.length + archivedThreads.length
 
   const openChatTool = (path: string, title: string) => {
     router.push({ pathname: '/(app)/chat-tools', params: { path, title } })
@@ -382,6 +403,21 @@ export default function ChatsScreen() {
         },
       },
     ])
+  }
+
+  const setChannelArchived = (channel: WorkspaceChannelDto, archived: boolean) => {
+    if (setThreadArchived.isPending) return
+    setRowActionTarget(null)
+    setThreadArchived.mutate(
+      { channelId: channel.id, archived },
+      {
+        onError: (mutationError) =>
+          Alert.alert(
+            t('Could not update the archive'),
+            mutationError instanceof Error ? mutationError.message : t('Please try again.'),
+          ),
+      },
+    )
   }
 
   const setMilestoneCompleted = (channel: ProjectChannelDto, completed: boolean) => {
@@ -563,32 +599,40 @@ export default function ChatsScreen() {
         }
         ListFooterComponent={
           <>
-            {archivedProjects.length > 0 && (
+            {archivedCount > 0 && (
               <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    showArchivedProjects
-                      ? t('Hide archived projects')
-                      : t('Show archived projects')
-                  }
-                  accessibilityState={{ expanded: showArchivedProjects }}
-                  onPress={() => setShowArchivedProjects((current) => !current)}
+                  accessibilityLabel={showArchived ? t('Hide archived') : t('Show archived')}
+                  accessibilityState={{ expanded: showArchived }}
+                  onPress={() => setShowArchived((current) => !current)}
                   style={styles.collapsibleHeading}
                 >
                   <Ionicons
-                    name={showArchivedProjects ? 'chevron-down' : 'chevron-forward'}
+                    name={showArchived ? 'chevron-down' : 'chevron-forward'}
                     size={14}
                     color={palette.text4}
                   />
                   <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>{t('Archived')}</Text>
                   <Text style={[styles.sectionCount, { color: palette.text4 }]}>
-                    {archivedProjects.length}
+                    {archivedCount}
                   </Text>
                 </Pressable>
-                {showArchivedProjects &&
+                {showArchived &&
                   archivedProjects.map((channel) => (
                     <ChannelItem key={channel.channelId} channel={channel} />
+                  ))}
+                {showArchived &&
+                  archivedThreads.map(({ thread, parentName }) => (
+                    <WorkspaceChannelItem
+                      key={thread.id}
+                      channel={thread}
+                      thread
+                      parentName={parentName}
+                      {...(canManageChildChats
+                        ? { onOpenActions: () => setRowActionTarget({ type: 'workspace', channel: thread }) }
+                        : {})}
+                    />
                   ))}
               </>
             )}
@@ -1109,6 +1153,16 @@ export default function ChatsScreen() {
                     palette={palette}
                     onPress={() => openRenameChannel(rowActionTarget.channel)}
                   />
+                  {rowActionTarget.channel.parentChannelId != null && (
+                    <ActionSheetButton
+                      icon={rowActionTarget.channel.archived ? 'refresh-outline' : 'archive-outline'}
+                      label={rowActionTarget.channel.archived ? t('Unarchive') : t('Archive')}
+                      palette={palette}
+                      onPress={() =>
+                        setChannelArchived(rowActionTarget.channel, rowActionTarget.channel.archived !== true)
+                      }
+                    />
+                  )}
                   <ActionSheetButton
                     icon="trash-outline"
                     label={t('Delete')}
@@ -1220,6 +1274,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   threadRow: { paddingLeft: 34 },
+  parentChannelName: { fontSize: 12, fontWeight: '500', flexShrink: 0, maxWidth: '40%' },
   channelIcon: {
     width: 36,
     height: 36,

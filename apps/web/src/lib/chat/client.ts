@@ -114,6 +114,19 @@ async function renameWorkspaceChannel(channelId: string, name: string): Promise<
   return res.json()
 }
 
+async function setWorkspaceThreadArchived(channelId: string, archived: boolean): Promise<{ id: string; archived: boolean }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'アーカイブの変更に失敗しました')
+  }
+  return res.json()
+}
+
 async function deleteWorkspaceChannel(channelId: string): Promise<void> {
   const res = await fetchWithAuth(`/api/channels/${channelId}`, { method: 'DELETE' })
   if (!res.ok) {
@@ -319,6 +332,18 @@ export function useRenameWorkspaceChannel() {
     onSuccess: updated => {
       queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
         current?.map(channel => channel.id === updated.id ? { ...channel, name: updated.name } : channel),
+      )
+    },
+  })
+}
+
+export function useSetWorkspaceThreadArchived() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, archived }: { channelId: string; archived: boolean }) => setWorkspaceThreadArchived(channelId, archived),
+    onSuccess: updated => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.map(channel => channel.id === updated.id ? { ...channel, archived: updated.archived } : channel),
       )
     },
   })

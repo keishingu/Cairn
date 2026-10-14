@@ -16,6 +16,8 @@ export interface WorkspaceChannelDto {
   name: string | null
   parentChannelId?: string | null
   isPrivate: boolean
+  // 旧APIは返さないため、未定義は未アーカイブとして扱う。
+  archived?: boolean
   memberCount: number
   memberNames: string[]
   memberAvatarUrls: (string | null)[]
@@ -137,6 +139,31 @@ export function useRenameWorkspaceChannel() {
     onSuccess: (updated) => {
       qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
         current?.map((channel) => (channel.id === updated.id ? { ...channel, name: updated.name } : channel)),
+      )
+    },
+  })
+}
+
+export function useSetWorkspaceThreadArchived() {
+  const t = useT()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ channelId, archived }: { channelId: string; archived: boolean }) => {
+      const res = await apiFetch(`/api/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archived }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? t('Could not update the archive'))
+      }
+      return res.json() as Promise<{ id: string; archived: boolean }>
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData<WorkspaceChannelDto[]>(workspaceChannelsQueryKey, (current) =>
+        current?.map((channel) =>
+          channel.id === updated.id ? { ...channel, archived: updated.archived } : channel,
+        ),
       )
     },
   })

@@ -32,11 +32,13 @@ vi.mock('@cairn/db', () => ({
     workspaceId: 'channels.workspaceId',
     type: 'channels.type',
     parentChannelId: 'channels.parentChannelId',
+    archivedAt: 'channels.archivedAt',
   },
 }))
 vi.mock('drizzle-orm', () => ({
   and: vi.fn(() => 'and'),
   eq: vi.fn(() => 'eq'),
+  sql: vi.fn(() => 'sql'),
 }))
 
 const routeContext = { params: Promise.resolve({ channelId: 'channel-1' }) }
@@ -69,10 +71,14 @@ function deleteResult(result: unknown[]) {
 }
 
 function patchRequest(name: unknown = '新しい名前') {
+  return patchBodyRequest({ name })
+}
+
+function patchBodyRequest(body: unknown) {
   return new Request('http://localhost/api/channels/channel-1', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -167,6 +173,72 @@ describe('ワークスペースチャンネルの名称変更と削除', () => {
 
     expect(response.status).toBe(403)
     expect(mockDbUpdate).not.toHaveBeenCalled()
+  })
+
+  it('メンバーはスレッドをアーカイブでき、名前は変えない', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+      error: null,
+    })
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1' }])
+    const update = updateResult([{ id: 'thread-1', name: '準備', archived: true }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ id: 'thread-1', name: '準備', archived: true })
+    expect(mockRequireRole).toHaveBeenCalledWith('member', 'member')
+    expect(update.set).toHaveBeenCalledWith({ archivedAt: 'sql' })
+  })
+
+  it('スレッドのアーカイブを解除できる', async () => {
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1' }])
+    const update = updateResult([{ id: 'thread-1', name: '準備', archived: false }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: false }), routeContext)
+
+    expect(response.status).toBe(200)
+    expect(update.set).toHaveBeenCalledWith({ archivedAt: null })
+  })
+
+  it('親チャンネルはアーカイブできない', async () => {
+    selectResult([{ id: 'channel-1', parentChannelId: null }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'アーカイブできるのはスレッドだけです' })
+    expect(mockDbUpdate).not.toHaveBeenCalled()
+  })
+
+  it('ゲストはスレッドをアーカイブできない', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'guest' },
+      error: null,
+    })
+    mockRequireRole.mockReturnValue(new Response(null, { status: 403 }))
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1' }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
+
+    expect(response.status).toBe(403)
+    expect(mockRequireRole).toHaveBeenCalledWith('guest', 'member')
+    expect(mockDbUpdate).not.toHaveBeenCalled()
+  })
+
+  it('変更内容がない・真偽値でないアーカイブ指定は受け付けない', async () => {
+    const { PATCH } = await import('./route')
+
+    const empty = await PATCH(patchBodyRequest({}), routeContext)
+    expect(empty.status).toBe(400)
+
+    const invalid = await PATCH(patchBodyRequest({ archived: 'yes' }), routeContext)
+    expect(invalid.status).toBe(400)
+    expect(mockDbSelect).not.toHaveBeenCalled()
   })
 
   it('管理者はチャンネルを削除できる', async () => {

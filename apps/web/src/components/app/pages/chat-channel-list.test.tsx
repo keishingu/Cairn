@@ -27,6 +27,7 @@ const workspaceChannel = (overrides: Partial<WorkspaceChannelDto>): WorkspaceCha
   name: '雑談',
   parentChannelId: null,
   isPrivate: false,
+  archived: false,
   memberCount: 0,
   memberNames: [],
   memberAvatarUrls: [],
@@ -390,5 +391,53 @@ describe('ChannelList', () => {
     expect(screen.queryByRole('menuitem', { name: 'スレッドを作成' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
     expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(channel)
+  })
+  it('スレッドをメニューからアーカイブし、アーカイブ済みは親チャンネル名を添えてアーカイブ欄に並べる', () => {
+    const onSetWorkspaceThreadArchived = vi.fn()
+    const active = workspaceChannel({ id: 'thread-1', name: 'リリース準備', parentChannelId: 'workspace-channel-1' })
+    const archived = workspaceChannel({ id: 'thread-2', name: '旧企画', parentChannelId: 'workspace-channel-1', archived: true })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({}), active, archived]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceThreadArchived={onSetWorkspaceThreadArchived}
+      />,
+    )
+
+    expect(screen.queryByText('旧企画')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ' }))
+    expect(onSetWorkspaceThreadArchived).toHaveBeenCalledWith(active, true)
+
+    fireEvent.click(screen.getByRole('button', { name: /アーカイブ済み/ }))
+    expect(screen.getByText('旧企画')).toBeInTheDocument()
+    expect(screen.getByText('# 雑談')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '旧企画のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブを解除する' }))
+    expect(onSetWorkspaceThreadArchived).toHaveBeenCalledWith(archived, false)
+  })
+
+  it('開いているスレッドがアーカイブ済みならアーカイブ欄を展開する', () => {
+    render(
+      <ChannelList
+        channelId="thread-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[
+          workspaceChannel({}),
+          workspaceChannel({ id: 'thread-2', name: '旧企画', parentChannelId: 'workspace-channel-1', archived: true }),
+        ]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('旧企画')).toBeInTheDocument()
   })
 })
