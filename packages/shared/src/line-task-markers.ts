@@ -110,8 +110,8 @@ function shapeOf(node: Nodes): string {
   return `${node.type}(${node.children.map(shapeOf).join(',')})`
 }
 
-// 目印が表示されない（または意味を持たない）祖先
-const HIDDEN_ANCESTORS = new Set(['html', 'code', 'inlineCode', 'table', 'definition'])
+// 目印が表示されない（または意味を持たない）祖先。リンク内はラベルがリンクの一部になるため外す
+const HIDDEN_ANCESTORS = new Set(['html', 'code', 'inlineCode', 'table', 'definition', 'link', 'linkReference'])
 
 /** 実際に見える文章（paragraph / heading の text）の中にある目印の添字 */
 function visibleMarkerIndexes(root: Root): Set<number> {

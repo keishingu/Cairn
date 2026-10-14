@@ -60,6 +60,12 @@ describe('insertLineTaskMarkers', () => {
     expect(result.placed.every(Boolean)).toBe(true)
   })
 
+  test('複数行にまたがるリンクの文字列の途中には差し込まない', () => {
+    const content = ['[前半', '後半](https://example.com)', '[参照の前半', '後半][ref]', '', '[ref]: https://example.com'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 1, 2].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, true, false])
+  })
+
   test('引用の中のコードフェンスの内側には差し込まない', () => {
     const content = ['> ```', '> 確認する', '> ```', '> 引用の本文'].join('\n')
     const result = insertLineTaskMarkers(content, [1, 3].map(lineIndex => ({ lineIndex })))
