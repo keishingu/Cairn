@@ -81,11 +81,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         { status: 400 },
       )
     }
-    // 親チャンネルを隠すと配下スレッドの置き場がなくなるため、アーカイブはスレッドだけに限る。
-    if (hasArchived && !channel.parentChannelId) {
-      return NextResponse.json({ error: 'アーカイブできるのはスレッドだけです' }, { status: 400 })
-    }
-
     const forbidden = await authorizeChange(ctx.role, channel.parentChannelId, ctx.workspaceId, ctx.userId, channelId)
     if (forbidden) return forbidden
     if (hasArchived && !channel.archiveColumnReady) {

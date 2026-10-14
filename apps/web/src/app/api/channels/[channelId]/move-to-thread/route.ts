@@ -72,6 +72,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         type: channels.type,
         isPrivate: channels.isPrivate,
         parentChannelId: channels.parentChannelId,
+        archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''`,
       })
       .from(channels)
       .where(eq(channels.id, channelId))
@@ -85,6 +86,11 @@ export async function POST(req: Request, { params }: RouteContext) {
         { error: 'スレッドに切り出せるのは、ワークスペースのチャンネルのメッセージだけです' },
         { status: 400 },
       )
+    }
+
+    // アーカイブ済みチャンネルのスレッドは実質アーカイブ済みのため、移動先にも新規作成先にも使えない。
+    if (parent.archived) {
+      return NextResponse.json({ error: 'アーカイブ済みのチャンネルのスレッドには移動できません' }, { status: 400 })
     }
 
     // 移動元にも配信するトリガー（20261014060000）より先にデプロイされた間は、移動元を開いている人の
@@ -104,7 +110,14 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const result = await db.transaction(async (tx): Promise<MoveToThreadResult> => {
       // スレッド作成・メンバー追加・投稿と同じ親行で直列化し、移動中に新規の会話が割り込まないようにする。
-      await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, parent.id)).for('update').limit(1)
+      // アーカイブも同じ親行の UPDATE なので、ロック後に読み直せば確認から移動までの間のアーカイブも拒否できる。
+      const [lockedParent] = await tx
+        .select({ archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''` })
+        .from(channels)
+        .where(eq(channels.id, parent.id))
+        .for('update')
+        .limit(1)
+      if (lockedParent?.archived) throw new MoveToThreadError(400, 'アーカイブ済みのチャンネルのスレッドには移動できません')
 
       // 1. 移動するメッセージを確定する（削除済み・システムメッセージは対象外）
       const movable = and(eq(messages.channelId, parent.id), isNull(messages.deletedAt), ne(messages.messageType, 'system'))

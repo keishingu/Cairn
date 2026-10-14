@@ -213,14 +213,38 @@ describe('ワークスペースチャンネルの名称変更と削除', () => {
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 
-  it('親チャンネルはアーカイブできない', async () => {
-    selectResult([{ id: 'channel-1', parentChannelId: null }])
+  it('管理者は親チャンネルをアーカイブでき、解除もできる', async () => {
+    selectResult([{ id: 'channel-1', parentChannelId: null, archiveColumnReady: true }])
+    const archive = updateResult([{ id: 'channel-1', name: '全体', archived: true }])
     const { PATCH } = await import('./route')
 
     const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
 
-    expect(response.status).toBe(400)
-    await expect(response.json()).resolves.toEqual({ error: 'アーカイブできるのはスレッドだけです' })
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ id: 'channel-1', name: '全体', archived: true })
+    expect(mockRequireRole).toHaveBeenCalledWith('admin', 'admin')
+    expect(archive.set).toHaveBeenCalledWith({ archivedAt: 'sql' })
+
+    selectResult([{ id: 'channel-1', parentChannelId: null, archiveColumnReady: true }])
+    const unarchive = updateResult([{ id: 'channel-1', name: '全体', archived: false }])
+    const restored = await PATCH(patchBodyRequest({ archived: false }), routeContext)
+    expect(restored.status).toBe(200)
+    expect(unarchive.set).toHaveBeenCalledWith({ archivedAt: null })
+  })
+
+  it('メンバーは親チャンネルをアーカイブできない', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
+      error: null,
+    })
+    mockRequireRole.mockReturnValue(new Response(null, { status: 403 }))
+    selectResult([{ id: 'channel-1', parentChannelId: null, archiveColumnReady: true }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
+
+    expect(response.status).toBe(403)
+    expect(mockRequireRole).toHaveBeenCalledWith('member', 'admin')
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 

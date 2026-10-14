@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Avatar, AvatarStack, UnreadBadge, portalHostFor } from '../primitives'
-import { STORAGE_KEYS, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
+import { STORAGE_KEYS, chatArchivedThreadsCollapsedKey, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -47,7 +47,7 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
 
 // ─── ChatSidebarCollapsibleSection ────────────────────────────────
 
-// アーカイブ済みプロジェクト・スレッドなど、通常は隠しておきたいセクション。
+// アーカイブ済みのプロジェクト・チャンネルなど、通常は隠しておきたいセクション。
 // 既定で折りたたみ、開閉状態は localStorage に保存する。開いている会話を含むときは展開して見失わせない。
 const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS.chat_archived_collapsed, defaultCollapsed = true, containsActiveChannel = false, children }: {
   title: string
@@ -399,7 +399,7 @@ function workspaceRowActions({
         onSelect: () => onRename(channel),
       })
     }
-    if (isThread && onSetArchived) {
+    if (onSetArchived) {
       actions.push({
         label: channel.archived ? t('Unarchive') : t('Archive'),
         icon: channel.archived ? 'refresh' : 'archive',
@@ -419,25 +419,22 @@ function workspaceRowActions({
   return actions
 }
 
-const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actions, parentName }: {
+const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actions }: {
   channel: WorkspaceChannelDto
   active: boolean
   onSelectChannel: (id: string) => void
   isMobile: boolean
   actions: SidebarMenuAction[]
-  // アーカイブ欄では親から離れて並ぶため、どのチャンネルのスレッドかを添える。
-  parentName?: string
 }) => {
   const t = useT()
   const name = channel.name ?? t('Untitled thread')
   return (
-  <div style={{ paddingLeft: isMobile || parentName ? 0 : 18 }}>
+  <div style={{ paddingLeft: isMobile ? 0 : 18 }}>
     <ChatSidebarItem
       active={active}
       onClick={() => onSelectChannel(channel.id)}
       prefix="┗"
       label={name}
-      {...(parentName ? { dateMeta: `# ${parentName}` } : {})}
       badge={channel.unreadCount}
       mobile={isMobile}
       memberNames={channel.memberNames}
@@ -655,6 +652,79 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
   )
 }
 
+const WorkspaceChannelGroup = ({ channel, threads, archivedThreads, channelId, onSelectChannel, isMobile, channelActions, threadActions }: {
+  channel: WorkspaceChannelDto
+  threads: WorkspaceChannelDto[]
+  archivedThreads: WorkspaceChannelDto[]
+  channelId: string | null
+  onSelectChannel: (id: string) => void
+  isMobile: boolean
+  channelActions: SidebarMenuAction[]
+  threadActions: (thread: WorkspaceChannelDto) => SidebarMenuAction[]
+}) => {
+  const t = useT()
+  const storageKey = chatArchivedThreadsCollapsedKey(channel.id)
+  const containsActiveChannel = archivedThreads.some(thread => thread.id === channelId)
+  const [collapsed, setCollapsed] = React.useState(true)
+
+  React.useEffect(() => {
+    if (containsActiveChannel) {
+      setCollapsed(false)
+      return
+    }
+    const saved = localStorage.getItem(storageKey)
+    if (saved !== null) setCollapsed(saved === 'true')
+  }, [containsActiveChannel, storageKey])
+
+  const toggle = () => setCollapsed(previous => {
+    const next = !previous
+    localStorage.setItem(storageKey, String(next))
+    return next
+  })
+
+  const actions = [...channelActions]
+  if (archivedThreads.length > 0) {
+    actions.push({
+      label: t('Archived threads: {state}', { state: collapsed ? t('Show') : t('Hide') }),
+      icon: collapsed ? 'eye' : 'eye-off',
+      onSelect: toggle,
+      restoreFocus: true,
+    })
+  }
+
+  return (
+    <>
+      <ChatSidebarItem
+        active={channelId === channel.id}
+        onClick={() => onSelectChannel(channel.id)}
+        prefix={channel.isPrivate ? 'lock' : '#'}
+        label={channel.name ?? ''}
+        badge={channel.unreadCount}
+        mobile={isMobile}
+        memberNames={channel.memberNames}
+        memberCount={channel.memberCount}
+        action={actions.length > 0 ? (
+          <SidebarCreateMenu
+            ownerLabel={channel.name ?? t('Untitled channel')}
+            actions={actions}
+            isMobile={isMobile}
+          />
+        ) : undefined}
+      />
+      {[...threads, ...(collapsed ? [] : archivedThreads)].map(thread => (
+        <WorkspaceThreadItem
+          key={thread.id}
+          channel={thread}
+          active={channelId === thread.id}
+          onSelectChannel={onSelectChannel}
+          isMobile={isMobile}
+          actions={threadActions(thread)}
+        />
+      ))}
+    </>
+  )
+}
+
 // ─── ChannelList ──────────────────────────────────────────────────
 
 export interface ChannelListProps {
@@ -673,7 +743,7 @@ export interface ChannelListProps {
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   onCreateThread?: (channel: { id: string; name: string }) => void
   onRenameWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
-  onSetWorkspaceThreadArchived?: (thread: WorkspaceChannelDto, archived: boolean) => void
+  onSetWorkspaceChannelArchived?: (channel: WorkspaceChannelDto, archived: boolean) => void
   onDeleteWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
   canManageWorkspaceChannel?: boolean
 }
@@ -681,7 +751,7 @@ export interface ChannelListProps {
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceThreadArchived, onDeleteWorkspaceChannel,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
   canManageWorkspaceChannel = false,
 }: ChannelListProps) => {
   const t = useT()
@@ -698,21 +768,35 @@ export const ChannelList = ({
       }
     })
   const parentWorkspaceChannels = workspaceChannels.filter(channel => channel.parentChannelId === null)
-  const workspaceChannelGroups = parentWorkspaceChannels.map(channel => ({
+  const activeParentChannels = parentWorkspaceChannels.filter(channel => !channel.archived)
+  const archivedParentChannels = parentWorkspaceChannels.filter(channel => channel.archived)
+  // アーカイブ済みチャンネルの配下スレッドはサイドバーに出さない（親と一緒にアーカイブ扱い）。
+  const workspaceChannelGroups = activeParentChannels.map(channel => {
+    const children = workspaceChannels.filter(candidate => candidate.parentChannelId === channel.id)
+    return {
+      channel,
+      threads: children.filter(candidate => !candidate.archived),
+      archivedThreads: children.filter(candidate => candidate.archived),
+    }
+  })
+  const archivedProjectsContainActive = channelId !== null && archivedProjectChannels.some(c => c.channelId === channelId)
+  const archivedChannelsContainActive = channelId !== null && archivedParentChannels.some(c => c.id === channelId)
+  const parentChannelActions = (channel: WorkspaceChannelDto, withCreateThread: boolean) => workspaceRowActions({
     channel,
-    threads: workspaceChannels.filter(candidate => candidate.parentChannelId === channel.id && !candidate.archived),
-  }))
-  const archivedThreads = workspaceChannels.filter(channel => channel.parentChannelId !== null && channel.archived)
-  const archivedCount = archivedProjectChannels.length + archivedThreads.length
-  const archivedContainsActive = channelId !== null && (
-    archivedProjectChannels.some(c => c.channelId === channelId) || archivedThreads.some(c => c.id === channelId)
-  )
+    isThread: false,
+    canManageParent: canManageWorkspaceChannel,
+    ...(withCreateThread && onCreateThread ? { onCreateThread } : {}),
+    ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+    ...(onSetWorkspaceChannelArchived ? { onSetArchived: onSetWorkspaceChannelArchived } : {}),
+    ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+    t,
+  })
   const threadActions = (thread: WorkspaceChannelDto) => workspaceRowActions({
     channel: thread,
     isThread: true,
     canManageParent: canManageWorkspaceChannel,
     ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
-    ...(onSetWorkspaceThreadArchived ? { onSetArchived: onSetWorkspaceThreadArchived } : {}),
+    ...(onSetWorkspaceChannelArchived ? { onSetArchived: onSetWorkspaceChannelArchived } : {}),
     ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
     t,
   })
@@ -734,71 +818,51 @@ export const ChannelList = ({
         />
       ))}
     </ChatSidebarSection>
-    {archivedCount > 0 && (
-      <ChatSidebarCollapsibleSection title={t('Archived')} count={archivedCount} containsActiveChannel={archivedContainsActive}>
+    {archivedProjectChannels.length > 0 && (
+      <ChatSidebarCollapsibleSection title={t('Archived projects')} count={archivedProjectChannels.length} containsActiveChannel={archivedProjectsContainActive}>
         {archivedProjectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
-        {archivedThreads.map(thread => {
-          const parentName = parentWorkspaceChannels.find(channel => channel.id === thread.parentChannelId)?.name
+      </ChatSidebarCollapsibleSection>
+    )}
+    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
+      {workspaceChannelGroups.map(({ channel, threads, archivedThreads }) => (
+        <WorkspaceChannelGroup
+          key={channel.id}
+          channel={channel}
+          threads={threads}
+          archivedThreads={archivedThreads}
+          channelId={channelId}
+          onSelectChannel={onSelectChannel}
+          isMobile={isMobile}
+          channelActions={parentChannelActions(channel, true)}
+          threadActions={threadActions}
+        />
+      ))}
+    </ChatSidebarSection>
+    {archivedParentChannels.length > 0 && (
+      <ChatSidebarCollapsibleSection title={t('Archived channels')} count={archivedParentChannels.length} storageKey={STORAGE_KEYS.chat_archived_channels_collapsed} containsActiveChannel={archivedChannelsContainActive}>
+        {archivedParentChannels.map(channel => {
+          const actions = parentChannelActions(channel, false)
           return (
-            <WorkspaceThreadItem
-              key={thread.id}
-              channel={thread}
-              active={channelId === thread.id}
-              onSelectChannel={onSelectChannel}
-              isMobile={isMobile}
-              actions={threadActions(thread)}
-              {...(parentName ? { parentName } : {})}
+            <ChatSidebarItem
+              key={channel.id}
+              active={channelId === channel.id}
+              onClick={() => onSelectChannel(channel.id)}
+              prefix={channel.isPrivate ? 'lock' : '#'}
+              label={channel.name ?? ''}
+              badge={channel.unreadCount}
+              mobile={isMobile}
+              memberNames={channel.memberNames}
+              memberCount={channel.memberCount}
+              action={actions.length > 0 ? (
+                <SidebarCreateMenu ownerLabel={channel.name ?? t('Untitled channel')} actions={actions} isMobile={isMobile} />
+              ) : undefined}
             />
           )
         })}
       </ChatSidebarCollapsibleSection>
     )}
-    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
-      {workspaceChannelGroups.map(({ channel, threads }) => {
-        const channelActions = workspaceRowActions({
-          channel,
-          isThread: false,
-          canManageParent: canManageWorkspaceChannel,
-          ...(onCreateThread ? { onCreateThread } : {}),
-          ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
-          ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
-          t,
-        })
-        return (
-        <React.Fragment key={channel.id}>
-          <ChatSidebarItem
-            active={channelId === channel.id}
-            onClick={() => onSelectChannel(channel.id)}
-            prefix={channel.isPrivate ? 'lock' : '#'}
-            label={channel.name ?? ''}
-            badge={channel.unreadCount}
-            mobile={isMobile}
-            memberNames={channel.memberNames}
-            memberCount={channel.memberCount}
-            action={channelActions.length > 0 ? (
-              <SidebarCreateMenu
-                ownerLabel={channel.name ?? t('Untitled channel')}
-                actions={channelActions}
-                isMobile={isMobile}
-              />
-            ) : undefined}
-          />
-          {threads.map(thread => (
-            <WorkspaceThreadItem
-              key={thread.id}
-              channel={thread}
-              active={channelId === thread.id}
-              onSelectChannel={onSelectChannel}
-              isMobile={isMobile}
-              actions={threadActions(thread)}
-            />
-          ))}
-        </React.Fragment>
-        )
-      })}
-    </ChatSidebarSection>
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',

@@ -495,8 +495,8 @@ describe('ChannelList', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
     expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(channel)
   })
-  it('スレッドをメニューからアーカイブし、アーカイブ済みは親チャンネル名を添えてアーカイブ欄に並べる', () => {
-    const onSetWorkspaceThreadArchived = vi.fn()
+  it('スレッドをメニューからアーカイブし、アーカイブ済みスレッドは親チャンネルのメニューで表示を切り替える', () => {
+    const onSetWorkspaceChannelArchived = vi.fn()
     const active = workspaceChannel({ id: 'thread-1', name: 'リリース準備', parentChannelId: 'workspace-channel-1' })
     const archived = workspaceChannel({ id: 'thread-2', name: '旧企画', parentChannelId: 'workspace-channel-1', archived: true })
     render(
@@ -508,24 +508,30 @@ describe('ChannelList', () => {
         dms={[]}
         members={[]}
         onStartDm={vi.fn()}
-        onSetWorkspaceThreadArchived={onSetWorkspaceThreadArchived}
+        onSetWorkspaceChannelArchived={onSetWorkspaceChannelArchived}
       />,
     )
 
     expect(screen.queryByText('旧企画')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /アーカイブ済み/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ' }))
-    expect(onSetWorkspaceThreadArchived).toHaveBeenCalledWith(active, true)
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(active, true)
 
-    fireEvent.click(screen.getByRole('button', { name: /アーカイブ済み/ }))
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ済みスレッドを表示' }))
     expect(screen.getByText('旧企画')).toBeInTheDocument()
-    expect(screen.getByText('# 雑談')).toBeInTheDocument()
+    expect(localStorage.getItem('cairn:chat_archived_threads_collapsed_workspace-channel-1')).toBe('false')
     fireEvent.click(screen.getByRole('button', { name: '旧企画のメニュー' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブを解除する' }))
-    expect(onSetWorkspaceThreadArchived).toHaveBeenCalledWith(archived, false)
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(archived, false)
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ済みスレッドを非表示' }))
+    expect(screen.queryByText('旧企画')).not.toBeInTheDocument()
   })
 
-  it('開いているスレッドがアーカイブ済みならアーカイブ欄を展開する', () => {
+  it('開いているスレッドがアーカイブ済みなら親チャンネルの下で展開する', () => {
     render(
       <ChannelList
         channelId="thread-2"
@@ -542,5 +548,94 @@ describe('ChannelList', () => {
     )
 
     expect(screen.getByText('旧企画')).toBeInTheDocument()
+  })
+
+  it('管理者はチャンネルをアーカイブでき、アーカイブ済みチャンネルは配下スレッドを出さずアーカイブ欄から解除できる', () => {
+    const onSetWorkspaceChannelArchived = vi.fn()
+    const channel = workspaceChannel({})
+    const archivedChannel = workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })
+    const orphanThread = workspaceChannel({ id: 'thread-9', name: '旧部署の話', parentChannelId: 'workspace-channel-2' })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[channel, archivedChannel, orphanThread]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceChannelArchived={onSetWorkspaceChannelArchived}
+        canManageWorkspaceChannel
+      />,
+    )
+
+    expect(screen.queryByText('旧部署')).not.toBeInTheDocument()
+    expect(screen.queryByText('旧部署の話')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(channel, true)
+
+    fireEvent.click(screen.getByRole('button', { name: /アーカイブ済みチャンネル/ }))
+    expect(screen.getByText('旧部署')).toBeInTheDocument()
+    expect(screen.queryByText('旧部署の話')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '旧部署のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブを解除する' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(archivedChannel, false)
+  })
+
+  it('管理者以外にはチャンネルのアーカイブ操作を出さない', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({})]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceChannelArchived={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '雑談のメニュー' })).not.toBeInTheDocument()
+  })
+
+  it('開いているチャンネルがアーカイブ済みならアーカイブ済みチャンネル欄を展開する', () => {
+    render(
+      <ChannelList
+        channelId="workspace-channel-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('旧部署')).toBeInTheDocument()
+  })
+
+  it('セクションはプロジェクト・アーカイブ済みプロジェクト・チャンネル・アーカイブ済みチャンネルの順に並ぶ', () => {
+    render(
+      <ChannelList
+        channelId="workspace-channel-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[
+          projectChannel({}),
+          projectChannel({ channelId: 'project-channel-2', projectId: 'project-2', projectTitle: '旧プロジェクト', archived: true }),
+        ]}
+        workspaceChannels={[workspaceChannel({}), workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    const text = document.body.textContent ?? ''
+    const order = ['プロジェクトA', 'アーカイブ済みプロジェクト', '雑談', 'アーカイブ済みチャンネル', 'アプリ']
+      .map(label => text.indexOf(label))
+    expect(order.every(index => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 })

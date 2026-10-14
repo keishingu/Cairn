@@ -86,11 +86,18 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const chatsActive = current.startsWith('chats/')
   // チャットタブのバッジは一覧画面（chats/index.tsx）が表示する3系統
   // （プロジェクトチャンネル・ワークスペースチャンネル・DM）すべてを合算する。
-  // アーカイブ済みスレッドは折りたたみで隠れているため含めない
+  // アーカイブ済みのチャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
+  // 折りたたみで隠れているため含めない
+  const archivedParentIds = new Set(
+    (workspaceChannels ?? [])
+      .filter((channel) => channel.archived === true && channel.parentChannelId == null)
+      .map((channel) => channel.id),
+  )
   const unreadCount =
     (channels ?? []).reduce((total, channel) => total + channel.unreadCount, 0) +
     (workspaceChannels ?? [])
       .filter((channel) => channel.archived !== true)
+      .filter((channel) => channel.parentChannelId == null || !archivedParentIds.has(channel.parentChannelId))
       .reduce((total, channel) => total + channel.unreadCount, 0) +
     (dms ?? []).reduce((total, dm) => total + dm.unreadCount, 0)
   const closeOverlays = () => {

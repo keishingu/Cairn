@@ -4,6 +4,10 @@ import { buildMoveBody, canMoveMessageToThread } from './move-to-thread'
 const parentChannel = { parentChannelId: null }
 
 describe('スレッドに切り出すメニューの表示条件', () => {
+  it('アーカイブ済みチャンネルでは出さない', () => {
+    expect(canMoveMessageToThread({ channelType: 'workspace', workspaceChannel: { parentChannelId: null, archived: true }, role: 'admin', messageType: 'text' })).toBe(false)
+  })
+
   it('親ワークスペースチャンネルの通常メッセージを member 以上が開いたときに出す', () => {
     for (const role of ['owner', 'admin', 'member'] as const) {
       expect(canMoveMessageToThread({ channelType: 'workspace', workspaceChannel: parentChannel, role, messageType: 'text' })).toBe(true)

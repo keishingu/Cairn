@@ -62,12 +62,15 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     const threadId = await db.transaction(async tx => {
       // メンバー追加と子スレッド作成を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
-      await tx
-        .select({ id: channels.id })
+      // アーカイブも同じ親行の UPDATE なので、ロック後に読めば作成直前のアーカイブも拒否できる。
+      const [lockedParent] = await tx
+        .select({ archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''` })
         .from(channels)
         .where(eq(channels.id, parent.id))
         .for('update')
         .limit(1)
+      // アーカイブ済みチャンネルの下に作ったスレッドは親と一緒に隠れてしまうため作らせない。
+      if (lockedParent?.archived) return null
 
       const [thread] = await tx
         .insert(channels)
@@ -97,6 +100,9 @@ export async function POST(req: Request, { params }: RouteContext) {
       return thread.id
     })
 
+    if (threadId === null) {
+      return NextResponse.json({ error: 'アーカイブ済みのチャンネルにはスレッドを作成できません' }, { status: 400 })
+    }
     return NextResponse.json({ id: threadId }, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/threads POST] DB error:', err)

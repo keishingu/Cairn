@@ -68,7 +68,7 @@ function selectResult(result: unknown[]) {
   mockDbSelect.mockReturnValue(builder)
 }
 
-function setupTransaction(memberRows: { userId: string }[] = []) {
+function setupTransaction(memberRows: { userId: string }[] = [], lockedParent: Record<string, unknown> = { archived: false }) {
   mockTxInsert.mockReset()
   const childInsert = {
     values: vi.fn().mockReturnThis(),
@@ -81,7 +81,7 @@ function setupTransaction(memberRows: { userId: string }[] = []) {
     onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
   }
   mockTxInsert.mockReturnValueOnce(childInsert).mockReturnValueOnce(memberInsert)
-  const selectResults = [[{ id: 'channel-1' }], memberRows]
+  const selectResults = [[lockedParent], memberRows]
   mockTxSelect.mockImplementation(() => {
     const result = selectResults.shift() ?? []
     const builder = {
@@ -125,6 +125,18 @@ describe('POST /api/channels/[channelId]/threads', () => {
     expect(childInsert.values).toHaveBeenCalledWith(expect.objectContaining({
       parentChannelId: 'channel-1', name: 'リリース準備', isPrivate: false,
     }))
+  })
+
+  it('アーカイブ済みチャンネルにはスレッドを作らない', async () => {
+    selectResult([parentRow()])
+    const { childInsert } = setupTransaction([], { archived: true })
+    const { POST } = await import('./route')
+
+    const response = await POST(request(), routeContext)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'アーカイブ済みのチャンネルにはスレッドを作成できません' })
+    expect(childInsert.values).not.toHaveBeenCalled()
   })
 
   it('公開チャンネルでも親の参加メンバーをスレッドへ引き継ぐ', async () => {
