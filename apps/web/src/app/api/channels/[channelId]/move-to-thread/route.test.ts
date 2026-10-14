@@ -332,11 +332,15 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(sqlText).toContain('UPDATE files AS f')
     expect(sqlText).toContain("m.content ~ ('/d/' || (f.metadata->>'docId') || '([^A-Za-z0-9_-]|$)')")
     expect(sqlText).toContain('INSERT INTO channel_read_states')
-    expect(sqlText).toContain('least(channel_read_states.last_read_at, excluded.last_read_at)')
+    // 既存スレッドに元からあるメッセージの未読を、親の既読位置で消さない
+    expect(sqlText).toContain('least(crs.last_read_at, existing.before_first)')
+    // スレッドを読んだ記録がある人は、その記録と親の既読位置の古い方を残す
+    expect(sqlText).toContain('least(channel_read_states.last_read_at, (SELECT p.last_read_at FROM channel_read_states p')
     expect(sqlText).toContain('SET unread_mention_count')
     expect(sqlText).toContain('INSERT INTO ai_scan_states')
     // 既存スレッドの巡回位置が新しくても、移動したメッセージを読み飛ばさないよう古い方へ巻き戻す
-    expect(sqlText).toContain('least(ai_scan_states.last_scanned_at, excluded.last_scanned_at)')
+    expect(sqlText).toContain('least(s.last_scanned_at, existing.before_first)')
+    expect(sqlText).toContain('least(ai_scan_states.last_scanned_at, (SELECT p.last_scanned_at FROM ai_scan_states p')
     // 移動した根拠メッセージの再評価予約は、親から外してスレッドへ移す
     expect(sqlText).toContain('next_unanswered_ask_message_id IN')
     expect(sqlText).toContain('SET next_unanswered_ask_check_at = NULL, next_unanswered_ask_message_id = NULL')

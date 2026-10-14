@@ -256,16 +256,29 @@ export async function POST(req: Request, { params }: RouteContext) {
       // 4. 既読位置: 親での既読位置をスレッドへ引き継ぎ、移動したメッセージが未読扱いに戻らないようにする。
       // 既存スレッドに既読位置がある場合は古い方を残す。新しい方にするとスレッドの未読を見落とさせるため。
       await tx.execute(sql`
+        WITH existing AS (
+          -- 既存スレッドに元からあるメッセージ。親の既読位置をそのまま写すと、これらの未読が既読扱いになる。
+          SELECT min(created_at) - interval '1 microsecond' AS before_first
+          FROM messages
+          WHERE channel_id = ${threadId} AND NOT (id IN ${movedIds})
+        )
         INSERT INTO channel_read_states (user_id, channel_id, last_read_at, last_read_message_id, unread_mention_count, updated_at)
-        SELECT user_id, ${threadId}::uuid, last_read_at,
-               CASE WHEN last_read_message_id IN ${movedIds} THEN last_read_message_id ELSE NULL END,
+        SELECT crs.user_id, ${threadId}::uuid,
+               least(crs.last_read_at, existing.before_first),
+               CASE
+                 WHEN existing.before_first < crs.last_read_at THEN NULL
+                 WHEN crs.last_read_message_id IN ${movedIds} THEN crs.last_read_message_id
+                 ELSE NULL
+               END,
                0, now()
-        FROM channel_read_states
-        WHERE channel_id = ${parent.id}
+        FROM channel_read_states crs, existing
+        WHERE crs.channel_id = ${parent.id}
+        -- スレッドを読んだ記録がある人は、その記録と親の既読位置の古い方を残す（元からあるメッセージの手前までは戻さない）。
         ON CONFLICT (user_id, channel_id) DO UPDATE SET
-          last_read_at = least(channel_read_states.last_read_at, excluded.last_read_at),
+          last_read_at = least(channel_read_states.last_read_at, (SELECT p.last_read_at FROM channel_read_states p WHERE p.channel_id = ${parent.id} AND p.user_id = excluded.user_id)),
           last_read_message_id = CASE
-            WHEN excluded.last_read_at < channel_read_states.last_read_at THEN excluded.last_read_message_id
+            WHEN (SELECT p.last_read_at FROM channel_read_states p WHERE p.channel_id = ${parent.id} AND p.user_id = excluded.user_id) < channel_read_states.last_read_at
+              THEN CASE WHEN (SELECT p.last_read_message_id FROM channel_read_states p WHERE p.channel_id = ${parent.id} AND p.user_id = excluded.user_id) IN ${movedIds} THEN (SELECT p.last_read_message_id FROM channel_read_states p WHERE p.channel_id = ${parent.id} AND p.user_id = excluded.user_id) ELSE NULL END
             ELSE channel_read_states.last_read_message_id
           END,
           updated_at = now()
@@ -290,23 +303,35 @@ export async function POST(req: Request, { params }: RouteContext) {
       // 既存スレッドの巡回位置の方が新しいと、親で未巡回だった移動メッセージが読まれないまま残るため古い方へ巻き戻す。
       // 再評価予約は根拠メッセージのあるチャンネルでしか読み直せないため、移動した根拠の予約は親から外してスレッドへ移す。
       await tx.execute(sql`
+        WITH existing AS (
+          -- 巡回記録のない既存スレッドに元からあるメッセージを、親の巡回位置で読み飛ばさない。
+          SELECT min(created_at) - interval '1 microsecond' AS before_first
+          FROM messages
+          WHERE channel_id = ${threadId} AND NOT (id IN ${movedIds})
+        )
         INSERT INTO ai_scan_states (
           channel_id, last_scanned_message_id, last_scanned_at,
           next_unanswered_ask_check_at, next_unanswered_ask_message_id
         )
         SELECT ${threadId}::uuid,
-               CASE WHEN last_scanned_message_id IN ${movedIds} THEN last_scanned_message_id ELSE NULL END,
-               last_scanned_at,
-               CASE WHEN next_unanswered_ask_message_id IN ${movedIds} THEN next_unanswered_ask_check_at ELSE NULL END,
-               CASE WHEN next_unanswered_ask_message_id IN ${movedIds} THEN next_unanswered_ask_message_id ELSE NULL END
-        FROM ai_scan_states
-        WHERE channel_id = ${parent.id}
+               CASE
+                 WHEN existing.before_first < s.last_scanned_at THEN NULL
+                 WHEN s.last_scanned_message_id IN ${movedIds} THEN s.last_scanned_message_id
+                 ELSE NULL
+               END,
+               least(s.last_scanned_at, existing.before_first),
+               CASE WHEN s.next_unanswered_ask_message_id IN ${movedIds} THEN s.next_unanswered_ask_check_at ELSE NULL END,
+               CASE WHEN s.next_unanswered_ask_message_id IN ${movedIds} THEN s.next_unanswered_ask_message_id ELSE NULL END
+        FROM ai_scan_states s, existing
+        WHERE s.channel_id = ${parent.id}
+        -- 巡回記録のあるスレッドは、その記録と親の巡回位置の古い方を残す（元からあるメッセージの手前までは戻さない）。
         ON CONFLICT (channel_id) DO UPDATE SET
           last_scanned_message_id = CASE
-            WHEN excluded.last_scanned_at < ai_scan_states.last_scanned_at THEN excluded.last_scanned_message_id
+            WHEN (SELECT p.last_scanned_at FROM ai_scan_states p WHERE p.channel_id = ${parent.id}) < ai_scan_states.last_scanned_at
+              THEN CASE WHEN (SELECT p.last_scanned_message_id FROM ai_scan_states p WHERE p.channel_id = ${parent.id}) IN ${movedIds} THEN (SELECT p.last_scanned_message_id FROM ai_scan_states p WHERE p.channel_id = ${parent.id}) ELSE NULL END
             ELSE ai_scan_states.last_scanned_message_id
           END,
-          last_scanned_at = least(ai_scan_states.last_scanned_at, excluded.last_scanned_at),
+          last_scanned_at = least(ai_scan_states.last_scanned_at, (SELECT p.last_scanned_at FROM ai_scan_states p WHERE p.channel_id = ${parent.id})),
           next_unanswered_ask_check_at = CASE
             WHEN excluded.next_unanswered_ask_message_id IS NOT NULL
               AND (ai_scan_states.next_unanswered_ask_check_at IS NULL
