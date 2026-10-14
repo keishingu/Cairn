@@ -48,7 +48,8 @@ jobs:
           # db push は適用済みのタイムスタンプを飛ばすため、既存ファイルの書き換えは検証も反映もされない。
           # 変更は新しいマイグレーションで行う。どの環境にも未適用のファイルを直すときだけ
           # PR に migration-edit-ok ラベルを付けて通す。
-          edited=$(git diff --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations)
+          # --no-renames: 名前変更（タイムスタンプ変更で再適用される等）も削除+追加として扱い、削除側で検出する
+          edited=$(git diff --no-renames --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations)
           if [ -n "$edited" ]; then
             if [ "$ALLOW_EDIT" = "true" ]; then
               echo "::warning::既存のマイグレーションが変更されています（migration-edit-ok ラベルにより許可）: $edited"
@@ -66,6 +67,9 @@ jobs:
           # base 時点のマイグレーションだけを置いた状態でローカル DB を起動・適用する
           rm -rf supabase/migrations
           git checkout "$BASE_SHA" -- supabase/migrations
+          # migration-edit-ok で許可した書き換え対象は base の旧版を当てずに外し、
+          # 次の db push で書き換え後の SQL を実際に検証させる（旧版を当てると適用済み扱いで飛ばされる）
+          git diff --no-renames --name-only --diff-filter=M "$BASE_SHA" HEAD -- supabase/migrations | xargs -r rm -f
           supabase db start
           supabase migration up --local --include-all
 
