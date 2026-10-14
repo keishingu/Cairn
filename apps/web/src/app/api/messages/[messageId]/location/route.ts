@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessChannel } from '@/lib/permissions'
 
@@ -14,6 +15,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { messageId } = await params
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
+  // パーマリンクの ?m= から来る値なので、UUID でなければ DB に渡さず見つからない扱いにする
+  if (!z.string().uuid().safeParse(messageId).success) {
+    return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+  }
 
   try {
     const { db, messages } = await import('@cairn/db')

@@ -17,7 +17,8 @@ vi.mock('@cairn/db', () => ({
 }))
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn(), isNull: vi.fn() }))
 
-const routeContext = { params: Promise.resolve({ messageId: 'message-1' }) }
+const MESSAGE_ID = '11111111-1111-4111-8111-111111111111'
+const routeContext = { params: Promise.resolve({ messageId: MESSAGE_ID }) }
 
 function selectResult(result: unknown[]) {
   mockDbSelect.mockReturnValue({
@@ -71,5 +72,17 @@ describe('メッセージの現在地の取得', () => {
 
     expect(response.status).toBe(404)
     expect(mockCanAccessChannel).not.toHaveBeenCalled()
+  })
+
+  it('UUID でない ID は DB に問い合わせず 404 にする', async () => {
+    const { GET } = await import('./route')
+
+    const response = await GET(
+      new Request('http://localhost/api/messages/not-a-uuid/location'),
+      { params: Promise.resolve({ messageId: 'not-a-uuid' }) },
+    )
+
+    expect(response.status).toBe(404)
+    expect(mockDbSelect).not.toHaveBeenCalled()
   })
 })

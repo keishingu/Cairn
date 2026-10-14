@@ -337,6 +337,8 @@ describe('メッセージのスレッドへの切り出し', () => {
     // スレッドを読んだ記録がある人は、親で未読だった移動メッセージの最古の直前までだけ戻す（スレッドで読んだ分を未読に戻さない）
     expect(sqlText).toContain('least(channel_read_states.last_read_at, (')
     expect(sqlText).toContain('AND m.created_at > p.last_read_at')
+    // 親の既読記録がない人も、スレッドで既読済みの位置から移動メッセージの手前まで戻す
+    expect(sqlText).toContain('UPDATE channel_read_states AS t')
     expect(sqlText).toContain('SET unread_mention_count')
     expect(sqlText).toContain('INSERT INTO ai_scan_states')
     // 既存スレッドの巡回位置が新しくても、移動したメッセージを読み飛ばさないよう古い方へ巻き戻す

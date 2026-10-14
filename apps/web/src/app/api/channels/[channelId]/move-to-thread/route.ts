@@ -295,6 +295,25 @@ export async function POST(req: Request, { params }: RouteContext) {
           END,
           updated_at = now()
       `)
+      // 親を開いたことがない人（親の既読記録なし）には、移動したメッセージはすべて未読だった。
+      // 上の引き継ぎでは行が作られないため、スレッドの既読位置が新しければ移動メッセージの最古の直前まで戻す。
+      await tx.execute(sql`
+        UPDATE channel_read_states AS t
+        SET last_read_at = moved.before_first,
+            last_read_message_id = NULL,
+            updated_at = now()
+        FROM (
+          SELECT min(created_at) - interval '1 microsecond' AS before_first
+          FROM messages
+          WHERE id IN ${movedIds}
+        ) AS moved
+        WHERE t.channel_id = ${threadId}
+          AND t.last_read_at > moved.before_first
+          AND NOT EXISTS (
+            SELECT 1 FROM channel_read_states p
+            WHERE p.channel_id = ${parent.id} AND p.user_id = t.user_id
+          )
+      `)
       // 通知の付け替え後に、親とスレッド両方のメンション未読数を /api/channels/[channelId]/read と同じ式で数え直す。
       await tx.execute(sql`
         UPDATE channel_read_states AS crs
@@ -308,7 +327,6 @@ export async function POST(req: Request, { params }: RouteContext) {
             ),
             updated_at = now()
         WHERE crs.channel_id IN (${parent.id}, ${threadId})
-          AND crs.user_id IN (SELECT user_id FROM channel_read_states WHERE channel_id = ${parent.id})
       `)
 
       // 5. AI 巡回: 巡回済みの範囲と未回答依頼の再評価予約をスレッドへ引き継ぐ。
