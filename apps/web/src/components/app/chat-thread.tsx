@@ -149,7 +149,28 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+type MakeTaskResult = { id: string; created: boolean }
+
+/** メッセージをタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
+export async function makeTaskFromMessage(messageId: string, t: TranslateFn): Promise<boolean> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`, { method: 'POST' })
+    const body = await res.json().catch(() => null) as (Partial<MakeTaskResult> & { error?: unknown }) | null
+    if (!res.ok || !body?.id) {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return false
+    }
+    toast.success(body.created ? t('Added to tasks') : t('This message is already a task'), {
+      action: { label: t('Open'), href: `/tasks?taskId=${encodeURIComponent(body.id)}` },
+    })
+    return true
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return false
+  }
+}
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -176,6 +197,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
+  onMakeTask: (messageId: string) => void
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
@@ -310,6 +332,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
@@ -1771,6 +1794,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation, leaveHistoryView])
 
+  const handleMakeTask = React.useCallback((messageId: string) => {
+    if (messageId.startsWith('optimistic-')) return
+    void makeTaskFromMessage(messageId, t).then(ok => {
+      if (ok) void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    })
+  }, [queryClient, t])
+
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
   const reactMutate = reactMutation.mutate
@@ -2039,6 +2069,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
+              onMakeTask={handleMakeTask}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}

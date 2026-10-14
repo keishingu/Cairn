@@ -10,6 +10,7 @@ import { RowActionMenu } from '../row-action-menu'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
 import { useT } from '@/components/locale-provider'
 
@@ -97,7 +98,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
           textDecoration: isDone ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{displayTitle}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{task.projectTitle ?? task.channelName ?? t('No project')}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{taskScopeLabel(task, t)}</div>
       </div>
 
       {task.priority && !isDone && (
@@ -134,10 +135,7 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
       <RowActionMenu
         actions={[
           { icon: 'edit', label: t('Edit'), onSelect: () => onEdit(task, 'edit') },
-          // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-          ...(task.isLinkedToMessage
-            ? []
-            : [{ icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => onEdit(task, 'delete') }]),
+          { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => onEdit(task, 'delete') },
         ]}
         triggerStyle={{ padding: '6px', borderRadius: 8 }}
       />
@@ -273,7 +271,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
     return projectOrder.map(pid => ({
       key: pid,
-      label: projectMap.get(pid)![0]!.projectTitle ?? projectMap.get(pid)![0]!.channelName ?? t('No project'),
+      label: taskScopeLabel(projectMap.get(pid)![0]!, t),
       tasks: projectMap.get(pid)!,
     }))
   }, [filtered, t])

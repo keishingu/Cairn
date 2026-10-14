@@ -3,7 +3,6 @@
 
 import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
-import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
 import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
@@ -53,7 +52,6 @@ export async function PATCH(
         status: tasks.status,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
-        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
@@ -121,14 +119,13 @@ export async function PATCH(
         status: tasks.status,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
-        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
       })
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    // 完了経路（タスク一覧・チャットのcheckbox・AIカード）を問わず、そのタスクの
+    // 完了経路（タスク一覧・AIカード）を問わず、そのタスクの
     // activeナッジを即時解消する。status更新triggerが対応するベル通知も削除する。
     if (updated.status === 'done') {
       await db
@@ -139,45 +136,6 @@ export async function PATCH(
           eq(aiNudges.taskId, id),
           eq(aiNudges.status, 'active'),
         ))
-    }
-
-    // チャットメッセージのチェックボックスへ逆同期する。
-    // - status 変更: チェック状態を toggle
-    // - title 変更: チェックボックスの文言を replace（タスクと元メッセージの紐付けを維持する）
-    const titleChanged = parsed.data.title !== undefined && updated.title !== taskRow.title
-    const statusChanged = parsed.data.status !== undefined
-    if ((titleChanged || statusChanged) && updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
-      const { messages, channels } = await import('@cairn/db')
-      const [msg] = await db
-        .select({
-          content: messages.content,
-          channelId: messages.channelId,
-          senderId: messages.senderId,
-        })
-        .from(messages)
-        .innerJoin(channels, eq(messages.channelId, channels.id))
-        .where(and(eq(messages.id, updated.sourceMessageId), eq(channels.workspaceId, ctx.workspaceId)))
-        .limit(1)
-
-      if (msg) {
-        let newContent = msg.content
-        if (statusChanged) {
-          // チェック状態の toggle は共同作業の基本操作なので投稿者以外でも反映する
-          newContent = toggleCheckboxAt(newContent, updated.sourceCheckboxIndex, updated.status === 'done')
-        }
-        // 文言の書き換えは「他人のメッセージ本文を書き換える」操作になるため、
-        // 通常のメッセージ編集（senderId === 本人）と同じ所有権ルールに合わせ、投稿者本人のみに限定する。
-        // 投稿者以外がタイトルを変えた場合はタスク側のみ反映し、チェックボックス文言は据え置く。
-        if (titleChanged && msg.senderId === ctx.userId) {
-          newContent = replaceCheckboxLabelAt(newContent, updated.sourceCheckboxIndex, updated.title)
-        }
-        if (newContent !== msg.content) {
-          await db
-            .update(messages)
-            .set({ content: newContent })
-            .where(eq(messages.id, updated.sourceMessageId))
-        }
-      }
     }
 
     // 担当者が新たに（自分以外へ）割り当てられたら通知する
@@ -248,15 +206,6 @@ export async function DELETE(
     } else {
       const forbidden = requireRole(ctx.role, 'member')
       if (forbidden) return forbidden
-    }
-
-    // チャット由来タスクは単体削除しない。紐付いたチャットメッセージ（またはチェックボックス行）を
-    // 消したときにタスクも消える運用のため、ここでは 409 で拒否する。
-    if (taskRow.sourceMessageId != null) {
-      return NextResponse.json(
-        { error: 'チャット由来タスクは単体で削除できません。元のチャットメッセージ側で削除してください' },
-        { status: 409 },
-      )
     }
 
     const [deleted] = await db.transaction(async (tx) => {

@@ -7,6 +7,7 @@ import { TaskDialog } from './task-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { useT } from '@/components/locale-provider'
 
@@ -103,20 +104,6 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
     })
   }
 
-  const titleChanged = task.title !== title.trim()
-  const chatLinkedNote = task.isLinkedToMessage ? (
-    <div style={{
-      marginTop: 6,
-      fontSize: 11.5,
-      lineHeight: 1.5,
-      color: titleChanged ? 'var(--amber-text)' : 'var(--text-3)',
-    }}>
-      {titleChanged
-        ? t('This task was created from a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')
-        : t('This task is linked to a chat message. If you posted that message, changing the title also updates the checkbox text in the original chat.')}
-    </div>
-  ) : null
-
   const errorMessage = updateMutation.isError
     ? updateMutation.error instanceof Error
       ? updateMutation.error.message
@@ -128,23 +115,19 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
       {showEditDialog && (
         <TaskDialog
           title={t('Edit task')}
-          subtitle={task.projectTitle ?? task.channelName ?? t('No project')}
+          subtitle={taskScopeLabel(task, t)}
           onClose={onClose}
           onSubmit={handleSubmit}
           submitLabel={t('Save')}
           submittingLabel={t('Saving…')}
           isSubmitting={updateMutation.isPending}
           submitDisabled={!title.trim() || deleteMutation.isPending}
-          {...(task.isLinkedToMessage
-            ? {}
-            : {
-                leadingAction: {
-                  label: t('Delete'),
-                  className: 'btn btn-danger',
-                  onClick: () => setConfirmDelete(true),
-                  disabled: updateMutation.isPending || deleteMutation.isPending,
-                },
-              })}
+          leadingAction={{
+            label: t('Delete'),
+            className: 'btn btn-danger',
+            onClick: () => setConfirmDelete(true),
+            disabled: updateMutation.isPending || deleteMutation.isPending,
+          }}
           disableClose={updateMutation.isPending || deleteMutation.isPending}
           {...(errorMessage ? { errorMessage } : {})}
         >
@@ -163,7 +146,6 @@ export const TaskEditDialog = ({ open, task, onClose, initialMode = 'edit' }: Ta
             {...(task.assigneeId
               ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? t('Unknown member'), avatarUrl: task.assigneeAvatarUrl } }
               : {})}
-            {...(chatLinkedNote ? { titleNote: chatLinkedNote } : {})}
           />
         </TaskDialog>
       )}

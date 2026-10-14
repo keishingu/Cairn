@@ -4,13 +4,11 @@
 import { NextResponse } from 'next/server'
 import type { MessageCreatedEvent } from '@/lib/inngest/events'
 import { inngest } from '@/lib/inngest/client'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { canAccessFile, type WorkspaceRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
-import { hasTaskChannelSchema, insertLegacyTasks } from '@/lib/tasks/schema-readiness'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { MessageDto } from './dto'
 
@@ -39,7 +37,7 @@ export async function postMessage({
 }: PostMessageArgs) {
   try {
     const { db } = await import('@cairn/db')
-    const { messages, profiles, messageAttachments, files, channels, channelMembers, tasks, workspaceMembers, projectMembers, projectRoles } =
+    const { messages, profiles, messageAttachments, files, channels, channelMembers, workspaceMembers, projectMembers, projectRoles } =
       await import('@cairn/db')
     const { eq, and, isNull, inArray, sql } = await import('drizzle-orm')
 
@@ -194,18 +192,6 @@ export async function postMessage({
       }
     }
 
-    // DM 以外のチャンネルでは、- [ ] チェックボックスをタスクに自動変換する。
-    const checkboxes = parseCheckboxes(content)
-    const channelSchemaReady = checkboxes.length > 0 && await hasTaskChannelSchema(db)
-    const [channel] =
-      checkboxes.length > 0
-        ? await db
-            .select({ id: channels.id, projectId: channels.projectId, type: channels.type })
-            .from(channels)
-            .where(eq(channels.id, channelId))
-            .limit(1)
-        : [undefined]
-
     const inserted = await db.transaction(async (tx) => {
       // 既読スナップショットと投稿順をチャンネル単位で直列化する。
       await tx
@@ -244,27 +230,6 @@ export async function postMessage({
             displayOrder: index,
           })),
         )
-      }
-
-      // メッセージ本文のチェックボックスとタスクの作成を同一トランザクションにし、
-      // タスク作成が失敗した場合にメッセージだけが残る不整合を防ぐ
-      // migration待機中はchannel_idを省略し、source_message_id経由でmigrationにbackfillさせる。
-      if (channel && channel.type !== 'dm') {
-        const taskValues = checkboxes.map((checkbox) => ({
-            workspaceId,
-            projectId: channel.projectId,
-            title: checkbox.text,
-            status: (checkbox.checked ? 'done' : 'todo') as 'done' | 'todo',
-            priority: 'medium' as const,
-            createdBy: userId,
-            sourceMessageId: message.id,
-            sourceCheckboxIndex: checkbox.index,
-          }))
-        if (channelSchemaReady) {
-          await tx.insert(tasks).values(taskValues.map(value => ({ ...value, channelId: channel.id })))
-        } else {
-          await insertLegacyTasks(tx, taskValues)
-        }
       }
 
       return message

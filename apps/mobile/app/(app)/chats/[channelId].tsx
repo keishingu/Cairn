@@ -933,6 +933,25 @@ export default function ChatThreadScreen() {
     })
   }
 
+  const makeTask = async (message: MessageDto) => {
+    setActionTarget(null)
+    setSendError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/task`, { method: 'POST' })
+      const data = (await response.json().catch(() => ({}))) as { error?: string; created?: boolean }
+      if (!response.ok) {
+        setSendError(data.error ?? t('Could not make a task from this message'))
+        return
+      }
+      Alert.alert(data.created ? t('Added to tasks') : t('This message is already a task'), undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => router.push('/(app)/tasks') },
+      ])
+    } catch {
+      setSendError(t('Could not make a task from this message'))
+    }
+  }
+
   const report = async (
     message: MessageDto,
     reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other',
@@ -1643,6 +1662,12 @@ export default function ChatThreadScreen() {
               label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
               palette={palette}
               onPress={() => actionTarget && handleBookmark(actionTarget)}
+            />
+            <ActionButton
+              icon="checkbox-outline"
+              label={t('Make a task')}
+              palette={palette}
+              onPress={() => actionTarget && void makeTask(actionTarget)}
             />
             <ActionButton
               icon="happy-outline"

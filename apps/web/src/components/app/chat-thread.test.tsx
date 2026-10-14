@@ -13,6 +13,7 @@ import {
   copyMessageContent,
   copyMessageLink,
   isNearMessageTimelineEnd,
+  makeTaskFromMessage,
 } from './chat-thread'
 
 const copyT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
@@ -26,7 +27,8 @@ vi.stubGlobal('localStorage', {
   clear: () => chatTestStorage.clear(),
 })
 
-const { toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+const { fetchWithAuthMock, toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+  fetchWithAuthMock: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   markChannelRead: vi.fn(),
@@ -96,6 +98,7 @@ vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data
 vi.mock('@/hooks/use-profile-attributes', () => ({
   useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
 }))
+vi.mock('@/lib/fetch-with-auth', () => ({ fetchWithAuth: fetchWithAuthMock }))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -142,6 +145,7 @@ describe('ChatMessage copy action', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -160,6 +164,119 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
     expect(screen.queryByRole('button', { name: '削除' })).toBeNull()
+  })
+
+  it.each([
+    ['他人のメッセージ', 'user-2'],
+    ['自分のメッセージ', 'user-1'],
+  ])('%sでも「…」メニューに「タスク化する」を出し、選ぶと親のコールバックを呼ぶ', async (_label, senderId) => {
+    const user = userEvent.setup()
+    const onMakeTask = vi.fn()
+
+    render(
+      <ChatMessage
+        messageId="message-1"
+        messageType="text"
+        senderId={senderId}
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="資料を確認する"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={onMakeTask}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+        isMobile
+      />,
+    )
+
+    await user.click(screen.getByTitle('操作'))
+    await user.click(screen.getByRole('button', { name: 'タスク化する' }))
+
+    expect(onMakeTask).toHaveBeenCalledWith('message-1')
+  })
+
+  it('システムメッセージには「タスク化する」を出さない', () => {
+    render(
+      <ChatMessage
+        messageId="message-sys"
+        messageType="system"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="System"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="ステータスを変更しました"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTitle('操作')).toBeNull()
+  })
+
+  it('タスクを作成したら「タスクに追加しました」と開くリンクのトーストを出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({ ok: true, json: async () => ({ id: 'task-1', created: true }) })
+
+    await expect(makeTaskFromMessage('message-1', copyT)).resolves.toBe(true)
+
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/messages/message-1/task', { method: 'POST' })
+    expect(toastSuccess).toHaveBeenCalledWith('タスクに追加しました', {
+      action: { label: '開く', href: '/tasks?taskId=task-1' },
+    })
+  })
+
+  it('既にタスク化済みなら「このメッセージは既にタスクです」と開くリンクのトーストを出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({ ok: true, json: async () => ({ id: 'task-1', created: false }) })
+
+    await expect(makeTaskFromMessage('message-1', copyT)).resolves.toBe(true)
+
+    expect(toastSuccess).toHaveBeenCalledWith('このメッセージは既にタスクです', {
+      action: { label: '開く', href: '/tasks?taskId=task-1' },
+    })
+  })
+
+  it('APIが失敗したらそのエラー文言をエラートーストに出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: '本文のないメッセージはタスクにできません' }),
+    })
+
+    await expect(makeTaskFromMessage('message-1', copyT)).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith('本文のないメッセージはタスクにできません')
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
+
+  it('通信に失敗したら汎用のエラートーストを出す', async () => {
+    fetchWithAuthMock.mockRejectedValue(new Error('network'))
+
+    await expect(makeTaskFromMessage('message-1', copyT)).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith('このメッセージをタスクにできませんでした')
   })
 
   it('元の本文をそのままコピーして成功トーストを出す', async () => {
@@ -222,6 +339,7 @@ describe('ChatMessage copy action', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -253,6 +371,7 @@ describe('ChatMessage copy action', () => {
       onCheckboxToggle: vi.fn(),
       onReply: vi.fn(),
       onBookmark: vi.fn(),
+      onMakeTask: vi.fn(),
       onJumpToMessage: vi.fn(),
       onCopyLink: vi.fn(),
       onImageClick: vi.fn(),
@@ -338,6 +457,7 @@ describe('モバイルWebのリアクション表示', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -379,6 +499,7 @@ describe('モバイルWebのリアクション表示', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}

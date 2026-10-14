@@ -35,10 +35,6 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/chat/checkboxes', () => ({
-  toggleCheckboxAt: vi.fn((content: string) => content),
-  replaceCheckboxLabelAt: vi.fn((_content: string, _index: number, label: string) => `- [ ] ${label}`),
-}))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
   requireChannelAccess: mockRequireChannelAccess,
@@ -125,13 +121,15 @@ describe('DELETE /api/tasks/[id]', () => {
 
   afterEach(() => vi.clearAllMocks())
 
-  it('チャット由来タスクの削除は 409 で拒否する', async () => {
+  it('チャット由来タスクも単体で削除できる', async () => {
     mockDbSelectLimit.mockResolvedValue([{ id: TASK_ID, projectId: 'project-1', sourceMessageId: 'm1' }])
+    mockDbDeleteReturning.mockResolvedValue([{ id: TASK_ID }])
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request(`http://localhost/api/tasks/${TASK_ID}`, { method: 'DELETE' }), {
       params: Promise.resolve({ id: TASK_ID }),
     })
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ id: TASK_ID })
   })
 
   it('手動タスクは削除できる', async () => {
@@ -323,22 +321,19 @@ describe('PATCH /api/tasks/[id]', () => {
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
   })
 
-  it('チャット由来タスクのタイトル変更も許可される', async () => {
-    mockDbSelectLimit
-      .mockResolvedValueOnce([{
-        id: TASK_ID,
-        projectId: 'project-1',
-        projectTitle: 'proj',
-        title: '古いタイトル',
-        priority: 'medium',
-        dueDate: null,
-        status: 'todo',
-        assigneeId: null,
-        sourceMessageId: 'm1',
-        sourceCheckboxIndex: 0,
-      }])
-      // メッセージ逆同期用の select（本人が投稿者なので senderId は自分）
-      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', senderId: DEV_USER_ID, isPrivate: false }])
+  it('チャット由来タスクのタイトル変更は元メッセージ本文を書き換えない', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([{
+      id: TASK_ID,
+      projectId: 'project-1',
+      projectTitle: 'proj',
+      title: '古いタイトル',
+      priority: 'medium',
+      dueDate: null,
+      status: 'todo',
+      assigneeId: null,
+      sourceMessageId: 'm1',
+      sourceCheckboxIndex: null,
+    }])
     mockDbUpdateReturning.mockResolvedValue([{
       id: TASK_ID,
       title: '新しいタイトル',
@@ -347,7 +342,7 @@ describe('PATCH /api/tasks/[id]', () => {
       status: 'todo',
       assigneeId: null,
       sourceMessageId: 'm1',
-      sourceCheckboxIndex: 0,
+      sourceCheckboxIndex: null,
     }])
 
     const { PATCH } = await import('./route')
@@ -361,48 +356,6 @@ describe('PATCH /api/tasks/[id]', () => {
 
     expect(res.status).toBe(200)
     expect(mockDbUpdateReturning).toHaveBeenCalled()
-    // 投稿者本人なので元メッセージのチェックボックス文言も書き換わる
-    expect(mockDbUpdateSet).toHaveBeenCalledWith({ content: '- [ ] 新しいタイトル' })
-  })
-
-  it('投稿者以外がタイトルを変更しても、元メッセージのチェックボックス文言は書き換えない', async () => {
-    mockDbSelectLimit
-      .mockResolvedValueOnce([{
-        id: TASK_ID,
-        projectId: 'project-1',
-        projectTitle: 'proj',
-        title: '古いタイトル',
-        priority: 'medium',
-        dueDate: null,
-        status: 'todo',
-        assigneeId: null,
-        sourceMessageId: 'm1',
-        sourceCheckboxIndex: 0,
-      }])
-      // メッセージの投稿者は別ユーザー（本人ではない）
-      .mockResolvedValueOnce([{ content: '- [ ] 古いタイトル', channelId: 'c1', senderId: 'other-user', isPrivate: false }])
-    mockDbUpdateReturning.mockResolvedValue([{
-      id: TASK_ID,
-      title: '新しいタイトル',
-      priority: 'medium',
-      dueDate: null,
-      status: 'todo',
-      assigneeId: null,
-      sourceMessageId: 'm1',
-      sourceCheckboxIndex: 0,
-    }])
-
-    const { PATCH } = await import('./route')
-    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ title: '新しいタイトル' }),
-      headers: { 'content-type': 'application/json' },
-    }), {
-      params: Promise.resolve({ id: TASK_ID }),
-    })
-
-    expect(res.status).toBe(200)
-    // タスク自体は更新されるが、メッセージ本文の書き換え（content の set）は発生しない
     expect(mockDbUpdateSet).not.toHaveBeenCalledWith(expect.objectContaining({ content: expect.anything() }))
   })
 

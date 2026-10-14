@@ -16,6 +16,8 @@ export interface TaskDto {
   projectTitle: string | null
   channelId: string | null
   channelName: string | null
+  /** DM 由来タスクは channelName が null になるため、表示ラベルの出し分けに使う。 */
+  channelType: 'workspace' | 'project' | 'dm' | null
   channelIsPrivate: boolean
   title: string
   status: 'todo' | 'in_progress' | 'done'
@@ -102,6 +104,7 @@ export async function GET(req: Request) {
         projectTitle: projects.title,
         channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
         channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
+        channelType: channelSchemaReady ? channels.type : sql<'workspace' | 'project' | 'dm' | null>`null`,
         channelIsPrivate: channelSchemaReady ? channels.isPrivate : sql<boolean>`false`,
         title: tasks.title,
         status: tasks.status,
@@ -125,6 +128,7 @@ export async function GET(req: Request) {
       projectTitle: r.projectTitle ?? null,
       channelId: r.channelId,
       channelName: r.channelName ?? null,
+      channelType: r.channelType ?? null,
       channelIsPrivate: r.channelIsPrivate ?? false,
       title: r.title,
       status: r.status,
@@ -193,6 +197,7 @@ export async function POST(req: Request) {
     // 越境データ汚染につながる）。FK はプロジェクトの存在しか保証しないためここで所属を検証する。
     let projectTitle: string | null = null
     let channelName: string | null = null
+    let channelType: TaskDto['channelType'] = null
     let channelIsPrivate = false
     if (projectId) {
       const [projectRow] = await db
@@ -216,6 +221,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: '通常チャンネルが見つかりません' }, { status: 404 })
       }
       channelName = channelRow.name
+      channelType = channelRow.type
       channelIsPrivate = channelRow.isPrivate
     }
 
@@ -271,6 +277,7 @@ export async function POST(req: Request) {
       projectTitle,
       channelId,
       channelName,
+      channelType,
       channelIsPrivate,
       title: inserted.title,
       status: inserted.status,

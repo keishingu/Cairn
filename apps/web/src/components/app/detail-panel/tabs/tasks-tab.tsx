@@ -160,10 +160,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <RowActionMenu
                     actions={[
                       { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
-                      // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-                      ...(task.isLinkedToMessage
-                        ? []
-                        : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') }]),
+                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') },
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -200,10 +197,7 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   <RowActionMenu
                     actions={[
                       { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
-                      // チャット由来タスクは単体削除不可（元のチャットメッセージ側で削除する）
-                      ...(task.isLinkedToMessage
-                        ? []
-                        : [{ icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') }]),
+                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') },
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />

@@ -13,6 +13,7 @@ const task = {
   projectTitle: 'Alpha',
   channelId: null,
   channelName: null,
+  channelType: null,
   channelIsPrivate: false,
   title: 'レビュー対応',
   status: 'todo',

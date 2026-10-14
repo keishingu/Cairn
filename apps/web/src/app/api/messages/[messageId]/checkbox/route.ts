@@ -35,8 +35,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { aiNudges, messages, tasks } = await import('@cairn/db')
-    const { eq, and, inArray, isNull } = await import('drizzle-orm')
+    const { messages } = await import('@cairn/db')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
     const [target] = await db
       .select({ content: messages.content, channelId: messages.channelId })
@@ -62,37 +62,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .update(messages)
       .set({ content: newContent })
       .where(eq(messages.id, messageId))
-
-    // 紐付きタスクのステータスを同期
-    const syncedTasks = await db
-      .update(tasks)
-      .set({
-        status: checked ? 'done' : 'todo',
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(tasks.sourceMessageId, messageId),
-          eq(tasks.sourceCheckboxIndex, index),
-        ),
-      )
-      .returning({ id: tasks.id })
-
-    if (checked && syncedTasks.length > 0) {
-      await db
-        .update(aiNudges)
-        .set({ status: 'resolved', remindAfter: null })
-        .where(
-          and(
-            eq(aiNudges.workspaceId, ctx.workspaceId),
-            inArray(
-              aiNudges.taskId,
-              syncedTasks.map(task => task.id),
-            ),
-            eq(aiNudges.status, 'active'),
-          ),
-        )
-    }
 
     return NextResponse.json({ ok: true })
   } catch (err) {
