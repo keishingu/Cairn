@@ -67,9 +67,10 @@ jobs:
           # base 時点のマイグレーションだけを置いた状態でローカル DB を起動・適用する
           rm -rf supabase/migrations
           git checkout "$BASE_SHA" -- supabase/migrations
-          # migration-edit-ok で許可した書き換え対象は base の旧版を当てずに外し、
-          # 次の db push で書き換え後の SQL を実際に検証させる（旧版を当てると適用済み扱いで飛ばされる）
-          git diff --no-renames --name-only --diff-filter=M "$BASE_SHA" HEAD -- supabase/migrations | xargs -r rm -f
+          # migration-edit-ok で許可した書き換え・削除の対象は base の旧版を当てずに外す。
+          # 書き換えは次の db push で新しい SQL を実際に検証させ（旧版を当てると適用済み扱いで飛ばされる）、
+          # 削除は消したファイルのスキーマに依存する新しいマイグレーションを通さないようにする
+          git diff --no-renames --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations | xargs -r rm -f
           supabase db start
           supabase migration up --local --include-all
 

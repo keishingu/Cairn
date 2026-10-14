@@ -32,6 +32,13 @@ describe('insertLineTaskMarkers', () => {
     expect(result.placed).toEqual([false, false, false, false, true, true])
   })
 
+  test('リンク参照定義の行には差し込まず、参照リンクを壊さない', () => {
+    const content = ['[資料][ref] を読む', '[ref]: https://example.com', '   [b]: /path "title"'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 1, 2].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([true, false, false])
+    expect(result.text.split('\n').slice(1)).toEqual(['[ref]: https://example.com', '   [b]: /path "title"'])
+  })
+
   test('コードフェンスの行と内側には差し込まない', () => {
     const result = insertLineTaskMarkers('前\n```ts\nconst a = 1\n```\n後', [0, 1, 2, 3, 4].map(lineIndex => ({ lineIndex })))
     expect(result.placed).toEqual([true, false, false, false, true])

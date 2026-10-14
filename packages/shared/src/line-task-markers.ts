@@ -13,12 +13,14 @@ export const LINE_TASK_MARKER_CLOSE = ''
 const MARKER_CHARS_RE = /[]/g
 const MARKER_SPLIT_RE = /(\d+)/g
 
-// 目印を付けると Markdown の意味が変わる行（表の行・水平線・setext 見出しの下線）
+// 目印を付けると Markdown の意味が変わる行（表の行・水平線・setext 見出しの下線・リンク参照定義）
 // タスク候補の抽出（task-candidates.ts）と同じ。コードフェンス内の行は候補にならない
 const FENCE_RE = /^\s*(```|~~~)/
 const TABLE_ROW_RE = /\|\s*$/
 const RULE_RE = /^\s*(?:(?:[-*_]\s*){3,}|=+\s*)$/
 // 4 スペース以上（またはタブ）の字下げで、リスト記号も付かない行はインデントコードになりうる
+// `[ref]: https://…` は非表示の定義行。末尾に足すと定義でなくなり、参照リンクが切れて本文に出てしまう
+const LINK_REFERENCE_DEFINITION_RE = /^ {0,3}\[[^\]]+\]:/
 const INDENTED_CODE_RE = /^(?: {4,}|\t)(?![-*+]\s|\d+[.)]\s)/
 
 export interface LineTaskPlacement {
@@ -63,7 +65,7 @@ export function insertLineTaskMarkers(
     const lineIndex = task.lineIndex
     if (lineIndex === null || lineIndex < 0 || lineIndex >= lines.length) return
     const line = lines[lineIndex]!
-    if (fenced.has(lineIndex) || line.trim() === '' || TABLE_ROW_RE.test(line) || RULE_RE.test(line) || INDENTED_CODE_RE.test(line)) return
+    if (fenced.has(lineIndex) || line.trim() === '' || TABLE_ROW_RE.test(line) || RULE_RE.test(line) || INDENTED_CODE_RE.test(line) || LINK_REFERENCE_DEFINITION_RE.test(line)) return
     markersByLine.set(
       lineIndex,
       `${markersByLine.get(lineIndex) ?? ''}${LINE_TASK_MARKER_OPEN}${index}${LINE_TASK_MARKER_CLOSE}`,
