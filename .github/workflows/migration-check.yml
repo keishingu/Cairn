@@ -1,0 +1,61 @@
+name: Migration Check
+
+# マイグレーションを含む PR で、本番の DB Migrate（migrate.yml）と同じ `supabase db push` を
+# 使い捨てのローカル Supabase DB に実適用して、SQL の実行エラーをマージ前に検出する。
+# - base ブランチ時点のマイグレーションでローカル DB を作り、PR の head（merge ref）の
+#   マイグレーションを `db push --include-all` で差分適用する（既存 DB へ追加適用する本番と同じ経路）
+# - Supabase CLI は文ごとにトランザクションなしで実行するため、トランザクション内でしか使えない文
+#   （LOCK TABLE など）や、既存スキーマとの不整合はここで失敗する
+# - Secret は使わない（接続先は CI 内のローカル DB のみ）
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/migration-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Apply migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local DB with base migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # base 時点のマイグレーションだけを置いた状態でローカル DB を起動・適用する
+          rm -rf supabase/migrations
+          git checkout "$BASE_SHA" -- supabase/migrations
+          supabase db start
+          supabase migration up --local --include-all
+
+      - name: Push PR migrations
+        run: |
+          set -euo pipefail
+          # PR の head（merge ref）のマイグレーションに戻し、本番と同じ db push で差分を適用する
+          rm -rf supabase/migrations
+          git checkout HEAD -- supabase/migrations
+          supabase db push --include-all --db-url "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
+      - name: Stop local DB
+        if: always()
+        run: supabase db stop --no-backup || true
