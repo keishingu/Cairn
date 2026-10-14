@@ -31,6 +31,7 @@ export const FilterPopover = ({
   const ref = React.useRef<HTMLDivElement>(null)
   const didInitialFocus = React.useRef(false)
   const [position, setPosition] = React.useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
+  const hasAny = selected.length > 0 || selectedMembers.length > 0
 
   React.useLayoutEffect(() => {
     const updatePosition = () => {
@@ -63,12 +64,14 @@ export const FilterPopover = ({
   }, [containerRef])
 
   React.useEffect(() => {
-    if (!position || didInitialFocus.current) return
-    didInitialFocus.current = true
+    if (!position) return
     const firstControl = ref.current?.querySelector<HTMLElement>('input[type="checkbox"], button')
+    const isInitialFocus = !didInitialFocus.current
+    if (!isInitialFocus && document.activeElement !== ref.current) return
+    didInitialFocus.current = true
     if (firstControl) firstControl.focus()
-    else ref.current?.focus()
-  }, [position])
+    else if (isInitialFocus) ref.current?.focus()
+  }, [position, allStatuses.length, allMembers.length, hasAny])
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -77,8 +80,20 @@ export const FilterPopover = ({
         containerRef.current && !containerRef.current.contains(e.target as Node)
       ) onClose()
     }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape') return
+      event.preventDefault()
+      if (ref.current?.contains(document.activeElement)) {
+        containerRef.current?.querySelector('button')?.focus()
+      }
+      onClose()
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [containerRef, onClose])
 
   const toggleStatus = (name: string) =>
@@ -86,8 +101,6 @@ export const FilterPopover = ({
 
   const toggleMember = (name: string) =>
     onChangeMembers?.(selectedMembers.includes(name) ? selectedMembers.filter(x => x !== name) : [...selectedMembers, name])
-
-  const hasAny = selected.length > 0 || selectedMembers.length > 0
 
   if (typeof document === 'undefined') return null
   const portalHost = portalHostFor(containerRef.current)
@@ -103,12 +116,6 @@ export const FilterPopover = ({
       maxHeight: position?.maxHeight ?? 0, overflowY: 'auto', visibility: position ? 'visible' : 'hidden',
     }} tabIndex={-1}
       onKeyDown={event => {
-        if (event.code === 'Escape') {
-          event.preventDefault()
-          containerRef.current?.querySelector('button')?.focus()
-          onClose()
-          return
-        }
         if (event.code !== 'ArrowDown' && event.code !== 'ArrowUp') return
         const controls = Array.from(ref.current?.querySelectorAll<HTMLElement>('input[type="checkbox"], button') ?? [])
         const currentIndex = controls.indexOf(event.target as HTMLElement)

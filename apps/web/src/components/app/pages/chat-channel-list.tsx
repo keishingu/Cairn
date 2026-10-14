@@ -572,23 +572,38 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
       didInitialFocus.current = false
       return
     }
-    if (!position || didInitialFocus.current) return
-    didInitialFocus.current = true
+    if (!position) return
     const firstChoice = menuRef.current?.querySelector('button')
+    const isInitialFocus = !didInitialFocus.current
+    if (!isInitialFocus && document.activeElement !== menuRef.current) return
+    didInitialFocus.current = true
     if (firstChoice) firstChoice.focus()
-    else menuRef.current?.focus()
-  }, [open, position])
+    else if (isInitialFocus) menuRef.current?.focus()
+  }, [open, position, members.length])
 
   React.useEffect(() => {
+    if (!open) return
     const handler = (e: MouseEvent) => {
       if (
         ref.current && !ref.current.contains(e.target as Node) &&
         menuRef.current && !menuRef.current.contains(e.target as Node)
       ) setOpen(false)
     }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape') return
+      event.preventDefault()
+      if (menuRef.current?.contains(document.activeElement)) {
+        ref.current?.querySelector('button')?.focus()
+      }
+      setOpen(false)
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
@@ -604,12 +619,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
           visibility: position ? 'visible' : 'hidden',
           background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
           boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)',
-        }} tabIndex={-1} onKeyDown={event => {
-          if (event.code !== 'Escape') return
-          event.preventDefault()
-          ref.current?.querySelector('button')?.focus()
-          setOpen(false)
-        }}>
+        }} tabIndex={-1}>
           {members.map(m => (
             <button
               key={m.userId}

@@ -103,6 +103,56 @@ describe('ChannelList', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
+  it('候補が未取得の間はメニューにフォーカスし、到着後にTabで出てもEscapeで閉じる', async () => {
+    const user = userEvent.setup()
+    const makeMember = (userId: string, displayName: string) => ({
+      userId,
+      displayName,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    })
+    const props = {
+      channelId: null,
+      onSelectChannel: vi.fn(),
+      projectChannels: [],
+      workspaceChannels: [],
+      dms: [],
+      onStartDm: vi.fn(),
+    }
+    const { rerender } = render(
+      <div className="app-root">
+        <ChannelList {...props} members={[]} />
+        <button>外部操作</button>
+      </div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
+    const menu = document.querySelector('.app-root > .app[style*="position: fixed"]')!
+    await waitFor(() => expect(document.activeElement).toBe(menu))
+
+    rerender(
+      <div className="app-root">
+        <ChannelList {...props} members={[makeMember('user-1', 'メンバーA')]} />
+        <button>外部操作</button>
+      </div>,
+    )
+    const firstChoice = screen.getByText('メンバーA').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstChoice))
+    await user.tab()
+    const focusAfterTab = document.activeElement
+    expect(menu.contains(focusAfterTab)).toBe(false)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
+    expect(document.activeElement).toBe(focusAfterTab)
+  })
+
   it('プロジェクト見出しの追加ボタンから作成を開始する', () => {
     const onAddProject = vi.fn()
     render(

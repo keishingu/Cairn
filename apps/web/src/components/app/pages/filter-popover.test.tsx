@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FilterPopover } from './filter-popover'
@@ -70,5 +70,50 @@ describe('FilterPopover', () => {
     expect(onChange).toHaveBeenLastCalledWith([])
     expect(onChangeMembers).toHaveBeenLastCalledWith([])
     expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: '進行中' }))
+  })
+
+  it('空で開いた後に候補が届くとフォーカスし、外へ移動した後は奪わずEscapeで閉じる', async () => {
+    const user = userEvent.setup()
+    const anchorRef = React.createRef<HTMLDivElement>()
+    let updateMembers!: (members: string[]) => void
+    const AsyncPopover = () => {
+      const [open, setOpen] = React.useState(false)
+      const [members, setMembers] = React.useState<string[]>([])
+      updateMembers = setMembers
+      return (
+        <div className="app-root">
+          <div ref={anchorRef}><button onClick={() => setOpen(true)}>フィルターを開く</button></div>
+          <button>外部ボタン</button>
+          {open && <FilterPopover
+            containerRef={anchorRef}
+            allStatuses={[]}
+            selected={[]}
+            onChange={vi.fn()}
+            allMembers={members}
+            onChangeMembers={vi.fn()}
+            onClose={() => setOpen(false)}
+          />}
+        </div>
+      )
+    }
+
+    render(<AsyncPopover />)
+    const trigger = screen.getByRole('button', { name: 'フィルターを開く' })
+    await user.click(trigger)
+    const popover = document.querySelector('.app-root > .app[style*="position: fixed"]')!
+    await waitFor(() => expect(document.activeElement).toBe(popover))
+
+    act(() => updateMembers(['メンバーA']))
+    const firstChoice = screen.getByText('メンバーA').closest('label')!.querySelector('input')!
+    await waitFor(() => expect(document.activeElement).toBe(firstChoice))
+
+    const outside = screen.getByRole('button', { name: '外部ボタン' })
+    outside.focus()
+    act(() => updateMembers(['メンバーA', 'メンバーB']))
+    await waitFor(() => expect(screen.getByText('メンバーB')).toBeInTheDocument())
+    expect(document.activeElement).toBe(outside)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(document.querySelector('.app-root > .app[style*="position: fixed"]')).toBeNull())
+    expect(document.activeElement).toBe(outside)
   })
 })
