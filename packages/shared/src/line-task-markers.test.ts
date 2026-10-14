@@ -39,6 +39,12 @@ describe('insertLineTaskMarkers', () => {
     expect(result.text.split('\n').slice(1)).toEqual(['[ref]: https://example.com', '   [b]: /path "title"'])
   })
 
+  test('HTML ブロックの行には差し込まず、自動リンクの行には差し込む', () => {
+    const content = ['<div>確認する</div>', '  <br/>', '<!-- メモ -->', '<https://example.com> を見る'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 1, 2, 3].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, false, false, true])
+  })
+
   test('コードフェンスの行と内側には差し込まない', () => {
     const result = insertLineTaskMarkers('前\n```ts\nconst a = 1\n```\n後', [0, 1, 2, 3, 4].map(lineIndex => ({ lineIndex })))
     expect(result.placed).toEqual([true, false, false, false, true])
