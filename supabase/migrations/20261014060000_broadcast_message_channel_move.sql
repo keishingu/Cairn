@@ -55,3 +55,41 @@ BEGIN
   RETURN NULL;
 END;
 $$;
+
+-- メッセージに紐づくタスクと通報の channel_id は、アプリが事前に読んだ値ではなく、書き込み時点の
+-- メッセージのチャンネルにそろえる。行ロック付きで読むため、スレッドへの切り出しと同時に書き込まれても、
+-- 切り出しの前後どちらかに直列化され、親チャンネルに取り残されない。
+CREATE OR REPLACE FUNCTION public.set_task_channel_from_source_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.source_message_id IS NOT NULL THEN
+    SELECT channel_id INTO NEW.channel_id
+    FROM public.messages
+    WHERE id = NEW.source_message_id
+    FOR SHARE;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_content_report_channel_from_message()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  SELECT channel_id INTO NEW.channel_id
+  FROM public.messages
+  WHERE id = NEW.message_id
+  FOR SHARE;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_content_report_channel_from_message ON public.content_reports;
+CREATE TRIGGER set_content_report_channel_from_message
+BEFORE INSERT ON public.content_reports
+FOR EACH ROW EXECUTE FUNCTION public.set_content_report_channel_from_message();
