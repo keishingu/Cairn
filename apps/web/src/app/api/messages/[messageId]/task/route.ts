@@ -121,23 +121,39 @@ export async function POST(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: '本文のないメッセージはタスクにできません' }, { status: 422 })
     }
 
-    const [inserted] = await db
-      .insert(tasks)
-      .values({
-        workspaceId: ctx.workspaceId,
-        projectId: message.projectId,
-        channelId: message.channelId,
-        title,
-        priority: 'medium',
-        status: 'todo',
-        createdBy: ctx.userId,
-        sourceMessageId: messageId,
-        assigneeId: null,
-      })
-      // 同時リクエストで先に作られていたら一意制約で何も挿入されないので、勝った方のタスクを返す。
-      // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
-      .onConflictDoNothing()
-      .returning({ id: tasks.id })
+    // メッセージ削除（論理削除 + 由来タスク削除を1トランザクションで行う）と直列化する。
+    // 行ロック後に未削除を確かめてから挿入し、削除済みメッセージに紐付くタスクを残さない。
+    const insertResult = await db.transaction(async (tx) => {
+      const [alive] = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
+        .for('update')
+      if (!alive) return { deleted: true as const }
+
+      const [row] = await tx
+        .insert(tasks)
+        .values({
+          workspaceId: ctx.workspaceId,
+          projectId: message.projectId,
+          channelId: message.channelId,
+          title,
+          priority: 'medium',
+          status: 'todo',
+          createdBy: ctx.userId,
+          sourceMessageId: messageId,
+          assigneeId: null,
+        })
+        // 同時リクエストで先に作られていたら一意制約で何も挿入されないので、勝った方のタスクを返す。
+        // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
+        .onConflictDoNothing()
+        .returning({ id: tasks.id })
+      return { deleted: false as const, inserted: row }
+    })
+    if (insertResult.deleted) {
+      return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+    }
+    const { inserted } = insertResult
     if (!inserted) {
       const winner = await loadTask()
       if (!winner) throw new Error('Insert returned no rows')

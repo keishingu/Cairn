@@ -19,6 +19,7 @@ const {
   mockSelectLimit,
   mockInsertValues,
   mockInsertReturning,
+  mockLockMessage,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
@@ -27,6 +28,7 @@ const {
   mockSelectLimit: vi.fn(),
   mockInsertValues: vi.fn(),
   mockInsertReturning: vi.fn(),
+  mockLockMessage: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -52,9 +54,16 @@ vi.mock('@cairn/db', () => {
   const chain: Record<string, unknown> = {}
   for (const method of ['from', 'innerJoin', 'leftJoin', 'where', 'orderBy']) chain[method] = () => chain
   chain['limit'] = (...args: unknown[]) => mockSelectLimit(...args)
+  const insert = vi.fn(() => ({ values: (v: unknown) => { mockInsertValues(v); return { onConflictDoNothing: () => ({ returning: mockInsertReturning }) } } }))
+  // トランザクション内の select は for('update') で行ロックしたメッセージを返す
+  const lockChain: Record<string, unknown> = {}
+  for (const method of ['from', 'where']) lockChain[method] = () => lockChain
+  lockChain['for'] = (...args: unknown[]) => mockLockMessage(...args)
+  const tx = { select: vi.fn(() => lockChain), insert }
   const db = {
     select: vi.fn(() => chain),
-    insert: vi.fn(() => ({ values: (v: unknown) => { mockInsertValues(v); return { onConflictDoNothing: () => ({ returning: mockInsertReturning }) } } })),
+    insert,
+    transaction: vi.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   }
   return { db, messages, channels, tasks, projects, profiles, workspaceMembers }
 })
@@ -99,6 +108,7 @@ describe('POST /api/messages/[messageId]/task', () => {
       error: null,
     })
     mockRequireChannelAccess.mockResolvedValue(null)
+    mockLockMessage.mockResolvedValue([{ id: MESSAGE_ID }])
     mockHasTaskChannelSchema.mockResolvedValue(true)
     mockBuildMentionNameMap.mockResolvedValue(new Map())
     mockInsertReturning.mockResolvedValue([{ id: TASK_ID }])
@@ -189,6 +199,17 @@ describe('POST /api/messages/[messageId]/task', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ id: TASK_ID, created: false })
+  })
+
+  it('挿入前にメッセージが削除されていたら、タスクを作らず 404 を返す', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow]).mockResolvedValueOnce([])
+    mockLockMessage.mockResolvedValueOnce([])
+
+    const response = await callPost()
+
+    expect(response.status).toBe(404)
+    expect(mockLockMessage).toHaveBeenCalledWith('update')
+    expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
   it('本文が空のメッセージは 422 を返す', async () => {
