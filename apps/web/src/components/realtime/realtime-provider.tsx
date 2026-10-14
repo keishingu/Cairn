@@ -249,6 +249,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           } else if (table === 'tasks') {
             void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            // タスク化済みの印（メッセージの linkedTask）も完了・削除で更新する
+            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           }
         })
       ch.subscribe((subStatus, err) => {

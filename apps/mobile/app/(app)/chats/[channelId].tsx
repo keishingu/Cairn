@@ -1,5 +1,6 @@
 import React from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Alert,
@@ -188,6 +189,7 @@ function ChatMessageRow({
   onLinkPress,
   onOpenActions,
   onOpenPreview,
+  onOpenTask,
 }: {
   message: MessageDto
   palette: Palette
@@ -198,6 +200,7 @@ function ChatMessageRow({
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+  onOpenTask: (taskId: string) => void
 }) {
   const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
@@ -317,6 +320,36 @@ function ChatMessageRow({
             </View>
           )}
         </Pressable>
+
+        {message.linkedTask && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('Open task')}
+            onPress={() => message.linkedTask && onOpenTask(message.linkedTask.id)}
+            style={({ pressed }) => [
+              styles.taskChip,
+              {
+                backgroundColor: message.linkedTask?.status === 'done' ? palette.card2 : palette.accentSoft,
+                borderColor: message.linkedTask?.status === 'done' ? palette.border : palette.accent,
+                opacity: pressed ? 0.7 : message.linkedTask?.status === 'done' ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={message.linkedTask.status === 'done' ? 'checkbox' : 'checkbox-outline'}
+              size={13}
+              color={message.linkedTask.status === 'done' ? palette.text3 : palette.accentText}
+            />
+            <Text
+              style={[
+                styles.reactionText,
+                { color: message.linkedTask.status === 'done' ? palette.text3 : palette.accentText },
+              ]}
+            >
+              {t('Task')}
+            </Text>
+          </Pressable>
+        )}
 
         {message.reactions.length > 0 && (
           <View style={styles.reactions}>
@@ -484,6 +517,7 @@ export default function ChatThreadScreen() {
     isPrivate?: string
   }>()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
@@ -933,19 +967,34 @@ export default function ChatThreadScreen() {
     })
   }
 
+  const openTask = (taskId: string) => {
+    router.push({ pathname: '/(app)/tasks', params: { taskId } })
+  }
+
   const makeTask = async (message: MessageDto) => {
     setActionTarget(null)
     setSendError(null)
+    if (message.linkedTask) {
+      openTask(message.linkedTask.id)
+      return
+    }
     try {
       const response = await apiFetch(`/api/messages/${message.id}/task`, { method: 'POST' })
-      const data = (await response.json().catch(() => ({}))) as { error?: string; created?: boolean }
+      const data = (await response.json().catch(() => ({}))) as { error?: string; created?: boolean; id?: string }
       if (!response.ok) {
         setSendError(data.error ?? t('Could not make a task from this message'))
         return
       }
+      // タスク化済みの印（チップ）を出すため、そのチャンネルのメッセージを取り直す
+      void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       Alert.alert(data.created ? t('Added to tasks') : t('This message is already a task'), undefined, [
         { text: t('Close'), style: 'cancel' },
-        { text: t('Open'), onPress: () => router.push('/(app)/tasks') },
+        {
+          text: t('Open'),
+          onPress: () =>
+            data.id ? openTask(data.id) : router.push('/(app)/tasks'),
+        },
       ])
     } catch {
       setSendError(t('Could not make a task from this message'))
@@ -1278,6 +1327,7 @@ export default function ChatThreadScreen() {
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
                     onOpenPreview={setAttachmentPreview}
+                    onOpenTask={openTask}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1665,7 +1715,7 @@ export default function ChatThreadScreen() {
             />
             <ActionButton
               icon="checkbox-outline"
-              label={t('Make a task')}
+              label={actionTarget?.linkedTask ? t('Open task') : t('Make a task')}
               palette={palette}
               onPress={() => actionTarget && void makeTask(actionTarget)}
             />
@@ -1919,6 +1969,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 7,
+  },
+  taskChip: {
+    alignSelf: 'flex-start',
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    marginTop: 6,
   },
   reactionText: { fontSize: 11, fontWeight: '600' },
   reactionPerson: {

@@ -259,7 +259,7 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notifications'] })
   })
 
-  it('チャンネルのtask broadcastでタスクqueryを再取得する', async () => {
+  it('チャンネルのtask broadcastでタスクqueryとそのチャンネルのメッセージqueryを再取得する', async () => {
     workspaceChannels.push({ id: 'channel-1' })
     const { queryClient } = renderProvider()
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
@@ -280,6 +280,8 @@ describe('RealtimeProvider', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+    // タスク化済みの印（メッセージの linkedTask）も更新する
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'] })
   })
 
   it('メッセージの新着・編集・削除通知と再接続でプロジェクト一覧を更新する', async () => {

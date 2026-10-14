@@ -8,6 +8,8 @@ import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
 import { InlineError } from './inline-error'
@@ -21,6 +23,7 @@ import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
+  chatQueryKeys,
   formatChatMessageTime,
   useChannelInitialMessage,
   useChannelMessageHistory,
@@ -170,7 +173,7 @@ export async function makeTaskFromMessage(messageId: string, t: TranslateFn): Pr
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTaskId, linkedTaskStatus, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -190,6 +193,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  // memo を効かせるため、linkedTask はオブジェクトでなくプリミティブで受ける
+  linkedTaskId?: string | null | undefined
+  linkedTaskStatus?: 'todo' | 'in_progress' | 'done' | null | undefined
   blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -207,6 +213,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   focused?: boolean
 }) {
   const t = useT()
+  const router = useRouter()
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
@@ -332,7 +339,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
-    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
+    linkedTaskId
+      ? { icon: 'external-link' as const, label: t('Open task'), onSelect: () => router.push(`/tasks?taskId=${encodeURIComponent(linkedTaskId)}`) }
+      : { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
@@ -488,6 +497,25 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               </a>
             ))}
           </div>
+        )}
+        {linkedTaskId && (
+          <Link
+            href={`/tasks?taskId=${encodeURIComponent(linkedTaskId)}`}
+            data-testid="linked-task-chip"
+            data-task-status={linkedTaskStatus ?? 'todo'}
+            title={t('Open task')}
+            style={{
+              marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4,
+              height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
+              fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
+              background: linkedTaskStatus === 'done' ? 'var(--card-2)' : 'var(--accent-soft)',
+              border: `1px solid ${linkedTaskStatus === 'done' ? 'var(--border)' : 'var(--accent-border)'}`,
+              color: linkedTaskStatus === 'done' ? 'var(--text-3)' : 'var(--accent-text)',
+              opacity: linkedTaskStatus === 'done' ? 0.75 : 1,
+            }}
+          >
+            <Icon name="check" size={11}/> {t('Task')}
+          </Link>
         )}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
@@ -1797,9 +1825,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const handleMakeTask = React.useCallback((messageId: string) => {
     if (messageId.startsWith('optimistic-')) return
     void makeTaskFromMessage(messageId, t).then(ok => {
-      if (ok) void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      if (ok) {
+        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        // タスク化済みの印（linkedTask）を出すためメッセージも取り直す
+        void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+      }
     })
-  }, [queryClient, t])
+  }, [channelId, queryClient, t])
 
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
@@ -2062,6 +2094,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               attachments={item.message.attachments}
               replyTo={item.message.replyTo}
               bookmarked={item.message.bookmarked}
+              linkedTaskId={item.message.linkedTask?.id ?? null}
+              linkedTaskStatus={item.message.linkedTask?.status ?? null}
               blocked={item.message.blocked}
               onReact={handleReact}
               onEdit={handleEdit}

@@ -1192,6 +1192,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Open Mermaid diagram': 'Mermaid 다이어그램 열기',
   'Tap to view': '탭하여 보기',
   'Direct message': '다이렉트 메시지',
+  'Task': '작업',
   'Make a task': '작업으로 만들기',
   'Added to tasks': '작업에 추가했습니다',
   'This message is already a task': '이 메시지는 이미 작업입니다',

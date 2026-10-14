@@ -108,6 +108,13 @@ vi.mock('@cairn/db', () => ({
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
   },
+  tasks: {
+    id: 'tasks.id',
+    status: 'tasks.status',
+    sourceMessageId: 'tasks.sourceMessageId',
+    workspaceId: 'tasks.workspaceId',
+    createdAt: 'tasks.createdAt',
+  },
   userBlocks: {
     blockerId: 'userBlocks.blockerId',
     blockedId: 'userBlocks.blockedId',
@@ -284,6 +291,40 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         senderProjectRoleLegacy: null,
       }),
     ])
+  })
+
+  it('GET はタスク化済みのメッセージに最古のタスクを linkedTask として付ける', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const base = {
+      content: 'hello',
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt: new Date('2026-06-24T01:00:00.000Z'),
+      updatedAt: new Date('2026-06-24T01:00:00.000Z'),
+    }
+    mockSelectResults(
+      // DB は新しい順で返し、実装が時系列に並べ替える
+      [{ ...base, id: 'msg-2' }, { ...base, id: 'msg-1' }],
+      [],
+      [],
+      [],
+      // createdAt 昇順で返るので、同一メッセージの2件目は無視される
+      [
+        { id: 'task-1', status: 'done', sourceMessageId: 'msg-1' },
+        { id: 'task-2', status: 'todo', sourceMessageId: 'msg-1' },
+      ],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'msg-1', linkedTask: { id: 'task-1', status: 'done' } }),
+      expect.objectContaining({ id: 'msg-2', linkedTask: null }),
+    ])
+    expect(mockEq).toHaveBeenCalledWith('tasks.workspaceId', DEV_WORKSPACE_ID)
   })
 
   it('直近ページでは101件目を除外し、次ページの有無をヘッダーで返す', async () => {

@@ -7,7 +7,7 @@ import { hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
-import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
   channelId: string
@@ -40,6 +40,7 @@ export async function getMessages({
       messageReactions,
       messageAttachments,
       messageBookmarks,
+      tasks,
       files,
       workspaceMembers,
       channels,
@@ -246,7 +247,7 @@ export async function getMessages({
       ...new Set(rows.map((r) => r.parentMessageId).filter((id): id is string => !!id)),
     ]
 
-    const [reactionRows, attachmentRows, bookmarkRows, parentRows] = await Promise.all([
+    const [reactionRows, attachmentRows, bookmarkRows, taskRows, parentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
@@ -295,6 +296,23 @@ export async function getMessages({
                 inArray(messageBookmarks.messageId, messageIds),
               ),
             )
+        : Promise.resolve([]),
+      // タスク化済みの印用。タスクの可視範囲はチャンネル閲覧権限と同じなので追加の認可は不要
+      messageIds.length > 0
+        ? db
+            .select({
+              id: tasks.id,
+              status: tasks.status,
+              sourceMessageId: tasks.sourceMessageId,
+            })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.workspaceId, workspaceId),
+                inArray(tasks.sourceMessageId, messageIds),
+              ),
+            )
+            .orderBy(asc(tasks.createdAt), asc(tasks.id))
         : Promise.resolve([]),
       parentIds.length > 0
         ? db
@@ -354,6 +372,13 @@ export async function getMessages({
       })
     }
 
+    // 同じメッセージに複数のタスクがあれば最古の1件（createdAt 昇順の先頭）を採用する
+    const linkedTaskMap = new Map<string, LinkedTaskDto>()
+    for (const task of taskRows) {
+      if (!task.sourceMessageId || linkedTaskMap.has(task.sourceMessageId)) continue
+      linkedTaskMap.set(task.sourceMessageId, { id: task.id, status: task.status })
+    }
+
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
     const profileAttributes = await getProfileAttributesByUserIds(
       workspaceId,
@@ -399,6 +424,7 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      linkedTask: linkedTaskMap.get(row.id) ?? null,
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 

@@ -1192,6 +1192,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Open Mermaid diagram': 'Mermaid図を開く',
   'Tap to view': 'タップで表示',
   'Direct message': 'ダイレクトメッセージ',
+  'Task': 'タスク',
   'Make a task': 'タスク化する',
   'Added to tasks': 'タスクに追加しました',
   'This message is already a task': 'このメッセージは既にタスクです',

@@ -126,6 +126,7 @@ export async function postMessage({
           parentMessageId: existing.parentMessageId,
           replyTo: null,
           bookmarked: false,
+          linkedTask: null,
         } satisfies MessageDto)
       }
     }
@@ -310,6 +311,7 @@ export async function postMessage({
         parentMessageId: payload.parentMessageId ?? null,
         replyTo: null,
         bookmarked: false,
+        linkedTask: null,
       } satisfies MessageDto,
       { status: 201 },
     )

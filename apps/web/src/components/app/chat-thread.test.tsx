@@ -27,7 +27,8 @@ vi.stubGlobal('localStorage', {
   clear: () => chatTestStorage.clear(),
 })
 
-const { fetchWithAuthMock, toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
   fetchWithAuthMock: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -51,7 +52,10 @@ const { fetchWithAuthMock, toastSuccess, toastError, markChannelRead, bookmarkMe
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush }) }))
+
 vi.mock('@/lib/chat/client', () => ({
+  chatQueryKeys: { messages: (channelId: string | null) => ['messages', channelId] },
   ChannelMessagesError: class ChannelMessagesError extends Error {},
   formatChatMessageTime: () => '12:34',
   useChannelInitialMessage: () => ({ data: { messageId: chatThreadState.initialMessageId }, isFetched: true, isFetching: false, isError: false }),
@@ -61,7 +65,7 @@ vi.mock('@/lib/chat/client', () => ({
     data: [{
       id: 'message-1', content: 'hello', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-23T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
-      replyTo: null, bookmarked: false, blocked: false,
+      replyTo: null, bookmarked: false, linkedTask: null, blocked: false,
     }],
     isLoading: false,
     isError: false,
@@ -205,6 +209,74 @@ describe('ChatMessage copy action', () => {
     await user.click(screen.getByRole('button', { name: 'タスク化する' }))
 
     expect(onMakeTask).toHaveBeenCalledWith('message-1')
+  })
+
+  describe('タスク化済みの印', () => {
+    function renderLinked(linkedTaskStatus: 'todo' | 'in_progress' | 'done' | null, onMakeTask = vi.fn()) {
+      return render(
+        <ChatMessage
+          messageId="message-1"
+          messageType="text"
+          senderId="user-2"
+          currentUserId="user-1"
+          senderName="Alice"
+          createdAt="2026-06-25T12:00:00.000Z"
+          isEdited={false}
+          content="資料を確認する"
+          reactions={[]}
+          attachments={[]}
+          replyTo={null}
+          bookmarked={false}
+          linkedTaskId={linkedTaskStatus ? 'task-1' : null}
+          linkedTaskStatus={linkedTaskStatus}
+          onReact={vi.fn()}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+          onCheckboxToggle={vi.fn()}
+          onReply={vi.fn()}
+          onBookmark={vi.fn()}
+          onMakeTask={onMakeTask}
+          onJumpToMessage={vi.fn()}
+          onCopyLink={vi.fn()}
+          onImageClick={vi.fn()}
+          isMobile
+        />,
+      )
+    }
+
+    it('タスク化されていなければチップを出さない', () => {
+      renderLinked(null)
+      expect(screen.queryByTestId('linked-task-chip')).toBeNull()
+    })
+
+    it('未完了のタスクは「タスク」チップからタスク画面へのリンクを出す', () => {
+      renderLinked('todo')
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveTextContent('タスク')
+      expect(chip).toHaveAttribute('href', '/tasks?taskId=task-1')
+      expect(chip).toHaveAttribute('data-task-status', 'todo')
+    })
+
+    it('完了したタスクは完了の見た目（薄い色）で出す', () => {
+      renderLinked('done')
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveAttribute('data-task-status', 'done')
+      expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    it('タスク化済みなら「…」メニューは「タスクを開く」になり、タスク画面へ遷移する', async () => {
+      const user = userEvent.setup()
+      const onMakeTask = vi.fn()
+      routerPush.mockClear()
+      renderLinked('todo', onMakeTask)
+
+      await user.click(screen.getByTitle('操作'))
+      expect(screen.queryByRole('button', { name: 'タスク化する' })).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'タスクを開く' }))
+
+      expect(routerPush).toHaveBeenCalledWith('/tasks?taskId=task-1')
+      expect(onMakeTask).not.toHaveBeenCalled()
+    })
   })
 
   it('システムメッセージには「タスク化する」を出さない', () => {
@@ -583,7 +655,7 @@ describe('ChatThreadの初期既読', () => {
     chatThreadState.historyMessages = [{
       id: 'history-message', content: 'old message', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-20T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
-      replyTo: null, bookmarked: false, blocked: false,
+      replyTo: null, bookmarked: false, linkedTask: null, blocked: false,
     }]
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const user = userEvent.setup()
