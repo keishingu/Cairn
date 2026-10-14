@@ -302,6 +302,7 @@ export async function getMessages({
         ? db
             .select({
               id: tasks.id,
+              title: tasks.title,
               status: tasks.status,
               sourceMessageId: tasks.sourceMessageId,
             })
@@ -372,11 +373,13 @@ export async function getMessages({
       })
     }
 
-    // 同じメッセージに複数のタスクがあれば最古の1件（createdAt 昇順の先頭）を採用する
-    const linkedTaskMap = new Map<string, LinkedTaskDto>()
+    // タスクは createdAt 昇順で返るので、メッセージごとに作成順のまま積む
+    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
     for (const task of taskRows) {
-      if (!task.sourceMessageId || linkedTaskMap.has(task.sourceMessageId)) continue
-      linkedTaskMap.set(task.sourceMessageId, { id: task.id, status: task.status })
+      if (!task.sourceMessageId) continue
+      const list = linkedTaskMap.get(task.sourceMessageId) ?? []
+      list.push({ id: task.id, title: task.title, status: task.status })
+      linkedTaskMap.set(task.sourceMessageId, list)
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
@@ -424,7 +427,7 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
-      linkedTask: linkedTaskMap.get(row.id) ?? null,
+      linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 

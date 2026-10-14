@@ -6,7 +6,8 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { useProjectTasks, useCreateTask } from '@/hooks/use-project-tasks'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
-import { TaskEditDialog } from '../../task-edit-dialog'
+import { TaskDeleteDialog } from '../../task-delete-dialog'
+import { TaskDetailPanel } from '../../task-detail-panel'
 import { TaskDialog } from '../../task-dialog'
 import { TaskFormFields } from '../../task-form-fields'
 import { RowActionMenu } from '../../row-action-menu'
@@ -78,13 +79,15 @@ const PRIORITY_LABEL: Record<string, string> = { high: 'High', medium: 'Medium',
 
 interface TasksTabProps {
   project: ProjectDto
+  /** モバイルでは、タスク詳細を全画面で開く */
+  isMobile?: boolean
 }
 
-export const TasksTab = ({ project }: TasksTabProps) => {
+export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
   const t = useT()
   const [showAddModal, setShowAddModal] = React.useState(false)
-  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
-  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
+  const [detailTaskId, setDetailTaskId] = React.useState<string | null>(null)
+  const [deletingTask, setDeletingTask] = React.useState<TaskDto | null>(null)
   const { data: tasks = [], isLoading, toggleMutation } = useProjectTasks(project.id)
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
 
@@ -95,11 +98,6 @@ export const TasksTab = ({ project }: TasksTabProps) => {
       { id: task.id, newStatus },
       { onSettled: () => setTogglingId(null) },
     )
-  }
-
-  const openEditor = (task: TaskDto, mode: 'edit' | 'delete' = 'edit') => {
-    setDialogMode(mode)
-    setEditingTask(task)
   }
 
   if (isLoading) {
@@ -159,8 +157,8 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
-                      { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
-                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') },
+                      { icon: 'eye', label: t('Open details'), onSelect: () => setDetailTaskId(task.id) },
+                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeletingTask(task) },
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -196,8 +194,8 @@ export const TasksTab = ({ project }: TasksTabProps) => {
                   {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
-                      { icon: 'edit', label: t('Edit'), onSelect: () => openEditor(task, 'edit') },
-                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => openEditor(task, 'delete') },
+                      { icon: 'eye', label: t('Open details'), onSelect: () => setDetailTaskId(task.id) },
+                      { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeletingTask(task) },
                     ]}
                     triggerStyle={{ padding: '6px', borderRadius: 8 }}
                   />
@@ -221,7 +219,8 @@ export const TasksTab = ({ project }: TasksTabProps) => {
       </button>
 
       {showAddModal && <AddTaskModal project={project} onClose={() => setShowAddModal(false)} />}
-      <TaskEditDialog open={editingTask != null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
+      {detailTaskId && <TaskDetailPanel taskId={detailTaskId} isMobile={isMobile} onClose={() => setDetailTaskId(null)} />}
+      <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingTask(null)} />
     </div>
   )
 }

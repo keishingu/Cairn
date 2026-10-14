@@ -100,7 +100,7 @@ export async function GET(req: Request) {
       parentMessageId: null,
       replyTo: null,
       bookmarked: false,
-      linkedTask: null,
+      linkedTasks: [],
       channelId: r.channelId,
       channelName: r.channelName,
     }))

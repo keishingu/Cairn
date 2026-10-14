@@ -479,7 +479,7 @@ export function useSendChannelMessage(
           parentMessageId: input.parentMessageId ?? null,
           replyTo: input.optimisticReplyTo ?? null,
           bookmarked: false,
-          linkedTask: null,
+          linkedTasks: [],
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),

@@ -29,6 +29,8 @@ export interface TaskDto {
   /** チャット由来タスクの共有元メッセージ。未紐付けなら null。 */
   sourceMessageId?: string | null
   isLinkedToMessage: boolean
+  /** 説明が入力済みか。本文は詳細（GET /api/tasks/[id]）でだけ返し、一覧では重くしない。 */
+  hasDescription: boolean
 }
 
 export async function GET(req: Request) {
@@ -112,6 +114,7 @@ export async function GET(req: Request) {
         dueDate: tasks.dueDate,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
+        hasDescription: sql<boolean>`(${tasks.description} is not null and ${tasks.description} <> '')`,
         assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         assigneeAvatarUrl: workspaceMembers.avatarUrl,
       })
@@ -139,6 +142,7 @@ export async function GET(req: Request) {
       assigneeAvatarUrl: r.assigneeAvatarUrl ?? null,
       sourceMessageId: r.sourceMessageId,
       isLinkedToMessage: r.sourceMessageId != null,
+      hasDescription: r.hasDescription,
     }))
 
     return NextResponse.json(result)
@@ -288,6 +292,7 @@ export async function POST(req: Request) {
       assigneeAvatarUrl: assigneeRow?.avatarUrl ?? null,
       sourceMessageId: null,
       isLinkedToMessage: false,
+      hasDescription: (parsed.data.description ?? '') !== '',
     }
 
     if (inserted.assigneeId) {

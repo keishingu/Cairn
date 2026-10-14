@@ -293,7 +293,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     ])
   })
 
-  it('GET はタスク化済みのメッセージに最古のタスクを linkedTask として付ける', async () => {
+  it('GET はタスク化済みのメッセージに作成順のタスク一覧を linkedTasks として付ける', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     const base = {
       content: 'hello',
@@ -309,10 +309,10 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       [],
       [],
       [],
-      // createdAt 昇順で返るので、同一メッセージの2件目は無視される
+      // createdAt 昇順で返るので、そのまま作成順に並ぶ
       [
-        { id: 'task-1', status: 'done', sourceMessageId: 'msg-1' },
-        { id: 'task-2', status: 'todo', sourceMessageId: 'msg-1' },
+        { id: 'task-1', title: '資料を確認', status: 'done', sourceMessageId: 'msg-1' },
+        { id: 'task-2', title: '日程調整', status: 'todo', sourceMessageId: 'msg-1' },
       ],
     )
 
@@ -321,8 +321,11 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([
-      expect.objectContaining({ id: 'msg-1', linkedTask: { id: 'task-1', status: 'done' } }),
-      expect.objectContaining({ id: 'msg-2', linkedTask: null }),
+      expect.objectContaining({ id: 'msg-1', linkedTasks: [
+        { id: 'task-1', title: '資料を確認', status: 'done' },
+        { id: 'task-2', title: '日程調整', status: 'todo' },
+      ] }),
+      expect.objectContaining({ id: 'msg-2', linkedTasks: [] }),
     ])
     expect(mockEq).toHaveBeenCalledWith('tasks.workspaceId', DEV_WORKSPACE_ID)
   })

@@ -280,7 +280,7 @@ describe('RealtimeProvider', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
-    // タスク化済みの印（メッセージの linkedTask）も更新する
+    // タスク化済みの印（メッセージの linkedTasks）も更新する
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'] })
   })
 

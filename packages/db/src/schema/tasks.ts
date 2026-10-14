@@ -31,9 +31,9 @@ export const tasks = pgTable('tasks', {
   sourceCheckboxIndex: integer('source_checkbox_index'),
 }, (t) => [
   index('idx_tasks_channel').on(t.channelId),
-  // メッセージの「タスク化する」は1メッセージ1タスク。同時リクエストでも重複させない。
+  // メッセージの「タスク化する」は1メッセージ内で同じタイトルを1件にする（複数行を別タスクにできる）。同時リクエストでも重複させない。
   // 旧チェックボックス由来（source_checkbox_index あり）は1メッセージに複数あるため対象外。
-  uniqueIndex('uniq_tasks_message_task')
-    .on(t.sourceMessageId)
+  uniqueIndex('uniq_tasks_message_task_title')
+    .on(t.sourceMessageId, t.title)
     .where(sql`${t.sourceMessageId} is not null and ${t.sourceCheckboxIndex} is null`),
 ])

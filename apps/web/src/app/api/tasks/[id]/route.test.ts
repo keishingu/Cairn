@@ -20,6 +20,7 @@ const {
   mockIsAssignableTaskMember,
   mockNotifyTaskAssigned,
   mockHasTaskChannelSchema,
+  mockBuildMentionNameMap,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockDbSelectLimit: vi.fn(),
@@ -32,6 +33,7 @@ const {
   mockIsAssignableTaskMember: vi.fn(),
   mockNotifyTaskAssigned: vi.fn(),
   mockHasTaskChannelSchema: vi.fn(async () => true),
+  mockBuildMentionNameMap: vi.fn(async () => new Map<string, string>()),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
@@ -45,6 +47,7 @@ vi.mock('@/lib/tasks/assignment-notification', () => ({
   notifyTaskAssigned: mockNotifyTaskAssigned,
 }))
 vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
+vi.mock('@/lib/chat/mention-name-map', () => ({ buildMentionNameMap: mockBuildMentionNameMap }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual
@@ -53,6 +56,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => 'eq'),
   and: vi.fn(() => 'and'),
   sql: vi.fn(() => 'sql'),
+  isNull: vi.fn(() => 'isNull'),
 }))
 vi.mock('@cairn/db', () => {
   mockDbUpdateSet.mockImplementation(() => ({
@@ -95,10 +99,33 @@ vi.mock('@cairn/db', () => {
       assigneeId: 'tasks.assigneeId',
       sourceMessageId: 'tasks.sourceMessageId',
       sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
+      description: 'tasks.description',
+      createdBy: 'tasks.createdBy',
+      createdAt: 'tasks.createdAt',
+    },
+    profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
+    workspaceMembers: {
+      userId: 'workspaceMembers.userId',
+      workspaceId: 'workspaceMembers.workspaceId',
+      displayName: 'workspaceMembers.displayName',
+      avatarUrl: 'workspaceMembers.avatarUrl',
     },
     projects: { id: 'projects.id', title: 'projects.title', workspaceId: 'projects.workspaceId' },
-    messages: { id: 'messages.id', content: 'messages.content', channelId: 'messages.channelId', senderId: 'messages.senderId' },
-    channels: { id: 'channels.id', name: 'channels.name', workspaceId: 'channels.workspaceId', isPrivate: 'channels.isPrivate' },
+    messages: {
+      id: 'messages.id',
+      content: 'messages.content',
+      channelId: 'messages.channelId',
+      senderId: 'messages.senderId',
+      createdAt: 'messages.createdAt',
+      deletedAt: 'messages.deletedAt',
+    },
+    channels: {
+      id: 'channels.id',
+      name: 'channels.name',
+      type: 'channels.type',
+      workspaceId: 'channels.workspaceId',
+      isPrivate: 'channels.isPrivate',
+    },
     channelMembers: { channelId: 'channelMembers.channelId', userId: 'channelMembers.userId' },
     aiNudges: {
       workspaceId: 'aiNudges.workspaceId',
@@ -106,6 +133,192 @@ vi.mock('@cairn/db', () => {
       status: 'aiNudges.status',
     },
   }
+})
+
+const MESSAGE_ID = '30000000-0000-0000-0000-000000000001'
+
+function taskDetailRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: TASK_ID,
+    projectId: 'project-1',
+    projectTitle: 'Alpha',
+    channelId: 'channel-1',
+    channelName: '全体',
+    channelType: 'project',
+    channelIsPrivate: false,
+    title: 'レビュー対応',
+    description: '## 手順\n1. 確認する',
+    status: 'todo',
+    priority: 'medium',
+    dueDate: null,
+    assigneeId: null,
+    assigneeName: null,
+    assigneeAvatarUrl: null,
+    sourceMessageId: null,
+    createdBy: DEV_USER_ID,
+    createdAt: new Date('2026-09-01T00:00:00.000Z'),
+    ...overrides,
+  }
+}
+
+function getRequest() {
+  return new Request(`http://localhost/api/tasks/${TASK_ID}`)
+}
+
+describe('GET /api/tasks/[id]', () => {
+  beforeEach(() => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
+      error: null,
+    })
+    mockRequireProjectAccess.mockResolvedValue(null)
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
+    mockHasTaskChannelSchema.mockResolvedValue(true)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    mockDbSelectLimit.mockReset()
+  })
+
+  it('自ワークスペースに無いタスクは404を返す', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([])
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(404)
+  })
+
+  it('チャンネルにアクセスできない利用者には403を返し、本文を返さない', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([taskDetailRow({ channelId: 'private-channel', description: '秘密' })])
+    mockRequireChannelAccess.mockResolvedValue(
+      NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 }),
+    )
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(403)
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, 'private-channel', 'member')
+    expect(JSON.stringify(await res.json())).not.toContain('秘密')
+  })
+
+  it('チャンネルなしのプロジェクトタスクは、プロジェクトにアクセスできなければ403を返す', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([taskDetailRow({ channelId: null })])
+    mockRequireProjectAccess.mockResolvedValue(
+      NextResponse.json({ error: 'このプロジェクトにアクセスする権限がありません' }, { status: 403 }),
+    )
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(403)
+    expect(mockRequireProjectAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, 'project-1', 'member')
+  })
+
+  it('プロジェクト・チャンネル未所属のタスクは member 未満なら403を返す', async () => {
+    mockDbSelectLimit.mockResolvedValueOnce([taskDetailRow({ projectId: null, channelId: null })])
+    mockRequireRole.mockReturnValue(NextResponse.json({ error: 'メンバー以上の権限が必要です' }, { status: 403 }))
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(403)
+    expect(mockRequireRole).toHaveBeenCalledWith('member', 'member')
+  })
+
+  it('出典メッセージのないタスクは説明・作成情報を返し sourceMessage は null', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([taskDetailRow()])
+      .mockResolvedValueOnce([{ name: '山田 太郎' }])
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      id: TASK_ID,
+      title: 'レビュー対応',
+      description: '## 手順\n1. 確認する',
+      hasDescription: true,
+      isLinkedToMessage: false,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      createdByName: '山田 太郎',
+      sourceMessage: null,
+    })
+  })
+
+  it('説明が未入力なら hasDescription は false', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([taskDetailRow({ description: null })])
+      .mockResolvedValueOnce([{ name: '山田 太郎' }])
+    const { GET } = await import('./route')
+    const body = await (await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })).json()
+    expect(body).toMatchObject({ description: null, hasDescription: false })
+  })
+
+  it('出典メッセージがあれば、メンションを表示名に解決した本文と送信者を返す', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([taskDetailRow({ sourceMessageId: MESSAGE_ID })])
+      .mockResolvedValueOnce([{ name: '山田 太郎' }])
+      .mockResolvedValueOnce([{
+        id: MESSAGE_ID,
+        channelId: 'channel-1',
+        content: '<@user-2> これお願いします',
+        senderName: '佐藤 花子',
+        senderAvatarUrl: 'https://example.com/a.png',
+        createdAt: new Date('2026-08-31T09:00:00.000Z'),
+      }])
+    mockBuildMentionNameMap.mockResolvedValueOnce(new Map([['user-2', '鈴木 次郎']]))
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      isLinkedToMessage: true,
+      sourceMessage: {
+        id: MESSAGE_ID,
+        channelId: 'channel-1',
+        content: '<@user-2|鈴木 次郎> これお願いします',
+        senderName: '佐藤 花子',
+        senderAvatarUrl: 'https://example.com/a.png',
+        createdAt: '2026-08-31T09:00:00.000Z',
+      },
+    })
+    expect(mockBuildMentionNameMap).toHaveBeenCalledWith(DEV_WORKSPACE_ID, ['<@user-2> これお願いします'])
+  })
+
+  it('出典メッセージが削除済みなら sourceMessage は null で、リンク済みの印は残す', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([taskDetailRow({ sourceMessageId: MESSAGE_ID })])
+      .mockResolvedValueOnce([{ name: '山田 太郎' }])
+      .mockResolvedValueOnce([])
+    const { GET } = await import('./route')
+    const body = await (await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })).json()
+    expect(body).toMatchObject({ isLinkedToMessage: true, sourceMessage: null })
+  })
+
+  it('出典メッセージが別チャンネルで閲覧できない場合は本文を返さず null にする', async () => {
+    mockDbSelectLimit
+      .mockResolvedValueOnce([taskDetailRow({ sourceMessageId: MESSAGE_ID })])
+      .mockResolvedValueOnce([{ name: '山田 太郎' }])
+      .mockResolvedValueOnce([{
+        id: MESSAGE_ID,
+        channelId: 'other-private-channel',
+        content: '非公開の本文',
+        senderName: '佐藤 花子',
+        senderAvatarUrl: null,
+        createdAt: new Date('2026-08-31T09:00:00.000Z'),
+      }])
+    mockRequireChannelAccess
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(NextResponse.json({ error: 'forbidden' }, { status: 403 }))
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.sourceMessage).toBeNull()
+    expect(JSON.stringify(body)).not.toContain('非公開の本文')
+  })
+
+  it('migration待機中の通常チャンネルタスクは503を返す', async () => {
+    mockHasTaskChannelSchema.mockResolvedValueOnce(false)
+    mockDbSelectLimit.mockResolvedValueOnce([taskDetailRow({ projectId: null, channelId: null, sourceMessageId: MESSAGE_ID })])
+    const { GET } = await import('./route')
+    const res = await GET(getRequest(), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(503)
+  })
 })
 
 describe('DELETE /api/tasks/[id]', () => {
@@ -432,5 +645,40 @@ describe('PATCH /api/tasks/[id]', () => {
     expect(response.status).toBe(200)
     expect(db.update).toHaveBeenCalledWith(aiNudges)
     expect(mockDbUpdateSet).toHaveBeenCalledWith({ status: 'resolved', remindAfter: null })
+  })
+
+  it('説明を更新でき、空文字は null として保存する', async () => {
+    mockDbSelectLimit.mockResolvedValue([{
+      id: TASK_ID, projectId: 'project-1', channelId: null, projectTitle: 'Alpha', title: 't',
+      priority: 'medium', dueDate: null, status: 'todo', assigneeId: null, sourceMessageId: null,
+    }])
+    mockDbUpdateReturning.mockResolvedValue([{ id: TASK_ID, title: 't', description: '詳細', status: 'todo' }])
+    const { PATCH } = await import('./route')
+
+    const first = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: '詳細' }),
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(first.status).toBe(200)
+    expect(mockDbUpdateSet).toHaveBeenLastCalledWith(expect.objectContaining({ description: '詳細' }))
+
+    const second = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: '' }),
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(second.status).toBe(200)
+    expect(mockDbUpdateSet).toHaveBeenLastCalledWith(expect.objectContaining({ description: null }))
+  })
+
+  it('10000文字を超える説明は422で拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: 'あ'.repeat(10001) }),
+    }), { params: Promise.resolve({ id: TASK_ID }) })
+    expect(res.status).toBe(422)
   })
 })

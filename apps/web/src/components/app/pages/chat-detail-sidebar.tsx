@@ -7,7 +7,8 @@ import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
 import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { RowActionMenu } from '../row-action-menu'
-import { TaskEditDialog } from '../task-edit-dialog'
+import { TaskDeleteDialog } from '../task-delete-dialog'
+import { TaskDetailPanel } from '../task-detail-panel'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
 import { CreateTaskModal, type CreateTaskChannel } from './create-task-modal'
@@ -51,6 +52,8 @@ export interface ChatDetailSidebarProps {
   onOpenMember: (userId: string) => void
   /** ファイルが共有されたメッセージへジャンプする */
   onJumpToMessage: (messageId: string) => void
+  /** モバイルのドロワーでは、タスク詳細を全画面で開く */
+  isMobile?: boolean
 }
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -183,10 +186,11 @@ const ExpandableDescription = ({ text }: { text: string }) => {
 }
 
 // チェックボックス付きのタスク箇条書き。チェックは PATCH で連動し、進捗にも反映される
-const TaskChecklist = ({ project, channel, onJumpToMessage }: {
+const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: {
   project: ProjectDto | null
   channel: CreateTaskChannel | null
   onJumpToMessage: (messageId: string) => void
+  isMobile?: boolean
 }) => {
   const t = useT()
   const scope = project ? { projectId: project.id } : { channelId: channel!.id }
@@ -194,8 +198,8 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
   const listRef = React.useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = React.useState(false)
   const [clamped, setClamped] = React.useState(false)
-  const [editingTask, setEditingTask] = React.useState<TaskDto | null>(null)
-  const [dialogMode, setDialogMode] = React.useState<'edit' | 'delete'>('edit')
+  const [detailTaskId, setDetailTaskId] = React.useState<string | null>(null)
+  const [deletingTask, setDeletingTask] = React.useState<TaskDto | null>(null)
   const [showCreateDialog, setShowCreateDialog] = React.useState(false)
 
   const toggle = (id: string, status: TaskDto['status']) =>
@@ -295,8 +299,8 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
                       <RowActionMenu
                         triggerStyle={{ padding: '3px 4px' }}
                         actions={[
-                          { icon: 'edit', label: t('Edit'), onSelect: () => { setDialogMode('edit'); setEditingTask(task) } },
-                          { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => { setDialogMode('delete'); setEditingTask(task) } },
+                          { icon: 'eye', label: t('Open details'), onSelect: () => setDetailTaskId(task.id) },
+                          { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeletingTask(task) },
                         ]}
                       />
                     </div>
@@ -318,7 +322,8 @@ const TaskChecklist = ({ project, channel, onJumpToMessage }: {
           )}
         </div>
       )}
-      <TaskEditDialog open={editingTask !== null} task={editingTask} initialMode={dialogMode} onClose={() => setEditingTask(null)} />
+      {detailTaskId && <TaskDetailPanel taskId={detailTaskId} isMobile={isMobile} onClose={() => setDetailTaskId(null)} />}
+      <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingTask(null)} />
       {showCreateDialog && channel && <CreateTaskModal channel={channel} onClose={() => setShowCreateDialog(false)}/>}
     </div>
   )
@@ -455,7 +460,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
 }
 
 // 紐づくプロジェクトの概要（ステータス・説明・タスク進捗）。期間・詳細パネルへの導線は見出し部分に表示
-const ProjectOverview = ({ project, onJumpToMessage }: { project: ProjectDto; onJumpToMessage: (messageId: string) => void }) => {
+const ProjectOverview = ({ project, onJumpToMessage, isMobile }: { project: ProjectDto; onJumpToMessage: (messageId: string) => void; isMobile?: boolean }) => {
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {project.statusName && (
@@ -466,7 +471,7 @@ const ProjectOverview = ({ project, onJumpToMessage }: { project: ProjectDto; on
 
       {project.description && <ExpandableDescription text={project.description}/>}
 
-      <TaskChecklist project={project} channel={null} onJumpToMessage={onJumpToMessage}/>
+      <TaskChecklist project={project} channel={null} onJumpToMessage={onJumpToMessage} isMobile={!!isMobile}/>
     </div>
   )
 }
@@ -476,7 +481,7 @@ const ChatDetailContent = ({
   isProject, isDm, isPrivate, channelName,
   currentDmAvatarUrl, dmParticipantId, project, channelMembers, memberLabel,
   channelId, showMemberInvite, onInviteMember, onCloseMemberInvite,
-  onOpenProject, onOpenMember, onJumpToMessage,
+  onOpenProject, onOpenMember, onJumpToMessage, isMobile,
 }: ChatDetailSidebarProps) => {
   const t = useT()
   return (
@@ -543,7 +548,7 @@ const ChatDetailContent = ({
       </div>
     )}
 
-    {isProject && project && <ProjectOverview project={project} onJumpToMessage={onJumpToMessage}/>}
+    {isProject && project && <ProjectOverview project={project} onJumpToMessage={onJumpToMessage} {...(isMobile ? { isMobile } : {})}/>}
 
     {!isProject && !isDm && channelId && (
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
@@ -551,6 +556,7 @@ const ChatDetailContent = ({
           project={null}
           channel={{ id: channelId, name: channelName, isPrivate }}
           onJumpToMessage={onJumpToMessage}
+          isMobile={!!isMobile}
         />
       </div>
     )}
@@ -623,7 +629,7 @@ export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & {
           <Icon name="close" size={15}/>
         </button>
       </div>
-      <ChatDetailContent {...props}/>
+      <ChatDetailContent {...props} isMobile/>
     </aside>
   </>
   )
