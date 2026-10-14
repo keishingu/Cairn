@@ -9,6 +9,7 @@ import { CreateTaskModal } from './create-task-modal'
 import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
 import { RowActionMenu } from '../row-action-menu'
+import { SegmentedControl } from './page-toolbar'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
@@ -412,25 +413,15 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
         overflowX: 'auto',
       }}>
-        <div role="group" aria-label={t('Task scope')} style={{ display: 'flex', gap: 2, flexShrink: 0, padding: 2, borderRadius: 8, background: 'var(--card-2)' }}>
-          {([
-            { id: 'mine', label: t('Assigned to me') },
-            { id: 'all', label: t('Everyone') },
-          ] as const).map(option => (
-            <button
-              key={option.id}
-              onClick={() => setScope(option.id)}
-              aria-pressed={scope === option.id}
-              style={{
-                padding: isMobile ? '5px 8px' : '5px 10px',
-                borderRadius: 6, border: 'none',
-                background: scope === option.id ? 'var(--card)' : 'transparent',
-                color: scope === option.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: isMobile ? 12 : 12.5, fontWeight: scope === option.id ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-              }}
-            >{option.label}</button>
-          ))}
+        <div role="group" aria-label={t('Task scope')} style={{ flexShrink: 0 }}>
+          <SegmentedControl
+            options={[
+              { id: 'mine', label: t('Assigned to me') },
+              { id: 'all', label: t('Everyone') },
+            ]}
+            value={scope}
+            onChange={next => setScope(next as ScopeKey)}
+          />
         </div>
         <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {filters.map(f => (
