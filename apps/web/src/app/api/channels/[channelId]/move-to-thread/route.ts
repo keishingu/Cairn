@@ -188,6 +188,39 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       await tx.update(tasks).set({ channelId: threadId }).where(inArray(tasks.sourceMessageId, movedIds))
 
+      // チャットに貼った外部リンク（Google Docs 等）はメッセージではなく metadata.channelIds でチャンネルに紐づく。
+      // 移動したメッセージに URL があるリンクはスレッドにも紐づけ、親に同じ URL のメッセージが残らないなら親から外す。
+      await tx.execute(sql`
+        UPDATE files AS f
+        SET metadata = (f.metadata - 'channelId') || jsonb_build_object('channelIds', (
+          SELECT coalesce(jsonb_agg(DISTINCT ids.id), '[]'::jsonb)
+          FROM (
+            SELECT jsonb_array_elements_text(coalesce(f.metadata->'channelIds', '[]'::jsonb)) AS id
+            UNION SELECT f.metadata->>'channelId' WHERE f.metadata->>'channelId' IS NOT NULL
+            UNION SELECT ${threadId}::text
+          ) AS ids
+          WHERE ids.id <> ${parent.id}::text
+            OR EXISTS (
+              SELECT 1 FROM messages m
+              WHERE m.channel_id = ${parent.id}
+                AND m.deleted_at IS NULL
+                AND strpos(m.content, f.metadata->>'externalUrl') > 0
+            )
+        ))
+        WHERE f.workspace_id = ${parent.workspaceId}
+          AND f.file_type = 'link'
+          AND coalesce(f.metadata->>'externalUrl', '') <> ''
+          AND (
+            f.metadata->'channelIds' @> jsonb_build_array(${parent.id}::text)
+            OR f.metadata->>'channelId' = ${parent.id}::text
+          )
+          AND EXISTS (
+            SELECT 1 FROM messages m
+            WHERE m.id IN ${movedIds}
+              AND strpos(m.content, f.metadata->>'externalUrl') > 0
+          )
+      `)
+
       // 通知は data の channelId でチャンネルに紐づく（メンションの未読集計・遷移先）。
       await tx.execute(sql`
         UPDATE notifications

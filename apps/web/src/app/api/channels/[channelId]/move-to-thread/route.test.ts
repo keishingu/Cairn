@@ -312,6 +312,9 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(sqlText).toContain("jsonb_set(data, '{channelId}'")
     expect(sqlText).toContain('UPDATE content_reports')
     expect(sqlText).toContain('UPDATE ai_nudges')
+    // 外部リンクは metadata.channelIds で紐づくため、移動したメッセージの URL に合わせて付け替える
+    expect(sqlText).toContain('UPDATE files AS f')
+    expect(sqlText).toContain("strpos(m.content, f.metadata->>'externalUrl')")
     expect(sqlText).toContain('INSERT INTO channel_read_states')
     expect(sqlText).toContain('least(channel_read_states.last_read_at, excluded.last_read_at)')
     expect(sqlText).toContain('SET unread_mention_count')
