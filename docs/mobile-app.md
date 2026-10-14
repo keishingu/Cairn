@@ -45,7 +45,8 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **Internal Distribution は `preview` profile**（Android は APK、iOS は登録済み端末向け Ad Hoc）。ローカルコマンドまたは手動の `.github/workflows/mobile-internal-build.yml` から起動し、`ios` / `all` build は `--refresh-ad-hoc-provisioning-profile` で登録済み端末を反映する。`app.config.ts` で `Cairn Dev` / `Cairn Preview` / `Cairn` の URL scheme と bundle/package ID を分離し、同一端末に共存させる
 - **PR の Mobile Preview**（`.github/workflows/mobile-preview.yml`）は Vercel Deployment Protection を避けるため `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR 固有 branch へ Development Build 用 QR を発行すると同時に `preview` channel へ OTA を配信する
   - 自動配信はモバイル関連 PR の作成時だけ。以降は権限のあるメンバーによる完全一致の `@eas update` コメントで最新 SHA を再配信する
-  - 同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。Internal Distribution では最後に成功した Mobile Preview が最新版
+  - 同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。このゲートは PR 配信同士を対象とし、develop からの配信とは独立して動く
+- **develop から Preview 端末への OTA**（`.github/workflows/mobile-preview-update.yml`）は `develop` への push ごとに自動実行し、実行開始時点の `develop` の先頭を EAS の `preview` 環境の値で `preview` channel へ配信する（手動実行も可）。`EXPO_TOKEN` は GitHub の `Preview` Environment に置く。PR の Mobile Preview も同じ channel へ配信するため、PR 更新または develop 更新のどちらが後に完了したかで Preview 端末の最新版が変わる
 - **ストア版への OTA**（`.github/workflows/mobile-production-update.yml`）は `main` への push ごとに自動実行し（paths は変更ファイル 300 件までしか見ず大きなリリースで起動漏れするため絞らない）、実行開始時点の `main` の先頭を EAS の `production` 環境の接続先で `production` channel へ配信する（手動実行も可）。届くのは `runtimeVersion` が一致するストア版だけなので、ネイティブモジュールを変えた PR は `runtimeVersion` を上げてから `main` へ入れ、ストア版を作り直す。`EXPO_TOKEN` は GitHub の `production` Environment に置く
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
 
