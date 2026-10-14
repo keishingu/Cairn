@@ -27,16 +27,18 @@ describe('insertLineTaskMarkers', () => {
   })
 
   test('空行・表の行・水平線・インデントコードには差し込まない', () => {
-    const content = ['', '| a | b |', '---', '    code', '    - 入れ子', '- ok'].join('\n')
-    const result = insertLineTaskMarkers(content, [0, 1, 2, 3, 4, 5].map(lineIndex => ({ lineIndex })))
-    expect(result.placed).toEqual([false, false, false, false, true, true])
+    const content = ['', '| a | b |', '|---|---|', '| 1 | 2 |', '', '---', '', '    code', '    - 入れ子', '- ok'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 1, 2, 3, 5, 7, 8, 9].map(lineIndex => ({ lineIndex })))
+    // インデントコードの直後の `    - 入れ子` はコードの続きなので差し込まない
+    expect(result.placed).toEqual([false, false, false, false, false, false, false, true])
   })
 
   test('リンク参照定義の行には差し込まず、参照リンクを壊さない', () => {
-    const content = ['[資料][ref] を読む', '[ref]: https://example.com', '   [b]: /path "title"'].join('\n')
-    const result = insertLineTaskMarkers(content, [0, 1, 2].map(lineIndex => ({ lineIndex })))
+    // 参照定義は段落の途中では定義にならないため、空行で区切る
+    const content = ['[資料][ref] を読む', '', '[ref]: https://example.com', '   [b]: /path "title"'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 2, 3].map(lineIndex => ({ lineIndex })))
     expect(result.placed).toEqual([true, false, false])
-    expect(result.text.split('\n').slice(1)).toEqual(['[ref]: https://example.com', '   [b]: /path "title"'])
+    expect(result.text.split('\n').slice(1)).toEqual(['', '[ref]: https://example.com', '   [b]: /path "title"'])
   })
 
   test('HTML ブロックの行には差し込まず、自動リンクの行には差し込む', () => {
@@ -52,9 +54,35 @@ describe('insertLineTaskMarkers', () => {
     expect(result.placed).toEqual([false, true, false, true])
   })
 
+  test('引用の中のコードフェンスの内側には差し込まない', () => {
+    const content = ['> ```', '> 確認する', '> ```', '> 引用の本文'].join('\n')
+    const result = insertLineTaskMarkers(content, [1, 3].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, true])
+  })
+
   test('コードフェンスの行と内側には差し込まない', () => {
     const result = insertLineTaskMarkers('前\n```ts\nconst a = 1\n```\n後', [0, 1, 2, 3, 4].map(lineIndex => ({ lineIndex })))
     expect(result.placed).toEqual([true, false, false, false, true])
+  })
+
+  test('引用・リスト内の生 HTML には差し込まない', () => {
+    const content = ['> <div>Follow up</div>', '', '- <div>メモ</div>', '', '> 普通の引用'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 2, 4].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, false, true])
+    expect(result.text).toBe(['> <div>Follow up</div>', '', '- <div>メモ</div>', '', `> 普通の引用 ${M(2)}`].join('\n'))
+  })
+
+  test('外側のパイプが無い表は区切り行・行とも差し込まず、表のまま保つ', () => {
+    const content = ['name | owner', '--- | ---', 'a | b'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 1, 2].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, false, false])
+    expect(result.text).toBe(content)
+  })
+
+  test('通常の段落・リスト項目・引用・見出しの行には差し込む', () => {
+    const content = ['段落', '', '- 項目', '1. 番号', '> 引用', '', '## 見出し'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 2, 3, 4, 6].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([true, true, true, true, true])
   })
 
   test('本文に紛れた目印用の文字は取り除く', () => {

@@ -107,7 +107,7 @@ describe('Markdownコンテンツ', () => {
     })
 
     it('コードブロックと表の行には出さない', () => {
-      render(<MarkdownContent content={'```\ncode\n```\n| a | b |\n| - | - |\n| 1 | 2 |\n通常'} lineTasks={[lineTask('a', 1), lineTask('b', 3), lineTask('c', 5), lineTask('d', 6)]} />)
+      render(<MarkdownContent content={'```\ncode\n```\n| a | b |\n| - | - |\n| 1 | 2 |\n\n通常'} lineTasks={[lineTask('a', 1), lineTask('b', 3), lineTask('c', 5), lineTask('d', 7)]} />)
       expect(screen.getAllByTestId('line-task-label')).toHaveLength(1)
       expect(screen.getByTestId('line-task-label')).toHaveAttribute('href', '/tasks?taskId=d')
       expect(screen.getByText('code')).toBeInTheDocument()

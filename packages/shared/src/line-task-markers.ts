@@ -1,6 +1,11 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Nodes, Root } from 'mdast'
+import { fromMarkdown } from 'mdast-util-from-markdown'
+import { gfmFromMarkdown } from 'mdast-util-gfm'
+import { gfm } from 'micromark-extension-gfm'
+
 /**
  * タスク化した行の行末に「✓ タスク」ラベルを出すための、描画用の目印（プレースホルダ）。
  * 本文を Markdown として描画する直前に、派生した文字列へだけ差し込む。保存・編集・コピーする本文には混ぜない。
@@ -12,18 +17,6 @@ export const LINE_TASK_MARKER_CLOSE = ''
 
 const MARKER_CHARS_RE = /[]/g
 const MARKER_SPLIT_RE = /(\d+)/g
-
-// 目印を付けると Markdown の意味が変わる行（表の行・水平線・setext 見出しの下線・リンク参照定義・HTML ブロック）
-// タスク候補の抽出（task-candidates.ts）と同じ。コードフェンス内の行は候補にならない
-const FENCE_RE = /^\s*(```|~~~)/
-const TABLE_ROW_RE = /\|\s*$/
-const RULE_RE = /^\s*(?:(?:[-*_]\s*){3,}|=+\s*)$/
-// 4 スペース以上（またはタブ）の字下げで、リスト記号も付かない行はインデントコードになりうる
-// `[ref]: https://…` は非表示の定義行。末尾に足すと定義でなくなり、参照リンクが切れて本文に出てしまう
-const LINK_REFERENCE_DEFINITION_RE = /^ {0,3}\[[^\]]+\]:/
-// `<div>…` などで始まる HTML ブロックは目印ごと HTML ノードになり、Web は描画せずアプリは目印を消すため、ラベルが出ない
-const HTML_BLOCK_RE = /^ {0,3}(?:<\/?[A-Za-z][A-Za-z0-9-]*(?:\s|\/?>|$)|<!--)/
-const INDENTED_CODE_RE = /^(?: {4,}|\t)(?![-*+]\s|\d+[.)]\s)/
 
 export interface LineTaskPlacement {
   /** 目印を差し込んだ描画用の本文。元の本文は変更しない */
@@ -39,7 +32,7 @@ export function stripLineTaskMarkers(value: string): string {
 
 /**
  * `lineIndex`（本文を `\n` で分割した 0 始まりの行番号）の行末に目印を差し込む。
- * 同じ行に複数あれば順に並べる。行が無い・空・Markdown の意味が変わる行には差し込まず、placed を false にする
+ * 同じ行に複数あれば順に並べる。行が無い・空・描画される文章の外（コード・表・HTML 等）や Markdown の構造が変わる行には差し込まず、placed を false にする
  * （呼び出し側はその分を従来どおり下部のチップで示す）。
  */
 export function insertLineTaskMarkers(
@@ -51,49 +44,76 @@ export function insertLineTaskMarkers(
   if (tasks.every(task => task.lineIndex === null)) return { text: clean, placed }
 
   const lines = clean.split('\n')
-  // コードフェンスと HTML ブロックの行・内側は、サーバーが対応付けていても目印を付けない。
-  // HTML ブロックは空行まで（コメントは `-->` まで）が1つの HTML ノードになる
-  const fenced = new Set<number>()
-  let inFence = false
-  let html: 'tag' | 'comment' | null = null
-  lines.forEach((line, index) => {
-    if (!html && FENCE_RE.test(line)) {
-      inFence = !inFence
-      fenced.add(index)
-    } else if (inFence) {
-      fenced.add(index)
-    } else if (html) {
-      if (html === 'tag' && line.trim() === '') {
-        html = null
-        return
-      }
-      fenced.add(index)
-      if (html === 'comment' && line.includes('-->')) html = null
-    } else if (HTML_BLOCK_RE.test(line)) {
-      fenced.add(index)
-      const comment = /^ {0,3}<!--/.test(line)
-      html = comment ? (line.includes('-->', line.indexOf('<!--') + 4) ? null : 'comment') : 'tag'
-    }
-  })
-  const markersByLine = new Map<number, string>()
+  // 行ごとの目印を集める。範囲外・空行には付けない
+  const candidates = new Map<number, number[]>()
   tasks.forEach((task, index) => {
     const lineIndex = task.lineIndex
     if (lineIndex === null || lineIndex < 0 || lineIndex >= lines.length) return
-    const line = lines[lineIndex]!
-    if (fenced.has(lineIndex) || line.trim() === '' || TABLE_ROW_RE.test(line) || RULE_RE.test(line) || INDENTED_CODE_RE.test(line) || LINK_REFERENCE_DEFINITION_RE.test(line)) return
-    markersByLine.set(
-      lineIndex,
-      `${markersByLine.get(lineIndex) ?? ''}${LINE_TASK_MARKER_OPEN}${index}${LINE_TASK_MARKER_CLOSE}`,
-    )
-    placed[index] = true
+    if (lines[lineIndex]!.trim() === '') return
+    candidates.set(lineIndex, [...(candidates.get(lineIndex) ?? []), index])
   })
-  if (markersByLine.size === 0) return { text: clean, placed }
+  if (candidates.size === 0) return { text: clean, placed }
 
-  for (const [lineIndex, markers] of markersByLine) {
-    // 直前の空白は URL の自動リンクが目印まで飲み込まないようにするためのもの
-    lines[lineIndex] = `${lines[lineIndex]!.trimEnd()} ${markers}`
+  // 元の本文の構造。目印を付けても変わってはならない
+  const baseShape = shapeOf(parse(clean))
+  const accepted = new Map<number, number[]>()
+  // 行を1つずつ足して構文木を調べ、目印が描画される text に入り、かつ構造が変わらない行だけ採用する
+  for (const [lineIndex, indexes] of [...candidates].sort((a, b) => a[0] - b[0])) {
+    const trial = new Map(accepted).set(lineIndex, indexes)
+    const tree = parse(render(lines, trial))
+    const visible = visibleMarkerIndexes(tree)
+    if (shapeOf(tree) !== baseShape) continue
+    if (![...trial.values()].flat().every(index => visible.has(index))) continue
+    accepted.set(lineIndex, indexes)
   }
-  return { text: lines.join('\n'), placed }
+  for (const indexes of accepted.values()) for (const index of indexes) placed[index] = true
+  if (accepted.size === 0) return { text: clean, placed }
+  return { text: render(lines, accepted), placed }
+}
+
+function render(lines: readonly string[], markersByLine: ReadonlyMap<number, readonly number[]>): string {
+  return lines
+    .map((line, lineIndex) => {
+      const indexes = markersByLine.get(lineIndex)
+      if (!indexes) return line
+      const markers = indexes.map(index => `${LINE_TASK_MARKER_OPEN}${index}${LINE_TASK_MARKER_CLOSE}`).join('')
+      // 直前の空白は URL の自動リンクが目印まで飲み込まないようにするためのもの
+      return `${line.trimEnd()} ${markers}`
+    })
+    .join('\n')
+}
+
+function parse(text: string): Root {
+  return fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] })
+}
+
+// 子のブロックを持つ入れ物。これ以外（段落・見出し・コード・HTML・定義など）は種別だけを見る
+const BLOCK_CONTAINERS = new Set(['root', 'blockquote', 'list', 'listItem', 'table', 'tableRow', 'footnoteDefinition'])
+
+/** ブロック構造（種別の入れ子）。目印で表・定義・見出し等が変わっていないかの比較に使う。行内の text 増減は見ない */
+function shapeOf(node: Nodes): string {
+  if (!BLOCK_CONTAINERS.has(node.type) || !('children' in node)) return node.type
+  return `${node.type}(${node.children.map(shapeOf).join(',')})`
+}
+
+// 目印が表示されない（または意味を持たない）祖先
+const HIDDEN_ANCESTORS = new Set(['html', 'code', 'inlineCode', 'table', 'definition'])
+
+/** 実際に見える文章（paragraph / heading の text）の中にある目印の添字 */
+function visibleMarkerIndexes(root: Root): Set<number> {
+  const found = new Set<number>()
+  const walk = (node: Nodes, inText: boolean, hidden: boolean) => {
+    if (node.type === 'text') {
+      if (inText && !hidden) for (const match of node.value.matchAll(MARKER_SPLIT_RE)) found.add(Number(match[1]))
+      return
+    }
+    if (!('children' in node)) return
+    const nextHidden = hidden || HIDDEN_ANCESTORS.has(node.type)
+    const nextInText = inText || node.type === 'paragraph' || node.type === 'heading'
+    for (const child of node.children) walk(child, nextInText, nextHidden)
+  }
+  walk(root, false, false)
+  return found
 }
 
 /** 目印（直前の区切りの空白を含む）を丸ごと取り除く。コードなど、ラベルを出さない場所に紛れた分の後始末 */
