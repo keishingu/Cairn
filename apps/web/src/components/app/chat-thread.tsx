@@ -43,6 +43,8 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { hasAppleTouchInput, resolveChatSendKeyMode, shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -606,6 +608,14 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onCancelReply: () => void
 }) => {
   const t = useT()
+  const getSendKeyMode = () => {
+    let saved: string | null = null
+    try { saved = localStorage.getItem(STORAGE_KEYS.chat_send_key) } catch {
+      setSendError(t('Could not read the chat input preference from this browser.'))
+      return 'modifier-enter'
+    }
+    return resolveChatSendKeyMode(saved, typeof navigator !== 'undefined' && hasAppleTouchInput(navigator.platform, navigator.userAgent, navigator.maxTouchPoints))
+  }
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -981,10 +991,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
-                  if (e.key !== 'Enter' || e.shiftKey) return
-                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                  if (isMobile) return
+                  if (e.key !== 'Enter') return
                   if (isImeConfirmingEnter(e, isComposing)) return
+                  if (!shouldSendChatOnEnter(e.key, getSendKeyMode(), !!isMobile, e)) return
                   e.preventDefault()
                   send()
                 })}
@@ -1065,10 +1074,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                if (isMobile) return
+                if (e.key !== 'Enter') return
                 if (isImeConfirmingEnter(e, isComposing)) return
+                if (!shouldSendChatOnEnter(e.key, getSendKeyMode(), !!isMobile, e)) return
                 e.preventDefault()
                 send()
               })}

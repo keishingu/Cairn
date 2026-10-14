@@ -5,9 +5,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import { CURRENT_USER_FETCH_ERROR_MESSAGE, CURRENT_USER_QUERY_KEY } from '@/hooks/use-current-user'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import {
   getSettingsNavGroups,
   isSettingsSection,
@@ -714,6 +715,64 @@ describe('外観の週の始まり', () => {
       }))
     })
     expect(window.localStorage.getItem('cairn:calendar_week_start')).toBe('monday')
+  })
+})
+
+describe('チャット送信キー設定', () => {
+  let originalWindowLocalStorage: PropertyDescriptor | undefined
+  beforeEach(() => {
+    originalWindowLocalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
+    vi.stubGlobal('localStorage', window.localStorage)
+    localStorage.clear()
+    window.localStorage.clear()
+    fetchWithAuth.mockImplementation(async () => ({ ok: true, json: async () => ({ id: 'user-1', locale: 'system', calendarWeekStart: 'sunday' }) }))
+  })
+
+  it('選択をこのブラウザに保存し、再表示時に復元する', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+    const select = await screen.findByRole('combobox', { name: 'メッセージの送信キー' })
+    fireEvent.change(select, { target: { value: 'modifier-enter' } })
+    expect(localStorage.getItem(STORAGE_KEYS.chat_send_key)).toBe('modifier-enter')
+
+    view.unmount()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByRole('combobox', { name: 'メッセージの送信キー' })).toHaveValue('modifier-enter')
+  })
+
+  it('保存に失敗したときは選択を変えず、エラーを表示する', async () => {
+    const failingStorage = {
+      getItem: vi.fn().mockReturnValue(null),
+      setItem: vi.fn(() => { throw new Error('storage unavailable') }),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      get length() { return 0 },
+    } as unknown as Storage
+    vi.stubGlobal('localStorage', failingStorage)
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: failingStorage })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="appearance" />
+      </QueryClientProvider>,
+    )
+    const select = await screen.findByRole('combobox', { name: 'メッセージの送信キー' })
+    fireEvent.change(select, { target: { value: 'enter' } })
+    expect(select).toHaveValue('default')
+    expect(screen.getByText('このブラウザにチャット入力設定を保存できませんでした。')).toBeInTheDocument()
+  })
+  afterEach(() => {
+    if (originalWindowLocalStorage) Object.defineProperty(window, 'localStorage', originalWindowLocalStorage)
+    vi.unstubAllGlobals()
   })
 })
 

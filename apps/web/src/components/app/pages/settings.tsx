@@ -14,6 +14,8 @@ import { TopBar } from '../sidebar'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { useLocale, useT } from '@/components/locale-provider'
 import { ACCENT_PRESETS } from '@/lib/accent-presets'
+import type { ChatSendKeyMode } from '@/lib/chat/send-key'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useWorkspaceSettings, useUpdateWorkspaceSettings } from '@/lib/use-workspace-settings'
 import {
   CURRENT_USER_FETCH_ERROR_MESSAGE,
@@ -672,7 +674,28 @@ const SettingsAppearance = () => {
   const { data: me, isSuccess: meLoaded } = useCurrentUser()
   const queryClient = useQueryClient()
   const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  const [chatSendKey, setChatSendKey] = React.useState<ChatSendKeyMode | 'default'>('default')
+  const [chatSendKeyError, setChatSendKeyError] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem(STORAGE_KEYS.chat_send_key)
+      setChatSendKey(saved === 'enter' || saved === 'modifier-enter' ? saved : 'default')
+    } catch {
+      setChatSendKeyError('Could not read the chat input preference from this browser.')
+    }
+    setMounted(true)
+  }, [])
+  const changeChatSendKey = (value: ChatSendKeyMode | 'default') => {
+    try {
+      if (value === 'default') localStorage.removeItem(STORAGE_KEYS.chat_send_key)
+      else localStorage.setItem(STORAGE_KEYS.chat_send_key, value)
+      setChatSendKey(value)
+      setChatSendKeyError(null)
+    } catch {
+      setChatSendKeyError('Could not save the chat input preference in this browser.')
+    }
+  }
   const weekStart = isCalendarWeekStart(me?.calendarWeekStart)
     ? me.calendarWeekStart
     : DEFAULT_CALENDAR_WEEK_START
@@ -773,6 +796,20 @@ const SettingsAppearance = () => {
     <div style={{ maxWidth: 780 }}>
       <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Appearance')}</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
+
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Chat input')}</h2>
+        <div className="card" style={{ padding: 16 }}>
+          <label htmlFor="chat-send-key" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t('Send messages with')}</label>
+          <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 11.5 }}>{t('This preference is saved in this browser on this device. Device default keeps Enter to send on desktop and uses Return for a new line on iPad. On mobile, keyboard Return always inserts a new line.')}</p>
+          <select id="chat-send-key" value={mounted ? chatSendKey : 'default'} onChange={e => changeChatSendKey(e.target.value as ChatSendKeyMode | 'default')} className="form-control" style={{ width: '100%', maxWidth: 360, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--card)', color: 'var(--text)', fontSize: 13 }}>
+            <option value="default">{t('Use device default')}</option>
+            <option value="enter">{t('Enter to send; Shift+Enter for a new line')}</option>
+            <option value="modifier-enter">{t('Enter for a new line; Command/Ctrl+Enter to send')}</option>
+          </select>
+          {chatSendKeyError && <InlineError style={{ marginTop: 8 }}>{t(chatSendKeyError)}</InlineError>}
+        </div>
+      </section>
 
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Theme and color')}</h2>
