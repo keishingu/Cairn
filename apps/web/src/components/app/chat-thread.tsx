@@ -1036,7 +1036,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}
           </button>
@@ -1046,7 +1046,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
-          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
             </span>
