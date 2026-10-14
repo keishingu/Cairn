@@ -25,6 +25,8 @@ const {
     txInserts: [] as unknown[][],
     txUpdates: [] as unknown[][],
     executed: [] as string[],
+    // db.execute（トランザクション外）の結果。配信トリガーの準備確認に使う
+    triggersReady: true,
     inserted: [] as Array<{ table: unknown; values: unknown }>,
     updated: [] as Array<{ table: unknown; set: unknown }>,
   },
@@ -84,6 +86,7 @@ vi.mock('@cairn/db', () => {
   return {
     db: {
       select: () => chain(state.outerSelects),
+      execute: () => Promise.resolve({ rows: [{ ready: state.triggersReady }] }),
       transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(tx),
     },
     channels: { id: 'channels.id', name: 'channels.name', workspaceId: 'channels.workspaceId', type: 'channels.type', parentChannelId: 'channels.parentChannelId', isPrivate: 'channels.isPrivate' },
@@ -145,6 +148,7 @@ describe('メッセージのスレッドへの切り出し', () => {
     state.executed.length = 0
     state.inserted.length = 0
     state.updated.length = 0
+    state.triggersReady = true
   })
 
   it('メンバー未満のロールは権限エラーになり何も変更しない', async () => {
@@ -299,6 +303,18 @@ describe('メッセージのスレッドへの切り出し', () => {
     })
     expect(state.updated[0]?.set).toEqual({ channelId: THREAD })
     expect(state.updated[1]?.set).toEqual({ channelId: THREAD })
+  })
+
+  it('移動元へも配信するトリガーが入るまでは切り出さず準備中を返す', async () => {
+    arrangeNewThread()
+    state.triggersReady = false
+    const { POST } = await import('./route')
+
+    const response = await POST(request({ messageIds: [MSG_A, MSG_B], threadName: '相談' }), routeContext)
+
+    expect(response.status).toBe(503)
+    expect(state.updated).toHaveLength(0)
+    expect(state.inserted).toHaveLength(0)
   })
 
   it('付随データ（通知・通報・AIナッジ・既読位置・巡回位置）を同じトランザクションで付け替える', async () => {

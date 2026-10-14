@@ -87,6 +87,21 @@ export async function POST(req: Request, { params }: RouteContext) {
       )
     }
 
+    // 移動元にも配信するトリガー（20261014060000）より先にデプロイされた間は、移動元を開いている人の
+    // メッセージ・タスクが残り続けるため、トリガーが更新されるまでは切り出しを受け付けない。
+    const triggerCheck = await db.execute<{ ready: boolean }>(sql`
+      SELECT count(*) = 2 AS ready
+      FROM pg_proc
+      WHERE proname IN ('broadcast_messages_changes', 'broadcast_tasks_changes')
+        AND prosrc ILIKE '%old.channel_id is distinct from new.channel_id%'
+    `)
+    if (triggerCheck.rows[0]?.ready !== true) {
+      return NextResponse.json(
+        { error: 'スレッドへの切り出しを準備中です。しばらくしてから再度お試しください' },
+        { status: 503 },
+      )
+    }
+
     const result = await db.transaction(async (tx): Promise<MoveToThreadResult> => {
       // スレッド作成・メンバー追加・投稿と同じ親行で直列化し、移動中に新規の会話が割り込まないようにする。
       await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, parent.id)).for('update').limit(1)

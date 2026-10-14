@@ -51,6 +51,8 @@ describe('onMessageCreated', () => {
           return []
         case 'resolve-mention-preview-names':
           return {}
+        case 'resolve-current-channel':
+          return 'channel-id'
         case 'check-dm':
           return false
         case 'fetch-mentioned-members':
@@ -99,6 +101,8 @@ describe('onMessageCreated', () => {
           return [{ userId: 'u-attr', displayName: '属性候補' }]
         case 'resolve-mention-preview-names':
           return { all: 'all', project_members: 'project_members', 'attr:attr-1': 'コーチ' }
+        case 'resolve-current-channel':
+          return 'channel-id'
         case 'check-dm':
           return false
         default:
@@ -128,5 +132,47 @@ describe('onMessageCreated', () => {
     expect(names).toContain('expand-project-members-mention')
     expect(names).toContain('expand-attr-mentions')
     expect(names).not.toContain('fetch-mentioned-members')
+  })
+  it('スレッドへ移動済みでも通知の宛先を決める前に今のチャンネルを読み直す', async () => {
+    const handler = handlers.get('on-message-created')
+    expect(handler).toBeDefined()
+
+    const run = vi.fn(async (name: string) => {
+      switch (name) {
+        case 'resolve-current-channel':
+          return 'thread-id'
+        case 'fetch-members':
+        case 'filter-blocked-members':
+        case 'filter-mention-access':
+        case 'filter-blocked-mentions':
+        case 'expand-all-mention':
+        case 'expand-project-members-mention':
+        case 'expand-attr-mentions':
+          return []
+        case 'resolve-mention-preview-names':
+          return {}
+        case 'check-dm':
+          return false
+        default:
+          throw new Error(`Unexpected step: ${name}`)
+      }
+    })
+
+    await handler!({
+      event: {
+        data: {
+          messageId: 'message-id',
+          channelId: 'parent-channel-id',
+          workspaceId: 'workspace-id',
+          senderId: 'sender-id',
+          senderName: '送信者',
+          content: '確認',
+          attachmentFileIds: [],
+        },
+      },
+      step: { run, sleep: vi.fn() },
+    })
+
+    expect(stepNames(run)[0]).toBe('resolve-current-channel')
   })
 })

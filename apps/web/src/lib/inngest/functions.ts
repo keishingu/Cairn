@@ -83,8 +83,21 @@ export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
   async ({ event, step }) => {
-    const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
+    const { messageId, channelId: postedChannelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
+
+    // スレッドへの切り出しで、このジョブが走る前にメッセージが移動していることがある。
+    // 投稿時のチャンネルのまま通知を作ると遷移先とメンション未読数が親に残るため、今のチャンネルを読み直す。
+    const channelId = await step.run('resolve-current-channel', async () => {
+      const { db, messages } = await import('@cairn/db')
+      const { eq } = await import('drizzle-orm')
+      const [row] = await db
+        .select({ channelId: messages.channelId })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1)
+      return row?.channelId ?? postedChannelId
+    })
 
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
