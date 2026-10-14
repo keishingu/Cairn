@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { isMentionLink, splitMermaidSegments, toEnrichedMarkdown } from './mobile-markdown-source'
+import { insertLineTaskMarkers } from '@cairn/shared'
+import { isMentionLink, splitMermaidSegments, taskIdFromLink, toEnrichedMarkdown } from './mobile-markdown-source'
 
 const WJ = '⁠'
 const names: Record<string, string> = { 'user-1': '山田 太郎' }
@@ -164,5 +165,48 @@ describe('splitMermaidSegments', () => {
     const segments = splitMermaidSegments('[資料][doc]\n\n```Mermaid\ngraph TD\n```\n\n[doc]: https://example.com')
     expect(segments[0]).toEqual({ type: 'markdown', content: '[資料][doc]\n\n\n\n[doc]: https://example.com' })
     expect(segments[1]).toEqual({ type: 'mermaid', definition: 'graph TD' })
+  })
+})
+
+describe('行末のタスクラベル', () => {
+  const tasks = [
+    { id: 'task-1', status: 'todo' as const, lineIndex: 1 },
+    { id: 'task-2', status: 'done' as const, lineIndex: 3 },
+  ]
+  function withLabels(content: string, lineTasks = tasks) {
+    return toEnrichedMarkdown(insertLineTaskMarkers(content, lineTasks).text, {
+      resolveMentionName: (userId, displayName) => names[userId] ?? displayName ?? 'メンバー',
+      imageLabel: '画像',
+      lineTasks,
+      taskLabel: 'タスク',
+    })
+  }
+
+  test('リスト項目と段落の行末に、タスクを開くリンクを付ける', () => {
+    expect(withLabels('前置き\n- 買い出し\n\n段落')).toBe(
+      '前置き\n\n- 買い出し [✓ タスク](cairn-task:task-1)\n\n段落 [☑ タスク](cairn-task-done:task-2)',
+    )
+  })
+
+  test('完了したタスクは別のスキームで識別できる', () => {
+    const markdown = withLabels('a\nb\nc\nd')
+    expect(markdown).toContain('[☑ タスク](cairn-task-done:task-2)')
+    expect(markdown).toContain('[✓ タスク](cairn-task:task-1)')
+  })
+
+  test('リンクからタスク ID を取り出せる', () => {
+    expect(taskIdFromLink('cairn-task:task-1')).toBe('task-1')
+    expect(taskIdFromLink('cairn-task-done:task-2')).toBe('task-2')
+    expect(taskIdFromLink('https://example.com')).toBeNull()
+  })
+
+  test('コードブロックの行には付けず、本文にも目印を残さない', () => {
+    const markdown = withLabels('```\ncode\n```', [{ id: 'task-1', status: 'todo', lineIndex: 1 }])
+    expect(markdown).not.toContain('cairn-task')
+    expect(markdown).not.toMatch(/[\uE000\uE001]/)
+  })
+
+  test('lineTasks が無い（行に対応しない）ときは何も付けない', () => {
+    expect(withLabels('a\nb', [{ id: 'task-1', status: 'todo', lineIndex: null as unknown as number }])).not.toContain('cairn-task')
   })
 })

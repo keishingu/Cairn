@@ -49,7 +49,7 @@ import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSub
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, openChannelDisappeared } from '@cairn/shared'
+import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -216,6 +216,13 @@ function ChatMessageRow({
     configuredLegacyRole: message.senderProjectRoleLegacy,
   })
   const projectRoleColor = message.senderProjectRoleName ? message.senderProjectRoleColor : null
+  // 行末に「✓ タスク」ラベルを出せたタスクは下部のチップから除く（行に対応しない分・ブロック中の本文は従来どおりチップで示す）
+  const chipTasks = React.useMemo(() => {
+    if (message.linkedTasks.length === 0) return message.linkedTasks
+    if (message.blocked || message.content.length === 0) return message.linkedTasks
+    const { placed } = insertLineTaskMarkers(message.content, message.linkedTasks)
+    return message.linkedTasks.filter((_, index) => !placed[index])
+  }, [message.linkedTasks, message.content, message.blocked])
 
   if (message.messageType === 'system') {
     return (
@@ -303,6 +310,8 @@ function ChatMessageRow({
                 content={message.content}
                 palette={palette}
                 onLinkPress={onLinkPress}
+                lineTasks={message.linkedTasks}
+                onTaskPress={onOpenTask}
                 onLongPress={() => onOpenActions(message)}
               />
             )
@@ -328,8 +337,8 @@ function ChatMessageRow({
           )}
         </Pressable>
 
-        {message.linkedTasks.length > 0 && (() => {
-          const tasks = message.linkedTasks
+        {chipTasks.length > 0 && (() => {
+          const tasks = chipTasks
           const doneCount = tasks.filter((task) => task.status === 'done').length
           const allDone = doneCount === tasks.length
           const single = tasks.length === 1 ? tasks[0] : undefined

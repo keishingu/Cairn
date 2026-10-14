@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { legacyCheckboxTaskIdByLine, taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from './task-candidates'
+import { legacyCheckboxTaskIdByLine, linkedTaskLineIndexes, taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from './task-candidates'
 import { TASK_TITLE_MAX_LENGTH } from './title-from-message'
 
 // line は生の行の SHA-256 hex
@@ -15,38 +15,38 @@ const OTHER_ID = '00000000-0000-0000-0000-000000000002'
 describe('taskCandidatesFromMessage', () => {
   it('空でない行をそれぞれ候補にし、空行は除く', () => {
     expect(taskCandidatesFromMessage('1行目\n\n  \n2行目')).toEqual([
-      { line: h('1行目'), title: '1行目', isListItem: false },
-      { line: h('2行目'), title: '2行目', isListItem: false },
+      { line: h('1行目'), title: '1行目', isListItem: false, rawLineIndex: 0 },
+      { line: h('2行目'), title: '2行目', isListItem: false, rawLineIndex: 3 },
     ])
   })
 
   it('行頭のリスト・チェックボックス・番号は除いて isListItem を立てる', () => {
     expect(taskCandidatesFromMessage('- 買い出し\n* [ ] 会場予約\n- [x] 片付け\n1. 番号付き\n2) 括弧付き')).toEqual([
-      { line: h('買い出し'), title: '買い出し', isListItem: true },
-      { line: h('会場予約'), title: '会場予約', isListItem: true },
-      { line: h('片付け'), title: '片付け', isListItem: true },
-      { line: h('番号付き'), title: '番号付き', isListItem: true },
-      { line: h('括弧付き'), title: '括弧付き', isListItem: true },
+      { line: h('買い出し'), title: '買い出し', isListItem: true, rawLineIndex: 0 },
+      { line: h('会場予約'), title: '会場予約', isListItem: true, rawLineIndex: 1 },
+      { line: h('片付け'), title: '片付け', isListItem: true, rawLineIndex: 2 },
+      { line: h('番号付き'), title: '番号付き', isListItem: true, rawLineIndex: 3 },
+      { line: h('括弧付き'), title: '括弧付き', isListItem: true, rawLineIndex: 4 },
     ])
   })
 
   it('引用・見出しの記号は除くがリスト扱いにはしない。引用内のリストはリスト扱い', () => {
     expect(taskCandidatesFromMessage('## 見出し\n> 引用文\n> - [ ] 入れ子')).toEqual([
-      { line: h('見出し'), title: '見出し', isListItem: false },
-      { line: h('引用文'), title: '引用文', isListItem: false },
-      { line: h('入れ子'), title: '入れ子', isListItem: true },
+      { line: h('見出し'), title: '見出し', isListItem: false, rawLineIndex: 0 },
+      { line: h('引用文'), title: '引用文', isListItem: false, rawLineIndex: 1 },
+      { line: h('入れ子'), title: '入れ子', isListItem: true, rawLineIndex: 2 },
     ])
   })
 
   it('コードフェンス内の行は除外する', () => {
     expect(taskCandidatesFromMessage('前\n```ts\nconst a = 1\n- x\n```\n後')).toEqual([
-      { line: h('前'), title: '前', isListItem: false },
-      { line: h('後'), title: '後', isListItem: false },
+      { line: h('前'), title: '前', isListItem: false, rawLineIndex: 0 },
+      { line: h('後'), title: '後', isListItem: false, rawLineIndex: 5 },
     ])
   })
 
   it('記号だけの行は候補にしない', () => {
-    expect(taskCandidatesFromMessage('-\n> \n- [ ] \n次の行')).toEqual([{ line: h('次の行'), title: '次の行', isListItem: false }])
+    expect(taskCandidatesFromMessage('-\n> \n- [ ] \n次の行')).toEqual([{ line: h('次の行'), title: '次の行', isListItem: false, rawLineIndex: 3 }])
   })
 
   it('Markdown 装飾を除去する', () => {
@@ -59,6 +59,7 @@ describe('taskCandidatesFromMessage', () => {
       line: h(`<@${USER_ID}> レビューお願いします`),
       title: '@山田 レビューお願いします',
       isListItem: true,
+      rawLineIndex: 0,
     })
   })
 
@@ -82,7 +83,7 @@ describe('taskCandidatesFromMessage', () => {
   it('旧形式 <@id|名前> は line で <@id> に正規化し、同じメンションなら同一キーとして重複除去する', () => {
     const content = `<@${USER_ID}|旧名> お願い\n<@${USER_ID}> お願い`
     const candidates = taskCandidatesFromMessage(content, () => '山田')
-    expect(candidates).toEqual([{ line: h(`<@${USER_ID}> お願い`), title: '@山田 お願い', isListItem: false }])
+    expect(candidates).toEqual([{ line: h(`<@${USER_ID}> お願い`), title: '@山田 お願い', isListItem: false, rawLineIndex: 0 }])
   })
 
   it('同一の行は最初の1つだけ残す', () => {
@@ -150,5 +151,43 @@ describe('legacyCheckboxTaskIdByLine', () => {
 
   it('対応する行がなければ何も対応付けない', () => {
     expect(legacyCheckboxTaskIdByLine(content, [{ id: 't', title: '消えた行', sourceCheckboxIndex: 9 }]).size).toBe(0)
+  })
+})
+
+describe('linkedTaskLineIndexes', () => {
+  const task = (id: string, sourceLine: string | null, extra: { title?: string; sourceCheckboxIndex?: number | null } = {}) => ({
+    id,
+    title: extra.title ?? id,
+    sourceLine,
+    sourceCheckboxIndex: extra.sourceCheckboxIndex ?? null,
+  })
+
+  it('source_line が一致する候補の元の行番号を返す（空行・コードフェンスを含めた行番号）', () => {
+    const content = '前置き\n\n```\ncode\n```\n- 対象の行\n最後'
+    const map = linkedTaskLineIndexes(content, [task('t1', h('対象の行')), task('t2', h('前置き'))])
+    expect(map).toEqual(new Map([['t1', 5], ['t2', 0]]))
+  })
+
+  it('メンションを含む行も名前解決なしで対応付ける', () => {
+    const map = linkedTaskLineIndexes(`a\n<@${USER_ID}|山田> お願い`, [task('t', h(`<@${USER_ID}> お願い`))])
+    expect(map.get('t')).toBe(1)
+  })
+
+  it('旧チェックボックス由来のタスクは対応付けた行の行番号を返す', () => {
+    const content = '前置き\n- [ ] 一つ目\n- [x] 二つ目'
+    const map = linkedTaskLineIndexes(content, [
+      task('l0', null, { title: '改名済み', sourceCheckboxIndex: 0 }),
+      task('l1', null, { title: '二つ目', sourceCheckboxIndex: 1 }),
+    ])
+    expect(map).toEqual(new Map([['l0', 1], ['l1', 2]]))
+  })
+
+  it('対応する行が無い（本文編集で消えた・コードフェンス内）タスクは null', () => {
+    const map = linkedTaskLineIndexes('```\n消えた行\n```\n別の行', [
+      task('gone', h('消えた行')),
+      task('legacy', null, { title: '無い', sourceCheckboxIndex: 3 }),
+      task('manual', null),
+    ])
+    expect(map).toEqual(new Map([['gone', null], ['legacy', null], ['manual', null]]))
   })
 })

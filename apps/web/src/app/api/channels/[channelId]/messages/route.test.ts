@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -118,6 +119,8 @@ vi.mock('@cairn/db', () => ({
     id: 'tasks.id',
     status: 'tasks.status',
     sourceMessageId: 'tasks.sourceMessageId',
+    sourceLine: 'tasks.sourceLine',
+    sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
     workspaceId: 'tasks.workspaceId',
     createdAt: 'tasks.createdAt',
   },
@@ -299,7 +302,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     ])
   })
 
-  it('GET はタスク化済みのメッセージに作成順のタスク一覧を linkedTasks として付ける', async () => {
+  it('GET はタスク化済みのメッセージに作成順のタスク一覧を linkedTasks として付け、行番号を lineIndex に入れる', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     const base = {
       content: 'hello',
@@ -309,16 +312,20 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       createdAt: new Date('2026-06-24T01:00:00.000Z'),
       updatedAt: new Date('2026-06-24T01:00:00.000Z'),
     }
+    const lineKey = (raw: string) => createHash('sha256').update(raw).digest('hex')
     mockSelectResults(
       // DB は新しい順で返し、実装が時系列に並べ替える
-      [{ ...base, id: 'msg-2' }, { ...base, id: 'msg-1' }],
+      [{ ...base, id: 'msg-2' }, { ...base, id: 'msg-1', content: '前置き\n\n- 資料を確認\n- [ ] 日程調整\n```\n- 消えた行\n```' }],
       [],
       [],
       [],
       // createdAt 昇順で返るので、そのまま作成順に並ぶ
       [
-        { id: 'task-1', title: '資料を確認', status: 'done', sourceMessageId: 'msg-1' },
-        { id: 'task-2', title: '日程調整', status: 'todo', sourceMessageId: 'msg-1' },
+        { id: 'task-1', title: '資料を確認', status: 'done', sourceMessageId: 'msg-1', sourceLine: lineKey('資料を確認'), sourceCheckboxIndex: null },
+        // 旧チェックボックス由来（source_line なし）
+        { id: 'task-2', title: '日程調整', status: 'todo', sourceMessageId: 'msg-1', sourceLine: null, sourceCheckboxIndex: 0 },
+        // 本文から消えた行（コードフェンス内）
+        { id: 'task-3', title: '消えた行', status: 'todo', sourceMessageId: 'msg-1', sourceLine: lineKey('消えた行'), sourceCheckboxIndex: null },
       ],
     )
 
@@ -328,8 +335,9 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual([
       expect.objectContaining({ id: 'msg-1', linkedTasks: [
-        { id: 'task-1', title: '資料を確認', status: 'done' },
-        { id: 'task-2', title: '日程調整', status: 'todo' },
+        { id: 'task-1', title: '資料を確認', status: 'done', lineIndex: 2 },
+        { id: 'task-2', title: '日程調整', status: 'todo', lineIndex: 3 },
+        { id: 'task-3', title: '消えた行', status: 'todo', lineIndex: null },
       ] }),
       expect.objectContaining({ id: 'msg-2', linkedTasks: [] }),
     ])

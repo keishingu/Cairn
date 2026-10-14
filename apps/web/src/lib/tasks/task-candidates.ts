@@ -21,6 +21,8 @@ export interface TaskCandidate {
   title: string
   /** 元の行がリスト・チェックボックス・番号付きリストだったか */
   isListItem: boolean
+  /** 本文（canonical）を `\n` で分割したときの元の行番号（0始まり）。タスク化した行の行末ラベルの位置に使う */
+  rawLineIndex: number
 }
 
 // 引用・見出し・リスト（チェックボックス・番号付き含む）の行頭記号。リスト系は第1グループに入る。
@@ -62,7 +64,9 @@ export function taskCandidatesFromMessage(
   const candidates: TaskCandidate[] = []
   const seen = new Set<string>()
   let inFence = false
-  for (const rawLine of canonicalizeMentions(content).split(/\r?\n/)) {
+  // 行番号は DB の本文を `\n` で分けたときの番号（\r は行末に残るだけで行数に影響しない）
+  const rawLines = canonicalizeMentions(content).split('\n')
+  for (const [rawLineIndex, rawLine] of rawLines.entries()) {
     if (FENCE_RE.test(rawLine)) {
       inFence = !inFence
       continue
@@ -75,7 +79,7 @@ export function taskCandidatesFromMessage(
     const line = lineKey(parsed.text)
     if (seen.has(line)) continue
     seen.add(line)
-    candidates.push({ line, title, isListItem: parsed.isListItem })
+    candidates.push({ line, title, isListItem: parsed.isListItem, rawLineIndex })
     if (candidates.length >= TASK_CANDIDATES_MAX) break
   }
   return candidates
@@ -124,6 +128,33 @@ export function legacyCheckboxTaskIdByLine(
   for (const task of unmatched) {
     const byIndex = indexLineOf(task)
     if (byIndex !== undefined && !result.has(byIndex)) result.set(byIndex, task.id)
+  }
+  return result
+}
+
+/**
+ * メッセージを出典とするタスクごとに、本文（canonical）の元の行番号（0始まり）を返す。行末の「✓ タスク」ラベルの位置に使う。
+ * source_line が一致する候補の行、旧チェックボックス由来のタスクは legacyCheckboxTaskIdByLine で対応付けた行を使う。
+ * 対応する行が無い（本文編集で消えた等）タスクは null。名前解決は不要（line は名前に依存しない）。
+ */
+export function linkedTaskLineIndexes(
+  content: string,
+  tasks: { id: string; title: string; sourceLine: string | null; sourceCheckboxIndex: number | null }[],
+): Map<string, number | null> {
+  const result = new Map<string, number | null>(tasks.map(task => [task.id, null]))
+  if (tasks.length === 0) return result
+  const candidates = taskCandidatesFromMessage(content)
+  const indexByLine = new Map(candidates.map(c => [c.line, c.rawLineIndex]))
+  const legacyTasks: { id: string; title: string; sourceCheckboxIndex: number }[] = []
+  for (const task of tasks) {
+    if (task.sourceLine !== null) {
+      result.set(task.id, indexByLine.get(task.sourceLine) ?? null)
+    } else if (task.sourceCheckboxIndex !== null) {
+      legacyTasks.push({ id: task.id, title: task.title, sourceCheckboxIndex: task.sourceCheckboxIndex })
+    }
+  }
+  for (const [line, taskId] of legacyCheckboxTaskIdByLine(content, legacyTasks)) {
+    result.set(taskId, indexByLine.get(line) ?? null)
   }
   return result
 }

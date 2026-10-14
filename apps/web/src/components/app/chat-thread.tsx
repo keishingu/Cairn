@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -219,7 +219,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
-  // memo を効かせるため、linkedTasks は配列でなく id / status / title を連結したキー文字列で受ける
+  // memo を効かせるため、linkedTasks は配列でなく id / status / lineIndex / title を連結したキー文字列で受ける
   linkedTasksKey?: string | undefined
   blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
@@ -271,6 +271,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
+  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す
+  const inlinePlaced = React.useMemo(
+    () => (blocked || emojiOnly || !content ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
+    [blocked, emojiOnly, content, linkedTasks],
+  )
+  const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
@@ -491,6 +497,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
+                  lineTasks={linkedTasks}
                   onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
@@ -538,10 +545,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             ))}
           </div>
         )}
-        {linkedTasks.length > 0 && (() => {
-          const doneCount = linkedTasks.filter(task => task.status === 'done').length
-          const allDone = doneCount === linkedTasks.length
-          const single = linkedTasks.length === 1 ? linkedTasks[0] : undefined
+        {chipTasks.length > 0 && (() => {
+          const doneCount = chipTasks.filter(task => task.status === 'done').length
+          const allDone = doneCount === chipTasks.length
+          const single = chipTasks.length === 1 ? chipTasks[0] : undefined
           const chipStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 4,
             height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
@@ -569,10 +576,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 trigger={{
                   label: t('Show tasks'),
                   testId: 'linked-task-chip',
-                  content: <><Icon name="check" size={11}/> {t('Task {done}/{total}', { done: doneCount, total: linkedTasks.length })}</>,
+                  content: <><Icon name="check" size={11}/> {t('Task {done}/{total}', { done: doneCount, total: chipTasks.length })}</>,
                 }}
                 triggerStyle={{ ...chipStyle, cursor: 'pointer', fontFamily: 'inherit' }}
-                actions={linkedTasks.map(task => ({
+                actions={chipTasks.map(task => ({
                   icon: task.status === 'done' ? 'check' : 'external-link',
                   label: task.title,
                   verbatim: true,

@@ -31,7 +31,7 @@ export interface MessageDto {
   parentMessageId: string | null
   replyTo: { id: string; senderName: string; content: string; isDeleted: boolean } | null
   bookmarked: boolean
-  linkedTasks: { id: string; title: string; status: 'todo' | 'in_progress' | 'done' }[]
+  linkedTasks: { id: string; title: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }[]
   blocked?: boolean
 }
 

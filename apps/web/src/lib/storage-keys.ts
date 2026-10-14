@@ -33,6 +33,8 @@ export const STORAGE_KEYS = {
   chat_last_channel_id:      'cairn:chat_last_channel_id',
   chat_sidebar_width:        'cairn:chat_sidebar_width',
   chat_send_key:             'cairn:chat_send_key',
+  tasks_status_filter:       'cairn:tasks_status_filter',
+  tasks_scope:               'cairn:tasks_scope',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
