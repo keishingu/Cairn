@@ -56,15 +56,29 @@ export function insertLineTaskMarkers(
 
   // 元の本文の構造。目印を付けても変わってはならない
   const baseShape = shapeOf(parse(clean))
-  const accepted = new Map<number, number[]>()
-  // 行を1つずつ足して構文木を調べ、目印が描画される text に入り、かつ構造が変わらない行だけ採用する
-  for (const [lineIndex, indexes] of [...candidates].sort((a, b) => a[0] - b[0])) {
-    const trial = new Map(accepted).set(lineIndex, indexes)
+  const sorted = [...candidates].sort((a, b) => a[0] - b[0])
+  const check = (trial: ReadonlyMap<number, readonly number[]>) => {
     const tree = parse(render(lines, trial))
     const visible = visibleMarkerIndexes(tree)
-    if (shapeOf(tree) !== baseShape) continue
-    if (![...trial.values()].flat().every(index => visible.has(index))) continue
-    accepted.set(lineIndex, indexes)
+    const hiddenLines = [...trial].filter(([, indexes]) => !indexes.every(index => visible.has(index))).map(([lineIndex]) => lineIndex)
+    return { sameShape: shapeOf(tree) === baseShape, hiddenLines }
+  }
+  // 解析回数を抑えるため、まず全行を一括で確かめ、目印が描画されない行を外して確かめ直す（通常は1〜2回で済む）
+  let accepted = new Map<number, number[]>(sorted)
+  let result = check(accepted)
+  if (result.sameShape && result.hiddenLines.length > 0) {
+    for (const lineIndex of result.hiddenLines) accepted.delete(lineIndex)
+    result = accepted.size > 0 ? check(accepted) : { sameShape: true, hiddenLines: [] }
+  }
+  if (!result.sameShape || result.hiddenLines.length > 0) {
+    // 表・定義などの構造が変わる行があるときだけ、行を1つずつ足して構造が変わらず描画される行だけ採用する
+    const candidatesLeft = [...accepted]
+    accepted = new Map()
+    for (const [lineIndex, indexes] of candidatesLeft) {
+      const trial = new Map(accepted).set(lineIndex, indexes)
+      const trialResult = check(trial)
+      if (trialResult.sameShape && trialResult.hiddenLines.length === 0) accepted = trial
+    }
   }
   for (const indexes of accepted.values()) for (const index of indexes) placed[index] = true
   if (accepted.size === 0) return { text: clean, placed }

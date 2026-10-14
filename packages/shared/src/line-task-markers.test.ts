@@ -54,6 +54,12 @@ describe('insertLineTaskMarkers', () => {
     expect(result.placed).toEqual([false, true, false, true])
   })
 
+  test('多数の行がタスクでも、すべて描画される行なら一括で差し込む', () => {
+    const content = Array.from({ length: 50 }, (_, i) => `- 項目${i}`).join('\n')
+    const result = insertLineTaskMarkers(content, Array.from({ length: 50 }, (_, lineIndex) => ({ lineIndex })))
+    expect(result.placed.every(Boolean)).toBe(true)
+  })
+
   test('引用の中のコードフェンスの内側には差し込まない', () => {
     const content = ['> ```', '> 確認する', '> ```', '> 引用の本文'].join('\n')
     const result = insertLineTaskMarkers(content, [1, 3].map(lineIndex => ({ lineIndex })))
