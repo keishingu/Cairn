@@ -361,6 +361,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not open the billing portal': '결제 관리 화면을 열지 못했습니다',
   'Could not open the file': '파일을 열지 못했습니다',
   'Could not open the link.': '링크를 열지 못했습니다.',
+  'Could not open the notification. Try again.': '알림을 열지 못했습니다. 다시 시도해 주세요.',
   'Could not prepare the image. Try another photo': '이미지 준비에 실패했습니다. 다른 사진으로 시도해 주세요',
   'Could not prepare the upload': '업로드 준비에 실패했습니다',
   'Could not register the upload': '업로드 등록에 실패했습니다',

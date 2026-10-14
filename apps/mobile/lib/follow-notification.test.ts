@@ -135,6 +135,24 @@ describe('通知からチャットを開く', () => {
     )
   })
 
+  it('移動先を確認できないときは古いチャンネルを開かず、開けなかったことを伝える', async () => {
+    const base = mockApiFetch.getMockImplementation()!
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/messages/msg-1/location') return jsonResponse({ error: 'Internal server error' }, 500)
+      return base(path)
+    })
+    const push = vi.fn()
+
+    await followNotification(
+      { push },
+      { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
+      { t, onUnavailable },
+    )
+
+    expect(push).not.toHaveBeenCalled()
+    expect(onUnavailable).toHaveBeenCalledWith('通知を開けませんでした。もう一度お試しください。')
+  })
+
   it('新しいキャッシュがある間は一覧を取り直さない', async () => {
     queryClient.setQueryData(projectChannelsQueryKey, [projectChannel])
     queryClient.setQueryData(workspaceChannelsQueryKey, [])

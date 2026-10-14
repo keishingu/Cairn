@@ -361,6 +361,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not open the billing portal': '請求管理画面を開けませんでした',
   'Could not open the file': 'ファイルを開けませんでした',
   'Could not open the link.': 'リンクを開けませんでした。',
+  'Could not open the notification. Try again.': '通知を開けませんでした。もう一度お試しください。',
   'Could not prepare the image. Try another photo': '画像の準備に失敗しました。別の写真でお試しください',
   'Could not prepare the upload': 'アップロードの準備に失敗しました',
   'Could not register the upload': 'アップロードの登録に失敗しました',
