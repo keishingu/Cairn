@@ -251,7 +251,7 @@ describe('PageTasks の担当範囲とタブの保存', () => {
     mockUseCurrentUser.mockReturnValue({ data: undefined, isLoading: false, isError: true, error: new Error('ユーザー情報の取得に失敗しました') })
     renderPage()
 
-    expect(screen.getByText('ユーザー情報の取得に失敗しました')).toBeInTheDocument()
+    expect(screen.getByText('ユーザー情報を読み込めませんでした')).toBeInTheDocument()
     expect(screen.queryByText('他人の未着手')).not.toBeInTheDocument()
   })
 })

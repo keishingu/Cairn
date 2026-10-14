@@ -457,7 +457,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
         {scope === 'mine' && currentUser.isError ? (
           <div style={{ margin: isMobile ? '12px' : '16px 20px' }}>
-            <InlineError>{currentUser.error instanceof Error ? currentUser.error.message : t('Could not load your user info')}</InlineError>
+            <InlineError>{t('Could not load your user info')}</InlineError>
           </div>
         ) : isLoading ? (
           <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
