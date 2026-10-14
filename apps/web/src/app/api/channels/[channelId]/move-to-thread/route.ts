@@ -205,6 +205,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       // チャットに貼った外部リンク（Google Docs 等）はメッセージではなく metadata.channelIds でチャンネルに紐づく。
       // 移動したメッセージに URL があるリンクはスレッドにも紐づけ、親に同じ URL のメッセージが残らないなら親から外す。
+      // URL の前方一致で別のドキュメントを拾わないよう、ドキュメント ID を区切り付きで完全一致させる。
       await tx.execute(sql`
         UPDATE files AS f
         SET metadata = (f.metadata - 'channelId') || jsonb_build_object('channelIds', (
@@ -219,12 +220,12 @@ export async function POST(req: Request, { params }: RouteContext) {
               SELECT 1 FROM messages m
               WHERE m.channel_id = ${parent.id}
                 AND m.deleted_at IS NULL
-                AND strpos(m.content, f.metadata->>'externalUrl') > 0
+                AND m.content ~ ('/d/' || (f.metadata->>'docId') || '([^A-Za-z0-9_-]|$)')
             )
         ))
         WHERE f.workspace_id = ${parent.workspaceId}
           AND f.file_type = 'link'
-          AND coalesce(f.metadata->>'externalUrl', '') <> ''
+          AND coalesce(f.metadata->>'docId', '') ~ '^[A-Za-z0-9_-]+$'
           AND (
             f.metadata->'channelIds' @> jsonb_build_array(${parent.id}::text)
             OR f.metadata->>'channelId' = ${parent.id}::text
@@ -232,7 +233,7 @@ export async function POST(req: Request, { params }: RouteContext) {
           AND EXISTS (
             SELECT 1 FROM messages m
             WHERE m.id IN ${movedIds}
-              AND strpos(m.content, f.metadata->>'externalUrl') > 0
+              AND m.content ~ ('/d/' || (f.metadata->>'docId') || '([^A-Za-z0-9_-]|$)')
           )
       `)
 
