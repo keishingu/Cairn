@@ -9,8 +9,8 @@ ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "source_line" text;
 -- インデックス作成が重複キーで失敗する。先に書き込みを止める（ロックは COMMIT まで保持され、自身の更新とは競合しない）。
 LOCK TABLE "tasks" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
--- 既存のタスク化済みタスクは作成時の title が元の行と一致しているため、source_line に写して作成済み判定を引き継ぐ。
--- メンションを含む行は表示名で入る（正規形の <@id> ではない）ため、マージ前に作られたものに限り再提示されうる。
+-- マージ前に作られたタスクの title を source_line に写す。アプリが使う source_line は元の行のハッシュなので一致せず、
+-- マージ前に作られたタスクは作成済みと判定されないことがある（未マージ機能のため本番データなし）。
 UPDATE "tasks"
 SET "source_line" = "title"
 WHERE "source_message_id" IS NOT NULL

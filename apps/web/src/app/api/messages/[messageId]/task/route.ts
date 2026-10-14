@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { hasTaskChannelSchema, hasTaskSourceLineSchema } from '@/lib/tasks/schema-readiness'
-import { taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from '@/lib/tasks/task-candidates'
+import { legacyCheckboxTaskIdByLine, taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from '@/lib/tasks/task-candidates'
 import { TASK_TITLE_MAX_LENGTH } from '@/lib/tasks/title-from-message'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
@@ -124,6 +124,18 @@ async function loadMessageTasks(workspaceId: string, messageId: string) {
     .orderBy(asc(tasks.createdAt), asc(tasks.id))
 }
 
+// 旧チェックボックス由来のタスク（source_checkbox_index あり）を、本文の元の位置の候補 line に対応付ける。
+function legacyTaskIdByLine(
+  content: string,
+  existing: { id: string; title: string; sourceCheckboxIndex: number | null }[],
+  nameOf?: (id: string) => string | undefined,
+) {
+  const legacy = existing.flatMap(task => (
+    task.sourceCheckboxIndex == null ? [] : [{ id: task.id, title: task.title, sourceCheckboxIndex: task.sourceCheckboxIndex }]
+  ))
+  return legacyCheckboxTaskIdByLine(content, legacy, nameOf)
+}
+
 // タスク化の候補（本文の各行）と、既に作成済みのタスクを返す。
 export async function GET(_req: Request, { params }: RouteContext) {
   const { messageId } = await params
@@ -136,13 +148,16 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const candidates = taskCandidatesFromMessage(message.content, id => nameMap.get(id))
     const existing = await loadMessageTasks(ctx.workspaceId, messageId)
 
-    // 一意制約の対象（チェックボックス由来ではないタスク）だけを、元の行（line）で突き合わせる。
-    // title は後から編集できるため判定に使わない。
+    // 元の行（line）で突き合わせる。title は後から編集できるため判定に使わない。
+    // 旧チェックボックス由来のタスクは、元の位置の行に対応付けて作成済みにする（重複作成を防ぐ）。
     const taskIdByLine = new Map<string, string>()
     for (const task of existing) {
       if (task.sourceCheckboxIndex == null && task.sourceLine != null && !taskIdByLine.has(task.sourceLine)) {
         taskIdByLine.set(task.sourceLine, task.id)
       }
+    }
+    for (const [line, id] of legacyTaskIdByLine(message.content, existing, id => nameMap.get(id))) {
+      if (!taskIdByLine.has(line)) taskIdByLine.set(line, id)
     }
 
     const body: MessageTaskCandidatesResponse = {
@@ -171,11 +186,13 @@ export async function POST(req: Request, { params }: RouteContext) {
     if ('error' in loaded) return loaded.error
     const { ctx, message } = loaded
 
+    const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
+    const nameOf = (id: string) => nameMap.get(id)
+
     const rawBody = await req.text()
     let items: { line: string; title: string }[]
     if (rawBody.trim() === '') {
-      const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
-      const [first] = taskCandidatesFromMessage(message.content, id => nameMap.get(id))
+      const [first] = taskCandidatesFromMessage(message.content, nameOf)
       if (!first) {
         return NextResponse.json({ error: '本文のないメッセージはタスクにできません' }, { status: 422 })
       }
@@ -208,6 +225,9 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { db, messages, tasks } = await import('@cairn/db')
     const { and, eq, isNull } = await import('drizzle-orm')
 
+    // 旧チェックボックス由来のタスクは新規作成されないので、ロック前に読んでよい
+    const existingBefore = await loadMessageTasks(ctx.workspaceId, messageId)
+
     // メッセージ削除（論理削除 + 由来タスク削除を1トランザクションで行う）と直列化する。
     // 行ロック後に未削除を確かめてから挿入し、削除済みメッセージに紐付くタスクを残さない。
     const insertResult = await db.transaction(async (tx) => {
@@ -223,9 +243,14 @@ export async function POST(req: Request, { params }: RouteContext) {
       const lockedLines = new Set(taskCandidatesFromMessage(alive.content).map(c => c.line))
       if (items.some(item => !lockedLines.has(item.line))) return { edited: true as const }
 
+      // 旧チェックボックス由来のタスクがある行は作成済みとみなし、挿入しない
+      const legacyByLine = legacyTaskIdByLine(alive.content, existingBefore, nameOf)
+      const toInsert = items.filter(item => !legacyByLine.has(item.line))
+      if (toInsert.length === 0) return { createdCount: 0, legacyByLine }
+
       const inserted = await tx
         .insert(tasks)
-        .values(items.map(({ line, title }) => ({
+        .values(toInsert.map(({ line, title }) => ({
           workspaceId: ctx.workspaceId,
           projectId: message.projectId,
           channelId: message.channelId,
@@ -241,7 +266,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
         .onConflictDoNothing()
         .returning({ id: tasks.id })
-      return { createdCount: inserted.length }
+      return { createdCount: inserted.length, legacyByLine }
     })
     if ('deleted' in insertResult) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
@@ -257,6 +282,10 @@ export async function POST(req: Request, { params }: RouteContext) {
       if (row.sourceCheckboxIndex == null && row.sourceLine != null && !byLine.has(row.sourceLine)) {
         byLine.set(row.sourceLine, { id: row.id, title: row.title, status: row.status })
       }
+    }
+    for (const [line, id] of insertResult.legacyByLine) {
+      const row = rows.find(r => r.id === id)
+      if (row && !byLine.has(line)) byLine.set(line, { id: row.id, title: row.title, status: row.status })
     }
     const resultTasks = items.map(({ line }) => byLine.get(line))
     // ロック解放後、ここで読み直すまでにメッセージが削除されると由来タスクも消えている

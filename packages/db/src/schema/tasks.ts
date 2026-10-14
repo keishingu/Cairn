@@ -29,7 +29,7 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sourceMessageId: uuid('source_message_id').references(() => messages.id, { onDelete: 'set null' }),
   sourceCheckboxIndex: integer('source_checkbox_index'),
-  // 「タスク化する」で作った元の行（正規化済みの候補タイトル）。title は後から編集できるため、作成済み判定はこの列で行う。
+  // 「タスク化する」で作った元の行（行頭記号を除いた生の行の SHA-256 hex）。title は後から編集できるため、作成済み判定はこの列で行う。
   sourceLine: text('source_line'),
 }, (t) => [
   index('idx_tasks_channel').on(t.channelId),

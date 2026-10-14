@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
+
+// line は生の行の SHA-256 hex
+const h = (raw: string) => createHash('sha256').update(raw).digest('hex')
 
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -89,7 +93,7 @@ const taskRow = (
   title: string,
   status = 'todo',
   sourceCheckboxIndex: number | null = null,
-  sourceLine: string | null = sourceCheckboxIndex == null ? title : null,
+  sourceLine: string | null = sourceCheckboxIndex == null ? h(title) : null,
 ) => ({
   id,
   title,
@@ -123,6 +127,7 @@ beforeEach(() => {
   mockHasTaskChannelSchema.mockResolvedValue(true)
   mockHasTaskSourceLineSchema.mockResolvedValue(true)
   mockBuildMentionNameMap.mockResolvedValue(new Map())
+  mockSelectOrdered.mockResolvedValue([])
   mockInsertReturning.mockResolvedValue([{ id: TASK_ID }])
 })
 
@@ -159,19 +164,29 @@ describe('GET /api/messages/[messageId]/task', () => {
   it('タスク名を変えていても、元の行で作成済みと判定する', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockSelectOrdered.mockResolvedValueOnce([
-      taskRow(TASK_ID, '資料を最優先で確認', 'todo', null, '資料を確認する'),
+      taskRow(TASK_ID, '資料を最優先で確認', 'todo', null, h('資料を確認する')),
       // 元の行が別でも、タイトルが偶然一致しただけでは作成済みにしない
-      taskRow('30000000-0000-0000-0000-000000000008', '日程を調整する', 'todo', null, '別の行'),
+      taskRow('30000000-0000-0000-0000-000000000008', '日程を調整する', 'todo', null, h('別の行')),
     ])
 
     const body = await (await callGet()).json()
 
     expect(body.candidates).toEqual([
-      { line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID },
-      { line: '日程を調整する', title: '日程を調整する', isListItem: true, taskId: null },
-      { line: '詳細は後で', title: '詳細は後で', isListItem: false, taskId: null },
+      { line: h('資料を確認する'), title: '資料を確認する', isListItem: true, taskId: TASK_ID },
+      { line: h('日程を調整する'), title: '日程を調整する', isListItem: true, taskId: null },
+      { line: h('詳細は後で'), title: '詳細は後で', isListItem: false, taskId: null },
     ])
-    expect(body.tasks[0]).toEqual({ id: TASK_ID, title: '資料を最優先で確認', status: 'todo', sourceLine: '資料を確認する' })
+    expect(body.tasks[0]).toEqual({ id: TASK_ID, title: '資料を最優先で確認', status: 'todo', sourceLine: h('資料を確認する') })
+  })
+
+  it('旧チェックボックス由来のタスクは、元の位置の行に taskId を付ける', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow])
+    // 本文の 0 番目のチェックボックス行は「資料を確認する」。タイトルを変えていても順序で対応する
+    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '改名したタスク', 'todo', 0)])
+
+    const body = await (await callGet()).json()
+
+    expect(body.candidates.map((c: { taskId: string | null }) => c.taskId)).toEqual([TASK_ID, null, null])
   })
 
   it('各行を候補にし、同じ行で作成済みの行には taskId を付ける', async () => {
@@ -186,12 +201,12 @@ describe('GET /api/messages/[messageId]/task', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       candidates: [
-        { line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID },
-        { line: '日程を調整する', title: '日程を調整する', isListItem: true, taskId: null },
-        { line: '詳細は後で', title: '詳細は後で', isListItem: false, taskId: null },
+        { line: h('資料を確認する'), title: '資料を確認する', isListItem: true, taskId: TASK_ID },
+        { line: h('日程を調整する'), title: '日程を調整する', isListItem: true, taskId: null },
+        { line: h('詳細は後で'), title: '詳細は後で', isListItem: false, taskId: null },
       ],
       tasks: [
-        { id: TASK_ID, title: '資料を確認する', status: 'done', sourceLine: '資料を確認する' },
+        { id: TASK_ID, title: '資料を確認する', status: 'done', sourceLine: h('資料を確認する') },
         { id: '30000000-0000-0000-0000-000000000009', title: '資料を確認する', status: 'todo', sourceLine: null },
       ],
     })
@@ -202,7 +217,7 @@ describe('POST /api/messages/[messageId]/task', () => {
   it('メッセージが見つからなければ 404 を返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([])
 
-    const response = await callPost({ items: [{ line: '詳細は後で', title: 'a' }] })
+    const response = await callPost({ items: [{ line: h('詳細は後で'), title: 'a' }] })
 
     expect(response.status).toBe(404)
     expect(mockInsertValues).not.toHaveBeenCalled()
@@ -211,7 +226,7 @@ describe('POST /api/messages/[messageId]/task', () => {
   it('システムメッセージは 404 を返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([{ ...messageRow, messageType: 'system' }])
 
-    const response = await callPost({ items: [{ line: '詳細は後で', title: 'a' }] })
+    const response = await callPost({ items: [{ line: h('詳細は後で'), title: 'a' }] })
 
     expect(response.status).toBe(404)
     expect(mockInsertValues).not.toHaveBeenCalled()
@@ -221,7 +236,7 @@ describe('POST /api/messages/[messageId]/task', () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockRequireChannelAccess.mockResolvedValue(NextResponse.json({ error: 'forbidden' }, { status: 403 }))
 
-    const response = await callPost({ items: [{ line: '詳細は後で', title: 'a' }] })
+    const response = await callPost({ items: [{ line: h('詳細は後で'), title: 'a' }] })
 
     expect(response.status).toBe(403)
     expect(mockRequireChannelAccess).toHaveBeenCalledWith(WORKSPACE_ID, USER_ID, CHANNEL_ID, 'member')
@@ -232,7 +247,7 @@ describe('POST /api/messages/[messageId]/task', () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockHasTaskChannelSchema.mockResolvedValue(false)
 
-    const response = await callPost({ items: [{ line: '詳細は後で', title: 'a' }] })
+    const response = await callPost({ items: [{ line: h('詳細は後で'), title: 'a' }] })
 
     expect(response.status).toBe(503)
     expect(mockInsertValues).not.toHaveBeenCalled()
@@ -243,12 +258,12 @@ describe('POST /api/messages/[messageId]/task', () => {
     ['旧形式の titles', { titles: ['資料を確認する'] }],
     ['items が空配列', { items: [] }],
     ['items が 51 件', { items: Array.from({ length: 51 }, (_, i) => ({ line: `l${i}`, title: `t${i}` })) }],
-    ['空文字のタイトル', { items: [{ line: '資料を確認する', title: '' }] }],
-    ['空白だけのタイトル', { items: [{ line: '資料を確認する', title: '  ' }] }],
-    ['201 文字のタイトル', { items: [{ line: '資料を確認する', title: 'あ'.repeat(201) }] }],
+    ['空文字のタイトル', { items: [{ line: h('資料を確認する'), title: '' }] }],
+    ['空白だけのタイトル', { items: [{ line: h('資料を確認する'), title: '  ' }] }],
+    ['201 文字のタイトル', { items: [{ line: h('資料を確認する'), title: 'あ'.repeat(201) }] }],
     ['line が無い', { items: [{ title: '資料を確認する' }] }],
     ['空白だけの line', { items: [{ line: '  ', title: '資料を確認する' }] }],
-    ['文字列でないタイトル', { items: [{ line: '資料を確認する', title: 1 }] }],
+    ['文字列でないタイトル', { items: [{ line: h('資料を確認する'), title: 1 }] }],
   ])('%s なら 422 を返し何も作らない', async (_name, body) => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
 
@@ -262,7 +277,7 @@ describe('POST /api/messages/[messageId]/task', () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockHasTaskSourceLineSchema.mockResolvedValue(false)
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
 
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ error: 'タスク化の準備中です' })
@@ -274,8 +289,8 @@ describe('POST /api/messages/[messageId]/task', () => {
 
     const response = await callPost({
       items: [
-        { line: '資料を確認する', title: '資料を確認する' },
-        { line: '本文にない行', title: '本文にない行' },
+        { line: h('資料を確認する'), title: '資料を確認する' },
+        { line: h('本文にない行'), title: '本文にない行' },
       ],
     })
 
@@ -285,9 +300,10 @@ describe('POST /api/messages/[messageId]/task', () => {
 
   it('タスク名を編集して作成すると line を source_line に保存し、その行が作成済みになる', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
-    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'todo', null, '資料を確認する')])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
+    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'todo', null, h('資料を確認する'))])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を今日中に確認' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を今日中に確認' }] })
 
     expect(response.status).toBe(201)
     expect(await response.json()).toEqual({
@@ -295,22 +311,23 @@ describe('POST /api/messages/[messageId]/task', () => {
       createdCount: 1,
     })
     expect(mockInsertValues).toHaveBeenCalledWith([
-      expect.objectContaining({ title: '資料を今日中に確認', sourceLine: '資料を確認する' }),
+      expect.objectContaining({ title: '資料を今日中に確認', sourceLine: h('資料を確認する') }),
     ])
 
     // 作成後の GET では、タスク名が違っても元の行が作成済みになる
     mockSelectLimit.mockResolvedValueOnce([messageRow])
-    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'todo', null, '資料を確認する')])
+    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'todo', null, h('資料を確認する'))])
     const body = await (await callGet()).json()
-    expect(body.candidates[0]).toEqual({ line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID })
+    expect(body.candidates[0]).toEqual({ line: h('資料を確認する'), title: '資料を確認する', isListItem: true, taskId: TASK_ID })
   })
 
   it('同じ line の再要求はタイトルが違っても作らず、既存のタスクを createdCount 0 で返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([])
-    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'done', null, '資料を確認する')])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
+    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'done', null, h('資料を確認する'))])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '別の名前' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '別の名前' }] })
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
@@ -319,11 +336,53 @@ describe('POST /api/messages/[messageId]/task', () => {
     })
   })
 
+  it('旧チェックボックス由来のタスクがある行は新規作成せず、既存のタスクを返す', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow])
+    mockInsertReturning.mockResolvedValue([{ id: 'task-2' }])
+    const legacy = taskRow(TASK_ID, '改名したタスク', 'done', 0)
+    const created = taskRow('task-2', '日程を調整する')
+    mockSelectOrdered.mockResolvedValueOnce([legacy])
+    mockSelectOrdered.mockResolvedValueOnce([legacy, created])
+
+    const response = await callPost({
+      items: [
+        { line: h('資料を確認する'), title: '資料を確認する' },
+        { line: h('日程を調整する'), title: '日程を調整する' },
+      ],
+    })
+
+    expect(response.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith([expect.objectContaining({ sourceLine: h('日程を調整する') })])
+    expect(await response.json()).toEqual({
+      tasks: [
+        { id: TASK_ID, title: '改名したタスク', status: 'done' },
+        { id: 'task-2', title: '日程を調整する', status: 'todo' },
+      ],
+      createdCount: 1,
+    })
+  })
+
+  it('選んだ行がすべて旧チェックボックス由来で作成済みなら挿入せず createdCount 0 を返す', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow])
+    const legacy = taskRow(TASK_ID, '資料を確認する', 'todo', 0)
+    mockSelectOrdered.mockResolvedValueOnce([legacy])
+    mockSelectOrdered.mockResolvedValueOnce([legacy])
+
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
+
+    expect(response.status).toBe(200)
+    expect(mockInsertValues).not.toHaveBeenCalled()
+    expect(await response.json()).toEqual({
+      tasks: [{ id: TASK_ID, title: '資料を確認する', status: 'todo' }],
+      createdCount: 0,
+    })
+  })
+
   it('ロック下の本文が編集されて line が無ければ 409 を返し、挿入しない', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockLockMessage.mockResolvedValueOnce([{ id: MESSAGE_ID, content: '- [ ] 別の内容に編集した' }])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
 
     expect(response.status).toBe(409)
     expect(await response.json()).toEqual({ error: 'メッセージが編集されたため、もう一度選び直してください' })
@@ -332,10 +391,11 @@ describe('POST /api/messages/[messageId]/task', () => {
 
   it('メンションを含む行は、表示名ではなく <@id> の line で照合・保存する', async () => {
     const content = `- <@${USER_ID}> 確認をお願い`
-    const line = `<@${USER_ID}> 確認をお願い`
+    const line = h(`<@${USER_ID}> 確認をお願い`)
     mockBuildMentionNameMap.mockResolvedValue(new Map([[USER_ID, '山田']]))
     mockSelectLimit.mockResolvedValueOnce([{ ...messageRow, content }])
     mockLockMessage.mockResolvedValueOnce([{ id: MESSAGE_ID, content }])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '@山田 確認をお願い', 'todo', null, line)])
 
     const response = await callPost({ items: [{ line, title: '@山田 確認をお願い' }] })
@@ -356,9 +416,10 @@ describe('POST /api/messages/[messageId]/task', () => {
   it('作成後の読み直しまでにメッセージが削除されタスクが消えていたら 404 を返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([{ id: TASK_ID }])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
 
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({ error: 'メッセージが見つかりません' })
@@ -367,16 +428,17 @@ describe('POST /api/messages/[messageId]/task', () => {
   it('items の数だけ一括で作成し、要求順にタスクを 201 で返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([{ id: TASK_ID }, { id: 'task-2' }])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([
-      taskRow('task-2', '日程をいい感じに調整', 'todo', null, '日程を調整する'),
+      taskRow('task-2', '日程をいい感じに調整', 'todo', null, h('日程を調整する')),
       taskRow(TASK_ID, '資料を確認する'),
     ])
 
     const response = await callPost({
       items: [
-        { line: '資料を確認する', title: '資料を確認する' },
-        { line: '  日程を調整する  ', title: '  日程をいい感じに調整  ' },
-        { line: '資料を確認する', title: '重複は無視' },
+        { line: h('資料を確認する'), title: '資料を確認する' },
+        { line: h('日程を調整する'), title: '  日程をいい感じに調整  ' },
+        { line: h('資料を確認する'), title: '重複は無視' },
       ],
     })
 
@@ -395,20 +457,21 @@ describe('POST /api/messages/[messageId]/task', () => {
         projectId: PROJECT_ID,
         channelId: CHANNEL_ID,
         title: '資料を確認する',
-        sourceLine: '資料を確認する',
+        sourceLine: h('資料を確認する'),
         priority: 'medium',
         status: 'todo',
         createdBy: USER_ID,
         sourceMessageId: MESSAGE_ID,
         assigneeId: null,
       }),
-      expect.objectContaining({ title: '日程をいい感じに調整', sourceLine: '日程を調整する' }),
+      expect.objectContaining({ title: '日程をいい感じに調整', sourceLine: h('日程を調整する') }),
     ])
   })
 
   it('一部が作成済みなら新規分だけ createdCount に数え、既存のタスクも返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([{ id: 'task-2' }])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([
       taskRow(TASK_ID, '資料を確認する', 'done'),
       taskRow('task-2', '日程を調整する'),
@@ -416,8 +479,8 @@ describe('POST /api/messages/[messageId]/task', () => {
 
     const response = await callPost({
       items: [
-        { line: '資料を確認する', title: '資料を確認する' },
-        { line: '日程を調整する', title: '日程を調整する' },
+        { line: h('資料を確認する'), title: '資料を確認する' },
+        { line: h('日程を調整する'), title: '日程を調整する' },
       ],
     })
 
@@ -434,9 +497,10 @@ describe('POST /api/messages/[messageId]/task', () => {
   it('すべて作成済みなら createdCount: 0 を 200 で返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を確認する')])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
@@ -447,6 +511,7 @@ describe('POST /api/messages/[messageId]/task', () => {
 
   it('body なしなら後方互換として本文の最初の行1件を作る', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
+    mockSelectOrdered.mockResolvedValueOnce([]) // 挿入前の旧チェックボックス由来タスクの読み込み
     mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を確認する')])
 
     const response = await callPost()
@@ -456,7 +521,7 @@ describe('POST /api/messages/[messageId]/task', () => {
       tasks: [{ id: TASK_ID, title: '資料を確認する', status: 'todo' }],
       createdCount: 1,
     })
-    expect(mockInsertValues).toHaveBeenCalledWith([expect.objectContaining({ title: '資料を確認する', sourceLine: '資料を確認する' })])
+    expect(mockInsertValues).toHaveBeenCalledWith([expect.objectContaining({ title: '資料を確認する', sourceLine: h('資料を確認する') })])
   })
 
   it('body なしで本文が空のメッセージは 422 を返す', async () => {
@@ -473,7 +538,7 @@ describe('POST /api/messages/[messageId]/task', () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockLockMessage.mockResolvedValueOnce([])
 
-    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+    const response = await callPost({ items: [{ line: h('資料を確認する'), title: '資料を確認する' }] })
 
     expect(response.status).toBe(404)
     expect(mockLockMessage).toHaveBeenCalledWith('update')
