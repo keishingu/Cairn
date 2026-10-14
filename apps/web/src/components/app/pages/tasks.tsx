@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Icon, Avatar, Fab } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -64,6 +65,10 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
   const due = formatDueDate(task.dueDate, t)
   const isDone = task.status === 'done'
   const displayTitle = formatTaskTitleForDisplay(task.title)
+  // チャット由来タスクは、詳細サイドバーと同じく出典メッセージへ戻れるようにする。
+  const sourceMessageHref = task.sourceMessageId && task.channelId
+    ? `/chats/${encodeURIComponent(task.channelId)}?m=${encodeURIComponent(task.sourceMessageId)}`
+    : null
 
   return (
     <div
@@ -92,12 +97,24 @@ const TaskRow = ({ task, onToggle, onEdit, toggling, selected, index }: TaskRowP
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13.5, fontWeight: 500,
-          color: isDone ? 'var(--text-3)' : 'var(--text)',
-          textDecoration: isDone ? 'line-through' : 'none',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{displayTitle}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <span style={{
+            fontSize: 13.5, fontWeight: 500,
+            color: isDone ? 'var(--text-3)' : 'var(--text)',
+            textDecoration: isDone ? 'line-through' : 'none',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{displayTitle}</span>
+          {sourceMessageHref && (
+            <Link
+              href={sourceMessageHref}
+              title={t('Go to the message that created this task')}
+              aria-label={t('Go to the message that created this task')}
+              style={{ display: 'inline-flex', flexShrink: 0, padding: 2, borderRadius: 4, color: 'var(--text-4)' }}
+            >
+              <Icon name="chat" size={12}/>
+            </Link>
+          )}
+        </div>
         <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{taskScopeLabel(task, t)}</div>
       </div>
 
