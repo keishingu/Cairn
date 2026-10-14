@@ -4,7 +4,11 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { useT } from '@/components/locale-provider'
+import { isMac, matchesBinding } from '@/lib/command-keys'
+import { COMMANDS } from '@/lib/commands'
 import { portalHostFor } from '../primitives'
+
+const filterCommand = COMMANDS.find(command => command.id === 'ctx.filter')
 
 export interface FilterPopoverProps {
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -116,6 +120,13 @@ export const FilterPopover = ({
       maxHeight: position?.maxHeight ?? 0, overflowY: 'auto', visibility: position ? 'visible' : 'hidden',
     }} tabIndex={-1}
       onKeyDown={event => {
+        if (filterCommand && matchesBinding(event.nativeEvent, filterCommand, isMac())) {
+          event.preventDefault()
+          event.stopPropagation()
+          containerRef.current?.querySelector('button')?.focus()
+          onClose()
+          return
+        }
         if (event.code !== 'ArrowDown' && event.code !== 'ArrowUp') return
         const controls = Array.from(ref.current?.querySelectorAll<HTMLElement>('input[type="checkbox"], button') ?? [])
         const currentIndex = controls.indexOf(event.target as HTMLElement)

@@ -1,7 +1,9 @@
 import React from 'react'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useCommandDispatcher } from '@/hooks/use-command-dispatcher'
+import { CommandProvider, useCommand } from '@/lib/command-registry'
 import { FilterPopover } from './filter-popover'
 
 const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
@@ -115,5 +117,45 @@ describe('FilterPopover', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(document.querySelector('.app-root > .app[style*="position: fixed"]')).toBeNull())
     expect(document.activeElement).toBe(outside)
+  })
+
+  it('Alt+Fでチェックボックスにフォーカスした状態からポップアップを閉じる', async () => {
+    const user = userEvent.setup()
+    const anchorRef = React.createRef<HTMLDivElement>()
+    const onToggle = vi.fn()
+    const ShortcutHarness = () => {
+      const [open, setOpen] = React.useState(false)
+      useCommandDispatcher({ page: 'projects' })
+      useCommand('ctx.filter', () => {
+        onToggle()
+        setOpen(value => !value)
+      })
+      return (
+        <div className="app-root">
+          <div ref={anchorRef}><button>フィルターを開く</button></div>
+          {open && <FilterPopover
+            containerRef={anchorRef}
+            allStatuses={[{ id: 'status-1', name: '進行中', color: '#3b82f6', sortOrder: '0' }]}
+            selected={[]}
+            onChange={vi.fn()}
+            onClose={() => setOpen(false)}
+          />}
+        </div>
+      )
+    }
+
+    render(<CommandProvider><ShortcutHarness /></CommandProvider>)
+    await user.keyboard('{Alt>}f{/Alt}')
+    expect(onToggle).toHaveBeenCalledOnce()
+    const checkbox = await screen.findByRole('checkbox', { name: '進行中' })
+    await waitFor(() => expect(document.activeElement).toBe(checkbox))
+
+    fireEvent.keyDown(checkbox, { code: 'KeyF', key: 'f', altKey: true, shiftKey: true })
+    expect(screen.getByRole('checkbox', { name: '進行中' })).toBeInTheDocument()
+
+    await user.keyboard('{Alt>}f{/Alt}')
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: '進行中' })).toBeNull())
+    expect(onToggle).toHaveBeenCalledOnce()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'フィルターを開く' }))
   })
 })
