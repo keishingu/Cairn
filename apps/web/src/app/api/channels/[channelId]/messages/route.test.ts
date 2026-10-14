@@ -11,6 +11,8 @@ const {
   mockGetAuthContext,
   mockRequireChannelAccess,
   mockCanAccessFile,
+  mockCanAccessChannel,
+  mockLoadFamily,
   mockDbSelect,
   mockEq,
   mockIsNull,
@@ -27,6 +29,8 @@ const {
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockCanAccessChannel: vi.fn(),
+  mockLoadFamily: vi.fn(),
   mockDbSelect: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
@@ -48,7 +52,9 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
   canAccessFile: mockCanAccessFile,
+  canAccessChannel: mockCanAccessChannel,
 }))
+vi.mock('@/lib/chat/channel-family', () => ({ loadChannelFamilyIds: mockLoadFamily }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
@@ -363,5 +369,56 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       expect.objectContaining({ id: 'message-2' }),
       expect.objectContaining({ id: 'message-3' }),
     ])
+  })
+  describe('引用返信の参照先', () => {
+    const createdAt = new Date('2026-01-01T01:00:00.000Z')
+    const replyRow = {
+      id: 'reply-1', content: '返信', messageType: 'text', parentMessageId: 'quoted-1',
+      senderId: 'user-2', senderName: 'Sender', senderAvatarUrl: null, createdAt, updatedAt: createdAt,
+    }
+    const quoted = (channelId: string) => ({
+      id: 'quoted-1', content: '元の発言', senderName: 'Aki', deletedAt: null, channelId,
+    })
+
+    beforeEach(() => {
+      mockRequireChannelAccess.mockResolvedValue(null)
+      mockLoadFamily.mockResolvedValue([CHANNEL_ID, 'parent-channel'])
+    })
+
+    it('親チャンネルに残った発言への返信は、閲覧できるなら引用を返す', async () => {
+      mockCanAccessChannel.mockResolvedValue(true)
+      mockSelectResults([replyRow], [], [], [], [quoted('parent-channel')])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      expect(mockLoadFamily).toHaveBeenCalledWith(CHANNEL_ID)
+      expect(mockCanAccessChannel).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, 'parent-channel')
+      await expect(res.json()).resolves.toEqual([
+        expect.objectContaining({ replyTo: expect.objectContaining({ id: 'quoted-1', content: '元の発言' }) }),
+      ])
+    })
+
+    it('閲覧できない別チャンネルの発言は引用に含めない', async () => {
+      mockCanAccessChannel.mockResolvedValue(false)
+      mockSelectResults([replyRow], [], [], [], [quoted('parent-channel')])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      await expect(res.json()).resolves.toEqual([expect.objectContaining({ replyTo: null })])
+    })
+
+    it('同じチャンネルの発言は追加の権限確認なしで引用を返す', async () => {
+      mockSelectResults([replyRow], [], [], [], [quoted(CHANNEL_ID)])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      expect(mockCanAccessChannel).not.toHaveBeenCalled()
+      await expect(res.json()).resolves.toEqual([
+        expect.objectContaining({ replyTo: expect.objectContaining({ id: 'quoted-1' }) }),
+      ])
+    })
   })
 })

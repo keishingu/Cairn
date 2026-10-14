@@ -4,6 +4,7 @@
 export * from './types/index'
 export * from './project-role-display'
 export * from './workspace-channel-copy'
+export * from './move-to-thread'
 export * from './open-chat-channel'
 export * from './mention-candidates'
 export * from './avatar'
