@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -86,7 +87,10 @@ export default function NotificationsScreen() {
     if (!item.readAt) {
       markRead.mutate([item.id])
     }
-    void followNotification(router, routeFromNotification(item), { t })
+    void followNotification(router, routeFromNotification(item), {
+      t,
+      onUnavailable: (message) => Alert.alert(message),
+    })
   }
 
   if (notificationsQuery.isLoading) {

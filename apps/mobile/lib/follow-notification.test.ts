@@ -31,6 +31,7 @@ vi.mock('./api-fetch', () => ({
 
 const t = (message: string, values?: Record<string, string | number>) =>
   translate('ja', message, values)
+const onUnavailable = vi.fn()
 
 const projectChannel = {
   channelId: 'project-channel',
@@ -83,7 +84,7 @@ describe('通知からチャットを開く', () => {
   it('キャッシュが空でも一覧を取得してからチャンネルを開く', async () => {
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'project-channel' }, { t })
+    await followNotification({ push }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
 
     expect(mockApiFetch).toHaveBeenCalledWith('/api/projects/channels')
     expect(mockApiFetch).toHaveBeenCalledWith('/api/workspaces/channels')
@@ -110,7 +111,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
-      { t },
+      { t, onUnavailable },
     )
 
     expect(push).toHaveBeenCalledWith(expect.objectContaining({
@@ -118,19 +119,20 @@ describe('通知からチャットを開く', () => {
     }))
   })
 
-  it('移動先を確認できないときは Push のチャンネルを開く', async () => {
+  it('削除済み・閲覧できないメッセージの Push は遷移せず、見つからないことを伝える', async () => {
     const push = vi.fn()
 
     await followNotification(
       { push },
       { kind: 'channel', channelId: 'project-channel', messageId: 'missing' },
-      { t },
+      { t, onUnavailable },
     )
 
     expect(mockApiFetch).toHaveBeenCalledWith('/api/messages/missing/location')
-    expect(push).toHaveBeenCalledWith(expect.objectContaining({
-      params: expect.objectContaining({ channelId: 'project-channel' }),
-    }))
+    expect(push).not.toHaveBeenCalled()
+    expect(onUnavailable).toHaveBeenCalledWith(
+      'メッセージが見つかりませんでした。削除されたか、閲覧できない可能性があります。',
+    )
   })
 
   it('新しいキャッシュがある間は一覧を取り直さない', async () => {
@@ -138,7 +140,7 @@ describe('通知からチャットを開く', () => {
     queryClient.setQueryData(workspaceChannelsQueryKey, [])
     queryClient.setQueryData(workspaceDmsQueryKey, [])
 
-    await followNotification({ push: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t })
+    await followNotification({ push: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
 
     expect(mockApiFetch).not.toHaveBeenCalled()
   })
@@ -162,7 +164,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'channel', channelId: 'project-channel' },
-      { workspaceId: 'ws-b', t },
+      { workspaceId: 'ws-b', t, onUnavailable },
     )
 
     expect(calls.indexOf('select')).toBeGreaterThan(calls.indexOf('/api/workspaces/list'))
@@ -186,7 +188,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-x', t },
+      { workspaceId: 'ws-x', t, onUnavailable },
     )
 
     expect(mockSetSelectedWorkspaceId).not.toHaveBeenCalled()
@@ -201,7 +203,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-b', t },
+      { workspaceId: 'ws-b', t, onUnavailable },
     )
 
     expect(mockSetSelectedWorkspaceId).not.toHaveBeenCalled()
@@ -215,7 +217,7 @@ describe('通知からチャットを開く', () => {
     await followNotification(
       { push },
       { kind: 'screen', path: '/(app)/tasks' },
-      { workspaceId: 'ws-b', t },
+      { workspaceId: 'ws-b', t, onUnavailable },
     )
 
     expect(mockApiFetch).not.toHaveBeenCalledWith('/api/workspaces/list')
@@ -227,7 +229,7 @@ describe('通知からチャットを開く', () => {
     mockApiFetch.mockRejectedValue(new Error('offline'))
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'missing' }, { t })
+    await followNotification({ push }, { kind: 'channel', channelId: 'missing' }, { t, onUnavailable })
 
     expect(push).toHaveBeenCalledWith({
       pathname: '/chats/[channelId]',

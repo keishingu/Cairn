@@ -2,6 +2,7 @@ import React from 'react'
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
   Modal,
@@ -99,7 +100,7 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
     setVisible(false)
     pendingNavigation.current = setTimeout(() => {
       pendingNavigation.current = null
-      void followNotification(router, destination, { t })
+      void followNotification(router, destination, { t, onUnavailable: (message) => Alert.alert(message) })
     }, 50)
   }
 

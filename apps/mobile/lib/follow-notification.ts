@@ -70,13 +70,15 @@ async function prepareWorkspace(workspaceId: string | undefined): Promise<boolea
 }
 
 // Push の送信後にメッセージがスレッドへ切り出されていても移動先を開く。
-// 見つからない（削除済み・閲覧不可）・取得できないときは、送信時点の正しい宛先である Push のチャンネルを開く。
+// 見つからない（削除済み・閲覧不可）ときは null を返し、呼び出し側でエラーを表示して遷移しない。
+// 通信に失敗したときは、送信時点の宛先である Push のチャンネルを開く。
 async function currentChannelOfMessage(
   destination: Extract<NotificationDestination, { kind: 'channel' }>,
-): Promise<string> {
+): Promise<string | null> {
   if (!destination.messageId) return destination.channelId
   try {
     const res = await apiFetch(`/api/messages/${encodeURIComponent(destination.messageId)}/location`)
+    if (res.status === 404) return null
     if (!res.ok) return destination.channelId
     const body = (await res.json()) as { channelId?: unknown }
     return typeof body.channelId === 'string' && body.channelId ? body.channelId : destination.channelId
@@ -91,6 +93,7 @@ async function openNotification(
   destination: NotificationDestination,
   workspaceId: string | undefined,
   t: Translate,
+  onUnavailable: (message: string) => void,
 ): Promise<void> {
   try {
     const ready = await prepareWorkspace(workspaceId)
@@ -98,6 +101,10 @@ async function openNotification(
 
     if (destination.kind === 'channel') {
       const channelId = await currentChannelOfMessage(destination)
+      if (!channelId) {
+        onUnavailable(t('The message could not be found. It may have been deleted, or you may not have access.'))
+        return
+      }
       const lists = await loadChannelLists(queryClient)
       router.push({
         pathname: '/chats/[channelId]',
@@ -116,10 +123,10 @@ let notificationNavigation: Promise<void> = Promise.resolve()
 export function followNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
-  options: { workspaceId?: string; t: Translate },
+  options: { workspaceId?: string; t: Translate; onUnavailable: (message: string) => void },
 ): Promise<void> {
   const navigation = notificationNavigation.then(() =>
-    openNotification(router, destination, options.workspaceId, options.t),
+    openNotification(router, destination, options.workspaceId, options.t, options.onUnavailable),
   )
   notificationNavigation = navigation.then(
     () => undefined,
