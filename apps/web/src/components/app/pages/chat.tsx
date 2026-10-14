@@ -772,8 +772,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     />
   )
 
-  // 親ワークスペースチャンネル（スレッドではない）で member 以上のときだけ、メッセージのメニューに出す
-  const canMoveToThread = !!currentGeneral && currentGeneral.parentChannelId === null
+  // 親ワークスペースチャンネル（スレッドではない）で member 以上のときだけ、メッセージのメニューに出す。
+  // アーカイブ済みチャンネルのスレッドには移せない（API も 400 を返す）ため出さない
+  const canMoveToThread = !!currentGeneral && currentGeneral.parentChannelId === null && !currentGeneral.archived
     && canMoveMessageToThread({ isParentWorkspaceChannel: true, role: currentUser?.wsRole, messageType: 'text' })
   const moveToThreadProps = {
     onMessageNotInChannel: handleMessageNotInChannel,
