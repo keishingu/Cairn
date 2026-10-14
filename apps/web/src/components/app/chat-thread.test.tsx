@@ -214,8 +214,8 @@ describe('ChatMessage copy action', () => {
   })
 
   describe('タスク化済みの印', () => {
-    type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 'done' }
-    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn()) {
+    type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }
+    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn(), content = '資料を確認する') {
       return render(
         <ChatMessage
           messageId="message-1"
@@ -225,7 +225,7 @@ describe('ChatMessage copy action', () => {
           senderName="Alice"
           createdAt="2026-06-25T12:00:00.000Z"
           isEdited={false}
-          content="資料を確認する"
+          content={content}
           reactions={[]}
           attachments={[]}
           replyTo={null}
@@ -245,7 +245,7 @@ describe('ChatMessage copy action', () => {
         />,
       )
     }
-    const task = (id: string, status: LinkedTask['status'], title = `タスク${id}`): LinkedTask => ({ id, title, status })
+    const task = (id: string, status: LinkedTask['status'], title = `タスク${id}`, lineIndex: number | null = null): LinkedTask => ({ id, title, status, lineIndex })
 
     it('タスク化されていなければチップを出さない', () => {
       renderLinked([])
@@ -287,6 +287,50 @@ describe('ChatMessage copy action', () => {
       const chip = screen.getByTestId('linked-task-chip')
       expect(chip).toHaveTextContent('タスク 2/2')
       expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    describe('行末ラベル', () => {
+      it('リスト項目と段落の行末に「タスク」ラベルを出し、押すとタスク画面へのリンクになる', () => {
+        renderLinked([task('task-1', 'todo', 'a', 1), task('task-2', 'todo', 'b', 3)], vi.fn(), '前置き\n- 買い出し\n\n段落の行')
+        const labels = screen.getAllByTestId('line-task-label')
+        expect(labels).toHaveLength(2)
+        expect(labels[0]).toHaveAttribute('href', '/tasks?taskId=task-1')
+        expect(labels[0]!.closest('li')).toHaveTextContent('買い出し')
+        expect(labels[1]).toHaveAttribute('href', '/tasks?taskId=task-2')
+        expect(labels[1]!.closest('p')).toHaveTextContent('段落の行')
+      })
+
+      it('全部が行末に出ていれば下部のチップは出さない', () => {
+        renderLinked([task('task-1', 'todo', 'a', 0)], vi.fn(), '買い出し')
+        expect(screen.getByTestId('line-task-label')).toBeInTheDocument()
+        expect(screen.queryByTestId('linked-task-chip')).toBeNull()
+      })
+
+      it('未完了はアクセント色、完了は薄い色で出す', () => {
+        renderLinked([task('task-1', 'todo', 'a', 0), task('task-2', 'done', 'b', 1)], vi.fn(), 'A\nB')
+        const [open, done] = screen.getAllByTestId('line-task-label')
+        expect(open).toHaveAttribute('data-task-status', 'todo')
+        expect(open).toHaveStyle({ opacity: '1' })
+        expect(done).toHaveAttribute('data-task-status', 'done')
+        expect(done).toHaveStyle({ opacity: '0.75' })
+      })
+
+      it('行に対応しないタスクだけを下部のチップで示す', () => {
+        renderLinked([task('task-1', 'todo', 'a', 0), task('task-2', 'todo', 'b', null), task('task-3', 'todo', 'c', 9)], vi.fn(), '買い出し')
+        expect(screen.getAllByTestId('line-task-label')).toHaveLength(1)
+        expect(screen.getByTestId('linked-task-chip')).toHaveTextContent('タスク 0/2')
+      })
+
+      it('コードブロックの行には出さず、下部のチップで示す', () => {
+        renderLinked([task('task-1', 'todo', 'a', 1)], vi.fn(), '```\nconst a = 1\n```')
+        expect(screen.queryByTestId('line-task-label')).toBeNull()
+        expect(screen.getByTestId('linked-task-chip')).toHaveAttribute('href', '/tasks?taskId=task-1')
+      })
+
+      it('表示用の目印はコピー対象の本文には混ざらない', () => {
+        const { container } = renderLinked([task('task-1', 'todo', 'a', 0)], vi.fn(), '買い出し')
+        expect(container.textContent).not.toMatch(/[\uE000\uE001]/)
+      })
     })
 
     it('タスク化済みでも「…」メニューは常に「タスク化する」を出す', async () => {

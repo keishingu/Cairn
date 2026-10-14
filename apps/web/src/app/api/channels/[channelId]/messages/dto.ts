@@ -24,6 +24,8 @@ export interface LinkedTaskDto {
   id: string
   title: string
   status: 'todo' | 'in_progress' | 'done'
+  /** メッセージ本文（DB の canonical）を `\n` で分けたときの元の行番号（0始まり）。対応する行が無ければ null */
+  lineIndex: number | null
 }
 
 export interface MessageDto {

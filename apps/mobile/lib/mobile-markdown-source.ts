@@ -3,6 +3,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm'
 import { toMarkdown } from 'mdast-util-to-markdown'
 import { gfm } from 'micromark-extension-gfm'
+import { removeLineTaskMarkers, splitLineTaskMarkers } from '@cairn/shared'
 
 // react-native-enriched-markdown はネイティブの md4c でパースするため、JS からパーサーへ
 // 規則を足せない。Cairn 固有の表示規則は、Web（react-markdown + remark-gfm）と同じパーサーで
@@ -13,6 +14,16 @@ export const MENTION_LINK_SCHEME = 'cairn-mention:'
 
 export function isMentionLink(url: string): boolean {
   return url.startsWith(MENTION_LINK_SCHEME)
+}
+
+// タスク化した行の行末ラベル。未完了と完了でスタイルを分けるためスキームを分ける（`cairn-task-done:` は `cairn-task:` に前方一致しない）
+export const TASK_LINK_SCHEME = 'cairn-task:'
+export const TASK_DONE_LINK_SCHEME = 'cairn-task-done:'
+
+export function taskIdFromLink(url: string): string | null {
+  if (url.startsWith(TASK_LINK_SCHEME)) return url.slice(TASK_LINK_SCHEME.length)
+  if (url.startsWith(TASK_DONE_LINK_SCHEME)) return url.slice(TASK_DONE_LINK_SCHEME.length)
+  return null
 }
 
 // Web（markdown-content.tsx）と同じく、長い URL は見た目だけ「…」で省略する。リンク先は元のまま
@@ -44,6 +55,10 @@ const PHRASING_PARENTS = new Set([
 type Options = {
   resolveMentionName: (userId: string, displayName: string | undefined) => string
   imageLabel: string
+  /** 行末ラベルを出すタスク。本文に差し込まれた目印（insertLineTaskMarkers）の添字がこの配列を指す */
+  lineTasks?: readonly { id: string; status: 'todo' | 'in_progress' | 'done' }[]
+  /** 行末ラベルの文言（「タスク」） */
+  taskLabel?: string
 }
 
 function text(value: string): Text {
@@ -91,7 +106,19 @@ function transformNode(
 ): RootContent[] {
   switch (node.type) {
     case 'text':
-      return splitMentions(node.value, options, inLink)
+      return splitLineTaskMarkers(node.value).flatMap((part): PhrasingContent[] => {
+        if (typeof part === 'string') return splitMentions(part, options, inLink)
+        const task = options.lineTasks?.[part.taskIndex]
+        if (!task) return []
+        const done = task.status === 'done'
+        const label = `${done ? '☑' : '✓'} ${options.taskLabel ?? ''}`.trim()
+        // リンクの中では入れ子のリンクにならないよう文字のまま出す
+        if (inLink) return [text(label)]
+        // 直前の空白は目印の差し込み時に付けてある
+        return [
+          { type: 'link', url: `${done ? TASK_DONE_LINK_SCHEME : TASK_LINK_SCHEME}${task.id}`, children: [text(label)] },
+        ]
+      })
     case 'image': {
       // 画像は送信者指定の URL を自動取得しない。タップで開くリンクにし、リンクの中では代替テキストだけを残す
       const label = node.alt || options.imageLabel
@@ -113,7 +140,9 @@ function transformNode(
     }
     case 'html':
       // md4c は <video> 以外の HTML を描画せずに捨てる。本文が黙って消えないよう文字として出す
-      return phrasing ? [text(node.value)] : [{ type: 'paragraph', children: [text(node.value)] }]
+      return phrasing
+        ? [text(removeLineTaskMarkers(node.value))]
+        : [{ type: 'paragraph', children: [text(removeLineTaskMarkers(node.value))] }]
     case 'link': {
       node.url = protectDestination(node.url)
       transformChildren(node, options, true)
@@ -132,6 +161,8 @@ function transformNode(
       return [node]
     case 'code':
     case 'inlineCode':
+      // コードには行末ラベルを出さない。目印が紛れても表示に残さない
+      node.value = removeLineTaskMarkers(node.value)
       return [node]
     default:
       if ('children' in node) transformChildren(node, options, inLink)

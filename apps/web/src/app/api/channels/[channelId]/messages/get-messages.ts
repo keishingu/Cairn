@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import type { MessageType, ProjectMemberRole } from '@cairn/shared'
+import { linkedTaskLineIndexes } from '@/lib/tasks/task-candidates'
 import { hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
@@ -310,6 +311,8 @@ export async function getMessages({
               title: tasks.title,
               status: tasks.status,
               sourceMessageId: tasks.sourceMessageId,
+              sourceLine: tasks.sourceLine,
+              sourceCheckboxIndex: tasks.sourceCheckboxIndex,
             })
             .from(tasks)
             .where(
@@ -389,12 +392,24 @@ export async function getMessages({
     }
 
     // タスクは createdAt 昇順で返るので、メッセージごとに作成順のまま積む
-    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
+    const tasksByMessage = new Map<string, typeof taskRows>()
     for (const task of taskRows) {
       if (!task.sourceMessageId) continue
-      const list = linkedTaskMap.get(task.sourceMessageId) ?? []
-      list.push({ id: task.id, title: task.title, status: task.status })
-      linkedTaskMap.set(task.sourceMessageId, list)
+      const list = tasksByMessage.get(task.sourceMessageId) ?? []
+      list.push(task)
+      tasksByMessage.set(task.sourceMessageId, list)
+    }
+    // 行末の「✓ タスク」ラベルの位置。タスクがあるメッセージだけ、DB の本文（canonical）から候補の行番号を求める
+    const contentById = new Map(rows.map(row => [row.id, row.content]))
+    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
+    for (const [messageId, messageTasks] of tasksByMessage) {
+      const lineIndexes = linkedTaskLineIndexes(contentById.get(messageId) ?? '', messageTasks)
+      linkedTaskMap.set(messageId, messageTasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        lineIndex: lineIndexes.get(task.id) ?? null,
+      })))
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))

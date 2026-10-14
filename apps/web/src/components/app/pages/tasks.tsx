@@ -9,14 +9,37 @@ import { CreateTaskModal } from './create-task-modal'
 import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
 import { RowActionMenu } from '../row-action-menu'
+import { SegmentedControl } from './page-toolbar'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
+import { useCurrentUser } from '@/hooks/use-current-user'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { InlineError } from '../inline-error'
 import { useT } from '@/components/locale-provider'
 
 type FilterKey = 'all' | 'todo' | 'in_progress' | 'done'
+type ScopeKey = 'mine' | 'all'
+
+const FILTER_KEYS: FilterKey[] = ['todo', 'in_progress', 'done', 'all']
+const SCOPE_KEYS: ScopeKey[] = ['mine', 'all']
+
+// タブの選択は他ページ（カンバン等）と同じく localStorage に端末ごとに保存する。保存値が無い・不正なら既定値。
+function loadStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const value = localStorage.getItem(key)
+    return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function storeValue(key: string, value: string) {
+  try { localStorage.setItem(key, value) } catch { /* 保存できなくても表示は切り替える */ }
+}
 
 const STATUS_LABEL: Record<TaskDto['status'], string> = {
   todo: 'Not started',
@@ -246,7 +269,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
   const searchParams = useSearchParams()
   const openedTaskIdRef = React.useRef<string | null>(null)
-  const [filter, setFilter] = React.useState<FilterKey>('todo')
+  const [filter, setFilterState] = React.useState<FilterKey>(() => loadStored(STORAGE_KEYS.tasks_status_filter, FILTER_KEYS, 'todo'))
+  const setFilter = (next: FilterKey) => { setFilterState(next); storeValue(STORAGE_KEYS.tasks_status_filter, next) }
+  // 既定は自分が担当のタスク（ページ名も「マイタスク」）
+  const [scope, setScopeState] = React.useState<ScopeKey>(() => loadStored(STORAGE_KEYS.tasks_scope, SCOPE_KEYS, 'mine'))
+  const setScope = (next: ScopeKey) => { setScopeState(next); storeValue(STORAGE_KEYS.tasks_scope, next) }
   const [togglingId, setTogglingId] = React.useState<string | null>(null)
   const [showAddModal, setShowAddModal] = React.useState(false)
   const [detailTaskId, setDetailTaskId] = React.useState<string | null>(null)
@@ -257,7 +284,15 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
 
-  const { data: tasks = [], isLoading } = useTasks()
+  const { data: allTasks = [], isLoading: tasksLoading } = useTasks()
+  const currentUser = useCurrentUser()
+  const myUserId = currentUser.data?.id
+  // 「自分の担当」は自分の ID が分かるまで絞り込めないので、取得中はローディング、失敗はエラーを出す（全件で代替しない）
+  const isLoading = tasksLoading || (scope === 'mine' && currentUser.isLoading)
+  const tasks = React.useMemo(
+    () => (scope === 'mine' ? (myUserId ? allTasks.filter(task => task.assigneeId === myUserId) : []) : allTasks),
+    [allTasks, scope, myUserId],
+  )
   const toggleMutation = useToggleTaskStatus()
 
   // ナッジの「タスクを開く」から対象を1タップで詳細パネルまで開く。
@@ -337,7 +372,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       if (task) openDetail(task)
     },
   })
-  React.useEffect(() => { setNavIdx(-1) }, [filter, setNavIdx])
+  React.useEffect(() => { setNavIdx(-1) }, [filter, scope, setNavIdx])
   const selectedTaskId = navIdx >= 0 ? (visibleTasks[navIdx]?.id ?? null) : null
 
   function openDetail(task: TaskDto) {
@@ -378,6 +413,16 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
         overflowX: 'auto',
       }}>
+        <div role="group" aria-label={t('Task scope')} style={{ flexShrink: 0 }}>
+          <SegmentedControl
+            options={[
+              { id: 'mine', label: t('Assigned to me') },
+              { id: 'all', label: t('Everyone') },
+            ]}
+            value={scope}
+            onChange={next => setScope(next as ScopeKey)}
+          />
+        </div>
         <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {filters.map(f => (
             <button
@@ -410,7 +455,11 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
-        {isLoading ? (
+        {scope === 'mine' && currentUser.isError ? (
+          <div style={{ margin: isMobile ? '12px' : '16px 20px' }}>
+            <InlineError>{t('Could not load your user info')}</InlineError>
+          </div>
+        ) : isLoading ? (
           <div className="card" style={{ margin: isMobile ? '12px' : '16px 20px', borderRadius: 10, overflow: 'hidden' }}>
             {Array.from({ length: 6 }).map((_, i) => <TaskRowSkeleton key={i} />)}
           </div>

@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { PageTasks } from './tasks'
 
-const { mockUseTasks, mockToggleMutate, mockSearchParamsGet, mockSearchParamsToString } = vi.hoisted(() => ({
+const { mockUseTasks, mockToggleMutate, mockSearchParamsGet, mockSearchParamsToString, mockUseCurrentUser } = vi.hoisted(() => ({
   mockUseTasks: vi.fn(),
+  mockUseCurrentUser: vi.fn(),
   mockToggleMutate: vi.fn(),
   mockSearchParamsGet: vi.fn(),
   mockSearchParamsToString: vi.fn(() => ''),
@@ -19,6 +20,7 @@ vi.mock('@/hooks/use-tasks', () => ({
   useTasks: mockUseTasks,
   useToggleTaskStatus: () => ({ mutate: mockToggleMutate, isPending: false }),
 }))
+vi.mock('@/hooks/use-current-user', () => ({ useCurrentUser: mockUseCurrentUser }))
 vi.mock('../task-detail-panel', () => ({
   TaskDetailPanel: ({ taskId, isMobile, onClose }: { taskId: string; isMobile?: boolean; onClose: () => void }) => (
     <div data-testid="task-detail-panel" data-task-id={taskId} data-mobile={String(!!isMobile)}>
@@ -64,8 +66,14 @@ function renderPage(isMobile = false) {
   )
 }
 
+const ME = 'user-me'
+
 describe('PageTasks のタスク詳細パネル導線', () => {
   beforeEach(() => {
+    // このブロックは担当者を問わない導線のテストなので「全員」表示にする
+    localStorage.clear()
+    localStorage.setItem('cairn:tasks_scope', 'all')
+    mockUseCurrentUser.mockReturnValue({ data: { id: ME }, isLoading: false, isError: false, error: null })
     // jsdom は scrollIntoView を実装していない（キーボード選択行のスクロール追従で呼ばれる）
     Element.prototype.scrollIntoView = vi.fn()
     mockToggleMutate.mockReset()
@@ -178,5 +186,72 @@ describe('PageTasks のタスク詳細パネル導線', () => {
     await userEvent.keyboard('{ArrowDown}{Enter}')
 
     expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'task-1')
+  })
+})
+
+describe('PageTasks の担当範囲とタブの保存', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+    localStorage.clear()
+    mockSearchParamsGet.mockReturnValue(null)
+    mockSearchParamsToString.mockReturnValue('')
+    mockUseCurrentUser.mockReturnValue({ data: { id: ME }, isLoading: false, isError: false, error: null })
+    mockUseTasks.mockReturnValue({
+      data: [
+        makeTask({ id: 'mine-todo', title: '自分の未着手', assigneeId: ME }),
+        makeTask({ id: 'mine-done', title: '自分の完了', assigneeId: ME, status: 'done' }),
+        makeTask({ id: 'other-todo', title: '他人の未着手', assigneeId: 'user-other' }),
+        makeTask({ id: 'unassigned', title: '担当なし', assigneeId: null }),
+      ],
+      isLoading: false,
+    })
+  })
+
+  it('既定では自分が担当のタスクだけを表示し、件数も自分の担当で数える', () => {
+    renderPage()
+
+    expect(screen.getByText('自分の未着手')).toBeInTheDocument()
+    expect(screen.queryByText('他人の未着手')).not.toBeInTheDocument()
+    expect(screen.queryByText('担当なし')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /未着手 \(1\)/ })).toBeInTheDocument()
+  })
+
+  it('「全員」に切り替えると他人・担当なしのタスクも表示し、選択を保存する', async () => {
+    renderPage()
+
+    await userEvent.click(screen.getByRole('button', { name: '全員' }))
+
+    expect(screen.getByText('他人の未着手')).toBeInTheDocument()
+    expect(screen.getByText('担当なし')).toBeInTheDocument()
+    expect(localStorage.getItem('cairn:tasks_scope')).toBe('all')
+  })
+
+  it('ステータスタブの選択を保存し、次に開いたときに復元する', async () => {
+    const first = renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /完了 \(1\)/ }))
+    expect(localStorage.getItem('cairn:tasks_status_filter')).toBe('done')
+    first.unmount()
+
+    renderPage()
+
+    expect(screen.getByText('自分の完了')).toBeInTheDocument()
+    expect(screen.queryByText('自分の未着手')).not.toBeInTheDocument()
+  })
+
+  it('保存値が不正なら既定（自分の担当・未着手）で開く', () => {
+    localStorage.setItem('cairn:tasks_scope', 'bogus')
+    localStorage.setItem('cairn:tasks_status_filter', 'bogus')
+    renderPage()
+
+    expect(screen.getByText('自分の未着手')).toBeInTheDocument()
+    expect(screen.queryByText('他人の未着手')).not.toBeInTheDocument()
+  })
+
+  it('自分の情報を取得できないときは全件で代替せずエラーを出す', () => {
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isLoading: false, isError: true, error: new Error('ユーザー情報の取得に失敗しました') })
+    renderPage()
+
+    expect(screen.getByText('ユーザー情報を読み込めませんでした')).toBeInTheDocument()
+    expect(screen.queryByText('他人の未着手')).not.toBeInTheDocument()
   })
 })
