@@ -1188,6 +1188,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Your session has expired. Please sign in again.': 'セッションが切れました。再度ログインしてください。',
   'Could not read the chat input preference from this browser.': 'このブラウザからチャット入力設定を読み込めませんでした。',
   'Could not save the chat input preference in this browser.': 'このブラウザにチャット入力設定を保存できませんでした。',
+  'Could not read the chat input preference on this device.': 'この端末からチャット入力設定を読み込めませんでした。',
+  'Could not save the chat input preference on this device.': 'この端末にチャット入力設定を保存できませんでした。',
   'Enter to send': 'Enterで送信',
   'Open Mermaid diagram': 'Mermaid図を開く',
   'Tap to view': 'タップで表示',

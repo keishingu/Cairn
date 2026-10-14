@@ -1,4 +1,5 @@
 import React from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   ActivityIndicator,
   Alert,
@@ -72,6 +73,7 @@ import {
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { useT } from '../../../components/locale-provider'
 import { UserAvatar } from '../../../components/user-avatar'
+import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -516,6 +518,9 @@ export default function ChatThreadScreen() {
   const session = useSession()
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
+  const [sendOnEnter, setSendOnEnter] = React.useState(false)
+  const [sendKeyPreferenceLoaded, setSendKeyPreferenceLoaded] = React.useState(false)
+  const [sendKeyPreferenceSaving, setSendKeyPreferenceSaving] = React.useState(false)
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
@@ -533,6 +538,38 @@ export default function ChatThreadScreen() {
     ? attachmentViewer(attachmentPreview.mimeType, attachmentPreview.fileName, Platform.OS)
     : null
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
+  const translateRef = React.useRef(t)
+  translateRef.current = t
+
+  React.useEffect(() => {
+    let isMounted = true
+    void loadChatSendOnEnter(AsyncStorage)
+      .then((saved) => {
+        if (isMounted) setSendOnEnter(saved)
+      })
+      .catch(() => {
+        if (isMounted) setSendError(translateRef.current('Could not read the chat input preference on this device.'))
+      })
+      .finally(() => {
+        if (isMounted) setSendKeyPreferenceLoaded(true)
+      })
+    return () => { isMounted = false }
+  }, [])
+
+  const toggleSendOnEnter = async () => {
+    if (!sendKeyPreferenceLoaded || sendKeyPreferenceSaving) return
+    const next = !sendOnEnter
+    setSendKeyPreferenceSaving(true)
+    try {
+      await saveChatSendOnEnter(next, AsyncStorage)
+      setSendOnEnter(next)
+      setSendError(null)
+    } catch {
+      setSendError(t('Could not save the chat input preference on this device.'))
+    } finally {
+      setSendKeyPreferenceSaving(false)
+    }
+  }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
   const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
@@ -1342,6 +1379,21 @@ export default function ChatThreadScreen() {
                   <Ionicons name="attach-outline" size={15} color={palette.text3} />
                   <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
                 </Pressable>
+                <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityLabel={t('Enter to send')}
+                    accessibilityState={{ checked: sendOnEnter, disabled: !sendKeyPreferenceLoaded || sendKeyPreferenceSaving }}
+                    disabled={!sendKeyPreferenceLoaded || sendKeyPreferenceSaving}
+                    onPress={() => void toggleSendOnEnter()}
+                    style={{ minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: sendKeyPreferenceLoaded ? 1 : 0.5 }}
+                  >
+                    <View style={{ width: 28, height: 16, borderRadius: 10, padding: 2, backgroundColor: sendOnEnter ? palette.accent : palette.border, alignItems: sendOnEnter ? 'flex-end' : 'flex-start', justifyContent: 'center' }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: palette.card }} />
+                    </View>
+                    <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Enter to send')}</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
             {upload.uploads.length > 0 && !editingMessage && (
@@ -1459,6 +1511,11 @@ export default function ChatThreadScreen() {
               <TextInput
                 accessibilityLabel={t('Enter a message')}
                 style={[styles.input, { color: palette.text }]}
+                submitBehavior={chatInputSubmitBehavior(sendOnEnter, !!editingMessage)}
+                returnKeyType={sendOnEnter && !editingMessage ? 'send' : 'default'}
+                onSubmitEditing={() => {
+                  if (sendOnEnter && !editingMessage) void handleSend()
+                }}
                 selection={selection}
                 onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
                 onChangeText={(value) => {

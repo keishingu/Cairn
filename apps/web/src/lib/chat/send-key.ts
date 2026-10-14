@@ -1,12 +1,8 @@
 export type ChatSendKeyMode = 'enter' | 'modifier-enter'
 
-export function hasAppleTouchInput(platform: string, userAgent: string, maxTouchPoints: number): boolean {
-  return /iPad|iPhone|iPod/i.test(userAgent) || ((platform === 'MacIntel' || platform === 'Macintosh') && maxTouchPoints > 1)
-}
-
-export function resolveChatSendKeyMode(value: string | null, hasTouchInput: boolean): ChatSendKeyMode {
+export function resolveChatSendKeyMode(value: string | null): ChatSendKeyMode {
   if (value === 'enter' || value === 'modifier-enter') return value
-  return hasTouchInput ? 'modifier-enter' : 'enter'
+  return 'modifier-enter'
 }
 
 export function shouldSendChatOnEnter(

@@ -43,7 +43,7 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { hasAppleTouchInput, resolveChatSendKeyMode, shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { resolveChatSendKeyMode, shouldSendChatOnEnter } from '@/lib/chat/send-key'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import {
   ALL_MENTION_ID,
@@ -575,10 +575,6 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const hasSafeDefaultChatSendKey = (isMobile?: boolean) => !!isMobile || (typeof navigator !== 'undefined' && (
-  /Android/i.test(navigator.userAgent) || hasAppleTouchInput(navigator.platform, navigator.userAgent, navigator.maxTouchPoints)
-))
-
 const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
@@ -616,7 +612,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const activeSendKeyMode = sendKeyMode ?? 'modifier-enter'
   React.useEffect(() => {
     try {
-      setSendKeyMode(resolveChatSendKeyMode(localStorage.getItem(STORAGE_KEYS.chat_send_key), hasSafeDefaultChatSendKey(isMobile)))
+      setSendKeyMode(resolveChatSendKeyMode(localStorage.getItem(STORAGE_KEYS.chat_send_key)))
     } catch {
       setSendKeyMode('modifier-enter')
       setSendError(t('Could not read the chat input preference from this browser.'))
