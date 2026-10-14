@@ -50,3 +50,22 @@ export function createReactionHistoryStore(storage: Storage) {
     },
   }
 }
+
+// Requests run concurrently; only history writes wait for earlier selections.
+export function createReactionHistoryQueue() {
+  let pending = Promise.resolve()
+  return (request: Promise<{ added: boolean }>, record: () => Promise<void>) => {
+    // Observe failures immediately, even while an earlier request is pending.
+    const outcome = request.then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    )
+    const next = pending.then(async () => {
+      const result = await outcome
+      if ('error' in result) throw result.error
+      if (result.value.added) await record()
+    })
+    pending = next.catch(() => {})
+    return next
+  }
+}

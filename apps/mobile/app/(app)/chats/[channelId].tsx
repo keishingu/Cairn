@@ -80,6 +80,7 @@ import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
+import { createReactionHistoryQueue } from '../../../lib/reaction-history'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
 
@@ -571,6 +572,7 @@ export default function ChatThreadScreen() {
   const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
   const reactionHistory = useReactionHistory(session?.user.id)
+  const [queueReactionHistory] = React.useState(createReactionHistoryQueue)
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
   const [sendOnEnter, setSendOnEnter] = React.useState(false)
@@ -1125,12 +1127,9 @@ export default function ChatThreadScreen() {
       !upload.hasFailedUploads
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
-    // Each promise must finish independently: mutate's per-call callbacks can be
-    // replaced by a subsequent tap before an earlier request completes.
-    void toggleReaction.mutateAsync({ messageId, emoji }).then((result) => {
-      if (result.added) {
-        void reactionHistory.record(emoji).catch(() => setSendError(t('Could not save recent reactions')))
-      }
+    const request = toggleReaction.mutateAsync({ messageId, emoji })
+    void queueReactionHistory(request, async () => {
+      await reactionHistory.record(emoji).catch(() => setSendError(t('Could not save recent reactions')))
     }).catch((err: unknown) => {
       setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
     })

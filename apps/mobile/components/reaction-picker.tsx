@@ -61,6 +61,7 @@ export function ReactionPicker({
     () => reactionEmojis(search, category, tone),
     [search, category, tone],
   )
+  const searching = search.trim().length > 0
   const button = (emoji: string) => (
     <Pressable
       key={emoji}
@@ -144,7 +145,7 @@ export function ReactionPicker({
                   <Pressable
                     key={item.id}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: category === item.id && !search }}
+                    accessibilityState={{ selected: category === item.id && !searching }}
                     onPress={() => {
                       setCategory(item.id)
                       setSearch('')
@@ -152,7 +153,8 @@ export function ReactionPicker({
                     style={[
                       styles.tab,
                       {
-                        backgroundColor: category === item.id ? palette.accentSoft : palette.card2,
+                        backgroundColor:
+                          category === item.id && !searching ? palette.accentSoft : palette.card2,
                       },
                     ]}
                   >

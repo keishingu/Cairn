@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createReactionHistoryStore,
+  createReactionHistoryQueue,
   DEFAULT_REACTIONS,
   parseReactionHistory,
   quickReactions,
@@ -67,5 +68,43 @@ describe('リアクション履歴', () => {
     expect(history).toHaveLength(32)
     expect(history[0]).toBe('emoji-39')
     expect(history[31]).toBe('emoji-8')
+  })
+})
+
+describe('リアクションの選択順', () => {
+  it('後の通信が先に完了しても履歴は選択順に保存する', async () => {
+    const queue = createReactionHistoryQueue()
+    let finishFirst!: (result: { added: boolean }) => void
+    const first = new Promise<{ added: boolean }>((resolve) => {
+      finishFirst = resolve
+    })
+    const recent: string[] = []
+    const record = async (emoji: string) => {
+      recent.unshift(emoji)
+    }
+    const a = queue(first, () => record('🙏'))
+    const b = queue(Promise.resolve({ added: true }), () => record('😭'))
+    await Promise.resolve()
+    expect(recent).toEqual([])
+    finishFirst({ added: true })
+    await Promise.all([a, b])
+    expect(recent).toEqual(['😭', '🙏'])
+  })
+
+  it('先の通信が失敗しても後の追加を保存し、取り消しは保存しない', async () => {
+    const queue = createReactionHistoryQueue()
+    const recent: string[] = []
+    const a = queue(Promise.reject(new Error('network')), async () => {
+      recent.push('🙏')
+    })
+    const b = queue(Promise.resolve({ added: false }), async () => {
+      recent.push('😭')
+    })
+    const c = queue(Promise.resolve({ added: true }), async () => {
+      recent.push('🤔')
+    })
+    await expect(a).rejects.toThrow('network')
+    await Promise.all([b, c])
+    expect(recent).toEqual(['🤔'])
   })
 })
