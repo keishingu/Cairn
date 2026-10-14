@@ -205,6 +205,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       `)
 
       // 4. 既読位置: 親での既読位置をスレッドへ引き継ぎ、移動したメッセージが未読扱いに戻らないようにする。
+      // 既存スレッドに既読位置がある場合は古い方を残す。新しい方にするとスレッドの未読を見落とさせるため。
       await tx.execute(sql`
         INSERT INTO channel_read_states (user_id, channel_id, last_read_at, last_read_message_id, unread_mention_count, updated_at)
         SELECT user_id, ${threadId}::uuid, last_read_at,
@@ -213,9 +214,9 @@ export async function POST(req: Request, { params }: RouteContext) {
         FROM channel_read_states
         WHERE channel_id = ${parent.id}
         ON CONFLICT (user_id, channel_id) DO UPDATE SET
-          last_read_at = greatest(channel_read_states.last_read_at, excluded.last_read_at),
+          last_read_at = least(channel_read_states.last_read_at, excluded.last_read_at),
           last_read_message_id = CASE
-            WHEN excluded.last_read_at > channel_read_states.last_read_at THEN excluded.last_read_message_id
+            WHEN excluded.last_read_at < channel_read_states.last_read_at THEN excluded.last_read_message_id
             ELSE channel_read_states.last_read_message_id
           END,
           updated_at = now()

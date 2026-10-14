@@ -313,7 +313,7 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(sqlText).toContain('UPDATE content_reports')
     expect(sqlText).toContain('UPDATE ai_nudges')
     expect(sqlText).toContain('INSERT INTO channel_read_states')
-    expect(sqlText).toContain('greatest(channel_read_states.last_read_at, excluded.last_read_at)')
+    expect(sqlText).toContain('least(channel_read_states.last_read_at, excluded.last_read_at)')
     expect(sqlText).toContain('SET unread_mention_count')
     expect(sqlText).toContain('INSERT INTO ai_scan_states')
     // メンション未読数は付け替えた通知を数えるため、通知の更新より後に再計算する
