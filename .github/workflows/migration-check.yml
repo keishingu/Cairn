@@ -9,6 +9,8 @@ name: Migration Check
 # - Secret は使わない（接続先は CI 内のローカル DB のみ）
 on:
   pull_request:
+    # migration-edit-ok ラベルの付け外しでも再判定する
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - 'supabase/migrations/**'
       - 'supabase/config.toml'
@@ -37,6 +39,25 @@ jobs:
         with:
           version: latest
 
+      - name: Reject edits to existing migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ALLOW_EDIT: ${{ contains(github.event.pull_request.labels.*.name, 'migration-edit-ok') }}
+        run: |
+          set -euo pipefail
+          # db push は適用済みのタイムスタンプを飛ばすため、既存ファイルの書き換えは検証も反映もされない。
+          # 変更は新しいマイグレーションで行う。どの環境にも未適用のファイルを直すときだけ
+          # PR に migration-edit-ok ラベルを付けて通す。
+          edited=$(git diff --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations)
+          if [ -n "$edited" ]; then
+            if [ "$ALLOW_EDIT" = "true" ]; then
+              echo "::warning::既存のマイグレーションが変更されています（migration-edit-ok ラベルにより許可）: $edited"
+            else
+              echo "::error::既存のマイグレーションは変更・削除せず、新しいマイグレーションを追加してください（適用済みの環境には反映されません）。どの環境にも未適用のファイルを直す場合のみ PR に migration-edit-ok ラベルを付けてください: $edited"
+              exit 1
+            fi
+          fi
+
       - name: Start local DB with base migrations
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -54,8 +75,8 @@ jobs:
           # PR の head（merge ref）のマイグレーションに戻し、本番と同じ db push で差分を適用する
           rm -rf supabase/migrations
           git checkout HEAD -- supabase/migrations
-          supabase db push --include-all --db-url "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          supabase db push --local --include-all
 
       - name: Stop local DB
         if: always()
-        run: supabase db stop --no-backup || true
+        run: supabase stop --no-backup || true
