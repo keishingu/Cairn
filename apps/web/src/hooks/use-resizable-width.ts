@@ -31,9 +31,10 @@ export function useResizableWidth({ storageKey, defaultWidth, min, max }: {
   const [dragging, setDragging] = React.useState(false)
   const dragStart = React.useRef<{ pointerX: number; width: number } | null>(null)
 
-  // SSR と初回描画を一致させるため、保存値はマウント後に読む
+  // SSR と初回描画は一致させつつ、保存幅はブラウザの描画前に復元する。
+  // チャンネル移動で再マウントされても、既定幅が一瞬表示されるのを防ぐ。
   // localStorage はプライベートブラウズやストレージ無効化で例外を投げる。幅は表示の好みなので、読めなければ既定幅で続ける
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     let saved: string | null = null
     try { saved = localStorage.getItem(storageKey) } catch (err) { console.warn('Failed to read the stored width', err) }
     setWidth(parseStoredWidth(saved, defaultWidth, min, max))

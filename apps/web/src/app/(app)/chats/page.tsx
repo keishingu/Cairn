@@ -1,8 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { PageChat } from '@/components/app/pages/chat'
-
+// チャット画面は共有 layout が保持し、URL から表示するチャンネルを切り替える。
 export default function ChatsPage() {
-  return <PageChat/>
+  return null
 }

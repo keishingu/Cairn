@@ -318,9 +318,6 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
   )
 }
 
-// ─── Pending cross-channel jump (survives component remount) ─────
-let _pendingJump: { channelId: string; messageId: string } | null = null
-
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
@@ -348,6 +345,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
   const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
+  const pendingJump = React.useRef<{ channelId: string; messageId: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
   const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
   const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
@@ -369,19 +367,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     const params = new URLSearchParams(window.location.search)
     const m = params.get('m')
     setTargetMessage(m ? { id: m } : null)
-    switch (params.get('panel')) {
-      case 'search':
-        setSearchOpen(true)
-        break
-      case 'info':
-        setShowInfo(true)
-        break
-      case 'global-search':
-        setGlobalSearchOpen(true)
-        break
-      case 'bookmarks':
-        setBookmarksOpen(true)
-        break
+    // 共有 layout は残るため、会話の移動時は会話に紐づく表示だけをリセットする。
+    const panel = params.get('panel')
+    setSearchOpen(panel === 'search')
+    setShowInfo(panel === 'info')
+    setShowMemberInvite(false)
+    setGlobalSearchOpen(panel === 'global-search')
+    setBookmarksOpen(panel === 'bookmarks')
+    switch (panel) {
       case 'create-project':
         setShowCreateProject(true)
         break
@@ -412,11 +405,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
   React.useEffect(() => {
-    if (_pendingJump && _pendingJump.channelId === channelId) {
-      setTargetMessage({ id: _pendingJump.messageId })
-      _pendingJump = null
+    // URL の切り替え前に消費すると、上のパーマリンク処理にジャンプ先を消される。
+    if (pendingJump.current && pendingJump.current.channelId === channelId && channelId === urlChannelId) {
+      setTargetMessage({ id: pendingJump.current.messageId })
+      pendingJump.current = null
     }
-  }, [channelId])
+  }, [channelId, urlChannelId])
 
   const {
     data: projectChannels = [],
@@ -513,6 +507,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
 
   const selectChannel = (id: string) => {
+    pendingJump.current = null
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
@@ -570,11 +565,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
     // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
-    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接ジャンプ先を設定する
+    // pendingJump 消費用 effect が発火しない。その場合は直接ジャンプ先を設定する
     if (chanId === channelId) {
       setTargetMessage({ id: messageId })
     } else {
-      _pendingJump = { channelId: chanId, messageId }
+      pendingJump.current = { channelId: chanId, messageId }
       setTargetMessage({ id: messageId })
       setChannelId(chanId)
     }
