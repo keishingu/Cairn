@@ -2,6 +2,8 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import type {
   AttachmentDto,
   MessageType,
+  MoveToThreadBody,
+  MoveToThreadResult,
   ProfileAttributeDto,
   ProjectMemberRole,
 } from '@cairn/shared'
@@ -241,6 +243,41 @@ export function useMarkChannelRead(channelId: string) {
       if (!res.ok) throw new Error(t('Could not mark as read ({status})', { status: res.status }))
     },
     onSuccess: () => invalidateChannelListQueries(qc),
+  })
+}
+
+/** 親チャンネルのメッセージをスレッドへ切り出す。元・移動先のメッセージと一覧を取り直す（Realtime も同じ範囲を無効化する）。 */
+export function useMoveMessagesToThread(channelId: string) {
+  const t = useT()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: MoveToThreadBody) => {
+      const res = await apiFetch(`/api/channels/${channelId}/move-to-thread`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(
+          data.error ??
+            friendlyMessageErrorText(
+              res.status,
+              t('Could not move the messages to a thread'),
+              t('You do not have permission to move messages in this channel.'),
+              t,
+            ),
+        )
+      }
+      return (await res.json()) as MoveToThreadResult
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['messages'] }),
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+        qc.invalidateQueries({ queryKey: ['notifications'] }),
+        invalidateChannelListQueries(qc),
+      ])
+    },
   })
 }
 
