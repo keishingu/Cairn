@@ -3,6 +3,20 @@
 
 // 英語の UI 文がキー。未登録のキーは英語のまま残し、翻訳漏れで画面が空になることを避ける。
 export const JA_MESSAGES: Record<string, string> = {
+  'All emoji': 'すべての絵文字',
+  'Search by English name or emoji': '英語名・絵文字で検索',
+  'No emoji found': '絵文字が見つかりません',
+  'Could not load recent reactions': '最近のリアクションを読み込めませんでした',
+  'Could not save recent reactions': '最近のリアクションを保存できませんでした',
+  'Smileys & people': '顔・人',
+  'Animals & nature': '動物・自然',
+  'Food & drink': '食べ物・飲み物',
+  Activities: 'アクティビティ',
+  'Travel & places': '旅行・場所',
+  Objects: '物',
+  Symbols: '記号',
+  Flags: '旗',
+  'Skin tone {number}': '肌の色 {number}',
   ' · ': ' ・ ',
   ' · {scope} · Expires {date}': ' ・ {scope} ・ 有効期限 {date}',
   ' · Inactive': ' ・ 無効',

@@ -300,6 +300,7 @@ export function useToggleMessageReaction(channelId: string) {
             t,
           ),
         )
+      return res.json() as Promise<{ added: boolean; emoji: string; count: number }>
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['messages', channelId] })

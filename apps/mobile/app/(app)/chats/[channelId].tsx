@@ -78,6 +78,8 @@ import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
+import { ReactionPicker } from '../../../components/reaction-picker'
+import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
 
@@ -568,6 +570,7 @@ export default function ChatThreadScreen() {
   )
   const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
+  const reactionHistory = useReactionHistory(session?.user.id)
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
   const [sendOnEnter, setSendOnEnter] = React.useState(false)
@@ -1122,14 +1125,15 @@ export default function ChatThreadScreen() {
       !upload.hasFailedUploads
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
-    toggleReaction.mutate(
-      { messageId, emoji },
-      {
-        onError: (err) => {
-          setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
-        },
-      },
-    )
+    // Each promise must finish independently: mutate's per-call callbacks can be
+    // replaced by a subsequent tap before an earlier request completes.
+    void toggleReaction.mutateAsync({ messageId, emoji }).then((result) => {
+      if (result.added) {
+        void reactionHistory.record(emoji).catch(() => setSendError(t('Could not save recent reactions')))
+      }
+    }).catch((err: unknown) => {
+      setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
+    })
   }
 
   const selectMention = (candidate: { tokenId: string; displayName: string }) => {
@@ -1867,42 +1871,17 @@ export default function ChatThreadScreen() {
           }}
         />
 
-        <Modal
-          transparent
+        <ReactionPicker
           visible={reactionTarget !== null}
-          animationType="fade"
-          onRequestClose={() => setReactionTarget(null)}
-        >
-          <Pressable style={styles.modalBackdrop} onPress={() => setReactionTarget(null)} />
-          <View
-            style={[
-              styles.reactionSheet,
-              {
-                backgroundColor: palette.card,
-                borderColor: palette.border,
-                paddingBottom: insets.bottom + 16,
-              },
-            ]}
-          >
-            <Text style={[styles.reactionSheetTitle, { color: palette.text }]}>{t('Reaction')}</Text>
-            <View style={styles.reactionChoices}>
-              {['👍', '❤️', '😂', '🎉', '🙌', '👀'].map((emoji) => (
-                <Pressable
-                  key={emoji}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('Add {emoji}', { emoji })}
-                  onPress={() => {
-                    if (reactionTarget) handleToggleReaction(reactionTarget.id, emoji)
-                    setReactionTarget(null)
-                  }}
-                  style={[styles.reactionChoice, { backgroundColor: palette.card2 }]}
-                >
-                  <Text style={styles.reactionChoiceText}>{emoji}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </Modal>
+          palette={palette}
+          recent={reactionHistory.recent}
+          historyError={reactionHistory.error}
+          onSelect={(emoji) => {
+            if (reactionTarget) handleToggleReaction(reactionTarget.id, emoji)
+            setReactionTarget(null)
+          }}
+          onClose={() => setReactionTarget(null)}
+        />
 
         <Modal
           transparent
@@ -2278,14 +2257,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   reactionSheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
-  reactionChoices: { flexDirection: 'row', justifyContent: 'space-between', gap: 7 },
-  reactionChoice: {
-    flex: 1,
-    aspectRatio: 1,
-    maxHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-  },
-  reactionChoiceText: { fontSize: 24 },
+
 })
