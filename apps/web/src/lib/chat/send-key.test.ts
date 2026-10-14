@@ -11,11 +11,16 @@ describe('チャットの送信キー', () => {
     expect(resolveChatSendKeyMode('modifier-enter')).toBe('modifier-enter')
   })
 
-  test('モードに応じて送信キーを判定し、モバイルとShift+Enterは改行する', () => {
+  test('どちらのモードでも修飾Enterは送信し、Shift+Enterは改行する', () => {
     expect(shouldSendChatOnEnter('Enter', 'enter')).toBe(true)
     expect(shouldSendChatOnEnter('Enter', 'modifier-enter')).toBe(false)
+    expect(shouldSendChatOnEnter('Enter', 'enter', { metaKey: true })).toBe(true)
+    expect(shouldSendChatOnEnter('Enter', 'enter', { ctrlKey: true })).toBe(true)
     expect(shouldSendChatOnEnter('Enter', 'modifier-enter', { metaKey: true })).toBe(true)
     expect(shouldSendChatOnEnter('Enter', 'modifier-enter', { ctrlKey: true })).toBe(true)
     expect(shouldSendChatOnEnter('Enter', 'enter', { shiftKey: true })).toBe(false)
+    expect(shouldSendChatOnEnter('Enter', 'modifier-enter', { shiftKey: true })).toBe(false)
+    expect(shouldSendChatOnEnter('Enter', 'enter', { shiftKey: true, metaKey: true })).toBe(false)
+    expect(shouldSendChatOnEnter('Enter', 'modifier-enter', { shiftKey: true, ctrlKey: true })).toBe(false)
   })
 })

@@ -11,6 +11,6 @@ export function shouldSendChatOnEnter(
   modifiers: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {},
 ): boolean {
   if (key !== 'Enter' || modifiers.shiftKey) return false
-  if (mode === 'modifier-enter') return !!(modifiers.metaKey || modifiers.ctrlKey)
-  return !modifiers.metaKey && !modifiers.ctrlKey
+  if (modifiers.metaKey || modifiers.ctrlKey) return true
+  return mode === 'enter'
 }

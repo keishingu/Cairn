@@ -954,6 +954,25 @@ describe('ChatThreadの送信キー切替', () => {
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2))
   })
 
+  it('Enter送信モードでもCommand/Ctrl+Enterで送信する', async () => {
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+
+    await user.click(screen.getByRole('switch', { name: 'Enterで送信' }))
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'ctrl send' } })
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(input, { target: { value: 'command send' } })
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2))
+  })
+
   it('送信エラーを設定の保存成功や失敗で消さず、保存失敗時はスイッチを戻さない', async () => {
     const user = userEvent.setup()
     chatThreadState.sendError = new Error('送信に失敗しました')
