@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import type { SQL } from 'drizzle-orm'
 import { WORKSPACE_CHANNEL_NAME_MAX } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireRole } from '@/lib/permissions'
@@ -10,11 +11,13 @@ type RouteContext = { params: Promise<{ channelId: string }> }
 
 async function loadWorkspaceChannel(workspaceId: string, channelId: string) {
   const { db, channels } = await import('@cairn/db')
-  const { and, eq } = await import('drizzle-orm')
+  const { and, eq, sql } = await import('drizzle-orm')
   const [channel] = await db
     .select({
       id: channels.id,
       parentChannelId: channels.parentChannelId,
+      // デプロイがmigrationより先の間は archived_at がない。アーカイブ操作だけを止める判定に使う。
+      archiveColumnReady: sql<boolean>`to_jsonb(${channels}) ? 'archived_at'`,
     })
     .from(channels)
     .where(and(
@@ -52,10 +55,19 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'リクエストの形式が不正です' }, { status: 400 })
   }
 
-  const name = typeof rawBody === 'object' && rawBody !== null && typeof (rawBody as { name?: unknown }).name === 'string'
-    ? (rawBody as { name: string }).name.trim()
-    : ''
+  const body = typeof rawBody === 'object' && rawBody !== null && !Array.isArray(rawBody)
+    ? rawBody as Record<string, unknown>
+    : {}
+  const hasName = body['name'] !== undefined
+  const hasArchived = body['archived'] !== undefined
+  if (!hasName && !hasArchived) {
+    return NextResponse.json({ error: '変更内容を指定してください' }, { status: 400 })
+  }
+  if (hasArchived && typeof body['archived'] !== 'boolean') {
+    return NextResponse.json({ error: 'リクエストの形式が不正です' }, { status: 400 })
+  }
 
+  const name = typeof body['name'] === 'string' ? body['name'].trim() : ''
   if (name.length > WORKSPACE_CHANNEL_NAME_MAX) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
   }
@@ -63,33 +75,53 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   try {
     const channel = await loadWorkspaceChannel(ctx.workspaceId, channelId)
     if (!channel) return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
-    if (!name) {
+    if (hasName && !name) {
       return NextResponse.json(
         { error: channel.parentChannelId ? 'スレッド名を入力してください' : 'チャンネル名を入力してください' },
         { status: 400 },
       )
     }
+    // 親チャンネルを隠すと配下スレッドの置き場がなくなるため、アーカイブはスレッドだけに限る。
+    if (hasArchived && !channel.parentChannelId) {
+      return NextResponse.json({ error: 'アーカイブできるのはスレッドだけです' }, { status: 400 })
+    }
 
     const forbidden = await authorizeChange(ctx.role, channel.parentChannelId, ctx.workspaceId, ctx.userId, channelId)
     if (forbidden) return forbidden
+    if (hasArchived && !channel.archiveColumnReady) {
+      return NextResponse.json({ error: 'アーカイブ機能を準備中です。しばらくしてから再度お試しください' }, { status: 503 })
+    }
 
     const { db, channels } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { and, eq, sql } = await import('drizzle-orm')
+    const set: { name?: string; archivedAt?: SQL | null } = {}
+    if (hasName) set.name = name
+    // 既にアーカイブ済みなら日時を保つ。
+    if (hasArchived) set.archivedAt = body['archived'] ? sql`coalesce(${channels.archivedAt}, now())` : null
+
     const [updated] = await db
       .update(channels)
-      .set({ name })
+      .set(set)
       .where(and(
         eq(channels.id, channelId),
         eq(channels.workspaceId, ctx.workspaceId),
         eq(channels.type, 'workspace'),
       ))
-      .returning({ id: channels.id, name: channels.name })
+      .returning({
+        id: channels.id,
+        name: channels.name,
+        // 名称変更はmigrationより先にデプロイされても動かす。
+        archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''`,
+      })
 
     if (!updated?.name) return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
-    return NextResponse.json({ id: updated.id, name: updated.name })
+    return NextResponse.json({ id: updated.id, name: updated.name, archived: updated.archived })
   } catch (err) {
     console.error('[/api/channels/[channelId] PATCH] DB error:', err)
-    return NextResponse.json({ error: '名前の変更に失敗しました' }, { status: 500 })
+    return NextResponse.json(
+      { error: hasArchived && !hasName ? 'アーカイブの変更に失敗しました' : '名前の変更に失敗しました' },
+      { status: 500 },
+    )
   }
 }
 

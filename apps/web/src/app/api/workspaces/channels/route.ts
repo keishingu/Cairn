@@ -12,6 +12,7 @@ export interface WorkspaceChannelDto {
   name: string | null
   parentChannelId: string | null
   isPrivate: boolean
+  archived: boolean
   memberCount: number
   memberNames: string[]
   memberAvatarUrls: (string | null)[]
@@ -29,9 +30,10 @@ export async function GET() {
     const { and, eq, inArray, sql } = await import('drizzle-orm')
     // デプロイがmigrationより先でも既存チャンネル一覧を壊さない。
     const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
+    const archived = sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''`
 
     const allChannelRows = await db
-      .select({ id: channels.id, name: channels.name, parentChannelId, isPrivate: channels.isPrivate })
+      .select({ id: channels.id, name: channels.name, parentChannelId, isPrivate: channels.isPrivate, archived })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
@@ -109,7 +111,7 @@ export async function GET() {
       const members = membersByChannel.get(c.id) ?? []
       const top4 = members.slice(0, 4)
       return {
-        id: c.id, name: c.name, parentChannelId: c.parentChannelId, isPrivate: c.isPrivate,
+        id: c.id, name: c.name, parentChannelId: c.parentChannelId, isPrivate: c.isPrivate, archived: c.archived,
         memberCount: members.length,
         memberNames: top4.map(m => m.name),
         memberAvatarUrls: top4.map(m => m.avatarUrl),
@@ -175,7 +177,7 @@ export async function POST(req: Request) {
     }
 
     const memberCount = isPrivate ? 1 : 0
-    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, archived: false, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

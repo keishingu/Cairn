@@ -21,6 +21,8 @@ export const channels = pgTable(
     type: channelTypeEnum('type').notNull().default('project'),
     name: text('name'),
     isPrivate: boolean('is_private').notNull().default(false),
+    // スレッドのアーカイブ日時。null は未アーカイブ。親チャンネルは API でアーカイブさせない。
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
