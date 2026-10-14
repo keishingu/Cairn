@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { translate } from '@cairn/shared'
 import { ChannelList, formatChannelPeriod } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -50,6 +51,108 @@ describe('formatChannelPeriod', () => {
 
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
+  afterEach(() => Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 }))
+
+  it('DM候補が多い場合も画面内に収まり、フォーカス・Escape・末尾選択ができる', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 160 })
+    const onStartDm = vi.fn()
+    const members = Array.from({ length: 40 }, (_, index) => ({
+      userId: `user-${index + 1}`,
+      displayName: `メンバー${index + 1}`,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    }))
+
+    render(
+      <div className="app-root"><ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={members}
+        onStartDm={onStartDm}
+      /></div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
+
+    const firstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstMember))
+    const lastMember = screen.getByRole('button', { name: /メンバー40/ })
+    const menu = lastMember.parentElement
+    expect(menu).toHaveStyle({ position: 'fixed', overflowY: 'auto', maxHeight: '480px' })
+    expect(menu?.parentElement).toHaveClass('app-root')
+    expect(Number.parseFloat(menu!.style.left) + Number.parseFloat(menu!.style.width)).toBeLessThanOrEqual(160)
+    fireEvent.mouseDown(lastMember)
+    await user.click(lastMember)
+
+    expect(onStartDm).toHaveBeenCalledWith('user-40')
+    expect(screen.queryByRole('button', { name: /メンバー40/ })).toBeNull()
+
+    await user.click(trigger)
+    const reopenedFirstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(reopenedFirstMember))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('候補が未取得の間はメニューにフォーカスし、到着後にTabで出てもEscapeで閉じる', async () => {
+    const user = userEvent.setup()
+    const makeMember = (userId: string, displayName: string) => ({
+      userId,
+      displayName,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    })
+    const props = {
+      channelId: null,
+      onSelectChannel: vi.fn(),
+      projectChannels: [],
+      workspaceChannels: [],
+      dms: [],
+      onStartDm: vi.fn(),
+    }
+    const { rerender } = render(
+      <div className="app-root">
+        <ChannelList {...props} members={[]} />
+        <button>外部操作</button>
+      </div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
+    const menu = document.querySelector('.app-root > .app[style*="position: fixed"]')!
+    await waitFor(() => expect(document.activeElement).toBe(menu))
+
+    rerender(
+      <div className="app-root">
+        <ChannelList {...props} members={[makeMember('user-1', 'メンバーA')]} />
+        <button>外部操作</button>
+      </div>,
+    )
+    const firstChoice = screen.getByText('メンバーA').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstChoice))
+    await user.tab()
+    const focusAfterTab = document.activeElement
+    expect(menu.contains(focusAfterTab)).toBe(false)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
+    expect(document.activeElement).toBe(focusAfterTab)
+  })
 
   it('プロジェクト見出しの追加ボタンから作成を開始する', () => {
     const onAddProject = vi.fn()
