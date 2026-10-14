@@ -107,4 +107,27 @@ describe('リアクションの選択順', () => {
     await Promise.all([b, c])
     expect(recent).toEqual(['🤔'])
   })
+  it('先の通信が保留中でも後の通信失敗をすぐ通知する', async () => {
+    const queue = createReactionHistoryQueue()
+    let finishFirst!: (result: { added: boolean }) => void
+    const first = new Promise<{ added: boolean }>((resolve) => {
+      finishFirst = resolve
+    })
+    const recent: string[] = []
+    const a = queue(first, async () => {
+      recent.push('🙏')
+    })
+    const b = queue(Promise.reject(new Error('network')), async () => {
+      recent.push('😭')
+    })
+    await expect(b).rejects.toThrow('network')
+    expect(recent).toEqual([])
+    finishFirst({ added: true })
+    await a
+    const c = queue(Promise.resolve({ added: true }), async () => {
+      recent.push('🤔')
+    })
+    await c
+    expect(recent).toEqual(['🙏', '🤔'])
+  })
 })

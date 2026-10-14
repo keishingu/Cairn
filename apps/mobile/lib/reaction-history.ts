@@ -66,6 +66,8 @@ export function createReactionHistoryQueue() {
       if (result.value.added) await record()
     })
     pending = next.catch(() => {})
-    return next
+    // Network failures must reach the caller immediately, independently of the
+    // queue that preserves successful history writes in selection order.
+    return Promise.all([request, next]).then(() => {})
   }
 }
