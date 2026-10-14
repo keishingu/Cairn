@@ -575,6 +575,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
+const hasSafeDefaultChatSendKey = (isMobile?: boolean) => !!isMobile || (typeof navigator !== 'undefined' && (
+  /Android/i.test(navigator.userAgent) || hasAppleTouchInput(navigator.platform, navigator.userAgent, navigator.maxTouchPoints)
+))
+
 const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
@@ -608,13 +612,25 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onCancelReply: () => void
 }) => {
   const t = useT()
-  const getSendKeyMode = () => {
-    let saved: string | null = null
-    try { saved = localStorage.getItem(STORAGE_KEYS.chat_send_key) } catch {
+  const [sendKeyMode, setSendKeyMode] = React.useState<ReturnType<typeof resolveChatSendKeyMode> | null>(null)
+  const activeSendKeyMode = sendKeyMode ?? 'modifier-enter'
+  React.useEffect(() => {
+    try {
+      setSendKeyMode(resolveChatSendKeyMode(localStorage.getItem(STORAGE_KEYS.chat_send_key), hasSafeDefaultChatSendKey(isMobile)))
+    } catch {
+      setSendKeyMode('modifier-enter')
       setSendError(t('Could not read the chat input preference from this browser.'))
-      return 'modifier-enter'
     }
-    return resolveChatSendKeyMode(saved, typeof navigator !== 'undefined' && hasAppleTouchInput(navigator.platform, navigator.userAgent, navigator.maxTouchPoints))
+  }, [isMobile, setSendError, t])
+  const toggleSendKeyMode = () => {
+    const nextMode = activeSendKeyMode === 'enter' ? 'modifier-enter' : 'enter'
+    try {
+      localStorage.setItem(STORAGE_KEYS.chat_send_key, nextMode)
+      setSendKeyMode(nextMode)
+      setSendError(null)
+    } catch {
+      setSendError(t('Could not save the chat input preference in this browser.'))
+    }
   }
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
@@ -669,13 +685,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     onDrop: handleDrop,
   }
 
-  const [showPicker, setShowPicker] = React.useState(false)
   const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
   const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
-  const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
@@ -993,7 +1007,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
                   if (e.key !== 'Enter') return
                   if (isImeConfirmingEnter(e, isComposing)) return
-                  if (!shouldSendChatOnEnter(e.key, getSendKeyMode(), !!isMobile, e)) return
+                  if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                   e.preventDefault()
                   send()
                 })}
@@ -1010,10 +1024,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
-            <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-              <Icon name="smile" size={15}/>
+            <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+              </span>
+              <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{t('Enter to send')}</span>
             </button>
-            {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
             <button onClick={send} disabled={!canSend} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
               <Icon name="send" size={13}/>
             </button>
@@ -1047,10 +1063,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
-          <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="smile" size={13}/> {t('Emoji')}
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+            </span>
+            {t('Enter to send')}
           </button>
-          {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
         {ReplyPreview}
         {AttachmentPreviews}
@@ -1076,7 +1094,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onKeyDown={e => handleKeyDownWithMention(e, () => {
                 if (e.key !== 'Enter') return
                 if (isImeConfirmingEnter(e, isComposing)) return
-                if (!shouldSendChatOnEnter(e.key, getSendKeyMode(), !!isMobile, e)) return
+                if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                 e.preventDefault()
                 send()
               })}

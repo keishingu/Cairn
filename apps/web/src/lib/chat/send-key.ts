@@ -12,11 +12,9 @@ export function resolveChatSendKeyMode(value: string | null, hasTouchInput: bool
 export function shouldSendChatOnEnter(
   key: string,
   mode: ChatSendKeyMode,
-  isMobile: boolean,
   modifiers: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {},
 ): boolean {
   if (key !== 'Enter' || modifiers.shiftKey) return false
   if (mode === 'modifier-enter') return !!(modifiers.metaKey || modifiers.ctrlKey)
-  if (isMobile) return false
   return !modifiers.metaKey && !modifiers.ctrlKey
 }
