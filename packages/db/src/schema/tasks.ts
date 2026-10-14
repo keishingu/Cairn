@@ -1,7 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { date, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { taskPriorityEnum, taskStatusEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
@@ -28,4 +29,11 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sourceMessageId: uuid('source_message_id').references(() => messages.id, { onDelete: 'set null' }),
   sourceCheckboxIndex: integer('source_checkbox_index'),
-}, (t) => [index('idx_tasks_channel').on(t.channelId)])
+}, (t) => [
+  index('idx_tasks_channel').on(t.channelId),
+  // メッセージの「タスク化する」は1メッセージ1タスク。同時リクエストでも重複させない。
+  // 旧チェックボックス由来（source_checkbox_index あり）は1メッセージに複数あるため対象外。
+  uniqueIndex('uniq_tasks_message_task')
+    .on(t.sourceMessageId)
+    .where(sql`${t.sourceMessageId} is not null and ${t.sourceCheckboxIndex} is null`),
+])

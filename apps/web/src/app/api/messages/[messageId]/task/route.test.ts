@@ -54,7 +54,7 @@ vi.mock('@cairn/db', () => {
   chain['limit'] = (...args: unknown[]) => mockSelectLimit(...args)
   const db = {
     select: vi.fn(() => chain),
-    insert: vi.fn(() => ({ values: (v: unknown) => { mockInsertValues(v); return { returning: mockInsertReturning } } })),
+    insert: vi.fn(() => ({ values: (v: unknown) => { mockInsertValues(v); return { onConflictDoNothing: () => ({ returning: mockInsertReturning }) } } })),
   }
   return { db, messages, channels, tasks, projects, profiles, workspaceMembers }
 })
@@ -176,6 +176,19 @@ describe('POST /api/messages/[messageId]/task', () => {
       sourceMessageId: MESSAGE_ID,
       assigneeId: null,
     })
+  })
+
+  it('同時リクエストで先に作られていたら一意制約で挿入されず、勝った方のタスクを created: false で返す', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([messageRow])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([taskRow])
+    mockInsertReturning.mockResolvedValueOnce([])
+
+    const response = await callPost()
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ id: TASK_ID, created: false })
   })
 
   it('本文が空のメッセージは 422 を返す', async () => {

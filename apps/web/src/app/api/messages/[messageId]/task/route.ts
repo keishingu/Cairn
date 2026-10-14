@@ -134,8 +134,15 @@ export async function POST(_req: Request, { params }: RouteContext) {
         sourceMessageId: messageId,
         assigneeId: null,
       })
+      // 同時リクエストで先に作られていたら一意制約で何も挿入されないので、勝った方のタスクを返す。
+      // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
+      .onConflictDoNothing()
       .returning({ id: tasks.id })
-    if (!inserted) throw new Error('Insert returned no rows')
+    if (!inserted) {
+      const winner = await loadTask()
+      if (!winner) throw new Error('Insert returned no rows')
+      return NextResponse.json(toDto(winner, false), { status: 200 })
+    }
 
     const created = await loadTask(inserted.id)
     if (!created) throw new Error('Created task not found')
