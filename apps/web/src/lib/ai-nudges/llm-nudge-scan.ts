@@ -385,6 +385,8 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         )`,
         // 個人チャンネルは対象のまま、アーカイブ済みプロジェクトの会話は巡回しない。
         or(isNull(channels.projectId), eq(projects.archived, false)),
+        // アーカイブ済みスレッドもプロジェクトと揃えて巡回しない。migration より先に動いても落ちないよう to_jsonb で読む。
+        sql`coalesce(to_jsonb(${channels})->>'archived_at', '') = ''`,
       ),
     )
 
