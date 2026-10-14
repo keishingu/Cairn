@@ -43,7 +43,7 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <FilesTab projectId="project-1" channelId={channelId} />
+        <FilesTab projectId="project-1" channelId={channelId} canManageLatest />
       </QueryClientProvider>,
     ),
   }

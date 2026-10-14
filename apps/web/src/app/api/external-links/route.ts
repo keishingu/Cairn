@@ -22,18 +22,6 @@ export interface ExternalLinkDto {
   alreadyExists?: boolean
 }
 
-// metadata.channelIds（新形式の配列）と旧形式の単一 metadata.channelId の両方を読み、重複なく統合する
-function readMetadataChannelIds(meta: Record<string, unknown>): string[] {
-  const ids = new Set<string>()
-  const legacy = meta['channelId']
-  if (typeof legacy === 'string') ids.add(legacy)
-  const arr = meta['channelIds']
-  if (Array.isArray(arr)) {
-    for (const id of arr) if (typeof id === 'string') ids.add(id)
-  }
-  return [...ids]
-}
-
 function parseGoogleUrl(url: string): { docId: string; docType: ExternalLinkDocType; label: string } | null {
   const docMatch = GOOGLE_DOC_RE.exec(url)
   if (docMatch) return { docId: docMatch[1]!, docType: 'doc', label: 'Google ドキュメント' }
@@ -74,7 +62,7 @@ export async function POST(req: Request) {
 
   try {
     const { db, files, channels, projects } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     // channelId からプロジェクトIDを解決
     let projectId: string | null = bodyProjectId ?? null
@@ -131,13 +119,20 @@ export async function POST(req: Request) {
         // 既に別チャンネル（または Files タブ経由）で登録済みのリンクを別チャンネルに再投稿した場合、
         // そのチャンネルのファイル一覧にも表示されるよう関連チャンネルを追加する
         if (metadataChannelId) {
-          const existingChannelIds = readMetadataChannelIds(dupMeta)
-          if (!existingChannelIds.includes(metadataChannelId)) {
-            await db
-              .update(files)
-              .set({ metadata: { ...dupMeta, channelIds: [...existingChannelIds, metadataChannelId] } })
-              .where(eq(files.id, dup.id))
-          }
+          // 同時投稿されたチャンネルも保持し、確定資料やインデックス状態は上書きしない。
+          await db.update(files).set({
+            metadata: sql`jsonb_set(COALESCE(${files.metadata}, '{}'::jsonb), '{channelIds}', (
+              SELECT COALESCE(jsonb_agg(DISTINCT channel_id), '[]'::jsonb)
+              FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(${files.metadata}->'channelIds') = 'array'
+                  THEN ${files.metadata}->'channelIds' ELSE '[]'::jsonb END
+                || CASE WHEN jsonb_typeof(${files.metadata}->'channelId') = 'string'
+                  THEN jsonb_build_array(${files.metadata}->'channelId') ELSE '[]'::jsonb END
+                || ${JSON.stringify([metadataChannelId])}::jsonb
+              ) AS channels(channel_id)
+              WHERE jsonb_typeof(channel_id) = 'string'
+            ), true)`,
+          }).where(eq(files.id, dup.id))
         }
 
         return NextResponse.json({

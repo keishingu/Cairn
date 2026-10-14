@@ -875,17 +875,10 @@ export const indexExternalLink = inngest.createFunction(
     if (!fetchResult.ok) {
       await step.run('mark-private', async () => {
         const { db, files } = await import('@cairn/db')
-        const { eq } = await import('drizzle-orm')
-        const [row] = await db
-          .select({ metadata: files.metadata })
-          .from(files)
-          .where(eq(files.id, fileId))
-          .limit(1)
-        if (!row) return
-        const meta = Object.assign({}, row.metadata as Record<string, unknown>)
+        const { eq, sql } = await import('drizzle-orm')
         await db
           .update(files)
-          .set({ metadata: { ...meta, indexingStatus: 'failed' } })
+          .set({ metadata: sql`jsonb_set(COALESCE(${files.metadata}, '{}'::jsonb), '{indexingStatus}', '"failed"'::jsonb, true)` })
           .where(eq(files.id, fileId))
       })
       return { indexed: 0, reason: 'private' }
@@ -898,16 +891,16 @@ export const indexExternalLink = inngest.createFunction(
 
     await step.run('save-embeddings', async () => {
       const { db, documentChunks, files } = await import('@cairn/db')
-      const { eq, and } = await import('drizzle-orm')
+      const { eq, and, sql } = await import('drizzle-orm')
       const [row] = await db
-        .select({ metadata: files.metadata })
+        .select({ id: files.id })
         .from(files)
         .where(eq(files.id, fileId))
         .limit(1)
       if (!row) return
 
-      const meta = Object.assign({}, row.metadata as Record<string, unknown>)
-      const newMeta = { ...meta, indexingStatus: 'indexed' }
+      // 埋め込み生成中の確定資料変更を保持するため、更新時点のJSONBの対象キーだけを変更する。
+      const newMeta = sql`jsonb_set(COALESCE(${files.metadata}, '{}'::jsonb), '{indexingStatus}', '"indexed"'::jsonb, true)`
 
       if (chunks.length > 0) {
         const { embedMany } = await import('ai')

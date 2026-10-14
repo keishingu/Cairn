@@ -14,10 +14,10 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
   try {
     const { db, files, documentChunks } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, mimeType: files.mimeType, metadata: files.metadata })
+      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, mimeType: files.mimeType })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
@@ -34,8 +34,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
     // 既存のベクトルデータを削除してステータスをリセット
     await db.delete(documentChunks).where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-    const meta = Object.assign({}, file.metadata as Record<string, unknown>)
-    await db.update(files).set({ metadata: { ...meta, indexingStatus: 'pending' } }).where(eq(files.id, fileId))
+    await db.update(files).set({
+      metadata: sql`jsonb_set(COALESCE(${files.metadata}, '{}'::jsonb), '{indexingStatus}', '"pending"'::jsonb, true)`,
+    }).where(eq(files.id, fileId))
 
     const { inngest } = await import('@/lib/inngest/client')
     await inngest.send({

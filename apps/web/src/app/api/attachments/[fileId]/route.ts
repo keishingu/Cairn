@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { canAccessFile } from '@/lib/permissions'
+import { canAccessFile, requireRole } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
@@ -167,8 +167,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   }
 
   try {
-    const { db, files } = await import('@cairn/db')
-    const { eq, sql } = await import('drizzle-orm')
+    const { db, files, projects } = await import('@cairn/db')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     const [file] = await db
       .select({
@@ -188,6 +188,18 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
+    if (hasIsLatest) {
+      let archived = false
+      if (file.projectId) {
+        const [project] = await db.select({ archived: projects.archived }).from(projects)
+          .where(and(eq(projects.id, file.projectId), eq(projects.workspaceId, ctx.workspaceId))).limit(1)
+        if (!project) return new NextResponse(null, { status: 404 })
+        archived = project.archived
+      }
+      const forbidden = requireRole(ctx.role, archived ? 'admin' : 'member')
+      if (forbidden) return forbidden
+    }
+
     if (fileName) {
       if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
         return NextResponse.json({ error: 'ファイルの拡張子は変更できません' }, { status: 400 })
@@ -197,11 +209,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     }
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
-    const meta = (file.metadata ?? {}) as Record<string, unknown>
     await db
       .update(files)
       .set({
-        metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'`,
+        metadata: isLatest
+          ? sql`jsonb_set(COALESCE(${files.metadata}, '{}'::jsonb), '{isLatest}', 'true'::jsonb, true)`
+          : sql`${files.metadata} - 'isLatest'`,
       })
       .where(eq(files.id, fileId))
 

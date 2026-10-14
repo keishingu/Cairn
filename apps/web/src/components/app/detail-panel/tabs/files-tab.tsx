@@ -69,7 +69,7 @@ function isImageFile(file: ProjectFileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
 
-export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
+export const FilesTab = ({ projectId, channelId, canManageLatest }: { projectId: string; channelId: string | null; canManageLatest: boolean }) => {
   const t = useT()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -234,9 +234,9 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
-                f.isLatest
-                  ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
-                  : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
+                ...(canManageLatest ? [f.isLatest
+                  ? { icon: 'star' as const, label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }, { onError: error => toast.error(error.message) }) }
+                  : { icon: 'star' as const, label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }, { onError: error => toast.error(error.message) }) }] : []),
                 { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
               ]}
             />
