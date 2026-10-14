@@ -284,20 +284,33 @@ export async function PATCH(
     if (parsed.data.status !== undefined) updates.status = parsed.data.status
     if (parsed.data.assigneeId !== undefined) updates.assigneeId = parsed.data.assigneeId
 
-    const [updated] = await db
-      .update(tasks)
-      .set(updates)
-      .where(eq(tasks.id, id))
-      .returning({
-        id: tasks.id,
-        title: tasks.title,
-        description: tasks.description,
-        priority: tasks.priority,
-        dueDate: tasks.dueDate,
-        status: tasks.status,
-        assigneeId: tasks.assigneeId,
-        sourceMessageId: tasks.sourceMessageId,
-      })
+    let updateResult
+    try {
+      updateResult = await db
+        .update(tasks)
+        .set(updates)
+        .where(eq(tasks.id, id))
+        .returning({
+          id: tasks.id,
+          title: tasks.title,
+          description: tasks.description,
+          priority: tasks.priority,
+          dueDate: tasks.dueDate,
+          status: tasks.status,
+          assigneeId: tasks.assigneeId,
+          sourceMessageId: tasks.sourceMessageId,
+        })
+    } catch (err) {
+      // 同じメッセージから作ったタスクは同じタイトルにできない（uniq_tasks_message_task_title）
+      if (isUniqueViolation(err, 'uniq_tasks_message_task_title')) {
+        return NextResponse.json(
+          { error: '同じメッセージから作った別のタスクに同じタイトルがあります' },
+          { status: 409 },
+        )
+      }
+      throw err
+    }
+    const [updated] = updateResult
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
@@ -415,4 +428,13 @@ export async function DELETE(
     console.error('[DELETE /api/tasks/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  // drizzle は pg のエラーを cause に包むことがあるので両方を見る
+  for (const candidate of [err, (err as { cause?: unknown } | null)?.cause]) {
+    const e = candidate as { code?: unknown; constraint?: unknown } | null | undefined
+    if (e?.code === '23505' && e.constraint === constraint) return true
+  }
+  return false
 }

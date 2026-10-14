@@ -975,7 +975,8 @@ export default function ChatThreadScreen() {
   }
 
   const openTask = (taskId: string) => {
-    router.push({ pathname: '/(app)/tasks', params: { taskId } })
+    // 同じタスクを続けて開いても WebView が再遷移するよう、開くたびに異なる open を付ける
+    router.push({ pathname: '/(app)/tasks', params: { taskId, open: String(Date.now()) } })
   }
 
   // 選んだタイトルでタスクを作る。成功したら true。失敗は sendError に出す。

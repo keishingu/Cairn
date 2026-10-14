@@ -5,22 +5,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { PageTasks } from './tasks'
 
-const { mockUseTasks, mockToggleMutate, mockSearchParamsGet } = vi.hoisted(() => ({
+const { mockUseTasks, mockToggleMutate, mockSearchParamsGet, mockSearchParamsToString } = vi.hoisted(() => ({
   mockUseTasks: vi.fn(),
   mockToggleMutate: vi.fn(),
   mockSearchParamsGet: vi.fn(),
+  mockSearchParamsToString: vi.fn(() => ''),
 }))
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => ({ get: mockSearchParamsGet }),
+  useSearchParams: () => ({ get: mockSearchParamsGet, toString: mockSearchParamsToString }),
 }))
 vi.mock('@/hooks/use-tasks', () => ({
   useTasks: mockUseTasks,
   useToggleTaskStatus: () => ({ mutate: mockToggleMutate, isPending: false }),
 }))
 vi.mock('../task-detail-panel', () => ({
-  TaskDetailPanel: ({ taskId, isMobile }: { taskId: string; isMobile?: boolean }) => (
-    <div data-testid="task-detail-panel" data-task-id={taskId} data-mobile={String(!!isMobile)} />
+  TaskDetailPanel: ({ taskId, isMobile, onClose }: { taskId: string; isMobile?: boolean; onClose: () => void }) => (
+    <div data-testid="task-detail-panel" data-task-id={taskId} data-mobile={String(!!isMobile)}>
+      <button type="button" onClick={onClose}>close-panel</button>
+    </div>
   ),
 }))
 vi.mock('../task-delete-dialog', () => ({
@@ -68,6 +71,7 @@ describe('PageTasks のタスク詳細パネル導線', () => {
     mockToggleMutate.mockReset()
     mockSearchParamsGet.mockReset()
     mockSearchParamsGet.mockReturnValue(null)
+    mockSearchParamsToString.mockReturnValue('')
     mockUseTasks.mockReturnValue({
       data: [
         makeTask(),
@@ -146,6 +150,24 @@ describe('PageTasks のタスク詳細パネル導線', () => {
     mockSearchParamsGet.mockImplementation((key: string) => (key === 'taskId' ? 'task-2' : null))
 
     renderPage()
+
+    expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'task-2')
+  })
+
+  it('閉じた後に同じタスクを開き直す要求（open が変わる）で再び詳細パネルを開く', async () => {
+    mockSearchParamsGet.mockImplementation((key: string) => (key === 'taskId' ? 'task-2' : null))
+    mockSearchParamsToString.mockReturnValue('taskId=task-2&open=1')
+    const view = renderPage()
+
+    await userEvent.click(screen.getByText('close-panel'))
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument()
+
+    mockSearchParamsToString.mockReturnValue('taskId=task-2&open=2')
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <PageTasks />
+      </QueryClientProvider>,
+    )
 
     expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'task-2')
   })

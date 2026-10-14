@@ -218,13 +218,13 @@ export async function POST(req: Request, { params }: RouteContext) {
         byTitle.set(row.title, { id: row.id, title: row.title, status: row.status })
       }
     }
-    const resultTasks = titles.map((title) => {
-      const task = byTitle.get(title)
-      if (!task) throw new Error('Created task not found')
-      return task
-    })
+    const resultTasks = titles.map(title => byTitle.get(title))
+    // ロック解放後、ここで読み直すまでにメッセージが削除されると由来タスクも消えている
+    if (resultTasks.some(task => task == null)) {
+      return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+    }
 
-    const body: MessageTaskCreateResponse = { tasks: resultTasks, createdCount: insertResult.createdCount }
+    const body: MessageTaskCreateResponse = { tasks: resultTasks as MessageTaskDto[], createdCount: insertResult.createdCount }
     return NextResponse.json(body, { status: insertResult.createdCount > 0 ? 201 : 200 })
   } catch (err) {
     console.error('[/api/messages/[messageId]/task POST] failed:', err)

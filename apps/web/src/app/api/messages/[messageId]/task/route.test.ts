@@ -225,6 +225,17 @@ describe('POST /api/messages/[messageId]/task', () => {
     expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
+  it('作成後の読み直しまでにメッセージが削除されタスクが消えていたら 404 を返す', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow])
+    mockInsertReturning.mockResolvedValue([{ id: TASK_ID }])
+    mockSelectOrdered.mockResolvedValueOnce([])
+
+    const response = await callPost({ titles: ['資料を確認する'] })
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'メッセージが見つかりません' })
+  })
+
   it('titles の数だけ一括で作成し、要求順にタスクを 201 で返す', async () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockInsertReturning.mockResolvedValue([{ id: TASK_ID }, { id: 'task-2' }])

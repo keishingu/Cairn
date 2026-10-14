@@ -264,8 +264,10 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 一覧に無くても（フィルター外・取得前でも）詳細を直接取得するので、存在しなければパネルにエラーが出る。
   React.useEffect(() => {
     const taskId = searchParams.get('taskId')
-    if (!taskId || openedTaskIdRef.current === taskId) return
-    openedTaskIdRef.current = taskId
+    // taskId だけで判定すると、閉じた後に同じタスクを開き直す要求（アプリは open を変えて送る）を無視してしまう
+    const requestKey = searchParams.toString()
+    if (!taskId || openedTaskIdRef.current === requestKey) return
+    openedTaskIdRef.current = requestKey
     setDetailTaskId(taskId)
   }, [searchParams])
 
