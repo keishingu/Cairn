@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cloneElement } from 'react'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -41,6 +41,7 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage,
     projectChannelsResolved: true,
     projectChannelsError: null as Error | null,
     refetchProjectChannels: vi.fn(),
+    sendError: null as Error | null,
     projectMembers: [] as Array<{ userId: string }>,
     profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
@@ -76,7 +77,7 @@ vi.mock('@/lib/chat/client', () => ({
     error: chatThreadState.projectChannelsError,
     refetch: chatThreadState.refetchProjectChannels,
   }),
-  useSendChannelMessage: () => ({ mutate: sendMessage, isError: false, isSuccess: false, isPending: false, error: null }),
+  useSendChannelMessage: () => ({ mutate: sendMessage, isError: !!chatThreadState.sendError, isSuccess: false, isPending: false, error: chatThreadState.sendError }),
   useToggleBookmark: () => ({ mutate: bookmarkMessage }),
   useToggleMessageReaction: () => ({ mutate: vi.fn() }),
   useWorkspaceMembers: () => ({ data: chatThreadState.workspaceMembers }),
@@ -647,6 +648,7 @@ describe('ChatThreadの送信キー切替', () => {
   beforeEach(() => {
     localStorage.clear()
     sendMessage.mockReset()
+    chatThreadState.sendError = null
   })
 
   it.each([false, true])('通常表示/compact表示のどちらでも切替を保存し、即時反映する (compact=%s)', async compact => {
@@ -663,6 +665,57 @@ describe('ChatThreadの送信キー切替', () => {
 
     expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(localStorage.getItem('cairn:chat_send_key')).toBe('enter')
+  })
+
+  it('同じ画面の複数チャットとstorageイベントで設定を同期する', async () => {
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <><ChatThread channelId="channel-1" /><ChatThread channelId="channel-2" /></>
+      </QueryClientProvider>,
+    )
+    const [first, second] = screen.getAllByRole('switch', { name: 'Enterで送信' })
+    const [firstInput, secondInput] = screen.getAllByRole('textbox') as HTMLTextAreaElement[]
+
+    await user.click(first!)
+    expect(first).toHaveAttribute('aria-checked', 'true')
+    expect(second).toHaveAttribute('aria-checked', 'true')
+    fireEvent.change(secondInput!, { target: { value: 'second composer' } })
+    fireEvent.keyDown(secondInput!, { key: 'Enter' })
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))
+
+    localStorage.setItem('cairn:chat_send_key', 'modifier-enter')
+    fireEvent(window, new StorageEvent('storage', { key: 'cairn:chat_send_key' }))
+    expect(first).toHaveAttribute('aria-checked', 'false')
+    expect(second).toHaveAttribute('aria-checked', 'false')
+    fireEvent.change(firstInput!, { target: { value: 'first composer' } })
+    fireEvent.keyDown(firstInput!, { key: 'Enter' })
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(firstInput!, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2))
+  })
+
+  it('送信エラーを設定の保存成功や失敗で消さず、保存失敗時はスイッチを戻さない', async () => {
+    const user = userEvent.setup()
+    chatThreadState.sendError = new Error('送信に失敗しました')
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const toggle = screen.getByRole('switch', { name: 'Enterで送信' })
+    expect(await screen.findByText('送信に失敗しました')).toBeInTheDocument()
+
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('送信に失敗しました')).toBeInTheDocument()
+
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('storage unavailable') })
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('送信に失敗しました')).toBeInTheDocument()
+    expect(screen.getByText('このブラウザにチャット入力設定を保存できませんでした。')).toBeInTheDocument()
+    vi.restoreAllMocks()
   })
 
   it('保存済みの明示設定はモバイルでも使い、変換確定のEnterでは送信しない', () => {

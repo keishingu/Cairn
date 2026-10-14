@@ -43,8 +43,8 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { resolveChatSendKeyMode, shouldSendChatOnEnter } from '@/lib/chat/send-key'
-import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -608,26 +608,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onCancelReply: () => void
 }) => {
   const t = useT()
-  const [sendKeyMode, setSendKeyMode] = React.useState<ReturnType<typeof resolveChatSendKeyMode> | null>(null)
-  const activeSendKeyMode = sendKeyMode ?? 'modifier-enter'
-  React.useEffect(() => {
-    try {
-      setSendKeyMode(resolveChatSendKeyMode(localStorage.getItem(STORAGE_KEYS.chat_send_key)))
-    } catch {
-      setSendKeyMode('modifier-enter')
-      setSendError(t('Could not read the chat input preference from this browser.'))
-    }
-  }, [isMobile, setSendError, t])
-  const toggleSendKeyMode = () => {
-    const nextMode = activeSendKeyMode === 'enter' ? 'modifier-enter' : 'enter'
-    try {
-      localStorage.setItem(STORAGE_KEYS.chat_send_key, nextMode)
-      setSendKeyMode(nextMode)
-      setSendError(null)
-    } catch {
-      setSendError(t('Could not save the chat input preference in this browser.'))
-    }
-  }
+  const { mode: activeSendKeyMode, error: sendKeyError, dismissError: dismissSendKeyError, toggle: toggleSendKeyMode } = useChatSendKeyMode()
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -973,12 +954,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         {sendError && (
           <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendError}</InlineError>
         )}
+        {sendKeyError && (
+          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendKeyError}</InlineError>
+        )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
-        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {ReplyPreview}
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
@@ -1043,12 +1027,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       {sendError && (
         <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6 }}>{sendError}</InlineError>
       )}
+      {sendKeyError && (
+        <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6 }}>{sendKeyError}</InlineError>
+      )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
-      <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}

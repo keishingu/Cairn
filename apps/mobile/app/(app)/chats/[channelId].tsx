@@ -521,6 +521,7 @@ export default function ChatThreadScreen() {
   const [sendOnEnter, setSendOnEnter] = React.useState(false)
   const [sendKeyPreferenceLoaded, setSendKeyPreferenceLoaded] = React.useState(false)
   const [sendKeyPreferenceSaving, setSendKeyPreferenceSaving] = React.useState(false)
+  const [sendKeyPreferenceError, setSendKeyPreferenceError] = React.useState<string | null>(null)
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
@@ -548,7 +549,7 @@ export default function ChatThreadScreen() {
         if (isMounted) setSendOnEnter(saved)
       })
       .catch(() => {
-        if (isMounted) setSendError(translateRef.current('Could not read the chat input preference on this device.'))
+        if (isMounted) setSendKeyPreferenceError(translateRef.current('Could not read the chat input preference on this device.'))
       })
       .finally(() => {
         if (isMounted) setSendKeyPreferenceLoaded(true)
@@ -563,9 +564,9 @@ export default function ChatThreadScreen() {
     try {
       await saveChatSendOnEnter(next, AsyncStorage)
       setSendOnEnter(next)
-      setSendError(null)
+      setSendKeyPreferenceError(null)
     } catch {
-      setSendError(t('Could not save the chat input preference on this device.'))
+      setSendKeyPreferenceError(t('Could not save the chat input preference on this device.'))
     } finally {
       setSendKeyPreferenceSaving(false)
     }
@@ -1308,6 +1309,9 @@ export default function ChatThreadScreen() {
           >
             {sendError && (
               <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>
+            )}
+            {sendKeyPreferenceError && (
+              <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>{sendKeyPreferenceError}</Text>
             )}
             {offlineQueue.restoreError && (
               <View style={styles.queueRestoreError} accessibilityRole="alert">
