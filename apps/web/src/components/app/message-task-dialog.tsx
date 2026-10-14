@@ -30,7 +30,7 @@ export function initialMessageTaskRows(candidates: MessageTaskCandidateDto[]): R
   const hasOpenListItem = candidates.some(c => c.isListItem && !c.taskId)
   const firstOpenIndex = candidates.findIndex(c => !c.taskId)
   return candidates.map((candidate, index) => ({
-    line: candidate.title,
+    line: candidate.line,
     title: candidate.title,
     taskId: candidate.taskId,
     selected: !candidate.taskId && (hasOpenListItem ? candidate.isListItem : index === firstOpenIndex),

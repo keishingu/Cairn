@@ -1893,7 +1893,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     } else if (open.length === 0) {
       toast.success(t('All lines of this message are already tasks'))
     } else if (candidates.length === 1 && open[0]) {
-      await createTasks(messageId, [{ line: open[0].title, title: open[0].title }])
+      await createTasks(messageId, [{ line: open[0].line, title: open[0].title }])
     } else {
       setTaskDialog({ messageId, candidates })
     }

@@ -1,6 +1,6 @@
 export const TASK_TITLE_MAX_LENGTH = 200
 
-export type MessageTaskCandidate = { title: string; isListItem: boolean; taskId: string | null }
+export type MessageTaskCandidate = { line: string; title: string; isListItem: boolean; taskId: string | null }
 export type MessageTaskRow = { line: string; title: string; selected: boolean; taskId: string | null }
 
 /** 初期選択: 未作成のリスト項目すべて。無ければ未作成の先頭1件。 */
@@ -8,7 +8,7 @@ export function initialMessageTaskRows(candidates: MessageTaskCandidate[]): Mess
   const hasOpenListItem = candidates.some((c) => c.isListItem && !c.taskId)
   const firstOpenIndex = candidates.findIndex((c) => !c.taskId)
   return candidates.map((candidate, index) => ({
-    line: candidate.title,
+    line: candidate.line,
     title: candidate.title,
     taskId: candidate.taskId,
     selected: !candidate.taskId && (hasOpenListItem ? candidate.isListItem : index === firstOpenIndex),

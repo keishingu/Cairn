@@ -4,10 +4,10 @@ import { initialMessageTaskRows, isValidTaskTitle, messageTaskErrorMessage, sele
 describe('initialMessageTaskRows', () => {
   test('未作成のリスト項目をすべて選択する', () => {
     const rows = initialMessageTaskRows([
-      { title: '見出し', isListItem: false, taskId: null },
-      { title: 'a', isListItem: true, taskId: null },
-      { title: 'b', isListItem: true, taskId: 't1' },
-      { title: 'c', isListItem: true, taskId: null },
+      { line: '見出し', title: '見出し', isListItem: false, taskId: null },
+      { line: 'a', title: 'a', isListItem: true, taskId: null },
+      { line: 'b', title: 'b', isListItem: true, taskId: 't1' },
+      { line: 'c', title: 'c', isListItem: true, taskId: null },
     ])
     expect(rows.map((row) => row.selected)).toEqual([false, true, false, true])
     expect(rows.map((row) => row.line)).toEqual(['見出し', 'a', 'b', 'c'])
@@ -15,9 +15,9 @@ describe('initialMessageTaskRows', () => {
 
   test('リスト項目が無ければ未作成の先頭1件だけ選択する', () => {
     const rows = initialMessageTaskRows([
-      { title: '済み', isListItem: false, taskId: 't1' },
-      { title: 'a', isListItem: false, taskId: null },
-      { title: 'b', isListItem: false, taskId: null },
+      { line: '済み', title: '済み', isListItem: false, taskId: 't1' },
+      { line: 'a', title: 'a', isListItem: false, taskId: null },
+      { line: 'b', title: 'b', isListItem: false, taskId: null },
     ])
     expect(rows.map((row) => row.selected)).toEqual([false, true, false])
   })

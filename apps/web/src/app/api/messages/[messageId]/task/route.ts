@@ -8,7 +8,7 @@ import { requireChannelAccess } from '@/lib/permissions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { hasTaskChannelSchema, hasTaskSourceLineSchema } from '@/lib/tasks/schema-readiness'
 import { taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from '@/lib/tasks/task-candidates'
-import { TASK_TITLE_MAX_LENGTH, taskTitleFromMessage } from '@/lib/tasks/title-from-message'
+import { TASK_TITLE_MAX_LENGTH } from '@/lib/tasks/title-from-message'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
 
@@ -19,14 +19,17 @@ export type MessageTaskDto = {
 }
 
 export type MessageSourceTaskDto = MessageTaskDto & {
-  /** タスク化した元の行（候補タイトル）。タスク名を変えても変わらない。旧チェックボックス由来は null */
+  /** タスク化した元の行（候補の line）。タスク名を変えても変わらない。旧チェックボックス由来は null */
   sourceLine: string | null
 }
 
 export type MessageTaskCandidateDto = {
+  /** 作成済み判定のキー（メンションは `<@id>` のまま）。POST の items[].line にそのまま送る */
+  line: string
+  /** 表示用（メンションを現在の表示名に解決済み）。タスク名の初期値 */
   title: string
   isListItem: boolean
-  /** この行（候補タイトル）から既に作成済みのタスク。タスク名を変えていても対応する。未作成なら null */
+  /** この行（line）から既に作成済みのタスク。タスク名を変えていても対応する。未作成なら null */
   taskId: string | null
 }
 
@@ -48,7 +51,7 @@ const taskTextSchema = z.string()
 const createBodySchema = z.object({
   items: z
     .array(z.object({
-      // GET が返した候補タイトルそのまま（作成済み判定のキー）
+      // GET が返した候補の line そのまま（作成済み判定のキー）
       line: taskTextSchema,
       // 利用者が編集したタスク名
       title: taskTextSchema,
@@ -133,7 +136,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const candidates = taskCandidatesFromMessage(message.content, id => nameMap.get(id))
     const existing = await loadMessageTasks(ctx.workspaceId, messageId)
 
-    // 一意制約の対象（チェックボックス由来ではないタスク）だけを、元の行（候補タイトル）で突き合わせる。
+    // 一意制約の対象（チェックボックス由来ではないタスク）だけを、元の行（line）で突き合わせる。
     // title は後から編集できるため判定に使わない。
     const taskIdByLine = new Map<string, string>()
     for (const task of existing) {
@@ -144,9 +147,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     const body: MessageTaskCandidatesResponse = {
       candidates: candidates.map(candidate => ({
+        line: candidate.line,
         title: candidate.title,
         isListItem: candidate.isListItem,
-        taskId: taskIdByLine.get(candidate.title) ?? null,
+        taskId: taskIdByLine.get(candidate.line) ?? null,
       })),
       tasks: existing.map(({ id, title, status, sourceLine }) => ({ id, title, status, sourceLine })),
     }
@@ -158,8 +162,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
 }
 
 // メッセージを出典とするタスクを items の数だけ作る。同じメッセージの同じ行（line）から作成済みなら作らずそれを返す。
-// line は候補タイトルそのまま、title は利用者が編集したタスク名。
-// body なし（空）の場合は後方互換として本文の最初の行1件（line = title）を作る。
+// line は候補の line そのまま、title は利用者が編集したタスク名。
+// body なし（空）の場合は後方互換として本文の最初の行1件（line = 候補の line、title = 表示名）を作る。
 export async function POST(req: Request, { params }: RouteContext) {
   const { messageId } = await params
   try {
@@ -171,11 +175,11 @@ export async function POST(req: Request, { params }: RouteContext) {
     let items: { line: string; title: string }[]
     if (rawBody.trim() === '') {
       const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
-      const title = taskTitleFromMessage(message.content, id => nameMap.get(id))
-      if (!title) {
+      const [first] = taskCandidatesFromMessage(message.content, id => nameMap.get(id))
+      if (!first) {
         return NextResponse.json({ error: '本文のないメッセージはタスクにできません' }, { status: 422 })
       }
-      items = [{ line: title, title }]
+      items = [{ line: first.line, title: first.title }]
     } else {
       let json: unknown
       try {
@@ -191,8 +195,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       }
       // 現在の本文の候補にない line は受け付けない（本文が編集された後の古い要求や不正な line を弾く）
-      const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
-      const validLines = new Set(taskCandidatesFromMessage(message.content, id => nameMap.get(id)).map(c => c.title))
+      // キーは名前解決に依存しない。ロック下でも同じ規則で再検証する。
+      const validLines = new Set(taskCandidatesFromMessage(message.content).map(c => c.line))
       if (parsed.data.items.some(item => !validLines.has(item.line))) {
         return NextResponse.json({ error: '本文にない行はタスクにできません。メッセージを開き直してください' }, { status: 422 })
       }
@@ -208,11 +212,16 @@ export async function POST(req: Request, { params }: RouteContext) {
     // 行ロック後に未削除を確かめてから挿入し、削除済みメッセージに紐付くタスクを残さない。
     const insertResult = await db.transaction(async (tx) => {
       const [alive] = await tx
-        .select({ id: messages.id })
+        .select({ id: messages.id, content: messages.content })
         .from(messages)
         .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
         .for('update')
       if (!alive) return { deleted: true as const }
+
+      // トランザクション前の照合の後・ロック取得前に編集がコミットされている場合があるため、ロック下の本文で再検証する。
+      // body なし（本文から作る）場合は items がこの本文由来なので、そのまま通る。
+      const lockedLines = new Set(taskCandidatesFromMessage(alive.content).map(c => c.line))
+      if (items.some(item => !lockedLines.has(item.line))) return { edited: true as const }
 
       const inserted = await tx
         .insert(tasks)
@@ -232,10 +241,13 @@ export async function POST(req: Request, { params }: RouteContext) {
         // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
         .onConflictDoNothing()
         .returning({ id: tasks.id })
-      return { deleted: false as const, createdCount: inserted.length }
+      return { createdCount: inserted.length }
     })
-    if (insertResult.deleted) {
+    if ('deleted' in insertResult) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
+    }
+    if ('edited' in insertResult) {
+      return NextResponse.json({ error: 'メッセージが編集されたため、もう一度選び直してください' }, { status: 409 })
     }
 
     // 要求した行に対応するタスクを（既存も含めて）要求順に返す

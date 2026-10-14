@@ -119,7 +119,7 @@ beforeEach(() => {
     error: null,
   })
   mockRequireChannelAccess.mockResolvedValue(null)
-  mockLockMessage.mockResolvedValue([{ id: MESSAGE_ID }])
+  mockLockMessage.mockResolvedValue([{ id: MESSAGE_ID, content: messageRow.content }])
   mockHasTaskChannelSchema.mockResolvedValue(true)
   mockHasTaskSourceLineSchema.mockResolvedValue(true)
   mockBuildMentionNameMap.mockResolvedValue(new Map())
@@ -167,9 +167,9 @@ describe('GET /api/messages/[messageId]/task', () => {
     const body = await (await callGet()).json()
 
     expect(body.candidates).toEqual([
-      { title: '資料を確認する', isListItem: true, taskId: TASK_ID },
-      { title: '日程を調整する', isListItem: true, taskId: null },
-      { title: '詳細は後で', isListItem: false, taskId: null },
+      { line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID },
+      { line: '日程を調整する', title: '日程を調整する', isListItem: true, taskId: null },
+      { line: '詳細は後で', title: '詳細は後で', isListItem: false, taskId: null },
     ])
     expect(body.tasks[0]).toEqual({ id: TASK_ID, title: '資料を最優先で確認', status: 'todo', sourceLine: '資料を確認する' })
   })
@@ -186,9 +186,9 @@ describe('GET /api/messages/[messageId]/task', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       candidates: [
-        { title: '資料を確認する', isListItem: true, taskId: TASK_ID },
-        { title: '日程を調整する', isListItem: true, taskId: null },
-        { title: '詳細は後で', isListItem: false, taskId: null },
+        { line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID },
+        { line: '日程を調整する', title: '日程を調整する', isListItem: true, taskId: null },
+        { line: '詳細は後で', title: '詳細は後で', isListItem: false, taskId: null },
       ],
       tasks: [
         { id: TASK_ID, title: '資料を確認する', status: 'done', sourceLine: '資料を確認する' },
@@ -302,7 +302,7 @@ describe('POST /api/messages/[messageId]/task', () => {
     mockSelectLimit.mockResolvedValueOnce([messageRow])
     mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '資料を今日中に確認', 'todo', null, '資料を確認する')])
     const body = await (await callGet()).json()
-    expect(body.candidates[0]).toEqual({ title: '資料を確認する', isListItem: true, taskId: TASK_ID })
+    expect(body.candidates[0]).toEqual({ line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: TASK_ID })
   })
 
   it('同じ line の再要求はタイトルが違っても作らず、既存のタスクを createdCount 0 で返す', async () => {
@@ -317,6 +317,31 @@ describe('POST /api/messages/[messageId]/task', () => {
       tasks: [{ id: TASK_ID, title: '資料を今日中に確認', status: 'done' }],
       createdCount: 0,
     })
+  })
+
+  it('ロック下の本文が編集されて line が無ければ 409 を返し、挿入しない', async () => {
+    mockSelectLimit.mockResolvedValueOnce([messageRow])
+    mockLockMessage.mockResolvedValueOnce([{ id: MESSAGE_ID, content: '- [ ] 別の内容に編集した' }])
+
+    const response = await callPost({ items: [{ line: '資料を確認する', title: '資料を確認する' }] })
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: 'メッセージが編集されたため、もう一度選び直してください' })
+    expect(mockInsertValues).not.toHaveBeenCalled()
+  })
+
+  it('メンションを含む行は、表示名ではなく <@id> の line で照合・保存する', async () => {
+    const content = `- <@${USER_ID}> 確認をお願い`
+    const line = `<@${USER_ID}> 確認をお願い`
+    mockBuildMentionNameMap.mockResolvedValue(new Map([[USER_ID, '山田']]))
+    mockSelectLimit.mockResolvedValueOnce([{ ...messageRow, content }])
+    mockLockMessage.mockResolvedValueOnce([{ id: MESSAGE_ID, content }])
+    mockSelectOrdered.mockResolvedValueOnce([taskRow(TASK_ID, '@山田 確認をお願い', 'todo', null, line)])
+
+    const response = await callPost({ items: [{ line, title: '@山田 確認をお願い' }] })
+
+    expect(response.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith([expect.objectContaining({ title: '@山田 確認をお願い', sourceLine: line })])
   })
 
   it('JSON として不正な body は 422 を返す', async () => {

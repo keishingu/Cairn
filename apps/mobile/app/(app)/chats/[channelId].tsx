@@ -1039,7 +1039,7 @@ export default function ChatThreadScreen() {
       } else if (open.length === 0) {
         Alert.alert(t('All lines of this message are already tasks'))
       } else if (candidates.length === 1 && open[0]) {
-        await createTasks(message.id, [{ line: open[0].title, title: open[0].title }])
+        await createTasks(message.id, [{ line: open[0].line, title: open[0].title }])
       } else {
         setTaskPickerError(null)
         setTaskPicker({ messageId: message.id, candidates })

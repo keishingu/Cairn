@@ -7,10 +7,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { initialMessageTaskRows, MessageTaskDialog } from './message-task-dialog'
 
 const candidates = [
-  { title: '見出し行', isListItem: false, taskId: null },
-  { title: '資料を確認する', isListItem: true, taskId: null },
-  { title: '日程を調整する', isListItem: true, taskId: 'task-1' },
-  { title: '会場を押さえる', isListItem: true, taskId: null },
+  { line: '見出し行', title: '見出し行', isListItem: false, taskId: null },
+  { line: '資料を確認する', title: '資料を確認する', isListItem: true, taskId: null },
+  { line: '日程を調整する', title: '日程を調整する', isListItem: true, taskId: 'task-1' },
+  { line: '会場を押さえる', title: '会場を押さえる', isListItem: true, taskId: null },
 ]
 
 describe('initialMessageTaskRows', () => {
@@ -20,9 +20,9 @@ describe('initialMessageTaskRows', () => {
 
   it('リスト項目が無ければ未作成の先頭1件だけ選択する', () => {
     const rows = initialMessageTaskRows([
-      { title: '済み', isListItem: false, taskId: 'task-1' },
-      { title: 'a', isListItem: false, taskId: null },
-      { title: 'b', isListItem: false, taskId: null },
+      { line: '済み', title: '済み', isListItem: false, taskId: 'task-1' },
+      { line: 'a', title: 'a', isListItem: false, taskId: null },
+      { line: 'b', title: 'b', isListItem: false, taskId: null },
     ])
     expect(rows.map(row => row.selected)).toEqual([false, true, false])
   })

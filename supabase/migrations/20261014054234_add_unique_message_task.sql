@@ -10,6 +10,7 @@ ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "source_line" text;
 LOCK TABLE "tasks" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 -- 既存のタスク化済みタスクは作成時の title が元の行と一致しているため、source_line に写して作成済み判定を引き継ぐ。
+-- メンションを含む行は表示名で入る（正規形の <@id> ではない）ため、マージ前に作られたものに限り再提示されうる。
 UPDATE "tasks"
 SET "source_line" = "title"
 WHERE "source_message_id" IS NOT NULL
