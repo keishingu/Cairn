@@ -11,11 +11,13 @@ type RouteContext = { params: Promise<{ channelId: string }> }
 
 async function loadWorkspaceChannel(workspaceId: string, channelId: string) {
   const { db, channels } = await import('@cairn/db')
-  const { and, eq } = await import('drizzle-orm')
+  const { and, eq, sql } = await import('drizzle-orm')
   const [channel] = await db
     .select({
       id: channels.id,
       parentChannelId: channels.parentChannelId,
+      // デプロイがmigrationより先の間は archived_at がない。アーカイブ操作だけを止める判定に使う。
+      archiveColumnReady: sql<boolean>`to_jsonb(${channels}) ? 'archived_at'`,
     })
     .from(channels)
     .where(and(
@@ -86,6 +88,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     const forbidden = await authorizeChange(ctx.role, channel.parentChannelId, ctx.workspaceId, ctx.userId, channelId)
     if (forbidden) return forbidden
+    if (hasArchived && !channel.archiveColumnReady) {
+      return NextResponse.json({ error: 'アーカイブ機能を準備中です。しばらくしてから再度お試しください' }, { status: 503 })
+    }
 
     const { db, channels } = await import('@cairn/db')
     const { and, eq, sql } = await import('drizzle-orm')
