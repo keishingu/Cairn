@@ -326,7 +326,8 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
                   onAssigneeChange={assigneeId => savePatch({ assigneeId })}
                   assigneeProjectId={task.projectId}
                   assigneeChannelId={task.channelId}
-                  assigneeChannelIsPrivate={task.channelIsPrivate}
+                  // DM は is_private=false だが参加者しか閲覧・担当できないので、非公開と同じく参加者に絞る
+                  assigneeChannelIsPrivate={task.channelIsPrivate || task.channelType === 'dm'}
                   {...(task.assigneeId
                     ? { currentAssignee: { userId: task.assigneeId, displayName: task.assigneeName ?? t('Unknown member'), avatarUrl: task.assigneeAvatarUrl } }
                     : {})}

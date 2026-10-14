@@ -16,7 +16,9 @@ vi.mock('@/hooks/use-tasks', () => ({
   useDeleteTask: () => ({ mutateAsync: vi.fn() }),
 }))
 vi.mock('./task-assignee-field', () => ({
-  TaskAssigneeField: () => <div data-testid="assignee-field" />,
+  TaskAssigneeField: ({ channelIsPrivate }: { channelIsPrivate?: boolean }) => (
+    <div data-testid="assignee-field" data-members-only={String(!!channelIsPrivate)} />
+  ),
 }))
 
 const baseTask: TaskDetailDto = {
@@ -76,6 +78,13 @@ describe('TaskDetailPanel', () => {
     expect(within(dialog).getByText('Alpha')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'タイトルを編集' })).toHaveTextContent('レビュー対応')
     expect(within(dialog).getByText(/山田 太郎/)).toBeInTheDocument()
+  })
+
+  it('DM 由来のタスクは担当者候補を参加者に絞る', () => {
+    setTask({ projectId: null, projectTitle: null, channelType: 'dm', channelIsPrivate: false })
+    renderPanel()
+
+    expect(screen.getByTestId('assignee-field')).toHaveAttribute('data-members-only', 'true')
   })
 
   it('読み込み中はローディングを表示する', () => {
