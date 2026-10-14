@@ -40,9 +40,16 @@ describe('insertLineTaskMarkers', () => {
   })
 
   test('HTML ブロックの行には差し込まず、自動リンクの行には差し込む', () => {
-    const content = ['<div>確認する</div>', '  <br/>', '<!-- メモ -->', '<https://example.com> を見る'].join('\n')
-    const result = insertLineTaskMarkers(content, [0, 1, 2, 3].map(lineIndex => ({ lineIndex })))
+    // HTML ブロックは空行まで続くため、空行で区切る
+    const content = ['<div>確認する</div>', '', '  <br/>', '', '<!-- メモ -->', '<https://example.com> を見る'].join('\n')
+    const result = insertLineTaskMarkers(content, [0, 2, 4, 5].map(lineIndex => ({ lineIndex })))
     expect(result.placed).toEqual([false, false, false, true])
+  })
+
+  test('複数行の HTML ブロックとコメントの内側にも差し込まず、空行・閉じたあとは差し込む', () => {
+    const content = ['<div>', '確認する', '</div>', '', '後', '<!--', 'メモ', '-->', '最後'].join('\n')
+    const result = insertLineTaskMarkers(content, [1, 4, 6, 8].map(lineIndex => ({ lineIndex })))
+    expect(result.placed).toEqual([false, true, false, true])
   })
 
   test('コードフェンスの行と内側には差し込まない', () => {

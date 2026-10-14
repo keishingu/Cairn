@@ -21,7 +21,7 @@ const RULE_RE = /^\s*(?:(?:[-*_]\s*){3,}|=+\s*)$/
 // 4 スペース以上（またはタブ）の字下げで、リスト記号も付かない行はインデントコードになりうる
 // `[ref]: https://…` は非表示の定義行。末尾に足すと定義でなくなり、参照リンクが切れて本文に出てしまう
 const LINK_REFERENCE_DEFINITION_RE = /^ {0,3}\[[^\]]+\]:/
-// `<div>…` などの HTML ブロックは目印ごと HTML ノードになり、Web は描画せずアプリは目印を消すため、ラベルが出ない
+// `<div>…` などで始まる HTML ブロックは目印ごと HTML ノードになり、Web は描画せずアプリは目印を消すため、ラベルが出ない
 const HTML_BLOCK_RE = /^ {0,3}(?:<\/?[A-Za-z][A-Za-z0-9-]*(?:\s|\/?>|$)|<!--)/
 const INDENTED_CODE_RE = /^(?: {4,}|\t)(?![-*+]\s|\d+[.)]\s)/
 
@@ -51,15 +51,28 @@ export function insertLineTaskMarkers(
   if (tasks.every(task => task.lineIndex === null)) return { text: clean, placed }
 
   const lines = clean.split('\n')
-  // コードフェンスの行と内側は、サーバーが対応付けていても目印を付けない
+  // コードフェンスと HTML ブロックの行・内側は、サーバーが対応付けていても目印を付けない。
+  // HTML ブロックは空行まで（コメントは `-->` まで）が1つの HTML ノードになる
   const fenced = new Set<number>()
   let inFence = false
+  let html: 'tag' | 'comment' | null = null
   lines.forEach((line, index) => {
-    if (FENCE_RE.test(line)) {
+    if (!html && FENCE_RE.test(line)) {
       inFence = !inFence
       fenced.add(index)
     } else if (inFence) {
       fenced.add(index)
+    } else if (html) {
+      if (html === 'tag' && line.trim() === '') {
+        html = null
+        return
+      }
+      fenced.add(index)
+      if (html === 'comment' && line.includes('-->')) html = null
+    } else if (HTML_BLOCK_RE.test(line)) {
+      fenced.add(index)
+      const comment = /^ {0,3}<!--/.test(line)
+      html = comment ? (line.includes('-->', line.indexOf('<!--') + 4) ? null : 'comment') : 'tag'
     }
   })
   const markersByLine = new Map<number, string>()
@@ -67,7 +80,7 @@ export function insertLineTaskMarkers(
     const lineIndex = task.lineIndex
     if (lineIndex === null || lineIndex < 0 || lineIndex >= lines.length) return
     const line = lines[lineIndex]!
-    if (fenced.has(lineIndex) || line.trim() === '' || TABLE_ROW_RE.test(line) || RULE_RE.test(line) || INDENTED_CODE_RE.test(line) || LINK_REFERENCE_DEFINITION_RE.test(line) || HTML_BLOCK_RE.test(line)) return
+    if (fenced.has(lineIndex) || line.trim() === '' || TABLE_ROW_RE.test(line) || RULE_RE.test(line) || INDENTED_CODE_RE.test(line) || LINK_REFERENCE_DEFINITION_RE.test(line)) return
     markersByLine.set(
       lineIndex,
       `${markersByLine.get(lineIndex) ?? ''}${LINE_TASK_MARKER_OPEN}${index}${LINE_TASK_MARKER_CLOSE}`,
