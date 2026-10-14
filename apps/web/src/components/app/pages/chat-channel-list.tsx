@@ -532,10 +532,44 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
   const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  const [position, setPosition] = React.useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
+
+  React.useLayoutEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const anchor = ref.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const width = Math.max(160, Math.min(280, window.innerWidth - 16))
+      const below = Math.max(0, window.innerHeight - rect.bottom - 12)
+      const above = Math.max(0, rect.top - 12)
+      const openAbove = below < 240 && above > below
+      const maxHeight = Math.min(480, openAbove ? above : below)
+      setPosition({
+        left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        maxHeight,
+      })
+    }
+    const handleScroll = (event: Event) => {
+      if (!menuRef.current?.contains(event.target as Node)) updatePosition()
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [open])
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        menuRef.current && !menuRef.current.contains(e.target as Node)
+      ) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -546,8 +580,16 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
       <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
-      {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', minWidth: 160, overflow: 'hidden' }}>
+      {open && createPortal(
+        <div ref={menuRef} style={{
+          position: 'fixed', left: position?.left ?? 0,
+          ...(position?.bottom !== undefined ? { bottom: position.bottom } : { top: position?.top ?? 0 }),
+          width: Math.max(160, Math.min(280, window.innerWidth - 16)),
+          maxHeight: position?.maxHeight ?? 0, overflowY: 'auto',
+          visibility: position ? 'visible' : 'hidden',
+          background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)',
+        }}>
           {members.map(m => (
             <button
               key={m.userId}
@@ -559,7 +601,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
-        </div>
+        </div>, document.body,
       )}
     </div>
   )

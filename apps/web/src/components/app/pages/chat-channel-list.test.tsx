@@ -50,6 +50,45 @@ describe('formatChannelPeriod', () => {
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
 
+  it('DM候補が多い場合はスクロールでき、ポータル内の末尾メンバーを選べる', () => {
+    const onStartDm = vi.fn()
+    const members = Array.from({ length: 40 }, (_, index) => ({
+      userId: `user-${index + 1}`,
+      displayName: `メンバー${index + 1}`,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    }))
+
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={members}
+        onStartDm={onStartDm}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'ダイレクトメッセージを開始' }))
+
+    const lastMember = screen.getByRole('button', { name: /メンバー40/ })
+    const menu = lastMember.parentElement
+    expect(menu).toHaveStyle({ position: 'fixed', overflowY: 'auto', maxHeight: '480px' })
+    expect(menu?.parentElement).toBe(document.body)
+    fireEvent.mouseDown(lastMember)
+    fireEvent.click(lastMember)
+
+    expect(onStartDm).toHaveBeenCalledWith('user-40')
+    expect(screen.queryByRole('button', { name: /メンバー40/ })).toBeNull()
+  })
+
   it('プロジェクト見出しの追加ボタンから作成を開始する', () => {
     const onAddProject = vi.fn()
     render(

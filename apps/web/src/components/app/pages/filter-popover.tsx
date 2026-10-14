@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { useT } from '@/components/locale-provider'
 
@@ -27,8 +28,41 @@ export const FilterPopover = ({
 }: FilterPopoverProps) => {
   const t = useT()
   const ref = React.useRef<HTMLDivElement>(null)
+  const rowRefs = React.useRef<Array<HTMLLabelElement | null>>([])
+  const [position, setPosition] = React.useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
   const totalItems = allStatuses.length + allMembers.length
   const [focusIndex, setFocusIndex] = React.useState(0)
+
+  React.useLayoutEffect(() => {
+    const updatePosition = () => {
+      const anchor = containerRef.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const below = Math.max(0, window.innerHeight - rect.bottom - 12)
+      const above = Math.max(0, rect.top - 12)
+      const openAbove = below < 360 && above > below
+      const maxHeight = Math.min(480, openAbove ? above : below)
+      setPosition({
+        left: Math.max(8, Math.min(rect.right - 240, window.innerWidth - 248)),
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        maxHeight,
+      })
+    }
+    const handleScroll = (event: Event) => {
+      if (!ref.current?.contains(event.target as Node)) updatePosition()
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [containerRef])
+
+  React.useEffect(() => {
+    rowRefs.current[focusIndex]?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusIndex])
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -73,11 +107,15 @@ export const FilterPopover = ({
 
   const hasAny = selected.length > 0 || selectedMembers.length > 0
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal((
     <div ref={ref} style={{
-      position: 'absolute', top: '100%', right: 0, marginTop: 4,
+      position: 'fixed', left: position?.left ?? 0,
+      ...(position?.bottom !== undefined ? { bottom: position.bottom } : { top: position?.top ?? 0 }),
       width: 240, background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', padding: 12,
+      borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-popover)', padding: 12,
+      maxHeight: position?.maxHeight ?? 0, overflowY: 'auto', visibility: position ? 'visible' : 'hidden',
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
         {t('Status')}
@@ -89,6 +127,7 @@ export const FilterPopover = ({
           return (
             <label
               key={s.id}
+              ref={element => { rowRefs.current[i] = element }}
               style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
               className={!focused ? 'hover-bg' : undefined}
             >
@@ -117,6 +156,7 @@ export const FilterPopover = ({
               return (
                 <label
                   key={name}
+                  ref={element => { rowRefs.current[allStatuses.length + i] = element }}
                   style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
                   className={!focused ? 'hover-bg' : undefined}
                 >
@@ -148,5 +188,5 @@ export const FilterPopover = ({
         </button>
       )}
     </div>
-  )
+  ), document.body)
 }
