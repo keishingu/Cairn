@@ -51,7 +51,8 @@ describe('MessageTaskDialog', () => {
     await user.click(screen.getAllByRole('checkbox')[3]!)
     await user.click(screen.getByRole('button', { name: '1件をタスクにする' }))
 
-    expect(onSubmit).toHaveBeenCalledWith(['資料を最終確認する'])
+    // line は候補の行のまま、title だけが編集後になる
+    expect(onSubmit).toHaveBeenCalledWith([{ line: '資料を確認する', title: '資料を最終確認する' }])
     expect(onClose).toHaveBeenCalled()
   })
 

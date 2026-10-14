@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
-import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+import { hasTaskChannelSchema, hasTaskSourceLineSchema } from '@/lib/tasks/schema-readiness'
 import { taskCandidatesFromMessage, TASK_CANDIDATES_MAX } from '@/lib/tasks/task-candidates'
 import { TASK_TITLE_MAX_LENGTH, taskTitleFromMessage } from '@/lib/tasks/title-from-message'
 
@@ -18,16 +18,21 @@ export type MessageTaskDto = {
   status: 'todo' | 'in_progress' | 'done'
 }
 
+export type MessageSourceTaskDto = MessageTaskDto & {
+  /** タスク化した元の行（候補タイトル）。タスク名を変えても変わらない。旧チェックボックス由来は null */
+  sourceLine: string | null
+}
+
 export type MessageTaskCandidateDto = {
   title: string
   isListItem: boolean
-  /** 同じタイトルで既に作成済みのタスク。未作成なら null */
+  /** この行（候補タイトル）から既に作成済みのタスク。タスク名を変えていても対応する。未作成なら null */
   taskId: string | null
 }
 
 export type MessageTaskCandidatesResponse = {
   candidates: MessageTaskCandidateDto[]
-  tasks: MessageTaskDto[]
+  tasks: MessageSourceTaskDto[]
 }
 
 export type MessageTaskCreateResponse = {
@@ -35,14 +40,19 @@ export type MessageTaskCreateResponse = {
   createdCount: number
 }
 
+const taskTextSchema = z.string()
+  .trim()
+  .min(1)
+  .refine(value => Array.from(value).length <= TASK_TITLE_MAX_LENGTH)
+
 const createBodySchema = z.object({
-  titles: z
-    .array(
-      z.string()
-        .trim()
-        .min(1)
-        .refine(title => Array.from(title).length <= TASK_TITLE_MAX_LENGTH),
-    )
+  items: z
+    .array(z.object({
+      // GET が返した候補タイトルそのまま（作成済み判定のキー）
+      line: taskTextSchema,
+      // 利用者が編集したタスク名
+      title: taskTextSchema,
+    }))
     .min(1)
     .max(TASK_CANDIDATES_MAX),
 })
@@ -86,6 +96,10 @@ async function loadAuthorizedMessage(messageId: string, method: 'GET' | 'POST') 
   if (!(await hasTaskChannelSchema(db))) {
     return { error: NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 }) }
   }
+  // source_line 列が無い間は INSERT / 作成済み判定ができない
+  if (!(await hasTaskSourceLineSchema(db))) {
+    return { error: NextResponse.json({ error: 'タスク化の準備中です' }, { status: 503 }) }
+  }
 
   return { ctx, message }
 }
@@ -100,6 +114,7 @@ async function loadMessageTasks(workspaceId: string, messageId: string) {
       title: tasks.title,
       status: tasks.status,
       sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+      sourceLine: tasks.sourceLine,
     })
     .from(tasks)
     .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.sourceMessageId, messageId)))
@@ -118,19 +133,22 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const candidates = taskCandidatesFromMessage(message.content, id => nameMap.get(id))
     const existing = await loadMessageTasks(ctx.workspaceId, messageId)
 
-    // 一意制約の対象（チェックボックス由来ではないタスク）だけをタイトルで突き合わせる
-    const taskIdByTitle = new Map<string, string>()
+    // 一意制約の対象（チェックボックス由来ではないタスク）だけを、元の行（候補タイトル）で突き合わせる。
+    // title は後から編集できるため判定に使わない。
+    const taskIdByLine = new Map<string, string>()
     for (const task of existing) {
-      if (task.sourceCheckboxIndex == null && !taskIdByTitle.has(task.title)) taskIdByTitle.set(task.title, task.id)
+      if (task.sourceCheckboxIndex == null && task.sourceLine != null && !taskIdByLine.has(task.sourceLine)) {
+        taskIdByLine.set(task.sourceLine, task.id)
+      }
     }
 
     const body: MessageTaskCandidatesResponse = {
       candidates: candidates.map(candidate => ({
         title: candidate.title,
         isListItem: candidate.isListItem,
-        taskId: taskIdByTitle.get(candidate.title) ?? null,
+        taskId: taskIdByLine.get(candidate.title) ?? null,
       })),
-      tasks: existing.map(({ id, title, status }) => ({ id, title, status })),
+      tasks: existing.map(({ id, title, status, sourceLine }) => ({ id, title, status, sourceLine })),
     }
     return NextResponse.json(body)
   } catch (err) {
@@ -139,8 +157,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
   }
 }
 
-// メッセージを出典とするタスクを titles の数だけ作る。同じメッセージに同じタイトルのタスクが既にあれば作らずそれを返す。
-// body なし（空）の場合は後方互換として本文の最初の行1件を作る。
+// メッセージを出典とするタスクを items の数だけ作る。同じメッセージの同じ行（line）から作成済みなら作らずそれを返す。
+// line は候補タイトルそのまま、title は利用者が編集したタスク名。
+// body なし（空）の場合は後方互換として本文の最初の行1件（line = title）を作る。
 export async function POST(req: Request, { params }: RouteContext) {
   const { messageId } = await params
   try {
@@ -149,14 +168,14 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { ctx, message } = loaded
 
     const rawBody = await req.text()
-    let titles: string[]
+    let items: { line: string; title: string }[]
     if (rawBody.trim() === '') {
       const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
       const title = taskTitleFromMessage(message.content, id => nameMap.get(id))
       if (!title) {
         return NextResponse.json({ error: '本文のないメッセージはタスクにできません' }, { status: 422 })
       }
-      titles = [title]
+      items = [{ line: title, title }]
     } else {
       let json: unknown
       try {
@@ -167,11 +186,19 @@ export async function POST(req: Request, { params }: RouteContext) {
       const parsed = createBodySchema.safeParse(json)
       if (!parsed.success) {
         return NextResponse.json(
-          { error: `タスク名は1〜${TASK_CANDIDATES_MAX}件、各1〜${TASK_TITLE_MAX_LENGTH}文字で指定してください` },
+          { error: `タスクは1〜${TASK_CANDIDATES_MAX}件、line・title とも各1〜${TASK_TITLE_MAX_LENGTH}文字で指定してください` },
           { status: 422 },
         )
       }
-      titles = [...new Set(parsed.data.titles)]
+      // 現在の本文の候補にない line は受け付けない（本文が編集された後の古い要求や不正な line を弾く）
+      const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
+      const validLines = new Set(taskCandidatesFromMessage(message.content, id => nameMap.get(id)).map(c => c.title))
+      if (parsed.data.items.some(item => !validLines.has(item.line))) {
+        return NextResponse.json({ error: '本文にない行はタスクにできません。メッセージを開き直してください' }, { status: 422 })
+      }
+      // 同じ line は最初の1件だけ
+      const seen = new Set<string>()
+      items = parsed.data.items.filter(item => (seen.has(item.line) ? false : (seen.add(item.line), true)))
     }
 
     const { db, messages, tasks } = await import('@cairn/db')
@@ -189,18 +216,19 @@ export async function POST(req: Request, { params }: RouteContext) {
 
       const inserted = await tx
         .insert(tasks)
-        .values(titles.map(title => ({
+        .values(items.map(({ line, title }) => ({
           workspaceId: ctx.workspaceId,
           projectId: message.projectId,
           channelId: message.channelId,
           title,
+          sourceLine: line,
           priority: 'medium' as const,
           status: 'todo' as const,
           createdBy: ctx.userId,
           sourceMessageId: messageId,
           assigneeId: null,
         })))
-        // 同時リクエストや作成済みのタイトルは一意制約で挿入されない（既存のタスクを返す）。
+        // 同時リクエストや作成済みの行は一意制約で挿入されない（既存のタスクを返す）。
         // 対象列を指定しないのは、マイグレーション適用前に新コードが動いても ON CONFLICT が失敗しないため。
         .onConflictDoNothing()
         .returning({ id: tasks.id })
@@ -210,15 +238,15 @@ export async function POST(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })
     }
 
-    // 要求したタイトルに対応するタスクを（既存も含めて）要求順に返す
+    // 要求した行に対応するタスクを（既存も含めて）要求順に返す
     const rows = await loadMessageTasks(ctx.workspaceId, messageId)
-    const byTitle = new Map<string, MessageTaskDto>()
+    const byLine = new Map<string, MessageTaskDto>()
     for (const row of rows) {
-      if (row.sourceCheckboxIndex == null && !byTitle.has(row.title)) {
-        byTitle.set(row.title, { id: row.id, title: row.title, status: row.status })
+      if (row.sourceCheckboxIndex == null && row.sourceLine != null && !byLine.has(row.sourceLine)) {
+        byLine.set(row.sourceLine, { id: row.id, title: row.title, status: row.status })
       }
     }
-    const resultTasks = titles.map(title => byTitle.get(title))
+    const resultTasks = items.map(({ line }) => byLine.get(line))
     // ロック解放後、ここで読み直すまでにメッセージが削除されると由来タスクも消えている
     if (resultTasks.some(task => task == null)) {
       return NextResponse.json({ error: 'メッセージが見つかりません' }, { status: 404 })

@@ -44,7 +44,7 @@ import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
-import type { MessageTaskCandidate } from '../../../lib/message-task'
+import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
@@ -568,6 +568,8 @@ export default function ChatThreadScreen() {
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
+  // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
+  const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
   const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
@@ -979,14 +981,16 @@ export default function ChatThreadScreen() {
     router.push({ pathname: '/(app)/tasks', params: { taskId, open: String(Date.now()) } })
   }
 
-  // 選んだタイトルでタスクを作る。成功したら true。失敗は sendError に出す。
-  const createTasks = async (messageId: string, titles: string[]): Promise<boolean> => {
+  // 選んだ行（line）を編集後のタスク名（title）でタスクにする。成功したら true。失敗は sendError に出す。
+  const createTasks = async (messageId: string, items: MessageTaskSubmitItem[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setTaskPickerError : setSendError
     setSendError(null)
+    setTaskPickerError(null)
     try {
       const response = await apiFetch(`/api/messages/${messageId}/task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titles }),
+        body: JSON.stringify({ items }),
       })
       const data = (await response.json().catch(() => ({}))) as {
         error?: string
@@ -994,7 +998,7 @@ export default function ChatThreadScreen() {
         createdCount?: number
       }
       if (!response.ok || !data.tasks?.length || typeof data.createdCount !== 'number') {
-        setSendError(data.error ?? t('Could not make a task from this message'))
+        reportError(messageTaskErrorMessage(data, t('Could not make a task from this message')))
         return false
       }
       // タスク化済みの印（チップ）を出すため、そのチャンネルのメッセージを取り直す
@@ -1013,7 +1017,7 @@ export default function ChatThreadScreen() {
       ])
       return true
     } catch {
-      setSendError(t('Could not make a task from this message'))
+      reportError(t('Could not make a task from this message'))
       return false
     }
   }
@@ -1035,8 +1039,9 @@ export default function ChatThreadScreen() {
       } else if (open.length === 0) {
         Alert.alert(t('All lines of this message are already tasks'))
       } else if (candidates.length === 1 && open[0]) {
-        await createTasks(message.id, [open[0].title])
+        await createTasks(message.id, [{ line: open[0].title, title: open[0].title }])
       } else {
+        setTaskPickerError(null)
         setTaskPicker({ messageId: message.id, candidates })
       }
     } catch {
@@ -1884,8 +1889,12 @@ export default function ChatThreadScreen() {
         <MessageTaskPickerModal
           candidates={taskPicker?.candidates ?? null}
           palette={palette}
-          onSubmit={(titles) => (taskPicker ? createTasks(taskPicker.messageId, titles) : Promise.resolve(false))}
-          onClose={() => setTaskPicker(null)}
+          onSubmit={(items) => (taskPicker ? createTasks(taskPicker.messageId, items, true) : Promise.resolve(false))}
+          error={taskPickerError}
+          onClose={() => {
+            setTaskPicker(null)
+            setTaskPickerError(null)
+          }}
         />
         <LinkedTasksModal
           tasks={linkedTasksSheet}

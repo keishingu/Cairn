@@ -29,11 +29,14 @@ export const tasks = pgTable('tasks', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sourceMessageId: uuid('source_message_id').references(() => messages.id, { onDelete: 'set null' }),
   sourceCheckboxIndex: integer('source_checkbox_index'),
+  // 「タスク化する」で作った元の行（正規化済みの候補タイトル）。title は後から編集できるため、作成済み判定はこの列で行う。
+  sourceLine: text('source_line'),
 }, (t) => [
   index('idx_tasks_channel').on(t.channelId),
-  // メッセージの「タスク化する」は1メッセージ内で同じタイトルを1件にする（複数行を別タスクにできる）。同時リクエストでも重複させない。
+  // メッセージの「タスク化する」は1メッセージ内で同じ行を1件にする（複数行を別タスクにできる）。同時リクエストでも重複させない。
+  // タスク名を後から変えても同じ行が再びタスク化されないよう、title ではなく source_line で判定する。
   // 旧チェックボックス由来（source_checkbox_index あり）は1メッセージに複数あるため対象外。
-  uniqueIndex('uniq_tasks_message_task_title')
-    .on(t.sourceMessageId, t.title)
-    .where(sql`${t.sourceMessageId} is not null and ${t.sourceCheckboxIndex} is null`),
+  uniqueIndex('uniq_tasks_message_task_line')
+    .on(t.sourceMessageId, t.sourceLine)
+    .where(sql`${t.sourceMessageId} is not null and ${t.sourceCheckboxIndex} is null and ${t.sourceLine} is not null`),
 ])

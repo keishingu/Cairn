@@ -9,7 +9,16 @@ import { TaskDialog } from './task-dialog'
 import { TASK_TITLE_MAX_LENGTH } from '@/lib/tasks/title-from-message'
 import type { MessageTaskCandidateDto } from '@/app/api/messages/[messageId]/task/route'
 
+export interface MessageTaskSubmitItem {
+  /** 候補の行そのまま（作成済み判定のキー） */
+  line: string
+  /** 利用者が編集したタスク名 */
+  title: string
+}
+
 interface Row {
+  /** 候補の行。編集しても変わらない */
+  line: string
   title: string
   selected: boolean
   /** 作成済みの行は選択も編集もできない */
@@ -21,6 +30,7 @@ export function initialMessageTaskRows(candidates: MessageTaskCandidateDto[]): R
   const hasOpenListItem = candidates.some(c => c.isListItem && !c.taskId)
   const firstOpenIndex = candidates.findIndex(c => !c.taskId)
   return candidates.map((candidate, index) => ({
+    line: candidate.title,
     title: candidate.title,
     taskId: candidate.taskId,
     selected: !candidate.taskId && (hasOpenListItem ? candidate.isListItem : index === firstOpenIndex),
@@ -36,7 +46,7 @@ const isValidTitle = (title: string) => {
 export const MessageTaskDialog = ({ candidates, onSubmit, onClose }: {
   candidates: MessageTaskCandidateDto[]
   /** 成功したら true。失敗時は呼び出し側がエラーを知らせ、ダイアログは開いたままにする */
-  onSubmit: (titles: string[]) => Promise<boolean>
+  onSubmit: (items: MessageTaskSubmitItem[]) => Promise<boolean>
   onClose: () => void
 }) => {
   const t = useT()
@@ -44,7 +54,8 @@ export const MessageTaskDialog = ({ candidates, onSubmit, onClose }: {
   const [submitting, setSubmitting] = React.useState(false)
 
   const selectedRows = rows.filter(row => row.selected)
-  const titles = [...new Set(selectedRows.map(row => row.title.trim()))]
+  // 行（line）ごとに1件。タスク名を同じにしても別の行は別タスクにする
+  const items: MessageTaskSubmitItem[] = selectedRows.map(row => ({ line: row.line, title: row.title.trim() }))
   const hasInvalid = selectedRows.some(row => !isValidTitle(row.title))
 
   const update = (index: number, patch: Partial<Row>) =>
@@ -52,10 +63,10 @@ export const MessageTaskDialog = ({ candidates, onSubmit, onClose }: {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (submitting || hasInvalid || titles.length === 0) return
+    if (submitting || hasInvalid || items.length === 0) return
     setSubmitting(true)
     try {
-      const ok = await onSubmit(titles)
+      const ok = await onSubmit(items)
       if (ok) onClose()
     } finally {
       setSubmitting(false)
@@ -68,10 +79,10 @@ export const MessageTaskDialog = ({ candidates, onSubmit, onClose }: {
       subtitle={t('Choose the lines to add as tasks')}
       onClose={onClose}
       onSubmit={handleSubmit}
-      submitLabel={t('Make {count} tasks', { count: titles.length })}
+      submitLabel={t('Make {count} tasks', { count: items.length })}
       submittingLabel={t('Adding...')}
       isSubmitting={submitting}
-      submitDisabled={titles.length === 0 || hasInvalid}
+      submitDisabled={items.length === 0 || hasInvalid}
       disableClose={submitting}
     >
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>

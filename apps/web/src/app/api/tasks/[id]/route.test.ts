@@ -427,37 +427,6 @@ describe('PATCH /api/tasks/[id]', () => {
     expect(mockDbUpdateReturning).not.toHaveBeenCalled()
   })
 
-  it('同じメッセージ由来の別タスクと同じタイトルへの変更は409で返す', async () => {
-    mockHasTaskChannelSchema.mockResolvedValueOnce(true)
-    mockDbSelectLimit.mockResolvedValueOnce([{
-      id: TASK_ID,
-      projectId: 'project-1',
-      channelId: null,
-      projectTitle: 'Alpha',
-      channelName: null,
-      title: 'B',
-      priority: 'medium',
-      dueDate: null,
-      status: 'todo',
-      assigneeId: null,
-      sourceMessageId: 'message-1',
-      sourceCheckboxIndex: null,
-    }])
-    mockDbUpdateReturning.mockRejectedValueOnce(
-      Object.assign(new Error('duplicate key'), { cause: { code: '23505', constraint: 'uniq_tasks_message_task_title' } }),
-    )
-
-    const { PATCH } = await import('./route')
-    const res = await PATCH(new Request(`http://localhost/api/tasks/${TASK_ID}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ title: 'A' }),
-      headers: { 'content-type': 'application/json' },
-    }), { params: Promise.resolve({ id: TASK_ID }) })
-
-    expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: '同じメッセージから作った別のタスクに同じタイトルがあります' })
-  })
-
   it('非公開チャンネルへアクセスできない利用者の更新は403で拒否する', async () => {
     mockDbSelectLimit.mockResolvedValueOnce([{
       id: TASK_ID,

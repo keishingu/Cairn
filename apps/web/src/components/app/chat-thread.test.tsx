@@ -356,12 +356,12 @@ describe('ChatMessage copy action', () => {
       json: async () => ({ tasks: [{ id: 'task-1', title: '資料を確認する', status: 'todo' }], createdCount: 1 }),
     })
 
-    await expect(makeTasksFromMessage('message-1', ['資料を確認する'], copyT)).resolves.toBe(true)
+    await expect(makeTasksFromMessage('message-1', [{ line: '資料を確認する', title: '資料を最優先で確認する' }], copyT)).resolves.toBe(true)
 
     expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/messages/message-1/task', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ titles: ['資料を確認する'] }),
+      body: JSON.stringify({ items: [{ line: '資料を確認する', title: '資料を最優先で確認する' }] }),
     })
     expect(toastSuccess).toHaveBeenCalledWith('タスクに追加しました', {
       action: { label: '開く', href: '/tasks?taskId=task-1' },
@@ -377,7 +377,7 @@ describe('ChatMessage copy action', () => {
       }),
     })
 
-    await expect(makeTasksFromMessage('message-1', ['a', 'b'], copyT)).resolves.toBe(true)
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }, { line: 'b', title: 'b' }], copyT)).resolves.toBe(true)
 
     expect(toastSuccess).toHaveBeenCalledWith('2件のタスクを追加しました', {
       action: { label: '開く', href: '/tasks' },
@@ -390,7 +390,7 @@ describe('ChatMessage copy action', () => {
       json: async () => ({ tasks: [{ id: 'task-1', title: 'a', status: 'todo' }], createdCount: 0 }),
     })
 
-    await expect(makeTasksFromMessage('message-1', ['a'], copyT)).resolves.toBe(true)
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(true)
 
     expect(toastSuccess).toHaveBeenCalledWith('このメッセージは既にタスクです', {
       action: { label: '開く', href: '/tasks?taskId=task-1' },
@@ -403,7 +403,7 @@ describe('ChatMessage copy action', () => {
       json: async () => ({ error: 'タスク名は1〜50件、各1〜200文字で指定してください' }),
     })
 
-    await expect(makeTasksFromMessage('message-1', ['a'], copyT)).resolves.toBe(false)
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(false)
 
     expect(toastError).toHaveBeenCalledWith('タスク名は1〜50件、各1〜200文字で指定してください')
     expect(toastSuccess).not.toHaveBeenCalled()
@@ -412,7 +412,7 @@ describe('ChatMessage copy action', () => {
   it('通信に失敗したら汎用のエラートーストを出す', async () => {
     fetchWithAuthMock.mockRejectedValue(new Error('network'))
 
-    await expect(makeTasksFromMessage('message-1', ['a'], copyT)).resolves.toBe(false)
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(false)
 
     expect(toastError).toHaveBeenCalledWith('このメッセージをタスクにできませんでした')
   })

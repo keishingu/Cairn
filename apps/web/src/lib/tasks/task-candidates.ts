@@ -8,6 +8,10 @@ import { TASK_TITLE_MAX_LENGTH } from './title-from-message'
 export const TASK_CANDIDATES_MAX = 50
 
 export interface TaskCandidate {
+  /**
+   * 正規化済みの行。作成済み判定のキー（tasks.source_line）になるため、抽出規則を変えると
+   * 既存タスクとの対応が外れて再提示される。タスク名の初期値でもあるが、作成時・作成後にタスク名は変えられる。
+   */
   title: string
   /** 元の行がリスト・チェックボックス・番号付きリストだったか */
   isListItem: boolean

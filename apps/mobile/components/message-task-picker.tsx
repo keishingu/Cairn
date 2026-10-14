@@ -7,8 +7,9 @@ import { useT } from './locale-provider'
 import {
   initialMessageTaskRows,
   isValidTaskTitle,
-  selectedTaskTitles,
+  selectedTaskItems,
   type MessageTaskCandidate,
+  type MessageTaskSubmitItem,
   type MessageTaskRow,
 } from '../lib/message-task'
 
@@ -18,14 +19,17 @@ type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 
 export function MessageTaskPickerModal({
   candidates,
   palette,
+  error,
   onSubmit,
   onClose,
 }: {
   /** null で閉じる */
   candidates: MessageTaskCandidate[] | null
+  /** 作成に失敗した理由。Modal がチャット画面を覆うため、シート内に表示する */
+  error?: string | null
   palette: ThemePalette
   /** 成功したら true。失敗時は呼び出し側がエラーを表示し、シートは開いたままにする */
-  onSubmit: (titles: string[]) => Promise<boolean>
+  onSubmit: (items: MessageTaskSubmitItem[]) => Promise<boolean>
   onClose: () => void
 }) {
   const t = useT()
@@ -37,9 +41,9 @@ export function MessageTaskPickerModal({
     if (candidates) setRows(initialMessageTaskRows(candidates))
   }, [candidates])
 
-  const titles = selectedTaskTitles(rows)
+  const items = selectedTaskItems(rows)
   const hasInvalid = rows.some((row) => row.selected && !isValidTaskTitle(row.title))
-  const canSubmit = titles.length > 0 && !hasInvalid && !submitting
+  const canSubmit = items.length > 0 && !hasInvalid && !submitting
 
   const update = (index: number, patch: Partial<MessageTaskRow>) =>
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)))
@@ -48,7 +52,7 @@ export function MessageTaskPickerModal({
     if (!canSubmit) return
     setSubmitting(true)
     try {
-      if (await onSubmit(titles)) onClose()
+      if (await onSubmit(items)) onClose()
     } finally {
       setSubmitting(false)
     }
@@ -104,6 +108,11 @@ export function MessageTaskPickerModal({
             )
           })}
         </ScrollView>
+        {error ? (
+          <Text accessibilityRole="alert" style={[styles.error, { color: palette.redText }]}>
+            {error}
+          </Text>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           disabled={!canSubmit}
@@ -114,7 +123,7 @@ export function MessageTaskPickerModal({
             <ActivityIndicator color={palette.onAccent} />
           ) : (
             <Text style={[styles.submitText, { color: palette.onAccent }]}>
-              {t('Make {count} tasks', { count: titles.length })}
+              {t('Make {count} tasks', { count: items.length })}
             </Text>
           )}
         </Pressable>
@@ -175,6 +184,7 @@ export function LinkedTasksModal({
 }
 
 const styles = StyleSheet.create({
+  error: { fontSize: 13, marginTop: 8 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.42)' },
   sheet: {
     position: 'absolute',

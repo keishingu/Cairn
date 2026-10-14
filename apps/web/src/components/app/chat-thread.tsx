@@ -16,7 +16,7 @@ import { InlineError } from './inline-error'
 import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
-import { MessageTaskDialog } from './message-task-dialog'
+import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
 import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
 import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
 import { EmojiPicker } from './emoji-picker'
@@ -171,13 +171,13 @@ export async function fetchMessageTaskCandidates(messageId: string, t: Translate
   }
 }
 
-/** 選んだタイトルでメッセージをタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
-export async function makeTasksFromMessage(messageId: string, titles: string[], t: TranslateFn): Promise<boolean> {
+/** 選んだ行（line）を編集後のタスク名（title）でタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
+export async function makeTasksFromMessage(messageId: string, items: MessageTaskSubmitItem[], t: TranslateFn): Promise<boolean> {
   try {
     const res = await fetchWithAuth(`/api/messages/${messageId}/task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ titles }),
+      body: JSON.stringify({ items }),
     })
     const body = await res.json().catch(() => null) as (Partial<MessageTaskCreateResponse> & { error?: unknown }) | null
     if (!res.ok || !Array.isArray(body?.tasks) || body.tasks.length === 0 || typeof body.createdCount !== 'number') {
@@ -1873,8 +1873,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const [taskDialog, setTaskDialog] = React.useState<{ messageId: string; candidates: MessageTaskCandidateDto[] } | null>(null)
 
-  const createTasks = React.useCallback(async (messageId: string, titles: string[]) => {
-    const ok = await makeTasksFromMessage(messageId, titles, t)
+  const createTasks = React.useCallback(async (messageId: string, items: MessageTaskSubmitItem[]) => {
+    const ok = await makeTasksFromMessage(messageId, items, t)
     if (ok) {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       // タスク化済みの印（linkedTasks）を出すためメッセージも取り直す
@@ -1893,7 +1893,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     } else if (open.length === 0) {
       toast.success(t('All lines of this message are already tasks'))
     } else if (candidates.length === 1 && open[0]) {
-      await createTasks(messageId, [open[0].title])
+      await createTasks(messageId, [{ line: open[0].title, title: open[0].title }])
     } else {
       setTaskDialog({ messageId, candidates })
     }
@@ -2095,7 +2095,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       {taskDialog && (
         <MessageTaskDialog
           candidates={taskDialog.candidates}
-          onSubmit={titles => createTasks(taskDialog.messageId, titles)}
+          onSubmit={items => createTasks(taskDialog.messageId, items)}
           onClose={() => setTaskDialog(null)}
         />
       )}
