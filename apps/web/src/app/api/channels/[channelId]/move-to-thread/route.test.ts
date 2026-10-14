@@ -340,6 +340,8 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(sqlText).toContain('INSERT INTO ai_scan_states')
     // 既存スレッドの巡回位置が新しくても、移動したメッセージを読み飛ばさないよう古い方へ巻き戻す
     expect(sqlText).toContain('least(s.last_scanned_at, existing.before_first)')
+    // 親に巡回記録がないときも、既存スレッドの巡回位置を移動メッセージの手前まで巻き戻す
+    expect(sqlText).toContain('UPDATE ai_scan_states AS t')
     expect(sqlText).toContain('least(ai_scan_states.last_scanned_at, (SELECT p.last_scanned_at FROM ai_scan_states p')
     // 移動した根拠メッセージの再評価予約は、親から外してスレッドへ移す
     expect(sqlText).toContain('next_unanswered_ask_message_id IN')

@@ -347,6 +347,21 @@ export async function POST(req: Request, { params }: RouteContext) {
             ELSE ai_scan_states.next_unanswered_ask_message_id
           END
       `)
+      // 親に巡回記録がまだない（巡回の有効化直後など）と上の引き継ぎは行を作らない。既存スレッドの巡回位置が
+      // 移動メッセージより新しいとそのまま読み飛ばされるため、移動メッセージの最古の直前まで巻き戻す。
+      await tx.execute(sql`
+        UPDATE ai_scan_states AS t
+        SET last_scanned_message_id = NULL,
+            last_scanned_at = moved.before_first
+        FROM (
+          SELECT min(created_at) - interval '1 microsecond' AS before_first
+          FROM messages
+          WHERE id IN ${movedIds}
+        ) AS moved
+        WHERE t.channel_id = ${threadId}
+          AND t.last_scanned_at > moved.before_first
+          AND NOT EXISTS (SELECT 1 FROM ai_scan_states p WHERE p.channel_id = ${parent.id})
+      `)
       await tx.execute(sql`
         UPDATE ai_scan_states
         SET next_unanswered_ask_check_at = NULL, next_unanswered_ask_message_id = NULL

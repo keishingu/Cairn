@@ -99,6 +99,40 @@ describe('通知からチャットを開く', () => {
     })
   })
 
+  it('Push の送信後にスレッドへ切り出されたメッセージは移動先のチャンネルを開く', async () => {
+    const base = mockApiFetch.getMockImplementation()!
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/messages/msg-1/location') return jsonResponse({ channelId: 'ws-channel' })
+      return base(path)
+    })
+    const push = vi.fn()
+
+    await followNotification(
+      { push },
+      { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
+      { t },
+    )
+
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({ channelId: 'ws-channel' }),
+    }))
+  })
+
+  it('移動先を確認できないときは Push のチャンネルを開く', async () => {
+    const push = vi.fn()
+
+    await followNotification(
+      { push },
+      { kind: 'channel', channelId: 'project-channel', messageId: 'missing' },
+      { t },
+    )
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/messages/missing/location')
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({ channelId: 'project-channel' }),
+    }))
+  })
+
   it('新しいキャッシュがある間は一覧を取り直さない', async () => {
     queryClient.setQueryData(projectChannelsQueryKey, [projectChannel])
     queryClient.setQueryData(workspaceChannelsQueryKey, [])

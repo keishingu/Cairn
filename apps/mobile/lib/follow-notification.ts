@@ -1,4 +1,5 @@
 import type { Router } from 'expo-router'
+import { apiFetch } from './api-fetch'
 import { loadChannelLists, type ChannelLists } from './channel-list-queries'
 import { resolveChannelOpenParams } from './channel-open-params'
 import { decideWorkspaceSwitch } from './notification-workspace'
@@ -68,6 +69,23 @@ async function prepareWorkspace(workspaceId: string | undefined): Promise<boolea
   return true
 }
 
+// Push の送信後にメッセージがスレッドへ切り出されていても移動先を開く。
+// 見つからない（削除済み・閲覧不可）・取得できないときは、送信時点の正しい宛先である Push のチャンネルを開く。
+async function currentChannelOfMessage(
+  destination: Extract<NotificationDestination, { kind: 'channel' }>,
+): Promise<string> {
+  if (!destination.messageId) return destination.channelId
+  try {
+    const res = await apiFetch(`/api/messages/${encodeURIComponent(destination.messageId)}/location`)
+    if (!res.ok) return destination.channelId
+    const body = (await res.json()) as { channelId?: unknown }
+    return typeof body.channelId === 'string' && body.channelId ? body.channelId : destination.channelId
+  } catch (error) {
+    console.warn('[notification] メッセージの移動先を確認できませんでした', error)
+    return destination.channelId
+  }
+}
+
 async function openNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
@@ -79,10 +97,11 @@ async function openNotification(
     if (!ready) return
 
     if (destination.kind === 'channel') {
+      const channelId = await currentChannelOfMessage(destination)
       const lists = await loadChannelLists(queryClient)
       router.push({
         pathname: '/chats/[channelId]',
-        params: channelRouteParams(destination.channelId, lists, t),
+        params: channelRouteParams(channelId, lists, t),
       })
       return
     }
