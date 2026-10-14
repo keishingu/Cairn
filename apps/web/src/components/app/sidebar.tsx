@@ -169,11 +169,13 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
-  // アーカイブ済みプロジェクトは折りたたみで隠れているため、未読バッジ総数には含めない
-  const totalChatUnread = React.useMemo(
-    () => [...projectChannels.filter(c => !c.archived), ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
-    [projectChannels, workspaceChannels, dms],
-  )
+  // アーカイブ済みのプロジェクト・チャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
+  // 折りたたみで隠れているため、未読バッジ総数には含めない
+  const totalChatUnread = React.useMemo(() => {
+    const archivedParentIds = new Set(workspaceChannels.filter(c => c.archived && c.parentChannelId === null).map(c => c.id))
+    const visibleWorkspaceChannels = workspaceChannels.filter(c => !c.archived && !(c.parentChannelId !== null && archivedParentIds.has(c.parentChannelId)))
+    return [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)
+  }, [projectChannels, workspaceChannels, dms])
   const { data: workspace } = useSidebarWorkspace()
   const { data: workspaceList = [] } = useSidebarWorkspaceList()
   const [switcherOpen, setSwitcherOpen] = React.useState(false)

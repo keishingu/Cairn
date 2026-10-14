@@ -3,11 +3,14 @@
 
 import { NextResponse } from 'next/server'
 import type { MessageType, ProjectMemberRole } from '@cairn/shared'
+import { linkedTaskLineIndexes } from '@/lib/tasks/task-candidates'
 import { hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
-import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+import { canAccessChannel } from '@/lib/permissions'
+import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
+import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
   channelId: string
@@ -40,6 +43,7 @@ export async function getMessages({
       messageReactions,
       messageAttachments,
       messageBookmarks,
+      tasks,
       files,
       workspaceMembers,
       channels,
@@ -246,7 +250,10 @@ export async function getMessages({
       ...new Set(rows.map((r) => r.parentMessageId).filter((id): id is string => !!id)),
     ]
 
-    const [reactionRows, attachmentRows, bookmarkRows, parentRows] = await Promise.all([
+    // 引用の参照先は同じチャンネルに加え、親チャンネルとそのスレッド（スレッドへ切り出された元の会話）まで探す
+    const quoteChannelIds = parentIds.length > 0 ? await loadChannelFamilyIds(channelId) : [channelId]
+
+    const [reactionRows, attachmentRows, bookmarkRows, taskRows, rawParentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
@@ -296,6 +303,26 @@ export async function getMessages({
               ),
             )
         : Promise.resolve([]),
+      // タスク化済みの印用。タスクの可視範囲はチャンネル閲覧権限と同じなので追加の認可は不要
+      messageIds.length > 0
+        ? db
+            .select({
+              id: tasks.id,
+              title: tasks.title,
+              status: tasks.status,
+              sourceMessageId: tasks.sourceMessageId,
+              sourceLine: tasks.sourceLine,
+              sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+            })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.workspaceId, workspaceId),
+                inArray(tasks.sourceMessageId, messageIds),
+              ),
+            )
+            .orderBy(asc(tasks.createdAt), asc(tasks.id))
+        : Promise.resolve([]),
       parentIds.length > 0
         ? db
             .select({
@@ -306,6 +333,7 @@ export async function getMessages({
                 profiles.displayName,
               ),
               deletedAt: messages.deletedAt,
+              channelId: messages.channelId,
             })
             .from(messages)
             .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -316,10 +344,19 @@ export async function getMessages({
                 eq(workspaceMembers.workspaceId, workspaceId),
               ),
             )
-            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
-            .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
+            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親はこのチャンネルの親子（スレッド）に限定する。
+            // 別チャンネルにある親は、下で閲覧権限を確認してから使う
+            .where(and(inArray(messages.id, parentIds), inArray(messages.channelId, quoteChannelIds)))
         : Promise.resolve([]),
     ])
+
+    // 切り出し先・元のチャンネルが非公開の場合に内容が漏れないよう、別チャンネルの親は閲覧できるものだけ残す
+    const foreignChannelIds = [...new Set(rawParentRows.map(parent => parent.channelId).filter(id => id !== channelId))]
+    const accessibleForeign = new Set<string>()
+    await Promise.all(foreignChannelIds.map(async (foreignId) => {
+      if (await canAccessChannel(workspaceId, userId, foreignId)) accessibleForeign.add(foreignId)
+    }))
+    const parentRows = rawParentRows.filter(parent => parent.channelId === channelId || accessibleForeign.has(parent.channelId))
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const reaction of reactionRows) {
@@ -352,6 +389,27 @@ export async function getMessages({
         fileSize: attachment.fileSize,
         displayOrder: attachment.displayOrder,
       })
+    }
+
+    // タスクは createdAt 昇順で返るので、メッセージごとに作成順のまま積む
+    const tasksByMessage = new Map<string, typeof taskRows>()
+    for (const task of taskRows) {
+      if (!task.sourceMessageId) continue
+      const list = tasksByMessage.get(task.sourceMessageId) ?? []
+      list.push(task)
+      tasksByMessage.set(task.sourceMessageId, list)
+    }
+    // 行末の「✓ タスク」ラベルの位置。タスクがあるメッセージだけ、DB の本文（canonical）から候補の行番号を求める
+    const contentById = new Map(rows.map(row => [row.id, row.content]))
+    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
+    for (const [messageId, messageTasks] of tasksByMessage) {
+      const lineIndexes = linkedTaskLineIndexes(contentById.get(messageId) ?? '', messageTasks)
+      linkedTaskMap.set(messageId, messageTasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        lineIndex: lineIndexes.get(task.id) ?? null,
+      })))
     }
 
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
@@ -399,6 +457,7 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 

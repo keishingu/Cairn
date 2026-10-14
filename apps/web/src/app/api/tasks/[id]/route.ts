@@ -3,10 +3,181 @@
 
 import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
-import { replaceCheckboxLabelAt, toggleCheckboxAt } from '@/lib/chat/checkboxes'
+import type { TaskDto } from '@/app/api/tasks/route'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
+import { hydrateMentions } from '@/lib/chat/mentions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 import { isAssignableTaskMember, notifyTaskAssigned } from '@/lib/tasks/assignment-notification'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+
+export interface TaskDetailSourceMessageDto {
+  id: string
+  channelId: string
+  /** メンションは読み時に表示名へ解決済み。 */
+  content: string
+  senderName: string
+  senderAvatarUrl: string | null
+  createdAt: string
+}
+
+export type TaskDetailDto = TaskDto & {
+  description: string | null
+  createdAt: string
+  createdByName: string | null
+  /** 出典メッセージ。紐付けなし・削除済み・閲覧できないチャンネルのものは null。 */
+  sourceMessage: TaskDetailSourceMessageDto | null
+}
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+
+  try {
+    const { db } = await import('@cairn/db')
+    const { tasks, projects, channels, profiles, workspaceMembers, messages } = await import('@cairn/db')
+    const { eq, and, isNull, sql } = await import('drizzle-orm')
+    const { getAuthContext } = await import('@/lib/get-auth-context')
+
+    const { ctx, error } = await getAuthContext({
+      allowApiToken: true,
+      requiredApiTokenScope: 'read',
+    })
+    if (error) return error
+    const channelSchemaReady = await hasTaskChannelSchema(db)
+
+    const [row] = await db
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        projectTitle: projects.title,
+        channelId: channelSchemaReady ? tasks.channelId : sql<string | null>`null`,
+        channelName: channelSchemaReady ? channels.name : sql<string | null>`null`,
+        channelType: channelSchemaReady ? channels.type : sql<'workspace' | 'project' | 'dm' | null>`null`,
+        channelIsPrivate: channelSchemaReady ? channels.isPrivate : sql<boolean>`false`,
+        title: tasks.title,
+        description: tasks.description,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueDate: tasks.dueDate,
+        assigneeId: tasks.assigneeId,
+        sourceMessageId: tasks.sourceMessageId,
+        createdBy: tasks.createdBy,
+        createdAt: tasks.createdAt,
+        assigneeName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+        assigneeAvatarUrl: workspaceMembers.avatarUrl,
+      })
+      .from(tasks)
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
+      .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, tasks.assigneeId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(and(eq(tasks.id, id), eq(tasks.workspaceId, ctx.workspaceId)))
+      .limit(1)
+
+    if (!row) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    if (!channelSchemaReady && row.sourceMessageId && !row.projectId) {
+      return NextResponse.json({ error: 'チャンネルタスクを準備中です' }, { status: 503 })
+    }
+
+    // 認可は PATCH と同じ。チャンネルの公開範囲（private / DM は参加者のみ）は requireChannelAccess が判定し、
+    // 一覧の taskChannelVisibilityCondition と同じ範囲になる。
+    if (row.channelId) {
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, row.channelId, ctx.role)
+      if (forbidden) return forbidden
+    } else if (row.projectId) {
+      const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, row.projectId, ctx.role)
+      if (forbidden) return forbidden
+    } else {
+      const forbidden = requireRole(ctx.role, 'member')
+      if (forbidden) return forbidden
+    }
+
+    // 行為者の表示名は履歴上の名義を残すため workspace_members を直接引く（非活性でも消さない）。
+    const [creator] = await db
+      .select({ name: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName) })
+      .from(profiles)
+      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+      .where(eq(profiles.id, row.createdBy))
+      .limit(1)
+
+    let sourceMessage: TaskDetailSourceMessageDto | null = null
+    if (row.sourceMessageId) {
+      const [message] = await db
+        .select({
+          id: messages.id,
+          channelId: messages.channelId,
+          content: messages.content,
+          senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          senderAvatarUrl: workspaceMembers.avatarUrl,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, messages.senderId), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(and(
+          eq(messages.id, row.sourceMessageId),
+          eq(channels.workspaceId, ctx.workspaceId),
+          isNull(messages.deletedAt),
+        ))
+        .limit(1)
+
+      // タスクのチャンネルと出典のチャンネルが違う場合（旧データなど）は、出典側の閲覧権も確認する。
+      // 見えないなら本文を返さず null にする（タスク自体は閲覧できるため 403 にはしない）。
+      let messageVisible = message != null
+      if (message && message.channelId !== row.channelId) {
+        const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, message.channelId, ctx.role)
+        messageVisible = !forbidden
+      }
+
+      if (message && messageVisible) {
+        const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
+        sourceMessage = {
+          id: message.id,
+          channelId: message.channelId,
+          content: hydrateMentions(message.content, (mentionId) => nameMap.get(mentionId)),
+          senderName: message.senderName,
+          senderAvatarUrl: message.senderAvatarUrl ?? null,
+          createdAt: message.createdAt.toISOString(),
+        }
+      }
+    }
+
+    const result: TaskDetailDto = {
+      id: row.id,
+      projectId: row.projectId,
+      projectTitle: row.projectTitle ?? null,
+      channelId: row.channelId,
+      channelName: row.channelName ?? null,
+      channelType: row.channelType ?? null,
+      channelIsPrivate: row.channelIsPrivate ?? false,
+      title: row.title,
+      status: row.status,
+      priority: row.priority,
+      dueDate: row.dueDate,
+      assigneeId: row.assigneeId,
+      assigneeName: row.assigneeName ?? null,
+      assigneeAvatarUrl: row.assigneeAvatarUrl ?? null,
+      sourceMessageId: row.sourceMessageId,
+      isLinkedToMessage: row.sourceMessageId != null,
+      hasDescription: row.description != null && row.description !== '',
+      description: row.description,
+      createdAt: row.createdAt.toISOString(),
+      createdByName: creator?.name ?? null,
+      sourceMessage,
+    }
+    return NextResponse.json(result)
+  } catch (err) {
+    console.error('[GET /api/tasks/[id]]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -53,7 +224,6 @@ export async function PATCH(
         status: tasks.status,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
-        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
       })
       .from(tasks)
       .leftJoin(projects, eq(tasks.projectId, projects.id))
@@ -97,6 +267,7 @@ export async function PATCH(
 
     const updates: {
       title?: string
+      description?: string | null
       priority?: 'high' | 'medium' | 'low'
       dueDate?: string | null
       status?: 'todo' | 'in_progress' | 'done'
@@ -104,6 +275,10 @@ export async function PATCH(
       updatedAt: Date
     } = { updatedAt: new Date() }
     if (parsed.data.title !== undefined) updates.title = parsed.data.title
+    if (parsed.data.description !== undefined) {
+      // 空文字は「説明なし」と同じ扱いにして null に正規化する（hasDescription の判定を単純にする）
+      updates.description = parsed.data.description === '' ? null : parsed.data.description
+    }
     if (parsed.data.priority !== undefined) updates.priority = parsed.data.priority
     if (parsed.data.dueDate !== undefined) updates.dueDate = parsed.data.dueDate
     if (parsed.data.status !== undefined) updates.status = parsed.data.status
@@ -116,19 +291,19 @@ export async function PATCH(
       .returning({
         id: tasks.id,
         title: tasks.title,
+        description: tasks.description,
         priority: tasks.priority,
         dueDate: tasks.dueDate,
         status: tasks.status,
         assigneeId: tasks.assigneeId,
         sourceMessageId: tasks.sourceMessageId,
-        sourceCheckboxIndex: tasks.sourceCheckboxIndex,
       })
 
     if (!updated) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    // 完了経路（タスク一覧・チャットのcheckbox・AIカード）を問わず、そのタスクの
+    // 完了経路（タスク一覧・AIカード）を問わず、そのタスクの
     // activeナッジを即時解消する。status更新triggerが対応するベル通知も削除する。
     if (updated.status === 'done') {
       await db
@@ -139,45 +314,6 @@ export async function PATCH(
           eq(aiNudges.taskId, id),
           eq(aiNudges.status, 'active'),
         ))
-    }
-
-    // チャットメッセージのチェックボックスへ逆同期する。
-    // - status 変更: チェック状態を toggle
-    // - title 変更: チェックボックスの文言を replace（タスクと元メッセージの紐付けを維持する）
-    const titleChanged = parsed.data.title !== undefined && updated.title !== taskRow.title
-    const statusChanged = parsed.data.status !== undefined
-    if ((titleChanged || statusChanged) && updated.sourceMessageId != null && updated.sourceCheckboxIndex != null) {
-      const { messages, channels } = await import('@cairn/db')
-      const [msg] = await db
-        .select({
-          content: messages.content,
-          channelId: messages.channelId,
-          senderId: messages.senderId,
-        })
-        .from(messages)
-        .innerJoin(channels, eq(messages.channelId, channels.id))
-        .where(and(eq(messages.id, updated.sourceMessageId), eq(channels.workspaceId, ctx.workspaceId)))
-        .limit(1)
-
-      if (msg) {
-        let newContent = msg.content
-        if (statusChanged) {
-          // チェック状態の toggle は共同作業の基本操作なので投稿者以外でも反映する
-          newContent = toggleCheckboxAt(newContent, updated.sourceCheckboxIndex, updated.status === 'done')
-        }
-        // 文言の書き換えは「他人のメッセージ本文を書き換える」操作になるため、
-        // 通常のメッセージ編集（senderId === 本人）と同じ所有権ルールに合わせ、投稿者本人のみに限定する。
-        // 投稿者以外がタイトルを変えた場合はタスク側のみ反映し、チェックボックス文言は据え置く。
-        if (titleChanged && msg.senderId === ctx.userId) {
-          newContent = replaceCheckboxLabelAt(newContent, updated.sourceCheckboxIndex, updated.title)
-        }
-        if (newContent !== msg.content) {
-          await db
-            .update(messages)
-            .set({ content: newContent })
-            .where(eq(messages.id, updated.sourceMessageId))
-        }
-      }
     }
 
     // 担当者が新たに（自分以外へ）割り当てられたら通知する
@@ -248,15 +384,6 @@ export async function DELETE(
     } else {
       const forbidden = requireRole(ctx.role, 'member')
       if (forbidden) return forbidden
-    }
-
-    // チャット由来タスクは単体削除しない。紐付いたチャットメッセージ（またはチェックボックス行）を
-    // 消したときにタスクも消える運用のため、ここでは 409 で拒否する。
-    if (taskRow.sourceMessageId != null) {
-      return NextResponse.json(
-        { error: 'チャット由来タスクは単体で削除できません。元のチャットメッセージ側で削除してください' },
-        { status: 409 },
-      )
     }
 
     const [deleted] = await db.transaction(async (tx) => {

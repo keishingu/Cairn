@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
@@ -11,6 +12,8 @@ const {
   mockGetAuthContext,
   mockRequireChannelAccess,
   mockCanAccessFile,
+  mockCanAccessChannel,
+  mockLoadFamily,
   mockDbSelect,
   mockEq,
   mockIsNull,
@@ -27,6 +30,8 @@ const {
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockCanAccessChannel: vi.fn(),
+  mockLoadFamily: vi.fn(),
   mockDbSelect: vi.fn(),
   mockEq: vi.fn(() => Symbol('eq')),
   mockIsNull: vi.fn(() => Symbol('isNull')),
@@ -48,10 +53,11 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   requireChannelAccess: mockRequireChannelAccess,
   canAccessFile: mockCanAccessFile,
+  canAccessChannel: mockCanAccessChannel,
 }))
+vi.mock('@/lib/chat/channel-family', () => ({ loadChannelFamilyIds: mockLoadFamily }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
-vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@/lib/profile-attributes', () => ({ getProfileAttributesByUserIds: mockGetProfileAttributes }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: {
@@ -108,6 +114,15 @@ vi.mock('@cairn/db', () => ({
     id: 'messageBookmarks.id',
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
+  },
+  tasks: {
+    id: 'tasks.id',
+    status: 'tasks.status',
+    sourceMessageId: 'tasks.sourceMessageId',
+    sourceLine: 'tasks.sourceLine',
+    sourceCheckboxIndex: 'tasks.sourceCheckboxIndex',
+    workspaceId: 'tasks.workspaceId',
+    createdAt: 'tasks.createdAt',
   },
   userBlocks: {
     blockerId: 'userBlocks.blockerId',
@@ -287,6 +302,48 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     ])
   })
 
+  it('GET はタスク化済みのメッセージに作成順のタスク一覧を linkedTasks として付け、行番号を lineIndex に入れる', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const base = {
+      content: 'hello',
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt: new Date('2026-06-24T01:00:00.000Z'),
+      updatedAt: new Date('2026-06-24T01:00:00.000Z'),
+    }
+    const lineKey = (raw: string) => createHash('sha256').update(raw).digest('hex')
+    mockSelectResults(
+      // DB は新しい順で返し、実装が時系列に並べ替える
+      [{ ...base, id: 'msg-2' }, { ...base, id: 'msg-1', content: '前置き\n\n- 資料を確認\n- [ ] 日程調整\n```\n- 消えた行\n```' }],
+      [],
+      [],
+      [],
+      // createdAt 昇順で返るので、そのまま作成順に並ぶ
+      [
+        { id: 'task-1', title: '資料を確認', status: 'done', sourceMessageId: 'msg-1', sourceLine: lineKey('資料を確認'), sourceCheckboxIndex: null },
+        // 旧チェックボックス由来（source_line なし）
+        { id: 'task-2', title: '日程調整', status: 'todo', sourceMessageId: 'msg-1', sourceLine: null, sourceCheckboxIndex: 0 },
+        // 本文から消えた行（コードフェンス内）
+        { id: 'task-3', title: '消えた行', status: 'todo', sourceMessageId: 'msg-1', sourceLine: lineKey('消えた行'), sourceCheckboxIndex: null },
+      ],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'msg-1', linkedTasks: [
+        { id: 'task-1', title: '資料を確認', status: 'done', lineIndex: 2 },
+        { id: 'task-2', title: '日程調整', status: 'todo', lineIndex: 3 },
+        { id: 'task-3', title: '消えた行', status: 'todo', lineIndex: null },
+      ] }),
+      expect.objectContaining({ id: 'msg-2', linkedTasks: [] }),
+    ])
+    expect(mockEq).toHaveBeenCalledWith('tasks.workspaceId', DEV_WORKSPACE_ID)
+  })
+
   it('直近ページでは101件目を除外し、次ページの有無をヘッダーで返す', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     const rows = Array.from({ length: 101 }, (_, index) => ({
@@ -363,5 +420,56 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       expect.objectContaining({ id: 'message-2' }),
       expect.objectContaining({ id: 'message-3' }),
     ])
+  })
+  describe('引用返信の参照先', () => {
+    const createdAt = new Date('2026-01-01T01:00:00.000Z')
+    const replyRow = {
+      id: 'reply-1', content: '返信', messageType: 'text', parentMessageId: 'quoted-1',
+      senderId: 'user-2', senderName: 'Sender', senderAvatarUrl: null, createdAt, updatedAt: createdAt,
+    }
+    const quoted = (channelId: string) => ({
+      id: 'quoted-1', content: '元の発言', senderName: 'Aki', deletedAt: null, channelId,
+    })
+
+    beforeEach(() => {
+      mockRequireChannelAccess.mockResolvedValue(null)
+      mockLoadFamily.mockResolvedValue([CHANNEL_ID, 'parent-channel'])
+    })
+
+    it('親チャンネルに残った発言への返信は、閲覧できるなら引用を返す', async () => {
+      mockCanAccessChannel.mockResolvedValue(true)
+      mockSelectResults([replyRow], [], [], [], [], [quoted('parent-channel')])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      expect(mockLoadFamily).toHaveBeenCalledWith(CHANNEL_ID)
+      expect(mockCanAccessChannel).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, 'parent-channel')
+      await expect(res.json()).resolves.toEqual([
+        expect.objectContaining({ replyTo: expect.objectContaining({ id: 'quoted-1', content: '元の発言' }) }),
+      ])
+    })
+
+    it('閲覧できない別チャンネルの発言は引用に含めない', async () => {
+      mockCanAccessChannel.mockResolvedValue(false)
+      mockSelectResults([replyRow], [], [], [], [], [quoted('parent-channel')])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      await expect(res.json()).resolves.toEqual([expect.objectContaining({ replyTo: null })])
+    })
+
+    it('同じチャンネルの発言は追加の権限確認なしで引用を返す', async () => {
+      mockSelectResults([replyRow], [], [], [], [], [quoted(CHANNEL_ID)])
+
+      const { GET } = await import('./route')
+      const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+      expect(mockCanAccessChannel).not.toHaveBeenCalled()
+      await expect(res.json()).resolves.toEqual([
+        expect.objectContaining({ replyTo: expect.objectContaining({ id: 'quoted-1' }) }),
+      ])
+    })
   })
 })

@@ -9,10 +9,14 @@ import {
   type MarkdownStyle,
   type Md4cFlags,
 } from 'react-native-enriched-markdown'
+import { insertLineTaskMarkers } from '@cairn/shared'
 import {
   isMentionLink,
   MENTION_LINK_SCHEME,
   splitMermaidSegments,
+  taskIdFromLink,
+  TASK_DONE_LINK_SCHEME,
+  TASK_LINK_SCHEME,
   toEnrichedMarkdown,
 } from '../lib/mobile-markdown-source'
 import type { ThemePalette } from '../lib/theme'
@@ -32,12 +36,17 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   palette,
   onLinkPress,
   mentionNames,
+  lineTasks,
+  onTaskPress,
   onLongPress,
 }: {
   content: string
   palette: ThemePalette
   onLinkPress: (url: string) => boolean
   mentionNames?: Readonly<Record<string, string>>
+  // タスク化した行の行末に「✓ タスク」ラベルを出す。タップで onTaskPress(taskId)
+  lineTasks?: readonly { id: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }[]
+  onTaskPress?: (taskId: string) => void
   // Mermaid 図のカードは独自にタップを受けるため、メッセージの長押しメニューを渡して塞がないようにする
   onLongPress?: () => void
 }) {
@@ -45,7 +54,8 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
   // Mermaid 図はネイティブの Markdown では描画できないため、本文から分けてタップで全画面表示する
   const segments = React.useMemo(
     () =>
-      splitMermaidSegments(content).map((segment) =>
+      // 目印は描画用の派生文字列にだけ差し込む
+      splitMermaidSegments(insertLineTaskMarkers(content, lineTasks ?? []).text).map((segment) =>
         segment.type === 'mermaid'
           ? segment
           : {
@@ -54,19 +64,25 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
                 resolveMentionName: (userId, displayName) =>
                   mentionNames?.[userId] ?? displayName ?? t('Member'),
                 imageLabel: t('Image'),
+                ...(lineTasks ? { lineTasks, taskLabel: t('Task') } : {}),
               }),
             },
       ),
-    [content, mentionNames, t],
+    [content, mentionNames, lineTasks, t],
   )
 
   const handleLinkPress = React.useCallback(
     ({ url }: LinkPressEvent) => {
       // メンションは表示だけで、遷移先を持たない
       if (isMentionLink(url)) return
+      const taskId = taskIdFromLink(url)
+      if (taskId !== null) {
+        onTaskPress?.(taskId)
+        return
+      }
       onLinkPress(url)
     },
-    [onLinkPress],
+    [onLinkPress, onTaskPress],
   )
 
   const markdownStyle = React.useMemo<MarkdownStyle>(
@@ -147,6 +163,17 @@ export const MobileMarkdown = React.memo(function MobileMarkdown({
         [`^${MENTION_LINK_SCHEME}`]: {
           color: palette.accentText,
           backgroundColor: palette.accentSoft,
+          underline: false,
+        },
+        // タスク化した行の行末ラベル。Web と同じく未完了はアクセント色、完了は薄い色
+        [`^${TASK_LINK_SCHEME}`]: {
+          color: palette.accentText,
+          backgroundColor: palette.accentSoft,
+          underline: false,
+        },
+        [`^${TASK_DONE_LINK_SCHEME}`]: {
+          color: palette.text3,
+          backgroundColor: palette.card2,
           underline: false,
         },
       },

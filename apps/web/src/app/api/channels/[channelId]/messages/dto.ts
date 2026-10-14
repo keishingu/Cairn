@@ -19,6 +19,15 @@ export interface ReplyToDto {
   isDeleted: boolean
 }
 
+// メッセージを出典とするタスク（タスク化済みの印と遷移先に使う）
+export interface LinkedTaskDto {
+  id: string
+  title: string
+  status: 'todo' | 'in_progress' | 'done'
+  /** メッセージ本文（DB の canonical）を `\n` で分けたときの元の行番号（0始まり）。対応する行が無ければ null */
+  lineIndex: number | null
+}
+
 export interface MessageDto {
   id: string
   content: string
@@ -39,5 +48,7 @@ export interface MessageDto {
   parentMessageId: string | null
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  /** このメッセージをタスク化したタスク（作成順）。無ければ空配列 */
+  linkedTasks: LinkedTaskDto[]
   blocked?: boolean
 }

@@ -4,16 +4,22 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
 import { InlineError } from './inline-error'
 import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
+import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
+import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
+import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
+import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
@@ -21,6 +27,7 @@ import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
+  chatQueryKeys,
   formatChatMessageTime,
   useChannelInitialMessage,
   useChannelMessageHistory,
@@ -43,6 +50,8 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -147,7 +156,50 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+/** タスク化の候補（本文の各行）を取得する。失敗したらトーストで知らせて null を返す。 */
+export async function fetchMessageTaskCandidates(messageId: string, t: TranslateFn): Promise<MessageTaskCandidateDto[] | null> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`)
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCandidatesResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.candidates)) {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return null
+    }
+    return body.candidates
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return null
+  }
+}
+
+/** 選んだ行（line）を編集後のタスク名（title）でタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
+export async function makeTasksFromMessage(messageId: string, items: MessageTaskSubmitItem[], t: TranslateFn): Promise<boolean> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    })
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCreateResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.tasks) || body.tasks.length === 0 || typeof body.createdCount !== 'number') {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return false
+    }
+    const message = body.createdCount === 0
+      ? t('This message is already a task')
+      : body.createdCount === 1 ? t('Added to tasks') : t('Added {count} tasks', { count: body.createdCount })
+    const only = body.tasks.length === 1 ? body.tasks[0] : undefined
+    toast.success(message, {
+      action: { label: t('Open'), href: only ? `/tasks?taskId=${encodeURIComponent(only.id)}` : '/tasks' },
+    })
+    return true
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return false
+  }
+}
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -167,6 +219,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  // memo を効かせるため、linkedTasks は配列でなく id / status / lineIndex / title を連結したキー文字列で受ける
+  linkedTasksKey?: string | undefined
   blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -174,15 +228,22 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
+  onMakeTask: (messageId: string) => void
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
+  /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
+  onMoveToThread?: (messageId: string) => void
+  /** 切り出すメッセージの選択モード。渡されたときはチェックボックスを出し、行のクリックで選択を切り替える */
+  selection?: { selected: boolean; onToggle: (messageId: string) => void }
   mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
   focused?: boolean
 }) {
   const t = useT()
+  const router = useRouter()
+  const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
@@ -210,6 +271,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
+  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す
+  const inlinePlaced = React.useMemo(
+    () => (blocked || emojiOnly || !content ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
+    [blocked, emojiOnly, content, linkedTasks],
+  )
+  const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
@@ -308,6 +375,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
+    ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
@@ -316,7 +385,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ] : []),
   ]
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
-  const messageActions = !editMode && (isMobile || hovered) && (
+  const messageActions = !editMode && !selection && (isMobile || hovered) && (
     <div style={isMobile
       ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
@@ -342,7 +411,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
+      {...(selection ? { onClick: () => selection.onToggle(messageId) } : {})}
     >
+      {selection && (
+        <input
+          type="checkbox"
+          checked={selection.selected}
+          onChange={() => selection.onToggle(messageId)}
+          onClick={e => e.stopPropagation()}
+          aria-label={t('Select message')}
+          style={{ accentColor: 'var(--accent)', margin: '10px 0 0', flexShrink: 0, width: 16, height: 16 }}
+        />
+      )}
       <div title={senderEmail ?? undefined}>
         <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
@@ -417,6 +497,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
+                  lineTasks={linkedTasks}
                   onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
@@ -464,6 +545,51 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             ))}
           </div>
         )}
+        {chipTasks.length > 0 && (() => {
+          const doneCount = chipTasks.filter(task => task.status === 'done').length
+          const allDone = doneCount === chipTasks.length
+          const single = chipTasks.length === 1 ? chipTasks[0] : undefined
+          const chipStyle: React.CSSProperties = {
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
+            fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
+            background: allDone ? 'var(--card-2)' : 'var(--accent-soft)',
+            border: `1px solid ${allDone ? 'var(--border)' : 'var(--accent-border)'}`,
+            color: allDone ? 'var(--text-3)' : 'var(--accent-text)',
+            opacity: allDone ? 0.75 : 1,
+          }
+          const statusLabel = (status: 'todo' | 'in_progress' | 'done') =>
+            status === 'done' ? t('Done') : status === 'in_progress' ? t('In progress') : t('Not started')
+          return single ? (
+            <Link
+              href={`/tasks?taskId=${encodeURIComponent(single.id)}`}
+              data-testid="linked-task-chip"
+              data-task-status={single.status}
+              title={t('Open task')}
+              style={{ marginTop: 6, ...chipStyle }}
+            >
+              <Icon name="check" size={11}/> {t('Task')}
+            </Link>
+          ) : (
+            <div style={{ marginTop: 6, display: 'inline-flex' }}>
+              <RowActionMenu
+                trigger={{
+                  label: t('Show tasks'),
+                  testId: 'linked-task-chip',
+                  content: <><Icon name="check" size={11}/> {t('Task {done}/{total}', { done: doneCount, total: chipTasks.length })}</>,
+                }}
+                triggerStyle={{ ...chipStyle, cursor: 'pointer', fontFamily: 'inherit' }}
+                actions={chipTasks.map(task => ({
+                  icon: task.status === 'done' ? 'check' : 'external-link',
+                  label: task.title,
+                  verbatim: true,
+                  hint: statusLabel(task.status),
+                  onSelect: () => router.push(`/tasks?taskId=${encodeURIComponent(task.id)}`),
+                }))}
+              />
+            </div>
+          )
+        })()}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
@@ -606,6 +732,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onCancelReply: () => void
 }) => {
   const t = useT()
+  const { mode: activeSendKeyMode, error: sendKeyError, dismissError: dismissSendKeyError, toggle: toggleSendKeyMode } = useChatSendKeyMode()
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -659,13 +786,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     onDrop: handleDrop,
   }
 
-  const [showPicker, setShowPicker] = React.useState(false)
   const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
   const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
-  const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
@@ -953,12 +1078,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         {sendError && (
           <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendError}</InlineError>
         )}
+        {sendKeyError && (
+          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendKeyError}</InlineError>
+        )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
-        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {ReplyPreview}
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
@@ -981,10 +1109,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
-                  if (e.key !== 'Enter' || e.shiftKey) return
-                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                  if (isMobile) return
+                  if (e.key !== 'Enter') return
                   if (isImeConfirmingEnter(e, isComposing)) return
+                  if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                   e.preventDefault()
                   send()
                 })}
@@ -1001,10 +1128,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
-            <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-              <Icon name="smile" size={15}/>
+            <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+              </span>
+              <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{t('Enter to send')}</span>
             </button>
-            {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
             <button onClick={send} disabled={!canSend} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
               <Icon name="send" size={13}/>
             </button>
@@ -1022,13 +1151,16 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       {sendError && (
         <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6 }}>{sendError}</InlineError>
       )}
+      {sendKeyError && (
+        <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6 }}>{sendKeyError}</InlineError>
+      )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
-      <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
+      <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}
           </button>
@@ -1038,10 +1170,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
-          <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="smile" size={13}/> {t('Emoji')}
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+            </span>
+            {t('Enter to send')}
           </button>
-          {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
         {ReplyPreview}
         {AttachmentPreviews}
@@ -1065,10 +1199,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                if (isMobile) return
+                if (e.key !== 'Enter') return
                 if (isImeConfirmingEnter(e, isComposing)) return
+                if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                 e.preventDefault()
                 send()
               })}
@@ -1231,7 +1364,7 @@ function useMessageTimelineScroll({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false, onMoveToThread, moveSelection, onMessageNotInChannel }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
@@ -1241,6 +1374,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   isMobile?: boolean
   targetMessage?: { id: string } | null
   initialUnreadPosition?: boolean
+  /** 渡すとメッセージのメニューに「スレッドに切り出す」を出す。親ワークスペースチャンネルの member 以上にだけ渡す */
+  onMoveToThread?: (message: MoveSourceMessage) => void
+  /** 切り出すメッセージの選択モード。渡している間はチェックボックスと確認バーを出し、入力欄は隠す */
+  moveSelection?: {
+    selectedIds: ReadonlySet<string>
+    onToggle: (message: MoveSourceMessage) => void
+    onConfirm: () => void
+    onCancel: () => void
+  }
+  /** ジャンプ先のメッセージがこのチャンネルに無かったとき（別チャンネルへ移された可能性）に呼ばれる */
+  onMessageNotInChannel?: (messageId: string) => void
 }) => {
   const t = useT()
   const [draft, setDraft] = React.useState('')
@@ -1756,11 +1900,60 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     setReplyTarget({ id: m.id, senderName: m.senderName, content: m.content, isDeleted: false })
   }, [messages])
 
+  const handleMoveToThread = React.useCallback((messageId: string) => {
+    if (!onMoveToThread || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) onMoveToThread({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, onMoveToThread])
+
+  const moveSelectionToggle = moveSelection?.onToggle
+  const handleToggleMoveSelection = React.useCallback((messageId: string) => {
+    if (!moveSelectionToggle || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) moveSelectionToggle({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, moveSelectionToggle])
+
+  // ジャンプ先が履歴ウィンドウにも無かった場合は、別チャンネルへ移されていないか親に確かめてもらう
+  const unavailableJumpId = historyUnavailable ? requestedMessageId : null
+  const onMessageNotInChannelRef = React.useRef(onMessageNotInChannel)
+  onMessageNotInChannelRef.current = onMessageNotInChannel
+  React.useEffect(() => {
+    if (unavailableJumpId) onMessageNotInChannelRef.current?.(unavailableJumpId)
+  }, [unavailableJumpId])
+
   const handleBookmark = React.useCallback((messageId: string) => {
     if (messageId.startsWith('optimistic-')) return
     leaveHistoryView()
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation, leaveHistoryView])
+
+  const [taskDialog, setTaskDialog] = React.useState<{ messageId: string; candidates: MessageTaskCandidateDto[] } | null>(null)
+
+  const createTasks = React.useCallback(async (messageId: string, items: MessageTaskSubmitItem[]) => {
+    const ok = await makeTasksFromMessage(messageId, items, t)
+    if (ok) {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      // タスク化済みの印（linkedTasks）を出すためメッセージも取り直す
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    }
+    return ok
+  }, [channelId, queryClient, t])
+
+  const handleMakeTask = React.useCallback(async (messageId: string) => {
+    if (messageId.startsWith('optimistic-')) return
+    const candidates = await fetchMessageTaskCandidates(messageId, t)
+    if (!candidates) return
+    const open = candidates.filter(candidate => !candidate.taskId)
+    if (candidates.length === 0) {
+      toast.error(t('This message has no text to make a task from'))
+    } else if (open.length === 0) {
+      toast.success(t('All lines of this message are already tasks'))
+    } else if (candidates.length === 1 && open[0]) {
+      await createTasks(messageId, [{ line: open[0].line, title: open[0].title }])
+    } else {
+      setTaskDialog({ messageId, candidates })
+    }
+  }, [createTasks, t])
 
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
@@ -1955,6 +2148,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       onDragLeave={handleListDragLeave}
       onDrop={handleListDrop}
     >
+      {taskDialog && (
+        <MessageTaskDialog
+          candidates={taskDialog.candidates}
+          onSubmit={items => createTasks(taskDialog.messageId, items)}
+          onClose={() => setTaskDialog(null)}
+        />
+      )}
       {showTextFileDialog && (
         <CreateTextFileDialog
           onClose={() => setShowTextFileDialog(false)}
@@ -2023,6 +2223,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               attachments={item.message.attachments}
               replyTo={item.message.replyTo}
               bookmarked={item.message.bookmarked}
+              linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
               onReact={handleReact}
               onEdit={handleEdit}
@@ -2030,9 +2231,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
+              onMakeTask={handleMakeTask}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
+              {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
+              {...(moveSelection && item.message.messageType !== 'system'
+                ? { selection: { selected: moveSelection.selectedIds.has(item.message.id), onToggle: handleToggleMoveSelection } }
+                : {})}
               focused={item.messageIndex === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
@@ -2060,7 +2266,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           </button>
         </div>
       )}
-      {!isAccessDenied && (
+      {!isAccessDenied && moveSelection && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 16px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t('{count} selected', { count: moveSelection.selectedIds.size })}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={moveSelection.onCancel}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-primary" disabled={moveSelection.selectedIds.size === 0} onClick={moveSelection.onConfirm}>{t('Move to thread')}</button>
+          </div>
+        </div>
+      )}
+      {!isAccessDenied && !moveSelection && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}

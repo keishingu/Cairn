@@ -40,6 +40,7 @@ describe('useRenameFile', () => {
       parentMessageId: null,
       replyTo: null,
       bookmarked: false,
+      linkedTasks: [],
     }])
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

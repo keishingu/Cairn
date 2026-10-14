@@ -38,6 +38,17 @@ describe('toast ストア', () => {
     ])
   })
 
+  it('action を渡すとトーストにリンクが付き、href が違えば別のトーストになる', () => {
+    let current: ToastItem[] = []
+    subscribeToasts(t => { current = t })
+
+    toast.success('タスクに追加しました', { action: { label: '開く', href: '/tasks?taskId=a' } })
+    toast.success('タスクに追加しました', { action: { label: '開く', href: '/tasks?taskId=a' } })
+    toast.success('タスクに追加しました', { action: { label: '開く', href: '/tasks?taskId=b' } })
+
+    expect(current.map(t => t.action?.href)).toEqual(['/tasks?taskId=a', '/tasks?taskId=b'])
+  })
+
   it('デフォルトの表示時間が経過すると自動で消える', () => {
     let current: ToastItem[] = []
     subscribeToasts(t => { current = t })

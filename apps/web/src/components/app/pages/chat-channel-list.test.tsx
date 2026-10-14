@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { translate } from '@cairn/shared'
 import { ChannelList, formatChannelPeriod } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -27,6 +28,7 @@ const workspaceChannel = (overrides: Partial<WorkspaceChannelDto>): WorkspaceCha
   name: '雑談',
   parentChannelId: null,
   isPrivate: false,
+  archived: false,
   memberCount: 0,
   memberNames: [],
   memberAvatarUrls: [],
@@ -49,6 +51,108 @@ describe('formatChannelPeriod', () => {
 
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
+  afterEach(() => Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 }))
+
+  it('DM候補が多い場合も画面内に収まり、フォーカス・Escape・末尾選択ができる', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 160 })
+    const onStartDm = vi.fn()
+    const members = Array.from({ length: 40 }, (_, index) => ({
+      userId: `user-${index + 1}`,
+      displayName: `メンバー${index + 1}`,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    }))
+
+    render(
+      <div className="app-root"><ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={members}
+        onStartDm={onStartDm}
+      /></div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
+
+    const firstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstMember))
+    const lastMember = screen.getByRole('button', { name: /メンバー40/ })
+    const menu = lastMember.parentElement
+    expect(menu).toHaveStyle({ position: 'fixed', overflowY: 'auto', maxHeight: '480px' })
+    expect(menu?.parentElement).toHaveClass('app-root')
+    expect(Number.parseFloat(menu!.style.left) + Number.parseFloat(menu!.style.width)).toBeLessThanOrEqual(160)
+    fireEvent.mouseDown(lastMember)
+    await user.click(lastMember)
+
+    expect(onStartDm).toHaveBeenCalledWith('user-40')
+    expect(screen.queryByRole('button', { name: /メンバー40/ })).toBeNull()
+
+    await user.click(trigger)
+    const reopenedFirstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(reopenedFirstMember))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('候補が未取得の間はメニューにフォーカスし、到着後にTabで出てもEscapeで閉じる', async () => {
+    const user = userEvent.setup()
+    const makeMember = (userId: string, displayName: string) => ({
+      userId,
+      displayName,
+      email: null,
+      avatarUrl: null,
+      role: 'member' as const,
+      membershipStatus: 'active' as const,
+      profileAttributes: [],
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      projectCount: 0,
+    })
+    const props = {
+      channelId: null,
+      onSelectChannel: vi.fn(),
+      projectChannels: [],
+      workspaceChannels: [],
+      dms: [],
+      onStartDm: vi.fn(),
+    }
+    const { rerender } = render(
+      <div className="app-root">
+        <ChannelList {...props} members={[]} />
+        <button>外部操作</button>
+      </div>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
+    const menu = document.querySelector('.app-root > .app[style*="position: fixed"]')!
+    await waitFor(() => expect(document.activeElement).toBe(menu))
+
+    rerender(
+      <div className="app-root">
+        <ChannelList {...props} members={[makeMember('user-1', 'メンバーA')]} />
+        <button>外部操作</button>
+      </div>,
+    )
+    const firstChoice = screen.getByText('メンバーA').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstChoice))
+    await user.tab()
+    const focusAfterTab = document.activeElement
+    expect(menu.contains(focusAfterTab)).toBe(false)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
+    expect(document.activeElement).toBe(focusAfterTab)
+  })
 
   it('プロジェクト見出しの追加ボタンから作成を開始する', () => {
     const onAddProject = vi.fn()
@@ -390,5 +494,148 @@ describe('ChannelList', () => {
     expect(screen.queryByRole('menuitem', { name: 'スレッドを作成' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('menuitem', { name: '削除' }))
     expect(onDeleteWorkspaceChannel).toHaveBeenCalledWith(channel)
+  })
+  it('スレッドをメニューからアーカイブし、アーカイブ済みスレッドは親チャンネルのメニューで表示を切り替える', () => {
+    const onSetWorkspaceChannelArchived = vi.fn()
+    const active = workspaceChannel({ id: 'thread-1', name: 'リリース準備', parentChannelId: 'workspace-channel-1' })
+    const archived = workspaceChannel({ id: 'thread-2', name: '旧企画', parentChannelId: 'workspace-channel-1', archived: true })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({}), active, archived]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceChannelArchived={onSetWorkspaceChannelArchived}
+      />,
+    )
+
+    expect(screen.queryByText('旧企画')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /アーカイブ済み/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'リリース準備のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(active, true)
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ済みスレッドを表示' }))
+    expect(screen.getByText('旧企画')).toBeInTheDocument()
+    expect(localStorage.getItem('cairn:chat_archived_threads_collapsed_workspace-channel-1')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: '旧企画のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブを解除する' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(archived, false)
+
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ済みスレッドを非表示' }))
+    expect(screen.queryByText('旧企画')).not.toBeInTheDocument()
+  })
+
+  it('開いているスレッドがアーカイブ済みなら親チャンネルの下で展開する', () => {
+    render(
+      <ChannelList
+        channelId="thread-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[
+          workspaceChannel({}),
+          workspaceChannel({ id: 'thread-2', name: '旧企画', parentChannelId: 'workspace-channel-1', archived: true }),
+        ]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('旧企画')).toBeInTheDocument()
+  })
+
+  it('管理者はチャンネルをアーカイブでき、アーカイブ済みチャンネルは配下スレッドを出さずアーカイブ欄から解除できる', () => {
+    const onSetWorkspaceChannelArchived = vi.fn()
+    const channel = workspaceChannel({})
+    const archivedChannel = workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })
+    const orphanThread = workspaceChannel({ id: 'thread-9', name: '旧部署の話', parentChannelId: 'workspace-channel-2' })
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[channel, archivedChannel, orphanThread]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceChannelArchived={onSetWorkspaceChannelArchived}
+        canManageWorkspaceChannel
+      />,
+    )
+
+    expect(screen.queryByText('旧部署')).not.toBeInTheDocument()
+    expect(screen.queryByText('旧部署の話')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '雑談のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブ' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(channel, true)
+
+    fireEvent.click(screen.getByRole('button', { name: /アーカイブ済みチャンネル/ }))
+    expect(screen.getByText('旧部署')).toBeInTheDocument()
+    expect(screen.queryByText('旧部署の話')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '旧部署のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'アーカイブを解除する' }))
+    expect(onSetWorkspaceChannelArchived).toHaveBeenCalledWith(archivedChannel, false)
+  })
+
+  it('管理者以外にはチャンネルのアーカイブ操作を出さない', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({})]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onSetWorkspaceChannelArchived={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '雑談のメニュー' })).not.toBeInTheDocument()
+  })
+
+  it('開いているチャンネルがアーカイブ済みならアーカイブ済みチャンネル欄を展開する', () => {
+    render(
+      <ChannelList
+        channelId="workspace-channel-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('旧部署')).toBeInTheDocument()
+  })
+
+  it('セクションはプロジェクト・アーカイブ済みプロジェクト・チャンネル・アーカイブ済みチャンネルの順に並ぶ', () => {
+    render(
+      <ChannelList
+        channelId="workspace-channel-2"
+        onSelectChannel={vi.fn()}
+        projectChannels={[
+          projectChannel({}),
+          projectChannel({ channelId: 'project-channel-2', projectId: 'project-2', projectTitle: '旧プロジェクト', archived: true }),
+        ]}
+        workspaceChannels={[workspaceChannel({}), workspaceChannel({ id: 'workspace-channel-2', name: '旧部署', archived: true })]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    const text = document.body.textContent ?? ''
+    const order = ['プロジェクトA', 'アーカイブ済みプロジェクト', '雑談', 'アーカイブ済みチャンネル', 'アプリ']
+      .map(label => text.indexOf(label))
+    expect(order.every(index => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 })

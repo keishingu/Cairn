@@ -33,8 +33,8 @@ vi.mock('@/hooks/use-project-members', () => ({
 vi.mock('@/lib/chat/client', () => ({
   useChannelMembers: () => ({ data: [], isFetching: false }),
 }))
-vi.mock('../task-edit-dialog', () => ({
-  TaskEditDialog: ({ open }: { open: boolean }) => open ? <div data-testid="task-edit-dialog" /> : null,
+vi.mock('../task-detail-panel', () => ({
+  TaskDetailPanel: ({ taskId }: { taskId: string }) => <div data-testid="task-detail-panel" data-task-id={taskId} />,
 }))
 vi.mock('@/hooks/use-project-tasks', () => ({
   useTasksByScope: vi.fn(() => ({
@@ -265,6 +265,16 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
     renderProjectSidebar()
 
     expect(screen.getAllByLabelText('メッセージに紐付いています')).toHaveLength(1)
+  })
+
+  it('行メニューの「詳細を開く」でタスク詳細パネルを開く', async () => {
+    renderProjectSidebar()
+
+    await userEvent.click(screen.getAllByRole('button', { name: '操作' })[0]!)
+    expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '詳細を開く' }))
+
+    expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'linked-task')
   })
 
   it('通常チャンネルにもタスク一覧を表示し、チャンネルタスクを追加できる', async () => {

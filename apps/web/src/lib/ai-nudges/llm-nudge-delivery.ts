@@ -26,6 +26,28 @@ import {
 } from './llm-nudge-rules'
 import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-scan'
 
+type DeliveryTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+// アーカイブ済みスレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は巡回対象外。巡回中に作られた候補や、既存のリマインダーもここで止める。
+// migration より先に動いても落ちないよう to_jsonb で読む。
+async function isArchivedChannel(tx: DeliveryTx, channelId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({
+      archived: sql<boolean>`(
+        coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''
+        or exists (
+          select 1 from channels parent_channel
+          where parent_channel.id::text = to_jsonb(${channels})->>'parent_channel_id'
+            and coalesce(to_jsonb(parent_channel)->>'archived_at', '') <> ''
+        )
+      )`,
+    })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .limit(1)
+  return row?.archived === true
+}
+
 export interface PhaseTwoScanResult {
   input: PhaseTwoChannelInput
   candidates: PhaseTwoNudgeCandidate[]
@@ -309,6 +331,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           continue
         }
       }
+      if (await isArchivedChannel(tx, reminder.channelId)) {
+        await tx.update(aiNudges).set({ status: 'resolved' }).where(eq(aiNudges.id, reminder.id))
+        continue
+      }
 
       const [source] = await tx
         .select({ createdAt: messages.createdAt, senderId: messages.senderId })
@@ -320,6 +346,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             isNull(messages.deletedAt),
           ),
         )
+        // スレッドへの切り出しと直列化し、確認から書き込みまでの間に移動されても通知が親に残らないようにする。
+        .for('share')
         .limit(1)
       if (!source) {
         await tx.update(aiNudges).set({ status: 'resolved' }).where(eq(aiNudges.id, reminder.id))
@@ -465,6 +493,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             isNull(messages.deletedAt),
           ),
         )
+        // スレッドへの切り出しと直列化し、確認から書き込みまでの間に移動されても通知が親に残らないようにする。
+        .for('share')
         .limit(1)
       if (!source) {
         discarded += 1
@@ -552,6 +582,10 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
           discarded += 1
           continue
         }
+      }
+      if (await isArchivedChannel(tx, candidate.channelId)) {
+        discarded += 1
+        continue
       }
 
       const [existing] = await tx

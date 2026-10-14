@@ -29,6 +29,28 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
 }
 
+// スマホのブラウザ（特に iOS のホーム画面アプリから開くアプリ内ブラウザ）は Office ファイルを
+// inline で受けると描画もダウンロードもできず真っ白になる。ブラウザが表示できる形式だけ inline にする。
+function isInlineViewable(contentType: string): boolean {
+  const mimeType = contentType.split(';')[0]!.trim().toLowerCase()
+  return (
+    mimeType.startsWith('image/') ||
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/pdf' ||
+    mimeType === 'application/json'
+  )
+}
+
+// filename="..." に非 ASCII をそのまま入れられないため、ASCII の代替名と RFC 5987 の filename* を併記する
+function buildContentDisposition(type: 'inline' | 'attachment', fileName: string): string {
+  const asciiFallback = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`
+}
+
 export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -92,12 +114,17 @@ export async function GET(req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 502 })
     }
 
+    const contentType = servedThumb
+      ? 'image/jpeg'
+      : resolveResponseContentType(file.fileName, file.mimeType)
+
     return new NextResponse(data, {
       headers: {
-        'Content-Type': servedThumb
-          ? 'image/jpeg'
-          : resolveResponseContentType(file.fileName, file.mimeType),
-        'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
+        'Content-Type': contentType,
+        'Content-Disposition': buildContentDisposition(
+          isInlineViewable(contentType) ? 'inline' : 'attachment',
+          file.fileName,
+        ),
         'Cache-Control': 'private, max-age=3600',
       },
     })

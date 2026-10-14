@@ -26,6 +26,7 @@ import {
   useDeleteWorkspaceChannel,
   usePatchProjectMilestone,
   useRenameWorkspaceChannel,
+  useSetWorkspaceChannelArchived,
   useWorkspaceChannels,
   useWorkspaceDms,
   useWorkspaceMembers,
@@ -226,7 +227,7 @@ function UnreadBadge({ count, palette }: { count: number; palette: ThemePalette 
 type RowActionTarget =
   | { type: 'project'; channel: ProjectChannelDto; completedCount: number }
   | { type: 'milestone'; channel: ProjectChannelDto }
-  | { type: 'workspace'; channel: WorkspaceChannelDto }
+  | { type: 'workspace'; channel: WorkspaceChannelDto; archivedThreadCount: number }
 
 export default function ChatsScreen() {
   const t = useT()
@@ -247,6 +248,7 @@ export default function ChatsScreen() {
   const createThread = useCreateChannelThread()
   const renameChannel = useRenameWorkspaceChannel()
   const deleteChannel = useDeleteWorkspaceChannel()
+  const setChannelArchivedMutation = useSetWorkspaceChannelArchived()
   const patchMilestone = usePatchProjectMilestone()
   const meQuery = useMe()
   const me = meQuery.data
@@ -265,7 +267,11 @@ export default function ChatsScreen() {
   const [expandedCompletedProjects, setExpandedCompletedProjects] = React.useState<Set<string>>(
     () => new Set(),
   )
+  const [expandedArchivedThreads, setExpandedArchivedThreads] = React.useState<Set<string>>(
+    () => new Set(),
+  )
   const [showArchivedProjects, setShowArchivedProjects] = React.useState(false)
+  const [showArchivedChannels, setShowArchivedChannels] = React.useState(false)
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
   const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
   const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
@@ -306,14 +312,24 @@ export default function ChatsScreen() {
       ),
     }
   }, [channels])
-  const workspaceChannelGroups = React.useMemo(() => {
+  // Web の ChannelList と同じく、アーカイブしたスレッドは親チャンネルの下に（既定は畳んで）並べ、
+  // アーカイブ済みチャンネルは配下スレッドごと専用の欄に分ける。
+  const { workspaceChannelGroups, archivedChannels } = React.useMemo(() => {
     const allChannels = workspaceChannelsQuery.data ?? []
-    return allChannels
-      .filter((channel) => channel.parentChannelId == null)
-      .map((channel) => ({
-        channel,
-        threads: allChannels.filter((candidate) => candidate.parentChannelId === channel.id),
-      }))
+    const parents = allChannels.filter((channel) => channel.parentChannelId == null)
+    return {
+      workspaceChannelGroups: parents
+        .filter((channel) => channel.archived !== true)
+        .map((channel) => {
+          const children = allChannels.filter((candidate) => candidate.parentChannelId === channel.id)
+          return {
+            channel,
+            threads: children.filter((candidate) => candidate.archived !== true),
+            archivedThreads: children.filter((candidate) => candidate.archived === true),
+          }
+        }),
+      archivedChannels: parents.filter((channel) => channel.archived === true),
+    }
   }, [workspaceChannelsQuery.data])
 
   const openChatTool = (path: string, title: string) => {
@@ -342,6 +358,16 @@ export default function ChatsScreen() {
       const next = new Set(current)
       if (next.has(projectId)) next.delete(projectId)
       else next.add(projectId)
+      return next
+    })
+    setRowActionTarget(null)
+  }
+
+  const toggleArchivedThreads = (channelId: string) => {
+    setExpandedArchivedThreads((current) => {
+      const next = new Set(current)
+      if (next.has(channelId)) next.delete(channelId)
+      else next.add(channelId)
       return next
     })
     setRowActionTarget(null)
@@ -382,6 +408,21 @@ export default function ChatsScreen() {
         },
       },
     ])
+  }
+
+  const setChannelArchived = (channel: WorkspaceChannelDto, archived: boolean) => {
+    if (setChannelArchivedMutation.isPending) return
+    setRowActionTarget(null)
+    setChannelArchivedMutation.mutate(
+      { channelId: channel.id, archived },
+      {
+        onError: (mutationError) =>
+          Alert.alert(
+            t('Could not update the archive'),
+            mutationError instanceof Error ? mutationError.message : t('Please try again.'),
+          ),
+      },
+    )
   }
 
   const setMilestoneCompleted = (channel: ProjectChannelDto, completed: boolean) => {
@@ -567,11 +608,7 @@ export default function ChatsScreen() {
               <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    showArchivedProjects
-                      ? t('Hide archived projects')
-                      : t('Show archived projects')
-                  }
+                  accessibilityLabel={t('Archived projects')}
                   accessibilityState={{ expanded: showArchivedProjects }}
                   onPress={() => setShowArchivedProjects((current) => !current)}
                   style={styles.collapsibleHeading}
@@ -581,7 +618,7 @@ export default function ChatsScreen() {
                     size={14}
                     color={palette.text4}
                   />
-                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>{t('Archived')}</Text>
+                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>{t('Archived projects')}</Text>
                   <Text style={[styles.sectionCount, { color: palette.text4 }]}>
                     {archivedProjects.length}
                   </Text>
@@ -593,26 +630,73 @@ export default function ChatsScreen() {
               </>
             )}
             <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Channels')}</Text>
-            {workspaceChannelGroups.map(({ channel, threads }) => (
+            {workspaceChannelGroups.map(({ channel, threads, archivedThreads }) => (
               <React.Fragment key={channel.id}>
                 <WorkspaceChannelItem
                   channel={channel}
-                  {...(canManageChildChats
-                    ? { onOpenActions: () => setRowActionTarget({ type: 'workspace', channel }) }
+                  // ゲストも親チャンネルのメニューからアーカイブ済みスレッドを開閉できるようにする（管理操作はメニュー側で出し分ける）
+                  {...(canManageChildChats || archivedThreads.length > 0
+                    ? {
+                        onOpenActions: () =>
+                          setRowActionTarget({
+                            type: 'workspace',
+                            channel,
+                            archivedThreadCount: archivedThreads.length,
+                          }),
+                      }
                     : {})}
                 />
-                {threads.map((thread) => (
-                  <WorkspaceChannelItem
-                    key={thread.id}
-                    channel={thread}
-                    thread
-                    {...(canManageChildChats
-                      ? { onOpenActions: () => setRowActionTarget({ type: 'workspace', channel: thread }) }
-                      : {})}
-                  />
-                ))}
+                {[...threads, ...(expandedArchivedThreads.has(channel.id) ? archivedThreads : [])].map(
+                  (thread) => (
+                    <WorkspaceChannelItem
+                      key={thread.id}
+                      channel={thread}
+                      thread
+                      {...(canManageChildChats
+                        ? {
+                            onOpenActions: () =>
+                              setRowActionTarget({ type: 'workspace', channel: thread, archivedThreadCount: 0 }),
+                          }
+                        : {})}
+                    />
+                  ),
+                )}
               </React.Fragment>
             ))}
+            {archivedChannels.length > 0 && (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Archived channels')}
+                  accessibilityState={{ expanded: showArchivedChannels }}
+                  onPress={() => setShowArchivedChannels((current) => !current)}
+                  style={styles.collapsibleHeading}
+                >
+                  <Ionicons
+                    name={showArchivedChannels ? 'chevron-down' : 'chevron-forward'}
+                    size={14}
+                    color={palette.text4}
+                  />
+                  <Text style={[styles.sectionTitleText, { color: palette.text4 }]}>{t('Archived channels')}</Text>
+                  <Text style={[styles.sectionCount, { color: palette.text4 }]}>
+                    {archivedChannels.length}
+                  </Text>
+                </Pressable>
+                {showArchivedChannels &&
+                  archivedChannels.map((channel) => (
+                    <WorkspaceChannelItem
+                      key={channel.id}
+                      channel={channel}
+                      {...(canManageChildChats
+                        ? {
+                            onOpenActions: () =>
+                              setRowActionTarget({ type: 'workspace', channel, archivedThreadCount: 0 }),
+                          }
+                        : {})}
+                    />
+                  ))}
+              </>
+            )}
             {FEATURE_FLAGS.dm && (
               <>
                 <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Direct messages')}</Text>
@@ -1087,7 +1171,7 @@ export default function ChatsScreen() {
           )}
           {rowActionTarget?.type === 'workspace' && (
             <>
-              {rowActionTarget.channel.parentChannelId == null && (
+              {canManageChildChats && rowActionTarget.channel.parentChannelId == null && rowActionTarget.channel.archived !== true && (
                 <ActionSheetButton
                   icon="chatbubble-ellipses-outline"
                   label={t('Create thread')}
@@ -1101,13 +1185,37 @@ export default function ChatsScreen() {
                   }}
                 />
               )}
-              {(rowActionTarget.channel.parentChannelId != null || canCreateAdminResources) && (
+              {rowActionTarget.archivedThreadCount > 0 && (
+                <ActionSheetButton
+                  icon={
+                    expandedArchivedThreads.has(rowActionTarget.channel.id)
+                      ? 'eye-off-outline'
+                      : 'eye-outline'
+                  }
+                  label={t('Archived threads: {state}', {
+                    state: expandedArchivedThreads.has(rowActionTarget.channel.id)
+                      ? t('Hide')
+                      : t('Show'),
+                  })}
+                  palette={palette}
+                  onPress={() => toggleArchivedThreads(rowActionTarget.channel.id)}
+                />
+              )}
+              {canManageChildChats && (rowActionTarget.channel.parentChannelId != null || canCreateAdminResources) && (
                 <>
                   <ActionSheetButton
                     icon="create-outline"
                     label={t('Rename')}
                     palette={palette}
                     onPress={() => openRenameChannel(rowActionTarget.channel)}
+                  />
+                  <ActionSheetButton
+                    icon={rowActionTarget.channel.archived ? 'refresh-outline' : 'archive-outline'}
+                    label={rowActionTarget.channel.archived ? t('Unarchive') : t('Archive')}
+                    palette={palette}
+                    onPress={() =>
+                      setChannelArchived(rowActionTarget.channel, rowActionTarget.channel.archived !== true)
+                    }
                   />
                   <ActionSheetButton
                     icon="trash-outline"

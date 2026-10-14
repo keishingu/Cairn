@@ -242,4 +242,29 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
     expect(await res.text()).toBe('line 1\nline 2')
   })
+
+  it('Officeファイルはスマホで真っ白にならないよう attachment で返し、日本語名を filename* で渡す', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'workspace-1/channel-1/file.xlsx',
+      fileName: '見積(案).xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="__(_).xlsx"; filename*=UTF-8''%E8%A6%8B%E7%A9%8D%28%E6%A1%88%29.xlsx`,
+    )
+  })
+
+  it('PDFはブラウザで表示できるため inline で返す', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `inline; filename="file.pdf"; filename*=UTF-8''file.pdf`,
+    )
+  })
 })

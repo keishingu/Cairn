@@ -1,4 +1,5 @@
 import type { Router } from 'expo-router'
+import { apiFetch } from './api-fetch'
 import { loadChannelLists, type ChannelLists } from './channel-list-queries'
 import { resolveChannelOpenParams } from './channel-open-params'
 import { decideWorkspaceSwitch } from './notification-workspace'
@@ -68,21 +69,61 @@ async function prepareWorkspace(workspaceId: string | undefined): Promise<boolea
   return true
 }
 
+type MessageLocation =
+  | { kind: 'found'; channelId: string }
+  | { kind: 'missing' }
+  | { kind: 'failed' }
+
+// Push の送信後にメッセージがスレッドへ切り出されていても移動先を開く。
+// 見つからない（削除済み・閲覧不可）ときも、確認に失敗したときも、古い宛先のチャンネルは開かない。
+// 移動済みなら無関係な会話を黙って見せることになるため、呼び出し側でエラーを表示して遷移しない。
+async function currentChannelOfMessage(
+  destination: Extract<NotificationDestination, { kind: 'channel' }>,
+): Promise<MessageLocation> {
+  if (!destination.messageId) return { kind: 'found', channelId: destination.channelId }
+  try {
+    const res = await apiFetch(`/api/messages/${encodeURIComponent(destination.messageId)}/location`)
+    if (res.status === 404) return { kind: 'missing' }
+    if (!res.ok) {
+      console.warn('[notification] メッセージの移動先を確認できませんでした', res.status)
+      return { kind: 'failed' }
+    }
+    const body = (await res.json()) as { channelId?: unknown }
+    if (typeof body.channelId === 'string' && body.channelId) return { kind: 'found', channelId: body.channelId }
+    console.warn('[notification] メッセージの移動先の応答が不正です')
+    return { kind: 'failed' }
+  } catch (error) {
+    console.warn('[notification] メッセージの移動先を確認できませんでした', error)
+    return { kind: 'failed' }
+  }
+}
+
 async function openNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
   workspaceId: string | undefined,
   t: Translate,
+  onUnavailable: (message: string) => void,
 ): Promise<void> {
   try {
     const ready = await prepareWorkspace(workspaceId)
     if (!ready) return
 
     if (destination.kind === 'channel') {
+      const location = await currentChannelOfMessage(destination)
+      if (location.kind === 'missing') {
+        onUnavailable(t('The message could not be found. It may have been deleted, or you may not have access.'))
+        return
+      }
+      if (location.kind === 'failed') {
+        onUnavailable(t('Could not open the notification. Try again.'))
+        return
+      }
+      const channelId = location.channelId
       const lists = await loadChannelLists(queryClient)
       router.push({
         pathname: '/chats/[channelId]',
-        params: channelRouteParams(destination.channelId, lists, t),
+        params: channelRouteParams(channelId, lists, t),
       })
       return
     }
@@ -97,10 +138,10 @@ let notificationNavigation: Promise<void> = Promise.resolve()
 export function followNotification(
   router: Pick<Router, 'push'>,
   destination: NotificationDestination,
-  options: { workspaceId?: string; t: Translate },
+  options: { workspaceId?: string; t: Translate; onUnavailable: (message: string) => void },
 ): Promise<void> {
   const navigation = notificationNavigation.then(() =>
-    openNotification(router, destination, options.workspaceId, options.t),
+    openNotification(router, destination, options.workspaceId, options.t, options.onUnavailable),
   )
   notificationNavigation = navigation.then(
     () => undefined,

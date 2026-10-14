@@ -16,7 +16,7 @@ import {
   parseNativeHeaderDescriptor,
   type NativeHeaderDescriptor,
 } from '../lib/native-header-bridge'
-import { decideWebViewNavigation, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
+import { decideWebViewNavigation, messageTargetChatPath, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
 import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
   finishNativeAccountDeletion,
@@ -308,6 +308,12 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       isAndroid: Platform.OS === 'android',
     })
     if (decision === 'open-native-chat') {
+      // タスクの出典メッセージなど特定メッセージへのリンクは、位置を保てるチャット補助画面（WebView）で開く
+      const messagePath = messageTargetChatPath(request.url, trustedOrigin)
+      if (messagePath) {
+        router.push({ pathname: '/(app)/chat-tools', params: { path: messagePath, title: t('Chats') } })
+        return false
+      }
       router.push('/(app)/chats')
       return false
     }

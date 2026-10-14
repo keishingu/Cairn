@@ -1,4 +1,6 @@
 import React from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +32,7 @@ import {
   useDeleteMessage,
   useEditMessage,
   useMessages,
+  useMoveMessagesToThread,
   useToggleMessageBookmark,
   useToggleMessageReaction,
 } from '../../../hooks/use-messages'
@@ -41,10 +44,12 @@ import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
+import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
+import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, openChannelDisappeared } from '@cairn/shared'
+import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -70,8 +75,11 @@ import {
   useWorkspaceMembers,
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
+import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
+import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
 import { UserAvatar } from '../../../components/user-avatar'
+import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -186,6 +194,8 @@ function ChatMessageRow({
   onLinkPress,
   onOpenActions,
   onOpenPreview,
+  onOpenTask,
+  onShowTasks,
 }: {
   message: MessageDto
   palette: Palette
@@ -196,6 +206,8 @@ function ChatMessageRow({
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+  onOpenTask: (taskId: string) => void
+  onShowTasks: (tasks: MessageDto['linkedTasks']) => void
 }) {
   const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
@@ -204,6 +216,13 @@ function ChatMessageRow({
     configuredLegacyRole: message.senderProjectRoleLegacy,
   })
   const projectRoleColor = message.senderProjectRoleName ? message.senderProjectRoleColor : null
+  // 行末に「✓ タスク」ラベルを出せたタスクは下部のチップから除く（行に対応しない分・ブロック中の本文は従来どおりチップで示す）
+  const chipTasks = React.useMemo(() => {
+    if (message.linkedTasks.length === 0) return message.linkedTasks
+    if (message.blocked || message.content.length === 0) return message.linkedTasks
+    const { placed } = insertLineTaskMarkers(message.content, message.linkedTasks)
+    return message.linkedTasks.filter((_, index) => !placed[index])
+  }, [message.linkedTasks, message.content, message.blocked])
 
   if (message.messageType === 'system') {
     return (
@@ -291,6 +310,8 @@ function ChatMessageRow({
                 content={message.content}
                 palette={palette}
                 onLinkPress={onLinkPress}
+                lineTasks={message.linkedTasks}
+                onTaskPress={onOpenTask}
                 onLongPress={() => onOpenActions(message)}
               />
             )
@@ -315,6 +336,37 @@ function ChatMessageRow({
             </View>
           )}
         </Pressable>
+
+        {chipTasks.length > 0 && (() => {
+          const tasks = chipTasks
+          const doneCount = tasks.filter((task) => task.status === 'done').length
+          const allDone = doneCount === tasks.length
+          const single = tasks.length === 1 ? tasks[0] : undefined
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={single ? t('Open task') : t('Show tasks')}
+              onPress={() => (single ? onOpenTask(single.id) : onShowTasks(tasks))}
+              style={({ pressed }) => [
+                styles.taskChip,
+                {
+                  backgroundColor: allDone ? palette.card2 : palette.accentSoft,
+                  borderColor: allDone ? palette.border : palette.accent,
+                  opacity: pressed ? 0.7 : allDone ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={allDone ? 'checkbox' : 'checkbox-outline'}
+                size={13}
+                color={allDone ? palette.text3 : palette.accentText}
+              />
+              <Text style={[styles.reactionText, { color: allDone ? palette.text3 : palette.accentText }]}>
+                {single ? t('Task') : t('Task {done}/{total}', { done: doneCount, total: tasks.length })}
+              </Text>
+            </Pressable>
+          )
+        })()}
 
         {message.reactions.length > 0 && (
           <View style={styles.reactions}>
@@ -482,6 +534,7 @@ export default function ChatThreadScreen() {
     isPrivate?: string
   }>()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
@@ -491,6 +544,7 @@ export default function ChatThreadScreen() {
   const editMessage = useEditMessage(channelId ?? '')
   const deleteMessage = useDeleteMessage(channelId ?? '')
   const toggleBookmark = useToggleMessageBookmark(channelId ?? '')
+  const moveToThread = useMoveMessagesToThread(channelId ?? '')
   const upload = useAttachmentUpload(channelId ?? '')
   const { data: me } = useMe()
   const projectChannelsQuery = useProjectChannels()
@@ -516,12 +570,23 @@ export default function ChatThreadScreen() {
   const session = useSession()
   const offlineQueue = useOfflineMessageQueue()
   const [draft, setDraft] = React.useState('')
+  const [sendOnEnter, setSendOnEnter] = React.useState(false)
+  const [sendKeyPreferenceLoaded, setSendKeyPreferenceLoaded] = React.useState(false)
+  const [sendKeyPreferenceSaving, setSendKeyPreferenceSaving] = React.useState(false)
+  const [sendKeyPreferenceError, setSendKeyPreferenceError] = React.useState<string | null>(null)
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
+  // 「スレッドに切り出す」シートの起点メッセージ
+  const [moveTarget, setMoveTarget] = React.useState<MessageDto | null>(null)
+  const [moveError, setMoveError] = React.useState<string | null>(null)
+  const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
+  // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
+  const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
+  const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
     messageId: string
@@ -533,6 +598,38 @@ export default function ChatThreadScreen() {
     ? attachmentViewer(attachmentPreview.mimeType, attachmentPreview.fileName, Platform.OS)
     : null
   const [selection, setSelection] = React.useState({ start: 0, end: 0 })
+  const translateRef = React.useRef(t)
+  translateRef.current = t
+
+  React.useEffect(() => {
+    let isMounted = true
+    void loadChatSendOnEnter(AsyncStorage)
+      .then((saved) => {
+        if (isMounted) setSendOnEnter(saved)
+      })
+      .catch(() => {
+        if (isMounted) setSendKeyPreferenceError(translateRef.current('Could not read the chat input preference on this device.'))
+      })
+      .finally(() => {
+        if (isMounted) setSendKeyPreferenceLoaded(true)
+      })
+    return () => { isMounted = false }
+  }, [])
+
+  const toggleSendOnEnter = async () => {
+    if (!sendKeyPreferenceLoaded || sendKeyPreferenceSaving) return
+    const next = !sendOnEnter
+    setSendKeyPreferenceSaving(true)
+    try {
+      await saveChatSendOnEnter(next, AsyncStorage)
+      setSendOnEnter(next)
+      setSendKeyPreferenceError(null)
+    } catch {
+      setSendKeyPreferenceError(t('Could not save the chat input preference on this device.'))
+    } finally {
+      setSendKeyPreferenceSaving(false)
+    }
+  }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
   const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
@@ -895,6 +992,79 @@ export default function ChatThreadScreen() {
     })
   }
 
+  const openTask = (taskId: string) => {
+    // 同じタスクを続けて開いても WebView が再遷移するよう、開くたびに異なる open を付ける
+    router.push({ pathname: '/(app)/tasks', params: { taskId, open: String(Date.now()) } })
+  }
+
+  // 選んだ行（line）を編集後のタスク名（title）でタスクにする。成功したら true。失敗は sendError に出す。
+  const createTasks = async (messageId: string, items: MessageTaskSubmitItem[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setTaskPickerError : setSendError
+    setSendError(null)
+    setTaskPickerError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${messageId}/task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        tasks?: { id: string }[]
+        createdCount?: number
+      }
+      if (!response.ok || !data.tasks?.length || typeof data.createdCount !== 'number') {
+        reportError(messageTaskErrorMessage(data, t('Could not make a task from this message')))
+        return false
+      }
+      // タスク化済みの印（チップ）を出すため、そのチャンネルのメッセージを取り直す
+      void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      const only = data.tasks.length === 1 ? data.tasks[0] : undefined
+      const title =
+        data.createdCount === 0
+          ? t('This message is already a task')
+          : data.createdCount === 1
+            ? t('Added to tasks')
+            : t('Added {count} tasks', { count: data.createdCount })
+      Alert.alert(title, undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => (only ? openTask(only.id) : router.push('/(app)/tasks')) },
+      ])
+      return true
+    } catch {
+      reportError(t('Could not make a task from this message'))
+      return false
+    }
+  }
+
+  const makeTask = async (message: MessageDto) => {
+    setActionTarget(null)
+    setSendError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/task`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string; candidates?: MessageTaskCandidate[] }
+      if (!response.ok || !Array.isArray(data.candidates)) {
+        setSendError(data.error ?? t('Could not make a task from this message'))
+        return
+      }
+      const candidates = data.candidates
+      const open = candidates.filter((candidate) => !candidate.taskId)
+      if (candidates.length === 0) {
+        setSendError(t('This message has no text to make a task from'))
+      } else if (open.length === 0) {
+        Alert.alert(t('All lines of this message are already tasks'))
+      } else if (candidates.length === 1 && open[0]) {
+        await createTasks(message.id, [{ line: open[0].line, title: open[0].title }])
+      } else {
+        setTaskPickerError(null)
+        setTaskPicker({ messageId: message.id, candidates })
+      }
+    } catch {
+      setSendError(t('Could not make a task from this message'))
+    }
+  }
+
   const report = async (
     message: MessageDto,
     reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other',
@@ -1221,6 +1391,8 @@ export default function ChatThreadScreen() {
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
                     onOpenPreview={setAttachmentPreview}
+                    onOpenTask={openTask}
+                    onShowTasks={setLinkedTasksSheet}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1271,6 +1443,9 @@ export default function ChatThreadScreen() {
           >
             {sendError && (
               <Text style={[styles.sendError, { color: palette.redText }]}>{sendError}</Text>
+            )}
+            {sendKeyPreferenceError && (
+              <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>{sendKeyPreferenceError}</Text>
             )}
             {offlineQueue.restoreError && (
               <View style={styles.queueRestoreError} accessibilityRole="alert">
@@ -1342,6 +1517,21 @@ export default function ChatThreadScreen() {
                   <Ionicons name="attach-outline" size={15} color={palette.text3} />
                   <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
                 </Pressable>
+                <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityLabel={t('Enter to send')}
+                    accessibilityState={{ checked: sendOnEnter, disabled: !sendKeyPreferenceLoaded || sendKeyPreferenceSaving }}
+                    disabled={!sendKeyPreferenceLoaded || sendKeyPreferenceSaving}
+                    onPress={() => void toggleSendOnEnter()}
+                    style={{ minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: sendKeyPreferenceLoaded ? 1 : 0.5 }}
+                  >
+                    <View style={{ width: 28, height: 16, borderRadius: 10, padding: 2, backgroundColor: sendOnEnter ? palette.accent : palette.border, alignItems: sendOnEnter ? 'flex-end' : 'flex-start', justifyContent: 'center' }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: palette.card }} />
+                    </View>
+                    <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Enter to send')}</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
             {upload.uploads.length > 0 && !editingMessage && (
@@ -1459,6 +1649,11 @@ export default function ChatThreadScreen() {
               <TextInput
                 accessibilityLabel={t('Enter a message')}
                 style={[styles.input, { color: palette.text }]}
+                submitBehavior={chatInputSubmitBehavior(sendOnEnter, !!editingMessage)}
+                returnKeyType={sendOnEnter && !editingMessage ? 'send' : 'default'}
+                onSubmitEditing={() => {
+                  if (sendOnEnter && !editingMessage) void handleSend()
+                }}
                 selection={selection}
                 onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
                 onChangeText={(value) => {
@@ -1584,6 +1779,12 @@ export default function ChatThreadScreen() {
               onPress={() => actionTarget && handleBookmark(actionTarget)}
             />
             <ActionButton
+              icon="checkbox-outline"
+              label={t('Make a task')}
+              palette={palette}
+              onPress={() => actionTarget && void makeTask(actionTarget)}
+            />
+            <ActionButton
               icon="happy-outline"
               label={t('Add reaction')}
               palette={palette}
@@ -1598,6 +1799,24 @@ export default function ChatThreadScreen() {
               palette={palette}
               onPress={() => actionTarget && void shareMessage(actionTarget)}
             />
+            {actionTarget &&
+              canMoveMessageToThread({
+                channelType,
+                workspaceChannel,
+                role: me?.wsRole,
+                messageType: actionTarget.messageType,
+              }) && (
+                <ActionButton
+                  icon="arrow-redo-outline"
+                  label={t('Move to thread')}
+                  palette={palette}
+                  onPress={() => {
+                    setMoveError(null)
+                    setMoveTarget(actionTarget)
+                    setActionTarget(null)
+                  }}
+                />
+              )}
             {actionTarget?.senderId === me?.id && (
               <>
                 <ActionButton
@@ -1617,6 +1836,36 @@ export default function ChatThreadScreen() {
             )}
           </View>
         </Modal>
+
+        <MoveToThreadSheet
+          message={moveTarget}
+          threads={(workspaceChannelsQuery.data ?? []).filter(
+            (candidate) => candidate.parentChannelId === channelId && !candidate.archived,
+          )}
+          palette={palette}
+          pending={moveToThread.isPending}
+          error={moveError}
+          onClose={() => setMoveTarget(null)}
+          onSubmit={(body) => {
+            moveToThread.mutate(body, {
+              onSuccess: ({ threadId }) => {
+                const existing = workspaceChannelsQuery.data?.find((candidate) => candidate.id === threadId)
+                setMoveTarget(null)
+                router.push({
+                  pathname: '/chats/[channelId]',
+                  params: {
+                    channelId: threadId,
+                    channelName: body.threadName ?? existing?.name ?? t('Channels'),
+                    channelType: 'workspace',
+                    isPrivate: workspaceChannel?.isPrivate ? '1' : '0',
+                  },
+                })
+              },
+              onError: (error) =>
+                setMoveError(error instanceof Error ? error.message : t('Could not move the messages to a thread')),
+            })
+          }}
+        />
 
         <Modal
           transparent
@@ -1701,6 +1950,25 @@ export default function ChatThreadScreen() {
             </ScrollView>
           </View>
         </Modal>
+        <MessageTaskPickerModal
+          candidates={taskPicker?.candidates ?? null}
+          palette={palette}
+          onSubmit={(items) => (taskPicker ? createTasks(taskPicker.messageId, items, true) : Promise.resolve(false))}
+          error={taskPickerError}
+          onClose={() => {
+            setTaskPicker(null)
+            setTaskPickerError(null)
+          }}
+        />
+        <LinkedTasksModal
+          tasks={linkedTasksSheet}
+          palette={palette}
+          onSelect={(taskId) => {
+            setLinkedTasksSheet(null)
+            openTask(taskId)
+          }}
+          onClose={() => setLinkedTasksSheet(null)}
+        />
         {attachmentPreview && session?.access_token && (
           previewViewer === 'pdf' ? (
             <ChatPdfViewer
@@ -1833,6 +2101,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 7,
+  },
+  taskChip: {
+    alignSelf: 'flex-start',
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    marginTop: 6,
   },
   reactionText: { fontSize: 11, fontWeight: '600' },
   reactionPerson: {

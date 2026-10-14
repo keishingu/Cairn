@@ -3,8 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { generateId } from '@/lib/generate-id'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
-import type { AttachmentDto } from '@cairn/shared'
+import type { AttachmentDto, MoveToThreadBody, MoveToThreadResult } from '@cairn/shared'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -114,6 +113,19 @@ async function renameWorkspaceChannel(channelId: string, name: string): Promise<
   return res.json()
 }
 
+async function setWorkspaceChannelArchived(channelId: string, archived: boolean): Promise<{ id: string; archived: boolean }> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'アーカイブの変更に失敗しました')
+  }
+  return res.json()
+}
+
 async function deleteWorkspaceChannel(channelId: string): Promise<void> {
   const res = await fetchWithAuth(`/api/channels/${channelId}`, { method: 'DELETE' })
   if (!res.ok) {
@@ -133,6 +145,27 @@ async function createChannelThread(channelId: string, name: string): Promise<{ i
     throw new Error(data.error ?? 'スレッドの作成に失敗しました')
   }
   return res.json()
+}
+
+async function moveMessagesToThread(channelId: string, body: MoveToThreadBody): Promise<MoveToThreadResult> {
+  const res = await fetchWithAuth(`/api/channels/${channelId}/move-to-thread`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? 'スレッドへの切り出しに失敗しました')
+  }
+  return res.json()
+}
+
+/** メッセージが今あるチャンネルを返す。見つからない・閲覧できない場合は null（理由は区別しない）。 */
+export async function fetchMessageChannelId(messageId: string): Promise<string | null> {
+  const res = await fetchWithAuth(`/api/messages/${encodeURIComponent(messageId)}/location`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error('メッセージの場所の取得に失敗しました')
+  return (await res.json() as { channelId: string }).channelId
 }
 
 async function createDm(targetUserId: string): Promise<{ id: string }> {
@@ -324,6 +357,18 @@ export function useRenameWorkspaceChannel() {
   })
 }
 
+export function useSetWorkspaceChannelArchived() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, archived }: { channelId: string; archived: boolean }) => setWorkspaceChannelArchived(channelId, archived),
+    onSuccess: updated => {
+      queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
+        current?.map(channel => channel.id === updated.id ? { ...channel, archived: updated.archived } : channel),
+      )
+    },
+  })
+}
+
 export function useDeleteWorkspaceChannel() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -344,6 +389,21 @@ export function useCreateChannelThread() {
     mutationFn: ({ channelId, name }: { channelId: string; name: string }) => createChannelThread(channelId, name),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceChannels })
+    },
+  })
+}
+
+export function useMoveMessagesToThread() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ channelId, body }: { channelId: string; body: MoveToThreadBody }) => moveMessagesToThread(channelId, body),
+    onSuccess: () => {
+      // 一覧（新規スレッド・未読数）と、元・移動先の両方のメッセージを取り直す。Realtime も同じ範囲を無効化する。
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceChannels })
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messagesRoot })
+      void queryClient.invalidateQueries({ queryKey: ['message-history'] })
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
 }
@@ -480,6 +540,7 @@ export function useSendChannelMessage(
           parentMessageId: input.parentMessageId ?? null,
           replyTo: input.optimisticReplyTo ?? null,
           bookmarked: false,
+          linkedTasks: [],
         }
         queryClient.setQueryData<MessageDto[]>(
           chatQueryKeys.messages(channelId),
@@ -510,9 +571,6 @@ export function useSendChannelMessage(
       )
       if ((input.optimisticAttachments?.length ?? 0) > 0) {
         void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
-      }
-      if (parseCheckboxes(input.content).length > 0) {
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       }
     },
   })
@@ -555,7 +613,6 @@ export function useEditMessage(channelId: string | null) {
         chatQueryKeys.messages(channelId),
         (old) => (old ?? []).map((m) => m.id === updated.id ? { ...m, content: updated.content, isEdited: true } : m),
       )
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
     onError: (_err, _vars, context) => {
       if (context?.prev !== undefined) {

@@ -7,13 +7,25 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
+import Link from 'next/link'
+import { insertLineTaskMarkers, LINE_TASK_MARKER_CLOSE, LINE_TASK_MARKER_OPEN, removeLineTaskMarkers } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
+import { Icon } from './primitives'
 import { MermaidDiagram } from './mermaid-diagram'
 
 type TranslateFn = (message: string, values?: Record<string, string | number>) => string
 
+/** 行末に「✓ タスク」ラベルを出すタスク。lineIndex は本文を `\n` で分けた元の行番号（0始まり） */
+export interface LineTask {
+  id: string
+  status: 'todo' | 'in_progress' | 'done'
+  lineIndex: number | null
+}
+
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
+// 行末ラベルの目印（insertLineTaskMarkers が差し込む）
+const LINE_TASK_MARKER_RE = `${LINE_TASK_MARKER_OPEN}(\\d+)${LINE_TASK_MARKER_CLOSE}`
 const URL_RE = /https?:\/\/[^\s<>"']+/g
 // AI の過去回答に Markdown 化されず残っている内部パスも遷移可能にする。
 // 対象はアプリが evidence.href として返す画面・添付ファイルのパスに限定する。
@@ -37,15 +49,50 @@ function isInternalHref(href: string | undefined): boolean {
   return href?.startsWith('/') === true && !href.startsWith('//')
 }
 
-function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>): React.ReactNode {
+// タスク化した行の行末ラベル。未完了はアクセント色、完了は薄い色＋チェック塗り。押すとタスク画面を開く
+function LineTaskLabel({ task, t }: { task: LineTask; t: TranslateFn }) {
+  const done = task.status === 'done'
+  return (
+    <Link
+      href={`/tasks?taskId=${encodeURIComponent(task.id)}`}
+      data-testid="line-task-label"
+      data-task-status={task.status}
+      title={t('Open task')}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 2, padding: '0 6px',
+        borderRadius: 10, fontSize: '0.8em', fontWeight: 600, lineHeight: 1.5, textDecoration: 'none',
+        verticalAlign: 'baseline', whiteSpace: 'nowrap',
+        background: done ? 'var(--card-2)' : 'var(--accent-soft)',
+        border: `1px solid ${done ? 'var(--border)' : 'var(--accent-border)'}`,
+        color: done ? 'var(--text-3)' : 'var(--accent-text)',
+        opacity: done ? 0.75 : 1,
+      }}
+    >
+      {done ? (
+        <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 11, height: 11, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--card)' }}>
+          <Icon name="check" size={8}/>
+        </span>
+      ) : (
+        <Icon name="check" size={11}/>
+      )}
+      {t('Task')}
+    </Link>
+  )
+}
+
+function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[]): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${INTERNAL_HREF_RE.source}`, 'g')
+  // 取り出す添字: mention は 1・2、行末ラベルの目印は 3
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${INTERNAL_HREF_RE.source}|${LINE_TASK_MARKER_RE}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
-    if (token.startsWith('<@')) {
+    if (token.startsWith(LINE_TASK_MARKER_OPEN)) {
+      const task = lineTasks?.[Number(match[3])]
+      if (task) nodes.push(<LineTaskLabel key={match.index} task={task} t={t}/>)
+    } else if (token.startsWith('<@')) {
       // 現在の表示名を優先し、無ければ旧データの埋め込み名、それも無ければフォールバック
       const mentionedId = match[1]!
       const embeddedName = match[2]
@@ -74,12 +121,12 @@ function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<strin
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children, t, mentionNames)
+function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[]): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, t, mentionNames, lineTasks)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child, t, mentionNames)
+        const processed = renderInlineText(child, t, mentionNames, lineTasks)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -101,6 +148,8 @@ interface MarkdownContentProps {
   fontSize?: number
   lineHeight?: number
   mentionNames?: Map<string, string> | undefined
+  /** タスク化した行の行末に「✓ タスク」ラベルを出す。呼び出し側は安定参照で渡すこと */
+  lineTasks?: readonly LineTask[] | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
 }
 
@@ -109,8 +158,13 @@ interface MarkdownContentProps {
 // WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
 // props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
 // や mentionNames を安定参照で渡すこと）。
-export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle }: MarkdownContentProps) {
   const t = useT()
+  // 目印は描画用の派生文字列にだけ差し込む（呼び出し側の content、コピー・編集の対象には混ぜない）
+  const markedContent = React.useMemo(
+    () => insertLineTaskMarkers(content, lineTasks ?? []).text,
+    [content, lineTasks],
+  )
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
@@ -119,25 +173,28 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames, lineTasks)}</p>
         ),
         h1: ({ children }) => (
-          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h1>
+          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h1>
         ),
         h2: ({ children }) => (
-          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{children}</h2>
+          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h2>
         ),
         h3: ({ children }) => (
-          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{children}</h3>
+          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h3>
         ),
+        h4: ({ children }) => <h4>{processChildren(children, t, mentionNames, lineTasks)}</h4>,
+        h5: ({ children }) => <h5>{processChildren(children, t, mentionNames, lineTasks)}</h5>,
+        h6: ({ children }) => <h6>{processChildren(children, t, mentionNames, lineTasks)}</h6>,
         strong: ({ children }) => (
-          <strong style={{ fontWeight: 700 }}>{children}</strong>
+          <strong style={{ fontWeight: 700 }}>{processChildren(children, t, mentionNames, lineTasks)}</strong>
         ),
         em: ({ children }) => (
-          <em style={{ fontStyle: 'italic' }}>{children}</em>
+          <em style={{ fontStyle: 'italic' }}>{processChildren(children, t, mentionNames, lineTasks)}</em>
         ),
         del: ({ children }) => (
-          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{children}</del>
+          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{processChildren(children, t, mentionNames, lineTasks)}</del>
         ),
         ul: ({ children }) => (
           <ul style={{ paddingLeft: 20, margin: '2px 0 4px', listStyleType: 'disc' }}>{children}</ul>
@@ -152,7 +209,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children, t, mentionNames)}
+              {processChildren(children, t, mentionNames, lineTasks)}
             </li>
           )
         },
@@ -194,7 +251,9 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             </a>
           )
         },
-        code: ({ children, className }) => {
+        code: ({ children: rawChildren, className }) => {
+          // コードには行末ラベルを出さない。目印が紛れても表示に残さない
+          const children = typeof rawChildren === 'string' ? removeLineTaskMarkers(rawChildren) : rawChildren
           const isBlock = className?.startsWith('language-')
           if (isBlock) return <code className={className} style={{ fontSize: fontSize * 0.9, fontFamily: 'monospace' }}>{children}</code>
           return (
@@ -231,14 +290,14 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
           <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap', ...style }}>{children}</th>
         ),
         td: ({ children, style }) => (
-          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames)}</td>
+          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames, lineTasks)}</td>
         ),
         hr: () => (
           <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '8px 0' }} />
         ),
       }}
     >
-      {content}
+      {markedContent}
     </ReactMarkdown>
   )
 })

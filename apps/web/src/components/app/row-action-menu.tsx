@@ -8,6 +8,10 @@ export interface RowAction {
   icon: string
   label: string
   danger?: boolean
+  /** true なら label を翻訳せずそのまま出す（ユーザー入力の文字列用） */
+  verbatim?: boolean
+  /** ラベルの右に添える補足（状態など） */
+  hint?: string
   onSelect: () => void
 }
 
@@ -36,9 +40,11 @@ export function placeMenuVertically(
 
 // リスト行の「…」アクションメニュー。リスト系エンティティの編集・削除は
 // ホバー依存の小アイコンではなく、常時表示のこのメニューに統一する
-export const RowActionMenu = ({ actions, triggerStyle }: {
+export const RowActionMenu = ({ actions, triggerStyle, trigger }: {
   actions: RowAction[]
   triggerStyle?: React.CSSProperties
+  /** 「…」アイコンの代わりに出すトリガー（チップなど）。title / aria-label は label を使う */
+  trigger?: { label: string; content: React.ReactNode; testId?: string }
 }) => {
   const t = useT()
   const [open, setOpen] = React.useState(false)
@@ -101,14 +107,15 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
   }, [open, actions.length])
 
   // overflow を持つスクロールコンテナ内でも切れないよう fixed で配置する
-  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, overflowY: 'auto', scrollMarginTop: 'env(safe-area-inset-top)', scrollMarginBottom: 'env(safe-area-inset-bottom)' }
+  const menuStyle: React.CSSProperties = { position: 'fixed', ...position, zIndex: 'var(--z-popover)', minWidth: 120, maxWidth: 'calc(100vw - 16px)', overflowY: 'auto', scrollMarginTop: 'env(safe-area-inset-top)', scrollMarginBottom: 'env(safe-area-inset-bottom)' }
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <button
         ref={btnRef}
         type="button"
-        aria-label={t('Actions')}
+        aria-label={trigger?.label ?? t('Actions')}
+        data-testid={trigger?.testId}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={e => {
@@ -119,9 +126,9 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
           setOpen(p => !p)
         }}
         style={{ border: 'none', background: open ? 'var(--card-hover)' : 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: '3px 5px', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', ...triggerStyle }}
-        title={t('Actions')}
+        title={trigger?.label ?? t('Actions')}
       >
-        <Icon name="more" size={15}/>
+        {trigger ? trigger.content : <Icon name="more" size={15}/>}
       </button>
       {open && (
         <div
@@ -130,14 +137,16 @@ export const RowActionMenu = ({ actions, triggerStyle }: {
           onClick={e => e.stopPropagation()}
           style={{ ...menuStyle, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', padding: '4px 0' }}
         >
-          {actions.map(a => (
+          {actions.map((a, index) => (
             <button
-              key={a.label}
+              key={`${index}-${a.label}`}
               type="button"
               onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(false); btnRef.current?.focus(); a.onSelect() }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: a.danger ? 'var(--red-text)' : 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
             >
-              <Icon name={a.icon} size={13}/> {t(a.label)}
+              <Icon name={a.icon} size={13}/>
+              {a.verbatim ? <span style={{ display: 'block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.label}</span> : <span>{t(a.label)}</span>}
+              {a.hint && <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 11.5, color: 'var(--text-4)' }}>{a.hint}</span>}
             </button>
           ))}
         </div>

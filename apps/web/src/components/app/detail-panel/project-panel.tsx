@@ -134,7 +134,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
       case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
       case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
       case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
-      case 'tasks':    return <TasksTab project={project}/>
+      case 'tasks':    return <TasksTab project={project} isMobile={!!isMobile}/>
       case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
       case 'gallery':  return <GalleryTab projectId={project.id}/>
       default:         return null

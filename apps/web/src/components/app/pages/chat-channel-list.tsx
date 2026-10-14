@@ -4,8 +4,8 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
-import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
-import { STORAGE_KEYS, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
+import { Icon, Avatar, AvatarStack, UnreadBadge, portalHostFor } from '../primitives'
+import { STORAGE_KEYS, chatArchivedThreadsCollapsedKey, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -47,21 +47,26 @@ export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; 
 
 // ─── ChatSidebarCollapsibleSection ────────────────────────────────
 
-// アーカイブ済みプロジェクトなど、通常は隠しておきたいセクション。
-// 既定で折りたたみ、開閉状態は localStorage に保存する。
-const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS.chat_archived_collapsed, defaultCollapsed = true, children }: {
+// アーカイブ済みのプロジェクト・チャンネルなど、通常は隠しておきたいセクション。
+// 既定で折りたたみ、開閉状態は localStorage に保存する。開いている会話を含むときは展開して見失わせない。
+const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS.chat_archived_collapsed, defaultCollapsed = true, containsActiveChannel = false, children }: {
   title: string
   count: number
   storageKey?: string
   defaultCollapsed?: boolean
+  containsActiveChannel?: boolean
   children: React.ReactNode
 }) => {
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
 
   React.useEffect(() => {
+    if (containsActiveChannel) {
+      setCollapsed(false)
+      return
+    }
     const saved = localStorage.getItem(storageKey)
     if (saved !== null) setCollapsed(saved === 'true')
-  }, [storageKey])
+  }, [containsActiveChannel, storageKey])
 
   const toggle = () => setCollapsed(prev => {
     const next = !prev
@@ -365,6 +370,7 @@ function workspaceRowActions({
   canManageParent,
   onCreateThread,
   onRename,
+  onSetArchived,
   onDelete,
   t,
 }: {
@@ -373,6 +379,7 @@ function workspaceRowActions({
   canManageParent: boolean
   onCreateThread?: (target: { id: string; name: string }) => void
   onRename?: (target: WorkspaceChannelDto) => void
+  onSetArchived?: (target: WorkspaceChannelDto, archived: boolean) => void
   onDelete?: (target: WorkspaceChannelDto) => void
   t: TranslateFn
 }): SidebarMenuAction[] {
@@ -390,6 +397,14 @@ function workspaceRowActions({
         label: t('Rename'),
         icon: 'edit',
         onSelect: () => onRename(channel),
+      })
+    }
+    if (onSetArchived) {
+      actions.push({
+        label: channel.archived ? t('Unarchive') : t('Archive'),
+        icon: channel.archived ? 'refresh' : 'archive',
+        onSelect: () => onSetArchived(channel, !channel.archived),
+        restoreFocus: true,
       })
     }
     if (onDelete) {
@@ -532,22 +547,94 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
   const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  const didInitialFocus = React.useRef(false)
+  const [position, setPosition] = React.useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
+
+  React.useLayoutEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const anchor = ref.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const width = Math.max(0, Math.min(280, window.innerWidth - 16))
+      const below = Math.max(0, window.innerHeight - rect.bottom - 12)
+      const above = Math.max(0, rect.top - 12)
+      const openAbove = below < 240 && above > below
+      const maxHeight = Math.min(480, openAbove ? above : below)
+      const maxLeft = Math.max(0, window.innerWidth - width - 8)
+      setPosition({
+        left: Math.max(Math.min(8, maxLeft), Math.min(rect.right - width, maxLeft)),
+        width,
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        maxHeight,
+      })
+    }
+    const handleScroll = (event: Event) => {
+      if (!menuRef.current?.contains(event.target as Node)) updatePosition()
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [open])
 
   React.useEffect(() => {
+    if (!open) {
+      didInitialFocus.current = false
+      return
+    }
+    if (!position) return
+    const firstChoice = menuRef.current?.querySelector('button')
+    const isInitialFocus = !didInitialFocus.current
+    if (!isInitialFocus && document.activeElement !== menuRef.current) return
+    didInitialFocus.current = true
+    if (firstChoice) firstChoice.focus()
+    else if (isInitialFocus) menuRef.current?.focus()
+  }, [open, position, members.length])
+
+  React.useEffect(() => {
+    if (!open) return
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        menuRef.current && !menuRef.current.contains(e.target as Node)
+      ) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape') return
+      event.preventDefault()
+      if (menuRef.current?.contains(document.activeElement)) {
+        ref.current?.querySelector('button')?.focus()
+      }
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
+      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} aria-expanded={open} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
-      {open && (
-        <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', minWidth: 160, overflow: 'hidden' }}>
+      {open && portalHostFor(ref.current) && createPortal(
+        <div ref={menuRef} className="app" style={{
+          position: 'fixed', left: position?.left ?? 0,
+          ...(position?.bottom !== undefined ? { bottom: position.bottom } : { top: position?.top ?? 0 }),
+          width: position?.width ?? 0, boxSizing: 'border-box',
+          maxHeight: position?.maxHeight ?? 0, overflowY: 'auto',
+          visibility: position ? 'visible' : 'hidden',
+          background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)',
+        }} tabIndex={-1}>
           {members.map(m => (
             <button
               key={m.userId}
@@ -559,9 +646,82 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
-        </div>
+        </div>, portalHostFor(ref.current)!,
       )}
     </div>
+  )
+}
+
+const WorkspaceChannelGroup = ({ channel, threads, archivedThreads, channelId, onSelectChannel, isMobile, channelActions, threadActions }: {
+  channel: WorkspaceChannelDto
+  threads: WorkspaceChannelDto[]
+  archivedThreads: WorkspaceChannelDto[]
+  channelId: string | null
+  onSelectChannel: (id: string) => void
+  isMobile: boolean
+  channelActions: SidebarMenuAction[]
+  threadActions: (thread: WorkspaceChannelDto) => SidebarMenuAction[]
+}) => {
+  const t = useT()
+  const storageKey = chatArchivedThreadsCollapsedKey(channel.id)
+  const containsActiveChannel = archivedThreads.some(thread => thread.id === channelId)
+  const [collapsed, setCollapsed] = React.useState(true)
+
+  React.useEffect(() => {
+    if (containsActiveChannel) {
+      setCollapsed(false)
+      return
+    }
+    const saved = localStorage.getItem(storageKey)
+    if (saved !== null) setCollapsed(saved === 'true')
+  }, [containsActiveChannel, storageKey])
+
+  const toggle = () => setCollapsed(previous => {
+    const next = !previous
+    localStorage.setItem(storageKey, String(next))
+    return next
+  })
+
+  const actions = [...channelActions]
+  if (archivedThreads.length > 0) {
+    actions.push({
+      label: t('Archived threads: {state}', { state: collapsed ? t('Show') : t('Hide') }),
+      icon: collapsed ? 'eye' : 'eye-off',
+      onSelect: toggle,
+      restoreFocus: true,
+    })
+  }
+
+  return (
+    <>
+      <ChatSidebarItem
+        active={channelId === channel.id}
+        onClick={() => onSelectChannel(channel.id)}
+        prefix={channel.isPrivate ? 'lock' : '#'}
+        label={channel.name ?? ''}
+        badge={channel.unreadCount}
+        mobile={isMobile}
+        memberNames={channel.memberNames}
+        memberCount={channel.memberCount}
+        action={actions.length > 0 ? (
+          <SidebarCreateMenu
+            ownerLabel={channel.name ?? t('Untitled channel')}
+            actions={actions}
+            isMobile={isMobile}
+          />
+        ) : undefined}
+      />
+      {[...threads, ...(collapsed ? [] : archivedThreads)].map(thread => (
+        <WorkspaceThreadItem
+          key={thread.id}
+          channel={thread}
+          active={channelId === thread.id}
+          onSelectChannel={onSelectChannel}
+          isMobile={isMobile}
+          actions={threadActions(thread)}
+        />
+      ))}
+    </>
   )
 }
 
@@ -583,6 +743,7 @@ export interface ChannelListProps {
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
   onCreateThread?: (channel: { id: string; name: string }) => void
   onRenameWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
+  onSetWorkspaceChannelArchived?: (channel: WorkspaceChannelDto, archived: boolean) => void
   onDeleteWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
   canManageWorkspaceChannel?: boolean
 }
@@ -590,7 +751,7 @@ export interface ChannelListProps {
 export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onDeleteWorkspaceChannel,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
   canManageWorkspaceChannel = false,
 }: ChannelListProps) => {
   const t = useT()
@@ -606,12 +767,39 @@ export const ChannelList = ({
         completedMilestones: milestones.filter(c => c.milestoneCompleted === true),
       }
     })
-  const workspaceChannelGroups = workspaceChannels
-    .filter(channel => channel.parentChannelId === null)
-    .map(channel => ({
+  const parentWorkspaceChannels = workspaceChannels.filter(channel => channel.parentChannelId === null)
+  const activeParentChannels = parentWorkspaceChannels.filter(channel => !channel.archived)
+  const archivedParentChannels = parentWorkspaceChannels.filter(channel => channel.archived)
+  // アーカイブ済みチャンネルの配下スレッドはサイドバーに出さない（親と一緒にアーカイブ扱い）。
+  const workspaceChannelGroups = activeParentChannels.map(channel => {
+    const children = workspaceChannels.filter(candidate => candidate.parentChannelId === channel.id)
+    return {
       channel,
-      threads: workspaceChannels.filter(candidate => candidate.parentChannelId === channel.id),
-    }))
+      threads: children.filter(candidate => !candidate.archived),
+      archivedThreads: children.filter(candidate => candidate.archived),
+    }
+  })
+  const archivedProjectsContainActive = channelId !== null && archivedProjectChannels.some(c => c.channelId === channelId)
+  const archivedChannelsContainActive = channelId !== null && archivedParentChannels.some(c => c.id === channelId)
+  const parentChannelActions = (channel: WorkspaceChannelDto, withCreateThread: boolean) => workspaceRowActions({
+    channel,
+    isThread: false,
+    canManageParent: canManageWorkspaceChannel,
+    ...(withCreateThread && onCreateThread ? { onCreateThread } : {}),
+    ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+    ...(onSetWorkspaceChannelArchived ? { onSetArchived: onSetWorkspaceChannelArchived } : {}),
+    ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+    t,
+  })
+  const threadActions = (thread: WorkspaceChannelDto) => workspaceRowActions({
+    channel: thread,
+    isThread: true,
+    canManageParent: canManageWorkspaceChannel,
+    ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
+    ...(onSetWorkspaceChannelArchived ? { onSetArchived: onSetWorkspaceChannelArchived } : {}),
+    ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
+    t,
+  })
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
     <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})}>
@@ -631,63 +819,50 @@ export const ChannelList = ({
       ))}
     </ChatSidebarSection>
     {archivedProjectChannels.length > 0 && (
-      <ChatSidebarCollapsibleSection title={t('Archived')} count={archivedProjectChannels.length}>
+      <ChatSidebarCollapsibleSection title={t('Archived projects')} count={archivedProjectChannels.length} containsActiveChannel={archivedProjectsContainActive}>
         {archivedProjectChannels.map(c => (
           <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
         ))}
       </ChatSidebarCollapsibleSection>
     )}
     <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
-      {workspaceChannelGroups.map(({ channel, threads }) => {
-        const channelActions = workspaceRowActions({
-          channel,
-          isThread: false,
-          canManageParent: canManageWorkspaceChannel,
-          ...(onCreateThread ? { onCreateThread } : {}),
-          ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
-          ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
-          t,
-        })
-        return (
-        <React.Fragment key={channel.id}>
-          <ChatSidebarItem
-            active={channelId === channel.id}
-            onClick={() => onSelectChannel(channel.id)}
-            prefix={channel.isPrivate ? 'lock' : '#'}
-            label={channel.name ?? ''}
-            badge={channel.unreadCount}
-            mobile={isMobile}
-            memberNames={channel.memberNames}
-            memberCount={channel.memberCount}
-            action={channelActions.length > 0 ? (
-              <SidebarCreateMenu
-                ownerLabel={channel.name ?? t('Untitled channel')}
-                actions={channelActions}
-                isMobile={isMobile}
-              />
-            ) : undefined}
-          />
-          {threads.map(thread => (
-            <WorkspaceThreadItem
-              key={thread.id}
-              channel={thread}
-              active={channelId === thread.id}
-              onSelectChannel={onSelectChannel}
-              isMobile={isMobile}
-              actions={workspaceRowActions({
-                channel: thread,
-                isThread: true,
-                canManageParent: canManageWorkspaceChannel,
-                ...(onRenameWorkspaceChannel ? { onRename: onRenameWorkspaceChannel } : {}),
-                ...(onDeleteWorkspaceChannel ? { onDelete: onDeleteWorkspaceChannel } : {}),
-                t,
-              })}
-            />
-          ))}
-        </React.Fragment>
-        )
-      })}
+      {workspaceChannelGroups.map(({ channel, threads, archivedThreads }) => (
+        <WorkspaceChannelGroup
+          key={channel.id}
+          channel={channel}
+          threads={threads}
+          archivedThreads={archivedThreads}
+          channelId={channelId}
+          onSelectChannel={onSelectChannel}
+          isMobile={isMobile}
+          channelActions={parentChannelActions(channel, true)}
+          threadActions={threadActions}
+        />
+      ))}
     </ChatSidebarSection>
+    {archivedParentChannels.length > 0 && (
+      <ChatSidebarCollapsibleSection title={t('Archived channels')} count={archivedParentChannels.length} storageKey={STORAGE_KEYS.chat_archived_channels_collapsed} containsActiveChannel={archivedChannelsContainActive}>
+        {archivedParentChannels.map(channel => {
+          const actions = parentChannelActions(channel, false)
+          return (
+            <ChatSidebarItem
+              key={channel.id}
+              active={channelId === channel.id}
+              onClick={() => onSelectChannel(channel.id)}
+              prefix={channel.isPrivate ? 'lock' : '#'}
+              label={channel.name ?? ''}
+              badge={channel.unreadCount}
+              mobile={isMobile}
+              memberNames={channel.memberNames}
+              memberCount={channel.memberCount}
+              action={actions.length > 0 ? (
+                <SidebarCreateMenu ownerLabel={channel.name ?? t('Untitled channel')} actions={actions} isMobile={isMobile} />
+              ) : undefined}
+            />
+          )
+        })}
+      </ChatSidebarCollapsibleSection>
+    )}
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',

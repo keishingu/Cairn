@@ -66,6 +66,7 @@ function message(overrides: Partial<MessageDto> = {}): MessageDto {
     parentMessageId: null,
     replyTo: null,
     bookmarked: false,
+    linkedTasks: [],
     ...overrides,
   }
 }

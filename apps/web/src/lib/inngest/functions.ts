@@ -79,12 +79,44 @@ async function classifyPushRecipients<T extends { userId: string }>(
   }
 }
 
+type NotificationTx = Parameters<Parameters<typeof import('@cairn/db').db.transaction>[0]>[0]
+
+// 通知を書き込むトランザクションの中で、メッセージの今のチャンネルを行ロック付きで読む。
+// スレッドへの切り出し（messages の UPDATE）はこのロックの解放を待ってから通知を付け替えるため、
+// 書き込み中に移動されても、移動後に作られた通知が親チャンネルに取り残されない。
+async function lockMessageChannel(tx: NotificationTx, messageId: string): Promise<string> {
+  const { messages } = await import('@cairn/db')
+  const { eq } = await import('drizzle-orm')
+  const [row] = await tx
+    .select({ channelId: messages.channelId })
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .for('share')
+    .limit(1)
+  if (!row) throw new Error(`Message not found: ${messageId}`)
+  return row.channelId
+}
+
 export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
   async ({ event, step }) => {
-    const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
+    const { messageId, channelId: postedChannelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
+
+    // スレッドへの切り出しで、このジョブが走る前にメッセージが移動していることがある。
+    // 投稿時のチャンネルのまま通知を作ると遷移先とメンション未読数が親に残るため、今のチャンネルを読み直す。
+    const readCurrentChannel = async () => {
+      const { db, messages } = await import('@cairn/db')
+      const { eq } = await import('drizzle-orm')
+      const [row] = await db
+        .select({ channelId: messages.channelId })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1)
+      return row?.channelId ?? postedChannelId
+    }
+    const channelId = await step.run('resolve-current-channel', readCurrentChannel)
 
     // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
     // しないよう active_workspace_members に inner join して active のみに絞る
@@ -338,15 +370,10 @@ export const onMessageCreated = inngest.createFunction(
         const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
         const { and, eq, inArray, sql } = await import('drizzle-orm')
 
-        const [message] = await db
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.id, messageId))
-          .limit(1)
-        if (!message) throw new Error(`Message not found: ${messageId}`)
-
         const recipients = [...unblockedMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
         await db.transaction(async (tx) => {
+          const channelId = await lockMessageChannel(tx, messageId)
+
           // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
           await tx
             .insert(channelReadStates)
@@ -440,16 +467,19 @@ export const onMessageCreated = inngest.createFunction(
         const extraCount = attachmentFileIds.length - 1
         const body = extraCount > 0 ? `${fileName} ほか ${extraCount} 件` : fileName
 
-        await db.insert(notifications).values(
-          members.map((m) => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
-            body,
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        await db.transaction(async (tx) => {
+          const channelId = await lockMessageChannel(tx, messageId)
+          await tx.insert(notifications).values(
+            members.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'file' as const,
+              title: `${senderName} がファイルを共有しました`,
+              body,
+              data: { messageId, channelId, senderName },
+            })),
+          )
+        })
       })
       fileNotifications = members.length
     }
@@ -458,9 +488,11 @@ export const onMessageCreated = inngest.createFunction(
     // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
     if (unblockedMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
+      // 猶予中にスレッドへ切り出されることがあるため、既読判定と遷移先は送る直前のチャンネルで決める。
+      const pushChannelId = await step.run('resolve-push-channel', readCurrentChannel)
       const { readRecipients, unreadRecipients } = await step.run(
         'filter-mention-push-targets',
-        () => classifyPushRecipients(messageId, channelId, unblockedMentioned),
+        () => classifyPushRecipients(messageId, pushChannelId, unblockedMentioned),
       )
 
       await step.run('send-mention-push', async () => {
@@ -474,7 +506,8 @@ export const onMessageCreated = inngest.createFunction(
               {
                 title: `${senderName} があなたをメンションしました`,
                 body: mentionBody.slice(0, 100),
-                url: `/chats/${channelId}`,
+                // 送信後に移動されても、パーマリンクの転送で移動先へ辿れるようメッセージIDを付ける。
+                url: `/chats/${pushChannelId}?m=${encodeURIComponent(messageId)}`,
                 workspaceId,
               },
               { updateAppBadge },

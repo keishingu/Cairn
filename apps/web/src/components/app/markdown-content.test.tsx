@@ -80,4 +80,47 @@ describe('Markdownコンテンツ', () => {
     expect(screen.getByRole('columnheader', { name: '作成' })).toHaveStyle({ textAlign: 'right' })
     expect(screen.getByRole('cell', { name: '○' })).toHaveStyle({ textAlign: 'right' })
   })
+
+  describe('タスク化した行の行末ラベル', () => {
+    const lineTask = (id: string, lineIndex: number | null, status: 'todo' | 'done' = 'todo') => ({ id, status, lineIndex })
+
+    it('見出し・引用・太字で終わる行にも行末に出す', () => {
+      render(<MarkdownContent content={'## 見出し\n> 引用\n**太字**'} lineTasks={[lineTask('a', 0), lineTask('b', 1), lineTask('c', 2)]} />)
+      const labels = screen.getAllByTestId('line-task-label')
+      expect(labels).toHaveLength(3)
+      expect(labels[0]!.closest('h2')).toHaveTextContent('見出し')
+      expect(labels[1]!.closest('blockquote')).toHaveTextContent('引用')
+      expect(labels[2]!.closest('p')).toHaveTextContent('太字')
+    })
+
+    it('同じ段落の途中の行にも、その行の末尾に出す', () => {
+      render(<MarkdownContent content={'1行目\n2行目\n3行目'} lineTasks={[lineTask('a', 1)]} />)
+      const label = screen.getByTestId('line-task-label')
+      expect(label.previousSibling?.textContent).toBe('2行目 ')
+      expect(label.nextSibling?.nodeName).toBe('BR')
+    })
+
+    it('URL で終わる行でもラベルを URL のリンクに巻き込まない', () => {
+      render(<MarkdownContent content={'https://example.com/a'} lineTasks={[lineTask('a', 0)]} />)
+      expect(screen.getByRole('link', { name: 'https://example.com/a' })).toHaveAttribute('href', 'https://example.com/a')
+      expect(screen.getByTestId('line-task-label')).toHaveAttribute('href', '/tasks?taskId=a')
+    })
+
+    it('コードブロックと表の行には出さない', () => {
+      render(<MarkdownContent content={'```\ncode\n```\n| a | b |\n| - | - |\n| 1 | 2 |\n\n通常'} lineTasks={[lineTask('a', 1), lineTask('b', 3), lineTask('c', 5), lineTask('d', 7)]} />)
+      expect(screen.getAllByTestId('line-task-label')).toHaveLength(1)
+      expect(screen.getByTestId('line-task-label')).toHaveAttribute('href', '/tasks?taskId=d')
+      expect(screen.getByText('code')).toBeInTheDocument()
+    })
+
+    it('lineTasks が無いか lineIndex が null なら何も出さない', () => {
+      render(<MarkdownContent content={'あ\nい'} lineTasks={[lineTask('a', null)]} />)
+      expect(screen.queryByTestId('line-task-label')).toBeNull()
+    })
+
+    it('本文に書かれた目印用の文字は偽装できない', () => {
+      render(<MarkdownContent content={'偽装\uE0000\uE001'} lineTasks={[lineTask('a', null)]} />)
+      expect(screen.queryByTestId('line-task-label')).toBeNull()
+    })
+  })
 })
