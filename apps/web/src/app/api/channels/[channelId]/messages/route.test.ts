@@ -57,7 +57,6 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/lib/chat/channel-family', () => ({ loadChannelFamilyIds: mockLoadFamily }))
 
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
-vi.mock('@/lib/chat/checkboxes', () => ({ parseCheckboxes: () => [] }))
 vi.mock('@/lib/profile-attributes', () => ({ getProfileAttributesByUserIds: mockGetProfileAttributes }))
 vi.mock('@cairn/shared', () => ({
   postMessageSchema: {
@@ -114,6 +113,13 @@ vi.mock('@cairn/db', () => ({
     id: 'messageBookmarks.id',
     messageId: 'messageBookmarks.messageId',
     userId: 'messageBookmarks.userId',
+  },
+  tasks: {
+    id: 'tasks.id',
+    status: 'tasks.status',
+    sourceMessageId: 'tasks.sourceMessageId',
+    workspaceId: 'tasks.workspaceId',
+    createdAt: 'tasks.createdAt',
   },
   userBlocks: {
     blockerId: 'userBlocks.blockerId',
@@ -293,6 +299,43 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     ])
   })
 
+  it('GET はタスク化済みのメッセージに作成順のタスク一覧を linkedTasks として付ける', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const base = {
+      content: 'hello',
+      senderId: 'user-2',
+      senderName: 'Sender',
+      senderAvatarUrl: null,
+      createdAt: new Date('2026-06-24T01:00:00.000Z'),
+      updatedAt: new Date('2026-06-24T01:00:00.000Z'),
+    }
+    mockSelectResults(
+      // DB は新しい順で返し、実装が時系列に並べ替える
+      [{ ...base, id: 'msg-2' }, { ...base, id: 'msg-1' }],
+      [],
+      [],
+      [],
+      // createdAt 昇順で返るので、そのまま作成順に並ぶ
+      [
+        { id: 'task-1', title: '資料を確認', status: 'done', sourceMessageId: 'msg-1' },
+        { id: 'task-2', title: '日程調整', status: 'todo', sourceMessageId: 'msg-1' },
+      ],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual([
+      expect.objectContaining({ id: 'msg-1', linkedTasks: [
+        { id: 'task-1', title: '資料を確認', status: 'done' },
+        { id: 'task-2', title: '日程調整', status: 'todo' },
+      ] }),
+      expect.objectContaining({ id: 'msg-2', linkedTasks: [] }),
+    ])
+    expect(mockEq).toHaveBeenCalledWith('tasks.workspaceId', DEV_WORKSPACE_ID)
+  })
+
   it('直近ページでは101件目を除外し、次ページの有無をヘッダーで返す', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     const rows = Array.from({ length: 101 }, (_, index) => ({
@@ -387,7 +430,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
 
     it('親チャンネルに残った発言への返信は、閲覧できるなら引用を返す', async () => {
       mockCanAccessChannel.mockResolvedValue(true)
-      mockSelectResults([replyRow], [], [], [], [quoted('parent-channel')])
+      mockSelectResults([replyRow], [], [], [], [], [quoted('parent-channel')])
 
       const { GET } = await import('./route')
       const res = await GET(new Request('http://localhost/'), ctxRouteParams())
@@ -401,7 +444,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
 
     it('閲覧できない別チャンネルの発言は引用に含めない', async () => {
       mockCanAccessChannel.mockResolvedValue(false)
-      mockSelectResults([replyRow], [], [], [], [quoted('parent-channel')])
+      mockSelectResults([replyRow], [], [], [], [], [quoted('parent-channel')])
 
       const { GET } = await import('./route')
       const res = await GET(new Request('http://localhost/'), ctxRouteParams())
@@ -410,7 +453,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     })
 
     it('同じチャンネルの発言は追加の権限確認なしで引用を返す', async () => {
-      mockSelectResults([replyRow], [], [], [], [quoted(CHANNEL_ID)])
+      mockSelectResults([replyRow], [], [], [], [], [quoted(CHANNEL_ID)])
 
       const { GET } = await import('./route')
       const res = await GET(new Request('http://localhost/'), ctxRouteParams())

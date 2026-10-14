@@ -48,3 +48,21 @@ export function decideWebViewNavigation({
   }
   return 'block'
 }
+
+/**
+ * 特定メッセージを指すチャット URL（`/chats/<channelId>?m=<messageId>`）なら、その Web パスを返す。
+ * ネイティブチャットはメッセージ位置へのジャンプを持たないため、呼び出し側は Web のチャット補助画面で開く。
+ */
+export function messageTargetChatPath(url: string, trustedOrigin: string): string | null {
+  try {
+    const target = new URL(url)
+    if (target.origin !== trustedOrigin) return null
+    if (!/^\/chats\/[^/]+$/.test(target.pathname)) return null
+    if (!target.searchParams.get('m')) return null
+    // Web の /chats は nativeAux=1 が無いとネイティブチャットへ戻してしまうため付ける
+    target.searchParams.set('nativeAux', '1')
+    return `${target.pathname}${target.search}`
+  } catch {
+    return null
+  }
+}

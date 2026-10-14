@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { channelMembers, channels, tasks } from '@cairn/db'
-import { and, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, inArray, or, sql } from 'drizzle-orm'
 
 export function taskChannelMembershipCondition(userId: string) {
   return sql<boolean>`exists (
@@ -14,6 +14,7 @@ export function taskChannelMembershipCondition(userId: string) {
 
 // チャンネル由来タスクはチャンネルの公開範囲を継承する。
 // private のタイトルや存在を非参加者へ返さない。
+// DM は is_private=false だが参加者以外には見せないため、公開扱いから除外してメンバー必須にする。
 export function taskChannelVisibilityCondition(userId: string) {
   const isChannelMember = taskChannelMembershipCondition(userId)
   return sql<boolean>`(
@@ -21,15 +22,15 @@ export function taskChannelVisibilityCondition(userId: string) {
     or exists (
       select 1 from ${channels}
       where ${channels.id} = ${tasks.channelId}
-        and (${channels.isPrivate} = false or ${isChannelMember})
+        and ((${channels.isPrivate} = false and ${channels.type} <> 'dm') or ${isChannelMember})
     )
   )`
 }
 
-// ゲストは参加プロジェクト、または参加済みワークスペースチャンネルのタスクだけを参照できる。
+// ゲストは参加プロジェクト、または参加済みワークスペースチャンネル・DM のタスクだけを参照できる。
 export function guestTaskScopeCondition(userId: string, projectIds: string[]) {
   const scopes = [and(
-    eq(channels.type, 'workspace'),
+    inArray(channels.type, ['workspace', 'dm']),
     taskChannelMembershipCondition(userId),
   )]
   if (projectIds.length > 0) scopes.push(inArray(tasks.projectId, projectIds))

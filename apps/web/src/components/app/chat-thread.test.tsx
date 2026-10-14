@@ -7,12 +7,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { translate } from '@cairn/shared'
+import { encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
 import {
   ChatMessage,
   ChatThread,
   copyMessageContent,
   copyMessageLink,
   isNearMessageTimelineEnd,
+  fetchMessageTaskCandidates,
+  makeTasksFromMessage,
 } from './chat-thread'
 
 const copyT = (message: string, values?: Record<string, string | number>) => translate('ja', message, values)
@@ -26,7 +29,9 @@ vi.stubGlobal('localStorage', {
   clear: () => chatTestStorage.clear(),
 })
 
-const { toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage, chatThreadState } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
+  fetchWithAuthMock: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   markChannelRead: vi.fn(),
@@ -49,7 +54,10 @@ const { toastSuccess, toastError, markChannelRead, bookmarkMessage, sendMessage,
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush }) }))
+
 vi.mock('@/lib/chat/client', () => ({
+  chatQueryKeys: { messages: (channelId: string | null) => ['messages', channelId] },
   ChannelMessagesError: class ChannelMessagesError extends Error {},
   formatChatMessageTime: () => '12:34',
   useChannelInitialMessage: () => ({ data: { messageId: chatThreadState.initialMessageId }, isFetched: true, isFetching: false, isError: false }),
@@ -59,7 +67,7 @@ vi.mock('@/lib/chat/client', () => ({
     data: [{
       id: 'message-1', content: 'hello', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-23T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
-      replyTo: null, bookmarked: false, blocked: false,
+      replyTo: null, bookmarked: false, linkedTasks: [], blocked: false,
     }],
     isLoading: false,
     isError: false,
@@ -96,6 +104,7 @@ vi.mock('@/hooks/use-project-members', () => ({ useProjectMembers: () => ({ data
 vi.mock('@/hooks/use-profile-attributes', () => ({
   useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
 }))
+vi.mock('@/lib/fetch-with-auth', () => ({ fetchWithAuth: fetchWithAuthMock }))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -142,6 +151,7 @@ describe('ChatMessage copy action', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -160,6 +170,251 @@ describe('ChatMessage copy action', () => {
     expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '編集' })).toBeNull()
     expect(screen.queryByRole('button', { name: '削除' })).toBeNull()
+  })
+
+  it.each([
+    ['他人のメッセージ', 'user-2'],
+    ['自分のメッセージ', 'user-1'],
+  ])('%sでも「…」メニューに「タスク化する」を出し、選ぶと親のコールバックを呼ぶ', async (_label, senderId) => {
+    const user = userEvent.setup()
+    const onMakeTask = vi.fn()
+
+    render(
+      <ChatMessage
+        messageId="message-1"
+        messageType="text"
+        senderId={senderId}
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="資料を確認する"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={onMakeTask}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+        isMobile
+      />,
+    )
+
+    await user.click(screen.getByTitle('操作'))
+    await user.click(screen.getByRole('button', { name: 'タスク化する' }))
+
+    expect(onMakeTask).toHaveBeenCalledWith('message-1')
+  })
+
+  describe('タスク化済みの印', () => {
+    type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 'done' }
+    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn()) {
+      return render(
+        <ChatMessage
+          messageId="message-1"
+          messageType="text"
+          senderId="user-2"
+          currentUserId="user-1"
+          senderName="Alice"
+          createdAt="2026-06-25T12:00:00.000Z"
+          isEdited={false}
+          content="資料を確認する"
+          reactions={[]}
+          attachments={[]}
+          replyTo={null}
+          bookmarked={false}
+          linkedTasksKey={encodeLinkedTasksKey(linkedTasks)}
+          onReact={vi.fn()}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+          onCheckboxToggle={vi.fn()}
+          onReply={vi.fn()}
+          onBookmark={vi.fn()}
+          onMakeTask={onMakeTask}
+          onJumpToMessage={vi.fn()}
+          onCopyLink={vi.fn()}
+          onImageClick={vi.fn()}
+          isMobile
+        />,
+      )
+    }
+    const task = (id: string, status: LinkedTask['status'], title = `タスク${id}`): LinkedTask => ({ id, title, status })
+
+    it('タスク化されていなければチップを出さない', () => {
+      renderLinked([])
+      expect(screen.queryByTestId('linked-task-chip')).toBeNull()
+    })
+
+    it('1件なら「タスク」チップからそのタスク画面へのリンクを出す', () => {
+      renderLinked([task('task-1', 'todo')])
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveTextContent('タスク')
+      expect(chip).toHaveAttribute('href', '/tasks?taskId=task-1')
+      expect(chip).toHaveAttribute('data-task-status', 'todo')
+    })
+
+    it('1件で完了したタスクは完了の見た目（薄い色）で出す', () => {
+      renderLinked([task('task-1', 'done')])
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveAttribute('data-task-status', 'done')
+      expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    it('2件以上なら「タスク 完了数/総数」を出し、押すと一覧から選んでタスク画面へ遷移する', async () => {
+      const user = userEvent.setup()
+      routerPush.mockClear()
+      renderLinked([task('task-1', 'done', '資料を確認する'), task('task-2', 'todo', '日程を調整する'), task('task-3', 'in_progress', '会場を押さえる')])
+
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveTextContent('タスク 1/3')
+      await user.click(chip)
+      expect(screen.getByRole('button', { name: /資料を確認する/ })).toHaveTextContent('完了')
+      expect(screen.getByRole('button', { name: /会場を押さえる/ })).toHaveTextContent('進行中')
+      await user.click(screen.getByRole('button', { name: /日程を調整する/ }))
+
+      expect(routerPush).toHaveBeenCalledWith('/tasks?taskId=task-2')
+    })
+
+    it('2件以上がすべて完了なら完了の見た目（薄い色）で出す', () => {
+      renderLinked([task('task-1', 'done'), task('task-2', 'done')])
+      const chip = screen.getByTestId('linked-task-chip')
+      expect(chip).toHaveTextContent('タスク 2/2')
+      expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    it('タスク化済みでも「…」メニューは常に「タスク化する」を出す', async () => {
+      const user = userEvent.setup()
+      const onMakeTask = vi.fn()
+      renderLinked([task('task-1', 'todo')], onMakeTask)
+
+      await user.click(screen.getByTitle('操作'))
+      expect(screen.queryByRole('button', { name: 'タスクを開く' })).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'タスク化する' }))
+
+      expect(onMakeTask).toHaveBeenCalledWith('message-1')
+    })
+  })
+
+  it('システムメッセージには「タスク化する」を出さない', () => {
+    render(
+      <ChatMessage
+        messageId="message-sys"
+        messageType="system"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="System"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="ステータスを変更しました"
+        reactions={[]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTitle('操作')).toBeNull()
+  })
+
+  it('候補の取得は GET で行い、候補一覧を返す', async () => {
+    const candidates = [{ title: '資料を確認する', isListItem: true, taskId: null }]
+    fetchWithAuthMock.mockResolvedValue({ ok: true, json: async () => ({ candidates, tasks: [] }) })
+
+    await expect(fetchMessageTaskCandidates('message-1', copyT)).resolves.toEqual(candidates)
+
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/messages/message-1/task')
+  })
+
+  it('候補の取得に失敗したらエラートーストを出して null を返す', async () => {
+    fetchWithAuthMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'メッセージが見つかりません' }) })
+
+    await expect(fetchMessageTaskCandidates('message-1', copyT)).resolves.toBeNull()
+
+    expect(toastError).toHaveBeenCalledWith('メッセージが見つかりません')
+  })
+
+  it('1件作成したら「タスクに追加しました」とそのタスクを開くリンクのトーストを出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ tasks: [{ id: 'task-1', title: '資料を確認する', status: 'todo' }], createdCount: 1 }),
+    })
+
+    await expect(makeTasksFromMessage('message-1', [{ line: '資料を確認する', title: '資料を最優先で確認する' }], copyT)).resolves.toBe(true)
+
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/messages/message-1/task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ line: '資料を確認する', title: '資料を最優先で確認する' }] }),
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('タスクに追加しました', {
+      action: { label: '開く', href: '/tasks?taskId=task-1' },
+    })
+  })
+
+  it('複数件作成したら件数のトーストを出し、開くリンクはタスク一覧にする', async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tasks: [{ id: 'task-1', title: 'a', status: 'todo' }, { id: 'task-2', title: 'b', status: 'todo' }],
+        createdCount: 2,
+      }),
+    })
+
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }, { line: 'b', title: 'b' }], copyT)).resolves.toBe(true)
+
+    expect(toastSuccess).toHaveBeenCalledWith('2件のタスクを追加しました', {
+      action: { label: '開く', href: '/tasks' },
+    })
+  })
+
+  it('1件も新規作成されなければ「このメッセージは既にタスクです」と開くリンクのトーストを出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ tasks: [{ id: 'task-1', title: 'a', status: 'todo' }], createdCount: 0 }),
+    })
+
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(true)
+
+    expect(toastSuccess).toHaveBeenCalledWith('このメッセージは既にタスクです', {
+      action: { label: '開く', href: '/tasks?taskId=task-1' },
+    })
+  })
+
+  it('APIが失敗したらそのエラー文言をエラートーストに出す', async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'タスク名は1〜50件、各1〜200文字で指定してください' }),
+    })
+
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith('タスク名は1〜50件、各1〜200文字で指定してください')
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
+
+  it('通信に失敗したら汎用のエラートーストを出す', async () => {
+    fetchWithAuthMock.mockRejectedValue(new Error('network'))
+
+    await expect(makeTasksFromMessage('message-1', [{ line: 'a', title: 'a' }], copyT)).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith('このメッセージをタスクにできませんでした')
   })
 
   it('元の本文をそのままコピーして成功トーストを出す', async () => {
@@ -222,6 +477,7 @@ describe('ChatMessage copy action', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -253,6 +509,7 @@ describe('ChatMessage copy action', () => {
       onCheckboxToggle: vi.fn(),
       onReply: vi.fn(),
       onBookmark: vi.fn(),
+      onMakeTask: vi.fn(),
       onJumpToMessage: vi.fn(),
       onCopyLink: vi.fn(),
       onImageClick: vi.fn(),
@@ -332,6 +589,7 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
     onCheckboxToggle: vi.fn(),
     onReply: vi.fn(),
     onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
     onJumpToMessage: vi.fn(),
     onCopyLink: vi.fn(),
     onImageClick: vi.fn(),
@@ -407,6 +665,7 @@ describe('モバイルWebのリアクション表示', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -448,6 +707,7 @@ describe('モバイルWebのリアクション表示', () => {
         onCheckboxToggle={vi.fn()}
         onReply={vi.fn()}
         onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
         onJumpToMessage={vi.fn()}
         onCopyLink={vi.fn()}
         onImageClick={vi.fn()}
@@ -531,7 +791,7 @@ describe('ChatThreadの初期既読', () => {
     chatThreadState.historyMessages = [{
       id: 'history-message', content: 'old message', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-20T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
-      replyTo: null, bookmarked: false, blocked: false,
+      replyTo: null, bookmarked: false, linkedTasks: [], blocked: false,
     }]
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const user = userEvent.setup()

@@ -72,6 +72,16 @@ const ToastRow = ({ item, leaving }: RenderedToast) => {
         <span style={{ flex: 1, padding: '2px 0', fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word' }}>
           {item.message}
         </span>
+        {item.action && (
+          <a
+            href={item.action.href}
+            className="btn btn-ghost"
+            onClick={() => dismissToast(item.id)}
+            style={{ height: 26, padding: '0 8px', fontSize: 12, flexShrink: 0, alignSelf: 'center', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+          >
+            {item.action.label}
+          </a>
+        )}
         <button
           type="button"
           className="app-toast-close"

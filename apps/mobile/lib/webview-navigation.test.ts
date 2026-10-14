@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decideWebViewNavigation,
+  messageTargetChatPath,
   WEBVIEW_ORIGIN_WHITELIST,
 } from './webview-navigation'
 
@@ -99,5 +100,21 @@ describe('WebViewのナビゲーション判定', () => {
         isTopFrame: true,
       }),
     ).toBe('allow')
+  })
+})
+
+describe('messageTargetChatPath', () => {
+  const origin = 'https://app.example.com'
+
+  it('特定メッセージを指すチャットURLはチャット補助画面用のパスを返す', () => {
+    expect(messageTargetChatPath(`${origin}/chats/channel-1?m=message-1`, origin)).toBe(
+      '/chats/channel-1?m=message-1&nativeAux=1',
+    )
+  })
+
+  it('メッセージ指定のないチャットURLや別オリジンは null を返す', () => {
+    expect(messageTargetChatPath(`${origin}/chats/channel-1`, origin)).toBeNull()
+    expect(messageTargetChatPath(`${origin}/chats?m=message-1`, origin)).toBeNull()
+    expect(messageTargetChatPath(`https://evil.example.com/chats/channel-1?m=message-1`, origin)).toBeNull()
   })
 })

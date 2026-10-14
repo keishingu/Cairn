@@ -7,8 +7,8 @@ import { useT } from '@/components/locale-provider'
 import type { TaskDto } from '@/app/api/tasks/route'
 
 interface TaskFormFieldsProps {
-  title: string
-  onTitleChange: (value: string) => void
+  title?: string
+  onTitleChange?: (value: string) => void
   priority: TaskDto['priority']
   onPriorityChange: (value: TaskDto['priority']) => void
   dueDate: string
@@ -24,6 +24,11 @@ interface TaskFormFieldsProps {
   currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
   // タイトル欄の直下に出す注記（チャット由来タスクの逆同期警告など）
   titleNote?: React.ReactNode
+  // タイトルを別の場所（詳細パネルの見出しなど）で編集するときに欄を出さない
+  hideTitle?: boolean
+  // ステータス欄（onStatusChange を渡したときだけ表示する）
+  status?: TaskDto['status']
+  onStatusChange?: (value: TaskDto['status']) => void
 }
 
 const labelStyle: React.CSSProperties = {
@@ -50,29 +55,51 @@ export const TaskFormFields = ({
   assigneeChannelIsPrivate,
   currentAssignee,
   titleNote,
+  hideTitle = false,
+  status,
+  onStatusChange,
 }: TaskFormFieldsProps) => {
   const t = useT()
   const id = React.useId()
   return (
     <>
-      <div>
-        <label htmlFor={`${id}-title`} style={labelStyle}>
-          {t('Title')} <span style={{ color: 'var(--red)' }}>*</span>
-        </label>
-        <input
-          id={`${id}-title`}
-          className="form-control"
-          type="text"
-          value={title}
-          onChange={e => onTitleChange(e.target.value)}
-          placeholder={titlePlaceholder}
-          required
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
-          style={fieldInputStyle(false)}
-        />
-        {titleNote}
-      </div>
+      {!hideTitle && (
+        <div>
+          <label htmlFor={`${id}-title`} style={labelStyle}>
+            {t('Title')} <span style={{ color: 'var(--red)' }}>*</span>
+          </label>
+          <input
+            id={`${id}-title`}
+            className="form-control"
+            type="text"
+            value={title ?? ''}
+            onChange={e => onTitleChange?.(e.target.value)}
+            placeholder={titlePlaceholder}
+            required
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            style={fieldInputStyle(false)}
+          />
+          {titleNote}
+        </div>
+      )}
+
+      {onStatusChange && status && (
+        <div>
+          <label htmlFor={`${id}-status`} style={labelStyle}>{t('Status')}</label>
+          <select
+            id={`${id}-status`}
+            className="form-control"
+            value={status}
+            onChange={e => onStatusChange(e.target.value as TaskDto['status'])}
+            style={fieldInputStyle(false)}
+          >
+            <option value="todo">{t('Not started')}</option>
+            <option value="in_progress">{t('In progress')}</option>
+            <option value="done">{t('Done')}</option>
+          </select>
+        </div>
+      )}
 
       {afterTitle}
 

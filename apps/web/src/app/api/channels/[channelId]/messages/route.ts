@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { getMessages } from './get-messages'
 import { postMessage } from './post-message'
-export type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+export type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 

@@ -72,7 +72,7 @@ export const createTaskSchema = z.object({
   projectId: z.string().uuid().optional(),
   channelId: z.string().uuid().optional(),
   title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(10000).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
   assigneeId: z.string().uuid().optional(),
   dueDate: z.string().date().optional(),
@@ -83,6 +83,7 @@ export const createTaskSchema = z.object({
 
 export const updateTaskSchema = z.object({
   title: z.string().min(1).max(200).optional(),
+  description: z.string().max(10000).nullable().optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
   assigneeId: z.string().uuid().nullable().optional(),
   dueDate: z.string().date().nullable().optional(),

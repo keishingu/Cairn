@@ -8,6 +8,8 @@ import { chatProjectRoleLabel, filterMentionCandidates, type AttachmentDto, type
 import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
 import { InlineError } from './inline-error'
@@ -15,6 +17,9 @@ import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
 import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
+import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
+import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
+import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
 import { EmojiPicker } from './emoji-picker'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
@@ -22,6 +27,7 @@ import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
+  chatQueryKeys,
   formatChatMessageTime,
   useChannelInitialMessage,
   useChannelMessageHistory,
@@ -150,7 +156,50 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+/** タスク化の候補（本文の各行）を取得する。失敗したらトーストで知らせて null を返す。 */
+export async function fetchMessageTaskCandidates(messageId: string, t: TranslateFn): Promise<MessageTaskCandidateDto[] | null> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`)
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCandidatesResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.candidates)) {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return null
+    }
+    return body.candidates
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return null
+  }
+}
+
+/** 選んだ行（line）を編集後のタスク名（title）でタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
+export async function makeTasksFromMessage(messageId: string, items: MessageTaskSubmitItem[], t: TranslateFn): Promise<boolean> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    })
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCreateResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.tasks) || body.tasks.length === 0 || typeof body.createdCount !== 'number') {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return false
+    }
+    const message = body.createdCount === 0
+      ? t('This message is already a task')
+      : body.createdCount === 1 ? t('Added to tasks') : t('Added {count} tasks', { count: body.createdCount })
+    const only = body.tasks.length === 1 ? body.tasks[0] : undefined
+    toast.success(message, {
+      action: { label: t('Open'), href: only ? `/tasks?taskId=${encodeURIComponent(only.id)}` : '/tasks' },
+    })
+    return true
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return false
+  }
+}
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -170,6 +219,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  // memo を効かせるため、linkedTasks は配列でなく id / status / title を連結したキー文字列で受ける
+  linkedTasksKey?: string | undefined
   blocked?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
@@ -177,6 +228,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
+  onMakeTask: (messageId: string) => void
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
@@ -190,6 +242,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   focused?: boolean
 }) {
   const t = useT()
+  const router = useRouter()
+  const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
@@ -315,6 +369,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
@@ -483,6 +538,51 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             ))}
           </div>
         )}
+        {linkedTasks.length > 0 && (() => {
+          const doneCount = linkedTasks.filter(task => task.status === 'done').length
+          const allDone = doneCount === linkedTasks.length
+          const single = linkedTasks.length === 1 ? linkedTasks[0] : undefined
+          const chipStyle: React.CSSProperties = {
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
+            fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
+            background: allDone ? 'var(--card-2)' : 'var(--accent-soft)',
+            border: `1px solid ${allDone ? 'var(--border)' : 'var(--accent-border)'}`,
+            color: allDone ? 'var(--text-3)' : 'var(--accent-text)',
+            opacity: allDone ? 0.75 : 1,
+          }
+          const statusLabel = (status: 'todo' | 'in_progress' | 'done') =>
+            status === 'done' ? t('Done') : status === 'in_progress' ? t('In progress') : t('Not started')
+          return single ? (
+            <Link
+              href={`/tasks?taskId=${encodeURIComponent(single.id)}`}
+              data-testid="linked-task-chip"
+              data-task-status={single.status}
+              title={t('Open task')}
+              style={{ marginTop: 6, ...chipStyle }}
+            >
+              <Icon name="check" size={11}/> {t('Task')}
+            </Link>
+          ) : (
+            <div style={{ marginTop: 6, display: 'inline-flex' }}>
+              <RowActionMenu
+                trigger={{
+                  label: t('Show tasks'),
+                  testId: 'linked-task-chip',
+                  content: <><Icon name="check" size={11}/> {t('Task {done}/{total}', { done: doneCount, total: linkedTasks.length })}</>,
+                }}
+                triggerStyle={{ ...chipStyle, cursor: 'pointer', fontFamily: 'inherit' }}
+                actions={linkedTasks.map(task => ({
+                  icon: task.status === 'done' ? 'check' : 'external-link',
+                  label: task.title,
+                  verbatim: true,
+                  hint: statusLabel(task.status),
+                  onSelect: () => router.push(`/tasks?taskId=${encodeURIComponent(task.id)}`),
+                }))}
+              />
+            </div>
+          )
+        })()}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
@@ -1053,7 +1153,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}
           </button>
@@ -1063,7 +1163,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
-          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
             </span>
@@ -1820,6 +1920,34 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     bookmarkMutation.mutate(messageId)
   }, [bookmarkMutation, leaveHistoryView])
 
+  const [taskDialog, setTaskDialog] = React.useState<{ messageId: string; candidates: MessageTaskCandidateDto[] } | null>(null)
+
+  const createTasks = React.useCallback(async (messageId: string, items: MessageTaskSubmitItem[]) => {
+    const ok = await makeTasksFromMessage(messageId, items, t)
+    if (ok) {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      // タスク化済みの印（linkedTasks）を出すためメッセージも取り直す
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    }
+    return ok
+  }, [channelId, queryClient, t])
+
+  const handleMakeTask = React.useCallback(async (messageId: string) => {
+    if (messageId.startsWith('optimistic-')) return
+    const candidates = await fetchMessageTaskCandidates(messageId, t)
+    if (!candidates) return
+    const open = candidates.filter(candidate => !candidate.taskId)
+    if (candidates.length === 0) {
+      toast.error(t('This message has no text to make a task from'))
+    } else if (open.length === 0) {
+      toast.success(t('All lines of this message are already tasks'))
+    } else if (candidates.length === 1 && open[0]) {
+      await createTasks(messageId, [{ line: open[0].line, title: open[0].title }])
+    } else {
+      setTaskDialog({ messageId, candidates })
+    }
+  }, [createTasks, t])
+
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
   const reactMutate = reactMutation.mutate
@@ -2013,6 +2141,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       onDragLeave={handleListDragLeave}
       onDrop={handleListDrop}
     >
+      {taskDialog && (
+        <MessageTaskDialog
+          candidates={taskDialog.candidates}
+          onSubmit={items => createTasks(taskDialog.messageId, items)}
+          onClose={() => setTaskDialog(null)}
+        />
+      )}
       {showTextFileDialog && (
         <CreateTextFileDialog
           onClose={() => setShowTextFileDialog(false)}
@@ -2081,6 +2216,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               attachments={item.message.attachments}
               replyTo={item.message.replyTo}
               bookmarked={item.message.bookmarked}
+              linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
               onReact={handleReact}
               onEdit={handleEdit}
@@ -2088,6 +2224,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
+              onMakeTask={handleMakeTask}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}

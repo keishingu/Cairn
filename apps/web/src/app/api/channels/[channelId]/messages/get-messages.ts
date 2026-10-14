@@ -9,7 +9,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import { canAccessChannel } from '@/lib/permissions'
 import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
-import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
   channelId: string
@@ -42,6 +42,7 @@ export async function getMessages({
       messageReactions,
       messageAttachments,
       messageBookmarks,
+      tasks,
       files,
       workspaceMembers,
       channels,
@@ -251,7 +252,7 @@ export async function getMessages({
     // 引用の参照先は同じチャンネルに加え、親チャンネルとそのスレッド（スレッドへ切り出された元の会話）まで探す
     const quoteChannelIds = parentIds.length > 0 ? await loadChannelFamilyIds(channelId) : [channelId]
 
-    const [reactionRows, attachmentRows, bookmarkRows, rawParentRows] = await Promise.all([
+    const [reactionRows, attachmentRows, bookmarkRows, taskRows, rawParentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
@@ -300,6 +301,24 @@ export async function getMessages({
                 inArray(messageBookmarks.messageId, messageIds),
               ),
             )
+        : Promise.resolve([]),
+      // タスク化済みの印用。タスクの可視範囲はチャンネル閲覧権限と同じなので追加の認可は不要
+      messageIds.length > 0
+        ? db
+            .select({
+              id: tasks.id,
+              title: tasks.title,
+              status: tasks.status,
+              sourceMessageId: tasks.sourceMessageId,
+            })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.workspaceId, workspaceId),
+                inArray(tasks.sourceMessageId, messageIds),
+              ),
+            )
+            .orderBy(asc(tasks.createdAt), asc(tasks.id))
         : Promise.resolve([]),
       parentIds.length > 0
         ? db
@@ -369,6 +388,15 @@ export async function getMessages({
       })
     }
 
+    // タスクは createdAt 昇順で返るので、メッセージごとに作成順のまま積む
+    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
+    for (const task of taskRows) {
+      if (!task.sourceMessageId) continue
+      const list = linkedTaskMap.get(task.sourceMessageId) ?? []
+      list.push({ id: task.id, title: task.title, status: task.status })
+      linkedTaskMap.set(task.sourceMessageId, list)
+    }
+
     const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
     const profileAttributes = await getProfileAttributesByUserIds(
       workspaceId,
@@ -414,6 +442,7 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
     }))
 

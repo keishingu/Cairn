@@ -1,5 +1,6 @@
 import React from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Alert,
@@ -43,6 +44,8 @@ import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
+import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
+import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
@@ -191,6 +194,8 @@ function ChatMessageRow({
   onLinkPress,
   onOpenActions,
   onOpenPreview,
+  onOpenTask,
+  onShowTasks,
 }: {
   message: MessageDto
   palette: Palette
@@ -201,6 +206,8 @@ function ChatMessageRow({
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+  onOpenTask: (taskId: string) => void
+  onShowTasks: (tasks: MessageDto['linkedTasks']) => void
 }) {
   const t = useT()
   const projectRoleLabelText = chatProjectRoleLabel({
@@ -320,6 +327,37 @@ function ChatMessageRow({
             </View>
           )}
         </Pressable>
+
+        {message.linkedTasks.length > 0 && (() => {
+          const tasks = message.linkedTasks
+          const doneCount = tasks.filter((task) => task.status === 'done').length
+          const allDone = doneCount === tasks.length
+          const single = tasks.length === 1 ? tasks[0] : undefined
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={single ? t('Open task') : t('Show tasks')}
+              onPress={() => (single ? onOpenTask(single.id) : onShowTasks(tasks))}
+              style={({ pressed }) => [
+                styles.taskChip,
+                {
+                  backgroundColor: allDone ? palette.card2 : palette.accentSoft,
+                  borderColor: allDone ? palette.border : palette.accent,
+                  opacity: pressed ? 0.7 : allDone ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={allDone ? 'checkbox' : 'checkbox-outline'}
+                size={13}
+                color={allDone ? palette.text3 : palette.accentText}
+              />
+              <Text style={[styles.reactionText, { color: allDone ? palette.text3 : palette.accentText }]}>
+                {single ? t('Task') : t('Task {done}/{total}', { done: doneCount, total: tasks.length })}
+              </Text>
+            </Pressable>
+          )
+        })()}
 
         {message.reactions.length > 0 && (
           <View style={styles.reactions}>
@@ -487,6 +525,7 @@ export default function ChatThreadScreen() {
     isPrivate?: string
   }>()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
@@ -535,6 +574,10 @@ export default function ChatThreadScreen() {
   // 「スレッドに切り出す」シートの起点メッセージ
   const [moveTarget, setMoveTarget] = React.useState<MessageDto | null>(null)
   const [moveError, setMoveError] = React.useState<string | null>(null)
+  const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
+  // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
+  const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
+  const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
     messageId: string
@@ -940,6 +983,79 @@ export default function ChatThreadScreen() {
     })
   }
 
+  const openTask = (taskId: string) => {
+    // 同じタスクを続けて開いても WebView が再遷移するよう、開くたびに異なる open を付ける
+    router.push({ pathname: '/(app)/tasks', params: { taskId, open: String(Date.now()) } })
+  }
+
+  // 選んだ行（line）を編集後のタスク名（title）でタスクにする。成功したら true。失敗は sendError に出す。
+  const createTasks = async (messageId: string, items: MessageTaskSubmitItem[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setTaskPickerError : setSendError
+    setSendError(null)
+    setTaskPickerError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${messageId}/task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        tasks?: { id: string }[]
+        createdCount?: number
+      }
+      if (!response.ok || !data.tasks?.length || typeof data.createdCount !== 'number') {
+        reportError(messageTaskErrorMessage(data, t('Could not make a task from this message')))
+        return false
+      }
+      // タスク化済みの印（チップ）を出すため、そのチャンネルのメッセージを取り直す
+      void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      const only = data.tasks.length === 1 ? data.tasks[0] : undefined
+      const title =
+        data.createdCount === 0
+          ? t('This message is already a task')
+          : data.createdCount === 1
+            ? t('Added to tasks')
+            : t('Added {count} tasks', { count: data.createdCount })
+      Alert.alert(title, undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => (only ? openTask(only.id) : router.push('/(app)/tasks')) },
+      ])
+      return true
+    } catch {
+      reportError(t('Could not make a task from this message'))
+      return false
+    }
+  }
+
+  const makeTask = async (message: MessageDto) => {
+    setActionTarget(null)
+    setSendError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/task`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string; candidates?: MessageTaskCandidate[] }
+      if (!response.ok || !Array.isArray(data.candidates)) {
+        setSendError(data.error ?? t('Could not make a task from this message'))
+        return
+      }
+      const candidates = data.candidates
+      const open = candidates.filter((candidate) => !candidate.taskId)
+      if (candidates.length === 0) {
+        setSendError(t('This message has no text to make a task from'))
+      } else if (open.length === 0) {
+        Alert.alert(t('All lines of this message are already tasks'))
+      } else if (candidates.length === 1 && open[0]) {
+        await createTasks(message.id, [{ line: open[0].line, title: open[0].title }])
+      } else {
+        setTaskPickerError(null)
+        setTaskPicker({ messageId: message.id, candidates })
+      }
+    } catch {
+      setSendError(t('Could not make a task from this message'))
+    }
+  }
+
   const report = async (
     message: MessageDto,
     reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other',
@@ -1266,6 +1382,8 @@ export default function ChatThreadScreen() {
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
                     onOpenPreview={setAttachmentPreview}
+                    onOpenTask={openTask}
+                    onShowTasks={setLinkedTasksSheet}
                     {...(session?.access_token ? { accessToken: session.access_token } : {})}
                   />
                 )
@@ -1652,6 +1770,12 @@ export default function ChatThreadScreen() {
               onPress={() => actionTarget && handleBookmark(actionTarget)}
             />
             <ActionButton
+              icon="checkbox-outline"
+              label={t('Make a task')}
+              palette={palette}
+              onPress={() => actionTarget && void makeTask(actionTarget)}
+            />
+            <ActionButton
               icon="happy-outline"
               label={t('Add reaction')}
               palette={palette}
@@ -1817,6 +1941,25 @@ export default function ChatThreadScreen() {
             </ScrollView>
           </View>
         </Modal>
+        <MessageTaskPickerModal
+          candidates={taskPicker?.candidates ?? null}
+          palette={palette}
+          onSubmit={(items) => (taskPicker ? createTasks(taskPicker.messageId, items, true) : Promise.resolve(false))}
+          error={taskPickerError}
+          onClose={() => {
+            setTaskPicker(null)
+            setTaskPickerError(null)
+          }}
+        />
+        <LinkedTasksModal
+          tasks={linkedTasksSheet}
+          palette={palette}
+          onSelect={(taskId) => {
+            setLinkedTasksSheet(null)
+            openTask(taskId)
+          }}
+          onClose={() => setLinkedTasksSheet(null)}
+        />
         {attachmentPreview && session?.access_token && (
           previewViewer === 'pdf' ? (
             <ChatPdfViewer
@@ -1949,6 +2092,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 7,
+  },
+  taskChip: {
+    alignSelf: 'flex-start',
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    marginTop: 6,
   },
   reactionText: { fontSize: 11, fontWeight: '600' },
   reactionPerson: {
