@@ -71,6 +71,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       parentMessageId: null,
       replyTo: null,
       bookmarked: false,
+      linkedTasks: [],
     }))
 
     return NextResponse.json(result)

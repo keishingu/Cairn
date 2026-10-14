@@ -40,7 +40,8 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 
 - PCの主要作成入口はツールバー右端の `plus` + `新規{対象名}`。対象名は既存の表示名設定（例: `projectLabel`）を使う。
 - プロジェクト作成はPCの `CreateProjectModal`、モバイルの `CreateProjectSheet` を再利用する。カンバンも作成入口を欠かさない。日付を選んで作成するカレンダーなど、文脈に必要な入口と初期値は維持する。
-- タスク作成・編集は `TaskDialog` + `TaskFormFields` を使う。プロジェクト詳細だけ独自の作成モーダルを再実装しない。対象プロジェクト・チャンネル・担当者などの文脈と権限制御は保つ。
+- タスク作成は `TaskDialog` + `TaskFormFields` を使う。プロジェクト詳細だけ独自の作成モーダルを再実装しない。対象プロジェクト・チャンネル・担当者などの文脈と権限制御は保つ。
+- 既存タスクの閲覧・編集は `TaskDetailPanel`（`task-detail-panel.tsx`）に集約する。PC は右からのサイドパネル（幅480px）、モバイルシェルは全画面。タイトルは blur / Enter で保存、ステータス・優先度・担当者・期日は変更時に即保存、説明は「保存」「キャンセル」で確定する。一覧・チャット詳細・プロジェクトのタスクタブの行メニューは「詳細を開く」でこのパネルを開く（編集専用ダイアログは作らない）。削除確認は `TaskDeleteDialog`。
 - ダイアログの見出し・閉じる操作・スクロールする本文・下部のキャンセル／確定操作は共通部品に任せる。確定は右側の主要ボタンにする。
 - クリック・キーボードショートカット・FABの全入口で同じ作成権限を確認する。既存の `useWorkspacePermissions()` とサーバー側の認可を維持する。
 - 作成成功時の閉じる・一覧更新・詳細表示は既存フローに合わせる。特に `CreateProjectSheet` は自身でキャッシュに追加するため、呼び出し側で同じ項目を再追加しない。
@@ -95,7 +96,7 @@ PCの一覧・カレンダー・カンバンでは主要作成ボタンの高さ
 - `apps/web/src/app/globals.css` — 色・ボタン・入力の共通スタイル。
 - `apps/web/src/components/app/primitives.tsx` — `Icon` / `ModalHeader` / `fieldInputStyle` / `Fab`。
 - `apps/web/src/components/app/pages/page-toolbar.tsx` — `PageToolbar` / `SegmentedControl`。
-- `apps/web/src/components/app/task-dialog.tsx`、`task-form-fields.tsx` — タスクフォームの共通構造（後者も同じディレクトリ）。
+- `apps/web/src/components/app/task-dialog.tsx`、`task-form-fields.tsx` — タスク作成フォームの共通構造。`task-detail-panel.tsx`、`task-delete-dialog.tsx` — 既存タスクの詳細・編集と削除確認（いずれも同じディレクトリ）。
 - `apps/web/src/components/app/row-action-menu.tsx`、`confirm-dialog.tsx` — 行操作と確認（後者も同じディレクトリ）。
 - `apps/mobile/components/mobile-markdown.tsx` — ネイティブチャット本文のMarkdown描画と寸法。
 - `apps/mobile/lib/mobile-chat-state.ts` — Markdownリンクの許可範囲と内部／外部遷移の判定。

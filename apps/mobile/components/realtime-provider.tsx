@@ -106,7 +106,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`channel:${channelId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'messages' || table === 'message_reactions') {
+          // tasks はタスク化済みの印（メッセージの linkedTasks）の更新に使う
+          if (table === 'messages' || table === 'message_reactions' || table === 'tasks') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
           if (table === 'messages') void invalidateChannelListQueries(queryClient)

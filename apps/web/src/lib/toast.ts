@@ -7,10 +7,16 @@
 
 export type ToastVariant = 'success' | 'error' | 'info'
 
+export interface ToastAction {
+  label: string
+  href: string
+}
+
 export interface ToastItem {
   id: number
   message: string
   variant: ToastVariant
+  action?: ToastAction
 }
 
 type Listener = (toasts: ToastItem[]) => void
@@ -87,13 +93,15 @@ export function resumeToast(id: number) {
 interface ToastOptions {
   /** 自動で消えるまでのミリ秒。0 で自動消去しない。 */
   duration?: number
+  /** 本文の横に出すリンク（例: 作成したタスクを開く）。 */
+  action?: ToastAction
 }
 
 function push(message: string, variant: ToastVariant, options?: ToastOptions): number {
   const duration = options?.duration ?? DEFAULT_DURATION[variant]
 
   // 同じ内容が表示中なら積まずに表示時間だけ延ばす（コピー連打などで同じ行が並ぶのを防ぐ）
-  const existing = toasts.find(t => t.message === message && t.variant === variant)
+  const existing = toasts.find(t => t.message === message && t.variant === variant && t.action?.href === options?.action?.href)
   if (existing) {
     const timer = timers.get(existing.id)
     // 自動で消さない指定はホバー中でもタイマーごと外し、再開時に消えないようにする
@@ -105,7 +113,7 @@ function push(message: string, variant: ToastVariant, options?: ToastOptions): n
   }
 
   const id = nextId++
-  toasts = [...toasts, { id, message, variant }]
+  toasts = [...toasts, { id, message, variant, ...(options?.action ? { action: options.action } : {}) }]
   const overflow = toasts.slice(0, Math.max(0, toasts.length - MAX_VISIBLE_TOASTS))
   for (const t of overflow) clearTimer(t.id)
   toasts = toasts.slice(overflow.length)

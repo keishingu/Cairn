@@ -3,6 +3,7 @@ import {
   createMilestoneSchema,
   createProjectSchema,
   createTaskSchema,
+  updateTaskSchema,
   patchMilestoneSchema,
   patchMeSchema,
   patchProfileAttributesSchema,
@@ -161,6 +162,39 @@ describe('createTaskSchema', () => {
       title: '曖昧な所属',
     })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('createTaskSchema の説明', () => {
+  const base = { projectId: '00000000-0000-0000-0000-000000000001', title: 'タスク' }
+
+  it('説明は10000文字まで受け付ける', () => {
+    expect(createTaskSchema.safeParse({ ...base, description: 'あ'.repeat(10000) }).success).toBe(true)
+  })
+
+  it('説明が10001文字以上ならエラーになる', () => {
+    expect(createTaskSchema.safeParse({ ...base, description: 'あ'.repeat(10001) }).success).toBe(false)
+  })
+})
+
+describe('updateTaskSchema', () => {
+  it('説明だけの更新を受け付ける', () => {
+    const result = updateTaskSchema.safeParse({ description: '詳細メモ' })
+    expect(result.success).toBe(true)
+  })
+
+  it('説明を null にして消去できる', () => {
+    const result = updateTaskSchema.safeParse({ description: null })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.description).toBeNull()
+  })
+
+  it('説明が10001文字以上ならエラーになる', () => {
+    expect(updateTaskSchema.safeParse({ description: 'あ'.repeat(10001) }).success).toBe(false)
+  })
+
+  it('更新項目が1つもなければエラーになる', () => {
+    expect(updateTaskSchema.safeParse({}).success).toBe(false)
   })
 })
 

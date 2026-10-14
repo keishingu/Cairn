@@ -43,6 +43,19 @@ export async function hasTaskChannelSchema(client: SqlClient): Promise<boolean> 
   return result.rows[0]?.ready === true
 }
 
+/** source_line列（メッセージのタスク化の作成済み判定）が無い間は、タスク化を保留する。 */
+export async function hasTaskSourceLineSchema(client: SqlClient): Promise<boolean> {
+  const result = await client.execute<{ ready: boolean }>(sql`
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'tasks'
+        and column_name = 'source_line'
+    ) as ready
+  `)
+  return result.rows[0]?.ready === true
+}
+
 /** migration前のtasksには存在しないchannel_idをINSERT列へ含めずに保存する。 */
 export async function insertLegacyTasks(
   client: SqlClient,
