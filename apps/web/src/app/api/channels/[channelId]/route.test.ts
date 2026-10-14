@@ -180,7 +180,7 @@ describe('ワークスペースチャンネルの名称変更と削除', () => {
       ctx: { userId: 'user-1', workspaceId: 'workspace-1', role: 'member' },
       error: null,
     })
-    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1' }])
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1', archiveColumnReady: true }])
     const update = updateResult([{ id: 'thread-1', name: '準備', archived: true }])
     const { PATCH } = await import('./route')
 
@@ -193,7 +193,7 @@ describe('ワークスペースチャンネルの名称変更と削除', () => {
   })
 
   it('スレッドのアーカイブを解除できる', async () => {
-    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1' }])
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1', archiveColumnReady: true }])
     const update = updateResult([{ id: 'thread-1', name: '準備', archived: false }])
     const { PATCH } = await import('./route')
 
@@ -201,6 +201,16 @@ describe('ワークスペースチャンネルの名称変更と削除', () => {
 
     expect(response.status).toBe(200)
     expect(update.set).toHaveBeenCalledWith({ archivedAt: null })
+  })
+
+  it('migration 適用前はアーカイブを変更せず準備中を返す', async () => {
+    selectResult([{ id: 'thread-1', parentChannelId: 'channel-1', archiveColumnReady: false }])
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patchBodyRequest({ archived: true }), routeContext)
+
+    expect(response.status).toBe(503)
+    expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 
   it('親チャンネルはアーカイブできない', async () => {
