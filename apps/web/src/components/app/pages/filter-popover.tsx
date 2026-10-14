@@ -4,6 +4,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { useT } from '@/components/locale-provider'
+import { portalHostFor } from '../primitives'
 
 export interface FilterPopoverProps {
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -28,10 +29,8 @@ export const FilterPopover = ({
 }: FilterPopoverProps) => {
   const t = useT()
   const ref = React.useRef<HTMLDivElement>(null)
-  const rowRefs = React.useRef<Array<HTMLLabelElement | null>>([])
-  const [position, setPosition] = React.useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
-  const totalItems = allStatuses.length + allMembers.length
-  const [focusIndex, setFocusIndex] = React.useState(0)
+  const didInitialFocus = React.useRef(false)
+  const [position, setPosition] = React.useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
 
   React.useLayoutEffect(() => {
     const updatePosition = () => {
@@ -42,8 +41,11 @@ export const FilterPopover = ({
       const above = Math.max(0, rect.top - 12)
       const openAbove = below < 360 && above > below
       const maxHeight = Math.min(480, openAbove ? above : below)
+      const width = Math.max(0, Math.min(240, window.innerWidth - 16))
+      const maxLeft = Math.max(0, window.innerWidth - width - 8)
       setPosition({
-        left: Math.max(8, Math.min(rect.right - 240, window.innerWidth - 248)),
+        left: Math.max(Math.min(8, maxLeft), Math.min(rect.right - width, maxLeft)),
+        width,
         ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
         maxHeight,
       })
@@ -61,8 +63,12 @@ export const FilterPopover = ({
   }, [containerRef])
 
   React.useEffect(() => {
-    rowRefs.current[focusIndex]?.scrollIntoView?.({ block: 'nearest' })
-  }, [focusIndex])
+    if (!position || didInitialFocus.current) return
+    didInitialFocus.current = true
+    const firstControl = ref.current?.querySelector<HTMLElement>('input[type="checkbox"], button')
+    if (firstControl) firstControl.focus()
+    else ref.current?.focus()
+  }, [position])
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -75,30 +81,6 @@ export const FilterPopover = ({
     return () => document.removeEventListener('mousedown', handler)
   }, [containerRef, onClose])
 
-  React.useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') { onClose(); return }
-      if (totalItems === 0) return // 未ロード/0件のときは矢印・スペースを無視
-      if (e.code === 'ArrowDown') {
-        e.preventDefault()
-        setFocusIndex(prev => Math.min(prev + 1, totalItems - 1))
-      } else if (e.code === 'ArrowUp') {
-        e.preventDefault()
-        setFocusIndex(prev => Math.max(prev - 1, 0))
-      } else if (e.code === 'Space') {
-        e.preventDefault()
-        if (focusIndex < 0) return // 未選択
-        if (focusIndex < allStatuses.length) {
-          toggleStatus(allStatuses[focusIndex]!.name)
-        } else {
-          toggleMember(allMembers[focusIndex - allStatuses.length]!)
-        }
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [focusIndex, allStatuses, allMembers, totalItems, onClose])
-
   const toggleStatus = (name: string) =>
     onChange(selected.includes(name) ? selected.filter(x => x !== name) : [...selected, name])
 
@@ -108,28 +90,47 @@ export const FilterPopover = ({
   const hasAny = selected.length > 0 || selectedMembers.length > 0
 
   if (typeof document === 'undefined') return null
+  const portalHost = portalHostFor(containerRef.current)
+  if (!portalHost) return null
+  const popoverWidth = position?.width ?? 0
 
   return createPortal((
-    <div ref={ref} style={{
+    <div ref={ref} className="app" style={{
       position: 'fixed', left: position?.left ?? 0,
       ...(position?.bottom !== undefined ? { bottom: position.bottom } : { top: position?.top ?? 0 }),
-      width: 240, background: 'var(--card)', border: '1px solid var(--border)',
+      width: popoverWidth, boxSizing: 'border-box', background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-popover)', padding: 12,
       maxHeight: position?.maxHeight ?? 0, overflowY: 'auto', visibility: position ? 'visible' : 'hidden',
-    }}>
+    }} tabIndex={-1}
+      onKeyDown={event => {
+        if (event.code === 'Escape') {
+          event.preventDefault()
+          containerRef.current?.querySelector('button')?.focus()
+          onClose()
+          return
+        }
+        if (event.code !== 'ArrowDown' && event.code !== 'ArrowUp') return
+        const controls = Array.from(ref.current?.querySelectorAll<HTMLElement>('input[type="checkbox"], button') ?? [])
+        const currentIndex = controls.indexOf(event.target as HTMLElement)
+        if (currentIndex < 0) return
+        event.preventDefault()
+        const nextIndex = event.code === 'ArrowDown'
+          ? Math.min(currentIndex + 1, controls.length - 1)
+          : Math.max(currentIndex - 1, 0)
+        controls[nextIndex]?.focus()
+        controls[nextIndex]?.scrollIntoView?.({ block: 'nearest' })
+      }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
         {t('Status')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {allStatuses.map((s, i) => {
+        {allStatuses.map(s => {
           const isChecked = selected.includes(s.name)
-          const focused = i === focusIndex
           return (
             <label
               key={s.id}
-              ref={element => { rowRefs.current[i] = element }}
-              style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-              className={!focused ? 'hover-bg' : undefined}
+              style={checkRowStyle}
+              className="hover-bg"
             >
               <input
                 type="checkbox"
@@ -150,15 +151,13 @@ export const FilterPopover = ({
             {t('Participants')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {allMembers.map((name, i) => {
+            {allMembers.map(name => {
               const isChecked = selectedMembers.includes(name)
-              const focused = (i + allStatuses.length) === focusIndex
               return (
                 <label
                   key={name}
-                  ref={element => { rowRefs.current[allStatuses.length + i] = element }}
-                  style={{ ...checkRowStyle, background: focused ? 'var(--card-hover)' : 'transparent' }}
-                  className={!focused ? 'hover-bg' : undefined}
+                  style={checkRowStyle}
+                  className="hover-bg"
                 >
                   <input
                     type="checkbox"
@@ -183,10 +182,16 @@ export const FilterPopover = ({
       )}
 
       {hasAny && (
-        <button onClick={() => { onChange([]); onChangeMembers?.([]) }} className="btn btn-sm btn-block" style={{ marginTop: 10 }}>
+        <button onClick={() => {
+          const firstCheckbox = ref.current?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+          if (firstCheckbox) firstCheckbox.focus()
+          else ref.current?.focus()
+          onChange([])
+          onChangeMembers?.([])
+        }} className="btn btn-sm btn-block" style={{ marginTop: 10 }}>
           {t('Clear all')}
         </button>
       )}
     </div>
-  ), document.body)
+  ), portalHost)
 }

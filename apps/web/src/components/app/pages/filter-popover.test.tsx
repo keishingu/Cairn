@@ -1,17 +1,21 @@
 import React from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FilterPopover } from './filter-popover'
 
 const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
 
 afterEach(() => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
   if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', scrollIntoViewDescriptor)
   else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
 })
 
 describe('FilterPopover', () => {
-  it('長い候補を画面内でスクロールでき、矢印操作で末尾まで移動して選べる', () => {
+  it('長い候補を画面内でスクロールでき、矢印操作とTabで末尾と一括解除へ移動できる', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 160 })
     const onChange = vi.fn()
     const onChangeMembers = vi.fn()
     const anchorRef = React.createRef<HTMLDivElement>()
@@ -23,7 +27,7 @@ describe('FilterPopover', () => {
       const [selectedStatuses, setSelectedStatuses] = React.useState<string[]>([])
       const [selectedMembers, setSelectedMembers] = React.useState<string[]>([])
       return (
-        <>
+        <div className="app-root">
           <div ref={anchorRef}><button>フィルター</button></div>
           <FilterPopover
             containerRef={anchorRef}
@@ -35,31 +39,36 @@ describe('FilterPopover', () => {
             onChangeMembers={next => { onChangeMembers(next); setSelectedMembers(next) }}
             onClose={vi.fn()}
           />
-        </>
+        </div>
       )
     }
 
     render(<TestPopover />)
 
-    const popover = [...document.body.children].find(element => (element as HTMLElement).style.position === 'fixed') as HTMLElement
+    const popover = document.querySelector('.app-root > div[style*="position: fixed"]') as HTMLElement
     expect(popover).toHaveStyle({ position: 'fixed', overflowY: 'auto', maxHeight: '480px' })
-    expect(popover.parentElement).toBe(document.body)
+    expect(Number.parseFloat(popover.style.left) + Number.parseFloat(popover.style.width)).toBeLessThanOrEqual(160)
+    expect(popover.parentElement).toHaveClass('app-root')
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: '進行中' }))
 
     for (let index = 0; index < members.length; index++) {
-      fireEvent.keyDown(window, { code: 'ArrowDown' })
+      await user.keyboard('{ArrowDown}')
     }
-    fireEvent.keyDown(window, { code: 'Space' })
+    await user.keyboard(' ')
 
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
     expect(onChangeMembers).toHaveBeenLastCalledWith(['メンバー40'])
 
-    fireEvent.click(screen.getByText('メンバー40').closest('label')!.querySelector('input')!)
+    await user.click(screen.getByText('メンバー40').closest('label')!.querySelector('input')!)
     expect(onChangeMembers).toHaveBeenLastCalledWith([])
 
-    fireEvent.click(screen.getByRole('checkbox', { name: '進行中' }))
+    await user.click(screen.getByRole('checkbox', { name: '進行中' }))
     expect(onChange).toHaveBeenLastCalledWith(['進行中'])
-    fireEvent.click(screen.getByRole('button', { name: 'すべてクリア' }))
+    for (let index = 0; index <= members.length; index++) await user.tab()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'すべてクリア' }))
+    await user.keyboard('{Enter}')
     expect(onChange).toHaveBeenLastCalledWith([])
     expect(onChangeMembers).toHaveBeenLastCalledWith([])
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: '進行中' }))
   })
 })

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { translate } from '@cairn/shared'
 import { ChannelList, formatChannelPeriod } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -49,8 +50,11 @@ describe('formatChannelPeriod', () => {
 
 describe('ChannelList', () => {
   beforeEach(() => localStorage.clear())
+  afterEach(() => Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 }))
 
-  it('DM候補が多い場合はスクロールでき、ポータル内の末尾メンバーを選べる', () => {
+  it('DM候補が多い場合も画面内に収まり、フォーカス・Escape・末尾選択ができる', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 160 })
     const onStartDm = vi.fn()
     const members = Array.from({ length: 40 }, (_, index) => ({
       userId: `user-${index + 1}`,
@@ -65,7 +69,7 @@ describe('ChannelList', () => {
     }))
 
     render(
-      <ChannelList
+      <div className="app-root"><ChannelList
         channelId={null}
         onSelectChannel={vi.fn()}
         projectChannels={[]}
@@ -73,20 +77,30 @@ describe('ChannelList', () => {
         dms={[]}
         members={members}
         onStartDm={onStartDm}
-      />,
+      /></div>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'ダイレクトメッセージを開始' }))
+    const trigger = screen.getByRole('button', { name: 'ダイレクトメッセージを開始' })
+    await user.click(trigger)
 
+    const firstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(firstMember))
     const lastMember = screen.getByRole('button', { name: /メンバー40/ })
     const menu = lastMember.parentElement
     expect(menu).toHaveStyle({ position: 'fixed', overflowY: 'auto', maxHeight: '480px' })
-    expect(menu?.parentElement).toBe(document.body)
+    expect(menu?.parentElement).toHaveClass('app-root')
+    expect(Number.parseFloat(menu!.style.left) + Number.parseFloat(menu!.style.width)).toBeLessThanOrEqual(160)
     fireEvent.mouseDown(lastMember)
-    fireEvent.click(lastMember)
+    await user.click(lastMember)
 
     expect(onStartDm).toHaveBeenCalledWith('user-40')
     expect(screen.queryByRole('button', { name: /メンバー40/ })).toBeNull()
+
+    await user.click(trigger)
+    const reopenedFirstMember = screen.getByText('メンバー1').closest('button')!
+    await waitFor(() => expect(document.activeElement).toBe(reopenedFirstMember))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
   it('プロジェクト見出しの追加ボタンから作成を開始する', () => {

@@ -4,7 +4,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
-import { Icon, Avatar, AvatarStack, UnreadBadge } from '../primitives'
+import { Icon, Avatar, AvatarStack, UnreadBadge, portalHostFor } from '../primitives'
 import { STORAGE_KEYS, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -533,7 +533,8 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
   const menuRef = React.useRef<HTMLDivElement>(null)
-  const [position, setPosition] = React.useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
+  const didInitialFocus = React.useRef(false)
+  const [position, setPosition] = React.useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null)
 
   React.useLayoutEffect(() => {
     if (!open) return
@@ -541,13 +542,15 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
       const anchor = ref.current
       if (!anchor) return
       const rect = anchor.getBoundingClientRect()
-      const width = Math.max(160, Math.min(280, window.innerWidth - 16))
+      const width = Math.max(0, Math.min(280, window.innerWidth - 16))
       const below = Math.max(0, window.innerHeight - rect.bottom - 12)
       const above = Math.max(0, rect.top - 12)
       const openAbove = below < 240 && above > below
       const maxHeight = Math.min(480, openAbove ? above : below)
+      const maxLeft = Math.max(0, window.innerWidth - width - 8)
       setPosition({
-        left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+        left: Math.max(Math.min(8, maxLeft), Math.min(rect.right - width, maxLeft)),
+        width,
         ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
         maxHeight,
       })
@@ -565,6 +568,18 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
   }, [open])
 
   React.useEffect(() => {
+    if (!open) {
+      didInitialFocus.current = false
+      return
+    }
+    if (!position || didInitialFocus.current) return
+    didInitialFocus.current = true
+    const firstChoice = menuRef.current?.querySelector('button')
+    if (firstChoice) firstChoice.focus()
+    else menuRef.current?.focus()
+  }, [open, position])
+
+  React.useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
         ref.current && !ref.current.contains(e.target as Node) &&
@@ -577,18 +592,23 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
+      <button onClick={() => setOpen(p => !p)} aria-label={t('Start a direct message')} aria-expanded={open} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
         <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
       </button>
-      {open && createPortal(
-        <div ref={menuRef} style={{
+      {open && portalHostFor(ref.current) && createPortal(
+        <div ref={menuRef} className="app" style={{
           position: 'fixed', left: position?.left ?? 0,
           ...(position?.bottom !== undefined ? { bottom: position.bottom } : { top: position?.top ?? 0 }),
-          width: Math.max(160, Math.min(280, window.innerWidth - 16)),
+          width: position?.width ?? 0, boxSizing: 'border-box',
           maxHeight: position?.maxHeight ?? 0, overflowY: 'auto',
           visibility: position ? 'visible' : 'hidden',
           background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
           boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)',
+        }} tabIndex={-1} onKeyDown={event => {
+          if (event.code !== 'Escape') return
+          event.preventDefault()
+          ref.current?.querySelector('button')?.focus()
+          setOpen(false)
         }}>
           {members.map(m => (
             <button
@@ -601,7 +621,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
-        </div>, document.body,
+        </div>, portalHostFor(ref.current)!,
       )}
     </div>
   )
