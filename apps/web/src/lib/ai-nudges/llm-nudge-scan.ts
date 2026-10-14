@@ -387,6 +387,12 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
         or(isNull(channels.projectId), eq(projects.archived, false)),
         // アーカイブ済みスレッドもプロジェクトと揃えて巡回しない。migration より先に動いても落ちないよう to_jsonb で読む。
         sql`coalesce(to_jsonb(${channels})->>'archived_at', '') = ''`,
+        // 親チャンネルがアーカイブされたら配下スレッドも実質アーカイブ済みとして巡回しない。
+        sql`not exists (
+          select 1 from channels parent_channel
+          where parent_channel.id::text = to_jsonb(${channels})->>'parent_channel_id'
+            and coalesce(to_jsonb(parent_channel)->>'archived_at', '') <> ''
+        )`,
       ),
     )
 

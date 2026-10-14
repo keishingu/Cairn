@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
   projects_table_sort:       'cairn:projects_table_sort',
   webview_mode:              'cairn:webview_mode',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
+  chat_archived_channels_collapsed: 'cairn:chat_archived_channels_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
   chat_sidebar_width:        'cairn:chat_sidebar_width',
   chat_send_key:             'cairn:chat_send_key',
@@ -43,3 +44,7 @@ export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId
 /** プロジェクト別の完了済みマイルストーン折りたたみ状態 */
 export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
   `cairn:chat_completed_milestones_collapsed_${projectId}` as const
+
+/** チャンネル別のアーカイブ済みスレッド折りたたみ状態 */
+export const chatArchivedThreadsCollapsedKey = (channelId: string) =>
+  `cairn:chat_archived_threads_collapsed_${channelId}` as const

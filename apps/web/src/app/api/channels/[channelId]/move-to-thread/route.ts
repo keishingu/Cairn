@@ -72,6 +72,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         type: channels.type,
         isPrivate: channels.isPrivate,
         parentChannelId: channels.parentChannelId,
+        archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''`,
       })
       .from(channels)
       .where(eq(channels.id, channelId))
@@ -85,6 +86,11 @@ export async function POST(req: Request, { params }: RouteContext) {
         { error: 'スレッドに切り出せるのは、ワークスペースのチャンネルのメッセージだけです' },
         { status: 400 },
       )
+    }
+
+    // アーカイブ済みチャンネルのスレッドは実質アーカイブ済みのため、移動先にも新規作成先にも使えない。
+    if (parent.archived) {
+      return NextResponse.json({ error: 'アーカイブ済みのチャンネルのスレッドには移動できません' }, { status: 400 })
     }
 
     // 移動元にも配信するトリガー（20261014060000）より先にデプロイされた間は、移動元を開いている人の

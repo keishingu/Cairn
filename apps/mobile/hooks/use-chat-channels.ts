@@ -144,7 +144,7 @@ export function useRenameWorkspaceChannel() {
   })
 }
 
-export function useSetWorkspaceThreadArchived() {
+export function useSetWorkspaceChannelArchived() {
   const t = useT()
   const qc = useQueryClient()
   return useMutation({

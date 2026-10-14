@@ -21,7 +21,7 @@ import {
   useCreateDm,
   useBookmarks,
   useDeleteWorkspaceChannel,
-  useSetWorkspaceThreadArchived,
+  useSetWorkspaceChannelArchived,
   fetchMessageChannelId,
   chatQueryKeys,
 } from '@/lib/chat/client'
@@ -360,7 +360,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [deletingWorkspaceChannel, setDeletingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const patchMilestone = usePatchProjectMilestone()
   const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
-  const setWorkspaceThreadArchived = useSetWorkspaceThreadArchived()
+  const setWorkspaceChannelArchived = useSetWorkspaceChannelArchived()
 
   // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
   // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
@@ -620,12 +620,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     )
   }
 
-  const handleSetWorkspaceThreadArchived = (thread: WorkspaceChannelDto, archived: boolean) => {
-    if (setWorkspaceThreadArchived.isPending) return
-    setWorkspaceThreadArchived.mutate(
-      { channelId: thread.id, archived },
+  const handleSetWorkspaceChannelArchived = (target: WorkspaceChannelDto, archived: boolean) => {
+    if (setWorkspaceChannelArchived.isPending) return
+    const isThread = target.parentChannelId !== null
+    setWorkspaceChannelArchived.mutate(
+      { channelId: target.id, archived },
       {
-        onSuccess: () => toast.success(archived ? t('Archived the thread') : t('Unarchived the thread')),
+        onSuccess: () => toast.success(isThread
+          ? (archived ? t('Archived the thread') : t('Unarchived the thread'))
+          : (archived ? t('Archived the channel') : t('Unarchived the channel'))),
         onError: error => toast.error(error.message),
       },
     )
@@ -737,7 +740,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
       {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
       {...(canCreateChildChannel ? { onRenameWorkspaceChannel: setRenamingWorkspaceChannel } : {})}
-      {...(canCreateChildChannel ? { onSetWorkspaceThreadArchived: handleSetWorkspaceThreadArchived } : {})}
+      {...(canCreateChildChannel ? { onSetWorkspaceChannelArchived: handleSetWorkspaceChannelArchived } : {})}
       {...(canCreateChildChannel ? { onDeleteWorkspaceChannel: setDeletingWorkspaceChannel } : {})}
       canManageWorkspaceChannel={canCreateWorkspaceChannel}
     />

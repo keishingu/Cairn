@@ -28,11 +28,20 @@ import type { PhaseTwoChannelInput, PhaseTwoNudgeCandidate } from './llm-nudge-s
 
 type DeliveryTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
-// アーカイブ済みスレッドは巡回対象外。巡回中に作られた候補や、既存のリマインダーもここで止める。
+// アーカイブ済みスレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は巡回対象外。巡回中に作られた候補や、既存のリマインダーもここで止める。
 // migration より先に動いても落ちないよう to_jsonb で読む。
 async function isArchivedChannel(tx: DeliveryTx, channelId: string): Promise<boolean> {
   const [row] = await tx
-    .select({ archived: sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''` })
+    .select({
+      archived: sql<boolean>`(
+        coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''
+        or exists (
+          select 1 from channels parent_channel
+          where parent_channel.id::text = to_jsonb(${channels})->>'parent_channel_id'
+            and coalesce(to_jsonb(parent_channel)->>'archived_at', '') <> ''
+        )
+      )`,
+    })
     .from(channels)
     .where(eq(channels.id, channelId))
     .limit(1)

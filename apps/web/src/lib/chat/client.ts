@@ -113,7 +113,7 @@ async function renameWorkspaceChannel(channelId: string, name: string): Promise<
   return res.json()
 }
 
-async function setWorkspaceThreadArchived(channelId: string, archived: boolean): Promise<{ id: string; archived: boolean }> {
+async function setWorkspaceChannelArchived(channelId: string, archived: boolean): Promise<{ id: string; archived: boolean }> {
   const res = await fetchWithAuth(`/api/channels/${channelId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -357,10 +357,10 @@ export function useRenameWorkspaceChannel() {
   })
 }
 
-export function useSetWorkspaceThreadArchived() {
+export function useSetWorkspaceChannelArchived() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ channelId, archived }: { channelId: string; archived: boolean }) => setWorkspaceThreadArchived(channelId, archived),
+    mutationFn: ({ channelId, archived }: { channelId: string; archived: boolean }) => setWorkspaceChannelArchived(channelId, archived),
     onSuccess: updated => {
       queryClient.setQueryData<WorkspaceChannelDto[]>(chatQueryKeys.workspaceChannels, current =>
         current?.map(channel => channel.id === updated.id ? { ...channel, archived: updated.archived } : channel),
