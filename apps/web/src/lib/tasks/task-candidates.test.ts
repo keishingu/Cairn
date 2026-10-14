@@ -128,6 +128,13 @@ describe('taskCandidatesFromMessage', () => {
 describe('legacyCheckboxTaskIdByLine', () => {
   const content = '前置き\n- [ ] 一つ目\n- [x] 二つ目\n- 普通のリスト'
 
+  it('編集で行の位置がずれても、位置ではなくタイトルが一致する行に対応付ける', () => {
+    // 旧タスク A は index 0 だったが、編集で先頭に B が挿入され A は index 1 に移った
+    const edited = '- [ ] B\n- [ ] A'
+    const map = legacyCheckboxTaskIdByLine(edited, [{ id: 'tA', title: 'A', sourceCheckboxIndex: 0 }])
+    expect(map).toEqual(new Map([[h('A'), 'tA']]))
+  })
+
   it('source_checkbox_index 番目のチェックボックス行の line に対応付ける', () => {
     const map = legacyCheckboxTaskIdByLine(content, [
       { id: 't0', title: '改名済み', sourceCheckboxIndex: 0 },

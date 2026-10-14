@@ -86,8 +86,8 @@ const CHECKBOX_RE = /^([-*+] \[)([ x])(\] .*)$/gm
 
 /**
  * `- [ ]` 時代に作られたタスク（source_checkbox_index あり、source_line なし）を、元の位置の候補（line）に対応付ける。
- * 本文中の source_checkbox_index 番目のチェックボックス行の候補キーで引き、引けなければ
- * 表示タイトル（formatTaskTitleForDisplay 済み）が同じ候補にフォールバックする。戻り値は line → タスク ID。
+ * 位置（source_checkbox_index 番目のチェックボックス行）とタイトルが一致する行、タイトルが一致する行、
+ * 空いている位置の行の順に対応付ける。戻り値は line → タスク ID。
  */
 export function legacyCheckboxTaskIdByLine(
   content: string,
@@ -102,14 +102,28 @@ export function legacyCheckboxTaskIdByLine(
     const text = parseLine(m[0]).text
     return text ? lineKey(text) : null
   })
+  const titleByLine = new Map(candidates.map(c => [c.line, c.title]))
+  const indexLineOf = (task: { sourceCheckboxIndex: number }) => {
+    const line = checkboxLines[task.sourceCheckboxIndex]
+    return line && candidateLines.has(line) ? line : undefined
+  }
+  // 移行後の本文編集では source_checkbox_index が更新されず位置がずれうるため、
+  // まず「位置とタイトルが一致」→「タイトル一致」で対応付け、残ったタスクだけ空いている位置の行に対応付ける
+  // （タスク側で改名された旧タスクも位置で拾える）。
+  const unmatched: typeof legacyTasks = []
   for (const task of legacyTasks) {
-    const byIndex = checkboxLines[task.sourceCheckboxIndex]
-    let line = byIndex && candidateLines.has(byIndex) ? byIndex : undefined
+    const title = normalize(task.title)
+    const byIndex = indexLineOf(task)
+    let line = byIndex && titleByLine.get(byIndex) === title && !result.has(byIndex) ? byIndex : undefined
     if (line === undefined) {
-      const title = normalize(task.title)
       line = candidates.find(c => c.title === title && !result.has(c.line))?.line
     }
-    if (line !== undefined && !result.has(line)) result.set(line, task.id)
+    if (line !== undefined) result.set(line, task.id)
+    else unmatched.push(task)
+  }
+  for (const task of unmatched) {
+    const byIndex = indexLineOf(task)
+    if (byIndex !== undefined && !result.has(byIndex)) result.set(byIndex, task.id)
   }
   return result
 }
