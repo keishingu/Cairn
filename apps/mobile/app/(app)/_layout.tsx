@@ -1,5 +1,5 @@
 import React from 'react'
-import { Platform } from 'react-native'
+import { Alert, Platform } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
@@ -62,6 +62,7 @@ function routeFromNotificationResponse(
   void followNotification(router, destination, {
     ...(workspaceId ? { workspaceId } : {}),
     t,
+    onUnavailable: (message) => Alert.alert(message),
   })
 }
 

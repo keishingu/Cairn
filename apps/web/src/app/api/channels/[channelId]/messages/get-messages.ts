@@ -7,6 +7,8 @@ import { hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
+import { canAccessChannel } from '@/lib/permissions'
+import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
 import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
@@ -247,7 +249,10 @@ export async function getMessages({
       ...new Set(rows.map((r) => r.parentMessageId).filter((id): id is string => !!id)),
     ]
 
-    const [reactionRows, attachmentRows, bookmarkRows, taskRows, parentRows] = await Promise.all([
+    // 引用の参照先は同じチャンネルに加え、親チャンネルとそのスレッド（スレッドへ切り出された元の会話）まで探す
+    const quoteChannelIds = parentIds.length > 0 ? await loadChannelFamilyIds(channelId) : [channelId]
+
+    const [reactionRows, attachmentRows, bookmarkRows, taskRows, rawParentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
@@ -325,6 +330,7 @@ export async function getMessages({
                 profiles.displayName,
               ),
               deletedAt: messages.deletedAt,
+              channelId: messages.channelId,
             })
             .from(messages)
             .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -335,10 +341,19 @@ export async function getMessages({
                 eq(workspaceMembers.workspaceId, workspaceId),
               ),
             )
-            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
-            .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
+            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親はこのチャンネルの親子（スレッド）に限定する。
+            // 別チャンネルにある親は、下で閲覧権限を確認してから使う
+            .where(and(inArray(messages.id, parentIds), inArray(messages.channelId, quoteChannelIds)))
         : Promise.resolve([]),
     ])
+
+    // 切り出し先・元のチャンネルが非公開の場合に内容が漏れないよう、別チャンネルの親は閲覧できるものだけ残す
+    const foreignChannelIds = [...new Set(rawParentRows.map(parent => parent.channelId).filter(id => id !== channelId))]
+    const accessibleForeign = new Set<string>()
+    await Promise.all(foreignChannelIds.map(async (foreignId) => {
+      if (await canAccessChannel(workspaceId, userId, foreignId)) accessibleForeign.add(foreignId)
+    }))
+    const parentRows = rawParentRows.filter(parent => parent.channelId === channelId || accessibleForeign.has(parent.channelId))
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const reaction of reactionRows) {

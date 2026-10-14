@@ -515,6 +515,28 @@ export async function loadPhaseTwoChannelInput(
         .limit(1)
     : []
   const recheckAnchor = recheckSourceRows[0]
+  // 予約元がこのチャンネルにない（スレッドへ切り出された等）と、読み直せないまま期限切れの予約が
+  // 毎heartbeatで選ばれ続ける。カーソルは進めずに予約だけを解消する。移動先では通常の巡回で読み直される。
+  if (isUnansweredAskRecheck && !recheckAnchor) {
+    const checkedAtMissing = new Date().toISOString()
+    return {
+      channelId: channel.channelId,
+      workspaceId: channel.workspaceId,
+      projectId: channel.projectId,
+      channelName: channel.channelName,
+      messages: [],
+      newMessageIds: [],
+      recheckMessageIds: [],
+      scannedThroughMessageId: channel.nextUnansweredAskMessageId!,
+      scannedThroughCreatedAt: checkedAtMissing,
+      evaluatedAt: checkedAtMissing,
+      hasUnloadedMessagesAfterScanWindow: false,
+      isUnansweredAskRecheck,
+      advancesCursor: false,
+      nextUnansweredAskCheckAt: null,
+      nextUnansweredAskMessageId: null,
+    }
+  }
   const scanRows = isUnansweredAskRecheck
     ? recheckAnchor
       ? [

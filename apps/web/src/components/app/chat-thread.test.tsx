@@ -569,6 +569,76 @@ describe('ChatMessage copy action', () => {
   })
 })
 
+describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
+  const baseProps = {
+    messageId: 'message-1',
+    messageType: 'text' as const,
+    senderId: 'user-2',
+    currentUserId: 'user-1',
+    senderName: 'Alice',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    isEdited: false,
+    content: '相談です',
+    reactions: [],
+    attachments: [],
+    replyTo: null,
+    bookmarked: false,
+    onReact: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onCheckboxToggle: vi.fn(),
+    onReply: vi.fn(),
+    onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
+    onJumpToMessage: vi.fn(),
+    onCopyLink: vi.fn(),
+    onImageClick: vi.fn(),
+    isMobile: true,
+  }
+
+  it('切り出しの導線を渡された親ワークスペースチャンネルでは、メニューに項目を出して選ぶと呼ぶ', async () => {
+    const user = userEvent.setup()
+    const onMoveToThread = vi.fn()
+    render(<ChatMessage {...baseProps} onMoveToThread={onMoveToThread} />)
+
+    await user.click(screen.getByTitle('操作'))
+    await user.click(screen.getByRole('button', { name: 'スレッドに切り出す' }))
+
+    expect(onMoveToThread).toHaveBeenCalledWith('message-1')
+  })
+
+  it('スレッド・プロジェクト・DM・ゲストなど導線を渡されない場合は項目を出さない', async () => {
+    const user = userEvent.setup()
+    render(<ChatMessage {...baseProps} />)
+
+    await user.click(screen.getByTitle('操作'))
+
+    expect(screen.getByRole('button', { name: 'コピー' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'スレッドに切り出す' })).toBeNull()
+  })
+
+  it('システムメッセージにはメニュー自体を出さない', () => {
+    render(<ChatMessage {...baseProps} messageType="system" onMoveToThread={vi.fn()} />)
+
+    expect(screen.queryByTitle('操作')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'スレッドに切り出す' })).toBeNull()
+  })
+
+  it('選択モードではチェックボックスを出し、切り替えを通知してメニューは隠す', async () => {
+    const user = userEvent.setup()
+    const onToggle = vi.fn()
+    render(<ChatMessage {...baseProps} onMoveToThread={vi.fn()} selection={{ selected: true, onToggle }} />)
+
+    const checkbox = screen.getByRole('checkbox', { name: 'メッセージを選択' })
+    expect(checkbox).toBeChecked()
+    expect(screen.queryByTitle('操作')).toBeNull()
+
+    await user.click(checkbox)
+
+    expect(onToggle).toHaveBeenCalledWith('message-1')
+  })
+})
+
 describe('モバイルWebのリアクション表示', () => {
   it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
     const user = userEvent.setup()

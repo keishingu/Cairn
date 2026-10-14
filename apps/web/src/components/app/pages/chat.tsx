@@ -22,6 +22,7 @@ import {
   useBookmarks,
   useDeleteWorkspaceChannel,
   useSetWorkspaceThreadArchived,
+  fetchMessageChannelId,
   chatQueryKeys,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
@@ -31,6 +32,7 @@ import { CreateChannelModal } from './create-channel-modal'
 import { CreateProjectModal } from './create-project-modal'
 import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
 import { CreateChannelThreadModal } from './create-channel-thread-modal'
+import { MoveToThreadDialog } from '../move-to-thread-dialog'
 import { RenameWorkspaceChannelModal } from './rename-workspace-channel-modal'
 import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
@@ -46,6 +48,7 @@ import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
 import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
 import { toast } from '@/lib/toast'
+import { canMoveMessageToThread, type MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
 import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
@@ -350,6 +353,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
   const [requestedEditingMilestoneId, setRequestedEditingMilestoneId] = React.useState<string | null>(null)
   const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
+  // 「スレッドに切り出す」: moveDialog が確認ダイアログ、moveSelection が複数選択モード（起点メッセージ＋選択中の一覧）
+  const [moveDialog, setMoveDialog] = React.useState<{ anchor: MoveSourceMessage; selected: MoveSourceMessage[] | null } | null>(null)
+  const [moveSelection, setMoveSelection] = React.useState<{ anchor: MoveSourceMessage; items: Map<string, MoveSourceMessage> } | null>(null)
   const [renamingWorkspaceChannel, setRenamingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const [deletingWorkspaceChannel, setDeletingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
   const patchMilestone = usePatchProjectMilestone()
@@ -397,6 +403,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   React.useEffect(() => {
     setChannelId(urlChannelId)
   }, [urlChannelId])
+
+  // 別のチャンネルを開いたら、切り出しの操作は破棄する（選択したメッセージは元のチャンネルのもの）
+  React.useEffect(() => {
+    setMoveDialog(null)
+    setMoveSelection(null)
+  }, [channelId])
 
   // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
   React.useEffect(() => {
@@ -569,6 +581,28 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     router.push('/chats/' + chanId)
   }
 
+  // 切り出されたメッセージの古いリンクを開いたとき、移動先のチャンネルを解決して辿り直す。
+  // 権限の確認は API 側で行い、閲覧できないチャンネルは「見つからない」と同じ扱いにする
+  const jumpToChannelMessageRef = React.useRef(jumpToChannelMessage)
+  jumpToChannelMessageRef.current = jumpToChannelMessage
+  const currentChannelIdRef = React.useRef(channelId)
+  currentChannelIdRef.current = channelId
+  const handleMessageNotInChannel = React.useCallback(async (messageId: string) => {
+    try {
+      const targetChannelId = await fetchMessageChannelId(messageId)
+      // 削除済みか閲覧できない移動先かは区別せず伝え、存在の有無を漏らさない。
+      if (!targetChannelId) {
+        toast.error(t('The message could not be found. It may have been deleted, or you may not have access.'))
+        return
+      }
+      if (targetChannelId !== currentChannelIdRef.current) {
+        jumpToChannelMessageRef.current(targetChannelId, messageId)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'メッセージの場所の取得に失敗しました')
+    }
+  }, [t])
+
   const handleStartDm = (targetUserId: string) => {
     createDmMutation.mutate(targetUserId, {
       onSuccess: (data) => selectChannel(data.id),
@@ -735,6 +769,54 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     />
   )
 
+  // 親ワークスペースチャンネル（スレッドではない）で member 以上のときだけ、メッセージのメニューに出す
+  const canMoveToThread = !!currentGeneral && currentGeneral.parentChannelId === null
+    && canMoveMessageToThread({ isParentWorkspaceChannel: true, role: currentUser?.wsRole, messageType: 'text' })
+  const moveToThreadProps = {
+    onMessageNotInChannel: handleMessageNotInChannel,
+    ...(canMoveToThread ? {
+      onMoveToThread: (message: MoveSourceMessage) => {
+        setMoveSelection(null)
+        setMoveDialog({ anchor: message, selected: null })
+      },
+    } : {}),
+    ...(canMoveToThread && moveSelection ? {
+      moveSelection: {
+        selectedIds: new Set(moveSelection.items.keys()),
+        onToggle: (message: MoveSourceMessage) => setMoveSelection(current => {
+          if (!current) return current
+          const items = new Map(current.items)
+          if (items.has(message.id)) items.delete(message.id)
+          else items.set(message.id, message)
+          return { ...current, items }
+        }),
+        onConfirm: () => setMoveDialog({ anchor: moveSelection.anchor, selected: [...moveSelection.items.values()] }),
+        onCancel: () => setMoveSelection(null),
+      },
+    } : {}),
+  }
+
+  const moveToThreadUI = moveDialog && channelId && currentGeneral && (
+    <MoveToThreadDialog
+      parentChannelId={channelId}
+      parentChannelName={currentGeneral.name ?? ''}
+      anchor={moveDialog.anchor}
+      selected={moveDialog.selected}
+      threads={workspaceChannels.filter(candidate => candidate.parentChannelId === channelId && !candidate.archived)}
+      onClose={() => setMoveDialog(null)}
+      onStartSelection={() => {
+        setMoveSelection({ anchor: moveDialog.anchor, items: new Map([[moveDialog.anchor.id, moveDialog.anchor]]) })
+        setMoveDialog(null)
+      }}
+      onMoved={({ threadId, movedCount }) => {
+        setMoveDialog(null)
+        setMoveSelection(null)
+        toast.success(t('Moved {count} messages to the thread', { count: movedCount }))
+        selectChannel(threadId)
+      }}
+    />
+  )
+
   const createThreadUI = threadChannel && (
     <CreateChannelThreadModal
       channelId={threadChannel.id}
@@ -828,6 +910,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           {createMilestoneUI}
           {editMilestoneUI}
           {createThreadUI}
+          {moveToThreadUI}
           {renameWorkspaceChannelUI}
           {deleteWorkspaceChannelUI}
         </div>
@@ -855,7 +938,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
+          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -894,6 +977,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       {createMilestoneUI}
       {editMilestoneUI}
       {createThreadUI}
+      {moveToThreadUI}
       {renameWorkspaceChannelUI}
       {deleteWorkspaceChannelUI}
       <aside style={{ width: sidebarResize.width, flexShrink: 0, position: 'relative', background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
@@ -964,7 +1048,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition/>
+                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
             }
           </main>
 

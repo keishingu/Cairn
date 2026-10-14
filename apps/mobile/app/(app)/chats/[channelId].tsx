@@ -32,6 +32,7 @@ import {
   useDeleteMessage,
   useEditMessage,
   useMessages,
+  useMoveMessagesToThread,
   useToggleMessageBookmark,
   useToggleMessageReaction,
 } from '../../../hooks/use-messages'
@@ -74,6 +75,8 @@ import {
   useWorkspaceMembers,
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
+import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
+import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
@@ -532,6 +535,7 @@ export default function ChatThreadScreen() {
   const editMessage = useEditMessage(channelId ?? '')
   const deleteMessage = useDeleteMessage(channelId ?? '')
   const toggleBookmark = useToggleMessageBookmark(channelId ?? '')
+  const moveToThread = useMoveMessagesToThread(channelId ?? '')
   const upload = useAttachmentUpload(channelId ?? '')
   const { data: me } = useMe()
   const projectChannelsQuery = useProjectChannels()
@@ -567,6 +571,9 @@ export default function ChatThreadScreen() {
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
+  // 「スレッドに切り出す」シートの起点メッセージ
+  const [moveTarget, setMoveTarget] = React.useState<MessageDto | null>(null)
+  const [moveError, setMoveError] = React.useState<string | null>(null)
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
   const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
@@ -1783,6 +1790,24 @@ export default function ChatThreadScreen() {
               palette={palette}
               onPress={() => actionTarget && void shareMessage(actionTarget)}
             />
+            {actionTarget &&
+              canMoveMessageToThread({
+                channelType,
+                workspaceChannel,
+                role: me?.wsRole,
+                messageType: actionTarget.messageType,
+              }) && (
+                <ActionButton
+                  icon="arrow-redo-outline"
+                  label={t('Move to thread')}
+                  palette={palette}
+                  onPress={() => {
+                    setMoveError(null)
+                    setMoveTarget(actionTarget)
+                    setActionTarget(null)
+                  }}
+                />
+              )}
             {actionTarget?.senderId === me?.id && (
               <>
                 <ActionButton
@@ -1802,6 +1827,36 @@ export default function ChatThreadScreen() {
             )}
           </View>
         </Modal>
+
+        <MoveToThreadSheet
+          message={moveTarget}
+          threads={(workspaceChannelsQuery.data ?? []).filter(
+            (candidate) => candidate.parentChannelId === channelId && !candidate.archived,
+          )}
+          palette={palette}
+          pending={moveToThread.isPending}
+          error={moveError}
+          onClose={() => setMoveTarget(null)}
+          onSubmit={(body) => {
+            moveToThread.mutate(body, {
+              onSuccess: ({ threadId }) => {
+                const existing = workspaceChannelsQuery.data?.find((candidate) => candidate.id === threadId)
+                setMoveTarget(null)
+                router.push({
+                  pathname: '/chats/[channelId]',
+                  params: {
+                    channelId: threadId,
+                    channelName: body.threadName ?? existing?.name ?? t('Channels'),
+                    channelType: 'workspace',
+                    isPrivate: workspaceChannel?.isPrivate ? '1' : '0',
+                  },
+                })
+              },
+              onError: (error) =>
+                setMoveError(error instanceof Error ? error.message : t('Could not move the messages to a thread')),
+            })
+          }}
+        />
 
         <Modal
           transparent

@@ -51,6 +51,25 @@ describe('通知からの画面遷移', () => {
     ).toEqual({ kind: 'channel', channelId: 'ch-2' })
   })
 
+  it('通知にメッセージ ID があれば、スレッドへの移動後も辿れるよう遷移先に渡す', () => {
+    expect(
+      routeFromNotification(
+        notification({
+          type: 'mention',
+          data: { channelId: 'ch-1', messageId: 'msg-1' },
+        }),
+      ),
+    ).toEqual({ kind: 'channel', channelId: 'ch-1', messageId: 'msg-1' })
+    expect(
+      routeFromNotification(
+        notification({
+          type: 'ai',
+          data: { channelId: 'ch-1', messageId: 'msg-2' },
+        }),
+      ),
+    ).toEqual({ kind: 'channel', channelId: 'ch-1', messageId: 'msg-2' })
+  })
+
   it('task 通知は url がなくても tasks へ送る', () => {
     expect(routeFromNotification(notification({ type: 'task' }))).toEqual({
       kind: 'screen',
@@ -105,6 +124,8 @@ describe('通知からの画面遷移', () => {
 
   it('チャット URL は個別チャンネルを優先する', () => {
     expect(routeFromPushUrl('/chats/ch-1')).toEqual({ kind: 'channel', channelId: 'ch-1' })
+    // スレッドへ切り出された後でも移動先を辿れるよう、Push の URL のメッセージ ID を残す
+    expect(routeFromPushUrl('/chats/ch-1?m=msg-1')).toEqual({ kind: 'channel', channelId: 'ch-1', messageId: 'msg-1' })
     expect(routeFromPushUrl('/tasks')).toEqual({ kind: 'screen', path: '/(app)/tasks' })
     expect(routeFromPushUrl(undefined)).toBeNull()
   })

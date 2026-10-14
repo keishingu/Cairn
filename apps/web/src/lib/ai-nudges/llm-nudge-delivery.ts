@@ -337,6 +337,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             isNull(messages.deletedAt),
           ),
         )
+        // スレッドへの切り出しと直列化し、確認から書き込みまでの間に移動されても通知が親に残らないようにする。
+        .for('share')
         .limit(1)
       if (!source) {
         await tx.update(aiNudges).set({ status: 'resolved' }).where(eq(aiNudges.id, reminder.id))
@@ -482,6 +484,8 @@ export async function deliverPhaseTwoScanResults(results: PhaseTwoScanResult[], 
             isNull(messages.deletedAt),
           ),
         )
+        // スレッドへの切り出しと直列化し、確認から書き込みまでの間に移動されても通知が親に残らないようにする。
+        .for('share')
         .limit(1)
       if (!source) {
         discarded += 1

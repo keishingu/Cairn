@@ -14,6 +14,7 @@ import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
 import { InlineError } from './inline-error'
 import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
+import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
@@ -198,7 +199,7 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -231,6 +232,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
+  /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
+  onMoveToThread?: (messageId: string) => void
+  /** 切り出すメッセージの選択モード。渡されたときはチェックボックスを出し、行のクリックで選択を切り替える */
+  selection?: { selected: boolean; onToggle: (messageId: string) => void }
   mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
@@ -365,6 +370,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
     { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
+    ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
@@ -373,7 +379,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ] : []),
   ]
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
-  const messageActions = !editMode && (isMobile || hovered) && (
+  const messageActions = !editMode && !selection && (isMobile || hovered) && (
     <div style={isMobile
       ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
@@ -399,7 +405,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
+      {...(selection ? { onClick: () => selection.onToggle(messageId) } : {})}
     >
+      {selection && (
+        <input
+          type="checkbox"
+          checked={selection.selected}
+          onChange={() => selection.onToggle(messageId)}
+          onClick={e => e.stopPropagation()}
+          aria-label={t('Select message')}
+          style={{ accentColor: 'var(--accent)', margin: '10px 0 0', flexShrink: 0, width: 16, height: 16 }}
+        />
+      )}
       <div title={senderEmail ?? undefined}>
         <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
@@ -1340,7 +1357,7 @@ function useMessageTimelineScroll({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false, onMoveToThread, moveSelection, onMessageNotInChannel }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
@@ -1350,6 +1367,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   isMobile?: boolean
   targetMessage?: { id: string } | null
   initialUnreadPosition?: boolean
+  /** 渡すとメッセージのメニューに「スレッドに切り出す」を出す。親ワークスペースチャンネルの member 以上にだけ渡す */
+  onMoveToThread?: (message: MoveSourceMessage) => void
+  /** 切り出すメッセージの選択モード。渡している間はチェックボックスと確認バーを出し、入力欄は隠す */
+  moveSelection?: {
+    selectedIds: ReadonlySet<string>
+    onToggle: (message: MoveSourceMessage) => void
+    onConfirm: () => void
+    onCancel: () => void
+  }
+  /** ジャンプ先のメッセージがこのチャンネルに無かったとき（別チャンネルへ移された可能性）に呼ばれる */
+  onMessageNotInChannel?: (messageId: string) => void
 }) => {
   const t = useT()
   const [draft, setDraft] = React.useState('')
@@ -1865,6 +1893,27 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     setReplyTarget({ id: m.id, senderName: m.senderName, content: m.content, isDeleted: false })
   }, [messages])
 
+  const handleMoveToThread = React.useCallback((messageId: string) => {
+    if (!onMoveToThread || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) onMoveToThread({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, onMoveToThread])
+
+  const moveSelectionToggle = moveSelection?.onToggle
+  const handleToggleMoveSelection = React.useCallback((messageId: string) => {
+    if (!moveSelectionToggle || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) moveSelectionToggle({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, moveSelectionToggle])
+
+  // ジャンプ先が履歴ウィンドウにも無かった場合は、別チャンネルへ移されていないか親に確かめてもらう
+  const unavailableJumpId = historyUnavailable ? requestedMessageId : null
+  const onMessageNotInChannelRef = React.useRef(onMessageNotInChannel)
+  onMessageNotInChannelRef.current = onMessageNotInChannel
+  React.useEffect(() => {
+    if (unavailableJumpId) onMessageNotInChannelRef.current?.(unavailableJumpId)
+  }, [unavailableJumpId])
+
   const handleBookmark = React.useCallback((messageId: string) => {
     if (messageId.startsWith('optimistic-')) return
     leaveHistoryView()
@@ -2179,6 +2228,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
+              {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
+              {...(moveSelection && item.message.messageType !== 'system'
+                ? { selection: { selected: moveSelection.selectedIds.has(item.message.id), onToggle: handleToggleMoveSelection } }
+                : {})}
               focused={item.messageIndex === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
@@ -2206,7 +2259,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           </button>
         </div>
       )}
-      {!isAccessDenied && (
+      {!isAccessDenied && moveSelection && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 16px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t('{count} selected', { count: moveSelection.selectedIds.size })}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={moveSelection.onCancel}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-primary" disabled={moveSelection.selectedIds.size === 0} onClick={moveSelection.onConfirm}>{t('Move to thread')}</button>
+          </div>
+        </div>
+      )}
+      {!isAccessDenied && !moveSelection && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}
