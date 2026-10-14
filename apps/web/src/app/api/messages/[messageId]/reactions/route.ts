@@ -7,7 +7,8 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 
 const toggleSchema = z.object({
-  emoji: z.string().min(1).max(10),
+  // ZWJ families and skin-tone sequences can exceed 10 UTF-16 code units.
+  emoji: z.string().min(1).max(32),
 })
 
 type RouteContext = { params: Promise<{ messageId: string }> }
