@@ -1186,6 +1186,11 @@ export const KO_MESSAGES: Record<string, string> = {
   'Your account has been deleted.': '계정이 삭제되었습니다.',
   'Your session has expired': '세션이 만료되었습니다',
   'Your session has expired. Please sign in again.': '세션이 만료되었습니다. 다시 로그인해 주세요.',
+  'Could not read the chat input preference from this browser.': '이 브라우저에서 채팅 입력 설정을 읽을 수 없습니다.',
+  'Could not save the chat input preference in this browser.': '이 브라우저에 채팅 입력 설정을 저장할 수 없습니다.',
+  'Could not read the chat input preference on this device.': '이 기기에서 채팅 입력 설정을 읽을 수 없습니다.',
+  'Could not save the chat input preference on this device.': '이 기기에 채팅 입력 설정을 저장할 수 없습니다.',
+  'Enter to send': 'Enter로 전송',
   'Open Mermaid diagram': 'Mermaid 다이어그램 열기',
   'Tap to view': '탭하여 보기',
 }

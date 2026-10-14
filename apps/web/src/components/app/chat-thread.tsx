@@ -43,6 +43,8 @@ import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
 import {
   ALL_MENTION_ID,
   ALL_MENTION_LABEL,
@@ -606,6 +608,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onCancelReply: () => void
 }) => {
   const t = useT()
+  const { mode: activeSendKeyMode, error: sendKeyError, dismissError: dismissSendKeyError, toggle: toggleSendKeyMode } = useChatSendKeyMode()
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -659,13 +662,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     onDrop: handleDrop,
   }
 
-  const [showPicker, setShowPicker] = React.useState(false)
   const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
   const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
-  const smileBtnRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
@@ -953,12 +954,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         {sendError && (
           <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendError}</InlineError>
         )}
+        {sendKeyError && (
+          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendKeyError}</InlineError>
+        )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
-        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {ReplyPreview}
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
@@ -981,10 +985,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
-                  if (e.key !== 'Enter' || e.shiftKey) return
-                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                  if (isMobile) return
+                  if (e.key !== 'Enter') return
                   if (isImeConfirmingEnter(e, isComposing)) return
+                  if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                   e.preventDefault()
                   send()
                 })}
@@ -1001,10 +1004,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
-            <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-              <Icon name="smile" size={15}/>
+            <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+              </span>
+              <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{t('Enter to send')}</span>
             </button>
-            {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
             <button onClick={send} disabled={!canSend} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
               <Icon name="send" size={13}/>
             </button>
@@ -1022,12 +1027,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       {sendError && (
         <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6 }}>{sendError}</InlineError>
       )}
+      {sendKeyError && (
+        <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6 }}>{sendKeyError}</InlineError>
+      )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
-      <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}
@@ -1038,10 +1046,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
-          <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="smile" size={13}/> {t('Emoji')}
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+            </span>
+            {t('Enter to send')}
           </button>
-          {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
         {ReplyPreview}
         {AttachmentPreviews}
@@ -1065,10 +1075,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                if (isMobile) return
+                if (e.key !== 'Enter') return
                 if (isImeConfirmingEnter(e, isComposing)) return
+                if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                 e.preventDefault()
                 send()
               })}
