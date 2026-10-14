@@ -237,15 +237,46 @@ export async function POST(req: Request, { params }: RouteContext) {
           AND crs.user_id IN (SELECT user_id FROM channel_read_states WHERE channel_id = ${parent.id})
       `)
 
-      // 5. AI 巡回: 巡回済みの範囲をスレッドへ引き継ぎ、移動したメッセージを再巡回しない。
+      // 5. AI 巡回: 巡回済みの範囲と未回答依頼の再評価予約をスレッドへ引き継ぐ。
+      // 既存スレッドの巡回位置の方が新しいと、親で未巡回だった移動メッセージが読まれないまま残るため古い方へ巻き戻す。
+      // 再評価予約は根拠メッセージのあるチャンネルでしか読み直せないため、移動した根拠の予約は親から外してスレッドへ移す。
       await tx.execute(sql`
-        INSERT INTO ai_scan_states (channel_id, last_scanned_message_id, last_scanned_at)
+        INSERT INTO ai_scan_states (
+          channel_id, last_scanned_message_id, last_scanned_at,
+          next_unanswered_ask_check_at, next_unanswered_ask_message_id
+        )
         SELECT ${threadId}::uuid,
                CASE WHEN last_scanned_message_id IN ${movedIds} THEN last_scanned_message_id ELSE NULL END,
-               last_scanned_at
+               last_scanned_at,
+               CASE WHEN next_unanswered_ask_message_id IN ${movedIds} THEN next_unanswered_ask_check_at ELSE NULL END,
+               CASE WHEN next_unanswered_ask_message_id IN ${movedIds} THEN next_unanswered_ask_message_id ELSE NULL END
         FROM ai_scan_states
         WHERE channel_id = ${parent.id}
-        ON CONFLICT (channel_id) DO NOTHING
+        ON CONFLICT (channel_id) DO UPDATE SET
+          last_scanned_message_id = CASE
+            WHEN excluded.last_scanned_at < ai_scan_states.last_scanned_at THEN excluded.last_scanned_message_id
+            ELSE ai_scan_states.last_scanned_message_id
+          END,
+          last_scanned_at = least(ai_scan_states.last_scanned_at, excluded.last_scanned_at),
+          next_unanswered_ask_check_at = CASE
+            WHEN excluded.next_unanswered_ask_message_id IS NOT NULL
+              AND (ai_scan_states.next_unanswered_ask_check_at IS NULL
+                OR excluded.next_unanswered_ask_check_at < ai_scan_states.next_unanswered_ask_check_at)
+            THEN excluded.next_unanswered_ask_check_at
+            ELSE ai_scan_states.next_unanswered_ask_check_at
+          END,
+          next_unanswered_ask_message_id = CASE
+            WHEN excluded.next_unanswered_ask_message_id IS NOT NULL
+              AND (ai_scan_states.next_unanswered_ask_check_at IS NULL
+                OR excluded.next_unanswered_ask_check_at < ai_scan_states.next_unanswered_ask_check_at)
+            THEN excluded.next_unanswered_ask_message_id
+            ELSE ai_scan_states.next_unanswered_ask_message_id
+          END
+      `)
+      await tx.execute(sql`
+        UPDATE ai_scan_states
+        SET next_unanswered_ask_check_at = NULL, next_unanswered_ask_message_id = NULL
+        WHERE channel_id = ${parent.id} AND next_unanswered_ask_message_id IN ${movedIds}
       `)
 
       // 6. 元のチャンネルに移動の記録を system メッセージとして残す（プロジェクト更新通知と同じ表示）。

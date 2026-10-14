@@ -316,6 +316,11 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(sqlText).toContain('least(channel_read_states.last_read_at, excluded.last_read_at)')
     expect(sqlText).toContain('SET unread_mention_count')
     expect(sqlText).toContain('INSERT INTO ai_scan_states')
+    // 既存スレッドの巡回位置が新しくても、移動したメッセージを読み飛ばさないよう古い方へ巻き戻す
+    expect(sqlText).toContain('least(ai_scan_states.last_scanned_at, excluded.last_scanned_at)')
+    // 移動した根拠メッセージの再評価予約は、親から外してスレッドへ移す
+    expect(sqlText).toContain('next_unanswered_ask_message_id IN')
+    expect(sqlText).toContain('SET next_unanswered_ask_check_at = NULL, next_unanswered_ask_message_id = NULL')
     // メンション未読数は付け替えた通知を数えるため、通知の更新より後に再計算する
     expect(sqlText.indexOf('UPDATE notifications')).toBeLessThan(sqlText.indexOf('SET unread_mention_count'))
   })
