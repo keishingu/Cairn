@@ -590,13 +590,18 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const handleMessageNotInChannel = React.useCallback(async (messageId: string) => {
     try {
       const targetChannelId = await fetchMessageChannelId(messageId)
-      if (targetChannelId && targetChannelId !== currentChannelIdRef.current) {
+      // 削除済みか閲覧できない移動先かは区別せず伝え、存在の有無を漏らさない。
+      if (!targetChannelId) {
+        toast.error(t('The message could not be found. It may have been deleted, or you may not have access.'))
+        return
+      }
+      if (targetChannelId !== currentChannelIdRef.current) {
         jumpToChannelMessageRef.current(targetChannelId, messageId)
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'メッセージの場所の取得に失敗しました')
     }
-  }, [])
+  }, [t])
 
   const handleStartDm = (targetUserId: string) => {
     createDmMutation.mutate(targetUserId, {

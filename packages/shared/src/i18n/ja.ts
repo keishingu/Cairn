@@ -1061,6 +1061,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'The cover photo is set automatically': 'カバー写真は自動設定されます',
   'The Google Calendar list format is invalid': 'Google カレンダー一覧の形式が不正です',
   'The initial view shows configuration only. Live checks of external services run only during manual diagnostics.': '初期表示は設定状況のみを表示し、外部サービスへの疎通確認は手動診断時にだけ実行されます。',
+  'The message could not be found. It may have been deleted, or you may not have access.': 'メッセージが見つかりませんでした。削除されたか、閲覧できない可能性があります。',
   'The mobile version of this page is not ready yet': 'このページはモバイル版を準備中です',
   'The moderators will review it.': '運営者が内容を確認します。',
   'The name shown in navigation': 'ナビゲーションに表示される名称',

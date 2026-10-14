@@ -1061,6 +1061,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'The cover photo is set automatically': '커버 사진이 자동으로 설정됩니다',
   'The Google Calendar list format is invalid': 'Google 캘린더 목록 형식이 올바르지 않습니다',
   'The initial view shows configuration only. Live checks of external services run only during manual diagnostics.': '초기 화면은 설정만 표시합니다. 외부 서비스 실시간 점검은 수동 진단에서만 실행됩니다.',
+  'The message could not be found. It may have been deleted, or you may not have access.': '메시지를 찾을 수 없습니다. 삭제되었거나 볼 수 있는 권한이 없을 수 있습니다.',
   'The mobile version of this page is not ready yet': '이 페이지의 모바일 버전은 아직 준비되지 않았습니다',
   'The moderators will review it.': '모더레이터가 검토합니다.',
   'The name shown in navigation': '내비게이션에 표시되는 이름',
