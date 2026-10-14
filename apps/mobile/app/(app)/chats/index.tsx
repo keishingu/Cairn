@@ -634,7 +634,8 @@ export default function ChatsScreen() {
               <React.Fragment key={channel.id}>
                 <WorkspaceChannelItem
                   channel={channel}
-                  {...(canManageChildChats
+                  // ゲストも親チャンネルのメニューからアーカイブ済みスレッドを開閉できるようにする（管理操作はメニュー側で出し分ける）
+                  {...(canManageChildChats || archivedThreads.length > 0
                     ? {
                         onOpenActions: () =>
                           setRowActionTarget({
@@ -1170,7 +1171,7 @@ export default function ChatsScreen() {
           )}
           {rowActionTarget?.type === 'workspace' && (
             <>
-              {rowActionTarget.channel.parentChannelId == null && rowActionTarget.channel.archived !== true && (
+              {canManageChildChats && rowActionTarget.channel.parentChannelId == null && rowActionTarget.channel.archived !== true && (
                 <ActionSheetButton
                   icon="chatbubble-ellipses-outline"
                   label={t('Create thread')}
@@ -1200,7 +1201,7 @@ export default function ChatsScreen() {
                   onPress={() => toggleArchivedThreads(rowActionTarget.channel.id)}
                 />
               )}
-              {(rowActionTarget.channel.parentChannelId != null || canCreateAdminResources) && (
+              {canManageChildChats && (rowActionTarget.channel.parentChannelId != null || canCreateAdminResources) && (
                 <>
                   <ActionSheetButton
                     icon="create-outline"

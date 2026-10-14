@@ -426,6 +426,18 @@ describe('メッセージのスレッドへの切り出し', () => {
     expect(state.updated).toHaveLength(0)
   })
 
+  it('確認後、親行のロックまでの間にチャンネルがアーカイブされたら移動しない', async () => {
+    state.outerSelects.push([parentRow])
+    state.txSelects.push([{ archived: true }])
+    const { POST } = await import('./route')
+
+    const response = await POST(request({ messageIds: [MSG_A], threadName: '新スレッド' }), routeContext)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'アーカイブ済みのチャンネルのスレッドには移動できません' })
+    expect(state.updated).toHaveLength(0)
+  })
+
   it('存在しない移動先スレッドは 404 にする', async () => {
     state.outerSelects.push([parentRow])
     state.txSelects.push([{ id: 'channel-1' }], [{ id: MSG_A }], [])
