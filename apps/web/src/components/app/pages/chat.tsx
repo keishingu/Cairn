@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
@@ -324,6 +324,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
   const router = useRouter()
   const pathname = usePathname()
+  const search = useSearchParams().toString()
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
@@ -360,11 +361,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
   const setWorkspaceChannelArchived = useSetWorkspaceChannelArchived()
 
-  // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
-  // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
+  // 共有 layout では同じ会話のクエリ変更でも、パーマリンクとパネルを同期する。
   React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(search)
     const m = params.get('m')
     setTargetMessage(m ? { id: m } : null)
     // 共有 layout は残るため、会話の移動時は会話に紐づく表示だけをリセットする。
@@ -390,7 +389,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         break
       }
     }
-  }, [pathname])
+  }, [pathname, search])
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -501,10 +500,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       })
       if (nextChannelId) {
         setChannelId(nextChannelId)
-        router.replace('/chats/' + nextChannelId)
+        router.replace('/chats/' + nextChannelId + (search ? '?' + search : ''))
       }
     }
-  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router, search])
 
   const selectChannel = (id: string) => {
     pendingJump.current = null

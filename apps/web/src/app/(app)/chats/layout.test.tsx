@@ -12,7 +12,7 @@ import ChannelPage from './[channelId]/page'
 
 const { router, navigation, threadMount, threadUnmount, empty, channels, bookmarks } = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
-  navigation: { pathname: '/chats/a' },
+  navigation: { pathname: '/chats/a', search: '' },
   threadMount: vi.fn(),
   threadUnmount: vi.fn(),
   empty: [],
@@ -28,6 +28,7 @@ const { router, navigation, threadMount, threadUnmount, empty, channels, bookmar
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.search),
   useRouter: () => router,
 }))
 vi.mock('@/lib/chat/client', async importOriginal => ({
@@ -72,11 +73,13 @@ function renderChats(pathname = '/chats/a') {
     </QueryClientProvider>
   )
   navigation.pathname = pathname.split('?')[0]!
+  navigation.search = pathname.split('?')[1] ?? ''
   window.history.replaceState(null, '', pathname)
   const rendered = render(view())
   return {
     navigate: (next: string) => {
       navigation.pathname = next.split('?')[0]!
+      navigation.search = next.split('?')[1] ?? ''
       window.history.replaceState(null, '', next)
       rendered.rerender(view())
     },
@@ -144,13 +147,31 @@ describe('共有チャットlayout', () => {
     expect(screen.getByTestId('thread')).not.toHaveAttribute('data-message')
   })
 
-  it('URLで開いた会話内検索を履歴移動先に持ち越さず、パーマリンクは反映する', () => {
-    const { navigate } = renderChats('/chats/a?panel=search')
+  it('同じ会話のクエリだけの移動でも、検索とメッセージのパーマリンクを履歴に合わせて切り替える', () => {
+    const { navigate } = renderChats()
+    const sidebar = screen.getByRole('complementary')
+    navigate('/chats/a?m=message-1')
+    expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-1')
+    navigate('/chats/a?panel=search')
     expect(screen.getByPlaceholderText('メッセージを検索…')).toBeInTheDocument()
-    navigate('/chats/b?m=message-b')
+    navigate('/chats/a?m=message-2')
     expect(screen.queryByPlaceholderText('メッセージを検索…')).toBeNull()
-    expect(screen.getByTestId('thread')).toHaveAttribute('data-channel', 'b')
-    expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-b')
+    expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-2')
+    navigate('/chats/a?m=message-1')
+    expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-1')
+    navigate('/chats/a')
+    expect(screen.getByTestId('thread')).not.toHaveAttribute('data-message')
+    expect(screen.getByRole('complementary')).toBe(sidebar)
+  })
+
+  it('横断検索のURLを前回の会話への自動遷移でも保持する', () => {
+    localStorage.setItem(STORAGE_KEYS.chat_last_channel_id, 'b')
+    const { navigate } = renderChats('/chats?panel=global-search')
+    const sidebar = screen.getByRole('complementary')
+    expect(router.replace).toHaveBeenCalledWith('/chats/b?panel=global-search')
+    navigate('/chats/b?panel=global-search')
+    expect(screen.getByPlaceholderText('全チャンネルを横断検索…')).toBeInTheDocument()
+    expect(screen.getByRole('complementary')).toBe(sidebar)
   })
 
   it('ジャンプの移動途中で会話を選び直した場合は古いジャンプ先を破棄する', () => {

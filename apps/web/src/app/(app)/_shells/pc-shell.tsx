@@ -137,8 +137,11 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
     'app.toggleSidebar': toggleSidebar,
     'global.commandPalette': () => setPaletteOpen(true),
     'global.help': () => setHelpOpen(true),
-    // 横断検索: chats へ遷移し、nonce を増やして chats 画面に検索を開かせる
-    'global.crossSearch': () => { navigate('chats'); setCrossSearchNonce(n => n + 1) },
+    // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
+    'global.crossSearch': () => {
+      router.push(`${page === 'chats' ? pathname : '/chats'}?panel=global-search`)
+      setCrossSearchNonce(n => n + 1)
+    },
   })
 
   useCommandDispatcher({ page, onEscape: closeTopOverlay })
