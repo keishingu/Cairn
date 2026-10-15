@@ -248,14 +248,29 @@ function buildEvents(
 }
 
 /**
- * カレンダー上のマイルストーンは開始日（なければ終了日）の1日だけに置く。
- * 期間表示は別途ガントビューで扱うため、カレンダーでは点として扱う。
+ * マイルストーンの「点」。開始日があれば（開始日, 開始時刻）、なければ（終了日, 終了時刻）。
+ * 月表示・タイムライン・日リストはこの1日だけに置く（Google カレンダー同様）。
  */
-function getMilestoneRange(milestone: WorkspaceMilestoneDto): { start: Date; end: Date } | null {
-  const day = milestone.startDate ?? milestone.endDate
-  if (!day) return null
-  const date = parseLocalDate(day)
+function getMilestonePoint(milestone: Pick<WorkspaceMilestoneDto, 'startDate' | 'endDate' | 'startTime' | 'endTime'>): { date: string; time: string | null; isEnd: boolean } | null {
+  if (milestone.startDate) return { date: milestone.startDate, time: milestone.startTime, isEnd: false }
+  if (milestone.endDate) return { date: milestone.endDate, time: milestone.endTime, isEnd: true }
+  return null
+}
+
+/** 点の日だけを start=end の範囲として返す（月表示・タイムライン・日リスト用） */
+function getMilestonePointRange(milestone: WorkspaceMilestoneDto): { start: Date; end: Date } | null {
+  const point = getMilestonePoint(milestone)
+  if (!point) return null
+  const date = parseLocalDate(point.date)
   return { start: date, end: new Date(date) }
+}
+
+/** 週表示用。開始日〜終了日の全期間（逆転していれば入れ替える） */
+function getMilestoneRange(milestone: WorkspaceMilestoneDto): { start: Date; end: Date } | null {
+  if (!milestone.startDate && !milestone.endDate) return null
+  const start = parseLocalDate(milestone.startDate ?? milestone.endDate!)
+  const end = parseLocalDate(milestone.endDate ?? milestone.startDate!)
+  return start <= end ? { start, end } : { start: end, end: start }
 }
 
 export function buildMilestoneEvents(
@@ -272,7 +287,7 @@ export function buildMilestoneEvents(
   const raw: Omit<MilestoneDisplayEvent, 'row'>[] = []
 
   for (const milestone of milestones) {
-    const range = getMilestoneRange(milestone)
+    const range = getMilestonePointRange(milestone)
     if (!range) continue
     if (range.end < calStart || range.start > calEnd) continue
 
@@ -480,7 +495,7 @@ function getDateProjects(projects: ProjectDto[], d: Date): ProjectDto[] {
 function getDateMilestones(milestones: WorkspaceMilestoneDto[], d: Date): WorkspaceMilestoneDto[] {
   const ms = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
   return milestones.filter(m => {
-    const range = getMilestoneRange(m)
+    const range = getMilestonePointRange(m)
     if (!range) return false
     const sMs = Date.UTC(range.start.getFullYear(), range.start.getMonth(), range.start.getDate())
     const eMs = Date.UTC(range.end.getFullYear(), range.end.getMonth(), range.end.getDate())
@@ -1407,13 +1422,14 @@ export function formatMilestoneTimeRange(
   return ''
 }
 
-/** カレンダー用ラベル。マイルストーンは開始日だけに置くため、時刻も開始時刻のみ表示する */
+/** カレンダー用ラベル。時刻は点（開始日があれば開始時刻、なければ終了日の終了時刻）のものだけ表示する */
 export function formatMilestoneLabel(
-  milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime'>,
+  milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>,
   t?: Translate,
 ): string {
   const base = `${milestone.projectTitle} / ${milestone.title}`
-  const timeLabel = formatMilestoneTimeRange({ startTime: milestone.startTime, endTime: null }, t)
+  const point = getMilestonePoint(milestone)
+  const timeLabel = point?.time ? formatMilestoneTimeRange(point.isEnd ? { startTime: null, endTime: point.time } : { startTime: point.time, endTime: null }, t) : ''
   return timeLabel ? `${base} ${timeLabel}` : base
 }
 
@@ -1871,7 +1887,7 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
       })
       .map(project => ({ kind: 'project' as const, id: project.id, date: parseLocalDate(project.startDate!), project }))
     const milestoneItems = milestones
-      .map(milestone => ({ milestone, range: getMilestoneRange(milestone) }))
+      .map(milestone => ({ milestone, range: getMilestonePointRange(milestone) }))
       .filter((item): item is { milestone: WorkspaceMilestoneDto; range: { start: Date; end: Date } } => item.range != null && item.range.start <= monthEnd && item.range.end >= monthStart)
       .map(({ milestone, range }) => ({ kind: 'milestone' as const, id: milestone.id, date: range.start, milestone, project: projectMap.get(milestone.projectId) ?? null }))
     return [...projectItems, ...milestoneItems].sort((a, b) => a.date.getTime() - b.date.getTime())

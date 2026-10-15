@@ -102,17 +102,32 @@ describe('buildMilestoneEvents（10/9〜10/16 の期間マイルストーン）'
 describe('buildMilestoneWeekEvents', () => {
   const WEEK_START = new Date(2026, 5, 7)
 
-  test('週内のマイルストーンを開始日1日分の day/span に変換する', () => {
+  test('週内のマイルストーンを期間全体の day/span に変換する', () => {
     const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-09', endDate: '2026-06-11' })], PROJECT_MAP, WEEK_START)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ day: 2, span: 1, week: 0 })
+    expect(result[0]).toMatchObject({ day: 2, span: 3, week: 0 })
   })
 
-  test('開始日が週の外なら期間が週に掛かっていても表示しない', () => {
+  test('開始日が週の前でも期間が週に掛かっていれば週の頭から表示する', () => {
     const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-05', endDate: '2026-06-09' })], PROJECT_MAP, WEEK_START)
 
-    expect(result).toHaveLength(0)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 0, span: 3 })
+  })
+
+  test('10/9〜10/16 のマイルストーンは週表示では週内の期間全体にまたがる', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-10-09', endDate: '2026-10-16' })], PROJECT_MAP, new Date(2026, 9, 4))
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 5, span: 2 })
+  })
+
+  test('終了日だけのマイルストーンは月表示で終了日に1日だけ置かれる', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: '2026-06-12' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 5, span: 1 })
   })
 })
 
@@ -125,8 +140,12 @@ describe('formatMilestoneLabel', () => {
     expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜')
   })
 
-  test('開始時刻がなく終了時刻だけある場合は時刻を表示しない', () => {
+  test('開始日があり開始時刻がなく終了時刻だけある場合は時刻を表示しない', () => {
     expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'A', title: 'B', startTime: null, endTime: '14:00' }))).toBe('A / B')
+  })
+
+  test('開始日がなく終了日だけある場合は終了時刻を表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'A', title: 'B', startDate: null, startTime: null, endTime: '21:30' }))).toBe('A / B 〜21:30')
   })
 })
 
