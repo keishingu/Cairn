@@ -173,12 +173,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const filteredProjects = React.useMemo(() => {
     const q = effectiveSearch.trim().toLowerCase()
-    if (q) return projects.filter(p => p.title.toLowerCase().includes(q))
+    // 検索はタブ・フィルターを無視するが、画面に出ている「参加中／全体」の範囲には従う
+    if (q) return scopedProjects.filter(p => p.title.toLowerCase().includes(q))
     let result = tabFiltered
     if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
-  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
+  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, scopedProjects])
 
   const sortedProjects = React.useMemo(() => {
     if (view !== 'table') return filteredProjects

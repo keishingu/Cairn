@@ -64,11 +64,11 @@ describe('プロジェクト一覧の最新チャット', () => {
 describe('プロジェクト一覧の参加中/全体トグル', () => {
   const other: ProjectDto = { ...project, id: 'project-2', title: '他人の計画', isJoined: false, isHosting: false }
 
-  function renderScoped(isMobile = false) {
+  function renderScoped(isMobile = false, externalSearch?: string) {
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
     client.setQueryData(['projects'], [project, other])
     client.setQueryData(['statuses'], [])
-    return render(<QueryClientProvider client={client}><ProjectListView isMobile={isMobile} /></QueryClientProvider>)
+    return render(<QueryClientProvider client={client}><ProjectListView isMobile={isMobile} {...(externalSearch !== undefined ? { externalSearch } : {})} /></QueryClientProvider>)
   }
 
   beforeEach(() => localStorage.clear())
@@ -90,6 +90,13 @@ describe('プロジェクト一覧の参加中/全体トグル', () => {
     expect(screen.getByText('山行計画')).toBeVisible()
     expect(screen.getByRole('button', { name: /^すべて\s*1$/ })).toBeVisible()
     expect(localStorage.getItem('cairn:projects_scope')).toBe('mine')
+  })
+
+  it('検索中も「参加中」の範囲に従い、参加していないプロジェクトを出さない', () => {
+    localStorage.setItem('cairn:projects_scope', 'mine')
+    renderScoped(false, '計画')
+    expect(screen.getByText('山行計画')).toBeVisible()
+    expect(screen.queryByText('他人の計画')).toBeNull()
   })
 
   it('旧「参加中」タブの保存値はすべてタブ+参加中へ移行する', () => {
