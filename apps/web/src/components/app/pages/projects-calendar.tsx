@@ -4,7 +4,8 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, StatusChip } from '../primitives'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { PageToolbar, SegmentedControl, ScopeToggle } from './page-toolbar'
+import { useProjectsScope, filterProjectsByScope } from '@/hooks/use-projects-scope'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
@@ -483,14 +484,146 @@ function getDateMilestones(milestones: WorkspaceMilestoneDto[], d: Date): Worksp
   })
 }
 
+// ─── PC 終日レーン割り当て ─────────────────────────────────────────
+
+interface PackedAllDay {
+  projects: CalEvent[]
+  gcal: GcalDisplayEvent[]
+  milestones: MilestoneDisplayEvent[]
+}
+
+/**
+ * プロジェクト・Googleカレンダー終日・マイルストーンを週ごとに1つのレーンへ詰める。
+ * プロジェクトとGoogle終日を先に（日付順・同日は長い順）、マイルストーンを後に（日付順・同日は開始時刻順）割り当て、
+ * 各アイテムは占有する日すべてで空いている最小の row を取る。
+ */
+export function packUnifiedAllDayRows(
+  projects: CalEvent[],
+  gcal: GcalDisplayEvent[],
+  milestones: MilestoneDisplayEvent[],
+): PackedAllDay {
+  interface Entry { kind: 'project' | 'gcal' | 'milestone'; index: number; week: number; day: number; span: number; time: string }
+  const entries: Entry[] = [
+    ...projects.map((e, index): Entry => ({ kind: 'project', index, week: e.week, day: e.day, span: e.span, time: '' })),
+    ...gcal.map((e, index): Entry => ({ kind: 'gcal', index, week: e.week, day: e.day, span: e.span, time: '' })),
+    ...milestones.map((e, index): Entry => ({ kind: 'milestone', index, week: e.week, day: e.day, span: e.span, time: e.milestone.startTime ?? '' })),
+  ]
+  const group = (e: Entry) => (e.kind === 'milestone' ? 1 : 0)
+  entries.sort((a, b) => {
+    if (group(a) !== group(b)) return group(a) - group(b)
+    if (a.day !== b.day) return a.day - b.day
+    if (group(a) === 0) return b.span - a.span
+    if (a.time !== b.time) return a.time < b.time ? -1 : 1
+    return b.span - a.span
+  })
+
+  const occupancy = new Map<number, boolean[][]>()
+  const rows = { project: [] as number[], gcal: [] as number[], milestone: [] as number[] }
+  for (const e of entries) {
+    const weekRows = occupancy.get(e.week) ?? []
+    occupancy.set(e.week, weekRows)
+    let row = 0
+    for (;;) {
+      const used = weekRows[row] ?? []
+      let free = true
+      for (let d = e.day; d < e.day + e.span; d++) if (used[d]) { free = false; break }
+      if (free) break
+      row++
+    }
+    const used = weekRows[row] ?? []
+    for (let d = e.day; d < e.day + e.span; d++) used[d] = true
+    weekRows[row] = used
+    rows[e.kind][e.index] = row
+  }
+
+  return {
+    projects: projects.map((e, i) => ({ ...e, row: rows.project[i]! })),
+    gcal: gcal.map((e, i) => ({ ...e, row: rows.gcal[i]! })),
+    milestones: milestones.map((e, i) => ({ ...e, row: rows.milestone[i]! })),
+  }
+}
+
+interface RowItem { week: number; day: number; span: number; row: number; name: string }
+
+/**
+ * 週行に収まる行数を超えたアイテムを隠し、隠れた日の最終可視行を「+N」用に確保する。
+ * 最終可視行のアイテムが覆う日のどれかに隠れ分がある場合は、そのアイテムも隠す（不動点まで繰り返す）。
+ */
+export function computeRowVisibility(
+  items: RowItem[],
+  maxRows: number,
+): { visible: boolean[]; hiddenByDay: Map<string, string[]> } {
+  const visible = items.map(it => it.row < maxRows)
+  const dayKey = (week: number, day: number) => `${week}-${day}`
+  const collect = () => {
+    const map = new Map<string, string[]>()
+    items.forEach((it, i) => {
+      if (visible[i]) return
+      for (let d = it.day; d < it.day + it.span; d++) {
+        const k = dayKey(it.week, d)
+        map.set(k, [...(map.get(k) ?? []), it.name])
+      }
+    })
+    return map
+  }
+  let hiddenByDay = collect()
+  for (let guard = 0; guard < 8; guard++) {
+    let changed = false
+    items.forEach((it, i) => {
+      if (!visible[i] || it.row !== maxRows - 1) return
+      for (let d = it.day; d < it.day + it.span; d++) {
+        if (hiddenByDay.has(dayKey(it.week, d))) { visible[i] = false; changed = true; break }
+      }
+    })
+    if (!changed) break
+    hiddenByDay = collect()
+  }
+  return { visible, hiddenByDay }
+}
+
+/** 1週行に収まる終日アイテムの行数（日付エリアと余白を除く） */
+export function rowsFittingInWeek(weekRowHeight: number): number {
+  return Math.max(1, Math.floor((weekRowHeight - DATE_AREA - WEEK_ROW_PADDING_BOTTOM + EVENT_GAP) / (EVENT_H + EVENT_GAP)))
+}
+
 // ─── PC Calendar grid ──────────────────────────────────────────────
 
 const DATE_AREA = 28
 const EVENT_H = 22
 const EVENT_GAP = 2
-const MILESTONE_H = 16
-const MAX_PROJECT_ROWS = 3
-const MAX_MILESTONE_ROWS = 2
+const WEEK_ROW_PADDING_BOTTOM = 4
+const MILESTONE_DOT = 7
+
+/** マイルストーンを「● テキスト」で描く（箱なし）。月・週ビューで共通 */
+const MilestoneDotText = ({
+  label, color, completed, style, onClick,
+}: {
+  label: string
+  color: string
+  completed: boolean
+  style: React.CSSProperties
+  onClick: () => void
+}) => (
+  <button
+    onClick={onClick}
+    style={{
+      position: 'absolute', height: EVENT_H,
+      display: 'flex', alignItems: 'center', gap: 5,
+      background: 'transparent', border: 'none',
+      color: completed ? 'var(--text-4)' : color,
+      fontSize: 11, fontWeight: 600,
+      padding: '0 4px', textAlign: 'left',
+      fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
+      opacity: completed ? 0.65 : 1,
+      ...style,
+    }}
+    onMouseDown={e2 => e2.stopPropagation()}
+    title={label}
+  >
+    <span style={{ width: MILESTONE_DOT, height: MILESTONE_DOT, borderRadius: '50%', background: completed ? 'var(--text-4)' : color, flexShrink: 0 }} />
+    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{label}</span>
+  </button>
+)
 
 interface CalendarGridProps {
   year: number
@@ -574,15 +707,40 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
   const days = weekdayLabels(weekStartsOn)
   const cells = buildCells(year, month, weekStartsOn)
   const flatCells = cells.flat()
-  const allDayRowsByWeek = Array.from({ length: 6 }, (_, week) => (
-    Math.max(
-      -1,
-      ...events.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
-      ...gcalEvents.filter(e => e.week === week && e.row < MAX_PROJECT_ROWS).map(e => e.row),
-    ) + 1
-  ))
-
   const gridBodyRef = React.useRef<HTMLDivElement>(null)
+  const [bodyHeight, setBodyHeight] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    const el = gridBodyRef.current
+    if (!el) return
+    const update = () => setBodyHeight(el.clientHeight)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const packed = React.useMemo(
+    () => packUnifiedAllDayRows(events, gcalEvents, milestoneEvents),
+    [events, gcalEvents, milestoneEvents],
+  )
+  const maxRows = bodyHeight === null ? Infinity : rowsFittingInWeek(bodyHeight / 6)
+  const visibility = React.useMemo(() => {
+    const items = [
+      ...packed.projects.map(e => ({ week: e.week, day: e.day, span: e.span, row: e.row, name: e.project.title })),
+      ...packed.gcal.map(e => ({ week: e.week, day: e.day, span: e.span, row: e.row, name: e.title })),
+      ...packed.milestones.map(e => ({ week: e.week, day: e.day, span: e.span, row: e.row, name: formatMilestoneLabel(e.milestone, t) })),
+    ]
+    const result = computeRowVisibility(items, maxRows)
+    const pn = packed.projects.length
+    const gn = packed.gcal.length
+    return {
+      project: result.visible.slice(0, pn),
+      gcal: result.visible.slice(pn, pn + gn),
+      milestone: result.visible.slice(pn + gn),
+      hiddenByDay: result.hiddenByDay,
+    }
+  }, [packed, maxRows, t])
   const isDragging = React.useRef(false)
   const [dragStart, setDragStart] = React.useState<string | null>(null)
   const [dragEnd, setDragEnd] = React.useState<string | null>(null)
@@ -715,7 +873,8 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
             ))
           ) : (
             <>
-              {events.filter(e => e.row < MAX_PROJECT_ROWS).map((e, i) => {
+              {packed.projects.map((e, i) => {
+                if (!visibility.project[i]) return null
                 const barColor = e.project.statusColor ?? '#9CA3AF'
                 const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
                 const colW = 100 / 7
@@ -747,39 +906,28 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                   </button>
                 )
               })}
-              {milestoneEvents.filter(e => e.row < MAX_MILESTONE_ROWS).map((e, i) => {
+              {packed.milestones.map((e, i) => {
+                if (!visibility.milestone[i]) return null
                 const barColor = e.project?.statusColor ?? '#64748B'
-                const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
                 const label = formatMilestoneLabel(e.milestone, t)
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 4px)`
                 const width = `calc(${e.span * colW}% - 8px)`
-                const topOffset = DATE_AREA + (allDayRowsByWeek[e.week] ?? 0) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
+                const topOffset = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
                 const top = `calc(${e.week} / 6 * 100% + ${topOffset}px)`
                 return (
-                  <button
+                  <MilestoneDotText
                     key={`m-${i}`}
+                    label={label}
+                    color={barColor}
+                    completed={e.milestone.completed}
+                    style={{ left, top, width }}
                     onClick={() => onMilestoneClick(e.milestone)}
-                    style={{
-                      position: 'absolute', left, top, width,
-                      height: MILESTONE_H, borderRadius: 4,
-                      background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
-                      color: fgColor,
-                      border: 'none',
-                      fontSize: 10, fontWeight: 600,
-                      padding: '0 6px', textAlign: 'left',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
-                      opacity: e.milestone.completed ? 0.65 : 1,
-                    }}
-                    onMouseDown={e2 => e2.stopPropagation()}
-                    title={label}
-                  >
-                    {label}
-                  </button>
+                  />
                 )
               })}
-              {gcalEvents.filter(e => e.row < MAX_PROJECT_ROWS).map((e, i) => {
+              {packed.gcal.map((e, i) => {
+                if (!visibility.gcal[i]) return null
                 const colW = 100 / 7
                 const left = `calc(${e.day * colW}% + 4px)`
                 const width = `calc(${e.span * colW}% - 8px)`
@@ -833,6 +981,31 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                   )
                 }
                 return el
+              })}
+              {Array.from(visibility.hiddenByDay.entries()).map(([key, names]) => {
+                const [weekStr, dayStr] = key.split('-')
+                const week = Number(weekStr)
+                const day = Number(dayStr)
+                const colW = 100 / 7
+                const topOffset = DATE_AREA + (maxRows - 1) * (EVENT_H + EVENT_GAP)
+                return (
+                  <div
+                    key={`more-${key}`}
+                    style={{
+                      position: 'absolute',
+                      left: `calc(${day * colW}% + 4px)`,
+                      top: `calc(${week} / 6 * 100% + ${topOffset}px)`,
+                      width: `calc(${colW}% - 8px)`,
+                      height: EVENT_H, padding: '0 4px',
+                      display: 'flex', alignItems: 'center',
+                      fontSize: 11, fontWeight: 600, color: 'var(--text-3)',
+                      whiteSpace: 'nowrap', pointerEvents: 'auto',
+                    }}
+                    title={names.join('\n')}
+                  >
+                    {t('{count} more', { count: names.length })}
+                  </div>
+                )
               })}
             </>
           )}
@@ -942,9 +1115,12 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
     return () => window.removeEventListener('mouseup', onWindowMouseUp)
   }, [dragStart, dragEnd]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const maxProjectRow = Math.max(-1, ...events.map(e => e.row), ...gcalEvents.map(e => e.row))
-  const maxMilestoneRow = Math.max(-1, ...milestoneEvents.map(e => e.row))
-  const bodyHeight = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + (maxMilestoneRow + 1) * (MILESTONE_H + EVENT_GAP) + EVENT_GAP
+  const packed = React.useMemo(
+    () => packUnifiedAllDayRows(events, gcalEvents, milestoneEvents),
+    [events, gcalEvents, milestoneEvents],
+  )
+  const maxRow = Math.max(-1, ...packed.projects.map(e => e.row), ...packed.gcal.map(e => e.row), ...packed.milestones.map(e => e.row))
+  const bodyHeight = DATE_AREA + (maxRow + 1) * (EVENT_H + EVENT_GAP) + EVENT_GAP
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1008,7 +1184,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
               ))
             ) : (
               <>
-                {events.map((e, i) => {
+                {packed.projects.map((e, i) => {
                   const barColor = e.project.statusColor ?? '#9CA3AF'
                   const cfg = { bg: barColor + '18', bar: barColor, text: barColor }
                   const colW = 100 / 7
@@ -1039,38 +1215,25 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                     </button>
                   )
                 })}
-                {milestoneEvents.map((e, i) => {
+                {packed.milestones.map((e, i) => {
                   const barColor = e.project?.statusColor ?? '#64748B'
-                  const fgColor = e.milestone.completed ? 'var(--text-4)' : barColor
                   const label = formatMilestoneLabel(e.milestone, t)
                   const colW = 100 / 7
                   const left = `calc(${e.day * colW}% + 4px)`
                   const width = `calc(${e.span * colW}% - 8px)`
-                  const top = DATE_AREA + (maxProjectRow + 1) * (EVENT_H + EVENT_GAP) + e.row * (MILESTONE_H + EVENT_GAP)
+                  const top = DATE_AREA + e.row * (EVENT_H + EVENT_GAP)
                   return (
-                    <button
+                    <MilestoneDotText
                       key={`m-${i}`}
+                      label={label}
+                      color={barColor}
+                      completed={e.milestone.completed}
+                      style={{ left, top, width }}
                       onClick={() => onMilestoneClick(e.milestone)}
-                      style={{
-                        position: 'absolute', left, top, width,
-                        height: MILESTONE_H, borderRadius: 4,
-                        background: e.milestone.completed ? 'var(--card-2)' : barColor + '12',
-                        color: fgColor,
-                        border: 'none',
-                        fontSize: 10, fontWeight: 600,
-                        padding: '0 6px', textAlign: 'left',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
-                        opacity: e.milestone.completed ? 0.65 : 1,
-                      }}
-                      onMouseDown={e2 => e2.stopPropagation()}
-                      title={label}
-                    >
-                      {label}
-                    </button>
+                    />
                   )
                 })}
-                {gcalEvents.map((e, i) => {
+                {packed.gcal.map((e, i) => {
                   const colW = 100 / 7
                   const left = `calc(${e.day * colW}% + 4px)`
                   const width = `calc(${e.span * colW}% - 8px)`
@@ -1216,10 +1379,20 @@ function formatMilestoneDateRange(milestone: WorkspaceMilestoneDto, t: Translate
   return `${fmt(start!)}–${fmt(end!)}`
 }
 
+/** Postgres の time 文字列（"19:00:00"）から秒を落として "19:00" にする */
+export function trimTimeSeconds(time: string): string {
+  const m = /^(\d{1,2}:\d{2}):\d{2}(?:\.\d+)?$/.exec(time)
+  return m ? m[1]! : time
+}
+
 export function formatMilestoneTimeRange(
-  milestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>,
+  rawMilestone: Pick<WorkspaceMilestoneDto, 'startTime' | 'endTime'>,
   t?: Translate,
 ): string {
+  const milestone = {
+    startTime: rawMilestone.startTime ? trimTimeSeconds(rawMilestone.startTime) : rawMilestone.startTime,
+    endTime: rawMilestone.endTime ? trimTimeSeconds(rawMilestone.endTime) : rawMilestone.endTime,
+  }
   if (milestone.startTime && milestone.endTime) {
     return t ? t('{start}–{end}', { start: milestone.startTime, end: milestone.endTime }) : `${milestone.startTime}〜${milestone.endTime}`
   }
@@ -2092,14 +2265,17 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   }
   const [gcalFilterOpen, setGcalFilterOpen] = React.useState(false)
   const gcalFilterBtnRef = React.useRef<HTMLDivElement>(null)
-  const [showMilestones, setShowMilestones] = React.useState<boolean>(() => {
-    if (typeof window === 'undefined') return true
-    return localStorage.getItem(STORAGE_KEYS.calendar_milestones_visible) !== 'false'
-  })
-  const setShowMilestonesPersisted = (v: boolean) => {
-    setShowMilestones(v)
-    localStorage.setItem(STORAGE_KEYS.calendar_milestones_visible, String(v))
-  }
+  // 範囲（参加中 / 全体）は一覧・カンバンと共有。マイルストーンは表示中のプロジェクトに従う
+  const [scope, setScope] = useProjectsScope()
+  const scopeToggle = (
+    <ScopeToggle
+      ariaLabel={t('Project scope')}
+      mineLabel={t('Joined')}
+      allLabel={t('All projects')}
+      value={scope}
+      onChange={setScope}
+    />
+  )
 
   const { data: gcalEventsRaw = [], isError: gcalEventsError } = useQuery<GcalEventDto[]>({
     queryKey: ['gcal-events', year, month],
@@ -2146,11 +2322,11 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const visibleProjects = React.useMemo(() => {
-    let result = projects
+    let result = filterProjectsByScope(projects, scope)
     if (statusFilter.length > 0) result = result.filter(p => p.statusName != null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
-  }, [projects, statusFilter, memberFilter])
+  }, [projects, scope, statusFilter, memberFilter])
 
   const projectMap = React.useMemo(
     () => new Map(visibleProjects.map(project => [project.id, project])),
@@ -2158,8 +2334,8 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
   )
 
   const visibleMilestones = React.useMemo(
-    () => showMilestones ? milestonesRaw.filter(m => projectMap.has(m.projectId)) : [],
-    [milestonesRaw, projectMap, showMilestones],
+    () => milestonesRaw.filter(m => projectMap.has(m.projectId)),
+    [milestonesRaw, projectMap],
   )
 
   const events = React.useMemo(
@@ -2311,20 +2487,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '6px 12px', background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-          <button
-            onClick={() => setShowMilestonesPersisted(!showMilestones)}
-            style={{
-              height: 26, borderRadius: 7, border: '1px solid var(--border)',
-              background: showMilestones ? 'var(--accent-soft)' : 'transparent',
-              color: showMilestones ? 'var(--accent-text)' : 'var(--text-3)',
-              fontSize: 12, fontWeight: 600, padding: '0 9px',
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <Icon name={showMilestones ? 'eye' : 'eye-off'} size={12} />
-            {t('Milestones')}
-          </button>
+          {scopeToggle}
         </div>
         {weekStartError && (
           <CalendarLoadNotice style={{ margin: '8px 12px 0' }}>
@@ -2454,14 +2617,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 )}
               </div>
             )}
-            <button
-              className="btn"
-              onClick={() => setShowMilestonesPersisted(!showMilestones)}
-              title={t('Toggle milestones')}
-              style={showMilestones ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : { opacity: 0.6 }}
-            >
-              <Icon name={showMilestones ? 'eye' : 'eye-off'} size={13} /> {t('Milestones')}
-            </button>
+            {scopeToggle}
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"

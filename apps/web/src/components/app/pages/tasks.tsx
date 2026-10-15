@@ -9,7 +9,8 @@ import { CreateTaskModal } from './create-task-modal'
 import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
 import { RowActionMenu } from '../row-action-menu'
-import { SegmentedControl } from './page-toolbar'
+import { PageToolbar, ScopeToggle } from './page-toolbar'
+import { loadStored, storeValue } from '@/lib/stored-value'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
@@ -25,21 +26,6 @@ type ScopeKey = 'mine' | 'all'
 
 const FILTER_KEYS: FilterKey[] = ['todo', 'in_progress', 'done', 'all']
 const SCOPE_KEYS: ScopeKey[] = ['mine', 'all']
-
-// タブの選択は他ページ（カンバン等）と同じく localStorage に端末ごとに保存する。保存値が無い・不正なら既定値。
-function loadStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
-  if (typeof window === 'undefined') return fallback
-  try {
-    const value = localStorage.getItem(key)
-    return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-function storeValue(key: string, value: string) {
-  try { localStorage.setItem(key, value) } catch { /* 保存できなくても表示は切り替える */ }
-}
 
 const STATUS_LABEL: Record<TaskDto['status'], string> = {
   todo: 'Not started',
@@ -407,51 +393,48 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* Toolbar */}
-      <div style={{
-        padding: isMobile ? '8px 12px' : '14px 20px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-        overflowX: 'auto',
-      }}>
-        <div role="group" aria-label={t('Task scope')} style={{ flexShrink: 0 }}>
-          <SegmentedControl
-            options={[
-              { id: 'mine', label: t('Assigned to me') },
-              { id: 'all', label: t('Everyone') },
-            ]}
-            value={scope}
-            onChange={next => setScope(next as ScopeKey)}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-          {filters.map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              style={{
-                padding: isMobile ? '6px 8px' : '6px 10px',
-                borderRadius: 6, border: 'none',
-                background: filter === f.id ? 'var(--card-hover)' : 'transparent',
-                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
-                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-              }}
-            >{f.label}</button>
-          ))}
-        </div>
-        {!isMobile && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              className="btn btn-primary"
-              onClick={() => setShowAddModal(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            >
-              <Icon name="plus" size={13} strokeWidth={2.4} />
-              {t('Add a task')}
-            </button>
+      <PageToolbar
+        style={isMobile ? { padding: '8px 12px', gap: 8 } : { padding: '14px 20px' }}
+        left={
+          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+            {filters.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                style={{
+                  padding: isMobile ? '6px 8px' : '6px 10px',
+                  borderRadius: 6, border: 'none',
+                  background: filter === f.id ? 'var(--card-hover)' : 'transparent',
+                  color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
+                  fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}
+              >{f.label}</button>
+            ))}
           </div>
-        )}
-      </div>
+        }
+        right={
+          <>
+            <ScopeToggle
+              ariaLabel={t('Task scope')}
+              mineLabel={t('Assigned to me')}
+              allLabel={t('Everyone')}
+              value={scope}
+              onChange={setScope}
+            />
+            {!isMobile && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowAddModal(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              >
+                <Icon name="plus" size={13} strokeWidth={2.4} />
+                {t('Add a task')}
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>

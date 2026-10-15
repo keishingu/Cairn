@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, formatMilestoneLabel, mobileOverflowLane, packMobileMonthBars } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, computeRowVisibility, formatMilestoneLabel, mobileOverflowLane, packMobileMonthBars, packUnifiedAllDayRows, rowsFittingInWeek, trimTimeSeconds } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
 import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -108,6 +108,77 @@ describe('formatMilestoneLabel', () => {
 
   test('開始時刻と終了時刻がある場合は時刻範囲も表示する', () => {
     expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜14:00')
+  })
+})
+
+describe('trimTimeSeconds', () => {
+  test('秒つきの時刻から秒を取り除く', () => {
+    expect(trimTimeSeconds('19:00:00')).toBe('19:00')
+  })
+
+  test('秒のない時刻はそのまま返す', () => {
+    expect(trimTimeSeconds('19:00')).toBe('19:00')
+  })
+})
+
+describe('formatMilestoneLabel の秒表記', () => {
+  test('Postgres の time 文字列の秒を落として表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'Cairn公開', title: '説明会', startTime: '19:00:00', endTime: null }))).toBe('Cairn公開 / 説明会 19:00〜')
+  })
+})
+
+describe('packUnifiedAllDayRows', () => {
+  const projectEvent = (day: number, span: number) => ({ project: PROJECT, week: 1, day, span, row: 0 })
+  const gcalEvent = (day: number, span: number) => ({ id: 'g', title: 'G', color: '#4285F4', htmlLink: null, week: 1, day, span, row: 0 })
+  const milestoneEvent = (day: number, span = 1, startTime: string | null = null) => ({
+    milestone: makeMilestone({ startTime }), project: PROJECT, week: 1, day, span, row: 0,
+  })
+
+  test('プロジェクトのない日のマイルストーンは row 0 に置かれる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(0, 1)], [], [milestoneEvent(3)])
+
+    expect(result.milestones[0]!.row).toBe(0)
+  })
+
+  test('プロジェクトがある日のマイルストーンはその下の row 1 に置かれる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(2, 3)], [], [milestoneEvent(3)])
+
+    expect(result.milestones[0]!.row).toBe(1)
+  })
+
+  test('プロジェクトとGoogle終日が重なっても別の row になる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(1, 3)], [gcalEvent(2, 2)], [])
+
+    expect(result.projects[0]!.row).not.toBe(result.gcal[0]!.row)
+  })
+
+  test('同じ日に複数のマイルストーンがあれば開始時刻順に積まれる', () => {
+    const result = packUnifiedAllDayRows([], [], [milestoneEvent(0, 1, '15:00:00'), milestoneEvent(0, 1, '09:00:00')])
+
+    expect(result.milestones.map(m => m.row)).toEqual([1, 0])
+  })
+})
+
+describe('computeRowVisibility', () => {
+  const item = (day: number, row: number, name: string, span = 1) => ({ week: 0, day, span, row, name })
+
+  test('行数を超えない場合は何も隠さない', () => {
+    const result = computeRowVisibility([item(0, 0, 'a'), item(0, 1, 'b')], 3)
+
+    expect(result.visible).toEqual([true, true])
+    expect(result.hiddenByDay.size).toBe(0)
+  })
+
+  test('溢れる日は最終可視行を「+N」用に空け、隠れた名前を日ごとに集める', () => {
+    const result = computeRowVisibility([item(0, 0, 'a'), item(0, 1, 'b'), item(0, 2, 'c')], 2)
+
+    expect(result.visible).toEqual([true, false, false])
+    expect(result.hiddenByDay.get('0-0')).toEqual(['b', 'c'])
+  })
+
+  test('rowsFittingInWeek は週行の高さから収まる行数を返し、最低1行を保証する', () => {
+    expect(rowsFittingInWeek(10)).toBe(1)
+    expect(rowsFittingInWeek(28 + 4 + 24 * 3 - 2)).toBe(3)
   })
 })
 

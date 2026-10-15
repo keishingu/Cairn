@@ -7,7 +7,8 @@ import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHI
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { PageToolbar, SegmentedControl, ScopeToggle } from './page-toolbar'
+import { useProjectsScope, filterProjectsByScope } from '@/hooks/use-projects-scope'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
@@ -78,13 +79,14 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return next
     })
   }
+  // 範囲（参加中 / 全体）は一覧・カレンダー・カンバンで共有する。旧「参加中」タブの移行はフック側で先に行う
+  const [scope, setScope] = useProjectsScope()
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
-    // 旧 ID（mine/owned）を参加中/主催の意味に合わせて移行
-    if (saved === 'mine') return 'joined'
+    // 旧 ID（owned）を主催の意味に合わせて移行。参加中タブは範囲トグルに統合済み
     if (saved === 'owned') return 'hosting'
-    return saved
+    return ['all', 'hosting', 'active', 'archived'].includes(saved) ? saved : 'all'
   })
   const setFilter = (f: string) => {
     setFilterState(f)
@@ -125,17 +127,17 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
   }
 
+  const scopedProjects = React.useMemo(() => filterProjectsByScope(projects, scope), [projects, scope])
+
   const counts = {
-    all:      projects.filter(p => !p.archived).length,
-    joined:   projects.filter(p => p.isJoined && !p.archived).length,
-    hosting:  projects.filter(p => p.isHosting && !p.archived).length,
-    active:   projects.filter(p => !p.archived).length,
-    archived: projects.filter(p => p.archived).length,
+    all:      scopedProjects.filter(p => !p.archived).length,
+    hosting:  scopedProjects.filter(p => p.isHosting && !p.archived).length,
+    active:   scopedProjects.filter(p => !p.archived).length,
+    archived: scopedProjects.filter(p => p.archived).length,
   }
 
   const filterTabs = [
     { id: 'all',      label: t('All'),         n: counts.all },
-    { id: 'joined',   label: t('Joined'),      n: counts.joined },
     { id: 'hosting',  label: t('Hosting'),     n: counts.hosting },
     { id: 'active',   label: t('In progress'), n: counts.active },
     { id: 'archived', label: t('Archive'),     n: counts.archived },
@@ -154,13 +156,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
-      case 'joined':   return projects.filter(p => p.isJoined && !p.archived)
-      case 'hosting':  return projects.filter(p => p.isHosting && !p.archived)
-      case 'active':   return projects.filter(p => !p.archived)
-      case 'archived': return projects.filter(p => p.archived)
-      default:         return projects.filter(p => !p.archived)
+      case 'hosting':  return scopedProjects.filter(p => p.isHosting && !p.archived)
+      case 'active':   return scopedProjects.filter(p => !p.archived)
+      case 'archived': return scopedProjects.filter(p => p.archived)
+      default:         return scopedProjects.filter(p => !p.archived)
     }
-  }, [projects, filter])
+  }, [scopedProjects, filter])
 
   const allMembers = React.useMemo(
     () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
@@ -206,7 +207,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   })
 
   // フィルタ変更で選択をリセット
-  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
+  React.useEffect(() => { setNavIdx(-1) }, [filter, scope, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -286,7 +287,15 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             ))}
           </div>
         }
-        right={!isMobile ? (
+        right={isMobile ? (
+          <ScopeToggle
+            ariaLabel={t('Project scope')}
+            mineLabel={t('Joined')}
+            allLabel={t('All projects')}
+            value={scope}
+            onChange={setScope}
+          />
+        ) : (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <SegmentedControl
               options={[
@@ -295,6 +304,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               ]}
               value={view}
               onChange={(v) => setViewPersisted(v as 'grid' | 'table')}
+            />
+            <ScopeToggle
+              ariaLabel={t('Project scope')}
+              mineLabel={t('Joined')}
+              allLabel={t('All projects')}
+              value={scope}
+              onChange={setScope}
             />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
@@ -328,7 +344,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               <Icon name="plus" size={13}/> {t('New {label}', { label: projectLabel })}
             </button>
           </div>
-        ) : undefined}
+        )}
       />
 
       {/* Content */}
