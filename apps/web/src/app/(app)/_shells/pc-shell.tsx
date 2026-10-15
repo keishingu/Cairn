@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
@@ -45,6 +45,7 @@ function loadStoredView(): ProjectsView {
 
 function PCShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
@@ -139,7 +140,9 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
     'global.help': () => setHelpOpen(true),
     // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
     'global.crossSearch': () => {
-      router.push(`${page === 'chats' ? pathname : '/chats'}?panel=global-search`)
+      const params = new URLSearchParams(page === 'chats' ? searchParams.toString() : '')
+      params.set('panel', 'global-search')
+      router.push(`${page === 'chats' ? pathname : '/chats'}?${params.toString()}`)
       setCrossSearchNonce(n => n + 1)
     },
   })

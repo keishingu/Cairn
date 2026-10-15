@@ -197,12 +197,12 @@ describe('PCShell — ProjectPanel の閉じるボタン', () => {
 
 describe('PCShell — 横断検索の遷移', () => {
   it.each([
-    ['/projects', '/chats?panel=global-search'],
-    ['/chats/a', '/chats/a?panel=global-search'],
-  ])('%sから検索を開く意図をURLに含め、同じURLでも再実行できる', async (pathname, expectedPath) => {
+    ['/projects', 'open=project-proj-abc&tab=files', '/chats?panel=global-search'],
+    ['/chats/a', 'm=x&open=project-proj-abc&tab=files&panel=bookmarks', '/chats/a?m=x&open=project-proj-abc&tab=files&panel=global-search'],
+  ])('%sから検索を開く意図をURLに含め、同じURLでも再実行できる', async (pathname, query, expectedPath) => {
     mockPush.mockClear()
     mockPathname = pathname
-    mockSearchParams = new URLSearchParams()
+    mockSearchParams = new URLSearchParams(query)
     render(<QueryClientProvider client={makeQC()}><PCShell><CrossSearchTrigger /></PCShell></QueryClientProvider>)
     await userEvent.click(screen.getByRole('button', { name: '横断検索 0' }))
     expect(mockPush).toHaveBeenLastCalledWith(expectedPath)
