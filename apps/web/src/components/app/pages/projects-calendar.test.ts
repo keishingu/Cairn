@@ -157,6 +157,17 @@ describe('packUnifiedAllDayRows', () => {
 
     expect(result.milestones.map(m => m.row)).toEqual([1, 0])
   })
+
+  test('後の日のプロジェクトより前の日のマイルストーンを先に詰め、同時に重なる数より行を増やさない', () => {
+    const result = packUnifiedAllDayRows(
+      [projectEvent(3, 1)],
+      [],
+      [milestoneEvent(0, 2), milestoneEvent(1, 2), milestoneEvent(2, 2)],
+    )
+
+    const rows = [...result.projects, ...result.milestones].map(e => e.row)
+    expect(Math.max(...rows)).toBe(1)
+  })
 })
 
 describe('computeRowVisibility', () => {

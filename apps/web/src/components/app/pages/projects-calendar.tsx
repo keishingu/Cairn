@@ -494,7 +494,8 @@ interface PackedAllDay {
 
 /**
  * プロジェクト・Googleカレンダー終日・マイルストーンを週ごとに1つのレーンへ詰める。
- * プロジェクトとGoogle終日を先に（日付順・同日は長い順）、マイルストーンを後に（日付順・同日は開始時刻順）割り当て、
+ * 開始日順に割り当て、同じ開始日ではプロジェクトとGoogle終日（長い順）をマイルストーン（開始時刻順）より先にする。
+ * 種類を開始日より優先すると区間の first-fit が崩れ、重なりが2件でも3行使うことがあるため、開始日を先に比べる。
  * 各アイテムは占有する日すべてで空いている最小の row を取る。
  */
 export function packUnifiedAllDayRows(
@@ -510,8 +511,8 @@ export function packUnifiedAllDayRows(
   ]
   const group = (e: Entry) => (e.kind === 'milestone' ? 1 : 0)
   entries.sort((a, b) => {
-    if (group(a) !== group(b)) return group(a) - group(b)
     if (a.day !== b.day) return a.day - b.day
+    if (group(a) !== group(b)) return group(a) - group(b)
     if (group(a) === 0) return b.span - a.span
     if (a.time !== b.time) return a.time < b.time ? -1 : 1
     return b.span - a.span
@@ -1002,6 +1003,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                       whiteSpace: 'nowrap', pointerEvents: 'auto',
                     }}
                     title={names.join('\n')}
+                    onMouseDown={e2 => e2.stopPropagation()}
                   >
                     {t('{count} more', { count: names.length })}
                   </div>
