@@ -211,7 +211,7 @@ components/app/
 - プロジェクト紐付けのチャット / タスクは `detail-panel/tabs/chat-tab.tsx` / `detail-panel/tabs/tasks-tab.tsx` で扱う（単一プロジェクトスコープ）
 - 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC・モバイル共通、`isMobile` prop で切り替え）
 - PC の `/chats` は `app/(app)/chats/layout.tsx` が `PageChat` を保持し、各 `page.tsx` は表示を持たない。会話間の移動ではサイドバーを再マウントせず、幅・スクロール位置・折りたたみ状態を維持する。選択中の会話は URL と同期し、`ChatThread` のみ `channelId` をキーに切り替える。モバイルブラウザは従来どおり `MobileShell` が `PageChat` を保持し、Expo のネイティブ画面はこのルート構成の対象外とする。
-- メッセージの `?m=` とパネルの `?panel=` は `useSearchParams` で購読し、同じ会話内のクエリだけの移動や履歴操作でも反映する。横断検索のショートカットは遷移先に `?panel=global-search` を付け、`/chats` から前回の会話への自動遷移でもクエリを引き継ぐ。
+- メッセージの `?m=` とパネルの `?panel=` は `useSearchParams` で購読し、同じ会話内のクエリだけの移動や履歴操作でも反映する。横断検索のショートカットは遷移先に `?panel=global-search` を付け、`/chats` から前回の会話への自動遷移でもクエリを引き継ぐ。URL から開いたパネル・モーダルは遷移先に指定がなければ閉じ、閉じる・切り替える操作も `panel` に反映する。他のクエリは保持し、編集対象は現在の URL と取得済み一覧から選ぶ。
 
 ---
 

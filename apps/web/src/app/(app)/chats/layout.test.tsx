@@ -5,17 +5,19 @@ import React from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import ChatsLayout from './layout'
 import ChatsPage from './page'
 import ChannelPage from './[channelId]/page'
 
-const { router, navigation, threadMount, threadUnmount, empty, channels, bookmarks } = vi.hoisted(() => ({
+const { router, navigation, threadMount, threadUnmount, empty, channels, projectChannels, bookmarks } = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
   navigation: { pathname: '/chats/a', search: '' },
   threadMount: vi.fn(),
   threadUnmount: vi.fn(),
   empty: [],
+  projectChannels: [] as ProjectChannelDto[],
   channels: ['a', 'b', 'c'].map(id => ({
     id, name: `会話${id.toUpperCase()}`, parentChannelId: null, isPrivate: false, archived: id === 'c',
     memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0,
@@ -33,7 +35,7 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('@/lib/chat/client', async importOriginal => ({
   ...await importOriginal<typeof import('@/lib/chat/client')>(),
-  useProjectChannels: () => ({ data: empty, isFetched: true, isSuccess: true, isFetching: false }),
+  useProjectChannels: () => ({ data: projectChannels, isFetched: true, isSuccess: true, isFetching: false }),
   useWorkspaceChannels: () => ({ data: channels, isFetched: true, isSuccess: true, isFetching: false }),
   useWorkspaceDms: () => ({ data: empty, isFetched: true, isSuccess: true, isFetching: false }),
   useWorkspaceMembers: () => ({ data: empty }),
@@ -51,8 +53,17 @@ vi.mock('@/hooks/use-project-milestones', () => ({
   usePatchProjectMilestone: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('@/components/app/sidebar', () => ({ BellButton: () => null }))
+vi.mock('@/components/app/pages/create-project-modal', () => ({
+  CreateProjectModal: ({ onClose }: { onClose: () => void }) => <button onClick={onClose}>プロジェクト作成を閉じる</button>,
+}))
+vi.mock('@/components/app/pages/create-milestone-modal', () => ({
+  CreateMilestoneModal: ({ onClose }: { onClose: () => void }) => <button onClick={onClose}>マイルストーン作成を閉じる</button>,
+  EditMilestoneModal: ({ onClose }: { onClose: () => void }) => <button onClick={onClose}>マイルストーン編集を閉じる</button>,
+}))
 vi.mock('@/components/app/pages/chat-detail-sidebar', () => ({
-  ChatDetailSidebar: ({ channelId }: { channelId: string }) => <div data-testid="detail">{channelId}</div>,
+  ChatDetailSidebar: ({ channelId, onJumpToMessage }: { channelId: string; onJumpToMessage: (id: string) => void }) => (
+    <div data-testid="detail">{channelId}<button onClick={() => onJumpToMessage('detail-message')}>詳細からメッセージへ移動</button></div>
+  ),
   ChatInfoDrawer: () => null,
 }))
 vi.mock('@/components/app/chat-thread', () => ({
@@ -89,6 +100,7 @@ function renderChats(pathname = '/chats/a') {
 describe('共有チャットlayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    projectChannels.length = 0
     localStorage.clear()
     localStorage.setItem(STORAGE_KEYS.chat_sidebar_width, '360')
   })
@@ -138,9 +150,9 @@ describe('共有チャットlayout', () => {
     const { navigate } = renderChats()
     fireEvent.click(screen.getByTitle('ブックマーク'))
     fireEvent.click(screen.getByText('移動先メッセージ'))
-    expect(router.push).toHaveBeenCalledWith('/chats/b')
+    expect(router.push).toHaveBeenCalledWith('/chats/b?m=message-b')
     expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-b')
-    navigate('/chats/b')
+    navigate('/chats/b?m=message-b')
     expect(screen.getByTestId('thread')).toHaveAttribute('data-channel', 'b')
     expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-b')
     navigate('/chats/a')
@@ -161,6 +173,11 @@ describe('共有チャットlayout', () => {
     expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-1')
     navigate('/chats/a')
     expect(screen.getByTestId('thread')).not.toHaveAttribute('data-message')
+    navigate('/chats/a?panel=search&m=old-message&open=project-p')
+    fireEvent.click(screen.getByText('詳細からメッセージへ移動'))
+    expect(router.replace).toHaveBeenLastCalledWith('/chats/a?m=detail-message&open=project-p', { scroll: false })
+    navigate('/chats/a?m=detail-message&open=project-p')
+    expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'detail-message')
     expect(screen.getByRole('complementary')).toBe(sidebar)
   })
 
@@ -171,19 +188,64 @@ describe('共有チャットlayout', () => {
     expect(router.replace).toHaveBeenCalledWith('/chats/b?panel=global-search')
     navigate('/chats/b?panel=global-search')
     expect(screen.getByPlaceholderText('全チャンネルを横断検索…')).toBeInTheDocument()
+    navigate('/chats/b?panel=global-search&m=message-1')
+    fireEvent.click(screen.getByTitle('ブックマーク'))
+    expect(router.replace).toHaveBeenLastCalledWith('/chats/b?panel=bookmarks&m=message-1', { scroll: false })
+    navigate('/chats/b?panel=bookmarks&m=message-1')
+    expect(screen.getByText('移動先メッセージ')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('全チャンネルを横断検索…')).toBeNull()
     expect(screen.getByRole('complementary')).toBe(sidebar)
   })
 
-  it('ジャンプの移動途中で会話を選び直した場合は古いジャンプ先を破棄する', () => {
-    const { navigate } = renderChats()
-    const sidebar = screen.getByRole('complementary')
-    fireEvent.click(screen.getByTitle('ブックマーク'))
-    fireEvent.click(screen.getByText('移動先メッセージ'))
-    fireEvent.click(within(sidebar).getByText('会話A'))
-    navigate('/chats/a')
-    fireEvent.click(within(sidebar).getByText('会話B'))
+  it('URLを離れたモーダルと未取得の編集要求を残さず、閉じると他のクエリを保つ', () => {
+    const { navigate } = renderChats('/chats/a?panel=create-project&m=message-1')
     navigate('/chats/b')
-    expect(screen.getByTestId('thread')).toHaveAttribute('data-channel', 'b')
-    expect(screen.getByTestId('thread')).not.toHaveAttribute('data-message')
+    expect(screen.queryByText('プロジェクト作成を閉じる')).toBeNull()
+    navigate('/chats/a?panel=create-project&m=message-1')
+    fireEvent.click(screen.getByText('プロジェクト作成を閉じる'))
+    expect(router.replace).toHaveBeenLastCalledWith('/chats/a?m=message-1', { scroll: false })
+    navigate('/chats/a?panel=create-milestone&projectId=p&projectTitle=P')
+    expect(screen.queryByText('プロジェクト作成を閉じる')).toBeNull()
+    expect(screen.getByText('マイルストーン作成を閉じる')).toBeInTheDocument()
+    navigate('/chats/a?panel=edit-milestone&milestoneId=m')
+    expect(screen.queryByText('マイルストーン作成を閉じる')).toBeNull()
+    expect(screen.queryByText('マイルストーン編集を閉じる')).toBeNull()
+    navigate('/chats/b')
+    projectChannels.push({
+      channelId: 'milestone-channel', channelName: 'M', projectId: 'p', projectTitle: 'P',
+      startDate: null, endDate: null, startTime: null, endTime: null, archived: false,
+      unreadCount: 0, unreadMentionCount: 0, milestoneId: 'm', milestoneCompleted: false,
+    })
+    navigate('/chats/b')
+    expect(screen.queryByText('マイルストーン編集を閉じる')).toBeNull()
+    navigate('/chats/a?panel=edit-milestone&milestoneId=m')
+    expect(screen.getByText('マイルストーン編集を閉じる')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('マイルストーン編集を閉じる'))
+    expect(router.replace).toHaveBeenLastCalledWith('/chats/a?milestoneId=m', { scroll: false })
+    navigate('/chats/a?milestoneId=m')
+    expect(screen.queryByText('マイルストーン編集を閉じる')).toBeNull()
+    navigate('/chats/a?panel=edit-milestone&milestoneId=m')
+    navigate('/chats/a')
+    expect(screen.queryByText('マイルストーン編集を閉じる')).toBeNull()
+    navigate('/chats/a?panel=bookmarks')
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトを追加' }))
+    router.replace.mockClear()
+    fireEvent.click(screen.getByText('プロジェクト作成を閉じる'))
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(screen.getByText('移動先メッセージ')).toBeInTheDocument()
+  })
+
+  it.each(['閉じるボタン', '一覧の切り替えボタン'])('横断検索を%sで閉じるとURLからpanelだけを除き、別のクエリ更新でも再表示しない', method => {
+    const { navigate } = renderChats('/chats/a?panel=global-search&m=message-1&open=project-p')
+    if (method === '閉じるボタン') {
+      fireEvent.keyDown(screen.getByPlaceholderText('全チャンネルを横断検索…'), { key: 'Escape' })
+    } else {
+      fireEvent.click(screen.getByTitle('全チャンネル検索'))
+    }
+    expect(router.replace).toHaveBeenLastCalledWith('/chats/a?m=message-1&open=project-p', { scroll: false })
+    navigate('/chats/a?m=message-1&open=project-p')
+    navigate('/chats/a?m=message-1&open=project-q')
+    expect(screen.queryByPlaceholderText('全チャンネルを横断検索…')).toBeNull()
+
   })
 })
