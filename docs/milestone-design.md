@@ -13,7 +13,7 @@
 | API | プロジェクト別の取得・作成・更新・削除、ワークスペース内の横断一覧。作成時はマイルストーンとチャンネルを同一 transaction で追加。読み取りはプロジェクトアクセス権、書き込みは member 以上。各ルートで `projects.workspaceId = ctx.workspaceId` を条件に含め越境を防ぐ | [一覧・作成](../apps/web/src/app/api/projects/[id]/milestones/route.ts)、[更新・削除](../apps/web/src/app/api/projects/[id]/milestones/[milestoneId]/route.ts)、[横断一覧](../apps/web/src/app/api/milestones/route.ts) |
 | Web 管理 UI | 概要タブの一覧・作成・編集・完了切替・削除確認・チャット遷移、作成／編集モーダル。取得・更新は Domain Hook に集約 | [概要タブ](../apps/web/src/components/app/detail-panel/tabs/overview-tab.tsx)、[モーダル](../apps/web/src/components/app/pages/create-milestone-modal.tsx)、[use-project-milestones.ts](../apps/web/src/hooks/use-project-milestones.ts) |
 | Web チャット | サイドバーはプロジェクト（General）直下にマイルストーンを階層表示し、完了分は折りたたむ。詳細パネルのチャットタブは General と未完了マイルストーンを切り替え | [チャットタブ](../apps/web/src/components/app/detail-panel/tabs/chat-tab.tsx) |
-| カレンダー | PC・モバイル Web の全体カレンダーでプロジェクトバーの下にマイルストーンを表示。マイルストーンは常に表示し、「参加中／全体」トグル（`STORAGE_KEYS.projects_scope`、一覧・カンバンと共有）とフィルターで残ったプロジェクトのものだけを出す | [projects-calendar.tsx](../apps/web/src/components/app/pages/projects-calendar.tsx) |
+| カレンダー | PC・モバイル Web の全体カレンダーでプロジェクトバーと同じ行の並びにマイルストーンを「●」付きの文字で表示。マイルストーンは期間にまたがらず開始日（なければ終了日）の1日だけに開始時刻つき（「Project / title 19:30〜」）で表示する。常に表示し、「参加中／全体」トグル（`STORAGE_KEYS.projects_scope`、一覧・カンバンと共有）とフィルターで残ったプロジェクトのものだけを出す | [projects-calendar.tsx](../apps/web/src/components/app/pages/projects-calendar.tsx) |
 | Expo チャット | プロジェクトの下に未完了のマイルストーンを表示し、専用の `channelId` へ遷移 | [チャット一覧](<../apps/mobile/app/(app)/chats/index.tsx>) |
 
 用語: 本書の「マイルストーンチャンネル」は `channels` の行であり、`messages.parent_message_id` で表すメッセージ返信スレッドとは別概念。ワークスペースチャンネル配下のスレッド（`channels.parent_channel_id`、1階層のみ）と同じ「親子チャンネル」モデルで、未読・通知・Realtime・検索は既存のチャンネル基盤で共通処理する。

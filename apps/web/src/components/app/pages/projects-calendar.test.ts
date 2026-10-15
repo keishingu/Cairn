@@ -82,22 +82,37 @@ describe('buildMilestoneEvents', () => {
     expect(result[0]).toMatchObject({ day: 3, span: 1, row: 0 })
   })
 
-  test('週をまたぐマイルストーンは週ごとに分割される', () => {
+  test('複数日にまたがるマイルストーンは開始日の1日だけに表示される', () => {
     const result = buildMilestoneEvents([makeMilestone({ startDate: '2026-06-10', endDate: '2026-06-16' })], PROJECT_MAP, YEAR, MONTH)
 
-    expect(result).toHaveLength(2)
-    expect(result.map(e => e.span).sort()).toEqual([3, 4])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 3, span: 1 })
+  })
+})
+
+describe('buildMilestoneEvents（10/9〜10/16 の期間マイルストーン）', () => {
+  test('開始日の 10/9 だけに表示され、10/10 以降には出ない', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: '2026-10-09', endDate: '2026-10-16' })], PROJECT_MAP, 2026, 9)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 5, span: 1 })
   })
 })
 
 describe('buildMilestoneWeekEvents', () => {
   const WEEK_START = new Date(2026, 5, 7)
 
-  test('週内のマイルストーンを週表示用の day/span に変換する', () => {
+  test('週内のマイルストーンを開始日1日分の day/span に変換する', () => {
     const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-09', endDate: '2026-06-11' })], PROJECT_MAP, WEEK_START)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ day: 2, span: 3, week: 0 })
+    expect(result[0]).toMatchObject({ day: 2, span: 1, week: 0 })
+  })
+
+  test('開始日が週の外なら期間が週に掛かっていても表示しない', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-05', endDate: '2026-06-09' })], PROJECT_MAP, WEEK_START)
+
+    expect(result).toHaveLength(0)
   })
 })
 
@@ -106,8 +121,12 @@ describe('formatMilestoneLabel', () => {
     expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問' }))).toBe('日本フルハーフ株式会社様 / 訪問')
   })
 
-  test('開始時刻と終了時刻がある場合は時刻範囲も表示する', () => {
-    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜14:00')
+  test('開始時刻と終了時刻がある場合でも開始時刻だけを表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜')
+  })
+
+  test('開始時刻がなく終了時刻だけある場合は時刻を表示しない', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'A', title: 'B', startTime: null, endTime: '14:00' }))).toBe('A / B')
   })
 })
 

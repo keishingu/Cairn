@@ -247,11 +247,15 @@ function buildEvents(
   return result
 }
 
+/**
+ * カレンダー上のマイルストーンは開始日（なければ終了日）の1日だけに置く。
+ * 期間表示は別途ガントビューで扱うため、カレンダーでは点として扱う。
+ */
 function getMilestoneRange(milestone: WorkspaceMilestoneDto): { start: Date; end: Date } | null {
-  if (!milestone.startDate && !milestone.endDate) return null
-  const start = parseLocalDate(milestone.startDate ?? milestone.endDate!)
-  const end = parseLocalDate(milestone.endDate ?? milestone.startDate!)
-  return start <= end ? { start, end } : { start: end, end: start }
+  const day = milestone.startDate ?? milestone.endDate
+  if (!day) return null
+  const date = parseLocalDate(day)
+  return { start: date, end: new Date(date) }
 }
 
 export function buildMilestoneEvents(
@@ -1403,13 +1407,14 @@ export function formatMilestoneTimeRange(
   return ''
 }
 
+/** カレンダー用ラベル。マイルストーンは開始日だけに置くため、時刻も開始時刻のみ表示する */
 export function formatMilestoneLabel(
-  milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime' | 'endTime'>,
+  milestone: Pick<WorkspaceMilestoneDto, 'projectTitle' | 'title' | 'startTime'>,
   t?: Translate,
 ): string {
   const base = `${milestone.projectTitle} / ${milestone.title}`
-  const timeRange = formatMilestoneTimeRange(milestone, t)
-  return timeRange ? `${base} ${timeRange}` : base
+  const timeLabel = formatMilestoneTimeRange({ startTime: milestone.startTime, endTime: null }, t)
+  return timeLabel ? `${base} ${timeLabel}` : base
 }
 
 interface MobileCalendarGridProps {
