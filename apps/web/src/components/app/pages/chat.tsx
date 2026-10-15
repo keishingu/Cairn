@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
@@ -318,15 +318,19 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
   )
 }
 
-// ─── Pending cross-channel jump (survives component remount) ─────
-let _pendingJump: { channelId: string; messageId: string } | null = null
-
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
   const router = useRouter()
   const pathname = usePathname()
+  const search = useSearchParams().toString()
+  const params = React.useMemo(() => new URLSearchParams(search), [search])
+  const messageId = params.get('m')
+  const panel = params.get('panel')
+  const projectId = params.get('projectId')
+  const projectTitle = params.get('projectTitle')
+  const requestedEditingMilestoneId = panel === 'edit-milestone' ? params.get('milestoneId') : null
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
@@ -351,7 +355,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const [detailOpen, setDetailOpen] = React.useState(true)
   const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
   const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
-  const [requestedEditingMilestoneId, setRequestedEditingMilestoneId] = React.useState<string | null>(null)
   const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
   // 「スレッドに切り出す」: moveDialog が確認ダイアログ、moveSelection が複数選択モード（起点メッセージ＋選択中の一覧）
   const [moveDialog, setMoveDialog] = React.useState<{ anchor: MoveSourceMessage; selected: MoveSourceMessage[] | null } | null>(null)
@@ -362,42 +365,41 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
   const setWorkspaceChannelArchived = useSetWorkspaceChannelArchived()
 
-  // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
-  // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
+  // パーマリンクの対象が同じなら参照を保ち、別パネルの操作で再スクロールさせない。
   React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const m = params.get('m')
-    setTargetMessage(m ? { id: m } : null)
-    switch (params.get('panel')) {
-      case 'search':
-        setSearchOpen(true)
-        break
-      case 'info':
-        setShowInfo(true)
-        break
-      case 'global-search':
-        setGlobalSearchOpen(true)
-        break
-      case 'bookmarks':
-        setBookmarksOpen(true)
-        break
-      case 'create-project':
-        setShowCreateProject(true)
-        break
-      case 'create-milestone': {
-        const id = params.get('projectId')
-        const title = params.get('projectTitle')
-        if (id && title) setMilestoneProject({ id, title })
-        break
-      }
-      case 'edit-milestone': {
-        const milestoneId = params.get('milestoneId')
-        if (milestoneId) setRequestedEditingMilestoneId(milestoneId)
-        break
-      }
-    }
-  }, [pathname])
+    setTargetMessage(current => current?.id === messageId ? current : messageId ? { id: messageId } : null)
+  }, [urlChannelId, messageId])
+
+  // チャットの移動・パネル指定・メッセージリンクに同期し、シェルの open/tab 変更では表示を保つ。
+  React.useEffect(() => {
+    setSearchOpen(panel === 'search')
+    setShowInfo(panel === 'info')
+    setShowMemberInvite(false)
+    setGlobalSearchOpen(panel === 'global-search')
+    setBookmarksOpen(panel === 'bookmarks')
+    setShowCreateProject(panel === 'create-project')
+    setMilestoneProject(panel === 'create-milestone' && projectId && projectTitle ? { id: projectId, title: projectTitle } : null)
+    setEditingMilestone(null)
+  }, [urlChannelId, messageId, panel, projectId, projectTitle, requestedEditingMilestoneId])
+
+  const updateUrlPanel = (panel: string | null) => {
+    // URL から開いた表示は閉じる・切り替える操作も同期し、他のクエリは保つ。
+    if (!params.has('panel')) return
+    const next = new URLSearchParams(params)
+    if (panel) next.set('panel', panel)
+    else next.delete('panel')
+    const query = next.toString()
+    router.replace(pathname + (query ? '?' + query : ''), { scroll: false })
+  }
+
+  const clearUrlPanel = (panel: string) => {
+    if (params.get('panel') === panel) updateUrlPanel(null)
+  }
+
+  const closeGlobalSearch = () => {
+    setGlobalSearchOpen(false)
+    clearUrlPanel('global-search')
+  }
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
@@ -408,14 +410,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   React.useEffect(() => {
     setMoveDialog(null)
     setMoveSelection(null)
-  }, [channelId])
-
-  // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
-  React.useEffect(() => {
-    if (_pendingJump && _pendingJump.channelId === channelId) {
-      setTargetMessage({ id: _pendingJump.messageId })
-      _pendingJump = null
-    }
   }, [channelId])
 
   const {
@@ -439,14 +433,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
 
-  React.useEffect(() => {
-    if (!requestedEditingMilestoneId) return
-    const milestone = projectChannels.find(channel => channel.milestoneId === requestedEditingMilestoneId)
-    if (milestone) {
-      setEditingMilestone(milestone)
-      setRequestedEditingMilestoneId(null)
-    }
-  }, [projectChannels, requestedEditingMilestoneId])
+  const activeEditingMilestone = editingMilestone ?? (requestedEditingMilestoneId
+    ? projectChannels.find(channel => channel.milestoneId === requestedEditingMilestoneId)
+    : null)
 
   const fallbackChannelId = React.useMemo(
     () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,
@@ -507,10 +496,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       })
       if (nextChannelId) {
         setChannelId(nextChannelId)
-        router.replace('/chats/' + nextChannelId)
+        router.replace('/chats/' + nextChannelId + (search ? '?' + search : ''))
       }
     }
-  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router, search])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
@@ -527,6 +516,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     setBookmarksOpen(false)
     // 同じメッセージへの再ジャンプでも新しいオブジェクトにして、ChatThread の effect を再実行する。
     setTargetMessage({ id: messageId })
+    const next = new URLSearchParams(params)
+    next.delete('panel')
+    next.set('m', messageId)
+    router.replace(pathname + '?' + next.toString(), { scroll: false })
   }
 
   // プロジェクト・ワークスペースチャンネルの作成は API 側で管理者以上に限定しているため、UI 導線も同じ条件で絞る
@@ -569,16 +562,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
-    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接ジャンプ先を設定する
-    if (chanId === channelId) {
-      setTargetMessage({ id: messageId })
-    } else {
-      _pendingJump = { channelId: chanId, messageId }
-      setTargetMessage({ id: messageId })
-      setChannelId(chanId)
-    }
-    router.push('/chats/' + chanId)
+    setTargetMessage({ id: messageId })
+    setChannelId(chanId)
+    router.push('/chats/' + chanId + '?m=' + encodeURIComponent(messageId))
   }
 
   // 切り出されたメッセージの古いリンクを開いたとき、移動先のチャンネルを解決して辿り直す。
@@ -759,15 +745,15 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const createProjectUI = showCreateProject && (
     isMobile
-      ? <CreateProjectSheet onClose={() => setShowCreateProject(false)} onCreated={handleProjectCreated}/>
-      : <CreateProjectModal onClose={() => setShowCreateProject(false)} onCreated={handleProjectCreated}/>
+      ? <CreateProjectSheet onClose={() => { setShowCreateProject(false); clearUrlPanel('create-project') }} onCreated={handleProjectCreated}/>
+      : <CreateProjectModal onClose={() => { setShowCreateProject(false); clearUrlPanel('create-project') }} onCreated={handleProjectCreated}/>
   )
 
   const createMilestoneUI = milestoneProject && (
     <CreateMilestoneModal
       projectId={milestoneProject.id}
       projectTitle={milestoneProject.title}
-      onClose={() => setMilestoneProject(null)}
+      onClose={() => { setMilestoneProject(null); clearUrlPanel('create-milestone') }}
       onCreated={milestone => selectChannel(milestone.channelId)}
     />
   )
@@ -875,12 +861,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     />
   )
 
-  const editMilestoneUI = editingMilestone?.milestoneId && (
+  const editMilestoneUI = activeEditingMilestone?.milestoneId && (
     <EditMilestoneModal
-      projectId={editingMilestone.projectId}
-      projectTitle={editingMilestone.projectTitle}
-      milestoneId={editingMilestone.milestoneId}
-      onClose={() => setEditingMilestone(null)}
+      projectId={activeEditingMilestone.projectId}
+      projectTitle={activeEditingMilestone.projectTitle}
+      milestoneId={activeEditingMilestone.milestoneId}
+      onClose={() => { setEditingMilestone(null); clearUrlPanel('edit-milestone') }}
     />
   )
 
@@ -894,19 +880,19 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             title={t('Chats')}
             right={
               <div style={{ display: 'flex', gap: 4 }}>
-                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
+                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false); updateUrlPanel(bookmarksOpen ? null : 'bookmarks') }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
                   <Icon name="bookmark" size={16}/>
                 </button>
-                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
+                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false); updateUrlPanel(globalSearchOpen ? null : 'global-search') }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
                   <Icon name="search" size={16}/>
                 </button>
               </div>
             }
           />
           {bookmarksOpen
-            ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+            ? <BookmarksPanel onClose={() => { setBookmarksOpen(false); clearUrlPanel('bookmarks') }} onJump={jumpToChannelMessage} isMobile/>
             : globalSearchOpen
-              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+              ? <CrossChannelSearch onClose={closeGlobalSearch} onJump={jumpToChannelMessage} isMobile/>
               : channelListNode
           }
           {createChannelUI}
@@ -928,7 +914,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
+              <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
               {isPrivate && (
                 <button className="btn" onClick={() => setShowMemberInvite(true)}>
                   <Icon name="userPlus" size={16}/>
@@ -941,7 +927,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           }
         />
         {searchOpen && channelId
-          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+          ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
           : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
         }
         {showMemberInvite && channelId && (
@@ -949,7 +935,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
         {showInfo && (
           <ChatInfoDrawer
-            onClose={() => setShowInfo(false)}
+            onClose={() => { setShowInfo(false); clearUrlPanel('info') }}
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}
@@ -999,7 +985,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="btn"
-              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }}
+              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false); updateUrlPanel(bookmarksOpen ? null : 'bookmarks') }}
               style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}
               title={t('Bookmarks')}
             >
@@ -1007,7 +993,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </button>
             <button
               className="btn"
-              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }}
+              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false); updateUrlPanel(globalSearchOpen ? null : 'global-search') }}
               style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
               title={t('Search all channels')}
             >
@@ -1038,7 +1024,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
-              <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+              <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
               <BellButton/>
             </div>
           </div>
@@ -1047,11 +1033,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
             {bookmarksOpen
-              ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage}/>
+              ? <BookmarksPanel onClose={() => { setBookmarksOpen(false); clearUrlPanel('bookmarks') }} onJump={jumpToChannelMessage}/>
               : globalSearchOpen
-                ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+                ? <CrossChannelSearch onClose={closeGlobalSearch} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
-                  ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
+                  ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
                   : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
             }
           </main>

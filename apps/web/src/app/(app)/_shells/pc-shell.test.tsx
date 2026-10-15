@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { PCShell } from './pc-shell'
 import { useAppShell } from '@/components/app/app-shell-context'
+import { useCommandRegistry } from '@/lib/command-registry'
 import type { ProjectDto } from '@/app/api/projects/route'
 
 // ─── next/navigation モック ────────────────────────────────────────
@@ -99,6 +100,12 @@ function ClosePanelTrigger() {
   )
 }
 
+function CrossSearchTrigger() {
+  const { invoke } = useCommandRegistry()
+  const { crossSearchNonce } = useAppShell()
+  return <button onClick={() => invoke('global.crossSearch')}>横断検索 {crossSearchNonce}</button>
+}
+
 function makeQC(projects: ProjectDto[] = [STUB_PROJECT]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['projects'], projects)
@@ -185,5 +192,21 @@ describe('PCShell — ProjectPanel の閉じるボタン', () => {
     renderShell('/projects', new URLSearchParams('open=project-proj-abc'))
     await userEvent.click(screen.getByText('閉じる'))
     expect(mockPush).toHaveBeenCalledWith('/projects', { scroll: false })
+  })
+})
+
+describe('PCShell — 横断検索の遷移', () => {
+  it.each([
+    ['/projects', 'open=project-proj-abc&tab=files', '/chats?panel=global-search'],
+    ['/chats/a', 'm=x&open=project-proj-abc&tab=files&panel=bookmarks', '/chats/a?m=x&open=project-proj-abc&tab=files&panel=global-search'],
+  ])('%sから検索を開く意図をURLに含め、同じURLでも再実行できる', async (pathname, query, expectedPath) => {
+    mockPush.mockClear()
+    mockPathname = pathname
+    mockSearchParams = new URLSearchParams(query)
+    render(<QueryClientProvider client={makeQC()}><PCShell><CrossSearchTrigger /></PCShell></QueryClientProvider>)
+    await userEvent.click(screen.getByRole('button', { name: '横断検索 0' }))
+    expect(mockPush).toHaveBeenLastCalledWith(expectedPath)
+    await userEvent.click(screen.getByRole('button', { name: '横断検索 1' }))
+    expect(screen.getByRole('button', { name: '横断検索 2' })).toBeInTheDocument()
   })
 })
