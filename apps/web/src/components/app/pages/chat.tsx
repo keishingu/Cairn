@@ -326,6 +326,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const pathname = usePathname()
   const search = useSearchParams().toString()
   const params = React.useMemo(() => new URLSearchParams(search), [search])
+  const messageId = params.get('m')
+  const panel = params.get('panel')
+  const projectId = params.get('projectId')
+  const projectTitle = params.get('projectTitle')
+  const requestedEditingMilestoneId = panel === 'edit-milestone' ? params.get('milestoneId') : null
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
@@ -360,23 +365,22 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
   const setWorkspaceChannelArchived = useSetWorkspaceChannelArchived()
 
-  // 共有 layout では同じ会話のクエリ変更でも、パーマリンクとパネルを同期する。
+  // パーマリンクの対象が同じなら参照を保ち、別パネルの操作で再スクロールさせない。
   React.useEffect(() => {
-    const m = params.get('m')
-    setTargetMessage(m ? { id: m } : null)
-    // 共有 layout は残るため、会話の移動時は会話に紐づく表示だけをリセットする。
-    const panel = params.get('panel')
+    setTargetMessage(current => current?.id === messageId ? current : messageId ? { id: messageId } : null)
+  }, [urlChannelId, messageId])
+
+  // チャットの移動・パネル指定・メッセージリンクに同期し、シェルの open/tab 変更では表示を保つ。
+  React.useEffect(() => {
     setSearchOpen(panel === 'search')
     setShowInfo(panel === 'info')
     setShowMemberInvite(false)
     setGlobalSearchOpen(panel === 'global-search')
     setBookmarksOpen(panel === 'bookmarks')
     setShowCreateProject(panel === 'create-project')
-    const id = params.get('projectId')
-    const title = params.get('projectTitle')
-    setMilestoneProject(panel === 'create-milestone' && id && title ? { id, title } : null)
+    setMilestoneProject(panel === 'create-milestone' && projectId && projectTitle ? { id: projectId, title: projectTitle } : null)
     setEditingMilestone(null)
-  }, [pathname, params])
+  }, [urlChannelId, messageId, panel, projectId, projectTitle, requestedEditingMilestoneId])
 
   const updateUrlPanel = (panel: string | null) => {
     // URL から開いた表示は閉じる・切り替える操作も同期し、他のクエリは保つ。
@@ -429,7 +433,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
 
-  const requestedEditingMilestoneId = params.get('panel') === 'edit-milestone' ? params.get('milestoneId') : null
   const activeEditingMilestone = editingMilestone ?? (requestedEditingMilestoneId
     ? projectChannels.find(channel => channel.milestoneId === requestedEditingMilestoneId)
     : null)

@@ -11,11 +11,12 @@ import ChatsLayout from './layout'
 import ChatsPage from './page'
 import ChannelPage from './[channelId]/page'
 
-const { router, navigation, threadMount, threadUnmount, empty, channels, projectChannels, bookmarks } = vi.hoisted(() => ({
+const { router, navigation, threadMount, threadUnmount, threadJump, empty, channels, projectChannels, bookmarks } = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
   navigation: { pathname: '/chats/a', search: '' },
   threadMount: vi.fn(),
   threadUnmount: vi.fn(),
+  threadJump: vi.fn(),
   empty: [],
   projectChannels: [] as ProjectChannelDto[],
   channels: ['a', 'b', 'c'].map(id => ({
@@ -72,6 +73,9 @@ vi.mock('@/components/app/chat-thread', () => ({
       threadMount(channelId)
       return () => threadUnmount(channelId)
     }, [channelId])
+    React.useEffect(() => {
+      if (targetMessage) threadJump(targetMessage)
+    }, [targetMessage])
     return <div data-testid="thread" data-channel={channelId} data-message={targetMessage?.id} />
   },
 }))
@@ -164,6 +168,9 @@ describe('共有チャットlayout', () => {
     const sidebar = screen.getByRole('complementary')
     navigate('/chats/a?m=message-1')
     expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'message-1')
+    const jumps = threadJump.mock.calls.length
+    navigate('/chats/a?m=message-1&open=member-u&tab=files')
+    expect(threadJump).toHaveBeenCalledTimes(jumps)
     navigate('/chats/a?panel=search')
     expect(screen.getByPlaceholderText('メッセージを検索…')).toBeInTheDocument()
     navigate('/chats/a?m=message-2')
@@ -176,7 +183,11 @@ describe('共有チャットlayout', () => {
     navigate('/chats/a?panel=search&m=old-message&open=project-p')
     fireEvent.click(screen.getByText('詳細からメッセージへ移動'))
     expect(router.replace).toHaveBeenLastCalledWith('/chats/a?m=detail-message&open=project-p', { scroll: false })
+    const detailJumps = threadJump.mock.calls.length
     navigate('/chats/a?m=detail-message&open=project-p')
+    expect(threadJump).toHaveBeenCalledTimes(detailJumps)
+    fireEvent.click(screen.getByText('詳細からメッセージへ移動'))
+    expect(threadJump).toHaveBeenCalledTimes(detailJumps + 1)
     expect(screen.getByTestId('thread')).toHaveAttribute('data-message', 'detail-message')
     expect(screen.getByRole('complementary')).toBe(sidebar)
   })
@@ -195,6 +206,24 @@ describe('共有チャットlayout', () => {
     expect(screen.getByText('移動先メッセージ')).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('全チャンネルを横断検索…')).toBeNull()
     expect(screen.getByRole('complementary')).toBe(sidebar)
+  })
+
+  it('一覧から開いた表示はメンバーパネルやタブのクエリ変更でも維持し、会話移動では閉じる', () => {
+    const { navigate } = renderChats()
+    fireEvent.click(screen.getByTitle('全チャンネル検索'))
+    navigate('/chats/a?open=member-u')
+    expect(screen.getByPlaceholderText('全チャンネルを横断検索…')).toBeInTheDocument()
+    navigate('/chats/a?open=member-u&tab=files')
+    expect(screen.getByPlaceholderText('全チャンネルを横断検索…')).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle('ブックマーク'))
+    navigate('/chats/a?open=member-v')
+    expect(screen.getByText('移動先メッセージ')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトを追加' }))
+    navigate('/chats/a?open=member-v&tab=files')
+    expect(screen.getByText('プロジェクト作成を閉じる')).toBeInTheDocument()
+    navigate('/chats/b')
+    expect(screen.queryByText('プロジェクト作成を閉じる')).toBeNull()
+    expect(screen.queryByText('移動先メッセージ')).toBeNull()
   })
 
   it('URLを離れたモーダルと未取得の編集要求を残さず、閉じると他のクエリを保つ', () => {
@@ -246,6 +275,5 @@ describe('共有チャットlayout', () => {
     navigate('/chats/a?m=message-1&open=project-p')
     navigate('/chats/a?m=message-1&open=project-q')
     expect(screen.queryByPlaceholderText('全チャンネルを横断検索…')).toBeNull()
-
   })
 })
