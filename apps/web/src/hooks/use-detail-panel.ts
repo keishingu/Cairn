@@ -44,7 +44,7 @@ export interface UseDetailPanelResult {
   /** タブ切替: localStorage に保存し、履歴を汚さないよう router.replace で ?tab を更新する */
   setPanelTab: (tab: string) => void
   /** プロジェクトパネルを開く。引数なしで閉じる（AppShellContext 後方互換） */
-  openPanel: (project?: ProjectDto) => void
+  openPanel: (project?: ProjectDto, tab?: string) => void
   /** MemberProjectDto から遷移するとき用（ID のみ渡す） */
   openProjectById: (id: string) => void
   openMember: (userId: string) => void
@@ -110,11 +110,13 @@ export function useDetailPanel(): UseDetailPanelResult {
   const panelTab = isPanelTab(tabParam) ? tabParam : storedPanelTab
 
   const buildUrl = useCallback(
-    (openValue: string | null): string => {
+    (openValue: string | null, tabOverride?: string): string => {
       const params = new URLSearchParams(searchParams.toString())
       if (openValue) {
         params.set('open', openValue)
-        if (!isPanelTab(params.get('tab'))) {
+        if (tabOverride && isPanelTab(tabOverride)) {
+          params.set('tab', tabOverride)
+        } else if (!isPanelTab(params.get('tab'))) {
           if (panelTab === DEFAULT_PANEL_TAB) params.delete('tab')
           else params.set('tab', panelTab)
         }
@@ -143,8 +145,8 @@ export function useDetailPanel(): UseDetailPanelResult {
   )
 
   const openPanel = useCallback(
-    (project?: ProjectDto) => {
-      router.push(buildUrl(project ? `project-${project.id}` : null), { scroll: false })
+    (project?: ProjectDto, tab?: string) => {
+      router.push(buildUrl(project ? `project-${project.id}` : null, tab), { scroll: false })
     },
     [router, buildUrl],
   )

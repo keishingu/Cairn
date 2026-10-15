@@ -26,7 +26,8 @@ vi.mock('@cairn/db', () => ({
   db: mockDb,
   projects:       { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', description: 'p.description', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdBy: 'p.createdBy', coverPhotoUrl: 'p.coverPhotoUrl', location: 'p.location', placeId: 'p.placeId' },
   projectStatuses:{ id: 'ps.id', name: 'ps.name', color: 'ps.color' },
-  projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', role: 'pm.role', createdAt: 'pm.createdAt' },
+  projectMembers: { projectId: 'pm.projectId', userId: 'pm.userId', role: 'pm.role', roleId: 'pm.roleId', createdAt: 'pm.createdAt' },
+  projectRoles: { id: 'prjrole.id', workspaceId: 'prjrole.workspaceId', name: 'prjrole.name', color: 'prjrole.color', sortOrder: 'prjrole.sortOrder', legacyRole: 'prjrole.legacyRole' },
   tasks:          { projectId: 'tk.projectId', channelId: 'tk.channelId', status: 'tk.status' },
   channels:       { id: 'ch.id', projectId: 'ch.projectId', workspaceId: 'ch.workspaceId', type: 'ch.type', isPrivate: 'ch.isPrivate' },
   channelMembers: { channelId: 'cm.channelId', userId: 'cm.userId' },
@@ -44,6 +45,7 @@ vi.mock('drizzle-orm', () => ({
   count: vi.fn(() => 'count'),
   inArray: vi.fn(() => 'inArray'),
   isNull: vi.fn(() => 'isNull'),
+  or: vi.fn((...conditions: unknown[]) => ({ or: conditions })),
   desc: vi.fn((column: unknown) => ({ desc: column })),
   sql: Object.assign(vi.fn(() => 'sql'), { raw: vi.fn() }),
 }))
@@ -189,6 +191,27 @@ describe('GET /api/projects', () => {
       expect.objectContaining({ id: PROJ_2, isJoined: true, isHosting: false }),
       expect.objectContaining({ id: 'proj-00000003', isJoined: true, isHosting: true }),
     ])
+  })
+
+  it('担当表用にアクティブなメンバーをワークスペース役割ごとにまとめる', async () => {
+    const proj1 = { id: PROJ_1, title: 'プロジェクト', description: null, startDate: '2026-10-20', endDate: '2026-10-22', archived: false, coverPhotoUrl: null, location: null, placeId: null }
+    mockDb.select
+      .mockReturnValueOnce(chain([proj1]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([
+        { projectId: PROJ_1, displayName: '佐藤', avatarUrl: null, roleId: 'role-guide', roleName: 'ガイド', roleColor: '#2563eb', roleSortOrder: 1 },
+        { projectId: PROJ_1, displayName: '鈴木', avatarUrl: 'avatar.png', roleId: 'role-guide', roleName: 'ガイド', roleColor: '#2563eb', roleSortOrder: 1 },
+      ]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]))
+
+    const { GET } = await import('./route')
+    const response = await GET()
+    const body = await response.json() as Array<{ roleAssignments: unknown[] }>
+    expect(body[0]?.roleAssignments).toEqual([{
+      roleId: 'role-guide', roleName: 'ガイド', roleColor: '#2563eb', roleSortOrder: 1,
+      memberNames: ['佐藤', '鈴木'], memberAvatarUrls: [null, 'avatar.png'],
+    }])
   })
 
   it('最新投稿の送信者と本文を返し、メンションと改行を表示用に整える', async () => {

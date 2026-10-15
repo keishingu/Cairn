@@ -16,12 +16,14 @@ import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useProjects } from '@/hooks/use-projects'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
+import { useProjectRoles } from '@/hooks/use-project-roles'
 import { useCommand } from '@/lib/command-registry'
 import { useT } from '@/components/locale-provider'
+import { ProjectRoleMatrix } from './project-role-matrix'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
-  openPanel?: (project?: ProjectDto) => void
+  openPanel?: (project?: ProjectDto, tab?: string) => void
   isMobile?: boolean
   externalSearch?: string
 }
@@ -52,12 +54,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const { data: projects = [], isLoading, isError } = useProjects()
-  const [view, setView] = React.useState<'grid' | 'table'>(() => {
+  const [view, setView] = React.useState<'grid' | 'table' | 'roles'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
-    return (saved === 'grid' || saved === 'table') ? saved : 'grid'
+    return (saved === 'grid' || saved === 'table' || saved === 'roles') ? saved : 'grid'
   })
-  const setViewPersisted = (v: 'grid' | 'table') => {
+  const setViewPersisted = (v: 'grid' | 'table' | 'roles') => {
     setView(v)
     localStorage.setItem(STORAGE_KEYS.projects_list_view, v)
   }
@@ -93,6 +95,8 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
   const { data: allStatuses = [] } = useProjectStatuses()
+  const projectRolesQuery = useProjectRoles({ enabled: view === 'roles' })
+  const projectRoles = projectRolesQuery.data ?? []
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
@@ -230,6 +234,16 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 >
                   <Icon name="search" size={20}/>
                 </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  aria-label={view === 'roles' ? t('Project list') : t('Role assignment matrix')}
+                  title={view === 'roles' ? t('Project list') : t('Role assignment matrix')}
+                  onClick={() => setViewPersisted(view === 'roles' ? 'grid' : 'roles')}
+                  style={{ minHeight: 44, paddingInline: 10, color: view === 'roles' ? 'var(--accent-text)' : 'var(--text-3)' }}
+                >
+                  <Icon name={view === 'roles' ? 'kanban' : 'users'} size={16}/>
+                  {view === 'roles' ? t('Project list') : t('Roles')}
+                </button>
               </div>
             }
           />
@@ -292,9 +306,10 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               options={[
                 { id: 'grid',  label: t('Cards'),   icon: <Icon name="kanban" size={12}/> },
                 { id: 'table', label: t('Table'), icon: <Icon name="list"   size={12}/> },
+                { id: 'roles', label: t('Roles'), icon: <Icon name="users" size={12}/> },
               ]}
               value={view}
-              onChange={(v) => setViewPersisted(v as 'grid' | 'table')}
+              onChange={(v) => setViewPersisted(v as 'grid' | 'table' | 'roles')}
             />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
@@ -343,6 +358,19 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Could not load projects. Please reload.')}</div>
         ) : filteredProjects.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No projects found')}</div>
+        ) : view === 'roles' ? (
+          projectRolesQuery.isLoading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>
+          ) : projectRolesQuery.isError ? (
+            <div role="alert" style={{ padding: 24, color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load project roles. Please reload.')}</div>
+          ) : (
+            <ProjectRoleMatrix
+              projects={sortedProjects}
+              roles={projectRoles}
+              {...(isMobile !== undefined ? { isMobile } : {})}
+              onOpenMembers={project => { openPanel?.(project, 'members') }}
+            />
+          )
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>

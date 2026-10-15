@@ -140,6 +140,12 @@ describe('useDetailPanel — 操作関数', () => {
     expect(mockPush).toHaveBeenCalledWith('/projects?open=member-user-1', { scroll: false })
   })
 
+  it('openPanel は指定されたメンバータブを開く', () => {
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.openPanel(STUB_PROJECT, 'members'))
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=project-proj-1&tab=members', { scroll: false })
+  })
+
   it('closePanel は ?open を除いた URL へ push する', () => {
     mockSearchParams = new URLSearchParams('open=project-proj-1')
     const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
