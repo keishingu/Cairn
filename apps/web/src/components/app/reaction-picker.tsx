@@ -13,7 +13,7 @@ import {
 } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { useReactionHistory } from '@/hooks/use-reaction-history'
-import { Icon, portalHostFor } from './primitives'
+import { Icon, Modal, portalHostFor } from './primitives'
 import { placeMenuVertically } from './row-action-menu'
 
 const POPOVER_WIDTH = 340
@@ -280,15 +280,13 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
   )
 
   if (isMobile) {
-    return createPortal(
-      <>
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'var(--overlay)' }}/>
+    // 共通の Modal に載せ、背後のチャットへのフォーカス移動・読み上げを防ぎ、閉じたら「+」へフォーカスを戻す
+    return (
+      <Modal onClose={onClose} label={t('Reaction')}>
         <div
           ref={containerRef}
-          role="dialog"
-          aria-label={t('Reaction')}
           style={{
-            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-modal-content)',
+            position: 'absolute', left: 0, right: 0, bottom: 0,
             background: 'var(--card)', borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)',
             maxHeight: '90dvh', display: 'flex', flexDirection: 'column',
             paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
@@ -299,8 +297,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
         >
           {body}
         </div>
-      </>,
-      host,
+      </Modal>
     )
   }
 

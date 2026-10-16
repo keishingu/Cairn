@@ -54,6 +54,27 @@ describe('リアクションの絵文字選択', () => {
     expect(screen.getByRole('button', { name: 'たたむ' })).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('モバイルWebでは背後を操作できないダイアログとして開き、閉じると開いたボタンへフォーカスを戻す', async () => {
+    const user = userEvent.setup()
+    const Toggle = () => {
+      const ref = React.useRef<HTMLButtonElement>(null)
+      const [open, setOpen] = React.useState(false)
+      return (
+        <div className="app-root">
+          <button ref={ref} type="button" onClick={() => setOpen(true)}>開く</button>
+          {open && <ReactionPicker anchorRef={ref} onSelect={vi.fn()} onClose={() => setOpen(false)} isMobile />}
+        </div>
+      )
+    }
+    render(<Toggle />)
+    await user.click(screen.getByRole('button', { name: '開く' }))
+    const dialog = screen.getByRole('dialog', { name: 'リアクション' })
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'リアクション' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '開く' })).toHaveFocus()
+  })
+
   it('保存済みの履歴が壊れていれば読み込めなかったことを表示する', () => {
     localStorage.setItem('cairn:reaction_history_user-1', '{broken')
     render(<Harness onSelect={vi.fn()} onClose={vi.fn()} />)
