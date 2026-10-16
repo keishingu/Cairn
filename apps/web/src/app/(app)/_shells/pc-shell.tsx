@@ -160,9 +160,10 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       crossSearchNonce,
       consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
-      <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      {/* .app の部品スタイルが portal 先（.app-root）にも当たるよう、ルート自体を .app にする */}
+      <div className="app app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
-        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={navigate} prefetchPage={prefetchPage} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>

@@ -144,6 +144,11 @@ describe('PCShell — URL からパネル表示の導出', () => {
     expect(panel).toHaveAttribute('data-project-id', 'proj-abc')
   })
 
+  it('ProjectPanel を .app の内側に描画し、.btn 等の部品スタイルを効かせる', () => {
+    renderShell('/projects', new URLSearchParams('open=project-proj-abc'))
+    expect(screen.getByTestId('project-panel').closest('.app')).not.toBeNull()
+  })
+
   it('キャッシュに存在しない ID では ProjectPanel を表示しない', () => {
     renderShell('/projects', new URLSearchParams('open=project-no-such-id'))
     expect(screen.queryByTestId('project-panel')).toBeNull()
