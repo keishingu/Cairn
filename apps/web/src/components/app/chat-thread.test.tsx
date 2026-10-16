@@ -799,17 +799,35 @@ describe('isNearMessageTimelineEnd', () => {
 })
 
 describe('shouldFollowLatestMessage', () => {
+  const base = {
+    justPositioned: false,
+    isNearEnd: false,
+    wasAtLatest: false,
+    latestChanged: true,
+    latestSenderId: 'other',
+    currentUserId: 'me',
+  }
+
   it('増える前に末尾にいれば、長文で閾値を超えても追従する', () => {
-    expect(shouldFollowLatestMessage({ wasAtLatest: true, latestSenderId: 'other', currentUserId: 'me' })).toBe(true)
+    expect(shouldFollowLatestMessage({ ...base, wasAtLatest: true })).toBe(true)
   })
 
   it('自分の送信は読み返し中でも末尾へ追従する', () => {
-    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: 'me', currentUserId: 'me' })).toBe(true)
+    expect(shouldFollowLatestMessage({ ...base, latestSenderId: 'me' })).toBe(true)
   })
 
   it('読み返し中に他人の発言が届いても位置を動かさない', () => {
-    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: 'other', currentUserId: 'me' })).toBe(false)
-    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: undefined, currentUserId: undefined })).toBe(false)
+    expect(shouldFollowLatestMessage(base)).toBe(false)
+    expect(shouldFollowLatestMessage({ ...base, latestSenderId: undefined, currentUserId: undefined })).toBe(false)
+  })
+
+  it('AI ナッジの増減だけなら、最新が自分の発言でも読み返し位置を動かさない', () => {
+    expect(shouldFollowLatestMessage({ ...base, latestChanged: false, latestSenderId: 'me' })).toBe(false)
+  })
+
+  it('初期位置決めの直後は、未読位置・リンク先の実測位置を尊重する', () => {
+    expect(shouldFollowLatestMessage({ ...base, justPositioned: true, wasAtLatest: true, latestSenderId: 'me' })).toBe(false)
+    expect(shouldFollowLatestMessage({ ...base, justPositioned: true, isNearEnd: true })).toBe(true)
   })
 })
 

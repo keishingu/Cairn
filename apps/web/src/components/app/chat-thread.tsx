@@ -1292,19 +1292,29 @@ export function isNearMessageTimelineEnd({
 }
 
 /**
- * 新しいメッセージが増えたとき末尾へ追従するか。増えた後の位置で測ると長文1件で閾値を超えて
- * 追従しなくなるため、増える前に末尾にいたかで判断する。自分の送信は読み返し中でも末尾へ移す。
+ * タイムラインの内容が変わったとき末尾へ追従するか。
+ * - 初期位置決め（未読位置・リンク先）の直後は、その実測位置を尊重する
+ * - 増えた後の位置で測ると長文1件で閾値を超えて追従しなくなるため、増える前に末尾にいたかで判断する
+ * - 最新メッセージが自分の送信に変わったときは、読み返し中でも末尾へ移す（AI ナッジの増減だけでは移さない）
  */
 export function shouldFollowLatestMessage({
+  justPositioned,
+  isNearEnd,
   wasAtLatest,
+  latestChanged,
   latestSenderId,
   currentUserId,
 }: {
+  justPositioned: boolean
+  isNearEnd: boolean
   wasAtLatest: boolean
+  latestChanged: boolean
   latestSenderId: string | undefined
   currentUserId: string | undefined
 }) {
-  return wasAtLatest || (currentUserId !== undefined && latestSenderId === currentUserId)
+  if (justPositioned) return isNearEnd
+  if (wasAtLatest || isNearEnd) return true
+  return latestChanged && currentUserId !== undefined && latestSenderId === currentUserId
 }
 
 function useMessageTimelineScroll({
@@ -1347,11 +1357,22 @@ function useMessageTimelineScroll({
     pendingPrependScrollRef.current = null
   }, [messages])
 
+  const followedLatestMessageIdRef = React.useRef<string | undefined>(undefined)
+  const wasPositionedRef = React.useRef(false)
+
   React.useEffect(() => {
     const el = scrollRef.current
+    if (!initialPositioned) wasPositionedRef.current = false
     if (!el || !initialPositioned || pendingPrependScrollRef.current) return
+    const justPositioned = !wasPositionedRef.current
+    wasPositionedRef.current = true
+    const latestChanged = followedLatestMessageIdRef.current !== latestMessageId
+    followedLatestMessageIdRef.current = latestMessageId
     const follow = shouldFollowLatestMessage({
-      wasAtLatest: wasAtLatestRef.current || isNearMessageTimelineEnd(el),
+      justPositioned,
+      isNearEnd: isNearMessageTimelineEnd(el),
+      wasAtLatest: wasAtLatestRef.current,
+      latestChanged,
       latestSenderId: messages.find(m => m.id === latestMessageId)?.senderId ?? undefined,
       currentUserId,
     })
