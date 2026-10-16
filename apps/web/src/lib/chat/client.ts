@@ -275,13 +275,14 @@ async function deleteMessage(messageId: string): Promise<void> {
   }
 }
 
-async function toggleMessageReaction(messageId: string, emoji: string): Promise<void> {
+async function toggleMessageReaction(messageId: string, emoji: string): Promise<{ added: boolean }> {
   const res = await fetchWithAuth(`/api/messages/${messageId}/reactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ emoji }),
   })
   if (!res.ok) throw new Error('リアクションの更新に失敗しました')
+  return res.json() as Promise<{ added: boolean }>
 }
 
 // 未読バッジの更新は RealtimeProvider 経由（messages / channel_read_states の購読）。

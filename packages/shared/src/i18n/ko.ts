@@ -3,10 +3,10 @@
 
 // 英語の UI 文がキー。未登録のキーは英語のまま残し、翻訳漏れで画面が空になることを避ける。
 export const KO_MESSAGES: Record<string, string> = {
-  'All emoji': '모든 이모지',
   'Search by English name or emoji': '영어 이름 또는 이모지로 검색',
   'No emoji found': '이모지를 찾을 수 없습니다',
   'Could not load recent reactions': '최근 리액션을 불러오지 못했습니다',
+  'Could not load the emoji list': '이모지 목록을 불러오지 못했습니다',
   'Could not save recent reactions': '최근 리액션을 저장하지 못했습니다',
   'Smileys & people': '표정 및 사람',
   'Animals & nature': '동물 및 자연',
@@ -1036,6 +1036,7 @@ export const KO_MESSAGES: Record<string, string> = {
   Show: '표시',
   'Show all': '모두 표시',
   'Show less': '간략히',
+  'Show more': '더 보기',
   'Show who reacted': '반응한 사람 표시',
   'Show message temporarily': '메시지 일시 표시',
   'Shown in the list and panel': '목록과 패널에 표시됨',

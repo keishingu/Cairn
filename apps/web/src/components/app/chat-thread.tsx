@@ -20,7 +20,8 @@ import { RowActionMenu } from './row-action-menu'
 import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
 import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
 import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
-import { EmojiPicker } from './emoji-picker'
+import { ReactionPicker } from './reaction-picker'
+import { recordReactionHistory } from '@/hooks/use-reaction-history'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
@@ -626,7 +627,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             cursor: 'pointer', fontFamily: 'inherit',
           }}>+</button>
           {showPicker && (
-            <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>
+            <ReactionPicker anchorRef={addBtnRef} onSelect={emoji => onReact(messageId, emoji)} onClose={() => setShowPicker(false)} {...(isMobile ? { isMobile: true } : {})}/>
           )}
         </div>
       </div>
@@ -2008,11 +2009,28 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
-  const reactMutate = reactMutation.mutate
+  const reactMutateAsync = reactMutation.mutateAsync
+  const currentUserId = currentUser?.id
+  // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
+  // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
+  const reactionHistoryQueue = React.useRef(Promise.resolve())
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
-    reactMutate({ messageId, emoji })
-  }, [leaveHistoryView, reactMutate])
+    const request = reactMutateAsync({ messageId, emoji })
+    reactionHistoryQueue.current = reactionHistoryQueue.current.then(() => request.then(
+      ({ added }) => {
+        // 付けたときだけ記録する（外したときは記録しない）
+        if (!added || !currentUserId) return
+        try {
+          recordReactionHistory(currentUserId, emoji)
+        } catch {
+          toast.error(t('Could not save recent reactions'))
+        }
+      },
+      // 送信の失敗は useToggleMessageReaction の onError で表示を戻している
+      () => {},
+    ))
+  }, [currentUserId, leaveHistoryView, reactMutateAsync, t])
 
   const editMutate = editMutation.mutate
   const handleEdit = React.useCallback((messageId: string, content: string) => {

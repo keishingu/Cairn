@@ -1,8 +1,11 @@
 import React from 'react'
 import {
+  Animated,
   FlatList,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -16,18 +19,7 @@ import { emojiCategories, reactionEmojis } from '../lib/reaction-emoji-catalog'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useT } from './locale-provider'
 import type { ThemePalette } from '../lib/theme'
-import { quickReactions } from '../lib/reaction-history'
-
-const categories: Record<string, string> = {
-  people: 'Smileys & people',
-  nature: 'Animals & nature',
-  foods: 'Food & drink',
-  activity: 'Activities',
-  places: 'Travel & places',
-  objects: 'Objects',
-  symbols: 'Symbols',
-  flags: 'Flags',
-}
+import { isVerticalSheetDrag, quickReactions, reactionSheetSwipe, REACTION_EMOJI_CATEGORY_LABELS, SKIN_TONE_SAMPLES } from '@cairn/shared'
 
 export function ReactionPicker({
   visible,
@@ -62,6 +54,28 @@ export function ReactionPicker({
     [search, category, tone],
   )
   const searching = search.trim().length > 0
+  const setExpandedAnimated = React.useCallback((next: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    setExpanded(next)
+  }, [])
+  // シート上部（つまみ〜「もっと見る」）の縦スワイプ。下方向だけ指に追従させ、離したら元の位置へ戻す
+  const dragY = React.useRef(new Animated.Value(0)).current
+  const expandedRef = React.useRef(expanded)
+  expandedRef.current = expanded
+  const onCloseRef = React.useRef(onClose)
+  onCloseRef.current = onClose
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => isVerticalSheetDrag(gesture.dx, gesture.dy),
+    onPanResponderMove: (_event, gesture) => dragY.setValue(Math.max(0, gesture.dy)),
+    onPanResponderRelease: (_event, gesture) => {
+      const action = reactionSheetSwipe(gesture.dy, gesture.vy, expandedRef.current)
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start()
+      if (action === 'expand') setExpandedAnimated(true)
+      else if (action === 'collapse') setExpandedAnimated(false)
+      else if (action === 'close') onCloseRef.current()
+    },
+    onPanResponderTerminate: () => Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start(),
+  }), [dragY, setExpandedAnimated])
   const button = (emoji: string) => (
     <Pressable
       key={emoji}
@@ -85,16 +99,21 @@ export function ReactionPicker({
           accessibilityRole="button"
           onPress={onClose}
         />
-        <View
+        <Animated.View
           style={[
             styles.sheet,
             {
               backgroundColor: palette.card,
               borderColor: palette.border,
               paddingBottom: insets.bottom + 16,
+              transform: [{ translateY: dragY }],
             },
           ]}
         >
+          <View {...panResponder.panHandlers}>
+          <View style={styles.handleArea}>
+            <View style={[styles.handle, { backgroundColor: palette.border }]} />
+          </View>
           <View style={styles.heading}>
             <Text style={[styles.title, { color: palette.text }]}>{t('Reaction')}</Text>
             <Pressable
@@ -108,15 +127,17 @@ export function ReactionPicker({
           </View>
           <View style={styles.quick}>
             {quickReactions(recent).map(button)}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('All emoji')}
-              accessibilityState={{ expanded }}
-              onPress={() => setExpanded((value) => !value)}
-              style={[styles.quickButton, { backgroundColor: palette.card2 }]}
-            >
-              <Ionicons name={expanded ? 'chevron-down' : 'add'} size={24} color={palette.text} />
-            </Pressable>
+          </View>
+          {/* 「+」だけでは他の絵文字を選べると伝わりにくいため、文言付きの全幅ボタンにする。上スワイプでも開ける */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={() => setExpandedAnimated(!expanded)}
+            style={[styles.moreButton, { backgroundColor: palette.card2 }]}
+          >
+            <Text style={[styles.moreLabel, { color: palette.text2 }]}>{expanded ? t('Show less') : t('Show more')}</Text>
+            <Ionicons name={expanded ? 'chevron-down' : 'chevron-up'} size={16} color={palette.text2} />
+          </Pressable>
           </View>
           {historyError && (
             <Text accessibilityRole="alert" style={{ color: palette.text2 }}>
@@ -158,12 +179,12 @@ export function ReactionPicker({
                       },
                     ]}
                   >
-                    <Text style={{ color: palette.text }}>{t(categories[item.id] ?? item.id)}</Text>
+                    <Text style={{ color: palette.text }}>{t(REACTION_EMOJI_CATEGORY_LABELS[item.id] ?? item.id)}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
               <View style={styles.tones}>
-                {['👋', '👋🏻', '👋🏼', '👋🏽', '👋🏾', '👋🏿'].map((emoji, index) => (
+                {SKIN_TONE_SAMPLES.map((emoji, index) => (
                   <Pressable
                     key={emoji}
                     accessibilityRole="button"
@@ -204,7 +225,7 @@ export function ReactionPicker({
               />
             </>
           )}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   )
@@ -217,9 +238,21 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 4,
     maxHeight: '90%',
   },
+  handleArea: { alignItems: 'center', paddingVertical: 6 },
+  handle: { width: 36, height: 4, borderRadius: 2 },
+  moreButton: {
+    marginTop: 8,
+    height: 44,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  moreLabel: { fontSize: 14, fontWeight: '600' },
   heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 15, fontWeight: '700' },
   close: { padding: 10 },

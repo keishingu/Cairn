@@ -1,21 +1,6 @@
-export const DEFAULT_REACTIONS = ['👍', '❤️', '😂', '🎉', '🙌', '👀']
-const HISTORY_LIMIT = 32
+import { nextReactionHistory, parseReactionHistory } from '@cairn/shared'
 
-export function parseReactionHistory(value: string | null): string[] {
-  if (value === null) return []
-  const parsed: unknown = JSON.parse(value)
-  if (
-    !Array.isArray(parsed) ||
-    parsed.some((item) => typeof item !== 'string' || !item || item.length > 32)
-  ) {
-    throw new Error('Invalid reaction history')
-  }
-  return [...new Set(parsed as string[])].slice(0, HISTORY_LIMIT)
-}
-
-export function quickReactions(recent: readonly string[]): string[] {
-  return [...new Set([...recent, ...DEFAULT_REACTIONS])].slice(0, 6)
-}
+export { DEFAULT_REACTIONS, parseReactionHistory, quickReactions } from '@cairn/shared'
 
 type Storage = {
   getItem(key: string): Promise<string | null>
@@ -36,7 +21,7 @@ export function createReactionHistoryStore(storage: Storage) {
         .catch(() => [])
         .then(async () => {
           const recent = parseReactionHistory(await storage.getItem(key(userId)))
-          const next = [emoji, ...recent.filter((item) => item !== emoji)].slice(0, HISTORY_LIMIT)
+          const next = nextReactionHistory(recent, emoji)
           await storage.setItem(key(userId), JSON.stringify(next))
           return next
         })

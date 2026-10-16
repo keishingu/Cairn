@@ -3,10 +3,10 @@
 
 // 英語の UI 文がキー。未登録のキーは英語のまま残し、翻訳漏れで画面が空になることを避ける。
 export const JA_MESSAGES: Record<string, string> = {
-  'All emoji': 'すべての絵文字',
   'Search by English name or emoji': '英語名・絵文字で検索',
   'No emoji found': '絵文字が見つかりません',
   'Could not load recent reactions': '最近のリアクションを読み込めませんでした',
+  'Could not load the emoji list': '絵文字の一覧を読み込めませんでした',
   'Could not save recent reactions': '最近のリアクションを保存できませんでした',
   'Smileys & people': '顔・人',
   'Animals & nature': '動物・自然',
@@ -1036,6 +1036,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Show: '表示',
   'Show all': 'すべて表示',
   'Show less': 'たたむ',
+  'Show more': 'もっと見る',
   'Show who reacted': 'リアクションした人を表示',
   'Show message temporarily': 'メッセージを一時表示',
   'Shown in the list and panel': '一覧・パネルで表示',
