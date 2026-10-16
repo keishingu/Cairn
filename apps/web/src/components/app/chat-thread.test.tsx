@@ -14,6 +14,7 @@ import {
   copyMessageContent,
   copyMessageLink,
   isNearMessageTimelineEnd,
+  shouldFollowLatestMessage,
   fetchMessageTaskCandidates,
   makeTasksFromMessage,
 } from './chat-thread'
@@ -794,6 +795,21 @@ describe('isNearMessageTimelineEnd', () => {
   it('末尾から80px以内を最新表示中として扱う', () => {
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 720, clientHeight: 200 })).toBe(true)
     expect(isNearMessageTimelineEnd({ scrollHeight: 1_000, scrollTop: 719, clientHeight: 200 })).toBe(false)
+  })
+})
+
+describe('shouldFollowLatestMessage', () => {
+  it('増える前に末尾にいれば、長文で閾値を超えても追従する', () => {
+    expect(shouldFollowLatestMessage({ wasAtLatest: true, latestSenderId: 'other', currentUserId: 'me' })).toBe(true)
+  })
+
+  it('自分の送信は読み返し中でも末尾へ追従する', () => {
+    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: 'me', currentUserId: 'me' })).toBe(true)
+  })
+
+  it('読み返し中に他人の発言が届いても位置を動かさない', () => {
+    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: 'other', currentUserId: 'me' })).toBe(false)
+    expect(shouldFollowLatestMessage({ wasAtLatest: false, latestSenderId: undefined, currentUserId: undefined })).toBe(false)
   })
 })
 

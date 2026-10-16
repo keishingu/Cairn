@@ -178,7 +178,9 @@ function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boo
 
   return (
     <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
-      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+      {/* .app の部品スタイル（.btn 等）は子孫セレクタで当たる。全画面パネルや .app-root への portal が
+          外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
+      <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
@@ -201,7 +203,7 @@ function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boo
             isMobile
           />
         )}
-        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>

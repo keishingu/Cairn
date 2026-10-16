@@ -1291,10 +1291,27 @@ export function isNearMessageTimelineEnd({
   return scrollHeight - scrollTop - clientHeight <= MESSAGE_TIMELINE_END_THRESHOLD
 }
 
+/**
+ * 新しいメッセージが増えたとき末尾へ追従するか。増えた後の位置で測ると長文1件で閾値を超えて
+ * 追従しなくなるため、増える前に末尾にいたかで判断する。自分の送信は読み返し中でも末尾へ移す。
+ */
+export function shouldFollowLatestMessage({
+  wasAtLatest,
+  latestSenderId,
+  currentUserId,
+}: {
+  wasAtLatest: boolean
+  latestSenderId: string | undefined
+  currentUserId: string | undefined
+}) {
+  return wasAtLatest || (currentUserId !== undefined && latestSenderId === currentUserId)
+}
+
 function useMessageTimelineScroll({
   channelId,
   messages,
   latestMessageId,
+  currentUserId,
   nudgeCount,
   hasOlderMessages,
   isLoadingOlder,
@@ -1302,8 +1319,9 @@ function useMessageTimelineScroll({
   initialPositioned,
 }: {
   channelId: string | null
-  messages: Array<{ id: string }>
+  messages: Array<{ id: string; senderId?: string | null }>
   latestMessageId: string | undefined
+  currentUserId: string | undefined
   nudgeCount: number
   hasOlderMessages: boolean
   isLoadingOlder: boolean
@@ -1313,8 +1331,11 @@ function useMessageTimelineScroll({
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
   const [isAtLatest, setIsAtLatest] = React.useState(true)
+  // 内容が増える直前に末尾にいたか。スクロール時にだけ更新し、描画後の高さでは上書きしない
+  const wasAtLatestRef = React.useRef(true)
 
   React.useEffect(() => {
+    wasAtLatestRef.current = true
     setIsAtLatest(true)
   }, [channelId])
 
@@ -1329,17 +1350,24 @@ function useMessageTimelineScroll({
   React.useEffect(() => {
     const el = scrollRef.current
     if (!el || !initialPositioned || pendingPrependScrollRef.current) return
-    const isNearEnd = isNearMessageTimelineEnd(el)
-    if (isNearEnd) {
-      el.scrollTop = el.scrollHeight
-    }
-    setIsAtLatest(isNearEnd)
+    const follow = shouldFollowLatestMessage({
+      wasAtLatest: wasAtLatestRef.current || isNearMessageTimelineEnd(el),
+      latestSenderId: messages.find(m => m.id === latestMessageId)?.senderId ?? undefined,
+      currentUserId,
+    })
+    if (follow) el.scrollTop = el.scrollHeight
+    wasAtLatestRef.current = follow
+    setIsAtLatest(follow)
+    // messages は送信者の参照のみ。過去ページの読み込みで追従させないよう依存に含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPositioned, latestMessageId, nudgeCount])
 
   const handleMessageScroll = React.useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    setIsAtLatest(isNearMessageTimelineEnd(el))
+    const isNearEnd = isNearMessageTimelineEnd(el)
+    wasAtLatestRef.current = isNearEnd
+    setIsAtLatest(isNearEnd)
     if (el.scrollTop > MESSAGE_TIMELINE_END_THRESHOLD || !hasOlderMessages || isLoadingOlder) return
     pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
     void loadOlder().then(loaded => {
@@ -1356,6 +1384,7 @@ function useMessageTimelineScroll({
     } else {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     }
+    wasAtLatestRef.current = true
     setIsAtLatest(true)
   }, [])
 
@@ -1553,6 +1582,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     channelId,
     messages,
     latestMessageId: displayedLatestMessageId,
+    currentUserId: currentUser?.id,
     nudgeCount: nudges.length,
     hasOlderMessages,
     isLoadingOlder,
