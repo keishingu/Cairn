@@ -9,6 +9,8 @@ import { useCurrentUser } from './use-current-user'
 type Snapshot = { recent: string[]; error: boolean }
 
 const EMPTY: Snapshot = { recent: [], error: false }
+// useSyncExternalStore は毎回同じ参照を返さないと再描画を繰り返すため、エラー時も同じオブジェクトを返す
+const STORAGE_ERROR: Snapshot = { recent: [], error: true }
 const listeners = new Set<() => void>()
 // useSyncExternalStore は同じ参照を返し続ける必要があるため、保存値ごとに読み取り結果を覚える
 const cache = new Map<string, { raw: string | null; snapshot: Snapshot }>()
@@ -19,7 +21,7 @@ function readSnapshot(userId: string): Snapshot {
   try {
     raw = localStorage.getItem(key)
   } catch {
-    return { recent: [], error: true }
+    return STORAGE_ERROR
   }
   const cached = cache.get(key)
   if (cached && cached.raw === raw) return cached.snapshot

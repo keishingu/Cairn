@@ -1,8 +1,11 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { beforeEach, describe, expect, it } from 'vitest'
-import { recordReactionHistory } from './use-reaction-history'
+import { renderHook } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { recordReactionHistory, useReactionHistory } from './use-reaction-history'
+
+vi.mock('./use-current-user', () => ({ useCurrentUser: () => ({ data: { id: 'user-1' } }) }))
 
 describe('最近使ったリアクションの記録', () => {
   beforeEach(() => localStorage.clear())
@@ -20,5 +23,17 @@ describe('最近使ったリアクションの記録', () => {
     localStorage.setItem('cairn:reaction_history_user-1', '{broken')
     expect(() => recordReactionHistory('user-1', '👍')).toThrow()
     expect(localStorage.getItem('cairn:reaction_history_user-1')).toBe('{broken')
+  })
+})
+
+describe('最近使ったリアクションの読み込み', () => {
+  it('ストレージを読めないときは、再描画を繰り返さずにエラーを返す', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    try {
+      const { result } = renderHook(() => useReactionHistory())
+      expect(result.current).toEqual({ recent: [], error: true })
+    } finally {
+      getItem.mockRestore()
+    }
   })
 })
