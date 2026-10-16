@@ -192,6 +192,7 @@
 .app .icon-btn:focus-visible { outline:none; box-shadow: var(--ring); }
 .app .icon-btn:disabled { opacity:.5; cursor:not-allowed; }
 .app .icon-btn-sm { width:24px; height:24px; border-radius:6px; }
+.app .reaction-picker-cell:hover, .app .reaction-picker-cell:focus-visible { background: var(--card-hover) !important; outline:none; }
 /* パネル幅変更のつまみ。普段は見せず、ホバー・ドラッグ・フォーカス中だけ線を出す */
 .app .resize-handle::after { content:''; position:absolute; top:0; bottom:0; left:3px; width:2px; background:transparent; transition: background .12s; }
 .app .resize-handle:hover::after, .app .resize-handle[data-dragging]::after { background: var(--accent); }

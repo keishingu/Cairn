@@ -20,7 +20,8 @@ import { RowActionMenu } from './row-action-menu'
 import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
 import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
 import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
-import { EmojiPicker } from './emoji-picker'
+import { ReactionPicker } from './reaction-picker'
+import { recordReactionHistory } from '@/hooks/use-reaction-history'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
@@ -626,7 +627,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             cursor: 'pointer', fontFamily: 'inherit',
           }}>+</button>
           {showPicker && (
-            <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>
+            <ReactionPicker anchorRef={addBtnRef} onSelect={emoji => onReact(messageId, emoji)} onClose={() => setShowPicker(false)} {...(isMobile ? { isMobile: true } : {})}/>
           )}
         </div>
       </div>
@@ -2009,10 +2010,21 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
   const reactMutate = reactMutation.mutate
+  const currentUserId = currentUser?.id
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
-    reactMutate({ messageId, emoji })
-  }, [leaveHistoryView, reactMutate])
+    reactMutate({ messageId, emoji }, {
+      // 付けたときだけ「最近使ったリアクション」に記録する（外したときは記録しない）
+      onSuccess: ({ added }) => {
+        if (!added || !currentUserId) return
+        try {
+          recordReactionHistory(currentUserId, emoji)
+        } catch {
+          toast.error(t('Could not save recent reactions'))
+        }
+      },
+    })
+  }, [currentUserId, leaveHistoryView, reactMutate, t])
 
   const editMutate = editMutation.mutate
   const handleEdit = React.useCallback((messageId: string, content: string) => {

@@ -51,6 +51,7 @@ const PATHS: Record<string, React.ReactNode> = {
   bell:        <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></>,
   'bell-off':  <><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M10.7 3.1a6 6 0 0 1 7.2 5c0 2.5-.5 4.2-1.1 5.5"/><path d="M6 9c0 2-.5 3.8-1 5"/><path d="M3 3l18 18"/><path d="M9 9a6 6 0 0 0-.4 2.1"/><path d="M3 9h1"/><path d="M21 12h-1"/></>,
   chevDown:    <><polyline points="6 9 12 15 18 9"/></>,
+  chevUp:      <><polyline points="6 15 12 9 18 15"/></>,
   chevRight:   <><polyline points="9 6 15 12 9 18"/></>,
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
   chevronsLeft:  <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>,

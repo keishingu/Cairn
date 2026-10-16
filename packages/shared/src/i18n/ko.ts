@@ -6,6 +6,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Search by English name or emoji': '영어 이름 또는 이모지로 검색',
   'No emoji found': '이모지를 찾을 수 없습니다',
   'Could not load recent reactions': '최근 리액션을 불러오지 못했습니다',
+  'Could not load the emoji list': '이모지 목록을 불러오지 못했습니다',
   'Could not save recent reactions': '최근 리액션을 저장하지 못했습니다',
   'Smileys & people': '표정 및 사람',
   'Animals & nature': '동물 및 자연',

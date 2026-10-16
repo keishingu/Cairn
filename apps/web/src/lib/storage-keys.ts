@@ -50,3 +50,6 @@ export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
 /** チャンネル別のアーカイブ済みスレッド折りたたみ状態 */
 export const chatArchivedThreadsCollapsedKey = (channelId: string) =>
   `cairn:chat_archived_threads_collapsed_${channelId}` as const
+
+/** ユーザー別の最近使ったリアクション（新しい順の絵文字の JSON 配列） */
+export const reactionHistoryKey = (userId: string) => `cairn:reaction_history_${userId}` as const

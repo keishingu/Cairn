@@ -6,6 +6,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Search by English name or emoji': '英語名・絵文字で検索',
   'No emoji found': '絵文字が見つかりません',
   'Could not load recent reactions': '最近のリアクションを読み込めませんでした',
+  'Could not load the emoji list': '絵文字の一覧を読み込めませんでした',
   'Could not save recent reactions': '最近のリアクションを保存できませんでした',
   'Smileys & people': '顔・人',
   'Animals & nature': '動物・自然',
