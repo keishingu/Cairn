@@ -122,7 +122,8 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
       const dy = e.clientY - current.y
       if (!current.active && isVerticalSheetDrag(dx, dy)) {
         current.active = true
-        e.currentTarget.setPointerCapture(e.pointerId)
+        // 指がシートの外へ出ても追従させる。ポインタが既に離れていると例外になるため、取れなくてもドラッグは続ける
+        try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* noop */ }
       }
       if (current.active) setDragY(Math.max(0, dy))
     },
@@ -164,7 +165,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
 
   const body = (
     <>
-      <div {...swipeHandlers} style={{ touchAction: isMobile ? 'none' : undefined }}>
+      <div {...swipeHandlers} style={isMobile ? { touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' } : undefined}>
         {isMobile && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 2px' }}>
             <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border-2)' }}/>
@@ -226,7 +227,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
                 className="form-control"
                 style={{ height: 34 }}
               />
-              <div style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: '8px 0 6px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: 4, overflowX: 'auto', scrollbarWidth: 'none', padding: '8px 0 6px', flexShrink: 0 }}>
                 {catalog.categories.map(item => {
                   const selected = category === item.id && !searching
                   return (
