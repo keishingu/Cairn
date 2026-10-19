@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   projects_view_pc:          'cairn:projects_view_pc',
   projects_view_mob:         'cairn:projects_view_mobile',
   projects_filter:           'cairn:projects_filter',
+  projects_scope:            'cairn:projects_scope',
   projects_status_filter:    'cairn:projects_status_filter',
   projects_member_filter:    'cairn:projects_member_filter',
   calendar_view:             'cairn:calendar_view',
@@ -20,10 +21,8 @@ export const STORAGE_KEYS = {
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
   calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
-  calendar_milestones_visible: 'cairn:calendar_milestones_visible',
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
-  kanban_scope:              'cairn:kanban_scope',
   sidebar_collapsed:         'cairn:sidebar_collapsed',
   project_detail_tab:        'cairn:project_detail_tab',
   projects_list_view:        'cairn:projects_list_view',
@@ -50,3 +49,6 @@ export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
 /** チャンネル別のアーカイブ済みスレッド折りたたみ状態 */
 export const chatArchivedThreadsCollapsedKey = (channelId: string) =>
   `cairn:chat_archived_threads_collapsed_${channelId}` as const
+
+/** ユーザー別の最近使ったリアクション（新しい順の絵文字の JSON 配列） */
+export const reactionHistoryKey = (userId: string) => `cairn:reaction_history_${userId}` as const

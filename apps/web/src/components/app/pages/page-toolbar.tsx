@@ -90,3 +90,26 @@ export const SegmentedControl = ({ options, value, onChange }: SegmentedControlP
     ))}
   </div>
 )
+
+interface ScopeToggleProps {
+  /** role=group に付ける aria-label（例: タスク範囲・プロジェクト範囲） */
+  ariaLabel: string
+  mineLabel: string
+  allLabel: string
+  value: 'mine' | 'all'
+  onChange: (value: 'mine' | 'all') => void
+}
+
+/** 「自分に関するもの / 全体」を切り替える共通トグル（/tasks と /projects の各ビューで共有）。 */
+export const ScopeToggle = ({ ariaLabel, mineLabel, allLabel, value, onChange }: ScopeToggleProps) => (
+  <div role="group" aria-label={ariaLabel} style={{ flexShrink: 0 }}>
+    <SegmentedControl
+      options={[
+        { id: 'mine', label: mineLabel },
+        { id: 'all', label: allLabel },
+      ]}
+      value={value}
+      onChange={next => onChange(next as 'mine' | 'all')}
+    />
+  </div>
+)

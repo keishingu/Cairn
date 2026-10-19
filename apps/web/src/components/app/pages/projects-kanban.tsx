@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, Fab } from '../primitives'
 import { KanbanBoard } from '../kanban'
 import { MobileHeader } from '@/components/app/mobile/header'
-import { PageToolbar } from './page-toolbar'
+import { PageToolbar, ScopeToggle } from './page-toolbar'
+import { useProjectsScope } from '@/hooks/use-projects-scope'
 import { CreateProjectModal } from './create-project-modal'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
@@ -29,6 +30,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
   const [showCreate, setShowCreate] = React.useState(false)
+  const [scope, setScope] = useProjectsScope()
 
   // ⌥N: 新規プロジェクト / ⌥F: フィルタトグル
   useCommand('ctx.create', () => { if (canCreateProject) setShowCreate(true) })
@@ -73,17 +75,29 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
     setShowCreate(false)
   }
 
-  const projectFilter = React.useCallback(
-    (p: ProjectDto) => memberFilter.length === 0 || memberFilter.some(m => p.memberNames.includes(m)),
-    [memberFilter],
+  const scopeToggle = (
+    <ScopeToggle
+      ariaLabel={t('Project scope')}
+      mineLabel={t('Joined')}
+      allLabel={t('All projects')}
+      value={scope}
+      onChange={setScope}
+    />
   )
+
+  const projectFilter = React.useCallback(
+    (p: ProjectDto) => (scope === 'all' || p.isJoined) && (memberFilter.length === 0 || memberFilter.some(m => p.memberNames.includes(m))),
+    [scope, memberFilter],
+  )
+  const mobileProjectFilter = React.useCallback((p: ProjectDto) => scope === 'all' || p.isJoined, [scope])
 
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
         <MobileHeader title={t('Kanban')} />
+        <PageToolbar style={{ padding: '8px 16px' }} left={scopeToggle} />
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <KanbanBoard onCardClick={openPanel} isMobile />
+          <KanbanBoard onCardClick={openPanel} isMobile projectFilter={mobileProjectFilter} />
         </div>
         {canCreateProject && <Fab onClick={() => setShowCreate(true)} label={t('New {label}', { label: projectLabel })} />}
         {showCreate && canCreateProject && (
@@ -106,6 +120,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
         style={{ marginBottom: 20 }}
         right={
           <>
+            {scopeToggle}
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
                 className="btn"

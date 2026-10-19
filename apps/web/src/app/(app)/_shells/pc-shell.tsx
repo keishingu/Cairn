@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
@@ -45,6 +45,7 @@ function loadStoredView(): ProjectsView {
 
 function PCShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
@@ -137,8 +138,13 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
     'app.toggleSidebar': toggleSidebar,
     'global.commandPalette': () => setPaletteOpen(true),
     'global.help': () => setHelpOpen(true),
-    // 横断検索: chats へ遷移し、nonce を増やして chats 画面に検索を開かせる
-    'global.crossSearch': () => { navigate('chats'); setCrossSearchNonce(n => n + 1) },
+    // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
+    'global.crossSearch': () => {
+      const params = new URLSearchParams(page === 'chats' ? searchParams.toString() : '')
+      params.set('panel', 'global-search')
+      router.push(`${page === 'chats' ? pathname : '/chats'}?${params.toString()}`)
+      setCrossSearchNonce(n => n + 1)
+    },
   })
 
   useCommandDispatcher({ page, onEscape: closeTopOverlay })
@@ -154,9 +160,10 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       crossSearchNonce,
       consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
-      <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      {/* .app の部品スタイルが portal 先（.app-root）にも当たるよう、ルート自体を .app にする */}
+      <div className="app app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
-        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={navigate} prefetchPage={prefetchPage} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>

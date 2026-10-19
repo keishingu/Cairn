@@ -112,7 +112,12 @@ describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
     const { POST } = await import('./route')
     const res = await POST(postRequest({ emoji: '👍' }), ctxRouteParams())
     expect(res.status).toBe(403)
-    expect(mockRequireChannelAccess).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID, CHANNEL_ID, 'member')
+    expect(mockRequireChannelAccess).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      DEV_USER_ID,
+      CHANNEL_ID,
+      'member',
+    )
     expect(mockDbInsert).not.toHaveBeenCalled()
   })
 
@@ -128,5 +133,23 @@ describe('/api/messages/[messageId]/reactions のアクセス制御', () => {
     const res = await POST(postRequest({ emoji: '👍' }), ctxRouteParams())
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ added: true, emoji: '👍', count: 1 })
+  })
+  it.each(['👨‍👩‍👧‍👦', '👩🏿‍❤️‍💋‍👨🏻'])('結合絵文字 %s を分割せず追加できる', async (emoji) => {
+    mockSelectResults([{ channelId: CHANNEL_ID }], [], [{ n: 1 }])
+    mockRequireChannelAccess.mockResolvedValue(null)
+    const values = vi.fn().mockResolvedValue(undefined)
+    mockDbInsert.mockReturnValue({ values })
+    const { POST } = await import('./route')
+    const res = await POST(postRequest({ emoji }), ctxRouteParams())
+    expect(res.status).toBe(200)
+    expect(values).toHaveBeenCalledWith({ messageId: MESSAGE_ID, userId: DEV_USER_ID, emoji })
+    await expect(res.json()).resolves.toEqual({ added: true, emoji, count: 1 })
+  })
+
+  it('長すぎる入力はDB操作前に拒否する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(postRequest({ emoji: 'x'.repeat(33) }), ctxRouteParams())
+    expect(res.status).toBe(422)
+    expect(mockDbSelect).not.toHaveBeenCalled()
   })
 })

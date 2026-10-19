@@ -173,6 +173,12 @@ function renderPage(openPanel = vi.fn()) {
 describe('PageCalendar (モバイル)', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    // PC の月表示は行数をセルの高さから決めるため ResizeObserver を使う（jsdom には無い）
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     window.localStorage.clear()
     mockFetchWithAuth.mockReset()
     mockUseWorkspacePermissions.mockReset()

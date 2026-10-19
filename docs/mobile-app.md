@@ -61,3 +61,11 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - WebView はワンタイムトークンハンドオフ方式（refresh_token 共有は禁止）。詳細は [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md)
 - **Google ログインはネイティブ実装**: `expo-web-browser` で認可コードを受け取り、Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先 `cairn://auth/callback` は Supabase の許可リストに登録が必要（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番はダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` で profiles を作成する
 - **Apple / Google の追加ログイン手段は設定から手動連携**: 同一メールの自動紐付けに加え、設定 → アカウント → ログイン方法で `linkIdentity` により明示連携できる（Apple relay email 対応）。ローカルは `enable_manual_linking = true`、Preview / Production は Dashboard で Manual Linking を有効化する。Expo の設定 WebView は bridge（`link-apple-identity` / `link-google-identity`）経由で連携する
+
+## リアクションの選択
+
+チャットのクイック選択は、追加に成功したリアクションの使用順に6件を表示する。履歴は AsyncStorage に端末内・ユーザーごとに最大32件保存し、不足分は既定の6種類で補う。取り消しや送信失敗では更新しない。クイック選択の下の「もっと見る」（またはシート上部の上スワイプ）で Web と同じ `@emoji-mart/data` に基づく一覧を開き、英語名・絵文字で検索、カテゴリ・肌の色を選択できる。下スワイプで一覧をたたみ、たたんだ状態なら閉じる。検索と一覧はオフラインでも使える。履歴の並べ方・絞り込み・スワイプ判定は `@cairn/shared` の `reactions.ts` を Web と共有する（Web の履歴はブラウザの localStorage に保存し、アプリとは共有しない）。
+
+追加依存は絵文字データのみで、ネイティブモジュールと runtimeVersion は変更しない。同じ runtimeVersion のビルドへ EAS Update で配信できる。
+
+配信順: 結合絵文字（家族・複数の肌の色など）を扱うため、リアクションAPIの長さ上限を32 UTF-16コード単位へ拡張するWeb変更を先にデプロイし、その後にOTAを配信する。DBマイグレーションは不要。

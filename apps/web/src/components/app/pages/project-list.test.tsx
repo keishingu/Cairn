@@ -1,6 +1,7 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProjectListView } from './project-list'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -57,5 +58,51 @@ describe('プロジェクト一覧の最新チャット', () => {
     renderList(false, null, true)
     expect(await screen.findByRole('alert')).toHaveTextContent('プロジェクトの取得に失敗しました')
     expect(screen.queryByText('メッセージはまだありません')).toBeNull()
+  })
+})
+
+describe('プロジェクト一覧の参加中/全体トグル', () => {
+  const other: ProjectDto = { ...project, id: 'project-2', title: '他人の計画', isJoined: false, isHosting: false }
+
+  function renderScoped(isMobile = false, externalSearch?: string) {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
+    client.setQueryData(['projects'], [project, other])
+    client.setQueryData(['statuses'], [])
+    return render(<QueryClientProvider client={client}><ProjectListView isMobile={isMobile} {...(externalSearch !== undefined ? { externalSearch } : {})} /></QueryClientProvider>)
+  }
+
+  beforeEach(() => localStorage.clear())
+
+  it.each([false, true])('タブに「参加中」は無く、範囲トグルがある（モバイル: %s）', isMobile => {
+    renderScoped(isMobile)
+    const tabs = ['すべて', '主催', '進行中', 'アーカイブ']
+    for (const name of tabs) expect(screen.getByRole('button', { name: new RegExp(name) })).toBeVisible()
+    const group = screen.getByRole('group', { name: '表示するプロジェクトの範囲' })
+    expect(within(group).getByRole('button', { name: '参加中' })).toBeVisible()
+    expect(within(group).getByRole('button', { name: '全体' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('「参加中」に切り替えると参加プロジェクトだけを表示し、件数もその範囲で数える', async () => {
+    renderScoped()
+    expect(screen.getByText('他人の計画')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '参加中' }))
+    expect(screen.queryByText('他人の計画')).toBeNull()
+    expect(screen.getByText('山行計画')).toBeVisible()
+    expect(screen.getByRole('button', { name: /^すべて\s*1$/ })).toBeVisible()
+    expect(localStorage.getItem('cairn:projects_scope')).toBe('mine')
+  })
+
+  it('検索中も「参加中」の範囲に従い、参加していないプロジェクトを出さない', () => {
+    localStorage.setItem('cairn:projects_scope', 'mine')
+    renderScoped(false, '計画')
+    expect(screen.getByText('山行計画')).toBeVisible()
+    expect(screen.queryByText('他人の計画')).toBeNull()
+  })
+
+  it('旧「参加中」タブの保存値はすべてタブ+参加中へ移行する', () => {
+    localStorage.setItem('cairn:projects_filter', 'joined')
+    renderScoped()
+    expect(screen.queryByText('他人の計画')).toBeNull()
+    expect(within(screen.getByRole('group', { name: '表示するプロジェクトの範囲' })).getByRole('button', { name: '参加中' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

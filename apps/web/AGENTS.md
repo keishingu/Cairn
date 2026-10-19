@@ -12,6 +12,7 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 ## 画面
 
 - **UA でデバイス出し分け**: middleware が `x-device` をセットし、`app/(app)/layout.tsx` で PC / モバイルシェルを切り替える。レスポンシブ CSS は使わない
+- **`.btn` などの部品クラスは `.app` 配下でしか効かない**（`globals.css` が `.app .btn` の子孫セレクタ）。シェルのルートは `app app-root` にし、全画面パネルや portal をその外に出さない（外れるとモバイルのプロジェクト詳細でボタンの見た目が崩れる）
 - **認証後の既定画面は `/chats`**。数字ナビはチャット `1`、プロジェクト一覧・カレンダー・カンバン・マイタスク `2`〜`5`
 - **プロジェクトビューは localStorage のみで永続化**（`STORAGE_KEYS.projects_view_pc` / `_mob`）。URL パラメータは使わない
 - **設定は `/settings/[section]` の URL 駆動**。定義と本体は `src/components/app/pages/settings.tsx` に集約し PC / モバイルで共有する
