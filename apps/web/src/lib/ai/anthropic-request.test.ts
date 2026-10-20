@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { generateObject, streamText, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
-import { withAnthropicCompat } from './anthropic-compat-middleware'
+import { ClaudeRefusalError, withAnthropicCompat } from './anthropic-compat-middleware'
 
 // Claude 5.5 系は temperature / top_p / top_k / thinking / assistant prefill を既定以外で受け付けない。
 // 実 API には接続せず、AI SDK が送るリクエスト本文と、空の thinking ブロックを含むレスポンスの処理を確認する。
@@ -214,5 +214,31 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
     expect(requests[0]).not.toHaveProperty('temperature')
     expect(requests[0]).not.toHaveProperty('thinking')
     expect(requests[0]?.['tool_choice']).toEqual({ type: 'tool', name: 'json' })
+  })
+
+  it('stop_reason が refusal のときは error パートを流して onError に拒否エラーを渡す', async () => {
+    const anthropic = createAnthropic({
+      apiKey: 'test-key',
+      fetch: (async () =>
+        sse([
+          messageStart('msg_refusal'),
+          ...emptyThinkingBlock(0),
+          ...messageEnd('refusal'),
+        ])) as unknown as typeof fetch,
+    })
+    const errors: unknown[] = []
+    const result = streamText({
+      model: withAnthropicCompat(anthropic('claude-sonnet-5-5')),
+      messages: [{ role: 'user', content: 'こんにちは' }],
+      onError: ({ error }) => {
+        errors.push(error)
+      },
+    })
+    const parts: string[] = []
+    for await (const part of result.fullStream) parts.push(part.type)
+
+    expect(parts).toContain('error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(ClaudeRefusalError)
   })
 })

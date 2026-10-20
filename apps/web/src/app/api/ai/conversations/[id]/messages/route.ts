@@ -146,6 +146,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const assistantMessageId = crypto.randomUUID()
   let activeCreditReservationPending = false
   let activeCreditReservationFailed = false
+  // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
+  let streamErrored = false
   if (isBillingEnabled()) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.isActiveSupporter) {
@@ -367,9 +369,15 @@ ${contextSection}
             ...(hasWebSearch ? { webSearch: webSearchTool } : {}),
           },
           maxSteps: AI_RESEARCH_LIMITS.toolSteps,
-          onError: refundPendingActiveCredit,
+          onError: async () => {
+            streamErrored = true
+            await refundPendingActiveCredit()
+          },
           onFinish: async ({ text, steps }) => {
-            if (!lastUserContent || !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed)) {
+            if (
+              !lastUserContent ||
+              !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed || streamErrored)
+            ) {
               return
             }
             try {

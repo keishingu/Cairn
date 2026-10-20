@@ -21,6 +21,17 @@ import {
 //    回答が空のまま課金される。呼び出し側が指定しないときは余裕のある上限を補う。
 export const ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 16000
 
+// 4. Claude 5.5 系は安全上の理由で回答を控えると HTTP 200 + stop_reason "refusal" を返す。
+//    @ai-sdk/anthropic v1 はこれを finishReason "unknown" に丸めるため（本実装はサーバーツールを
+//    使わないので pause_turn は来ない）、そのままだと空や途中の回答が成功として保存・課金される。
+//    error パートを流して streamText の onError（クレジット返却・保存抑止）と利用者へのエラー表示に乗せる。
+export class ClaudeRefusalError extends Error {
+  constructor() {
+    super('Claude がこの依頼への回答を控えました。表現を変えるか、チャットのモデルを切り替えてお試しください。')
+    this.name = 'ClaudeRefusalError'
+  }
+}
+
 export const anthropicCompatMiddleware: LanguageModelV1Middleware = {
   middlewareVersion: 'v1',
   transformParams: async ({ params }) => {
@@ -42,6 +53,8 @@ export const anthropicCompatMiddleware: LanguageModelV1Middleware = {
           } else if (chunk.type === 'reasoning-signature') {
             if (!hasReasoningInBlock) controller.enqueue({ type: 'reasoning', textDelta: '' })
             hasReasoningInBlock = false
+          } else if (chunk.type === 'finish' && chunk.finishReason === 'unknown') {
+            controller.enqueue({ type: 'error', error: new ClaudeRefusalError() })
           }
           controller.enqueue(chunk)
         },
