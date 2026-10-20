@@ -967,7 +967,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Requested permissions': '要求される権限',
   'Required for AI agent web search (optional)': 'AI エージェントのウェブ検索機能に必要（省略可）',
   'Required for place autocomplete and cover photos when creating a project': 'プロジェクト作成時の場所オートコンプリートとカバー写真取得に必要',
-  'Required for the AI assistant, document summaries, and vector search': 'AI アシスタント・ドキュメント要約・ベクトル検索に必要',
+  'Required for vector search and for the AI assistant when GPT-5 is selected': 'ベクトル検索と、GPT-5 を選んだときの AI アシスタントに必要',
   'Required to run async jobs such as the AI agent, notifications, and integrations': 'AI エージェント・通知・外部連携などの非同期ジョブ実行に必要',
   'Required to store all data such as projects, tasks, and messages': 'プロジェクト・タスク・メッセージなど全データの永続化に必要',
   'Required to store cover photos, gallery images, and attachments': 'カバー写真・ギャラリー画像・添付ファイルの保存に必要',

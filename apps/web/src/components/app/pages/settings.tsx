@@ -3083,7 +3083,7 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
     key: 'openai',
     label: 'OpenAI',
     icon: 'sparkles',
-    purpose: 'Required for the AI assistant, document summaries, and vector search',
+    purpose: 'Required for vector search and for the AI assistant when GPT-5 is selected',
   },
   {
     key: 'anthropic',

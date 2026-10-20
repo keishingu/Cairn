@@ -967,7 +967,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Requested permissions': '요청된 권한',
   'Required for AI agent web search (optional)': 'AI 에이전트 웹 검색에 필요(선택)',
   'Required for place autocomplete and cover photos when creating a project': '프로젝트 생성 시 장소 자동완성과 커버 사진에 필요',
-  'Required for the AI assistant, document summaries, and vector search': 'AI 어시스턴트·문서 요약·벡터 검색에 필요',
+  'Required for vector search and for the AI assistant when GPT-5 is selected': '벡터 검색과, GPT-5 선택 시 AI 어시스턴트에 필요',
   'Required to run async jobs such as the AI agent, notifications, and integrations': 'AI 에이전트·알림·연동 등 비동기 작업 실행에 필요',
   'Required to store all data such as projects, tasks, and messages': '프로젝트·작업·메시지 등 모든 데이터 저장에 필요',
   'Required to store cover photos, gallery images, and attachments': '커버 사진·갤러리 이미지·첨부 파일 저장에 필요',
