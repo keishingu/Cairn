@@ -1933,9 +1933,11 @@ const SettingsWorkspaceGeneral = () => {
                 <Toggle on={phaseTwoEnabled} />
               </button>
             </div>
-            {updateSettings.isError && (
-              <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
-            )}
+            {updateSettings.isError &&
+              (updateSettings.variables?.aiNudgesPhaseOneEnabled !== undefined ||
+                updateSettings.variables?.aiNudgesPhaseTwoEnabled !== undefined) && (
+                <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
+              )}
           </div>
         </section>
       )}
