@@ -83,12 +83,19 @@ export const workspaces = pgTable('workspaces', {
   aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' })
     .notNull()
     .default(0),
+  // AI チャット（/ai）が使うモデル。値の集合は @cairn/shared の AI_CHAT_MODELS と同じ。
+  aiChatModel: text('ai_chat_model').notNull().default('gpt-5'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [
+  check(
+    'workspaces_ai_chat_model_check',
+    sql`${t.aiChatModel} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`,
+  ),
+])
 
 export const workspaceMembers = pgTable(
   'workspace_members',

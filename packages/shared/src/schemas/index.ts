@@ -3,6 +3,7 @@
 
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
+import { AI_CHAT_MODELS } from '../config/ai-chat-model'
 import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { LOCALE_PREFERENCES } from '../config/locale'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
@@ -188,6 +189,7 @@ export const patchWorkspaceSettingsSchema = z.object({
   projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
   aiNudgesPhaseOneEnabled: z.boolean().optional(),
   aiNudgesPhaseTwoEnabled: z.boolean().optional(),
+  aiChatModel: z.enum(AI_CHAT_MODELS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },

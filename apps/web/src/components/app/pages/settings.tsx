@@ -32,11 +32,14 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
+  AI_CHAT_MODELS,
+  DEFAULT_AI_CHAT_MODEL,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
   isCalendarWeekStart,
   type AccentId,
+  type AiChatModel,
   type CalendarWeekStart,
   type LocalePreference,
 } from '@cairn/shared'
@@ -1428,6 +1431,12 @@ const SettingsAI = () => {
   )
 }
 
+const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
+  'gpt-5': 'GPT-5 (default)',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-opus-5-5': 'Claude Opus 5.5',
+}
+
 const SettingsWorkspaceGeneral = () => {
   const t = useT()
   const queryClient = useQueryClient()
@@ -1528,6 +1537,7 @@ const SettingsWorkspaceGeneral = () => {
     )
   }
 
+  const aiChatModel = wsSettings?.aiChatModel ?? DEFAULT_AI_CHAT_MODEL
   const phaseOneEnabled = wsSettings?.aiNudgesPhaseOneEnabled ?? true
   const phaseTwoEnabled = wsSettings?.aiNudgesPhaseTwoEnabled ?? false
   const phaseTwoUsage = wsSettings?.aiNudgesPhaseTwoUsage
@@ -1775,6 +1785,39 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* AI アシスタントのモデル */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('AI assistant')}</h2>
+        <div className="card" style={{ padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Chat model')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
+                {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
+              </div>
+            </div>
+            <select
+              className="form-control"
+              value={aiChatModel}
+              onChange={(e) => updateSettings.mutate({ aiChatModel: e.target.value as AiChatModel })}
+              disabled={updateSettings.isPending || readOnly || wsSettings === undefined}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              aria-label={t('Chat model')}
+              style={{ minWidth: 180, cursor: readOnly ? 'not-allowed' : 'pointer', ...(readOnly ? { opacity: 0.5 } : {}) }}
+            >
+              {AI_CHAT_MODELS.map((model) => (
+                <option key={model} value={model}>
+                  {t(AI_CHAT_MODEL_LABELS[model])}
+                </option>
+              ))}
+            </select>
+          </div>
+          {updateSettings.isError && updateSettings.variables?.aiChatModel !== undefined && (
+            <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
+          )}
         </div>
       </section>
 
@@ -3043,6 +3086,13 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
     purpose: 'Required for the AI assistant, document summaries, and vector search',
   },
   {
+    key: 'anthropic',
+    label: 'Anthropic',
+    icon: 'sparkles',
+    purpose:
+      'Required for AI PMO notification text and for the AI assistant when a Claude model is selected',
+  },
+  {
     key: 'googleMaps',
     label: 'Google Maps Platform',
     icon: 'map-pin',
@@ -3126,7 +3176,7 @@ const SettingsDeveloper = () => {
       )}
       {!diagnose.data && (
         <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>
-          {t('Live checks such as OpenAI run only from "Manual diagnostics".')}
+          {t('Live checks such as OpenAI and Anthropic run only from "Manual diagnostics".')}
         </p>
       )}
 
