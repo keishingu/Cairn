@@ -200,7 +200,7 @@ export default function PrivacyPage() {
     <LegalPage
       title="プライバシーポリシー"
       description="Cairnがどのような情報を、何のために取り扱うのかを説明します。"
-      updatedAt="2026年8月12日"
+      updatedAt="2026年10月20日"
       sections={sections}
     />
   )
