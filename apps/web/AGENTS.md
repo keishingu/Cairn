@@ -23,5 +23,6 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 ## その他
 
 - FEATURE_FLAGS は市場投入判断のためのもので、インフラの環境差には使わない
-- AI 機能は Vercel AI SDK + OpenAI（gpt-5 / gpt-5-mini）。AI PMO Phase 2 の判定だけ Vercel AI Gateway の `typesafe-ai/jev` を HTTP で直接呼ぶ（AI SDK v4 に Evaluation API がないため）
+- AI 機能は Vercel AI SDK v4。チャット（`/ai`）のモデルは `workspaces.ai_chat_model`（`gpt-5` / `claude-sonnet-5-5` / `claude-opus-5-5`、owner が設定）で決まり、AI PMO Phase 2 の通知文は `claude-haiku-5-5` 固定、埋め込みは OpenAI `text-embedding-3-small`。選択中モデルのプロバイダーのキー（`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`）が無ければ別プロバイダーへ逃がさず 503 を返す。AI PMO Phase 2 の判定だけ Vercel AI Gateway の `typesafe-ai/jev` を HTTP で直接呼ぶ（AI SDK v4 に Evaluation API がないため）
+- **Claude 5.5 系は既定以外の `temperature` / `topP` / `topK` / `thinking` と強制 `toolChoice` を 400 で拒否する**（Haiku の `generateObject` の強制ツールは対象外）。AI SDK v4 は `temperature` 未指定でも 0 を補って送るため、Claude は必ず `src/lib/ai/client.ts` の `chatLanguageModel()` / `nudgeCopyLanguageModel()` 経由で使う（`anthropic-compat-middleware.ts` が temperature 除去と空 thinking ブロックの補完を行う）。新しい呼び出しで `temperature` を指定しない
 - **機能・UI 導線・権限を変えたら、同じ変更で `/ai` のプロダクトヘルプ `src/lib/ai/product-help.ts`（`PRODUCT_HELP_CONTEXT`）も更新する**。`/ai` が製品の使い方に答える唯一の情報源で、古いままだと利用者に誤った手順を案内する

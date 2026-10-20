@@ -104,7 +104,7 @@ const sections = [
           <li>Supabase（認証、データベース、リアルタイム同期、ファイル保管）</li>
           <li>Vercel（WebアプリおよびAPIの配信）</li>
           <li>ExpoおよびApple・Google（アプリ配信、更新、Push通知）</li>
-          <li>OpenAI（利用者がAI機能を有効にした場合の入力処理）</li>
+          <li>OpenAI、Anthropic（利用者がAI機能を有効にした場合の入力処理）</li>
           <li>PostHog（本番環境における利用状況の分析）</li>
           <li>Stripe（購入、購読および請求の処理）</li>
           <li>Google（ログインおよび利用者が選択したカレンダー連携）</li>
