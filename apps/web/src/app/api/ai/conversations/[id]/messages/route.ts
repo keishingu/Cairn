@@ -4,7 +4,8 @@
 import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText } from 'ai'
 import { BILLING_CONFIG } from '@cairn/core/billing'
-import { openai, DEFAULT_MODEL } from '@/lib/ai/client'
+import { isAiChatModel, type AiChatModel } from '@cairn/shared'
+import { apiKeyEnvForChatModel, chatLanguageModel } from '@/lib/ai/client'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -114,10 +115,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (error) return error
   if (!ctx) return NextResponse.json({ error: '認証情報を取得できませんでした' }, { status: 401 })
 
-  if (!process.env['OPENAI_API_KEY']) {
-    return NextResponse.json({ error: 'OPENAI_API_KEY が設定されていません' }, { status: 503 })
-  }
-
   const rawBody = await req.text()
   if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BODY_BYTES) {
     return NextResponse.json(
@@ -149,6 +146,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const assistantMessageId = crypto.randomUUID()
   let activeCreditReservationPending = false
   let activeCreditReservationFailed = false
+  // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
+  let streamErrored = false
   if (isBillingEnabled()) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.isActiveSupporter) {
@@ -171,8 +170,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   let historyMessages: StoredConversationMessage[] = []
+  let chatModel: AiChatModel
   {
-    const { db, aiConversations, aiMessages } = await import('@cairn/db')
+    const { db, aiConversations, aiMessages, workspaces } = await import('@cairn/db')
     const { eq, and, desc } = await import('drizzle-orm')
     const [conv] = await db
       .select({ id: aiConversations.id })
@@ -200,6 +200,28 @@ export async function POST(req: Request, { params }: RouteContext) {
       .limit(MAX_HISTORY_MESSAGES)
 
     historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
+
+    // 使うモデルはワークスペース設定で決まる。値が不正でも既定のモデルへ黙って切り替えず、エラーにする。
+    const [workspace] = await db
+      .select({ aiChatModel: workspaces.aiChatModel })
+      .from(workspaces)
+      .where(eq(workspaces.id, ctx.workspaceId))
+      .limit(1)
+    if (!workspace || !isAiChatModel(workspace.aiChatModel)) {
+      console.error('[AI chat] invalid workspace ai_chat_model', workspace?.aiChatModel)
+      return NextResponse.json(
+        { error: 'ワークスペースの AI モデル設定を読み込めませんでした' },
+        { status: 500 },
+      )
+    }
+    chatModel = workspace.aiChatModel
+  }
+
+  // 選択中モデルのプロバイダーのキーだけを見る。別プロバイダーへ黙ってフォールバックしない。
+  // クレジットを予約する前に判定し、設定不備で利用者に課金しない。
+  const requiredApiKeyEnv = apiKeyEnvForChatModel(chatModel)
+  if (!process.env[requiredApiKeyEnv]) {
+    return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
 
   if (isBillingEnabled()) {
@@ -223,7 +245,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const hasWebSearch = !!process.env['TAVILY_API_KEY']
 
   console.log('[AI chat] POST', {
-    hasOpenAiKey: !!process.env['OPENAI_API_KEY'],
+    chatModel,
+    hasApiKey: !!process.env[requiredApiKeyEnv],
     hasTavilyKey: hasWebSearch,
     lastUserContent: lastUserContent.slice(0, 80),
     clientMessageCount,
@@ -338,7 +361,7 @@ ${contextSection}
           dataStream.writeMessageAnnotation({ type: 'rag-sources', sources: ragSources })
         }
         const result = streamText({
-          model: openai(DEFAULT_MODEL),
+          model: chatLanguageModel(chatModel),
           system: systemPrompt,
           messages,
           tools: {
@@ -346,9 +369,15 @@ ${contextSection}
             ...(hasWebSearch ? { webSearch: webSearchTool } : {}),
           },
           maxSteps: AI_RESEARCH_LIMITS.toolSteps,
-          onError: refundPendingActiveCredit,
+          onError: async () => {
+            streamErrored = true
+            await refundPendingActiveCredit()
+          },
           onFinish: async ({ text, steps }) => {
-            if (!lastUserContent || !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed)) {
+            if (
+              !lastUserContent ||
+              !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed || streamErrored)
+            ) {
               return
             }
             try {

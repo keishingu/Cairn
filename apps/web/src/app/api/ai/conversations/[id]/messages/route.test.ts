@@ -4,7 +4,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_REQUEST_BODY_BYTES } from './message-input'
 
-const { mockGetAuthContext, mockIsBillingEnabled, mockResolveUploadEntitlements } = vi.hoisted(
+const {
+  mockGetAuthContext,
+  mockIsBillingEnabled,
+  mockResolveUploadEntitlements,
+  mockReserveCredits,
+  dbSelectResults,
+} = vi.hoisted(
   () => ({
     mockGetAuthContext: vi.fn().mockResolvedValue({
       ctx: {
@@ -15,6 +21,8 @@ const { mockGetAuthContext, mockIsBillingEnabled, mockResolveUploadEntitlements 
     }),
     mockIsBillingEnabled: vi.fn(),
     mockResolveUploadEntitlements: vi.fn(),
+    mockReserveCredits: vi.fn(),
+    dbSelectResults: [] as unknown[][],
   }),
 )
 
@@ -24,6 +32,30 @@ vi.mock('@/lib/billing/entitlements', () => ({
   resolveUploadEntitlements: mockResolveUploadEntitlements,
 }))
 
+vi.mock('@/lib/billing/credits', () => ({
+  reserveCreditsForActiveBenefit: mockReserveCredits,
+  refundActiveBenefitReservation: vi.fn(),
+}))
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), desc: vi.fn(), asc: vi.fn() }))
+// select チェーンは where / from / orderBy をそのまま返し、limit で用意した結果を順に返す。
+vi.mock('@cairn/db', () => {
+  const chain: Record<string, unknown> = {}
+  for (const name of ['from', 'where', 'orderBy']) chain[name] = () => chain
+  chain['limit'] = () => Promise.resolve(dbSelectResults.shift() ?? [])
+  return {
+    db: { select: () => chain },
+    aiConversations: { id: 'id', workspaceId: 'workspaceId', createdBy: 'createdBy' },
+    aiMessages: {
+      id: 'id',
+      role: 'role',
+      content: 'content',
+      createdAt: 'createdAt',
+      conversationId: 'conversationId',
+    },
+    workspaces: { id: 'id', aiChatModel: 'aiChatModel' },
+  }
+})
+
 describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
@@ -32,6 +64,8 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
 
   afterEach(() => {
     delete process.env['OPENAI_API_KEY']
+    delete process.env['ANTHROPIC_API_KEY']
+    dbSelectResults.length = 0
     vi.clearAllMocks()
   })
 
@@ -124,6 +158,73 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(response.status).toBe(402)
     await expect(response.json()).resolves.toEqual({
       error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
+    })
+  })
+
+  const postQuestion = async () => {
+    const { POST } = await import('./route')
+    return POST(
+      new Request('http://localhost/api/ai/conversations/conv/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '質問' }] }),
+      }),
+      { params: Promise.resolve({ id: 'conv-1' }) },
+    )
+  }
+
+  // 会話の存在確認、履歴、ワークスペースのモデル設定の順に select される。
+  const queueDbResults = (aiChatModel: string) => {
+    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel }])
+  }
+
+  it('Claude を選択中で ANTHROPIC_API_KEY が未設定なら、OpenAI へ切り替えず 503 を返す', async () => {
+    process.env['OPENAI_API_KEY'] = 'test-key'
+    queueDbResults('claude-sonnet-5-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'ANTHROPIC_API_KEY が設定されていません',
+    })
+  })
+
+  it('GPT-5 を選択中で OPENAI_API_KEY が未設定なら、Anthropic へ切り替えず 503 を返す', async () => {
+    delete process.env['OPENAI_API_KEY']
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    queueDbResults('gpt-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'OPENAI_API_KEY が設定されていません',
+    })
+  })
+
+  it('キー未設定の503ではクレジットを予約しない', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({
+      isActiveSupporter: true,
+      creditBalance: 1000,
+    })
+    queueDbResults('claude-opus-5-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+  })
+
+  it('ワークスペースのモデル設定が不正な値なら、既定モデルへ黙って切り替えず 500 を返す', async () => {
+    queueDbResults('gpt-4o')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({
+      error: 'ワークスペースの AI モデル設定を読み込めませんでした',
     })
   })
 

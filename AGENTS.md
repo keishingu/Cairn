@@ -14,7 +14,7 @@ pnpm Workspace + Turborepo。`pnpm dev` / `build` / `typecheck` / `lint` / `test
 
 - `apps/web` Next.js 15（Web + API Route Handlers + リモート MCP）/ `apps/mobile` Expo / `apps/desktop` Electron（Web を表示）
 - `packages/core` DB・フレームワーク非依存のドメインロジック / `packages/db` Drizzle スキーマ / `packages/shared` 共有型・Zod・FEATURE_FLAGS / `packages/config` tsconfig・ESLint
-- Supabase（PostgreSQL + pgvector / Auth / Realtime / Storage）、Inngest、AI は OpenAI（**Claude は使用しない**）
+- Supabase（PostgreSQL + pgvector / Auth / Realtime / Storage）、Inngest、AI は OpenAI と Anthropic（チャットはワークスペース設定で GPT-5 / Claude を選択、AI PMO の通知文は Claude Haiku 5.5、埋め込みは OpenAI）
 - tsconfig の `extends` は相対パスで書く（Vitest の `tsconfck` が workspace 参照を解決できない）
 
 ## ローカル開発

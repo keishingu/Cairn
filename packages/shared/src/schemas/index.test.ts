@@ -266,6 +266,15 @@ describe('ワークスペース設定更新スキーマ', () => {
       expect(result.data.projectLabel).toBeNull()
     }
   })
+
+  it('AIチャットのモデルは選択肢のID（日付サフィックスなし）だけ受け入れる', () => {
+    for (const aiChatModel of ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(true)
+    }
+    for (const aiChatModel of ['claude-sonnet-5-5-20260101', 'claude-haiku-5-5', 'gpt-5-mini', '']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(false)
+    }
+  })
 })
 
 describe('postMessageSchema', () => {
