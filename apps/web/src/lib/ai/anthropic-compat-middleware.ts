@@ -16,6 +16,11 @@ import {
 //    signature_delta だけが届く。streamText は「reasoning なしの reasoning-signature」を
 //    InvalidStreamPart として落とすため、署名の直前に空の reasoning を補ってストリームを成立させる。
 //    補った空ブロックは次ステップ（ツール結果後）の送信時に、signature 付きの空 thinking として戻る。
+// 3. @ai-sdk/anthropic v1 は maxTokens 未指定時に 4096 を送る。Claude 5.5 系は thinking と本文が
+//    max_tokens を共有するため、4096 では複数ツールの調査中に思考だけで上限に達し、ツール呼び出しや
+//    回答が空のまま課金される。呼び出し側が指定しないときは余裕のある上限を補う。
+export const ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 16000
+
 export const anthropicCompatMiddleware: LanguageModelV1Middleware = {
   middlewareVersion: 'v1',
   transformParams: async ({ params }) => {
@@ -23,6 +28,7 @@ export const anthropicCompatMiddleware: LanguageModelV1Middleware = {
     delete next.temperature
     delete next.topP
     delete next.topK
+    next.maxTokens ??= ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
     return next
   },
   wrapStream: async ({ doStream }) => {

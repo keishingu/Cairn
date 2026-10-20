@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LanguageModelV1, LanguageModelV1StreamPart } from 'ai'
-import { anthropicCompatMiddleware } from './anthropic-compat-middleware'
+import { ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS, anthropicCompatMiddleware } from './anthropic-compat-middleware'
 
 async function collect(parts: LanguageModelV1StreamPart[]): Promise<LanguageModelV1StreamPart[]> {
   const doStream = async () => ({
@@ -71,5 +71,23 @@ describe('anthropicCompatMiddleware の空 thinking 補完', () => {
       { type: 'reasoning', textDelta: '' },
       { type: 'reasoning-signature', signature: 's2' },
     ])
+  })
+})
+
+describe('anthropicCompatMiddleware の出力上限', () => {
+  const transform = async (params: Record<string, unknown>) => {
+    const fn = anthropicCompatMiddleware.transformParams
+    if (!fn) throw new Error('transformParams が未定義です')
+    return fn({ type: 'stream', params: params as never })
+  }
+
+  it('maxTokens 未指定のときは provider 既定の 4096 ではなく Claude 用の上限を補う', async () => {
+    const next = await transform({ prompt: [], inputFormat: 'messages', mode: { type: 'regular' } })
+    expect(next.maxTokens).toBe(ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS)
+  })
+
+  it('呼び出し側が maxTokens を指定したときはその値を保つ', async () => {
+    const next = await transform({ prompt: [], inputFormat: 'messages', mode: { type: 'regular' }, maxTokens: 500 })
+    expect(next.maxTokens).toBe(500)
   })
 })
