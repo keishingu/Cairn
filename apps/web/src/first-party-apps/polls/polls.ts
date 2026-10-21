@@ -75,13 +75,17 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
       .returning({ id: polls.id })
     if (!created) {
       const [existing] = await tx
-        .select({ id: polls.id, question: polls.question, allowMultiple: polls.allowMultiple })
+        .select({ id: polls.id, question: polls.question, allowMultiple: polls.allowMultiple, channelId: polls.channelId, createdBy: polls.createdBy, closesAt: polls.closesAt })
         .from(polls)
         .where(and(eq(polls.installationId, installationId), eq(polls.idempotencyKey, input.idempotencyKey)))
         .limit(1)
       if (!existing) throw new Error('poll idempotency conflict without a row')
       const options = await tx.select({ label: pollOptions.label }).from(pollOptions).where(eq(pollOptions.pollId, existing.id)).orderBy(asc(pollOptions.position))
+      // 保存する項目はすべて比べる（チャンネル・作成者・締切が違う呼び出しに、前の投票を黙って返さない）
       const sameInput =
+        existing.channelId === input.channelId &&
+        existing.createdBy === input.createdBy &&
+        (existing.closesAt?.getTime() ?? null) === (input.closesAt?.getTime() ?? null) &&
         existing.question === input.question &&
         existing.allowMultiple === input.allowMultiple &&
         options.length === input.options.length &&
