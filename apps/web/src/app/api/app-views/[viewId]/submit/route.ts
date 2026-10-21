@@ -181,13 +181,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
     }
     if (response.action === 'errors') {
-      // アプリは受け取って入力の誤りを返した。直した送信は別の操作なので、次は新しい interaction_id にする
-      await db.update(appViews).set({ submittingUntil: null, submissionInteractionId: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
       const errors = displayableErrors(view.view, response.errors)
       if (!errors) {
+        // 出せる欄が無い応答は、アプリが入力の誤りを伝えられたとは言えない。送り直しは同じ送信として同じ interaction_id で届ける
         console.warn('[/api/app-views submit] app returned errors for no input of this view:', Object.keys(response.errors))
+        await release()
         return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
       }
+      // アプリは受け取って入力の誤りを返した。直した送信は別の操作なので、次は新しい interaction_id にする
+      await db.update(appViews).set({ submittingUntil: null, submissionInteractionId: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
       return NextResponse.json({ status: 'errors', errors }, { status: 422 })
     }
     if (response.action === 'update') {
