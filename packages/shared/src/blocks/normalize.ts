@@ -8,6 +8,7 @@
 import type { z } from 'zod'
 import { parseMrkdwn, type MrkdwnBlock } from './mrkdwn'
 import {
+  BLOCK_LIMITS,
   actionsBlockSchema,
   buttonElementSchema,
   contextBlockSchema,
@@ -71,7 +72,12 @@ export type RenderCard = {
 
 /** 保存値が壊れていても例外にせず、描けない部分を unsupported として返す（メッセージ一覧全体を落とさないため） */
 export function normalizeMessageBlocks(input: unknown): RenderCard {
-  const blocks = Array.isArray(input) ? input.map((block, index) => normalizeBlock(block, index)) : []
+  // 壊れた保存値や、上限を広げた新しい版で受理された blocks でも、際限なく描かないよう上限で切り、残りがあれば案内にする
+  const blocks = Array.isArray(input)
+    ? withTruncation(input, BLOCK_LIMITS.messageBlocks, (block, index) => normalizeBlock(block, index), (index) =>
+        unsupported(TRUNCATED, `cairn-truncated-${index}`),
+      )
+    : []
   const hasUnsupported = !Array.isArray(input) || blocks.some(containsUnsupported)
   const nothingRenderable = !blocks.some(isRenderable)
   return { blocks, hasUnsupported, nothingRenderable }
@@ -124,12 +130,22 @@ function normalizeBlock(raw: unknown, index: number): RenderBlock {
     case 'actions': {
       const elements = containerElements(raw)
       if (!elements) return unsupported(type, blockId)
-      return { type: 'actions', blockId, elements: elements.map((element, i) => normalizeActionElement(element, `${blockId}-${i}`)) }
+      return {
+        type: 'actions',
+        blockId,
+        elements: withTruncation(elements, BLOCK_LIMITS.actionsElements, (element, i) => normalizeActionElement(element, `${blockId}-${i}`), () =>
+          unsupportedElement(TRUNCATED),
+        ),
+      }
     }
     case 'context': {
       const elements = containerElements(raw)
       if (!elements) return unsupported(type, blockId)
-      return { type: 'context', blockId, elements: elements.map(normalizeContextElement) }
+      return {
+        type: 'context',
+        blockId,
+        elements: withTruncation(elements, BLOCK_LIMITS.contextElements, normalizeContextElement, () => unsupportedElement(TRUNCATED)),
+      }
     }
     case 'image': {
       const image = parse(imageBlockSchema, raw)
@@ -188,6 +204,14 @@ function normalizeContextElement(raw: unknown): RenderContextElement {
 // actions / context の枠そのものを検証する。要素は1つずつ寛容に見るが、枠に知らないフィールドがあれば
 // 新しい版の機能を黙って落とさないよう、ブロックごと unsupported にする
 const CONTAINER_KEYS = new Set(['type', 'block_id', 'elements'])
+
+/** 上限を超えた分を切り捨てたことを表す。unsupported と同じく、描画側は更新を促す案内を出す */
+export const TRUNCATED = 'truncated'
+
+function withTruncation<T>(items: unknown[], limit: number, map: (item: unknown, index: number) => T, truncated: (index: number) => T): T[] {
+  const mapped = items.slice(0, limit).map((item, index) => map(item, index))
+  return items.length > limit ? [...mapped, truncated(limit)] : mapped
+}
 
 function containerElements(raw: unknown): unknown[] | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -263,5 +287,5 @@ function unsupported(original: string, blockId: string): RenderUnsupported & { b
 }
 
 function unsupportedElement(raw: unknown): RenderUnsupported {
-  return { type: 'unsupported', original: typeOf(raw) }
+  return { type: 'unsupported', original: raw === TRUNCATED ? TRUNCATED : typeOf(raw) }
 }
