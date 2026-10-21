@@ -78,6 +78,7 @@ export function normalizeMessageBlocks(input: unknown): RenderCard {
         unsupported(TRUNCATED, `cairn-truncated-${index}`),
       )
     : []
+  markAmbiguousIds(blocks)
   const hasUnsupported = !Array.isArray(input) || blocks.some(containsUnsupported)
   const nothingRenderable = !blocks.some(isRenderable)
   return { blocks, hasUnsupported, nothingRenderable }
@@ -205,6 +206,37 @@ function normalizeContextElement(raw: unknown): RenderContextElement {
 // 新しい版の機能を黙って落とさないよう、ブロックごと unsupported にする
 const CONTAINER_KEYS = new Set(['type', 'block_id', 'elements'])
 
+/**
+ * 受理時の refineUniqueIds と同じ一意性を、保存値にもかけ直す。壊れた保存値や新しい版の blocks で
+ * block_id やブロック内の action_id が重複すると、押下をどのボタンに届けるか一意に決まらないため、
+ * 重複したものは最初の1つも含めてすべて unsupported にする
+ */
+function markAmbiguousIds(blocks: RenderBlock[]) {
+  const blockIdCounts = countBy(blocks.filter((block) => block.type !== 'unsupported').map((block) => block.blockId))
+  blocks.forEach((block, index) => {
+    if (block.type !== 'unsupported' && (blockIdCounts.get(block.blockId) ?? 0) > 1) {
+      blocks[index] = unsupported(block.type, block.blockId)
+      return
+    }
+    if (block.type === 'actions') {
+      const actionIdCounts = countBy(block.elements.flatMap(actionIdOf))
+      block.elements = block.elements.map((element) =>
+        actionIdOf(element).some((id) => (actionIdCounts.get(id) ?? 0) > 1) ? unsupportedElement(element.type) : element,
+      )
+    }
+  })
+}
+
+function actionIdOf(element: RenderElement): string[] {
+  return element.type === 'button' || element.type === 'static_select' ? [element.actionId] : []
+}
+
+function countBy(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1)
+  return counts
+}
+
 /** 上限を超えた分を切り捨てたことを表す。unsupported と同じく、描画側は更新を促す案内を出す */
 export const TRUNCATED = 'truncated'
 
@@ -217,7 +249,8 @@ function containerElements(raw: unknown): unknown[] | null {
   if (typeof raw !== 'object' || raw === null) return null
   if (Object.keys(raw).some((key) => !CONTAINER_KEYS.has(key))) return null
   const { block_id: id, elements } = raw as { block_id?: unknown; elements?: unknown }
-  if (id !== undefined && typeof id !== 'string') return null
+  // 受理時のスキーマと同じく、空や長すぎる block_id は通さない（空を cairn-b<n> に置き換えると、押下時に保存値と一致しない）
+  if (id !== undefined && (typeof id !== 'string' || id.length === 0 || id.length > BLOCK_LIMITS.blockId)) return null
   return Array.isArray(elements) && elements.length > 0 ? elements : null
 }
 
@@ -287,5 +320,6 @@ function unsupported(original: string, blockId: string): RenderUnsupported & { b
 }
 
 function unsupportedElement(raw: unknown): RenderUnsupported {
-  return { type: 'unsupported', original: raw === TRUNCATED ? TRUNCATED : typeOf(raw) }
+  // 文字列は原因（truncated）や元の種別をそのまま記録する
+  return { type: 'unsupported', original: typeof raw === 'string' ? raw : typeOf(raw) }
 }

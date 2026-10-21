@@ -94,6 +94,34 @@ describe('blocks の正規化', () => {
     expect(actions?.type === 'actions' && actions.elements[25]).toEqual({ type: 'unsupported', original: 'truncated' })
   })
 
+  it('block_id の重複や、ブロック内の action_id の重複は、どれも unsupported にする（押下の宛先が一意に決まらないため）', () => {
+    const button = (id: string) => ({ type: 'button', action_id: id, text: { type: 'plain_text', text: id } })
+    const card = normalizeMessageBlocks([
+      { type: 'divider', block_id: 'dup' },
+      { type: 'header', block_id: 'dup', text: { type: 'plain_text', text: '見出し' } },
+      { type: 'actions', block_id: 'a', elements: [button('x'), button('x'), button('y')] },
+    ])
+    expect(card.blocks[0]).toEqual({ type: 'unsupported', original: 'divider', blockId: 'dup' })
+    expect(card.blocks[1]).toEqual({ type: 'unsupported', original: 'header', blockId: 'dup' })
+    expect(card.blocks[2]).toMatchObject({
+      elements: [
+        { type: 'unsupported', original: 'button' },
+        { type: 'unsupported', original: 'button' },
+        { type: 'button', actionId: 'y' },
+      ],
+    })
+    expect(card.hasUnsupported).toBe(true)
+  })
+
+  it('actions / context の空や長すぎる block_id はブロックごと unsupported にする', () => {
+    const elements = [{ type: 'plain_text', text: '補足' }]
+    const card = normalizeMessageBlocks([
+      { type: 'context', block_id: '', elements },
+      { type: 'context', block_id: 'x'.repeat(256), elements },
+    ])
+    expect(card.blocks.map((block) => block.type)).toEqual(['unsupported', 'unsupported'])
+  })
+
   it('何も描けなければ nothingRenderable にする', () => {
     expect(normalizeMessageBlocks(nothingRenderableFixture)).toMatchObject({ hasUnsupported: true, nothingRenderable: true })
   })
