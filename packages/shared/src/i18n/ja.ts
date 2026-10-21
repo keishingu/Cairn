@@ -1306,4 +1306,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load apps': 'アプリを読み込めませんでした',
   'Add {app} to this channel?': 'このチャンネルに{app}を追加しますか？',
   'The app will be able to post to this channel.': '追加すると、アプリがこのチャンネルに投稿できるようになります。',
+  'This form was updated by the app. Check the content and submit again.': 'このフォームはアプリによって更新されました。内容を確認して、もう一度送信してください。',
+  'This form is already being submitted.': 'このフォームは送信中です。',
+  'Could not close the form. Please try again.': 'フォームを閉じられませんでした。もう一度お試しください。',
 }

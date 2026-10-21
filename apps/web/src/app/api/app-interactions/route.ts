@@ -105,8 +105,12 @@ export async function POST(req: Request) {
     ])
 
     const interactionId = newInteractionId()
-    // アプリがこの押下からモーダルを開けるよう、押した本人に結びついた trigger_id を渡す
-    const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: row.channelId })
+    // アプリがこの押下からモーダルを開けるよう、押した本人に結びついた trigger_id を渡す。
+    // 発行できなくても（デプロイ直後でマイグレーションが未適用など）既存のボタン操作は止めない。その場合 views.open は invalid_trigger_id になる
+    const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: row.channelId }).catch((err: unknown) => {
+      console.error('[/api/app-interactions] failed to issue trigger_id:', err)
+      return ''
+    })
     const payload = buildBlockActionsPayload(
       {
         workspace: { id: ctx.workspaceId, slug: workspace?.slug ?? '' },
