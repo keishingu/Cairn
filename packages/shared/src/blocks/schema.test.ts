@@ -86,6 +86,15 @@ describe('メッセージの blocks の受理', () => {
     ])
   })
 
+  it('initial_option は value が同じでも表示文が違えば拒否する（宣言と違う表示で描かないため）', () => {
+    const option = { text: { type: 'plain_text', text: 'A' }, value: 'a' }
+    const select = (initial: unknown) => ({ type: 'actions', elements: [{ type: 'static_select', action_id: 's', options: [option], initial_option: initial }] })
+    expect(errorsOf([select({ text: { type: 'plain_text', text: '別の表示' }, value: 'a' })])).toEqual([
+      '[ERROR] initial_option は options のいずれかにしてください [json-pointer:/blocks/0/elements/0/initial_option]',
+    ])
+    expect(prepareMessageBlocks([select(option)]).ok).toBe(true)
+  })
+
   it('省略された block_id と action_id を補う', () => {
     const result = prepareMessageBlocks([
       { type: 'divider' },
