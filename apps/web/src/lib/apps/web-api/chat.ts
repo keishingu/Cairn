@@ -111,7 +111,28 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
   if (args['thread_ts'] !== undefined) {
     return fail('invalid_arguments', { response_metadata: { messages: ['thread_ts は未対応です。スレッドのチャンネルを channel に指定してください'] } })
   }
-  const access = await resolveBotChannel(bot, stringArg(args, 'channel'))
+  const clientMsgId = stringArg(args, 'client_msg_id')
+  if (clientMsgId !== undefined && !isUuid(clientMsgId)) {
+    return fail('invalid_arguments', { response_metadata: { messages: ['client_msg_id は UUID で指定してください'] } })
+  }
+
+  const { db, messages, messageBlocks, channels, apps } = await import('@cairn/db')
+  const { and, eq, sql } = await import('drizzle-orm')
+
+  // すでに投稿済みの再送は、チャンネルの確認より先に既存のメッセージを返す。投稿の後にチャンネルがアーカイブされた・
+  // Bot が外されたときも、再試行が「投稿できなかった」と誤って終わらず、投稿済みのメッセージに収束する
+  const requestedChannel = stringArg(args, 'channel')
+  if (clientMsgId && isUuid(requestedChannel)) {
+    const [posted] = await db
+      .select({ id: messages.id, channelId: messages.channelId, content: messages.content, blocks: messageBlocks.blocks })
+      .from(messages)
+      .leftJoin(messageBlocks, eq(messageBlocks.messageId, messages.id))
+      .where(and(eq(messages.id, clientMsgId), eq(messages.channelId, requestedChannel), eq(messages.senderId, bot.botProfileId)))
+      .limit(1)
+    if (posted) return messageResult({ id: posted.id, channelId: posted.channelId, text: posted.content, bot, blocks: (posted.blocks as MessageBlock[] | null) ?? undefined })
+  }
+
+  const access = await resolveBotChannel(bot, requestedChannel)
   if (!access.ok) return fail(access.error)
   const blocks = parseBlocksArg(args)
   if (!blocks.ok) return blocks.result
@@ -121,14 +142,6 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
   const content = text.text ?? fallbackTextFromBlocks(blocks.blocks!)
   // ボタンや区切り線だけのカードは代替テキストを組み立てられない。通知・検索・引用で空のメッセージにしない
   if (content === '') return fail('no_text', { response_metadata: { messages: ['カードに文字が無いため、text に代替テキストを指定してください'] } })
-
-  const clientMsgId = stringArg(args, 'client_msg_id')
-  if (clientMsgId !== undefined && !isUuid(clientMsgId)) {
-    return fail('invalid_arguments', { response_metadata: { messages: ['client_msg_id は UUID で指定してください'] } })
-  }
-
-  const { db, messages, messageBlocks, channels, apps } = await import('@cairn/db')
-  const { eq, sql } = await import('drizzle-orm')
 
   // 同じ client_msg_id の再送は新しく投稿せず既存のメッセージを返す（再試行が同じメッセージに収束する。§7.4）
   const findExisting = async (executor: Pick<typeof db, 'select'>): Promise<WebApiResult | null> => {
