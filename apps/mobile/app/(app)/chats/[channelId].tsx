@@ -2208,7 +2208,8 @@ const styles = StyleSheet.create({
   composerContextText: { flex: 1, minWidth: 0 },
   composerContextTitle: { fontSize: 11.5, fontWeight: '700' },
   composerContextBody: { fontSize: 11.5, marginTop: 1 },
-  attachmentActions: { flexDirection: 'row', gap: 16, paddingHorizontal: 4, paddingBottom: 7 },
+  // アプリの起動口が並ぶと狭い端末・大きな文字で1行に収まらないため、折り返して右端のスイッチを画面外に出さない
+  attachmentActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingHorizontal: 4, paddingBottom: 7 },
   attachmentAction: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 28 },
   attachmentActionText: { fontSize: 12, fontWeight: '600' },
   uploads: { gap: 5, marginBottom: 7 },
