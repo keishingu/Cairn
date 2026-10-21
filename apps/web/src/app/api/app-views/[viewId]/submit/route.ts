@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { isUuid } from '@/lib/apps/web-api/types'
 import { z } from 'zod'
@@ -62,6 +63,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     const validated = validateSubmission(view.view, values)
     if (!validated.ok) return NextResponse.json({ status: 'errors', errors: validated.errors }, { status: 422 })
+    // 送る値の指紋。同じ版・同じ値の送り直しかどうかを見分ける（interaction_id を使い回すかの判定）
+    const valuesHash = createHash('sha256').update(JSON.stringify(validated.values)).digest('hex')
 
     const { db, appViews, appTriggers, workspaces } = await import('@cairn/db')
     const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
@@ -73,7 +76,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})`,
         // 同じ版の送り直しには前回と同じ interaction_id を使う。届いたか分からない（時間切れ・届けた後の DB の失敗）まま
         // 送り直されても、アプリが interaction_id で重複を除ける。アプリが応答して版が進んだら（errors・update）消す
-        submissionInteractionId: sql`coalesce(${appViews.submissionInteractionId}, ${newInteractionId()}::uuid)`,
+        // 前回と同じ値の送り直しにだけ前回の ID を使う。値が違えば（直した送信）、前回の片付けが失敗していても新しい ID にする
+        submissionInteractionId: sql`case when ${appViews.submissionValuesHash} = ${valuesHash} then coalesce(${appViews.submissionInteractionId}, ${newInteractionId()}::uuid) else ${newInteractionId()}::uuid end`,
+        submissionValuesHash: valuesHash,
       })
       .where(
         and(
