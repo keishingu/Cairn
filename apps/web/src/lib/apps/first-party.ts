@@ -97,6 +97,20 @@ function decryptsTo(encrypted: string | null, expected: string): boolean {
 }
 
 /**
+ * このデプロイのコードでのアプリの Request URL と起動口。ファーストパーティは DB の行ではなく、このデプロイの定義を使う
+ * （DB を共有する PR の Preview と develop で版が違っても、自分の持っている経路だけを出し、そこへ送る）。
+ * このデプロイが知らないファーストパーティのアプリは null（起動口を出さず、配送もしない）
+ */
+export function forThisDeployment<T extends { slug: string | null; ownerWorkspaceId: string | null; requestUrl: string | null; entryPoints?: unknown }>(
+  app: T,
+): (T & { requestUrl: string | null; entryPoints: unknown }) | null {
+  if (app.ownerWorkspaceId !== null || !app.slug) return { ...app, entryPoints: app.entryPoints }
+  const definition = FIRST_PARTY_APPS.find((candidate) => candidate.slug === app.slug)
+  if (!definition) return null
+  return { ...app, requestUrl: definition.requestPath, entryPoints: definition.entryPoints }
+}
+
+/**
  * 配送に使う署名シークレット。ファーストパーティ（Request URL がパス）は暗号鍵から毎回導くので、
  * 鍵を入れ替えた直後で保存値がまだ古い鍵の暗号文でも配送できる。外部アプリは保存値を復号する
  */

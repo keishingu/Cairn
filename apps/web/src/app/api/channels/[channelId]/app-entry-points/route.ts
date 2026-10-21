@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireRole } from '@/lib/permissions'
-import { ensureFirstPartyInstallations } from '@/lib/apps/first-party'
+import { ensureFirstPartyInstallations, forThisDeployment } from '@/lib/apps/first-party'
 import { isAppInChannel, isChannelArchived, parseEntryPoints, type EntryPoint } from '@/lib/apps/channel-apps'
 
 export interface AppEntryPointDto {
@@ -38,14 +38,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
     // 既定のインストールが欠けていたら補う（ワークスペース作成時に失敗した・本機能より前に作られたワークスペース）
     await ensureFirstPartyInstallations(ctx.workspaceId)
     const rows = await db
-      .select({ installationId: appInstallations.id, appName: apps.name, appIconUrl: apps.iconUrl, entryPoints: apps.entryPoints })
+      .select({ installationId: appInstallations.id, appName: apps.name, appIconUrl: apps.iconUrl, entryPoints: apps.entryPoints, slug: apps.slug, ownerWorkspaceId: apps.ownerWorkspaceId, requestUrl: apps.requestUrl })
       .from(appInstallations)
       .innerJoin(apps, eq(apps.id, appInstallations.appId))
       .where(and(eq(appInstallations.workspaceId, ctx.workspaceId), isNull(appInstallations.revokedAt)))
 
     const result = await Promise.all(
       rows
-        .map((row) => ({ ...row, entryPoints: parseEntryPoints(row.entryPoints) }))
+        // ファーストパーティはこのデプロイの定義の起動口を出す（このデプロイが知らないアプリは出さない）
+        .flatMap((found) => {
+          const row = forThisDeployment(found)
+          return row ? [{ ...row, entryPoints: parseEntryPoints(row.entryPoints) }] : []
+        })
         .filter((row) => row.entryPoints.length > 0)
         .map(async (row) => ({
           installationId: row.installationId,

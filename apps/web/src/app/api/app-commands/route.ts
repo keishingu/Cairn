@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { isAppInChannel, isChannelArchived, parseEntryPoints } from '@/lib/apps/channel-apps'
-import { resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
+import { forThisDeployment, resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
@@ -34,12 +34,14 @@ export async function POST(req: Request) {
   try {
     const { db, apps, appInstallations, channels, workspaces } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
-    const [row] = await db
+    const [found] = await db
       .select({
         installationId: appInstallations.id,
         workspaceId: appInstallations.workspaceId,
         revokedAt: appInstallations.revokedAt,
         appId: apps.id,
+        slug: apps.slug,
+        ownerWorkspaceId: apps.ownerWorkspaceId,
         requestUrl: apps.requestUrl,
         signingSecretEncrypted: apps.signingSecretEncrypted,
         entryPoints: apps.entryPoints,
@@ -48,6 +50,8 @@ export async function POST(req: Request) {
       .innerJoin(apps, eq(apps.id, appInstallations.appId))
       .where(eq(appInstallations.id, body.installationId))
       .limit(1)
+    // ファーストパーティはこのデプロイの定義（経路・起動口）で扱う
+    const row = found ? forThisDeployment(found) : null
     if (!row || row.workspaceId !== ctx.workspaceId) return NextResponse.json({ error: 'app_not_found' }, { status: 404 })
     if (row.revokedAt) return NextResponse.json({ error: 'app_uninstalled' }, { status: 409 })
     if (!parseEntryPoints(row.entryPoints).some((entry) => entry.command === body.command)) return NextResponse.json({ error: 'app_not_found' }, { status: 404 })

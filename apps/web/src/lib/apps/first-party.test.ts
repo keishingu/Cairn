@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { appBaseUrl, canSyncFirstPartyDefinitions, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl, resolveSigningSecret } from './first-party'
+import { appBaseUrl, canSyncFirstPartyDefinitions, firstPartySigningSecret, forThisDeployment, resolveRequestTarget, resolveRequestUrl, resolveSigningSecret } from './first-party'
 import { parseEntryPoints } from './channel-apps'
 
 const KEY = 'a'.repeat(64)
@@ -51,6 +51,14 @@ describe('ファーストパーティのアプリ', () => {
       if (before === undefined) delete process.env['CALENDAR_TOKEN_ENCRYPTION_KEY']
       else process.env['CALENDAR_TOKEN_ENCRYPTION_KEY'] = before
     }
+  })
+
+  it('ファーストパーティは DB の行ではなくこのデプロイの定義の経路・起動口を使い、知らないアプリは null にする', () => {
+    const stale = { slug: 'polls', ownerWorkspaceId: null, requestUrl: '/api/old-path', entryPoints: [{ command: '/old', label: 'Old' }] }
+    expect(forThisDeployment(stale)).toMatchObject({ requestUrl: '/api/first-party-apps/polls/interactions', entryPoints: [{ command: '/poll' }] })
+    expect(forThisDeployment({ slug: 'unknown', ownerWorkspaceId: null, requestUrl: '/x', entryPoints: [] })).toBeNull()
+    const external = { slug: 'ext', ownerWorkspaceId: 'w1', requestUrl: 'https://app.example.org/i', entryPoints: [] }
+    expect(forThisDeployment(external)).toMatchObject({ requestUrl: 'https://app.example.org/i' })
   })
 
   it('署名シークレットは暗号鍵とアプリごとに決まり、鍵が無ければ例外にする', () => {
