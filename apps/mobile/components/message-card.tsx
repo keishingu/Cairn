@@ -6,6 +6,7 @@
 import React from 'react'
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
+  cardActionErrorMessage,
   mrkdwnToPlainText,
   normalizeMessageBlocks,
   parseMrkdwn,
@@ -28,7 +29,7 @@ type CardContext = {
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
-  onAction: ((action: CardAction) => void) | undefined
+  onAction: ((action: CardAction) => void | Promise<void>) | undefined
 }
 
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
@@ -47,12 +48,33 @@ export function MessageCard({
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
-  /** 未指定なら操作できない表示にする。インタラクションの送信を実装するまでの間のため */
-  onAction?: (action: CardAction) => void
+  /**
+   * 未指定なら操作できない表示にする。Promise を返したら終わるまでカードの操作を止め、
+   * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
+   */
+  onAction?: (action: CardAction) => void | Promise<void>
 }) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
-  const context: CardContext = { palette, mentionNames, onLinkPress, onAction }
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const run = React.useMemo(() => {
+    if (!onAction) return undefined
+    return async (action: CardAction) => {
+      setBusy(true)
+      setActionError(null)
+      try {
+        await onAction(action)
+      } catch (err) {
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+        setActionError(t(cardActionErrorMessage(code)))
+      } finally {
+        setBusy(false)
+      }
+    }
+  }, [onAction, t])
+  // 送信中は同じカードの操作を止め、二重に押させない
+  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run }
 
   if (card.nothingRenderable) {
     return (
@@ -64,10 +86,15 @@ export function MessageCard({
   }
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessibilityState={{ busy }}>
       {card.blocks.map((block) => (
         <CardBlock key={block.blockId} block={block} context={context} />
       ))}
+      {actionError && (
+        <Text accessibilityRole="alert" style={[styles.smallText, { color: palette.redText }]}>
+          {actionError}
+        </Text>
+      )}
     </View>
   )
 }

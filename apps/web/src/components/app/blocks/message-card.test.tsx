@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import {
   MESSAGE_BLOCK_FIXTURES,
@@ -118,6 +118,19 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getByRole('combobox')).toHaveValue('yes')
     rerender(<MessageCard blocks={select('no')} fallbackText="" onAction={vi.fn()} />)
     expect(screen.getByRole('combobox')).toHaveValue('no')
+  })
+
+  it('送信中は同じカードの操作を止め、失敗したらカードの下にエラーを出す', async () => {
+    let reject: (err: unknown) => void = () => {}
+    const onAction = vi.fn(() => new Promise<void>((_, rej) => { reject = rej }))
+    render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!)
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).toBeDisabled()
+
+    await act(async () => reject(Object.assign(new Error('x'), { code: 'app_timeout' })))
+    expect(screen.getByRole('alert')).toHaveTextContent('アプリが応答しませんでした。もう一度お試しください。')
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
   it('URL ボタンは新しいタブで開くリンクにする', () => {

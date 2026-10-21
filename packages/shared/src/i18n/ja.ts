@@ -1285,4 +1285,9 @@ export const JA_MESSAGES: Record<string, string> = {
   'This card cannot be shown in this version. Update the app to see it.': 'このカードはこのバージョンでは表示できません。アプリを更新すると表示されます。',
   'This part of the card cannot be shown in this version. Update the app to see it.': 'カードのこの部分はこのバージョンでは表示できません。アプリを更新すると表示されます。',
   'Could not load the image: {alt}': '画像を読み込めませんでした：{alt}',
+  'The app did not respond. Please try again.': 'アプリが応答しませんでした。もう一度お試しください。',
+  'This app has been uninstalled.': 'このアプリはアンインストールされています。',
+  'This app has been removed from this channel.': 'このアプリはチャンネルから外されています。',
+  'This action is no longer available.': 'この操作は使えなくなりました。',
+  'Could not send the action. Please try again.': '操作を送れませんでした。もう一度お試しください。',
 }

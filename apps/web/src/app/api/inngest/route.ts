@@ -5,6 +5,7 @@ import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
 import {
   backfillThumbnails,
+  cleanupAppInteractionDeliveries,
   cleanupExpiredUploadRequests,
   chargeStorageRentDaily,
   deleteStorageObjects,
@@ -31,6 +32,7 @@ function resolveServeHost(): string | undefined {
 
 const fns = [
   backfillThumbnails,
+  cleanupAppInteractionDeliveries,
   cleanupExpiredUploadRequests,
   chargeStorageRentDaily,
   deleteStorageObjects,

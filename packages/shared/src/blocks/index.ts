@@ -4,3 +4,4 @@
 export * from './schema'
 export * from './mrkdwn'
 export * from './normalize'
+export * from './interaction-errors'

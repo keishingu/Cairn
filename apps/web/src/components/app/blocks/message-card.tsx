@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
+import { cardActionErrorMessage, normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Modal } from '@/components/app/primitives'
 import { MrkdwnView, RenderTextView } from './mrkdwn-view'
@@ -22,13 +22,33 @@ type MessageCardProps = {
   /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
   fallbackText: string
   mentionNames?: Map<string, string> | undefined
-  /** 未指定なら操作できない表示にする。インタラクションの送信を実装するまでの間と、閲覧専用の場面のため */
-  onAction?: ((action: CardAction) => void) | undefined
+  /**
+   * 未指定なら操作できない表示にする（閲覧専用の場面のため）。Promise を返したら終わるまでカードの操作を止め、
+   * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
+   */
+  onAction?: ((action: CardAction) => void | Promise<void>) | undefined
 }
 
 export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction }: MessageCardProps) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const run = React.useMemo(() => {
+    if (!onAction) return undefined
+    return async (action: CardAction) => {
+      setBusy(true)
+      setActionError(null)
+      try {
+        await onAction(action)
+      } catch (err) {
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+        setActionError(t(cardActionErrorMessage(code)))
+      } finally {
+        setBusy(false)
+      }
+    }
+  }, [onAction, t])
 
   if (card.nothingRenderable) {
     return (
@@ -40,10 +60,12 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
+    <div aria-busy={busy} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
       {card.blocks.map((block) => (
-        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={onAction} />
+        // 送信中は同じカードの操作を止め、二重に押させない
+        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} />
       ))}
+      {actionError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{actionError}</div>}
     </div>
   )
 })

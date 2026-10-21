@@ -282,7 +282,7 @@ Slack と同じ方式にする。
 | 手段 | 第1段階 | 用途 |
 |---|---|---|
 | `chat.update`（Bot トークン） | ○ | カード全体の更新（票数の反映） |
-| `response_url` への POST | ○ | `replace_original` でカード更新。有効期限30分・5回（Slack と同じ） |
+| `response_url` への POST | 後回し | `replace_original` でカード更新。有効期限30分・5回（Slack と同じ）。投票アプリは `chat.update` を使うので、外部アプリを公開する前に足す（Bolt の `respond()` が使う） |
 | `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は3秒・1回限り |
 | `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
 | エフェメラル（本人だけに見える）メッセージ | × | 後続。匿名投票を出すときの前提になる |
