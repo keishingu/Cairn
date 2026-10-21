@@ -14,6 +14,7 @@ const MESSAGES: Record<string, string> = {
   invalid_option: 'This action is no longer available.',
   message_not_found: 'This action is no longer available.',
   channel_archived: 'Apps cannot be used in an archived channel.',
+  user_not_found: 'You can no longer use this workspace.',
   channel_unavailable: 'This form can no longer be submitted to this channel.',
   view_changed: 'This form was updated by the app. Check the content and submit again.',
   view_submitting: 'This form is already being submitted.',

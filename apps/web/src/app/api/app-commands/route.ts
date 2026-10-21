@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { decryptToken } from '@/lib/token-crypto'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { isAppInChannel, isChannelArchived, parseEntryPoints } from '@/lib/apps/channel-apps'
 import { resolveRequestTarget } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   try {
-    const { db, apps, appInstallations, channels, workspaces, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+    const { db, apps, appInstallations, channels, workspaces } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
     const [row] = await db
       .select({
@@ -66,13 +66,8 @@ export async function POST(req: Request) {
 
     const [[workspace], [member]] = await Promise.all([
       db.select({ slug: workspaces.slug }).from(workspaces).where(eq(workspaces.id, ctx.workspaceId)).limit(1),
-      db
-        .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
-        .from(profiles)
-        // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら行が無くなり、下で断る
-        .innerJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
-        .where(eq(profiles.id, ctx.userId))
-        .limit(1),
+      // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら null になり、下で断る
+      getActiveMemberIdentity(ctx.workspaceId, ctx.userId).then((identity) => [identity]),
     ])
     // 認証の後にワークスペースや利用者が消えていたら、空の名前で署名付きのコマンドを届けない
     if (!workspace || !member) return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
