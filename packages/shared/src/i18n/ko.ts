@@ -1287,6 +1287,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load the image: {alt}': '이미지를 불러오지 못했습니다: {alt}',
   'The app did not respond. Please try again.': '앱이 응답하지 않았습니다. 다시 시도해 주세요.',
   'This card was updated. Check it and try again.': '이 카드가 업데이트되었습니다. 내용을 확인하고 다시 시도해 주세요.',
+  'You can no longer use this workspace.': '이 워크스페이스를 더 이상 사용할 수 없습니다.',
   'Apps cannot be used in an archived channel.': '보관된 채널에서는 앱을 사용할 수 없습니다.',
   'This app has been uninstalled.': '이 앱은 제거되었습니다.',
   'This app has been removed from this channel.': '이 앱은 채널에서 제외되었습니다.',

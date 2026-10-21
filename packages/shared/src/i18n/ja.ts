@@ -1287,6 +1287,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load the image: {alt}': '画像を読み込めませんでした：{alt}',
   'The app did not respond. Please try again.': 'アプリが応答しませんでした。もう一度お試しください。',
   'This card was updated. Check it and try again.': 'このカードは更新されました。内容を確認して、もう一度操作してください。',
+  'You can no longer use this workspace.': 'このワークスペースを利用できなくなりました。',
   'Apps cannot be used in an archived channel.': 'アーカイブ済みのチャンネルではアプリを使えません。',
   'This app has been uninstalled.': 'このアプリはアンインストールされています。',
   'This app has been removed from this channel.': 'このアプリはチャンネルから外されています。',

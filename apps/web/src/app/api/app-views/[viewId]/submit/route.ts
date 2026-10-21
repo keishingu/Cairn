@@ -8,7 +8,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { resolveBotChannel } from '@/lib/apps/web-api/channel-access'
 import { decryptToken } from '@/lib/token-crypto'
-import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
@@ -62,7 +62,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const validated = validateSubmission(view.view, values)
     if (!validated.ok) return NextResponse.json({ status: 'errors', errors: validated.errors }, { status: 422 })
 
-    const { db, appViews, workspaces, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+    const { db, appViews, workspaces } = await import('@cairn/db')
     const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
 
     // 届ける前に、この版のモーダルの送信を1つだけ確保する。同時に押された2つ目は届けない
@@ -86,13 +86,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const release = () => db.update(appViews).set({ submittingUntil: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
     const [[workspace], [member]] = await Promise.all([
       db.select({ slug: workspaces.slug }).from(workspaces).where(eq(workspaces.id, ctx.workspaceId)).limit(1),
-      db
-        .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
-        .from(profiles)
-        // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら行が無くなり、下で断る
-        .innerJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
-        .where(eq(profiles.id, ctx.userId))
-        .limit(1),
+      // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら null になり、下で断る
+      getActiveMemberIdentity(ctx.workspaceId, ctx.userId).then((identity) => [identity]),
     ])
     // 認証の後にワークスペースや利用者が消えていたら、空の名前で署名付きの送信を届けない
     if (!workspace || !member) {
