@@ -42,7 +42,10 @@ export function validateSubmission(view: unknown, submitted: SubmittedValues): S
   const errors: Record<string, FieldError> = Object.create(null)
   for (const block of inputBlocksOf(view)) {
     const { element } = block
-    const raw = submitted[block.block_id]?.[element.action_id]
+    // 送られた値は自分のプロパティだけを読む（継承した値を入力として扱わない）
+    const own = (record: unknown, key: string): unknown =>
+      typeof record === 'object' && record !== null && Object.prototype.hasOwnProperty.call(record, key) ? (record as Record<string, unknown>)[key] : undefined
+    const raw = own(own(submitted, block.block_id), element.action_id)
     const value = typeof raw === 'string' && raw.length > 0 ? raw : null
     if (value === null && !block.optional) {
       errors[block.block_id] = { code: 'required' }
@@ -83,7 +86,7 @@ export function parseViewSubmissionResponse(body: string): AppViewResponse {
   const responseAction = (parsed as { response_action?: unknown })?.response_action
   if (responseAction === 'errors') {
     const raw = (parsed as { errors?: unknown }).errors
-    const errors: Record<string, FieldError> = {}
+    const errors: Record<string, FieldError> = Object.create(null)
     if (typeof raw === 'object' && raw !== null) {
       for (const [blockId, message] of Object.entries(raw)) {
         if (typeof message === 'string') errors[blockId] = { message: message.slice(0, 300) }

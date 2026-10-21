@@ -112,8 +112,14 @@ const mrkdwnText = (max: number) =>
 
 const textObject = (max: number) => z.discriminatedUnion('type', [plainText(max), mrkdwnText(max)])
 
-const blockId = z.string().min(1).max(BLOCK_LIMITS.blockId)
-const actionId = z.string().min(1).max(BLOCK_LIMITS.actionId)
+// JavaScript のオブジェクトのキーとして特別な意味を持つ名前（__proto__ や constructor など）は ID にさせない。
+// サーバー・Web・ネイティブで block_id / action_id をキーにした入れ物を作るため、どこかで1つでも普通のオブジェクトを使うと、
+// 値が抜けたり継承した値を読んだりする
+const RESERVED_IDS = new Set(['__proto__', ...Object.getOwnPropertyNames(Object.prototype)])
+const notReservedId = (id: string) => !RESERVED_IDS.has(id)
+const reservedIdMessage = 'この ID は使えません（__proto__ や constructor などオブジェクトの組み込みの名前）'
+const blockId = z.string().min(1).max(BLOCK_LIMITS.blockId).refine(notReservedId, reservedIdMessage)
+const actionId = z.string().min(1).max(BLOCK_LIMITS.actionId).refine(notReservedId, reservedIdMessage)
 
 const confirmSchema = z
   .object({
