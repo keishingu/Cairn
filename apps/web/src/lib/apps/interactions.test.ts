@@ -68,40 +68,46 @@ describe('block_actions のペイロード', () => {
 })
 
 describe('アプリへの配送', () => {
-  const okCheck = async (raw: string) => ({ ok: true as const, url: new URL(raw) })
+  const okCheck = async (raw: string) => ({ ok: true as const, url: new URL(raw), devLoopback: false })
+  type SendInput = Parameters<NonNullable<Parameters<typeof deliverToApp>[0]['send']>>[0]
 
   it('payload= の form で送り、受け取った側が Slack と同じ手順で署名を検証できる', async () => {
-    const fetchImpl = vi.fn<(url: unknown, init?: RequestInit) => Promise<Response>>(async () => new Response('', { status: 200 }))
-    const result = await deliverToApp({ requestUrl: 'https://app.example.com/i', signingSecret: 'secret', payload: { type: 'block_actions' }, fetchImpl: fetchImpl as unknown as typeof fetch, checkUrl: okCheck })
+    const send = vi.fn(async (_input: SendInput) => ({ status: 200, body: '' }))
+    const result = await deliverToApp({ requestUrl: 'https://app.example.com/i', signingSecret: 'secret', payload: { type: 'block_actions' }, send, checkUrl: okCheck })
     expect(result).toMatchObject({ status: 'delivered', httpStatus: 200 })
 
-    const init = fetchImpl.mock.calls[0]![1]!
-    const headers = init.headers as Record<string, string>
-    expect(init.redirect).toBe('manual')
-    expect(new URLSearchParams(String(init.body)).get('payload')).toBe('{"type":"block_actions"}')
-    expect(verifyRequestSignature({ signingSecret: 'secret', timestamp: headers['X-Slack-Request-Timestamp']!, signature: headers['X-Slack-Signature']!, body: String(init.body) })).toBe(true)
+    const input = send.mock.calls[0]![0]
+    expect(input.timeoutMs).toBe(3000)
+    expect(input.allowLoopback).toBe(false)
+    expect(new URLSearchParams(input.body).get('payload')).toBe('{"type":"block_actions"}')
+    expect(verifyRequestSignature({ signingSecret: 'secret', timestamp: input.headers['X-Slack-Request-Timestamp']!, signature: input.headers['X-Slack-Signature']!, body: input.body })).toBe(true)
   })
 
-  it('2xx 以外とリダイレクトは失敗、時間切れは timeout として返す', async () => {
-    const redirect = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'http://10.0.0.1/' } }))
-    await expect(deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, fetchImpl: redirect as unknown as typeof fetch, checkUrl: okCheck })).resolves.toMatchObject({ status: 'failed', httpStatus: 302 })
+  it('2xx 以外（リダイレクトを含む）は失敗、時間切れは timeout、接続時に内部アドレスと分かれば blocked にする', async () => {
+    const redirect = async () => ({ status: 302, body: '' })
+    await expect(deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, send: redirect, checkUrl: okCheck })).resolves.toMatchObject({ status: 'failed', httpStatus: 302 })
 
-    const timeout = vi.fn(async () => {
+    const timeout = async () => {
       throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })
-    })
-    await expect(deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, fetchImpl: timeout as unknown as typeof fetch, checkUrl: okCheck })).resolves.toMatchObject({ status: 'timeout' })
+    }
+    await expect(deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, send: timeout, checkUrl: okCheck })).resolves.toMatchObject({ status: 'timeout' })
+
+    const rebound = async () => {
+      throw Object.assign(new Error('Request URL が内部のアドレスを指しています'), { code: 'EBLOCKEDADDRESS' })
+    }
+    await expect(deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, send: rebound, checkUrl: okCheck })).resolves.toMatchObject({ status: 'blocked' })
   })
 
   it('送り先の検証に通らなければ送らずに blocked にする', async () => {
-    const fetchImpl = vi.fn()
+    const send = vi.fn()
     const result = await deliverToApp({
       requestUrl: 'https://internal.example.com',
       signingSecret: 's',
       payload: {},
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      send,
       checkUrl: async () => ({ ok: false, reason: 'Request URL が内部のアドレスを指しています' }),
     })
     expect(result).toMatchObject({ status: 'blocked', error: 'Request URL が内部のアドレスを指しています' })
-    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 })

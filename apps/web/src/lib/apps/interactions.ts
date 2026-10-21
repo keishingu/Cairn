@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomUUID } from 'node:crypto'
-import { checkRequestUrl } from './request-url'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
+import { checkRequestUrl, guardedLookup } from './request-url'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, signRequest } from './signing'
 
 // Slack と同じく3秒。リトライはしない（応答が失われた場合は利用者がやり直し、アプリは interaction_id で重複を除く。§5.4）
@@ -97,15 +99,53 @@ export type DeliveryResult =
   | { status: 'delivered'; httpStatus: number; durationMs: number; body: string }
   | { status: 'failed' | 'timeout' | 'blocked'; httpStatus: number | null; durationMs: number; error: string }
 
+/** 送信の実体。テストでは差し替える */
+export type Sender = (input: {
+  url: URL
+  headers: Record<string, string>
+  body: string
+  timeoutMs: number
+  allowLoopback: boolean
+}) => Promise<{ status: number; body: string }>
+
 /**
- * 署名して Request URL へ送る。リダイレクトは追わない（検証した送り先から内部のアドレスへ飛ばされないように）。
- * 名前解決の検証と実際の接続の間に DNS が差し替わる余地は残る。外部アプリを公開する第2段階で、検証済みアドレスへの接続に固定する
+ * node:http(s) で送る。接続時の名前解決（guardedLookup）で内部アドレスを拒否するので、
+ * checkRequestUrl の後に DNS を差し替えられても内部へは接続しない。リダイレクトは追わない（request は追わない）
  */
+const nodeSender: Sender = ({ url, headers, body, timeoutMs, allowLoopback }) =>
+  new Promise((resolve, reject) => {
+    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+      url,
+      { method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(body).toString() }, lookup: guardedLookup(allowLoopback), timeout: timeoutMs },
+      (response) => {
+        const chunks: Buffer[] = []
+        let size = 0
+        response.on('data', (chunk: Buffer) => {
+          // 応答は view などの小さな JSON だけを想定する。大きな応答で関数のメモリを使い切らせない
+          size += chunk.length
+          if (size <= MAX_RESPONSE_BYTES) chunks.push(chunk)
+        })
+        response.on('end', () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }))
+        response.on('error', reject)
+      },
+    )
+    // timeout オプションは無通信の時間しか見ないため、少しずつ返し続ける相手にも全体で打ち切る
+    const abort = () => request.destroy(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }))
+    const timer = setTimeout(abort, timeoutMs)
+    request.on('timeout', abort)
+    request.on('close', () => clearTimeout(timer))
+    request.on('error', reject)
+    request.end(body)
+  })
+
+const MAX_RESPONSE_BYTES = 256 * 1024
+
+/** 署名して Request URL へ送る */
 export async function deliverToApp(input: {
   requestUrl: string
   signingSecret: string
   payload: unknown
-  fetchImpl?: typeof fetch
+  send?: Sender
   checkUrl?: typeof checkRequestUrl
 }): Promise<DeliveryResult> {
   const started = Date.now()
@@ -116,23 +156,24 @@ export async function deliverToApp(input: {
   const body = new URLSearchParams({ payload: JSON.stringify(input.payload) }).toString()
   const timestamp = Math.floor(Date.now() / 1000)
   try {
-    const response = await (input.fetchImpl ?? fetch)(check.url, {
-      method: 'POST',
+    const response = await (input.send ?? nodeSender)({
+      url: check.url,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         [TIMESTAMP_HEADER]: String(timestamp),
         [SIGNATURE_HEADER]: signRequest(input.signingSecret, timestamp, body),
       },
       body,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(INTERACTION_TIMEOUT_MS),
+      timeoutMs: INTERACTION_TIMEOUT_MS,
+      allowLoopback: check.devLoopback,
     })
     const durationMs = Date.now() - started
-    const text = await response.text().catch(() => '')
-    if (response.status >= 200 && response.status < 300) return { status: 'delivered', httpStatus: response.status, durationMs, body: text }
+    if (response.status >= 200 && response.status < 300) return { status: 'delivered', httpStatus: response.status, durationMs, body: response.body }
     return { status: 'failed', httpStatus: response.status, durationMs, error: `HTTP ${response.status}` }
   } catch (err) {
     const durationMs = Date.now() - started
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code === 'EBLOCKEDADDRESS') return { status: 'blocked', httpStatus: null, durationMs, error: (err as Error).message }
     const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
     return { status: timedOut ? 'timeout' : 'failed', httpStatus: null, durationMs, error: err instanceof Error ? err.message : String(err) }
   }
