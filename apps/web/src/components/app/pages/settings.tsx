@@ -1419,54 +1419,6 @@ const SettingsAI = () => {
         <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
       )}
     </section>
-
-    <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Behavior')}</h2>
-      <div className="card">
-        {[
-          { l: t('Summarize files automatically on upload'), s: 'PDF / XLSX / GPX', on: true },
-          { l: t('Generate a dashboard summary automatically'), s: t('Daily at 7:00 / 22:00'), on: true },
-          { l: t('Detect hazards and notify'), s: t('Weather, distress reports, and missing gear'), on: false },
-        ].map((r, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              padding: '14px 16px',
-              borderBottom: i < 3 ? '1px solid var(--divider)' : 'none',
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{r.l}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{r.s}</div>
-            </div>
-            <Toggle on={r.on} />
-          </div>
-        ))}
-      </div>
-    </section>
-
-    <section>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
-      <textarea
-        defaultValue={t('As an assistant for alpine club activities, put safety first and make specific suggestions from plans, gear, and weather.')}
-        rows={5}
-        style={{
-          width: '100%',
-          padding: 12,
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          background: 'var(--card)',
-          color: 'var(--text)',
-          fontSize: 13,
-          fontFamily: 'inherit',
-          resize: 'vertical',
-          outline: 'none',
-        }}
-      />
-    </section>
   </div>
   )
 }
