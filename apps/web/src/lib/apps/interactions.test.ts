@@ -72,7 +72,7 @@ describe('アプリへの配送', () => {
   type SendInput = Parameters<NonNullable<Parameters<typeof deliverToApp>[0]['send']>>[0]
 
   it('payload= の form で送り、受け取った側が Slack と同じ手順で署名を検証できる', async () => {
-    const send = vi.fn(async (_input: SendInput) => ({ status: 200, body: '' }))
+    const send = vi.fn<(input: SendInput) => Promise<{ status: number; body: string }>>(async () => ({ status: 200, body: '' }))
     const result = await deliverToApp({ requestUrl: 'https://app.example.com/i', signingSecret: 'secret', payload: { type: 'block_actions' }, send, checkUrl: okCheck })
     expect(result).toMatchObject({ status: 'delivered', httpStatus: 200 })
 
