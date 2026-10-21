@@ -28,6 +28,14 @@ export interface LinkedTaskDto {
   lineIndex: number | null
 }
 
+// アプリ（Bot）が送信者のときの表示情報。人間の送信者なら null
+export interface SenderAppDto {
+  name: string
+  iconUrl: string | null
+  /** インストールが取り消し済み。過去のメッセージの送信者表示は残すため、表示で区別する */
+  uninstalled: boolean
+}
+
 export interface MessageDto {
   id: string
   content: string
@@ -51,4 +59,9 @@ export interface MessageDto {
   /** このメッセージをタスク化したタスク（作成順）。無ければ空配列 */
   linkedTasks: LinkedTaskDto[]
   blocked?: boolean
+  /** messageType が blocks のときのカード本体（ボタンの value は含めない）。それ以外は null */
+  blocks?: unknown[] | null
+  /** カード内のメンションの userId → 表示名（非活性のメンバーも含む）。blocks のメッセージだけ */
+  mentionNames?: Record<string, string>
+  senderApp?: SenderAppDto | null
 }

@@ -214,7 +214,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [queryClient, userId, scheduleListInvalidate])
 
-  // ─── チャンネルトピック（messages / message_reactions）─────────
+  // ─── チャンネルトピック（messages / message_reactions / message_blocks）─────────
   // 一覧の変化に追従して join/leave を差分反映する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
@@ -245,7 +245,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
-          } else if (table === 'message_reactions') {
+          } else if (table === 'message_reactions' || table === 'message_blocks') {
+            // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           } else if (table === 'tasks') {
             void queryClient.invalidateQueries({ queryKey: ['tasks'] })
