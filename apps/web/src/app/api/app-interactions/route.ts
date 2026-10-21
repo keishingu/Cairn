@@ -101,12 +101,14 @@ export async function POST(req: Request) {
         .where(eq(profiles.id, ctx.userId))
         .limit(1),
     ])
+    // 認証の後にワークスペースや利用者が消えていたら、空の名前で署名付きの操作を届けない（別人・削除済みとして処理させない）
+    if (!workspace || !member) return error('user_not_found', 404)
 
     const interactionId = newInteractionId()
     const payload = buildBlockActionsPayload(
       {
-        workspace: { id: ctx.workspaceId, slug: workspace?.slug ?? '' },
-        user: { id: ctx.userId, name: member?.name ?? '' },
+        workspace: { id: ctx.workspaceId, slug: workspace.slug },
+        user: { id: ctx.userId, name: member.name },
         appId: row.appId,
         channel: { id: row.channelId, name: row.channelName },
         message: { id: row.messageId, text: row.content, botProfileId: row.senderId, installationId: row.installationId, blocks: row.blocks },

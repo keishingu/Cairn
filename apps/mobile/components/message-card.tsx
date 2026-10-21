@@ -25,11 +25,17 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
+/** カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため） */
+type CardRun = (action: CardAction) => Promise<boolean>
+
+/** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
+const CARD_UPDATE_WAIT_MS = 8000
+
 type CardContext = {
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
-  onAction: ((action: CardAction) => void | Promise<void>) | undefined
+  onAction: CardRun | undefined
 }
 
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
@@ -58,7 +64,16 @@ export function MessageCard({
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
-  const run = React.useMemo(() => {
+  const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopWaiting = React.useCallback(() => {
+    if (waitTimer.current) clearTimeout(waitTimer.current)
+    waitTimer.current = null
+    setBusy(false)
+  }, [])
+  // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  React.useEffect(() => stopWaiting(), [blocks, stopWaiting])
+  React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
+  const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
     return async (action: CardAction) => {
       setBusy(true)
@@ -68,11 +83,16 @@ export function MessageCard({
       } catch (err) {
         const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
         setActionError(t(cardActionErrorMessage(code)))
-      } finally {
-        setBusy(false)
+        stopWaiting()
+        return false
       }
+      // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
+      // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
+      if (waitTimer.current) clearTimeout(waitTimer.current)
+      waitTimer.current = setTimeout(stopWaiting, CARD_UPDATE_WAIT_MS)
+      return true
     }
-  }, [onAction, t])
+  }, [onAction, t, stopWaiting])
   // 送信中は同じカードの操作を止め、二重に押させない
   const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run }
 
@@ -176,7 +196,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
             const url = element.url
             confirmThen(element.confirm, mentionResolver(context, t), () => {
               if (url) onLinkPress(url)
-              else onAction?.({ type: 'button', blockId, actionId: element.actionId })
+              else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
             })
           }}
           style={({ pressed }) => [
@@ -240,8 +260,12 @@ function CardSelect({
                   onPress={() => {
                     setOpen(false)
                     confirmThen(element.confirm, mentionResolver(context, t), () => {
+                      const previous = selected
                       setSelected(option.value)
-                      onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value })
+                      // 届かなかった選択を、選んだまま見せない（アプリは受け取っていない）
+                      void onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value }).then((ok) => {
+                        if (!ok) setSelected(previous)
+                      })
                     })
                   }}
                   style={({ pressed }) => [styles.sheetOption, pressed && { backgroundColor: palette.cardHover }]}

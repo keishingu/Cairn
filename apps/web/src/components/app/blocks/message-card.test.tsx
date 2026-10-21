@@ -133,6 +133,34 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
+  it('届いた後もカードの書き換えが来るまで操作を止め、書き換えが来たら新しいカードを操作できる', async () => {
+    const onAction = vi.fn(() => Promise.resolve())
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).toBeDisabled()
+
+    rerender(<MessageCard blocks={JSON.parse(JSON.stringify(pollCardFixture))} fallbackText="" onAction={onAction} />)
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
+  })
+
+  it('届かなかった選択は元の選択に戻す', async () => {
+    const blocks = [{
+      type: 'actions',
+      block_id: 'b',
+      elements: [{
+        type: 'static_select',
+        action_id: 'pick',
+        options: [{ text: { type: 'plain_text', text: '参加' }, value: 'yes' }, { text: { type: 'plain_text', text: '不参加' }, value: 'no' }],
+        initial_option: { text: { type: 'plain_text', text: '参加' }, value: 'yes' },
+      }],
+    }]
+    const onAction = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'app_timeout' })))
+    render(<MessageCard blocks={blocks} fallbackText="" onAction={onAction} />)
+    await act(async () => { fireEvent.change(screen.getByRole('combobox'), { target: { value: 'no' } }) })
+    expect(screen.getByRole('combobox')).toHaveValue('yes')
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
   it('URL ボタンは新しいタブで開くリンクにする', () => {
     render(<MessageCard blocks={allElementsFixture} fallbackText="" />)
     const link = screen.getByRole('link', { name: '外部リンク' })

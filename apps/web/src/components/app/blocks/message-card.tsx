@@ -17,6 +17,12 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
+/** カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため） */
+type CardRun = (action: CardAction) => Promise<boolean>
+
+/** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
+const CARD_UPDATE_WAIT_MS = 8000
+
 type MessageCardProps = {
   blocks: unknown
   /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
@@ -34,7 +40,16 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
-  const run = React.useMemo(() => {
+  const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopWaiting = React.useCallback(() => {
+    if (waitTimer.current) clearTimeout(waitTimer.current)
+    waitTimer.current = null
+    setBusy(false)
+  }, [])
+  // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  React.useEffect(() => stopWaiting(), [blocks, stopWaiting])
+  React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
+  const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
     return async (action: CardAction) => {
       setBusy(true)
@@ -44,11 +59,16 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
       } catch (err) {
         const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
         setActionError(t(cardActionErrorMessage(code)))
-      } finally {
-        setBusy(false)
+        stopWaiting()
+        return false
       }
+      // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
+      // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
+      if (waitTimer.current) clearTimeout(waitTimer.current)
+      waitTimer.current = setTimeout(stopWaiting, CARD_UPDATE_WAIT_MS)
+      return true
     }
-  }, [onAction, t])
+  }, [onAction, t, stopWaiting])
 
   if (card.nothingRenderable) {
     return (
@@ -70,7 +90,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   )
 })
 
-function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
   switch (block.type) {
     case 'header':
       return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
@@ -114,14 +134,14 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
   }
 }
 
-function CardElement({ element, blockId, mentionNames, onAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardElement({ element, blockId, mentionNames, onAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
   switch (element.type) {
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
       // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
       const activate = element.url
         ? () => { window.open(element.url, '_blank', 'noopener,noreferrer') }
-        : () => onAction?.({ type: 'button', blockId, actionId: element.actionId })
+        : () => { void onAction?.({ type: 'button', blockId, actionId: element.actionId }) }
       return (
         <ConfirmGate confirm={element.confirm} mentionNames={mentionNames} onConfirmed={activate}>
           {(request) => element.url && !element.confirm ? (
@@ -144,13 +164,15 @@ function CardElement({ element, blockId, mentionNames, onAction }: { element: Re
   }
 }
 
-function CardSelect({ element, blockId, mentionNames, onAction }: { element: Extract<RenderElement, { type: 'static_select' }>; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardSelect({ element, blockId, mentionNames, onAction }: { element: Extract<RenderElement, { type: 'static_select' }>; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
   const t = useT()
   const [value, setValue] = React.useState(element.initialValue ?? '')
   const [pending, setPending] = React.useState<string | null>(null)
-  const commit = (next: string) => {
+  const commit = async (next: string) => {
+    const previous = value
     setValue(next)
-    onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: next })
+    // 届かなかった選択を、選んだまま見せない（アプリは受け取っていない）
+    if ((await onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: next })) === false) setValue(previous)
   }
   return (
     <>
@@ -158,7 +180,7 @@ function CardSelect({ element, blockId, mentionNames, onAction }: { element: Ext
         aria-label={element.placeholder ?? t('Choose an option')}
         disabled={!onAction}
         value={value}
-        onChange={(event) => (element.confirm ? setPending(event.target.value) : commit(event.target.value))}
+        onChange={(event) => (element.confirm ? setPending(event.target.value) : void commit(event.target.value))}
         style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
       >
         {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
@@ -170,7 +192,7 @@ function CardSelect({ element, blockId, mentionNames, onAction }: { element: Ext
         ))}
       </select>
       {element.confirm && pending !== null && (
-        <CardConfirmDialog confirm={element.confirm} mentionNames={mentionNames} onConfirm={() => { commit(pending); setPending(null) }} onClose={() => setPending(null)} />
+        <CardConfirmDialog confirm={element.confirm} mentionNames={mentionNames} onConfirm={() => { void commit(pending); setPending(null) }} onClose={() => setPending(null)} />
       )}
     </>
   )
