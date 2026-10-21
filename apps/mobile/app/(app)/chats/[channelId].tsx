@@ -70,6 +70,8 @@ import type { MentionSelection } from '../../../lib/mobile-chat-state'
 import {
   useChannelMembers,
   useCreateWorkspaceDm,
+  myBlocksQueryKey,
+  useMyBlocks,
   useProjectMembers,
   useWorkspaceChannels,
   useWorkspaceDms,
@@ -633,6 +635,8 @@ export default function ChatThreadScreen() {
   const [profileTarget, setProfileTarget] = React.useState<ProfileSheetTarget | null>(null)
   const [profilePending, setProfilePending] = React.useState<ProfileSheetAction | null>(null)
   const [profileError, setProfileError] = React.useState<string | null>(null)
+  // メッセージの blocked はどちら向きのブロックでも立つため、解除できるかは自分のブロック一覧で判定する
+  const myBlocks = useMyBlocks(!!profileTarget)
   const composerInputRef = React.useRef<TextInput>(null)
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
@@ -857,7 +861,7 @@ export default function ChatThreadScreen() {
       return true
     })
     return () => subscription.remove()
-  }, [actionTarget, attachmentPreview, goBackToList, isFocused, reactionPeople, reactionTarget])
+  }, [actionTarget, attachmentPreview, goBackToList, isFocused, profilePending, profileTarget, reactionPeople, reactionTarget])
 
   // タブ内のフォーカスが保たれたままアプリがバックグラウンド・ロックされた場合も
   // navigation の focus/blur は発火しない。AppState でアプリ自体の前面状態も見る
@@ -903,6 +907,9 @@ export default function ChatThreadScreen() {
     setReactionTarget(null)
     setReactionPeople(null)
     setAttachmentPreview(null)
+    setProfileTarget(null)
+    setProfilePending(null)
+    setProfileError(null)
     setSelection({ start: 0, end: 0 })
     mentionSelectionsRef.current = []
     upload.clearUploads()
@@ -1169,7 +1176,7 @@ export default function ChatThreadScreen() {
       t('Could not block this user'),
     )
     if (error) return error
-    await messagesQuery.refetch()
+    await Promise.all([messagesQuery.refetch(), queryClient.invalidateQueries({ queryKey: myBlocksQueryKey })])
     Alert.alert(t('User blocked'))
     return null
   }
@@ -1239,12 +1246,14 @@ export default function ChatThreadScreen() {
     ? workspaceMembers.data?.find((member) => member.userId === profileTarget.userId)
     : undefined
   const profileNotMember = !!profileTarget && !!workspaceMembers.data && !profileMember
-  const profileMembersError = workspaceMembers.error ? workspaceMembers.error.message : null
+  const profileMembersError = workspaceMembers.error ? workspaceMembers.error.message : myBlocks.error ? myBlocks.error.message : null
+  const profileBlockedByMe =
+    profileTarget && myBlocks.data ? myBlocks.data.some((block) => block.userId === profileTarget.userId) : null
   const profileActions = profileTarget
     ? profileSheetActions({
         meId: me?.id,
         targetId: profileTarget.userId,
-        blocked: profileTarget.blocked,
+        blockedByMe: profileBlockedByMe,
         isActiveMember: workspaceMembers.data ? !profileNotMember : null,
         // 相手との DM を開いている最中に同じ DM へ移動する操作は出さない
         dmEnabled: FEATURE_FLAGS.dm && channelType !== 'dm',
@@ -1317,7 +1326,7 @@ export default function ChatThreadScreen() {
           t('Could not unblock the user'),
         )
         if (error) return error
-        await messagesQuery.refetch()
+        await Promise.all([messagesQuery.refetch(), queryClient.invalidateQueries({ queryKey: myBlocksQueryKey })])
         Alert.alert(t('User unblocked'))
         return null
       })
@@ -2009,10 +2018,14 @@ export default function ChatThreadScreen() {
         <UserProfileSheet
           target={profileTarget}
           member={profileMember}
-          membersLoading={workspaceMembers.isLoading}
+          blockedByMe={profileBlockedByMe === true}
+          membersLoading={workspaceMembers.isLoading || myBlocks.isLoading}
           membersError={profileMembersError}
           notMember={profileNotMember}
-          onRetryMembers={() => void workspaceMembers.refetch()}
+          onRetryMembers={() => {
+            if (workspaceMembers.error) void workspaceMembers.refetch()
+            if (myBlocks.error) void myBlocks.refetch()
+          }}
           actions={profileActions}
           pendingAction={profilePending}
           actionError={profileError}

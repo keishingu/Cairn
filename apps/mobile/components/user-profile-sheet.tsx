@@ -15,8 +15,10 @@ interface Props {
   target: ProfileSheetTarget | null
   /** ワークスペースメンバー一覧から引いた相手。一覧が未取得・取得失敗なら undefined */
   member: WorkspaceMemberDto | undefined
+  /** 自分が相手をブロックしているか（自分のブロック一覧から判定） */
+  blockedByMe: boolean
   membersLoading: boolean
-  /** メンバー一覧を取得できなかったときの理由 */
+  /** メンバー一覧・ブロック一覧を取得できなかったときの理由 */
   membersError: string | null
   /** 一覧は取得できたが相手が有効なメンバーにいない */
   notMember: boolean
@@ -42,6 +44,7 @@ const ACTION_ICON: Record<ProfileSheetAction, IoniconName> = {
 export function UserProfileSheet({
   target,
   member,
+  blockedByMe,
   membersLoading,
   membersError,
   notMember,
@@ -96,7 +99,7 @@ export function UserProfileSheet({
                 {roleLabel && (
                   <Text style={[styles.roleBadge, { backgroundColor: palette.card2, color: palette.text3 }]}>{roleLabel}</Text>
                 )}
-                {target.blocked && (
+                {blockedByMe && (
                   <Text style={[styles.blockedLabel, { color: palette.redText }]}>{t('You have blocked this user')}</Text>
                 )}
               </View>

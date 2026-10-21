@@ -334,6 +334,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load billing': '결제 정보를 불러오지 못했습니다',
   'Could not load billing information': '결제 정보를 불러오지 못했습니다',
   'Could not load blocked users': '차단한 사용자를 불러올 수 없습니다',
+  'Could not load blocked users ({status})': '차단한 사용자를 불러오지 못했습니다 ({status})',
   'Could not load Cairn': 'Cairn을 불러오지 못했습니다',
   'Could not load channels': '채널을 불러오지 못했습니다',
   'Could not load channel members ({status})': '채널 멤버를 불러오지 못했습니다 ({status})',

@@ -5,8 +5,6 @@ export interface ProfileSheetTarget {
   userId: string
   displayName: string
   avatarUrl: string | null
-  /** 自分がブロック済みか（メッセージの blocked フラグ由来） */
-  blocked: boolean
 }
 
 export interface ProfileSheetSource {
@@ -14,7 +12,6 @@ export interface ProfileSheetSource {
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
-  blocked?: boolean
 }
 
 /** システムメッセージには送信者がいないため、プロフィールシートを開かない */
@@ -24,7 +21,6 @@ export function profileSheetTargetFromMessage(message: ProfileSheetSource): Prof
     userId: message.senderId,
     displayName: message.senderName,
     avatarUrl: message.senderAvatarUrl,
-    blocked: message.blocked === true,
   }
 }
 
@@ -33,7 +29,11 @@ export type ProfileSheetAction = 'dm' | 'mention' | 'block' | 'unblock'
 export interface ProfileSheetActionInput {
   meId: string | null | undefined
   targetId: string
-  blocked: boolean
+  /**
+   * 自分が相手をブロックしているか（自分のブロック一覧から判定）。未取得・取得失敗なら null。
+   * メッセージの blocked フラグは相手からのブロックでも立つため、向きの判定に使わない
+   */
+  blockedByMe: boolean | null
   /** ワークスペースメンバー一覧に相手がいるか。一覧が未取得・取得失敗なら null（判定せずサーバーに委ねる） */
   isActiveMember: boolean | null
   dmEnabled: boolean
@@ -46,15 +46,17 @@ export interface ProfileSheetActionInput {
  * - 自分自身には操作を出さない（自分のIDが未取得のときも誤操作を避けて出さない）
  * - 有効なメンバーではない相手には DM・メンションを出さない（サーバーも 422 で拒否する）
  * - ブロック中の相手とは DM できない（サーバーが 403）。代わりに解除を出す
+ * - ブロック状態が分からないうちは DM・ブロック・解除を出さない（誤った操作を出さない）
  */
 export function profileSheetActions(input: ProfileSheetActionInput): ProfileSheetAction[] {
   if (!input.meId || input.meId === input.targetId) return []
   const actions: ProfileSheetAction[] = []
   const notMember = input.isActiveMember === false
-  if (input.dmEnabled && !input.blocked && !notMember) actions.push('dm')
+  const blockKnown = input.blockedByMe !== null
+  if (input.dmEnabled && blockKnown && !input.blockedByMe && !notMember) actions.push('dm')
   if (input.canMention && !notMember) actions.push('mention')
-  if (input.blocked) actions.push('unblock')
-  else if (!notMember) actions.push('block')
+  if (input.blockedByMe === true) actions.push('unblock')
+  else if (blockKnown && !notMember) actions.push('block')
   return actions
 }
 

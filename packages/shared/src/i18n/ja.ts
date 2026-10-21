@@ -334,6 +334,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load billing': '請求情報を取得できませんでした',
   'Could not load billing information': '請求情報の取得に失敗しました',
   'Could not load blocked users': 'ブロック済みユーザーを取得できません',
+  'Could not load blocked users ({status})': 'ブロック済みユーザーの取得に失敗しました ({status})',
   'Could not load Cairn': 'ケルンを取得できませんでした',
   'Could not load channels': 'チャンネルの取得に失敗しました',
   'Could not load channel members ({status})': 'チャンネルメンバーの取得に失敗しました ({status})',

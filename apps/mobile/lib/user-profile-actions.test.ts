@@ -4,7 +4,7 @@ import { canMentionUser, profileSheetActions, profileSheetTargetFromMessage } fr
 const base = {
   meId: 'me',
   targetId: 'u1',
-  blocked: false,
+  blockedByMe: false,
   isActiveMember: true,
   dmEnabled: true,
   canMention: true,
@@ -18,12 +18,7 @@ describe('profileSheetTargetFromMessage', () => {
       userId: 'u1',
       displayName: '山田',
       avatarUrl: null,
-      blocked: false,
     })
-  })
-
-  test('ブロック中の送信者は blocked を引き継ぐ', () => {
-    expect(profileSheetTargetFromMessage({ ...message, blocked: true })?.blocked).toBe(true)
   })
 
   test('システムメッセージは対象にしない', () => {
@@ -57,7 +52,11 @@ describe('profileSheetActions', () => {
   })
 
   test('ブロック済みなら DM とブロックの代わりに解除を出す', () => {
-    expect(profileSheetActions({ ...base, blocked: true })).toEqual(['mention', 'unblock'])
+    expect(profileSheetActions({ ...base, blockedByMe: true })).toEqual(['mention', 'unblock'])
+  })
+
+  test('ブロック状態が未取得なら DM・ブロック・解除を出さない', () => {
+    expect(profileSheetActions({ ...base, blockedByMe: null })).toEqual(['mention'])
   })
 
   test('有効なメンバーではない相手には何も出さない', () => {
@@ -69,7 +68,7 @@ describe('profileSheetActions', () => {
   })
 
   test('メンバーでなくてもブロック済みなら解除はできる', () => {
-    expect(profileSheetActions({ ...base, isActiveMember: false, blocked: true })).toEqual(['unblock'])
+    expect(profileSheetActions({ ...base, isActiveMember: false, blockedByMe: true })).toEqual(['unblock'])
   })
 })
 

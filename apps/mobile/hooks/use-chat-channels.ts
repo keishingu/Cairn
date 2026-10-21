@@ -83,6 +83,25 @@ export function useWorkspaceMembers() {
   })
 }
 
+export interface MyBlockDto {
+  userId: string
+  displayName: string
+  avatarUrl: string | null
+  createdAt: string
+}
+
+export const myBlocksQueryKey = ['me', 'blocks'] as const
+
+/** 自分がブロックしているユーザー（自分 → 相手の向きだけ） */
+export function useMyBlocks(enabled: boolean) {
+  const t = useT()
+  return useQuery<MyBlockDto[]>({
+    queryKey: myBlocksQueryKey,
+    queryFn: fetchJson('/api/me/blocks', t('Could not load blocked users ({status})')),
+    enabled,
+  })
+}
+
 export function useChannelMembers(channelId: string | null, enabled: boolean) {
   const t = useT()
   return useQuery<ChannelMemberDto[]>({
