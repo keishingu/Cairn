@@ -1,0 +1,421 @@
+# アプリ（プラグイン）基盤 設計書 — 第1段階
+
+作成日: 2026-10-21
+ステータス: 構想・設計段階（未実装。レビュー待ち）
+
+調整さん・アンケート・装備管理のような機能を Cairn 本体へ個別に作り込まず、**「Bot 送信者 + カード型メッセージ + インタラクションのコールバック」という汎用の仕組みに載る「アプリ」**として作るための基盤。第1段階では、既に設計済みのアプリ内投票（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §5.3〜§7）を**ファーストパーティのアプリとして**この基盤の上に作り、基盤を自分で使いながら固める。
+
+## 1. 位置づけと3段階
+
+| 段階 | 内容 | 本書での扱い |
+|---|---|---|
+| **1. 基盤 + 投票アプリ** | アプリ登録・インストール、Bot、Block Kit 互換カード、インタラクション。最初の利用者はファーストパーティの投票アプリ | **本書の範囲** |
+| 2. Slack 互換 API の公開 | 同じ基盤を外部へ公開する。全互換ではなく、Bolt for JS アプリが API の向き先差し替えだけで動く最小限 | §9 で範囲だけ示す |
+| 3. 「Cairn でログイン」（OIDC） | 外部アプリ（最初は Cloudflare 上の PWA で作る装備管理）が Cairn のユーザーとして利用者を識別する | §10 で位置づけだけ示す |
+
+設計の軸:
+
+- **ワイヤフォーマットは最初から Slack に合わせる**。カードは Block Kit のサブセット、インタラクションは Slack と同じペイロード形と署名（`X-Slack-Signature` v0）。第2段階で「中身を作り直す」のではなく「外へ開ける」だけにする
+- **ファーストパーティでも近道しない**。投票アプリは Cairn 内部の関数を直接呼ばず、外部アプリと同じ経路（署名付き HTTP、Bot として投稿・更新）を通る。近道すると第2段階で初めて基盤の欠陥が見つかる
+- **描画できるものだけを受け付ける**。サーバーは Web とネイティブの両方が描画できるブロックだけを受理する（§4.4）。バージョン連動の負担はこの規律で抑える
+
+### 既存設計との関係
+
+| 既存文書 | 関係 |
+|---|---|
+| [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 投票のデータモデル・権限・登山本部ユースケースは引き継ぐ。**`message_type` に `poll` を足す案は、汎用の `blocks` に置き換える**（§4.1）。定期ジョブの「Bot 送信者」は投票アプリの Bot になる（§7.4） |
+| [`10_ai_member_design.md`](./10_ai_member_design.md) | 未決事項「`auth.users` に紐づかない送信者の認証・RLS」は、本書の Bot profile（§3.2）で先に解く。AI メンバーも将来は同じ Bot 機構に載せられる。Stage 2 の「承認カード」はカード型メッセージで描ける |
+| [`mcp-server-design.md`](./mcp-server-design.md) | MCP の OAuth / PAT は**人間本人の代理**で、`resource` が `/api/mcp` に固定され REST の資格情報にならない。Bot トークンは**アプリ自身の身元**で、別系統として新設する（§3.3）。MCP の資格情報を流用しない |
+
+## 2. 用語
+
+| 用語 | 意味 | Slack の対応 |
+|---|---|---|
+| **アプリ** | 登録された外部（またはファーストパーティ）のプログラム。名前・アイコン・Request URL・署名シークレット・要求スコープを持つ | App |
+| **インストール** | アプリをワークスペースへ導入した状態。ワークスペースごとに Bot と Bot トークンを持つ | Installation |
+| **Bot** | インストールごとに作られる送信者 profile。人間のメンバーではない | Bot user |
+| **カード** | `blocks`（Block Kit のサブセット）を持つメッセージ | Block Kit message |
+| **インタラクション** | カードのボタン押下・選択、モーダル送信などを、アプリの Request URL へ通知すること | Interactivity |
+| **モーダル** | アプリが開く入力フォーム（`view`） | Modal (views) |
+
+## 3. アプリの登録とインストール
+
+### 3.1 データモデル
+
+```ts
+apps {
+  id
+  slug            text unique          // 'polls' など
+  name, description, iconUrl
+  ownerWorkspaceId → workspaces null   // null = ファーストパーティ（全ワークスペースへ提供）
+  requestUrl      text                 // Interactivity の送信先（https のみ）
+  signingSecretEncrypted text          // HMAC に平文が要るため hash ではなく暗号化保存
+  requestedScopes text[]               // 'chat:write' 等
+  entryPoints     jsonb                // 作成メニューへの項目（§6.1）
+  isFirstParty    boolean
+  createdBy, createdAt, updatedAt
+}
+
+app_installations {
+  id
+  appId          → apps (cascade)
+  workspaceId    → workspaces (cascade)
+  botProfileId   → profiles             // §3.2
+  grantedScopes  text[]
+  installedBy    → profiles
+  installedAt, revokedAt
+  unique(appId, workspaceId)
+}
+
+app_bot_tokens {
+  id
+  installationId → app_installations (cascade)
+  tokenHash      text unique            // SHA-256。平文は発行時に一度だけ表示（PAT と同じ）
+  tokenPrefix    text
+  lastUsedAt, revokedAt, createdAt
+}
+
+app_channel_memberships {               // Bot が投稿できるチャンネル
+  installationId → app_installations (cascade)
+  channelId      → channels (cascade)
+  addedBy        → profiles
+  createdAt
+  primary key(installationId, channelId)
+}
+```
+
+- 署名シークレットは既存の `apps/web/src/lib/token-crypto.ts`（`connected_accounts` のトークン暗号化）で暗号化して保存する。Bot トークンは検証だけでよいので hash 保存
+- ファーストパーティの投票アプリはマイグレーションで `apps` に1行入れ、ワークスペースへのインストールは他のアプリと同じ操作にする（既定でインストール済みにするかは §11）
+
+### 3.2 Bot profile
+
+`profiles.id` は `auth.users.id` の写しだが FK は張られていないため、**`auth.users` を作らずに Bot 用の profile 行を作れる**。
+
+- `profiles` に `kind text not null default 'human' check (kind in ('human','bot'))` を足す。Bot の profile は `app_installations.botProfileId` から1対1で参照される
+- **Bot は `workspace_members` に入れない**。入れるとワークスペースロールを持ち、`active_workspace_members` を通る既存の認可（AGENTS.md の「権限はワークスペースロールだけで決める」）に Bot が紛れ込む。Bot は「ロールを持たない別種の主体」として扱い、権限はスコープ + `app_channel_memberships` だけで決める
+- **Bot は `channel_members` にも入れない**。未読・メンバー一覧・通知・メンション候補など `channel_members` を人間前提で読むクエリが多く、混ぜると影響範囲を追い切れない。チャンネルヘッダーのメンバー表示などで Bot を見せる場合は `app_channel_memberships` を別に引く
+- インストールを取り消しても Bot profile は消さない（過去のメッセージの送信者表示が壊れるため）。`revokedAt` で投稿・更新を止め、表示は「（アンインストール済み）」を添える
+- 送信者表示（名前・アイコン・「アプリ」バッジ）は profile とアプリ定義から引く。人間と取り違えないよう、Web・ネイティブとも Bot の発言には必ずバッジを付ける（[`10_ai_member_design.md`](./10_ai_member_design.md) §6「AIであることを明示する」と同じ原則）
+
+**実装時の注意**: メッセージ一覧は送信者の profile・ワークスペース属性・プロジェクトロールを JOIN して返している（`get-messages.ts`）。Bot はワークスペース属性を持たないので、INNER JOIN で Bot のメッセージが落ちないか、profile の RLS が「同じワークスペースのメンバー」で絞っていて Bot の profile が読めなくならないかを確認する。
+
+### 3.3 Bot トークンと認可
+
+- 形式は `cairn_bot_<random>`。Slack の `xoxb-` は使わない（GitHub の secret scanning が Slack トークンとして誤検知・誤通報するため）。Bolt / `@slack/web-api` がトークンの接頭辞に依存しないかは第2段階で確認する（依存していれば互換モードで `xoxb-` 形式も発行する）
+- Bot トークンで認証された API 呼び出しは、人間のセッション・MCP の AsyncLocalStorage context とは**別の「アプリ主体」context** で処理する。人間用の Route Handler をそのまま通さず、アプリ API 用の薄い層から `packages/core` のユースケースを呼ぶ
+- 認可の判定:
+  - インストールが有効（`revokedAt is null`）、トークンが有効
+  - 要求操作に対応するスコープを `grantedScopes` に持つ
+  - チャンネルを伴う操作は、そのチャンネルが `app_channel_memberships` にあり、かつチャンネル自体がアーカイブ・削除されていない
+  - DM（`channel_type = 'dm'`）へは第1段階では投稿させない
+- 呼び出し回数の上限はトークン単位で毎分 N 回（PAT と同じ仕組み）。値は §11
+
+### 3.4 スコープ（第1段階）
+
+名前は Slack に合わせる。第1段階で使うのは次の3つだけ。
+
+| スコープ | 許す操作 |
+|---|---|
+| `chat:write` | Bot が参加しているチャンネルへのカード投稿・自分の投稿の更新・削除、モーダルの open / update |
+| `users:read` | ワークスペースの active メンバーの基本情報（ID・表示名・アイコン）の参照 |
+| `channels:read` | Bot が参加しているチャンネルの情報・メンバー一覧の参照 |
+
+- インタラクションの受信はスコープではなく Request URL の登録で有効になる（Slack と同じ）
+- **ゲスト・private チャンネルの扱い**: `users:read` で返すメンバーは active のみ（非活性メンバーは未所属と同等）。`channels:read` のメンバー一覧は、Bot が参加しているチャンネルに限る
+
+### 3.5 誰が何をできるか
+
+| 操作 | 権限 |
+|---|---|
+| アプリのインストール・アンインストール・スコープ承認 | owner / admin |
+| Bot をチャンネルへ追加・外す | そのチャンネルにアクセスできる member 以上（private チャンネルは参加者） |
+| カードのボタン・選択・モーダル操作 | そのチャンネルを読めるメンバー（ゲスト含む）。非活性メンバーは不可 |
+| 外部アプリの登録（`ownerWorkspaceId` 付き） | 第2段階。第1段階はファーストパーティのみ |
+
+UI は `/settings/apps`（インストール一覧・スコープ・Bot トークン再発行）。設定 URL 駆動の規約どおり `SETTINGS_NAV_GROUPS` に追加する。
+
+## 4. カード型メッセージ（Block Kit サブセット）
+
+### 4.1 保存形式
+
+- `message_type` enum に **`blocks`** を足す（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) の `poll` 案は採らない。投票は blocks を使う1アプリに過ぎない）
+- `messages.content` には Slack の `text` に当たる**代替テキスト**を入れる。通知・Push・検索・引用・未対応クライアントの表示に使う。必須
+- ブロック本体は別テーブルに置く:
+
+```ts
+message_blocks {
+  messageId      → messages (cascade) primary key
+  installationId → app_installations
+  blocks         jsonb                 // 検証済みの Block Kit サブセット
+  schemaVersion  integer               // §4.4
+  updatedAt                             // chat.update の時刻
+}
+```
+
+`messages` へカラムを足さず別テーブルにする理由は `message_project_updates` と同じ（マイグレーション前に新コードが動く時間に、通常の投稿 INSERT まで失敗させない）。
+
+**`chat.update` で `messages.updated_at` を動かさない**。現行の `isEdited` は `updatedAt > createdAt` で決まるため、票が入るたびに「編集済み」が付いてしまう。カードの更新は `message_blocks.updatedAt` だけを動かす。
+
+### 4.2 対応するブロック・要素
+
+| 種別 | 対応 | 備考 |
+|---|---|---|
+| `section` | ○ | `text`（mrkdwn / plain_text）、`fields`（最大10）、`accessory`（button / static_select / image） |
+| `actions` | ○ | 要素は `button`、`static_select`。最大25要素 |
+| `context` | ○ | 要素は text / image。最大10要素。投票者の表示に使う |
+| `image` | ○ | `image_url`（https のみ）、`alt_text` 必須、`title` 任意 |
+| `divider` / `header` | ○ | 描画が単純で、投票カードの見出しに使うため含める |
+| `input`（モーダル内のみ） | ○ | 要素は `plain_text_input`（単行・複数行）、`static_select` |
+| `button` | ○ | `text` / `action_id` / `value` / `style`(primary・danger) / `url`。`confirm`（確認ダイアログ）は §11 |
+| `static_select` | ○ | `options`（最大100）、`initial_option`、`placeholder`。`option_groups` は後続 |
+| `rich_text`, `multi_*_select`, `users_select`, `datepicker`, `checkboxes`, `radio_buttons`, `overflow`, `video`, `file` | × | 後続。日程調整（調整さん相当）で `datepicker` / `checkboxes` が要るなら次の拡張候補 |
+
+- 上限は Slack に合わせる（メッセージ50ブロック・モーダル100ブロック、テキスト3000文字、`action_id` 255文字、`value` 2000文字）
+- **mrkdwn は Cairn の Markdown とは別物**として扱う（`*太字*`・`_斜体_`・`~取り消し~`・`` `code` ``・`<url|表示>`・`<@userId>`・改行）。共通のパーサーでトークン列にし、各プラットフォームはトークン列を描くだけにする
+- `<@userId>` のメンションは Cairn の canonical 形式（`lib/chat/mentions.ts`）と同じ記法なので、そのまま解決して表示する。ID 体系の Slack 対応は §9
+
+### 4.3 描画方針（Web とネイティブ）
+
+チャット画面は Web（`apps/web`、Electron も同じ）とネイティブ（`apps/mobile` のチャットは React Native 実装）の2系統あるため、カードの描画も2系統になる。**二重実装の範囲を「見た目」だけに絞る**。
+
+```
+packages/shared/src/blocks/
+  schema.ts        Zod スキーマ（サブセットの定義そのもの。サーバーの受理判定にも使う）
+  mrkdwn.ts        mrkdwn → トークン列
+  normalize.ts     blocks → 描画用の中間表現（上限の切り詰め、未対応要素の判定、URL 検証）
+  fixtures/        代表的なカードの JSON（投票カード、全要素入り、未対応要素入り…）
+
+apps/web/src/components/app/blocks/      DOM で描く（Tailwind / 既存の UI 部品）
+apps/mobile/components/blocks/           React Native で描く
+```
+
+- 検証・mrkdwn・正規化・未対応判定は `packages/shared` に1つだけ置き、両プラットフォームで同じ結果になるようにする。各プラットフォームに残るのは中間表現 → 部品の写像だけ
+- `fixtures/` を Web とネイティブ双方のテストで読み、「全 fixture を例外なく描ける」「未対応要素は代替表示になる」を両方で確かめる。サブセットに要素を足すときは fixture を足し、片方の描画漏れをテストで落とす
+- ネイティブのカード描画は**純 JS（既存依存の範囲）で書き、ネイティブモジュールを足さない**。これで `runtimeVersion` を上げずに EAS Update で配信できる。select は既存の ActionSheet / モーダル部品、画像は既存の画像表示部品を使う
+- ネイティブで WebView にカードを描かせる案は採らない。メッセージリスト内の WebView は高さ計測・スクロール性能・タップの受け渡しが悪く、カードが多いチャンネルで破綻するため
+- モーダルは Web ではダイアログ、ネイティブではシート（チャットはネイティブ実装なので WebView に逃がさない）
+
+### 4.4 バージョン連動の負担を抑える規律
+
+Web は deploy で全員が即座に新しくなるが、ネイティブは EAS Update が届くまで古い描画コードが残り、ストア版の `runtimeVersion` が古い端末には OTA 自体が届かない。サーバーが受理するブロックと、手元のクライアントが描けるブロックがずれる前提で設計する。
+
+1. **受理するのは描けるものだけ**: サーバーは `packages/shared` のスキーマに合わない blocks を `chat.postMessage` / `chat.update` / `views.open` の時点で `invalid_blocks` エラーにする（Slack と同じ挙動）。未知の要素を保存して「クライアント任せ」にしない
+2. **描画を先に、受理を後に**: サブセットに要素を足すときは、(a) Web とネイティブの描画を出す → (b) production へ OTA を配信し行き渡りを待つ → (c) `FEATURE_FLAGS` で受理を有効にする、の順にする。`schemaVersion` を `message_blocks` に記録し、どの版のスキーマで受理したかを追えるようにする
+3. **それでも描けないものは黙って消さない**: 古いクライアントが未知の要素に出会ったら、その要素の位置に「このカードの一部はこのバージョンのアプリでは表示できません。アプリを更新してください」を出し、カード全体が描けない場合は代替テキスト（`content`）を表示する。空白や要素の欠落で済ませない（エラーを隠さない規約）
+4. **操作は常にサーバーが検証する**: 古いクライアントが送った操作でも、サーバーが保存済みの blocks と照合して判定する（§5.2）ので、描画のずれが不正な操作にはつながらない
+
+## 5. インタラクション
+
+### 5.1 流れ
+
+```
+[利用者がボタンを押す（Web / ネイティブ）]
+   ▼ POST /api/app-interactions   { messageId, blockId, actionId, selectedOptionValue? }（人間のセッションで認証）
+[Cairn: 検証]
+   - 利用者がチャンネルを読める active メンバーか
+   - message_blocks に該当の block_id / action_id があるか、value は保存済み blocks から取る
+   - インストールが有効か
+   ▼ Slack 互換の block_actions ペイロードを組み立て、署名して POST
+[アプリの Request URL]  3秒以内に 200 を返す
+   ▼ （アプリ側）chat.update / response_url / views.open で応答
+[Cairn: message_blocks 更新 → Broadcast → クライアントが再取得]
+```
+
+- **クライアントが送るのは「どのボタンか」だけ**。`value` やボタンのラベルはクライアントから受け取らず、サーバーが保存済みの blocks から引く。改ざんした値をアプリへ届かせない
+- クライアントは押下後、該当ボタンを処理中表示にする。アプリからの更新（Broadcast）で解除し、タイムアウトやアプリのエラーは**ボタンの下にエラーを表示**する（サイレントに戻さない）
+
+### 5.2 ペイロード（Slack 互換）
+
+Slack と同じく `application/x-www-form-urlencoded` の `payload=<JSON>` で送る。主なフィールド:
+
+```jsonc
+{
+  "type": "block_actions",
+  "team":    { "id": "<workspaceId>", "domain": "<workspace slug>" },
+  "user":    { "id": "<userId>", "name": "<表示名>", "team_id": "<workspaceId>" },
+  "api_app_id": "<appId>",
+  "token": "",                        // 非推奨の verification token は送らない
+  "container": { "type": "message", "message_ts": "<ts>", "channel_id": "<channelId>" },
+  "channel": { "id": "<channelId>", "name": "<チャンネル名>" },
+  "message": { "ts": "<ts>", "text": "<代替テキスト>", "blocks": [ ... ] },
+  "trigger_id": "<一時ID>",           // モーダルを開くため。3秒で失効
+  "response_url": "https://<host>/api/app-response/<一時ID>",
+  "actions": [{ "type": "button", "block_id": "...", "action_id": "...", "value": "...", "action_ts": "..." }],
+  "cairn": { "message_id": "<uuid>" } // Cairn 独自の拡張。Slack アプリは無視する
+}
+```
+
+ID の表現（`ts`・`team.id`・`user.id` を UUID のまま出すか、Slack 風に変換するか）は第2段階の論点だが、**投票アプリが第2段階で書き直しにならないよう、第1段階でも Slack と同じフィールド名に値を入れる**。値の形は §11。
+
+モーダルの `view_submission` / `view_closed`、作成メニューからの起動（§6.1）も同じ形で送る。
+
+### 5.3 署名
+
+Slack と同じ方式にする。
+
+- `X-Slack-Request-Timestamp: <unix秒>`
+- `X-Slack-Signature: v0=<hex(HMAC-SHA256(signingSecret, "v0:" + timestamp + ":" + rawBody))>`
+- アプリ側は5分より古いタイムスタンプを拒否する（リプレイ対策）。Bolt の検証ロジックがそのまま通る
+
+ヘッダー名は `X-Slack-*` のままにする。Bolt が名前を固定で読むため、Cairn 独自名にすると互換が崩れる。
+
+### 5.4 配送と失敗
+
+- タイムアウトは Slack と同じ3秒。リトライはしない（ボタン押下は利用者がやり直せるため。二重処理を避けるのを優先）
+- `app_interaction_deliveries`（installationId / type / userId / status / httpStatus / 所要ms / error / createdAt）に記録し、設定画面からアプリ管理者が直近の失敗を見られるようにする。保持期間は §11
+- `requestUrl` は https のみ。登録時と送信時に、プライベート IP・ループバック・リンクローカルへの名前解決を拒否する（SSRF 対策）。ファーストパーティの投票アプリも同じ検証を通る
+- 失敗時（タイムアウト・非2xx・署名不備の応答）は、押した本人にだけ「アプリが応答しませんでした」を出す。カードは変えない
+
+### 5.5 応答の手段
+
+| 手段 | 第1段階 | 用途 |
+|---|---|---|
+| `chat.update`（Bot トークン） | ○ | カード全体の更新（票数の反映） |
+| `response_url` への POST | ○ | `replace_original` でカード更新。有効期限30分・5回（Slack と同じ） |
+| `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は3秒・1回限り |
+| `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
+| エフェメラル（本人だけに見える）メッセージ | × | §11。匿名投票で「自分の票」を見せる手段として要検討 |
+
+モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。
+
+## 6. 内部 API（Bot から使う Web API）
+
+第1段階はファーストパーティだけが使うが、**エンドポイントと引数は Slack の Web API と同じ名前・形**にする。第2段階はこれを外部へ開けるだけにする。
+
+| メソッド | 第1段階 | 内容 |
+|---|---|---|
+| `chat.postMessage` | ○ | `channel` / `text` / `blocks` / `thread_ts`。`blocks` なしなら通常の `text` メッセージ |
+| `chat.update` | ○ | 自分（同じインストールの Bot）の投稿だけ |
+| `chat.delete` | ○ | 同上 |
+| `views.open` / `views.update` | ○ | §5.5 |
+| `users.info` | ○ | `users:read` |
+| `conversations.members` | ○ | `channels:read` |
+| `auth.test` | ○ | トークンの確認（Bolt が起動時に呼ぶ） |
+
+- パスは `POST /api/app-api/<method>`（例: `/api/app-api/chat.postMessage`）。Slack の `https://slack.com/api/<method>` と同じ並びにして、Bolt の `slackApiUrl` を差し替えるだけで向き先が変わるようにする
+- 応答は Slack と同じ `{ "ok": true, ... }` / `{ "ok": false, "error": "channel_not_found" }`。HTTP ステータスは常に 200（Slack の流儀）。エラーコードも Slack の名前に寄せる
+- Bot の投稿も既存の `message/created` イベントへ流し、メンション通知・Push・AI インデックスは既存の `on-message-created` に任せる（通知は Inngest 経由。ローカルでは Inngest dev server が要る）
+- Bot の発言は AI PMO の巡回対象に含めるか要検討（§11）
+
+### 6.1 アプリの起動口（作成メニュー）
+
+投票を「手動で立てる」には、アプリを呼び出す入口が要る。Slack ではスラッシュコマンド（`/poll`）がこれに当たるが、コンポーザーでのコマンド解釈・補完は第2段階に回す（§9）。第1段階は:
+
+- メッセージ入力欄の「＋」メニューに、インストール済みアプリの `entryPoints`（例: 「投票を作成」）を並べる
+- 選ぶと、**スラッシュコマンドと同じ形のペイロード**（`command=/poll`、`channel_id`、`user_id`、`trigger_id`、`response_url`）をアプリへ送る
+- こうしておけば、第2段階でコンポーザーに `/poll` の入力を足しても、アプリ側の受け口は変わらない
+
+## 7. 投票アプリ
+
+### 7.1 構成
+
+- ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置き、Cairn 本体の内部関数を import しない。Cairn とのやり取りは**署名付きインタラクションの受信**と**Bot トークンでの Web API 呼び出し**だけ（ESLint の import 制限で強制する）
+- Request URL は同じデプロイの Route Handler（例: `/api/first-party-apps/polls/interactions`）。署名検証は外部アプリと同じ v0 HMAC
+- 投票データは投票アプリが持つテーブル（下記）。Cairn 本体のコードは投票テーブルを読まない
+
+### 7.2 データモデル
+
+[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §5.3 をそのまま引き継ぎ、所有者だけを変える。
+
+```ts
+polls        { id, installationId → app_installations (cascade), channelId, messageId → messages,
+               createdBy, question, allowMultiple, anonymous, closesAt?, closedAt?, createdAt }
+poll_options { id, pollId (cascade), label, position }
+poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, createdAt
+               unique(pollId, optionId, userId)
+               部分一意 (poll_id, user_id) WHERE allow_multiple = false }
+```
+
+- `workspaceId` の代わりに `installationId` を持つ（アンインストール時の扱いを一箇所にするため）
+- 1人1票の DB 強制（部分一意インデックス + `allowMultiple` の非正規化）は既存設計どおり
+
+### 7.3 カードと集計・リアルタイム更新
+
+カードの例（登山本部）:
+
+```
+[header]   11月の登山本部 担当決め
+[section]  下山連絡の電話当番です。担当できる週に投票してください。 <@山田> <@田中>
+[section]  第1週 (11/2〜) ▓▓▓░░ 2票      [accessory: button「投票」 value=option:<id>]
+[context]  👤山田 👤佐藤
+[section]  第2週 (11/9〜) ░░░░░ 0票      [button「投票」]
+ ...
+[context]  単一選択 ・ 締切 11/20 23:59 ・ 作成: 定期ジョブ
+[actions]  [締め切る]（作成者のみ有効）
+```
+
+- **票の受付**: `block_actions` を受けたら、`poll_votes` を1トランザクションで更新（単一選択は既存票の削除→挿入、同じ選択肢をもう一度押したら取り消し）
+- **カードの再描画**: 同じトランザクション内で `polls` 行を `FOR UPDATE` で押さえて集計し直し、`chat.update` でカード全体を差し替える。行ロックで直列化するので、同時投票で古い集計が後勝ちすることはない
+- **リアルタイム**: `message_blocks` の UPDATE に DB トリガーを張り、`realtime.broadcast_changes()` でチャンネルの topic へ流す。クライアントは該当メッセージのクエリを invalidate して REST で再取得する（Broadcast from Database のみ。postgres_changes・ポーリングは使わない）
+- **「自分の票」**: Block Kit は**全員に同じカード**を描く仕組みで、閲覧者ごとの表示を持たない（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §6 の「自分の投票状態」はそのままでは描けない）。非匿名の投票は `context` に投票者を並べて代える（Slack の投票アプリと同じ）。匿名投票の扱いは §11
+- **締切**: `closesAt` を過ぎたら Inngest の遅延関数で締め、ボタンを外したカードへ `chat.update` する。結果のサマリを投稿するかは既存の未決事項のまま
+
+### 7.4 定期ジョブ・AI からの作成
+
+- 投票の作成は投票アプリ内のユースケース `createPoll`（検証 → `polls` 作成 → `chat.postMessage` で投稿 → `messageId` を保存）に一本化する
+- 起動口は3つで、すべて同じユースケースを通る:
+  1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`
+  2. 定期ジョブ（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §8 の create-poll ステップ）→ 投票アプリのユースケースを呼ぶ。`scheduled_jobs.senderId` は投票アプリの Bot profile になる
+  3. AI の `create_poll` tool（[`10_ai_member_design.md`](./10_ai_member_design.md) Stage 2）
+- 2 と 3 は Cairn 本体側から投票アプリを呼ぶ形になる。第1段階は投票アプリが公開する内部関数を呼ぶ（Cairn → アプリの向き）。外部アプリにも同じ口を開くか（Slack の Workflow Steps 相当）は §11
+- 定期ジョブは対象チャンネルに投票アプリの Bot が参加していることを保存時に検証し、未参加ならコンパイルエラーにする（発火時に初めて `not_in_channel` で失敗させない）
+
+## 8. 実装順
+
+1. **スキーマ**: `profiles.kind`、`apps` / `app_installations` / `app_bot_tokens` / `app_channel_memberships`、`message_type` に `blocks`、`message_blocks`、Broadcast トリガー
+2. **`packages/shared/src/blocks`**: スキーマ・mrkdwn・正規化・fixtures
+3. **描画（Web → ネイティブ）**: section / header / divider / context / image / actions(button)。Bot の送信者表示とバッジ。ネイティブは OTA で配信できる範囲に収める
+4. **Bot の Web API**: `auth.test` / `chat.postMessage` / `chat.update` / `chat.delete` / `users.info` / `conversations.members`
+5. **インタラクション**: `/api/app-interactions`、署名、配送ログ、`response_url`。`static_select`
+6. **モーダル**: `views.open` / `views.update`、`input`、`view_submission`（Web ダイアログ・ネイティブのシート）
+7. **投票アプリ**: 作成メニュー → モーダル → カード → 投票 → 締切
+8. **定期ジョブ**（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md)）を投票アプリの上に載せる
+
+各段で `/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）、i18n（ja / en / ko）を更新する。機能全体は `FEATURE_FLAGS` の背後で段階的に有効化する。
+
+## 9. Slack 互換で後続にやること・やらないこと（第2段階以降）
+
+### 後続でやる
+
+| 項目 | 内容 |
+|---|---|
+| ID 体系 | Slack の `T…`（team）/ `U…`（user）/ `C…`（channel）/ `ts`（`1700000000.000100` 形式、チャンネル内で一意）との対応。UUID を可逆に符号化するか、対応表を持つか。正規表現で ID 形式を検証する Slack アプリへの対処 |
+| Web API の公開 | §6 のメソッドを外部アプリへ開く。最小限は `chat.postMessage` / `chat.update` / `chat.delete` / `users.info` / `conversations.members` / `auth.test` / `views.*` |
+| 外部アプリの登録 | ワークスペースが自前のアプリを登録する UI（Request URL・署名シークレット・スコープ）。マニフェスト（`manifest.json`）の取り込み |
+| OAuth v2 インストール | `oauth.v2.access` 相当。第1段階は管理画面での手動発行のみ |
+| Events API | `message.channels`・`app_mention` などを Request URL へ送る。`url_verification` チャレンジ、リトライと `X-Slack-Retry-Num` |
+| スラッシュコマンド | コンポーザーでの `/command` 解釈と補完。受け口は §6.1 で先に揃えておく |
+| 追加の Block Kit 要素 | `datepicker` / `checkboxes` / `radio_buttons` / `users_select` / `overflow` / `rich_text`。§4.4 の順序で足す |
+| エフェメラルメッセージ | `chat.postEphemeral`、`response_type: ephemeral` |
+| 互換性テスト | Bolt for JS のサンプルアプリを CI で Cairn に向けて動かす |
+
+### やらない
+
+- Slack API の全面互換（`conversations.*` の大半、`files.*`、`reactions.*`、`usergroups.*`、Admin API、Enterprise Grid）
+- Socket Mode（Request URL への HTTP 送信だけにする）
+- RTM API、レガシーの verification token、Incoming Webhooks 単体、Workflow Builder
+- Slack 自体との双方向ブリッジ（Slack のワークスペースへ発言を転送する等）
+
+## 10. 第3段階:「Cairn でログイン」（OIDC）の位置づけ
+
+- 第1・2段階のアプリは、Cairn のチャンネルの中でカードとインタラクションを通じて動く。**利用者が Cairn の外の画面（PWA など）を開いて、自分として操作する**には別の仕組みが要る。それが OIDC
+- 現行の OAuth は MCP 専用（`resource` = `/api/mcp`、MCP の context 以外では資格情報にならない）なので、OIDC はそれと分けて追加する（`openid` スコープ、ID トークン、`/.well-known/openid-configuration`、UserInfo）
+- 想定する最初の利用者は Cloudflare 上の PWA で作る装備管理アプリ。PWA は OIDC で利用者を識別し、Cairn への書き込み（チャンネルへの貸出通知など）は**インストール済みアプリの Bot トークン**で行う、という分担を想定する。利用者本人の権限で Cairn の REST API を叩かせる（ユーザートークン）かは第3段階で決める
+- 本書の範囲では、アプリの身元（`apps`）を OIDC の client と同じ行に紐づけられるよう、`apps.id` を後から client ID の参照先にできる形にしておくだけにする
+
+## 11. 未決事項
+
+| # | 論点 | 選択肢 / 推奨 |
+|---|---|---|
+| 1 | 投票アプリを各ワークスペースに既定でインストールするか | 推奨: 既定でインストール済み、Bot のチャンネル参加は手動。定期ジョブ保存時に未参加なら追加を促す |
+| 2 | 第1段階のペイロードの ID の値（`ts`・`team.id`・`user.id`・`channel.id`） | 案A: UUID をそのまま入れる（第2段階で変換を決める）/ 案B: 今から Slack 風の可逆符号化。推奨は A＋`cairn.*` に UUID も併記。投票アプリは `cairn.*` だけを使えば第2段階で影響しない |
+| 3 | `ts` をどう作るか（第2段階で必須） | `created_at` のマイクロ秒から作る案は同一チャンネル内の衝突を DB で保証できない。対応表 or 単調増加の採番が要る |
+| 4 | 匿名投票で「自分の票」をどう見せるか | 案A: 第1段階は匿名投票を出さない / 案B: エフェメラルメッセージを先に実装 / 案C: Cairn 独自に閲覧者ごとの状態を足す（Slack 互換から外れる）。推奨は A |
+| 5 | 投票アプリを本当に HTTP 経由で呼ぶか | 推奨: 呼ぶ（同一デプロイ内の Route Handler）。押下 → 反映の遅延が問題になったら、署名・ペイロードは同じまま関数呼び出しに差し替えられる transport 抽象を足す |
+| 6 | `button.confirm`（確認ダイアログ）を第1段階に入れるか | 「締め切る」で使いたい。描画コストは小さいので入れる方向 |
+| 7 | 外部画像（`image_url`）の扱い | 閲覧者の IP がアプリ側へ漏れる。案A: https のみ許可 / 案B: Cairn の画像プロキシを通す。第1段階は投票アプリが画像を使わないので A で始め、外部公開前に B を決める |
+| 8 | Bot トークンのレート上限・配送ログの保持期間 | PAT と同じ毎分120回、ログは30日を初期値とする案 |
+| 9 | Bot の発言を AI PMO の巡回・RAG インデックス・メッセージ検索に含めるか | 投票カードの代替テキストは検索に出てよいが、PMO の「未回答の依頼」判定からは除外したい |
+| 10 | Cairn → アプリの呼び出し（定期ジョブ・AI tool から投票作成）を外部アプリにも開くか | 第1段階は投票アプリの内部関数。外部へは Workflow Steps 相当として第2段階以降に検討 |
+| 11 | アプリ管理者（インストールした admin）以外のメンバーに、チャンネルへの Bot 追加を許すか | §3.5 では member 以上としたが、Bot の誤投稿を防ぐなら admin に絞る選択もある |
+| 12 | Bot を `channel_members` に入れない判断で、メンバー一覧・メンション候補に Bot をどう出すか | Slack では Bot もメンバー一覧に出る。第1段階はヘッダーに「アプリ」欄を別に出す案 |
