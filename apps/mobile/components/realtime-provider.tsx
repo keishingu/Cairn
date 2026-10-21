@@ -106,8 +106,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`channel:${channelId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          // tasks はタスク化済みの印（メッセージの linkedTasks）の更新に使う
-          if (table === 'messages' || table === 'message_reactions' || table === 'tasks') {
+          // tasks はタスク化済みの印（メッセージの linkedTasks）の更新に使う。
+          // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
+          if (table === 'messages' || table === 'message_reactions' || table === 'tasks' || table === 'message_blocks') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
           if (table === 'messages') void invalidateChannelListQueries(queryClient)

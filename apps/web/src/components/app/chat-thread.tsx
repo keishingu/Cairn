@@ -288,10 +288,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
-  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す
+  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す。
+  // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
   const inlinePlaced = React.useMemo(
-    () => (blocked || emojiOnly || !content ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
-    [blocked, emojiOnly, content, linkedTasks],
+    () => (blocked || emojiOnly || !content || messageType === 'blocks' ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
+    [blocked, emojiOnly, content, messageType, linkedTasks],
   )
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId

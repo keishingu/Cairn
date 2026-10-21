@@ -44,6 +44,7 @@ import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
+import { MessageCard } from '../../../components/message-card'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -190,6 +191,7 @@ function AttachmentChip({
 function ChatMessageRow({
   message,
   palette,
+  mentionNames,
   accessToken,
   onToggleReaction,
   onAddReaction,
@@ -202,6 +204,8 @@ function ChatMessageRow({
 }: {
   message: MessageDto
   palette: Palette
+  /** userId → 現在の表示名。カードの mrkdwn のメンション（`<@id>`、名前なし）を解決する */
+  mentionNames: Map<string, string>
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
@@ -213,6 +217,15 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
 }) {
   const t = useT()
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const senderName = message.senderApp?.name ?? message.senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  const cardMentionNames = React.useMemo(() => {
+    if (!message.mentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(message.mentionNames)) merged.set(id, name)
+    return merged
+  }, [message.mentionNames, mentionNames])
   const projectRoleLabelText = chatProjectRoleLabel({
     legacyRole: message.senderProjectRole,
     roleName: message.senderProjectRoleName,
@@ -222,10 +235,11 @@ function ChatMessageRow({
   // 行末に「✓ タスク」ラベルを出せたタスクは下部のチップから除く（行に対応しない分・ブロック中の本文は従来どおりチップで示す）
   const chipTasks = React.useMemo(() => {
     if (message.linkedTasks.length === 0) return message.linkedTasks
-    if (message.blocked || message.content.length === 0) return message.linkedTasks
+    // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
+    if (message.blocked || message.content.length === 0 || message.messageType === 'blocks') return message.linkedTasks
     const { placed } = insertLineTaskMarkers(message.content, message.linkedTasks)
     return message.linkedTasks.filter((_, index) => !placed[index])
-  }, [message.linkedTasks, message.content, message.blocked])
+  }, [message.linkedTasks, message.content, message.blocked, message.messageType])
 
   if (message.messageType === 'system') {
     return (
@@ -244,12 +258,18 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+      <UserAvatar name={senderName} url={message.senderApp ? message.senderApp.iconUrl : message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
           <View style={styles.messageMeta}>
-            <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {message.senderApp && (
+              <Text style={[styles.projectRole, { backgroundColor: palette.card2, color: palette.text3 }]}>
+                {message.senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </Text>
+            )}
             {projectRoleLabelText && (
               <Text
                 style={[
@@ -307,6 +327,14 @@ function ChatMessageRow({
 
           {message.blocked ? (
             <Text style={[styles.messageText, { color: palette.text3 }]}>{t('Message from a blocked user (long-press the menu to show it)')}</Text>
+          ) : message.messageType === 'blocks' ? (
+            <MessageCard
+              blocks={message.blocks}
+              fallbackText={message.content}
+              palette={palette}
+              mentionNames={cardMentionNames}
+              onLinkPress={onLinkPress}
+            />
           ) : (
             message.content.length > 0 && (
               <MobileMarkdown
@@ -564,6 +592,11 @@ export default function ChatThreadScreen() {
           ? t('Open to everyone')
           : undefined
   const workspaceMembers = useWorkspaceMembers()
+  // userId → 現在の表示名。本文のメンションはサーバーが名前を埋めて返すが、カードの mrkdwn は名前なしの `<@id>` のため
+  const mentionNames = React.useMemo(
+    () => new Map((workspaceMembers.data ?? []).map((member) => [member.userId, member.displayName])),
+    [workspaceMembers.data],
+  )
   // 公開チャンネルでも、ゲストを候補に出してよいかの判定に channel_members が要る
   const channelMembers = useChannelMembers(
     channelId ?? null,
@@ -1388,6 +1421,7 @@ export default function ChatThreadScreen() {
                   <ChatMessageRow
                     message={item.message}
                     palette={palette}
+                    mentionNames={mentionNames}
                     onToggleReaction={handleToggleReaction}
                     onAddReaction={setReactionTarget}
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
@@ -1756,7 +1790,8 @@ export default function ChatThreadScreen() {
                   palette={palette}
                   onPress={() => actionTarget && reportMenu(actionTarget)}
                 />
-                <ActionButton
+                {/* アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す） */}
+                {!actionTarget?.senderApp && <ActionButton
                   icon="person-remove-outline"
                   label={t('Block')}
                   palette={palette}
@@ -1772,7 +1807,7 @@ export default function ChatThreadScreen() {
                       },
                     ])
                   }
-                />
+                />}
               </>
             )}
             <ActionButton
