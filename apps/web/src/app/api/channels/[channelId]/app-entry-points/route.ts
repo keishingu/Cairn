@@ -27,8 +27,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
   try {
     const { db, apps, appInstallations, channels } = await import('@cairn/db')
     const { and, eq, isNull } = await import('drizzle-orm')
-    const [channel] = await db.select({ type: channels.type, parentChannelId: channels.parentChannelId }).from(channels).where(eq(channels.id, channelId)).limit(1)
-    if (!channel || channel.type === 'dm') return NextResponse.json([] satisfies AppEntryPointDto[])
+    const [channel] = await db
+      .select({ type: channels.type, parentChannelId: channels.parentChannelId, archivedAt: channels.archivedAt })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+    // アーカイブ済みのチャンネル・スレッドではアプリが投稿できないので、起動口を出さない
+    if (!channel || channel.type === 'dm' || channel.archivedAt) return NextResponse.json([] satisfies AppEntryPointDto[])
 
     // 既定のインストールが欠けていたら補う（ワークスペース作成時に失敗した・本機能より前に作られたワークスペース）
     await ensureFirstPartyInstallations(ctx.workspaceId)

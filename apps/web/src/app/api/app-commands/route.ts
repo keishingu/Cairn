@@ -54,8 +54,14 @@ export async function POST(req: Request) {
     if (!parseEntryPoints(row.entryPoints).some((entry) => entry.command === body.command)) return NextResponse.json({ error: 'app_not_found' }, { status: 404 })
     if (!row.requestUrl || !row.signingSecretEncrypted) return NextResponse.json({ error: 'app_not_interactive' }, { status: 409 })
 
-    const [channel] = await db.select({ name: channels.name, type: channels.type, parentChannelId: channels.parentChannelId }).from(channels).where(eq(channels.id, body.channelId)).limit(1)
+    const [channel] = await db
+      .select({ name: channels.name, type: channels.type, parentChannelId: channels.parentChannelId, archivedAt: channels.archivedAt })
+      .from(channels)
+      .where(eq(channels.id, body.channelId))
+      .limit(1)
     if (!channel || channel.type === 'dm') return NextResponse.json({ error: 'app_not_in_channel' }, { status: 409 })
+    // アーカイブ済み（スレッドを含む）にはアプリが投稿できない。起動してフォームを開かせてから投稿だけ失敗させない
+    if (channel.archivedAt) return NextResponse.json({ error: 'channel_archived' }, { status: 409 })
     if (!(await isAppInChannel(row.installationId, body.channelId, channel.parentChannelId))) return NextResponse.json({ error: 'app_not_in_channel' }, { status: 409 })
 
     const [[workspace], [member]] = await Promise.all([
