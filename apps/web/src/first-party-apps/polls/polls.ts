@@ -152,7 +152,10 @@ export async function postPoll(pollId: string): Promise<string | null> {
  * カードを今の集計で描き直す。読んだ時点の version を描き、描いた版を rendered_version に記録する。
  * 投票ごとに1本ずつ実行される（Inngest の concurrency）ので、同時投票で古い集計が後勝ちしない
  */
-export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed'> {
+/** 再試行しても通らないカードの書き換えの失敗（チャンネルのアーカイブ・アプリの取り外し・メッセージの削除など） */
+const PERMANENT_UPDATE_ERRORS = new Set(['is_archived', 'not_in_channel', 'channel_not_found', 'message_not_found', 'cant_update_message', 'method_not_supported_for_channel_type'])
+
+export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed' | 'update_abandoned'> {
   const loaded = await loadPoll(pollId)
   if (!loaded) return 'skipped'
   const { poll, forRender } = loaded
@@ -166,10 +169,21 @@ export async function renderPoll(pollId: string): Promise<'posted' | 'updated' |
 
   const workspaceId = await workspaceOfInstallation(poll.installationId)
   const card = renderPollCard(forRender)
-  await callBotApi(workspaceId, 'chat.update', { channel: poll.channelId, ts: poll.messageId, blocks: card.blocks })
-
   const { db, polls } = await import('@cairn/db')
   const { eq, sql } = await import('drizzle-orm')
+  try {
+    await callBotApi(workspaceId, 'chat.update', { channel: poll.channelId, ts: poll.messageId, blocks: card.blocks })
+  } catch (err) {
+    if (!(err instanceof PollsBotApiError) || !PERMANENT_UPDATE_ERRORS.has(err.code)) throw err
+    // カードはもう書き換えられない（アーカイブなど）。描画待ちのまま cron が拾い直し続けないよう、この版で描き直しをやめる
+    console.error(`[polls] card of poll ${pollId} can no longer be updated (${err.code}); giving up re-rendering`)
+    await db
+      .update(polls)
+      .set({ renderedVersion: sql`greatest(${polls.renderedVersion}, ${poll.version})`, updatedAt: sql`now()` })
+      .where(eq(polls.id, pollId))
+    return 'update_abandoned'
+  }
+
   await db
     .update(polls)
     .set({ renderedVersion: sql`greatest(${polls.renderedVersion}, ${poll.version})`, updatedAt: sql`now()` })
