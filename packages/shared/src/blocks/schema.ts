@@ -130,7 +130,10 @@ export const staticSelectElementSchema = z
     if (new Set(values).size !== values.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['options'], message: '選択肢の value が重複しています' })
     }
-    if (select.initial_option && !values.includes(select.initial_option.value)) {
+    // Slack と同じく、value だけでなく表示文・説明まで options のどれかと完全に一致させる。
+    // value だけで照合すると、アプリが宣言した表示と違う選択肢の表示で描いてしまうため
+    const initial = select.initial_option
+    if (initial && !select.options.some((option) => sameOption(option, initial))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['initial_option'],
@@ -138,6 +141,12 @@ export const staticSelectElementSchema = z
       })
     }
   })
+
+function sameOption(a: z.infer<typeof optionSchema>, b: z.infer<typeof optionSchema>): boolean {
+  const key = (option: z.infer<typeof optionSchema>) =>
+    JSON.stringify([option.value, option.text.text, option.text.emoji ?? null, option.description?.text ?? null, option.description?.emoji ?? null])
+  return key(a) === key(b)
+}
 
 export const imageElementSchema = z
   .object({
