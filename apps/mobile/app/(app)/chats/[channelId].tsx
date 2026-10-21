@@ -235,10 +235,11 @@ function ChatMessageRow({
   // 行末に「✓ タスク」ラベルを出せたタスクは下部のチップから除く（行に対応しない分・ブロック中の本文は従来どおりチップで示す）
   const chipTasks = React.useMemo(() => {
     if (message.linkedTasks.length === 0) return message.linkedTasks
-    if (message.blocked || message.content.length === 0) return message.linkedTasks
+    // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
+    if (message.blocked || message.content.length === 0 || message.messageType === 'blocks') return message.linkedTasks
     const { placed } = insertLineTaskMarkers(message.content, message.linkedTasks)
     return message.linkedTasks.filter((_, index) => !placed[index])
-  }, [message.linkedTasks, message.content, message.blocked])
+  }, [message.linkedTasks, message.content, message.blocked, message.messageType])
 
   if (message.messageType === 'system') {
     return (
