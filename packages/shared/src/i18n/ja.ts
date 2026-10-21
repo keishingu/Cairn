@@ -334,6 +334,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load billing': '請求情報を取得できませんでした',
   'Could not load billing information': '請求情報の取得に失敗しました',
   'Could not load blocked users': 'ブロック済みユーザーを取得できません',
+  'Could not load blocked users ({status})': 'ブロック済みユーザーの取得に失敗しました ({status})',
   'Could not load Cairn': 'ケルンを取得できませんでした',
   'Could not load channels': 'チャンネルの取得に失敗しました',
   'Could not load channel members ({status})': 'チャンネルメンバーの取得に失敗しました ({status})',
@@ -1267,4 +1268,10 @@ export const JA_MESSAGES: Record<string, string> = {
   'Added {count} tasks': '{count}件のタスクを追加しました',
   'Task {done}/{total}': 'タスク {done}/{total}',
   'Show tasks': 'タスクを表示',
+  'View profile of {name}': '{name}のプロフィールを表示',
+  'Send a message': 'メッセージを送る',
+  'Mention': 'メンション',
+  'User unblocked': 'ブロックを解除しました',
+  'You have blocked this user': 'このユーザーをブロックしています',
+  'This user is no longer an active member of the workspace': 'このユーザーはワークスペースの有効なメンバーではありません',
 }

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import type { ProfileAttributeDto } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 import {
   fetchWorkspaceChannels,
@@ -40,6 +41,9 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  /** `GET /api/workspaces/members` が返す（YYYY-MM-DD） */
+  joinedAt: string
+  profileAttributes: ProfileAttributeDto[]
 }
 
 export interface ChannelMemberDto {
@@ -76,6 +80,25 @@ export function useWorkspaceMembers() {
   return useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
     queryFn: fetchJson('/api/workspaces/members?status=active', t('Could not load members ({status})')),
+  })
+}
+
+export interface MyBlockDto {
+  userId: string
+  displayName: string
+  avatarUrl: string | null
+  createdAt: string
+}
+
+export const myBlocksQueryKey = ['me', 'blocks'] as const
+
+/** 自分がブロックしているユーザー（自分 → 相手の向きだけ） */
+export function useMyBlocks(enabled: boolean) {
+  const t = useT()
+  return useQuery<MyBlockDto[]>({
+    queryKey: myBlocksQueryKey,
+    queryFn: fetchJson('/api/me/blocks', t('Could not load blocked users ({status})')),
+    enabled,
   })
 }
 
