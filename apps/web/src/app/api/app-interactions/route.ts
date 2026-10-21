@@ -8,6 +8,7 @@ import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { decryptToken } from '@/lib/token-crypto'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
+import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 
 // カードのボタン押下・選択を、アプリの Request URL へ署名付きで届ける（docs/app-platform-design.md §5）。
 // クライアントが送るのは「どの要素か」と select の選択肢だけ。値やラベルは保存済みの blocks から引く。
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { db, messages, messageBlocks, appInstallations, apps, channels, appChannelMemberships, workspaces, profiles, activeWorkspaceMembers, appInteractionDeliveries } =
+    const { db, messages, messageBlocks, appInstallations, apps, channels, appChannelMemberships, workspaces, profiles, activeWorkspaceMembers } =
       await import('@cairn/db')
     const { and, eq, inArray, isNull } = await import('drizzle-orm')
 
@@ -123,21 +124,7 @@ export async function POST(req: Request) {
       payload,
     })
 
-    // 配送の記録は運用のためのもの。アプリが処理し終えた後に記録だけ失敗しても、利用者には成功を返す
-    // （失敗を返すと押し直しで新しい interaction_id になり、アプリ側の副作用が重なる）
-    await db
-      .insert(appInteractionDeliveries)
-      .values({
-        installationId: row.installationId,
-        userId: ctx.userId,
-        type: 'block_actions',
-        actionId: parsed.actionId,
-        status: delivery.status,
-        httpStatus: delivery.httpStatus,
-        durationMs: delivery.durationMs,
-        error: delivery.status === 'delivered' ? null : delivery.error.slice(0, 500),
-      })
-      .catch((err: unknown) => console.error('[/api/app-interactions] failed to record delivery:', err))
+    recordDeliveryAfterResponse({ installationId: row.installationId, userId: ctx.userId, type: 'block_actions', actionId: parsed.actionId, delivery })
 
     if (delivery.status !== 'delivered') {
       console.warn(`[/api/app-interactions] delivery ${delivery.status}:`, delivery.error)
