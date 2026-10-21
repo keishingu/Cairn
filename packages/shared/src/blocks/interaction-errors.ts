@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   action_not_found: 'This action is no longer available.',
   invalid_option: 'This action is no longer available.',
   message_not_found: 'This action is no longer available.',
+  card_changed: 'This card was updated. Check it and try again.',
 }
 
 export function cardActionErrorMessage(code: string | null | undefined): string {
