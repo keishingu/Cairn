@@ -190,11 +190,9 @@ export const appInteractionDeliveries = pgTable(
   'app_interaction_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    installationId: uuid('installation_id')
-      .notNull()
-      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    installationId: uuid('installation_id').notNull(),
     // 押した人。退会しても配送ログは残す
-    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    userId: uuid('user_id'),
     // block_actions / view_submission / view_closed
     type: text('type').notNull(),
     actionId: text('action_id'),
@@ -206,6 +204,9 @@ export const appInteractionDeliveries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    // Drizzle の既定名は 63 文字を超えて Postgres に切り詰められるため、短い名前を明示する（マイグレーションと同じ名前）
+    foreignKey({ name: 'app_interaction_deliveries_installation_fk', columns: [t.installationId], foreignColumns: [appInstallations.id] }).onDelete('cascade'),
+    foreignKey({ name: 'app_interaction_deliveries_user_fk', columns: [t.userId], foreignColumns: [profiles.id] }).onDelete('set null'),
     index('app_interaction_deliveries_installation_created_idx').on(t.installationId, t.createdAt),
     check('app_interaction_deliveries_status_known', sql`${t.status} in ('delivered', 'failed', 'timeout', 'blocked')`),
   ],
