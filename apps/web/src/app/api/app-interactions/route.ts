@@ -67,6 +67,7 @@ export async function POST(req: Request) {
         signingSecretEncrypted: apps.signingSecretEncrypted,
         channelName: channels.name,
         parentChannelId: channels.parentChannelId,
+        channelArchivedAt: channels.archivedAt,
       })
       .from(messages)
       .innerJoin(messageBlocks, eq(messageBlocks.messageId, messages.id))
@@ -93,6 +94,15 @@ export async function POST(req: Request) {
       .where(and(eq(appChannelMemberships.installationId, row.installationId), inArray(appChannelMemberships.channelId, memberChannelIds)))
       .limit(1)
     if (!membership) return error('app_not_in_channel', 409)
+
+    // アーカイブ済み（親チャンネルがアーカイブ済みのスレッドを含む）のカードは配送しない。アプリが票などを commit した後、
+    // カードの chat.update だけが is_archived で失敗し、表示とずれたまま拾い直され続けるのを防ぐ
+    let archived = row.channelArchivedAt !== null
+    if (!archived && row.parentChannelId) {
+      const [parent] = await db.select({ archivedAt: channels.archivedAt }).from(channels).where(eq(channels.id, row.parentChannelId)).limit(1)
+      archived = !!parent?.archivedAt
+    }
+    if (archived) return error('channel_archived', 409)
 
     // 押されたのが今のカードか確かめる。chat.update の後に古いカードが押されたら、同じ ID の新しい値で届けない
     if (cardRevision(row.blocksUpdatedAt) !== parsed.revision) return error('card_changed', 409)

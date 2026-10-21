@@ -103,7 +103,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     const interactionId = newInteractionId()
     // trigger_id は発行から6秒。発行の後は届ける直前の確認（UPDATE 1回）だけを挟む
-    const triggerId = await issueTrigger({ installationId: view.installationId, userId: ctx.userId, channelId: view.channelId })
+    // 発行に失敗したら、届けていないのに確保が45秒残って送り直せなくならないよう、確保を外してから失敗を返す
+    const triggerId = await issueTrigger({ installationId: view.installationId, userId: ctx.userId, channelId: view.channelId }).catch(async (err: unknown) => {
+      await release()
+      throw err
+    })
     const stored = view.view as Record<string, unknown>
     const payload = {
       type: 'view_submission',
