@@ -35,6 +35,8 @@ export const profiles = pgTable(
   {
     id: uuid('id').primaryKey(),
     displayName: text('display_name').notNull(),
+    // bot はアプリのインストールごとの送信者。auth.users を持たず、workspace_members にも入らない
+    kind: text('kind').notNull().default('human'),
     bio: text('bio'),
     icalToken: text('ical_token').unique(),
     aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
@@ -46,6 +48,7 @@ export const profiles = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check('profiles_kind_check', sql`${t.kind} in ('human', 'bot')`),
     check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
     check(
       'profiles_accent_id_check',

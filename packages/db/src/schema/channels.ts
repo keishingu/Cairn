@@ -28,6 +28,8 @@ export const channels = pgTable(
   (t) => [
     index('idx_channels_workspace_type').on(t.workspaceId, t.type),
     index('idx_channels_project').on(t.projectId),
+    // app_channel_memberships の複合 FK の参照先。インストールと別ワークスペースのチャンネルへ Bot を紐づけさせない
+    uniqueIndex('channels_id_workspace_idx').on(t.id, t.workspaceId),
     index('idx_channels_parent').on(t.parentChannelId),
     uniqueIndex('idx_channels_milestone_unique').on(t.milestoneId),
     check('channels_parent_not_self', sql`${t.parentChannelId} is null or ${t.parentChannelId} <> ${t.id}`),
