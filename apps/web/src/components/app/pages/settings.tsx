@@ -1450,12 +1450,17 @@ const AiChatSystemPromptSection = () => {
 
   const unchanged = draft === saved
   const handleSave = async () => {
+    const submitted = draft
+    let updated: Awaited<ReturnType<typeof updateSettings.mutateAsync>>
     try {
-      await updateSettings.mutateAsync({ aiChatSystemPrompt: draft })
+      updated = await updateSettings.mutateAsync({ aiChatSystemPrompt: submitted })
     } catch {
       // エラーはミューテーションの状態として下に表示する
       return
     }
+    // サーバーは前後の空白を除き、空白だけなら null にする。保存後に編集していなければ、
+    // 実際に保存された値を表示し、保存されていない空白を残したまま「保存済み」に見せない。
+    setDraft((current) => (current === submitted ? (updated.aiChatSystemPrompt ?? '') : current))
     setJustSaved(true)
     setTimeout(() => setJustSaved(false), 2000)
   }
@@ -1477,18 +1482,14 @@ const AiChatSystemPromptSection = () => {
           rows={10}
           placeholder={readOnly ? undefined : t('e.g. Call tasks "tickets". Answer in polite Japanese and end with one suggested next action.')}
           title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+          className="form-control"
           style={{
             width: '100%',
+            height: 'auto',
             boxSizing: 'border-box',
             padding: '8px 10px',
-            border: '1px solid var(--border)',
-            borderRadius: 7,
-            background: 'var(--card-2)',
-            color: 'var(--text)',
-            fontSize: 13,
             lineHeight: 1.6,
             fontFamily: "'SF Mono', ui-monospace, monospace",
-            outline: 'none',
             resize: 'vertical',
             ...(readOnly ? { cursor: 'not-allowed' } : {}),
           }}

@@ -800,7 +800,7 @@ describe('AIエージェントのシステムプロンプト', () => {
         const body = JSON.parse(String(init.body))
         return patchResponse ?? new Response(JSON.stringify({
           aiChatModel: body.aiChatModel ?? 'gpt-5',
-          aiChatSystemPrompt: 'aiChatSystemPrompt' in body ? body.aiChatSystemPrompt : '敬体で答える',
+          aiChatSystemPrompt: 'aiChatSystemPrompt' in body ? (body.aiChatSystemPrompt.trim() || null) : '敬体で答える',
         }))
       }
       return new Response(JSON.stringify({}))
@@ -858,6 +858,31 @@ describe('AIエージェントのシステムプロンプト', () => {
     )
     await waitFor(() => expect(opus).toHaveAttribute('aria-checked', 'true'))
     expect(textarea).toHaveValue('未保存の編集')
+  })
+
+  it('保存後はサーバーが整形した値を表示し、空白だけなら空欄に戻す', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    const save = screen.getByRole('button', { name: '保存' })
+
+    fireEvent.change(textarea, { target: { value: '  前後に空白  ' } })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+    await waitFor(() => expect(textarea).toHaveValue('前後に空白'))
+
+    fireEvent.change(textarea, { target: { value: '   ' } })
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(textarea).toHaveValue(''))
+  })
+
+  it('入力欄は共通のフォーム部品として、フォーカス表示を消さない', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    expect(textarea).toHaveClass('form-control')
+    expect(textarea.style.outline).toBe('')
   })
 
   it('owner 以外は読み取り専用で、保存できない', async () => {
