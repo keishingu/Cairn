@@ -320,7 +320,7 @@ Slack と同じ方式にする。
 
 ### 7.1 構成
 
-> 実装メモ: 文言（カード・モーダル・エラー）は第1段階では日本語の固定文。ペイロードに利用者の表示言語が含まれないため、多言語化はアプリへ言語を渡す仕組みと一緒に後で行う。投票アプリの Bot API 呼び出しは同じデプロイへの HTTP なので、Vercel のデプロイ保護がかかった Preview では 401 になり動かない（本番・ローカルでは動く）。
+> 実装メモ: 文言（カード・モーダル・エラー）は第1段階では日本語の固定文。ペイロードに利用者の表示言語が含まれないため、多言語化はアプリへ言語を渡す仕組みと一緒に後で行う。投票アプリへの配送と投票アプリの Bot API 呼び出しは同じデプロイへの HTTP なので、Deployment Protection がかかった Preview では、Vercel の「Protection Bypass for Automation」を有効にして配られる `VERCEL_AUTOMATION_BYPASS_SECRET` を `x-vercel-protection-bypass` ヘッダーで付けて通す（同じデプロイへの呼び出しだけに付け、外部アプリへは送らない）。未設定の Preview では保護画面に阻まれて動かない（本番・ローカルでは動く）。
 
 
 - ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置く
