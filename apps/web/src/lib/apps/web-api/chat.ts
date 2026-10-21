@@ -245,18 +245,26 @@ export async function chatUpdate(bot: BotContext, args: WebApiArgs): Promise<Web
 
   const { db, messages, messageBlocks } = await import('@cairn/db')
   const { eq, sql } = await import('drizzle-orm')
-  // text を省いた更新では代替テキストを書き換えない（アプリが投稿時に書いた通知・検索用の文を、blocks から組み立てた文で上書きしない）
-  const content = text.text ?? own.content
-  // Slack と同じく、text だけの更新はカードを外して通常のメッセージにする（古いカードが残ったまま成功を返さない）
-  const dropBlocks = blocks.blocks === undefined && own.messageType === 'blocks'
-  const nextType = blocks.blocks ? ('blocks' as const) : dropBlocks ? ('text' as const) : undefined
 
-  await db.transaction(async (tx) => {
+  const content = await db.transaction(async (tx) => {
+    // 同じメッセージへの更新が重なっても、どちらも古い種類（blocks / text）を前提に書かないよう、行をロックして読み直す
+    const [current] = await tx
+      .select({ content: messages.content, messageType: messages.messageType })
+      .from(messages)
+      .where(eq(messages.id, own.id))
+      .for('update')
+    const currentContent = current?.content ?? own.content
+    const currentType = current?.messageType ?? own.messageType
+    // text を省いた更新では代替テキストを書き換えない（アプリが投稿時に書いた通知・検索用の文を、blocks から組み立てた文で上書きしない）
+    const nextContent = text.text ?? currentContent
+    // Slack と同じく、text だけの更新はカードを外して通常のメッセージにする（古いカードが残ったまま成功を返さない）
+    const dropBlocks = blocks.blocks === undefined && currentType === 'blocks'
+    const nextType = blocks.blocks ? ('blocks' as const) : dropBlocks ? ('text' as const) : undefined
     // messages.updated_at は動かさない。現行の「編集済み」は updated_at > created_at で決まり、票が入るたびに付いてしまうため（§4.1）
-    if (content !== own.content || (nextType && nextType !== own.messageType)) {
+    if (nextContent !== currentContent || (nextType && nextType !== currentType)) {
       await tx
         .update(messages)
-        .set({ content, ...(nextType ? { messageType: nextType } : {}) })
+        .set({ content: nextContent, ...(nextType ? { messageType: nextType } : {}) })
         .where(eq(messages.id, own.id))
     }
     if (dropBlocks) await tx.delete(messageBlocks).where(eq(messageBlocks.messageId, own.id))
@@ -269,6 +277,7 @@ export async function chatUpdate(bot: BotContext, args: WebApiArgs): Promise<Web
           set: { blocks: blocks.blocks, schemaVersion: BLOCKS_SCHEMA_VERSION, updatedAt: sql`clock_timestamp()` },
         })
     }
+    return nextContent
   })
 
   return { ok: true, channel: own.channelId, ts: own.id, text: content, cairn: { message_id: own.id } }
