@@ -81,6 +81,19 @@ describe('blocks の正規化', () => {
     expect(card).toMatchObject({ hasUnsupported: true, nothingRenderable: true })
   })
 
+  it('上限を超えたブロックと要素は切り捨て、残りがあることを案内にする', () => {
+    const card = normalizeMessageBlocks(Array.from({ length: 60 }, () => ({ type: 'divider' })))
+    expect(card.blocks).toHaveLength(51)
+    expect(card.blocks[50]).toEqual({ type: 'unsupported', original: 'truncated', blockId: 'cairn-truncated-50' })
+    expect(card.hasUnsupported).toBe(true)
+
+    const button = { type: 'button', text: { type: 'plain_text', text: 'A' } }
+    const actions = normalizeMessageBlocks([{ type: 'actions', elements: Array.from({ length: 30 }, () => button) }]).blocks[0]
+    expect(actions).toMatchObject({ type: 'actions' })
+    expect(actions?.type === 'actions' && actions.elements).toHaveLength(26)
+    expect(actions?.type === 'actions' && actions.elements[25]).toEqual({ type: 'unsupported', original: 'truncated' })
+  })
+
   it('何も描けなければ nothingRenderable にする', () => {
     expect(normalizeMessageBlocks(nothingRenderableFixture)).toMatchObject({ hasUnsupported: true, nothingRenderable: true })
   })

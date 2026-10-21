@@ -45,11 +45,18 @@ export const BLOCK_LIMITS = {
 
 /** https の URL だけを通す。http は Web では混在コンテンツ、iOS では ATS で表示できない（§11 D9） */
 // shared は DOM / Node の型を持たず、React Native の URL 実装も不完全なため正規表現で判定する。
-// ホスト部に userinfo（`https://example.com@evil.test`）を許さず、見た目と違う宛先へ飛ばさない
-const HTTPS_URL = /^https:\/\/[^\s/?#@]+(?:[/?#]\S*)?$/i
+// ホストはドメイン名（ASCII。国際化ドメインは punycode）・IPv4・[IPv6] だけ、ポートは数字だけを許し、
+// 壊れた URL（`https://example.com:invalid/`）や userinfo 付き（`https://example.com@evil.test`）を通さない
+const DOMAIN_LABEL = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+const HTTPS_URL = new RegExp(
+  `^https://(?:${DOMAIN_LABEL}(?:\\.${DOMAIN_LABEL})*|\\[[0-9A-Fa-f:.]+\\])(?::(\\d{1,5}))?(?:[/?#]\\S*)?$`,
+)
 
 export function isHttpsUrl(value: string): boolean {
-  return HTTPS_URL.test(value)
+  const match = HTTPS_URL.exec(value)
+  if (!match) return false
+  const port = match[1]
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
 }
 
 const httpsUrl = (max: number) =>
