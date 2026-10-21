@@ -89,7 +89,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         ),
       )
       .returning({ lease: sql<string>`${appViews.submittingUntil}::text`, interactionId: appViews.submissionInteractionId })
-    if (!claimed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
+    if (!claimed) {
+      // 確保できなかった理由を分ける。確認の後に差し替えられた・閉じられたなら、送信中ではなくその理由を返す
+      const [current] = await db.select({ hash: appViews.hash, status: appViews.status }).from(appViews).where(eq(appViews.id, viewId)).limit(1)
+      if (!current || current.status !== 'open') return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
+      if (current.hash !== renderedHash) return NextResponse.json({ error: 'view_changed' }, { status: 409 })
+      return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
+    }
     // 確保の値そのものを自分の確保の印にする（別の送信が取り直すと値が変わる）
     let lease = claimed.lease
     const ownsLease = sql`${appViews.submittingUntil}::text = ${lease}`
