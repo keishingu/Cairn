@@ -47,10 +47,13 @@ async function workspaceOfInstallation(installationId: string): Promise<string> 
   return row.workspaceId
 }
 
-/** 投票を投稿待ち（pending_post）で作る。同じ冪等キーの再試行は既存の投票を返す */
-export async function createPendingPoll(input: CreatePollInput): Promise<string> {
+/**
+ * 投票を投稿待ち（pending_post）で作る。同じ冪等キーの再試行は既存の投票を返す。
+ * sameInput は既存の投票が今回の入力と同じか（応答が届かず内容を直して送り直した場合に、古い内容で黙って閉じないため）
+ */
+export async function createPendingPoll(input: CreatePollInput): Promise<{ pollId: string; sameInput: boolean }> {
   const { db, polls, pollOptions } = await import('@cairn/db')
-  const { and, eq } = await import('drizzle-orm')
+  const { and, asc, eq } = await import('drizzle-orm')
   const installationId = await getFirstPartyInstallationId('polls', input.workspaceId)
 
   return db.transaction(async (tx) => {
@@ -68,21 +71,27 @@ export async function createPendingPoll(input: CreatePollInput): Promise<string>
       .returning({ id: polls.id })
     if (!created) {
       const [existing] = await tx
-        .select({ id: polls.id })
+        .select({ id: polls.id, question: polls.question, allowMultiple: polls.allowMultiple })
         .from(polls)
         .where(and(eq(polls.installationId, installationId), eq(polls.idempotencyKey, input.idempotencyKey)))
         .limit(1)
       if (!existing) throw new Error('poll idempotency conflict without a row')
-      return existing.id
+      const options = await tx.select({ label: pollOptions.label }).from(pollOptions).where(eq(pollOptions.pollId, existing.id)).orderBy(asc(pollOptions.position))
+      const sameInput =
+        existing.question === input.question &&
+        existing.allowMultiple === input.allowMultiple &&
+        options.length === input.options.length &&
+        options.every((option, index) => option.label === input.options[index])
+      return { pollId: existing.id, sameInput }
     }
     await tx.insert(pollOptions).values(input.options.map((label, position) => ({ pollId: created.id, label, position })))
-    return created.id
+    return { pollId: created.id, sameInput: true }
   })
 }
 
 /** 投票を作り、カードを投稿する。同じ冪等キーの再試行は同じ投票・同じメッセージに収束する */
 export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
-  const pollId = await createPendingPoll(input)
+  const { pollId } = await createPendingPoll(input)
   const messageId = await postPoll(pollId)
   return { pollId, messageId }
 }

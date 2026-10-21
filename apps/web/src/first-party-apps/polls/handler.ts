@@ -46,7 +46,7 @@ export async function handlePollsRequest(req: Request): Promise<Response> {
   if (rawPayload === null) {
     if (form.get('command') !== '/poll') return new NextResponse('', { status: 200 })
     // 作成メニューの「投票を作成」。押した本人にだけモーダルを開く
-    await callBotApi(form.get('team_id') ?? '', 'views.open', { trigger_id: form.get('trigger_id'), view: createPollModal(form.get('channel_id') ?? '') })
+    openViewAfterResponse(form.get('team_id') ?? '', form.get('trigger_id'), createPollModal(form.get('channel_id') ?? ''))
     return new NextResponse('', { status: 200 })
   }
 
@@ -75,7 +75,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
 
   // 同じモーダルの送信の再試行（応答が失われて押し直した場合）は、同じ投票に収束させる。
   // 配信は3秒で打ち切られるので、ここでは投稿待ちで保存して応答し、カードの投稿は描画イベントに任せる
-  const pollId = await createPendingPoll({
+  const { pollId, sameInput } = await createPendingPoll({
     workspaceId: payload.team.id,
     channelId,
     createdBy: payload.user.id,
@@ -85,6 +85,13 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     idempotencyKey: `view:${payload.view.id}`,
   })
   sendRenderEvent(pollId)
+  if (!sameInput) {
+    // 前の送信は応答が届かなかっただけで作成済み。直した内容で作り直したように見せず、作成済みであることを伝える
+    return NextResponse.json({
+      response_action: 'errors',
+      errors: { question: 'このフォームからはすでに投票を作成しました（前回の内容で投稿されます）。キャンセルして閉じてください' },
+    })
+  }
   return new NextResponse('', { status: 200 })
 }
 
@@ -107,7 +114,7 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
 
   if (action.action_id === 'close' && poll.createdBy !== payload.user.id) {
     // カードは全員に同じなので、押した本人にだけ知らせるにはモーダルを使う
-    await callBotApi(payload.team.id, 'views.open', { trigger_id: payload.trigger_id, view: onlyCreatorCanCloseModal() })
+    openViewAfterResponse(payload.team.id, payload.trigger_id, onlyCreatorCanCloseModal())
     return new NextResponse('', { status: 200 })
   }
 
@@ -149,6 +156,16 @@ function sendRenderEvent(pollId: string): void {
   after(() =>
     inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
       console.warn('[polls] card render event failed (Inngest not running?):', err)
+    }),
+  )
+}
+
+// views.open は応答を返した後に呼ぶ。Bot API が遅くても3秒の配信期限を使わせず、起動が app_timeout になって押し直しで二重に開くのを防ぐ。
+// trigger_id は発行から3秒有効なので、応答の直後に呼べば間に合う
+function openViewAfterResponse(workspaceId: string, triggerId: string | null, view: unknown): void {
+  after(() =>
+    callBotApi(workspaceId, 'views.open', { trigger_id: triggerId, view }).catch((err: unknown) => {
+      console.error('[polls] views.open failed:', err)
     }),
   )
 }
