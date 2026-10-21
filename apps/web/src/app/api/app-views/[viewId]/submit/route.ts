@@ -78,14 +78,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         .where(eq(profiles.id, ctx.userId))
         .limit(1),
     ])
+    // 認証の後にワークスペースや利用者が消えていたら、空の名前で署名付きの送信を届けない
+    if (!workspace || !member) {
+      await release()
+      return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
+    }
 
     const interactionId = newInteractionId()
     const triggerId = await issueTrigger({ installationId: view.installationId, userId: ctx.userId, channelId: view.channelId })
     const stored = view.view as Record<string, unknown>
     const payload = {
       type: 'view_submission',
-      team: { id: ctx.workspaceId, domain: workspace?.slug ?? '' },
-      user: { id: ctx.userId, name: member?.name ?? '', team_id: ctx.workspaceId },
+      team: { id: ctx.workspaceId, domain: workspace.slug },
+      user: { id: ctx.userId, name: member.name, team_id: ctx.workspaceId },
       api_app_id: view.appId,
       token: '',
       trigger_id: triggerId,
