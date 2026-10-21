@@ -13,7 +13,7 @@ export type BotChannelResult = { ok: true; channel: BotChannel } | { ok: false; 
  * - 別ワークスペースのチャンネルは「存在しない」と同じに見せる（ID の総当たりで他ワークスペースの存在を知らせない）
  * - DM には第1段階では投稿させない
  * - スレッドは親チャンネルに Bot が参加していれば使える（スレッドは親の会話の一部のため）
- * - アーカイブ済みのスレッドには書き込ませない
+ * - アーカイブ済みのスレッド（親チャンネルがアーカイブ済みのものを含む）には書き込ませない
  */
 export async function resolveBotChannel(bot: Pick<BotContext, 'workspaceId' | 'installationId'>, channelId: string | undefined): Promise<BotChannelResult> {
   if (!isUuid(channelId)) return { ok: false, error: 'channel_not_found' }
@@ -44,6 +44,11 @@ export async function resolveBotChannel(bot: Pick<BotContext, 'workspaceId' | 'i
     .limit(1)
   if (!membership) return { ok: false, error: 'not_in_channel' }
   if (channel.archivedAt) return { ok: false, error: 'is_archived' }
+  // 親チャンネルをアーカイブしても配下スレッドの archived_at は残らないため、親も見る（一覧・AI 巡回と同じ扱い）
+  if (channel.parentChannelId) {
+    const [parent] = await db.select({ archivedAt: channels.archivedAt }).from(channels).where(eq(channels.id, channel.parentChannelId)).limit(1)
+    if (parent?.archivedAt) return { ok: false, error: 'is_archived' }
+  }
 
   return { ok: true, channel: { id: channel.id, workspaceId: bot.workspaceId, type: channel.type, projectId: channel.projectId } }
 }
