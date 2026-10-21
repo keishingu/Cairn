@@ -169,11 +169,19 @@ export async function ensureFirstPartyInstallations(workspaceId: string): Promis
   for (const definition of FIRST_PARTY_APPS) {
     const appId = await ensureFirstPartyApp(definition)
     const [installed] = await db
-      .select({ id: appInstallations.id })
+      .select({ id: appInstallations.id, botProfileId: appInstallations.botProfileId, botName: profiles.displayName })
       .from(appInstallations)
+      .innerJoin(profiles, eq(profiles.id, appInstallations.botProfileId))
       .where(and(eq(appInstallations.appId, appId), eq(appInstallations.workspaceId, workspaceId)))
       .limit(1)
-    if (installed) continue
+    if (installed) {
+      // アプリ名を変えた版では Bot profile の名前も合わせる（auth.test や引用の送信者名と、起動口・発言のアプリ名をずらさない）。
+      // 定義の同期と同じく、書き換えるのは本番・develop・ローカルだけ
+      if (installed.botName !== definition.name && canSyncFirstPartyDefinitions()) {
+        await db.update(profiles).set({ displayName: definition.name }).where(eq(profiles.id, installed.botProfileId))
+      }
+      continue
+    }
 
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`first-party-install:${workspaceId}:${appId}`}))`)
