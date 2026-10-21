@@ -131,6 +131,7 @@ function CardBlock({ block, context }: { block: RenderBlock; context: CardContex
 }
 
 function CardElement({ element, blockId, context }: { element: RenderElement; blockId: string; context: CardContext }) {
+  const t = useT()
   const { palette, onAction, onLinkPress } = context
   switch (element.type) {
     case 'button': {
@@ -144,7 +145,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
           disabled={disabled}
           onPress={() => {
             const url = element.url
-            confirmThen(element.confirm, () => {
+            confirmThen(element.confirm, mentionResolver(context, t), () => {
               if (url) onLinkPress(url)
               else onAction?.({ type: 'button', blockId, actionId: element.actionId })
             })
@@ -209,7 +210,7 @@ function CardSelect({
                   accessibilityState={{ selected: option.value === selected }}
                   onPress={() => {
                     setOpen(false)
-                    confirmThen(element.confirm, () => {
+                    confirmThen(element.confirm, mentionResolver(context, t), () => {
                       setSelected(option.value)
                       onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value })
                     })
@@ -232,18 +233,23 @@ function CardSelect({
  * アプリが confirm を指定したら、確認を挟んでから操作する（Slack と同じく確認を飛ばさない）。
  * 確認の本文は書式を落とした文字列にする（Alert は書式を描けない）
  */
-function confirmThen(confirm: RenderConfirm | undefined, run: () => void) {
+function confirmThen(confirm: RenderConfirm | undefined, resolveMention: (userId: string) => string, run: () => void) {
   if (!confirm) {
     run()
     return
   }
   const message = confirm.text.kind === 'plain'
     ? confirm.text.text
-    : mrkdwnToPlainText(confirm.text.blocks, () => '')
+    : mrkdwnToPlainText(confirm.text.blocks, resolveMention)
   Alert.alert(confirm.title, message, [
     { text: confirm.deny, style: 'cancel' },
     { text: confirm.confirm, style: confirm.style === 'danger' ? 'destructive' : 'default', onPress: run },
   ])
+}
+
+/** 確認文のメンションも、カードと同じ名前のマップで解決する（解決できなければ「不明なメンバー」） */
+function mentionResolver(context: CardContext, t: (message: string) => string): (userId: string) => string {
+  return (userId) => context.mentionNames.get(userId) ?? t('Unknown member')
 }
 
 function ContextElement({ element, context }: { element: RenderContextElement; context: CardContext }) {
