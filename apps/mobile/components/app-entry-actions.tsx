@@ -5,7 +5,7 @@ import React from 'react'
 import { Alert, Pressable, StyleSheet, Text } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { cardActionErrorMessage } from '@cairn/shared'
+import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 import type { ThemePalette } from '../lib/theme'
 import { useT } from './locale-provider'
@@ -44,8 +44,8 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
       if (!app.inChannel) {
         const added = await apiFetch(`/api/channels/${channelId}/apps`, { method: 'POST', body: JSON.stringify({ installationId: app.installationId }) })
         if (!added.ok) {
-          // このエンドポイントは日本語の理由を返す（権限・チャンネルの種類）
-          onError((await readError(added)) ?? t(cardActionErrorMessage(null)))
+          // 本文の理由は日本語固定なので見せず、状態コードから表示言語の案内にする
+          onError(t(appAddErrorMessage(added.status)))
           return
         }
         await queryClient.invalidateQueries({ queryKey })

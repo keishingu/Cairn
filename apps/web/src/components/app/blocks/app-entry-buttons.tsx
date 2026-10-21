@@ -5,7 +5,7 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { cardActionErrorMessage } from '@cairn/shared'
+import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Modal } from '@/components/app/primitives'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
@@ -47,8 +47,8 @@ export function AppEntryButtons({ channelId, onError, compact }: { channelId: st
           body: JSON.stringify({ installationId: app.installationId }),
         })
         if (!added.ok) {
-          // このエンドポイントは日本語の理由を返す（権限・チャンネルの種類）
-          onError((await readError(added)) ?? t(cardActionErrorMessage(null)))
+          // 本文の理由は日本語固定なので見せず、状態コードから表示言語の案内にする
+          onError(t(appAddErrorMessage(added.status)))
           return
         }
         await queryClient.invalidateQueries({ queryKey })
