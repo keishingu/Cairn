@@ -16,6 +16,8 @@ export class PollsBotApiError extends Error {
   }
 }
 
+const BOT_API_TIMEOUT_MS = 10_000
+
 export async function callBotApi<T = Record<string, unknown>>(workspaceId: string, method: string, args: Record<string, unknown>): Promise<T> {
   const token = await getFirstPartyBotToken('polls', workspaceId)
   const res = await fetch(`${appBaseUrl()}/api/app-api/${method}`, {
@@ -23,6 +25,8 @@ export async function callBotApi<T = Record<string, unknown>>(workspaceId: strin
     // 同じデプロイへの呼び出しなので、Preview の Deployment Protection を自動化用の回避ヘッダーで通す
     headers: { ...selfCallHeaders(), Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(args),
+    // 応答しない接続で呼び出し元（投票ごとに直列の描画など）を止めない。再試行は DB の状態から同じ結果に収束する
+    signal: AbortSignal.timeout(BOT_API_TIMEOUT_MS),
   })
   // Vercel のデプロイ保護などで JSON 以外が返ったときも、黙って成功扱いにしない
   const body = (await res.json().catch(() => null)) as ({ ok?: boolean; error?: string } & T) | null
