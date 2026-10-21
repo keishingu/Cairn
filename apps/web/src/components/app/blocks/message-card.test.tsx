@@ -75,6 +75,32 @@ describe('カード型メッセージの描画', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'button', blockId: 'controls', actionId: 'close' })
   })
 
+  it('確認文のメンションもカードと同じ名前で解決する', () => {
+    const blocks = [{
+      type: 'actions',
+      block_id: 'b',
+      elements: [{
+        type: 'button',
+        action_id: 'go',
+        text: { type: 'plain_text', text: '実行' },
+        confirm: {
+          title: { type: 'plain_text', text: '確認' },
+          text: { type: 'mrkdwn', text: `<@${MENTION_USER_ID}> に通知します` },
+          confirm: { type: 'plain_text', text: 'はい' },
+          deny: { type: 'plain_text', text: 'いいえ' },
+        },
+      }],
+    }]
+    render(<MessageCard blocks={blocks} fallbackText="" mentionNames={mentionNames} onAction={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: '実行' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('@山田 に通知します')
+  })
+
+  it('選択肢の説明を隠さず、選択肢の名前に続けて出す', () => {
+    render(<MessageCard blocks={allElementsFixture} fallbackText="" />)
+    expect(screen.getByRole('option', { name: '不参加 — 理由は任意' })).toBeInTheDocument()
+  })
+
   it('カードの更新で初期選択が変わったら、select の表示も新しい初期選択にする', () => {
     const select = (initial: string) => [{
       type: 'actions',
