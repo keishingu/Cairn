@@ -152,8 +152,12 @@ export async function deliverToApp(input: {
   checkUrl?: typeof checkRequestUrl
 }): Promise<DeliveryResult> {
   const started = Date.now()
-  const check = await (input.checkUrl ?? checkRequestUrl)(input.requestUrl)
+  // 3秒は URL の検証（DNS の名前解決）も含めた全体の期限。名前解決が止まっても配信全体はこれを超えない
+  const check = await withDeadline((input.checkUrl ?? checkRequestUrl)(input.requestUrl), INTERACTION_TIMEOUT_MS)
+  if (check === 'timeout') return { status: 'timeout', httpStatus: null, durationMs: Date.now() - started, error: 'Request URL の検証が時間内に終わりませんでした' }
   if (!check.ok) return { status: 'blocked', httpStatus: null, durationMs: Date.now() - started, error: check.reason }
+  const remainingMs = INTERACTION_TIMEOUT_MS - (Date.now() - started)
+  if (remainingMs <= 0) return { status: 'timeout', httpStatus: null, durationMs: Date.now() - started, error: 'Request URL の検証が時間内に終わりませんでした' }
 
   // Bolt が読む形。payload=<JSON> の form-urlencoded
   const body = new URLSearchParams({ payload: JSON.stringify(input.payload) }).toString()
@@ -167,7 +171,7 @@ export async function deliverToApp(input: {
         [SIGNATURE_HEADER]: signRequest(input.signingSecret, timestamp, body),
       },
       body,
-      timeoutMs: INTERACTION_TIMEOUT_MS,
+      timeoutMs: remainingMs,
       allowLoopback: check.devLoopback,
     })
     const durationMs = Date.now() - started
@@ -180,6 +184,14 @@ export async function deliverToApp(input: {
     const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
     return { status: timedOut ? 'timeout' : 'failed', httpStatus: null, durationMs, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), ms)
+  })
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer))
 }
 
 export function newInteractionId(): string {
