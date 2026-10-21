@@ -7,7 +7,7 @@ import { createHash, randomBytes } from 'node:crypto'
 // 有効期限は発行時点から数えるので、Slack の「応答から3秒」に合わせ、配送の期限（3秒）にアプリが応答した後で views.open する3秒を足す
 export const TRIGGER_TTL_MS = 6000
 
-function hashTrigger(token: string): string {
+export function hashTrigger(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
