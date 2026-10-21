@@ -14,6 +14,12 @@ describe('ファーストパーティのアプリ', () => {
     expect(resolveRequestUrl('https://app.example.org/slack/events', env)).toBe('https://app.example.org/slack/events')
   })
 
+  it('Vercel の Preview は APP_URL があってもデプロイ固有の URL を使い、本番は APP_URL を使う', () => {
+    const env = { APP_URL: 'https://cairn.example.com', VERCEL_URL: 'cairn-git-x.vercel.app' }
+    expect(appBaseUrl({ ...env, VERCEL_ENV: 'preview' } as unknown as NodeJS.ProcessEnv)).toBe('https://cairn-git-x.vercel.app')
+    expect(appBaseUrl({ ...env, VERCEL_ENV: 'production' } as unknown as NodeJS.ProcessEnv)).toBe('https://cairn.example.com')
+  })
+
   it('APP_URL が無ければ Vercel の URL を使い、どちらも無ければ黙って空にせず例外にする', () => {
     expect(appBaseUrl({ VERCEL_URL: 'cairn-git-x.vercel.app' } as unknown as NodeJS.ProcessEnv)).toBe('https://cairn-git-x.vercel.app')
     expect(() => appBaseUrl({} as NodeJS.ProcessEnv)).toThrow('APP_URL is not configured')

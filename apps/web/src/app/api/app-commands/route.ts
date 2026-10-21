@@ -86,16 +86,20 @@ export async function POST(req: Request) {
         trigger_id: triggerId,
       },
     })
-    await db.insert(appInteractionDeliveries).values({
-      installationId: row.installationId,
-      userId: ctx.userId,
-      type: 'slash_command',
-      actionId: body.command,
-      status: delivery.status,
-      httpStatus: delivery.httpStatus,
-      durationMs: delivery.durationMs,
-      error: delivery.status === 'delivered' ? null : delivery.error.slice(0, 500),
-    })
+    // 配送の記録は運用のためのもの。記録だけ失敗しても、アプリが処理した結果を利用者へ返す（押し直しでコマンドを二重に実行させない）
+    await db
+      .insert(appInteractionDeliveries)
+      .values({
+        installationId: row.installationId,
+        userId: ctx.userId,
+        type: 'slash_command',
+        actionId: body.command,
+        status: delivery.status,
+        httpStatus: delivery.httpStatus,
+        durationMs: delivery.durationMs,
+        error: delivery.status === 'delivered' ? null : delivery.error.slice(0, 500),
+      })
+      .catch((err: unknown) => console.error('[/api/app-commands] failed to record delivery:', err))
     if (delivery.status !== 'delivered') return NextResponse.json({ error: delivery.status === 'timeout' ? 'app_timeout' : 'app_unreachable' }, { status: 502 })
     return NextResponse.json({ ok: true })
   } catch (err) {

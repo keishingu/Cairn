@@ -34,10 +34,14 @@ export const FIRST_PARTY_APPS: readonly FirstPartyAppDefinition[] = [
 
 /**
  * アプリの今のデプロイの URL。Preview と develop は同じ DB を共有するため、ファーストパーティの Request URL は
- * 絶対 URL で保存せず、送る時点でこの URL を付ける（デプロイごとに保存値を書き換え合わない）
+ * 絶対 URL で保存せず、送る時点でこの URL を付ける（デプロイごとに保存値を書き換え合わない）。
+ * Vercel の Preview（develop を含む）は、同じコードの版へ届くようデプロイ固有の VERCEL_URL を優先する（APP_URL の正規ホストは別の版が動いている）。
+ * 本番は、Deployment Protection で守られるデプロイ固有 URL ではなく公開の APP_URL へ送る
  */
 export function appBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  if (env['APP_URL']) return env['APP_URL'].replace(/\/$/, '')
+  const appUrl = env['APP_URL']?.replace(/\/$/, '')
+  if (env['VERCEL_URL'] && env['VERCEL_ENV'] !== 'production') return `https://${env['VERCEL_URL']}`
+  if (appUrl) return appUrl
   if (env['VERCEL_URL']) return `https://${env['VERCEL_URL']}`
   throw new Error('APP_URL is not configured')
 }

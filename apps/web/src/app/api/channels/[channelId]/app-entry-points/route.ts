@@ -50,7 +50,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
           entryPoints: row.entryPoints,
         })),
     )
-    return NextResponse.json(result satisfies AppEntryPointDto[])
+    // ゲストは Bot をチャンネルへ追加できない（POST /apps が拒む）。成功しない起動口は Web・ネイティブとも出さない
+    const visible = ctx.role === 'guest' ? result.filter((app) => app.inChannel) : result
+    return NextResponse.json(visible satisfies AppEntryPointDto[])
   } catch (err) {
     console.error('[/api/channels/[channelId]/app-entry-points GET] failed:', err)
     return NextResponse.json({ error: 'internal_error' }, { status: 500 })
