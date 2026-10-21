@@ -5,6 +5,7 @@ const base = {
   meId: 'me',
   targetId: 'u1',
   blockedByMe: false,
+  blockedEitherWay: false,
   isActiveMember: true,
   dmEnabled: true,
   canMention: true,
@@ -18,7 +19,12 @@ describe('profileSheetTargetFromMessage', () => {
       userId: 'u1',
       displayName: '山田',
       avatarUrl: null,
+      blockedEitherWay: false,
     })
+  })
+
+  test('どちらかの向きのブロックを blockedEitherWay に引き継ぐ', () => {
+    expect(profileSheetTargetFromMessage({ ...message, blocked: true })?.blockedEitherWay).toBe(true)
   })
 
   test('システムメッセージは対象にしない', () => {
@@ -52,7 +58,11 @@ describe('profileSheetActions', () => {
   })
 
   test('ブロック済みなら DM とブロックの代わりに解除を出す', () => {
-    expect(profileSheetActions({ ...base, blockedByMe: true })).toEqual(['mention', 'unblock'])
+    expect(profileSheetActions({ ...base, blockedByMe: true, blockedEitherWay: true })).toEqual(['mention', 'unblock'])
+  })
+
+  test('相手からブロックされているときは DM を出さずブロックは出す', () => {
+    expect(profileSheetActions({ ...base, blockedEitherWay: true })).toEqual(['mention', 'block'])
   })
 
   test('ブロック状態が未取得なら DM・ブロック・解除を出さない', () => {

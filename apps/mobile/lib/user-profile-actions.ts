@@ -5,6 +5,8 @@ export interface ProfileSheetTarget {
   userId: string
   displayName: string
   avatarUrl: string | null
+  /** どちらかの向きでブロックがあるか（メッセージの blocked）。DM はサーバーが双方向で拒否するため、DM の表示判定に使う */
+  blockedEitherWay: boolean
 }
 
 export interface ProfileSheetSource {
@@ -12,6 +14,7 @@ export interface ProfileSheetSource {
   senderId: string
   senderName: string
   senderAvatarUrl: string | null
+  blocked?: boolean
 }
 
 /** システムメッセージには送信者がいないため、プロフィールシートを開かない */
@@ -21,6 +24,7 @@ export function profileSheetTargetFromMessage(message: ProfileSheetSource): Prof
     userId: message.senderId,
     displayName: message.senderName,
     avatarUrl: message.senderAvatarUrl,
+    blockedEitherWay: message.blocked === true,
   }
 }
 
@@ -34,6 +38,8 @@ export interface ProfileSheetActionInput {
    * メッセージの blocked フラグは相手からのブロックでも立つため、向きの判定に使わない
    */
   blockedByMe: boolean | null
+  /** どちらかの向きでブロックがあるか。相手からのブロックでも DM はサーバーが 403 で拒否する */
+  blockedEitherWay: boolean
   /** ワークスペースメンバー一覧に相手がいるか。一覧が未取得・取得失敗なら null（判定せずサーバーに委ねる） */
   isActiveMember: boolean | null
   dmEnabled: boolean
@@ -45,7 +51,7 @@ export interface ProfileSheetActionInput {
  * 表示する操作を決める。表示の補助であり、権限の最終判定は常にサーバーが行う。
  * - 自分自身には操作を出さない（自分のIDが未取得のときも誤操作を避けて出さない）
  * - 有効なメンバーではない相手には DM・メンションを出さない（サーバーも 422 で拒否する）
- * - ブロック中の相手とは DM できない（サーバーが 403）。代わりに解除を出す
+ * - どちらかの向きでブロックがある相手とは DM できない（サーバーが 403）。自分からのブロックなら解除を出す
  * - ブロック状態が分からないうちは DM・ブロック・解除を出さない（誤った操作を出さない）
  */
 export function profileSheetActions(input: ProfileSheetActionInput): ProfileSheetAction[] {
@@ -53,7 +59,7 @@ export function profileSheetActions(input: ProfileSheetActionInput): ProfileShee
   const actions: ProfileSheetAction[] = []
   const notMember = input.isActiveMember === false
   const blockKnown = input.blockedByMe !== null
-  if (input.dmEnabled && blockKnown && !input.blockedByMe && !notMember) actions.push('dm')
+  if (input.dmEnabled && blockKnown && !input.blockedByMe && !input.blockedEitherWay && !notMember) actions.push('dm')
   if (input.canMention && !notMember) actions.push('mention')
   if (input.blockedByMe === true) actions.push('unblock')
   else if (blockKnown && !notMember) actions.push('block')

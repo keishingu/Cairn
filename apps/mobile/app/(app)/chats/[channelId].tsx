@@ -1260,6 +1260,7 @@ export default function ChatThreadScreen() {
         meId: me?.id,
         targetId: profileTarget.userId,
         blockedByMe: profileBlockedByMe,
+        blockedEitherWay: profileTarget.blockedEitherWay,
         isActiveMember: workspaceMembers.data ? !profileNotMember : null,
         // 相手との DM を開いている最中に同じ DM へ移動する操作は出さない
         dmEnabled: FEATURE_FLAGS.dm && channelType !== 'dm',
