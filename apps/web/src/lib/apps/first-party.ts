@@ -76,6 +76,16 @@ export function firstPartySigningSecret(slug: FirstPartyAppSlug, env: NodeJS.Pro
   return createHmac('sha256', Buffer.from(key, 'hex')).update(`cairn-first-party-app:${slug}:signing-secret`).digest('hex')
 }
 
+/**
+ * apps の定義を書き換えてよいデプロイか。Preview（PR）と develop は同じ DB を共有するため、PR の Preview が
+ * 古い・新しい定義で共有の行を書き換え合うと、起動口や Request URL が版の間で揺れる。行を同期するのは
+ * 本番・develop・Vercel 以外（ローカル）だけにし、PR の Preview は行が無いときに作るだけにする
+ */
+export function canSyncFirstPartyDefinitions(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!env['VERCEL_ENV']) return true
+  return env['VERCEL_ENV'] === 'production' || env['VERCEL_GIT_COMMIT_REF'] === 'develop'
+}
+
 /** apps の行を作るか、今の定義に合わせる。戻り値は apps.id */
 async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise<string> {
   const { db, apps } = await import('@cairn/db')
@@ -95,7 +105,8 @@ async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise
     .limit(1)
   if (existing) {
     // 定義が変わったときだけ書き換える（毎回の更新で updated_at を動かさない）
-    if (existing.requestUrl !== values.requestUrl || existing.name !== values.name || JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)) {
+    const changed = existing.requestUrl !== values.requestUrl || existing.name !== values.name || JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)
+    if (changed && canSyncFirstPartyDefinitions()) {
       await db.update(apps).set({ ...values, updatedAt: sql`now()` }).where(eq(apps.id, existing.id))
     }
     return existing.id

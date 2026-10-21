@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { appBaseUrl, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl } from './first-party'
+import { appBaseUrl, canSyncFirstPartyDefinitions, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl } from './first-party'
 import { parseEntryPoints } from './channel-apps'
 
 const KEY = 'a'.repeat(64)
@@ -32,6 +32,14 @@ describe('ファーストパーティのアプリ', () => {
       headers: { 'x-vercel-protection-bypass': 'bypass' },
     })
     expect(resolveRequestTarget('https://app.example.org/slack/events', env)).toEqual({ requestUrl: 'https://app.example.org/slack/events', headers: {} })
+  })
+
+  it('共有の定義を書き換えるのは本番・develop・ローカルだけで、PR の Preview は書き換えない', () => {
+    const env = (values: Record<string, string>) => values as unknown as NodeJS.ProcessEnv
+    expect(canSyncFirstPartyDefinitions(env({}))).toBe(true)
+    expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'production' }))).toBe(true)
+    expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'develop' }))).toBe(true)
+    expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'feat/x' }))).toBe(false)
   })
 
   it('署名シークレットは暗号鍵とアプリごとに決まり、鍵が無ければ例外にする', () => {
