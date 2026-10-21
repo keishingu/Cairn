@@ -152,6 +152,15 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
+  it('時間切れのエラーの後にカードの書き換えが届いたら、古いエラーを消す', async () => {
+    const onAction = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'app_timeout' })))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('届かなかった選択は元の選択に戻す', async () => {
     const blocks = [{
       type: 'actions',
