@@ -461,7 +461,8 @@ export async function loadPhaseTwoChannelInput(
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
         .where(
-          and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), afterCursor),
+          // アプリ（Bot）の発言は検索・RAG には含めるが、PMO の未回答の依頼・リスクの候補にはしない（app-platform-design.md §11 D11）
+          and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), ne(profiles.kind, 'bot'), afterCursor),
         )
         .orderBy(asc(messages.createdAt), asc(messages.id))
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
@@ -476,7 +477,7 @@ export async function loadPhaseTwoChannelInput(
         })
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
-        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt)))
+        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), ne(profiles.kind, 'bot')))
         .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
@@ -562,6 +563,7 @@ export async function loadPhaseTwoChannelInput(
               and(
                 eq(messages.channelId, channel.channelId),
                 isNull(messages.deletedAt),
+                ne(profiles.kind, 'bot'),
                 or(
                   gt(messages.createdAt, recheckAnchor.createdAt),
                   and(
