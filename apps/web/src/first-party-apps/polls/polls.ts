@@ -47,13 +47,13 @@ async function workspaceOfInstallation(installationId: string): Promise<string> 
   return row.workspaceId
 }
 
-/** 投票を作り、カードを投稿する。同じ冪等キーの再試行は同じ投票・同じメッセージに収束する */
-export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
+/** 投票を投稿待ち（pending_post）で作る。同じ冪等キーの再試行は既存の投票を返す */
+export async function createPendingPoll(input: CreatePollInput): Promise<string> {
   const { db, polls, pollOptions } = await import('@cairn/db')
   const { and, eq } = await import('drizzle-orm')
   const installationId = await getFirstPartyInstallationId('polls', input.workspaceId)
 
-  const pollId = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [created] = await tx
       .insert(polls)
       .values({
@@ -78,7 +78,11 @@ export async function createPoll(input: CreatePollInput): Promise<{ pollId: stri
     await tx.insert(pollOptions).values(input.options.map((label, position) => ({ pollId: created.id, label, position })))
     return created.id
   })
+}
 
+/** 投票を作り、カードを投稿する。同じ冪等キーの再試行は同じ投票・同じメッセージに収束する */
+export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
+  const pollId = await createPendingPoll(input)
   const messageId = await postPoll(pollId)
   return { pollId, messageId }
 }

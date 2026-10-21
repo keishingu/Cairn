@@ -6,7 +6,7 @@ import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
 import { callBotApi } from './bot-client'
-import { createPoll } from './polls'
+import { createPendingPoll } from './polls'
 import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, parsePollSubmission } from './render'
 
 // 投票アプリの Request URL。外部アプリと同じく、署名付きで届くインタラクションだけを受ける（docs/app-platform-design.md §7）
@@ -62,8 +62,9 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
   const { channelId } = JSON.parse(payload.view.private_metadata ?? '{}') as { channelId?: string }
   if (!channelId) return NextResponse.json({ response_action: 'errors', errors: { question: 'チャンネルが分からないため作成できません' } })
 
-  // 同じモーダルの送信の再試行（応答が失われて押し直した場合）は、同じ投票に収束させる
-  await createPoll({
+  // 同じモーダルの送信の再試行（応答が失われて押し直した場合）は、同じ投票に収束させる。
+  // 配信は3秒で打ち切られるので、ここでは投稿待ちで保存して応答し、カードの投稿は描画イベントに任せる
+  const pollId = await createPendingPoll({
     workspaceId: payload.team.id,
     channelId,
     createdBy: payload.user.id,
@@ -72,6 +73,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     allowMultiple: parsed.allowMultiple,
     idempotencyKey: `view:${payload.view.id}`,
   })
+  await sendRenderEvent(pollId)
   return new NextResponse('', { status: 200 })
 }
 
@@ -119,11 +121,14 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
     return true
   })
 
-  // カードの描き直しは commit の後。送れなくても cron が version > rendered_version を拾い直す（§7.3）
-  if (changed) {
-    await inngest.send({ name: POLL_RENDER_EVENT, data: { pollId: poll.id } }).catch((err: unknown) => {
-      console.warn('[polls] card render event failed (Inngest not running?):', err)
-    })
-  }
+  // カードの描き直しは commit の後
+  if (changed) await sendRenderEvent(poll.id)
   return new NextResponse('', { status: 200 })
+}
+
+// 送れなくても、投稿待ち・描画待ちの投票は cron が拾い直す（§7.3）
+async function sendRenderEvent(pollId: string): Promise<void> {
+  await inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
+    console.warn('[polls] card render event failed (Inngest not running?):', err)
+  })
 }

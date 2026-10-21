@@ -380,7 +380,7 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
   2. commit 後に `chat.postMessage` を `client_msg_id = clientMsgId` 付きで呼ぶ。Cairn の Bot API は `client_msg_id` をメッセージ ID に使い、同じ ID の再送は新規投稿せず既存のメッセージを返す（モバイルのオフラインキューと同じ冪等化）
   3. 応答の `messageId` を保存して `status='posted'` にする。2〜3 の間で失敗しても、再試行は同じ `clientMsgId` で 2 からやり直すだけで、カードが二重に出ることはない
 - 起動口は3つで、すべて同じユースケースを通る:
-  1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`
+  1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`。配信は3秒で打ち切られるので、ここでは 1 だけ行って応答し、2〜3 は `polls/card.render`（投稿前なら投稿する）に任せる。イベントを送れなくても `pending_post` を cron が拾う
   2. 定期ジョブ（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §8 の create-poll ステップ）→ 投票アプリのユースケースを呼ぶ。`scheduled_jobs.senderId` は投票アプリの Bot profile になる
   3. AI の `create_poll` tool（[`10_ai_member_design.md`](./10_ai_member_design.md) Stage 2）
 - 2 と 3 は Cairn 本体側から投票アプリを呼ぶ形になる。第1段階は §7.1 の公開エントリ（`createPoll`）を呼ぶ。外部アプリには開かない（Slack の Workflow Steps 相当として第2段階以降に検討）
