@@ -73,8 +73,21 @@ export type RenderCard = {
 export function normalizeMessageBlocks(input: unknown): RenderCard {
   const blocks = Array.isArray(input) ? input.map((block, index) => normalizeBlock(block, index)) : []
   const hasUnsupported = !Array.isArray(input) || blocks.some(containsUnsupported)
-  const nothingRenderable = blocks.every((block) => block.type === 'unsupported')
+  const nothingRenderable = !blocks.some(isRenderable)
   return { blocks, hasUnsupported, nothingRenderable }
+}
+
+/** 描ける中身が1つでもあるか。要素がすべて未対応の actions / context は、枠だけで何も描けない */
+function isRenderable(block: RenderBlock): boolean {
+  switch (block.type) {
+    case 'unsupported':
+      return false
+    case 'actions':
+    case 'context':
+      return block.elements.some((element) => element.type !== 'unsupported')
+    default:
+      return true
+  }
 }
 
 function containsUnsupported(block: RenderBlock): boolean {
@@ -109,13 +122,13 @@ function normalizeBlock(raw: unknown, index: number): RenderBlock {
       }
     }
     case 'actions': {
-      const elements = Array.isArray((raw as { elements?: unknown }).elements) ? (raw as { elements: unknown[] }).elements : null
-      if (!elements || elements.length === 0) return unsupported(type, blockId)
+      const elements = containerElements(raw)
+      if (!elements) return unsupported(type, blockId)
       return { type: 'actions', blockId, elements: elements.map((element, i) => normalizeActionElement(element, `${blockId}-${i}`)) }
     }
     case 'context': {
-      const elements = Array.isArray((raw as { elements?: unknown }).elements) ? (raw as { elements: unknown[] }).elements : null
-      if (!elements || elements.length === 0) return unsupported(type, blockId)
+      const elements = containerElements(raw)
+      if (!elements) return unsupported(type, blockId)
       return { type: 'context', blockId, elements: elements.map(normalizeContextElement) }
     }
     case 'image': {
@@ -170,6 +183,18 @@ function normalizeContextElement(raw: unknown): RenderContextElement {
     if (element && element.type !== 'image') return { type: 'text', text: renderText(element) }
   }
   return unsupportedElement(raw)
+}
+
+// actions / context の枠そのものを検証する。要素は1つずつ寛容に見るが、枠に知らないフィールドがあれば
+// 新しい版の機能を黙って落とさないよう、ブロックごと unsupported にする
+const CONTAINER_KEYS = new Set(['type', 'block_id', 'elements'])
+
+function containerElements(raw: unknown): unknown[] | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  if (Object.keys(raw).some((key) => !CONTAINER_KEYS.has(key))) return null
+  const { block_id: id, elements } = raw as { block_id?: unknown; elements?: unknown }
+  if (id !== undefined && typeof id !== 'string') return null
+  return Array.isArray(elements) && elements.length > 0 ? elements : null
 }
 
 function buttonElement(button: ButtonElement, fallbackId: string): RenderElement {

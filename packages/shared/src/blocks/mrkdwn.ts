@@ -49,7 +49,11 @@ export function parseMrkdwn(source: string, options: { verbatim?: boolean } = {}
       blocks.push({ type: 'pre', text: unescapeEntities(segment.replace(/^\n/, '').replace(/\n$/, '')) })
       return
     }
-    blocks.push(...parseLines(segment, autolink))
+    // ``` の直前・直後の改行はブロックの区切りに使われるので、本文側の空行として残さない
+    let text = segment
+    if (index > 0) text = text.replace(/^\n/, '')
+    if (index < segments.length - 1) text = text.replace(/\n$/, '')
+    blocks.push(...parseLines(text, autolink))
   })
   return blocks
 }

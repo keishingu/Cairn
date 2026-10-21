@@ -63,6 +63,24 @@ describe('blocks の正規化', () => {
     expect(card.blocks[0]).toMatchObject({ elements: [{ type: 'unsupported', original: 'button' }] })
   })
 
+  it('actions / context の枠に知らないフィールドがあれば、ブロックごと unsupported にする', () => {
+    const card = normalizeMessageBlocks([
+      { type: 'actions', layout: 'grid', elements: [{ type: 'button', action_id: 'a', text: { type: 'plain_text', text: 'A' } }] },
+      { type: 'context', block_id: 'c', elements: [{ type: 'plain_text', text: '補足' }] },
+    ])
+    expect(card.blocks[0]).toEqual({ type: 'unsupported', original: 'actions', blockId: 'cairn-b0' })
+    expect(card.blocks[1]).toMatchObject({ type: 'context', blockId: 'c' })
+    expect(card.hasUnsupported).toBe(true)
+  })
+
+  it('要素がすべて未対応の actions / context だけなら nothingRenderable にする', () => {
+    const card = normalizeMessageBlocks([
+      { type: 'actions', elements: [{ type: 'datepicker', action_id: 'd' }] },
+      { type: 'context', elements: [{ type: 'rich_text' }] },
+    ])
+    expect(card).toMatchObject({ hasUnsupported: true, nothingRenderable: true })
+  })
+
   it('何も描けなければ nothingRenderable にする', () => {
     expect(normalizeMessageBlocks(nothingRenderableFixture)).toMatchObject({ hasUnsupported: true, nothingRenderable: true })
   })

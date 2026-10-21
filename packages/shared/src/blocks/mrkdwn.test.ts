@@ -115,6 +115,16 @@ describe('mrkdwn のブロック', () => {
     ])
   })
 
+  it('``` の前後の改行を空行にしない', () => {
+    const blocks = parseMrkdwn('前\n```\ncode\n```\n後')
+    expect(blocks).toEqual([
+      { type: 'paragraph', children: [{ type: 'text', text: '前' }] },
+      { type: 'pre', text: 'code' },
+      { type: 'paragraph', children: [{ type: 'text', text: '後' }] },
+    ])
+    expect(mrkdwnToPlainText(blocks, () => '')).toBe('前\ncode\n後')
+  })
+
   it('閉じていない ``` は文字として残す', () => {
     expect(parseMrkdwn('a ```b')).toEqual([{ type: 'paragraph', children: [{ type: 'text', text: 'a ```b' }] }])
   })
