@@ -93,7 +93,6 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
 }
 
 function CardElement({ element, blockId, onAction }: { element: RenderElement; blockId: string; onAction?: MessageCardProps['onAction'] }) {
-  const t = useT()
   switch (element.type) {
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
