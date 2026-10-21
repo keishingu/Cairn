@@ -14,12 +14,14 @@ function hashTrigger(token: string): string {
 export async function issueTrigger(input: { installationId: string; userId: string; channelId: string | null }): Promise<string> {
   const token = randomBytes(24).toString('base64url')
   const { db, appTriggers } = await import('@cairn/db')
+  const { sql } = await import('drizzle-orm')
   await db.insert(appTriggers).values({
     tokenHash: hashTrigger(token),
     installationId: input.installationId,
     userId: input.userId,
     channelId: input.channelId,
-    expiresAt: new Date(Date.now() + TRIGGER_TTL_MS),
+    // 期限も DB の時刻で決める（アプリと DB の時計のずれで期限を変えない）
+    expiresAt: sql`clock_timestamp() + make_interval(secs => ${TRIGGER_TTL_MS / 1000})`,
   })
   return token
 }
@@ -30,12 +32,13 @@ export type ConsumedTrigger = { ok: true; userId: string; channelId: string | nu
 export async function consumeTrigger(installationId: string, token: string | undefined): Promise<ConsumedTrigger> {
   if (!token) return { ok: false, error: 'invalid_trigger_id' }
   const { db, appTriggers } = await import('@cairn/db')
-  const { and, eq, gt, isNull } = await import('drizzle-orm')
+  const { and, eq, gt, isNull, sql } = await import('drizzle-orm')
   const tokenHash = hashTrigger(token)
   const [used] = await db
     .update(appTriggers)
-    .set({ usedAt: new Date() })
-    .where(and(eq(appTriggers.tokenHash, tokenHash), eq(appTriggers.installationId, installationId), isNull(appTriggers.usedAt), gt(appTriggers.expiresAt, new Date())))
+    .set({ usedAt: sql`now()` })
+    // 期限は UPDATE を実行する時点の DB の時刻で比べる（接続待ちの間に切れた trigger_id を通さない）
+    .where(and(eq(appTriggers.tokenHash, tokenHash), eq(appTriggers.installationId, installationId), isNull(appTriggers.usedAt), gt(appTriggers.expiresAt, sql`clock_timestamp()`)))
     .returning({ userId: appTriggers.userId, channelId: appTriggers.channelId })
   if (used) return { ok: true, userId: used.userId, channelId: used.channelId }
 
