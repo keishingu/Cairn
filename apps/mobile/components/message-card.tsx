@@ -25,7 +25,7 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
-type CardContext = {
+export type CardContext = {
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
@@ -99,7 +99,8 @@ export function MessageCard({
   )
 }
 
-function CardBlock({ block, context }: { block: RenderBlock; context: CardContext }) {
+/** モーダルの中の入力欄以外のブロックも同じ見た目で描くため、外から使えるようにする */
+export function CardBlock({ block, context }: { block: RenderBlock; context: CardContext }) {
   const { palette } = context
   switch (block.type) {
     case 'header':

@@ -69,6 +69,8 @@ export type BlockActionsContext = {
   channel: { id: string; name: string | null }
   message: { id: string; text: string; botProfileId: string; installationId: string; blocks: unknown }
   action: ResolvedAction
+  /** views.open に使う。押した本人とインストールに結びついた、3秒・1回だけの ID */
+  triggerId: string
 }
 
 /** Slack の block_actions と同じ形。ID は UUID のまま入れ、cairn.* にも併記する（§11 D3） */
@@ -80,6 +82,7 @@ export function buildBlockActionsPayload(context: BlockActionsContext, interacti
     api_app_id: context.appId,
     // 非推奨の verification token は送らない（署名で検証する）
     token: '',
+    trigger_id: context.triggerId,
     container: { type: 'message', message_ts: context.message.id, channel_id: context.channel.id, is_ephemeral: false },
     channel: { id: context.channel.id, name: context.channel.name ?? '' },
     message: {

@@ -210,3 +210,60 @@ export const appInteractionDeliveries = pgTable(
     check('app_interaction_deliveries_status_known', sql`${t.status} in ('delivered', 'failed', 'timeout', 'blocked')`),
   ],
 ).enableRLS()
+
+/**
+ * モーダルを開くための trigger_id。インタラクションを届けるときに発行し、3秒・1回だけ使える（Slack と同じ）。
+ * 押した本人・アプリのインストールに結びつけ、他人の画面にモーダルを開かせない。平文は送るだけで、DB には hash を置く
+ */
+export const appTriggers = pgTable(
+  'app_triggers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('app_triggers_token_hash_idx').on(t.tokenHash),
+    index('app_triggers_expires_idx').on(t.expiresAt),
+  ],
+).enableRLS()
+
+/**
+ * アプリが開いたモーダル（view）。開いた本人の画面にだけ出す。Realtime で本人のトピックへ知らせ、クライアントが開く。
+ * hash は views.update の競合検出に使う（Slack と同じ）
+ */
+export const appViews = pgTable(
+  'app_views',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // 開いた起点のチャンネル。作成メニューから開いたモーダルの送信先を後で解決するため
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    view: jsonb('view').notNull(),
+    hash: text('hash').notNull(),
+    // open / submitted / closed
+    status: text('status').notNull().default('open'),
+    schemaVersion: integer('schema_version').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('app_views_user_status_idx').on(t.userId, t.status),
+    check('app_views_status_known', sql`${t.status} in ('open', 'submitted', 'closed')`),
+    check('app_views_view_object', sql`jsonb_typeof(${t.view}) = 'object'`),
+  ],
+).enableRLS()

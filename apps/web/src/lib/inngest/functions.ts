@@ -1301,19 +1301,27 @@ export const cleanupExpiredUploadRequests = inngest.createFunction(
   },
 )
 
-// アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）
+// アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）。
+// trigger_id は3秒で失効するので、1日たったものは消す
 export const cleanupAppInteractionDeliveries = inngest.createFunction(
   { id: 'cleanup-app-interaction-deliveries', concurrency: { limit: 1 } },
   { cron: 'TZ=Asia/Tokyo 40 3 * * *' },
   async ({ step }) => {
-    return step.run('delete-old-deliveries', async () => {
+    const deliveries = await step.run('delete-old-deliveries', async () => {
       const { db, appInteractionDeliveries } = await import('@cairn/db')
       const { lt, sql } = await import('drizzle-orm')
       const deleted = await db
         .delete(appInteractionDeliveries)
         .where(lt(appInteractionDeliveries.createdAt, sql`now() - interval '30 days'`))
         .returning({ id: appInteractionDeliveries.id })
-      return { deleted: deleted.length }
+      return deleted.length
     })
+    const triggers = await step.run('delete-expired-triggers', async () => {
+      const { db, appTriggers } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db.delete(appTriggers).where(lt(appTriggers.expiresAt, sql`now() - interval '1 day'`)).returning({ id: appTriggers.id })
+      return deleted.length
+    })
+    return { deliveries, triggers }
   },
 )

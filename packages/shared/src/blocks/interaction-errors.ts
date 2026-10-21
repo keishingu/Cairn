@@ -13,8 +13,23 @@ const MESSAGES: Record<string, string> = {
   action_not_found: 'This action is no longer available.',
   invalid_option: 'This action is no longer available.',
   message_not_found: 'This action is no longer available.',
+  view_not_found: 'This form is no longer available.',
+  app_invalid_response: 'The app returned an invalid response.',
 }
 
 export function cardActionErrorMessage(code: string | null | undefined): string {
   return (code && MESSAGES[code]) || 'Could not send the action. Please try again.'
+}
+
+// モーダルの入力欄ごとのエラー。Cairn の検証はコード、アプリが返した文言はそのまま出す
+const FIELD_MESSAGES: Record<string, string> = {
+  required: 'Please fill in this field.',
+  too_short: 'This is too short.',
+  too_long: 'This is too long.',
+  invalid_option: 'Choose one of the options.',
+}
+
+export function viewFieldErrorMessage(error: { code?: string; message?: string }, translate: (key: string) => string): string {
+  if (error.message) return error.message
+  return translate((error.code && FIELD_MESSAGES[error.code]) || 'Please check this field.')
 }

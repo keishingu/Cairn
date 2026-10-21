@@ -130,6 +130,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
+          } else if (table === 'app_views') {
+            // アプリが本人にモーダルを開いた・差し替えた・閉じた
+            void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           } else if (table === 'ai_nudges') {
             // INSERT（新規）と UPDATE（resolve / feedback / 再 active 化）の双方を反映する。
             void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
