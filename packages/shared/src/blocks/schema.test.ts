@@ -138,6 +138,19 @@ describe('メッセージの blocks の受理', () => {
 })
 
 describe('モーダルの受理', () => {
+  it('__proto__ や constructor などオブジェクトの組み込みの名前は block_id・action_id に使えない', () => {
+    const modal = (blockIdValue: string, actionIdValue: string) => ({
+      type: 'modal',
+      title: { type: 'plain_text', text: '設定' },
+      submit: { type: 'plain_text', text: '保存' },
+      blocks: [{ type: 'input', block_id: blockIdValue, label: { type: 'plain_text', text: '名前' }, element: { type: 'plain_text_input', action_id: actionIdValue } }],
+    })
+    expect(prepareModalView(modal('__proto__', 'v')).ok).toBe(false)
+    expect(prepareModalView(modal('constructor', 'name')).ok).toBe(false)
+    expect(prepareModalView(modal('name', 'toString')).ok).toBe(false)
+    expect(prepareModalView(modal('name', 'value')).ok).toBe(true)
+  })
+
   it('入力欄の static_select の confirm は描けないので受け付けない', () => {
     const result = prepareModalView({
       type: 'modal',
