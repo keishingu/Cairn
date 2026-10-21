@@ -325,7 +325,7 @@ Slack と同じ方式にする。
 
 - ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置く
 - **境界は向きごとに1つ**:
-  - **アプリ → Cairn**: Bot トークンでの Web API 呼び出し（HTTP）だけ。投票アプリは Cairn 本体の内部関数を import しない（ESLint の import 制限で強制する）
+  - **アプリ → Cairn**: Bot トークンでの Web API 呼び出し（HTTP）だけ。投票アプリは Cairn 本体の内部関数を import しない（ESLint の import 制限で強制する）。例外は、ファーストパーティの設定（`lib/apps/first-party`）・署名（`lib/apps/signing`）・Inngest クライアント・投稿の安全フィルタ（`lib/safety/message-filter`。Bot API と同じ判定をモーダルの応答前に行い、閉じた後に投稿だけが失敗し続けないようにする）だけ
   - **利用者の操作 → アプリ**: 署名付きインタラクションの受信（HTTP）だけ
   - **Cairn 本体 → アプリ**（定期ジョブ・AI からの作成、§7.4）: 投票アプリの公開エントリ `first-party-apps/polls/index.ts` が export する `createPoll` だけ。Cairn 本体はそれ以外のファイルを import しない（同じく ESLint で強制）。`createPoll` の中身もアプリ → Cairn の HTTP 経路で投稿するので、本体の内部関数を直接呼ぶ近道にはならない
   - [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) の `PollPort.createPoll`（`packages/core`）は置かない。この公開エントリが置き換える

@@ -44,6 +44,8 @@ export const polls = pgTable(
   (t) => [
     uniqueIndex('polls_installation_idempotency_idx').on(t.installationId, t.idempotencyKey),
     uniqueIndex('polls_message_idx').on(t.messageId),
+    // カードの ts は client_msg_id なので、投稿直後の操作もこれで投票を引く
+    uniqueIndex('polls_client_msg_idx').on(t.clientMsgId),
     // 描画待ち・投稿待ちを拾い直す cron 用
     index('polls_needs_render_idx').on(t.updatedAt).where(sql`${t.version} > ${t.renderedVersion} or ${t.status} = 'pending_post'`),
     check('polls_status_known', sql`${t.status} in ('pending_post', 'posted', 'closed')`),

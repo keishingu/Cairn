@@ -15,8 +15,8 @@
           {
             "patterns": [
               {
-                "regex": "^@/(?!lib/apps/first-party$|lib/apps/signing$|lib/inngest/client$)",
-                "message": "ファーストパーティのアプリは Cairn 本体の内部関数を使わず、Bot API（HTTP）と @/lib/apps/first-party・@/lib/apps/signing・@/lib/inngest/client だけを使う（docs/app-platform-design.md §7.1）"
+                "regex": "^@/(?!lib/apps/first-party$|lib/apps/signing$|lib/inngest/client$|lib/safety/message-filter$)",
+                "message": "ファーストパーティのアプリは Cairn 本体の内部関数を使わず、Bot API（HTTP）と @/lib/apps/first-party・@/lib/apps/signing・@/lib/inngest/client・@/lib/safety/message-filter だけを使う（docs/app-platform-design.md §7.1）"
               }
             ]
           }

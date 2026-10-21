@@ -57,6 +57,7 @@ ALTER TABLE "poll_votes" ADD CONSTRAINT "poll_votes_user_fk" FOREIGN KEY ("user_
 ALTER TABLE "poll_processed_interactions" ADD CONSTRAINT "poll_processed_interactions_poll_fk" FOREIGN KEY ("poll_id") REFERENCES "public"."polls"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "polls_installation_idempotency_idx" ON "polls" USING btree ("installation_id","idempotency_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "polls_message_idx" ON "polls" USING btree ("message_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "polls_client_msg_idx" ON "polls" USING btree ("client_msg_id");--> statement-breakpoint
 -- 描画待ち・投稿待ちを拾い直す cron 用
 CREATE INDEX "polls_needs_render_idx" ON "polls" USING btree ("updated_at") WHERE "polls"."version" > "polls"."rendered_version" or "polls"."status" = 'pending_post';--> statement-breakpoint
 -- 単一選択の1人1票を DB で強制する（並行の二重投票も防ぐ）

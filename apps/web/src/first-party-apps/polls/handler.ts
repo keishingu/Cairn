@@ -5,6 +5,7 @@ import { after, NextResponse } from 'next/server'
 import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
+import { unsafeMessageError } from '@/lib/safety/message-filter'
 import { callBotApi } from './bot-client'
 import { createPendingPoll } from './polls'
 import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, parsePollSubmission } from './render'
@@ -59,6 +60,16 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
   if (payload.view.callback_id !== CREATE_POLL_CALLBACK_ID) return new NextResponse('', { status: 200 })
   const parsed = parsePollSubmission(payload.view.state.values)
   if (!parsed.ok) return NextResponse.json({ response_action: 'errors', errors: parsed.errors })
+  // Bot API はカードの文字を投稿の安全フィルタにかける。投稿は応答の後なので、ここで同じフィルタを通して
+  // 閉じたモーダルの裏で投稿だけが失敗し続ける（投稿待ちのまま再試行される）ことを防ぐ
+  const unsafeQuestion = unsafeMessageError(parsed.question)
+  const unsafeOptions = unsafeMessageError(parsed.options.join('\n')) ?? (unsafeQuestion ? null : unsafeMessageError([parsed.question, ...parsed.options].join('\n')))
+  if (unsafeQuestion || unsafeOptions) {
+    return NextResponse.json({
+      response_action: 'errors',
+      errors: { ...(unsafeQuestion ? { question: unsafeQuestion } : {}), ...(unsafeOptions ? { options: unsafeOptions } : {}) },
+    })
+  }
   const { channelId } = JSON.parse(payload.view.private_metadata ?? '{}') as { channelId?: string }
   if (!channelId) return NextResponse.json({ response_action: 'errors', errors: { question: 'チャンネルが分からないため作成できません' } })
 
