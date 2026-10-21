@@ -52,7 +52,6 @@ apps {
   signingSecretEncrypted text          // HMAC に平文が要るため hash ではなく暗号化保存
   requestedScopes text[]               // 'chat:write' 等
   entryPoints     jsonb                // 作成メニューへの項目（§6.1）
-  isFirstParty    boolean
   createdBy, createdAt, updatedAt
 }
 
@@ -87,6 +86,8 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
 ```
 
 - 署名シークレットは既存の `apps/web/src/lib/token-crypto.ts`（`connected_accounts` のトークン暗号化）で暗号化して保存する。Bot トークンは検証だけでよいので hash 保存
+- ファーストパーティかどうかは `ownerWorkspaceId is null` で決める（専用のフラグは持たない）
+- `requestUrl` の https 限定はアプリ側で検証する（開発環境の例外は §5.4。DB では縛らない）。`requestUrl` があるのに署名シークレットがない行は DB の CHECK で拒否する
 - ファーストパーティの投票アプリは全ワークスペースに既定でインストール済みにする（§11 D7）。マイグレーションでは適用時点のワークスペースにしか作れないため、`apps` 行・installation・Bot profile の作成は冪等な `ensureFirstPartyInstallations(workspaceId)` に一本化し、**ワークスペース作成処理から呼ぶ**。既存ワークスペースはデプロイ後に同じ関数で backfill し、インストール一覧・作成メニューの表示時にも同じ関数で欠けを補う（遅延初期化）。署名シークレットは環境変数から暗号化して入れるため SQL では作らない。Bot のチャンネルへの追加は手動
 
 ### 3.2 Bot profile
@@ -149,7 +150,7 @@ UI は `/settings/apps`（インストール一覧・スコープ・Bot トー�
 ```ts
 message_blocks {
   messageId      → messages (cascade) primary key
-  installationId → app_installations
+  installationId → app_installations (cascade)  // インストールは取り消しで止め、行は消さない
   blocks         jsonb                 // 検証済みの Block Kit サブセット
   schemaVersion  integer               // §4.4
   updatedAt                             // chat.update の時刻

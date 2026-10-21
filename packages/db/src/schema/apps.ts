@@ -1,0 +1,183 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import {
+  type AnyPgColumn,
+  check,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { channels, messages } from './channels'
+import { profiles, workspaces } from './workspaces'
+
+// 第1段階で扱うスコープ。名前は Slack に合わせる（docs/app-platform-design.md §3.4）
+export const APP_SCOPES = ['chat:write', 'users:read', 'channels:read'] as const
+export type AppScope = (typeof APP_SCOPES)[number]
+
+const appScopesCheck = (column: AnyPgColumn) =>
+  sql`${column} <@ array['chat:write', 'users:read', 'channels:read']::text[]`
+
+/**
+ * Cairn に載せるアプリ。owner_workspace_id が null ならファーストパーティで、全ワークスペースへ提供する。
+ * 署名シークレットは HMAC の計算に平文が要るため、hash ではなく token-crypto で暗号化して保存する。
+ */
+export const apps = pgTable(
+  'apps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    iconUrl: text('icon_url'),
+    ownerWorkspaceId: uuid('owner_workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    // https 限定はアプリ側で検証する。ローカル開発のファーストパーティアプリは http://localhost を使うため DB では縛らない
+    requestUrl: text('request_url'),
+    signingSecretEncrypted: text('signing_secret_encrypted'),
+    requestedScopes: text('requested_scopes').array().notNull().default(sql`'{}'::text[]`),
+    // 作成メニューに並べる起動口（docs/app-platform-design.md §6.1）
+    entryPoints: jsonb('entry_points').notNull().default([]),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('apps_first_party_slug_idx').on(t.slug).where(sql`${t.ownerWorkspaceId} is null`),
+    uniqueIndex('apps_workspace_slug_idx').on(t.ownerWorkspaceId, t.slug).where(sql`${t.ownerWorkspaceId} is not null`),
+    check('apps_slug_format', sql`${t.slug} ~ '^[a-z0-9][a-z0-9-]{0,62}$'`),
+    check('apps_name_not_empty', sql`length(trim(${t.name})) > 0`),
+    check('apps_requested_scopes_known', appScopesCheck(t.requestedScopes)),
+    check('apps_entry_points_array', sql`jsonb_typeof(${t.entryPoints}) = 'array'`),
+    // 署名できない宛先へインタラクションを送らせない
+    check('apps_request_url_has_secret', sql`${t.requestUrl} is null or ${t.signingSecretEncrypted} is not null`),
+  ],
+).enableRLS()
+
+/**
+ * アプリのワークスペースへのインストール。Bot profile はインストールごとに1つで、取り消し後も
+ * 過去のメッセージの送信者表示に使うため削除しない（revoked_at で投稿・更新を止める）。
+ */
+export const appInstallations = pgTable(
+  'app_installations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    appId: uuid('app_id')
+      .notNull()
+      .references(() => apps.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    botProfileId: uuid('bot_profile_id')
+      .notNull()
+      .references(() => profiles.id),
+    grantedScopes: text('granted_scopes').array().notNull().default(sql`'{}'::text[]`),
+    // 既定インストール（ファーストパーティ）は人の操作ではないため null
+    installedBy: uuid('installed_by').references(() => profiles.id, { onDelete: 'set null' }),
+    installedAt: timestamp('installed_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('app_installations_app_workspace_idx').on(t.appId, t.workspaceId),
+    uniqueIndex('app_installations_bot_profile_idx').on(t.botProfileId),
+    // app_channel_memberships の複合 FK の参照先
+    uniqueIndex('app_installations_id_workspace_idx').on(t.id, t.workspaceId),
+    index('app_installations_workspace_idx').on(t.workspaceId),
+    check('app_installations_granted_scopes_known', appScopesCheck(t.grantedScopes)),
+  ],
+).enableRLS()
+
+/**
+ * Bot トークン（`cairn_bot_...`）。PAT と同じく平文は発行時に一度だけ返し、DB には SHA-256 のみ保存する。
+ * ファーストパーティだけは平文を控える人がいない（自動プロビジョニング）ため、token-crypto で暗号化した平文も持つ。
+ */
+export const appBotTokens = pgTable(
+  'app_bot_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    tokenPrefix: text('token_prefix').notNull(),
+    // ファーストパーティのインストールに限る（外部アプリには持たせない。アプリ側で検証する）
+    tokenEncrypted: text('token_encrypted'),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    rateLimitWindowStartedAt: timestamp('rate_limit_window_started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    rateLimitCount: integer('rate_limit_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('app_bot_tokens_token_hash_idx').on(t.tokenHash),
+    index('app_bot_tokens_installation_idx').on(t.installationId),
+    check('app_bot_tokens_rate_limit_count_nonnegative', sql`${t.rateLimitCount} >= 0`),
+  ],
+).enableRLS()
+
+/**
+ * Bot が投稿できるチャンネル。Bot は channel_members に入れない（未読・通知・メンション候補が人間前提のため）。
+ * workspace_id を installation とチャンネルの両方へ複合 FK で一致させ、別ワークスペースのチャンネルへ紐づけさせない。
+ */
+export const appChannelMemberships = pgTable(
+  'app_channel_memberships',
+  {
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
+    addedBy: uuid('added_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.installationId, t.channelId] }),
+    foreignKey({
+      name: 'app_channel_memberships_installation_workspace_fk',
+      columns: [t.installationId, t.workspaceId],
+      foreignColumns: [appInstallations.id, appInstallations.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'app_channel_memberships_channel_workspace_fk',
+      columns: [t.channelId, t.workspaceId],
+      foreignColumns: [channels.id, channels.workspaceId],
+    }).onDelete('cascade'),
+    index('app_channel_memberships_channel_idx').on(t.channelId),
+  ],
+).enableRLS()
+
+/**
+ * message_type = 'blocks' のメッセージのカード本体。messages にカラムを足さず別テーブルにするのは、
+ * マイグレーションより先に新コードが動いた時間に通常の投稿（messages への INSERT）まで失敗させないため。
+ * chat.update はこの行だけを更新し、messages.updated_at を動かさない（動かすと「編集済み」が付く）。
+ */
+export const messageBlocks = pgTable(
+  'message_blocks',
+  {
+    messageId: uuid('message_id')
+      .primaryKey()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    // インストールは取り消しで止め行は消さない。cascade はワークスペース・アプリ自体の削除のため
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    blocks: jsonb('blocks').notNull(),
+    // どの版の packages/shared のスキーマで受理したか（docs/app-platform-design.md §4.4）
+    schemaVersion: integer('schema_version').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('message_blocks_installation_idx').on(t.installationId),
+    check('message_blocks_blocks_array', sql`jsonb_typeof(${t.blocks}) = 'array'`),
+    check('message_blocks_schema_version_positive', sql`${t.schemaVersion} > 0`),
+  ],
+).enableRLS()
