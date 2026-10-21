@@ -266,6 +266,8 @@ export const appViews = pgTable(
     submittingUntil: timestamp('submitting_until', { withTimezone: true }),
     // この版の送信に使った interaction_id。届いたか分からないまま送り直されても同じ ID で届け、アプリが重複を除けるようにする
     submissionInteractionId: uuid('submission_interaction_id'),
+    // その interaction_id で送った値の指紋。値が違う送信には同じ ID を使わない
+    submissionValuesHash: text('submission_values_hash'),
     schemaVersion: integer('schema_version').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
