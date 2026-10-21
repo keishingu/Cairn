@@ -1433,13 +1433,20 @@ const AiChatSystemPromptSection = () => {
   const updateSettings = useUpdateWorkspaceSettings()
   const { isOwner } = useWorkspacePermissions()
   const readOnly = !isOwner
+  const loaded = wsSettings !== undefined
   const saved = wsSettings?.aiChatSystemPrompt ?? ''
   const [draft, setDraft] = React.useState('')
   const [justSaved, setJustSaved] = React.useState(false)
+  // 直前に下書きへ反映した保存済みの値。モデル変更などで設定オブジェクトが差し替わっても、
+  // 保存済みのプロンプト自体が変わったときだけ、未編集の下書きを追従させる。
+  const syncedSavedRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    if (wsSettings !== undefined) setDraft(wsSettings.aiChatSystemPrompt ?? '')
-  }, [wsSettings])
+    if (!loaded) return
+    const previous = syncedSavedRef.current
+    syncedSavedRef.current = saved
+    setDraft((current) => (previous === null || current === previous ? saved : current))
+  }, [loaded, saved])
 
   const unchanged = draft === saved
   const handleSave = async () => {

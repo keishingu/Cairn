@@ -797,9 +797,10 @@ describe('AIエージェントのシステムプロンプト', () => {
         return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
       }
       if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
         return patchResponse ?? new Response(JSON.stringify({
-          aiChatModel: 'gpt-5',
-          aiChatSystemPrompt: JSON.parse(String(init.body)).aiChatSystemPrompt,
+          aiChatModel: body.aiChatModel ?? 'gpt-5',
+          aiChatSystemPrompt: 'aiChatSystemPrompt' in body ? body.aiChatSystemPrompt : '敬体で答える',
         }))
       }
       return new Response(JSON.stringify({}))
@@ -837,6 +838,26 @@ describe('AIエージェントのシステムプロンプト', () => {
       ),
     )
     expect(await screen.findByRole('button', { name: '保存済み' })).toBeInTheDocument()
+  })
+
+  it('保存前にモデルを変えても、編集中のプロンプトを消さない', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '未保存の編集' } })
+    const opus = screen.getByRole('radio', { name: /Claude Opus 5\.5/ })
+    await waitFor(() => expect(opus).toBeEnabled())
+    fireEvent.click(opus)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatModel: 'claude-opus-5-5' }) }),
+      ),
+    )
+    await waitFor(() => expect(opus).toHaveAttribute('aria-checked', 'true'))
+    expect(textarea).toHaveValue('未保存の編集')
   })
 
   it('owner 以外は読み取り専用で、保存できない', async () => {
