@@ -1,9 +1,7 @@
 import React from 'react'
-import { Alert, Platform } from 'react-native'
+import { Alert } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import Constants from 'expo-constants'
-import { apiFetch } from '../../lib/api-fetch'
 import { MobileNav } from '../../components/mobile-nav'
 import { ProjectsViewProvider } from '../../components/projects-view-context'
 import { AppearanceProvider } from '../../components/appearance-provider'
@@ -13,10 +11,7 @@ import { NotificationPanelProvider } from '../../components/notification-panel-p
 import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
-
-// Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
-const isExpoGo = Constants.appOwnership === 'expo'
-const supportsNotifications = !(isExpoGo && Platform.OS === 'android')
+import { registerPushToken, supportsNotifications } from '../../lib/push-registration'
 
 if (supportsNotifications) {
   Notifications.setNotificationHandler({
@@ -30,22 +25,15 @@ if (supportsNotifications) {
   })
 }
 
-async function registerPushToken() {
+// 起動時に一度だけ許可を求める。拒否後の再許可は通知画面の案内から行う
+async function requestAndRegisterPush() {
   if (!supportsNotifications) return
 
   const { status } = await Notifications.requestPermissionsAsync()
   if (status !== 'granted') return
 
-  const projectId =
-    Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.['eas']?.projectId
-  if (!projectId) return
-
   try {
-    const token = await Notifications.getExpoPushTokenAsync({ projectId })
-    await apiFetch('/api/push/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ deviceType: 'expo', expoToken: token.data }),
-    })
+    await registerPushToken()
   } catch {
     console.warn('[Push] Failed to register Expo push token')
   }
@@ -74,7 +62,7 @@ export default function AppLayout() {
   tRef.current = t
 
   React.useEffect(() => {
-    void registerPushToken()
+    void requestAndRegisterPush()
   }, [])
 
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
