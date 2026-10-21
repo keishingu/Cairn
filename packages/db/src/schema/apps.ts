@@ -255,7 +255,8 @@ export const appViews = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     // 開いた起点のチャンネル。作成メニューから開いたモーダルの送信先を後で解決するため
-    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    // チャンネルが消えたらモーダルも消す（null にすると、送信時のチャンネルの確認を素通りして届いてしまう）
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'cascade' }),
     view: jsonb('view').notNull(),
     hash: text('hash').notNull(),
     // open / submitted / closed

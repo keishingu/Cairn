@@ -34,7 +34,7 @@ ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_user_fk" FOREIGN KEY ("u
 ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_channel_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app_views" ADD CONSTRAINT "app_views_installation_fk" FOREIGN KEY ("installation_id") REFERENCES "public"."app_installations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app_views" ADD CONSTRAINT "app_views_user_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "app_views" ADD CONSTRAINT "app_views_channel_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app_views" ADD CONSTRAINT "app_views_channel_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "app_triggers_token_hash_idx" ON "app_triggers" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "app_triggers_expires_idx" ON "app_triggers" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "app_views_user_status_idx" ON "app_views" USING btree ("user_id","status");--> statement-breakpoint
