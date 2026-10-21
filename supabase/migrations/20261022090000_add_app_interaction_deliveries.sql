@@ -17,5 +17,6 @@ CREATE TABLE "app_interaction_deliveries" (
 ALTER TABLE "app_interaction_deliveries" ADD CONSTRAINT "app_interaction_deliveries_installation_fk" FOREIGN KEY ("installation_id") REFERENCES "public"."app_installations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app_interaction_deliveries" ADD CONSTRAINT "app_interaction_deliveries_user_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "app_interaction_deliveries_installation_created_idx" ON "app_interaction_deliveries" USING btree ("installation_id","created_at");--> statement-breakpoint
+CREATE INDEX "app_interaction_deliveries_created_idx" ON "app_interaction_deliveries" USING btree ("created_at");--> statement-breakpoint
 ALTER TABLE "app_interaction_deliveries" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 REVOKE ALL ON TABLE "app_interaction_deliveries" FROM anon, authenticated;

@@ -9,6 +9,7 @@ import { decryptToken } from '@/lib/token-crypto'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
+import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
 import { parseViewSubmissionResponse, validateSubmission } from '@/lib/apps/view-submission'
 
@@ -50,7 +51,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const validated = validateSubmission(view.view, values)
     if (!validated.ok) return NextResponse.json({ status: 'errors', errors: validated.errors }, { status: 422 })
 
-    const { db, appViews, appInteractionDeliveries, workspaces, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+    const { db, appViews, workspaces, profiles, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
 
     // 届ける前に、この版のモーダルの送信を1つだけ確保する。同時に押された2つ目は届けない
@@ -113,20 +114,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       await release()
       throw err
     }
-    // 配送の記録は運用のためのもの。記録だけ失敗しても、アプリが処理した結果を利用者へ返す
-    await db
-      .insert(appInteractionDeliveries)
-      .values({
-        installationId: view.installationId,
-        userId: ctx.userId,
-        type: 'view_submission',
-        actionId: typeof stored['callback_id'] === 'string' ? stored['callback_id'] : null,
-        status: delivery.status,
-        httpStatus: delivery.httpStatus,
-        durationMs: delivery.durationMs,
-        error: delivery.status === 'delivered' ? null : delivery.error.slice(0, 500),
-      })
-      .catch((err: unknown) => console.error('[/api/app-views submit] failed to record delivery:', err))
+    recordDeliveryAfterResponse({
+      installationId: view.installationId,
+      userId: ctx.userId,
+      type: 'view_submission',
+      actionId: typeof stored['callback_id'] === 'string' ? stored['callback_id'] : null,
+      delivery,
+    })
     if (delivery.status !== 'delivered') {
       // モーダルは開いたままにして、入力を失わせない
       await release()
