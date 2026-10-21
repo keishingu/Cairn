@@ -58,6 +58,17 @@ describe('メッセージの blocks の受理', () => {
     expect(isHttpsUrl('https://cdn.example.com:8443/a.png')).toBe(true)
     expect(isHttpsUrl('https://xn--wgv71a.jp/')).toBe(true)
     expect(isHttpsUrl('https://[2001:db8::1]/a')).toBe(true)
+    expect(isHttpsUrl('https://999.999.999.999/image.png')).toBe(false)
+    expect(isHttpsUrl('https://1.2.3/a')).toBe(false)
+    expect(isHttpsUrl('https://010.0.0.1/a')).toBe(false)
+    expect(isHttpsUrl('https://example.123/a')).toBe(false)
+    expect(isHttpsUrl('https://203.0.113.10/a')).toBe(true)
+    expect(isHttpsUrl('https://[::::]/a')).toBe(false)
+    expect(isHttpsUrl('https://[1:2:3:4:5:6:7:8:9]/a')).toBe(false)
+    expect(isHttpsUrl('https://[12345::1]/a')).toBe(false)
+    expect(isHttpsUrl('https://[::1]/a')).toBe(true)
+    expect(isHttpsUrl('https://[::ffff:192.0.2.1]/a')).toBe(true)
+    expect(isHttpsUrl('https://[1:2:3:4:5:6:7:8]/a')).toBe(true)
   })
 
   it('block_id の重複と、同じブロック内の action_id の重複を拒否する', () => {

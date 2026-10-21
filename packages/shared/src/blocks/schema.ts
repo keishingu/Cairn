@@ -49,14 +49,43 @@ export const BLOCK_LIMITS = {
 // 壊れた URL（`https://example.com:invalid/`）や userinfo 付き（`https://example.com@evil.test`）を通さない
 const DOMAIN_LABEL = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
 const HTTPS_URL = new RegExp(
-  `^https://(?:${DOMAIN_LABEL}(?:\\.${DOMAIN_LABEL})*|\\[[0-9A-Fa-f:.]+\\])(?::(\\d{1,5}))?(?:[/?#]\\S*)?$`,
+  `^https://(${DOMAIN_LABEL}(?:\\.${DOMAIN_LABEL})*|\\[([0-9A-Fa-f:.]+)\\])(?::(\\d{1,5}))?(?:[/?#]\\S*)?$`,
 )
 
 export function isHttpsUrl(value: string): boolean {
   const match = HTTPS_URL.exec(value)
   if (!match) return false
-  const port = match[1]
-  return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
+  const [, host = '', ipv6, port] = match
+  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) return false
+  if (ipv6 !== undefined) return isIpv6(ipv6)
+  // WHATWG URL は末尾のラベルが数字のホストを IPv4 として解釈し、不正なら読み込めない。数字で終わるなら正しい IPv4 だけを通す
+  const labels = host.split('.')
+  return /^\d+$/.test(labels[labels.length - 1] ?? '') ? isIpv4(labels) : true
+}
+
+/** 0〜255 の4つの10進数。先頭の 0 は WHATWG で8進数として扱われ見た目と違う宛先になるため拒否する */
+function isIpv4(labels: string[]): boolean {
+  return labels.length === 4 && labels.every((label) => /^(?:0|[1-9]\d{0,2})$/.test(label) && Number(label) <= 255)
+}
+
+/** 1〜4桁の16進数を8組（`::` で省略するなら8組未満）。末尾は IPv4（2組分）でもよい */
+function isIpv6(literal: string): boolean {
+  const halves = literal.split('::')
+  if (halves.length > 2) return false
+  const groupsOf = (part: string) => (part === '' ? [] : part.split(':'))
+  const groups = [...groupsOf(halves[0]!), ...(halves.length === 2 ? groupsOf(halves[1]!) : [])]
+  let count = 0
+  for (const [index, group] of groups.entries()) {
+    if (index === groups.length - 1 && group.includes('.')) {
+      if (!isIpv4(group.split('.'))) return false
+      count += 2
+    } else if (/^[0-9A-Fa-f]{1,4}$/.test(group)) {
+      count += 1
+    } else {
+      return false
+    }
+  }
+  return halves.length === 2 ? count < 8 : count === 8
 }
 
 const httpsUrl = (max: number) =>
