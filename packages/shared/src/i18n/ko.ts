@@ -1267,4 +1267,10 @@ export const KO_MESSAGES: Record<string, string> = {
   'Added {count} tasks': '작업 {count}개를 추가했습니다',
   'Task {done}/{total}': '작업 {done}/{total}',
   'Show tasks': '작업 보기',
+  'View profile of {name}': '{name}님의 프로필 보기',
+  'Send a message': '메시지 보내기',
+  'Mention': '멘션',
+  'User unblocked': '차단을 해제했습니다',
+  'You have blocked this user': '이 사용자를 차단했습니다',
+  'This user is no longer an active member of the workspace': '이 사용자는 워크스페이스의 활성 멤버가 아닙니다',
 }

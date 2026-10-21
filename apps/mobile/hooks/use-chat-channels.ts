@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
+import type { ProfileAttributeDto } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 import {
   fetchWorkspaceChannels,
@@ -40,6 +41,9 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  /** `GET /api/workspaces/members` が返す（YYYY-MM-DD） */
+  joinedAt: string
+  profileAttributes: ProfileAttributeDto[]
 }
 
 export interface ChannelMemberDto {

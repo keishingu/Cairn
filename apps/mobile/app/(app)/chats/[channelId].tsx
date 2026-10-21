@@ -69,6 +69,7 @@ import {
 import type { MentionSelection } from '../../../lib/mobile-chat-state'
 import {
   useChannelMembers,
+  useCreateWorkspaceDm,
   useProjectMembers,
   useWorkspaceChannels,
   useWorkspaceDms,
@@ -76,6 +77,13 @@ import {
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
+import { UserProfileSheet } from '../../../components/user-profile-sheet'
+import {
+  canMentionUser,
+  profileSheetActions,
+  profileSheetTargetFromMessage,
+} from '../../../lib/user-profile-actions'
+import type { ProfileSheetAction, ProfileSheetTarget } from '../../../lib/user-profile-actions'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
@@ -196,6 +204,7 @@ function ChatMessageRow({
   onShowReactors,
   onLinkPress,
   onOpenActions,
+  onOpenProfile,
   onOpenPreview,
   onOpenTask,
   onShowTasks,
@@ -208,6 +217,7 @@ function ChatMessageRow({
   onShowReactors: (emoji: string, messageId: string) => void
   onLinkPress: (url: string) => boolean
   onOpenActions: (message: MessageDto) => void
+  onOpenProfile: (target: ProfileSheetTarget) => void
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
   onOpenTask: (taskId: string) => void
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
@@ -242,14 +252,44 @@ function ChatMessageRow({
     )
   }
 
+  // 送信者がいない（システム以外で senderId が空の）メッセージはプロフィールを開けない
+  const profileTarget = profileSheetTargetFromMessage(message)
+  const openProfile = profileTarget ? () => onOpenProfile(profileTarget) : undefined
+
   return (
     <View style={styles.messageRow}>
-      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+      {openProfile ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('View profile of {name}', { name: message.senderName })}
+          onPress={openProfile}
+          onLongPress={() => onOpenActions(message)}
+          delayLongPress={350}
+        >
+          <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+        </Pressable>
+      ) : (
+        <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+      )}
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
           <View style={styles.messageMeta}>
-            <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            {openProfile ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('View profile of {name}', { name: message.senderName })}
+                onPress={openProfile}
+                onLongPress={() => onOpenActions(message)}
+                delayLongPress={350}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                style={styles.senderNameButton}
+              >
+                <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+              </Pressable>
+            ) : (
+              <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            )}
             {projectRoleLabelText && (
               <Text
                 style={[
@@ -553,6 +593,7 @@ export default function ChatThreadScreen() {
   const projectChannelsQuery = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
+  const createDm = useCreateWorkspaceDm()
   const workspaceChannel = workspaceChannelsQuery.data?.find((channel) => channel.id === channelId)
   const channelSubtitle = channelType === 'project'
     ? t('Participating members')
@@ -588,6 +629,11 @@ export default function ChatThreadScreen() {
   // 「スレッドに切り出す」シートの起点メッセージ
   const [moveTarget, setMoveTarget] = React.useState<MessageDto | null>(null)
   const [moveError, setMoveError] = React.useState<string | null>(null)
+  // 送信者タップで開くプロフィールシート
+  const [profileTarget, setProfileTarget] = React.useState<ProfileSheetTarget | null>(null)
+  const [profilePending, setProfilePending] = React.useState<ProfileSheetAction | null>(null)
+  const [profileError, setProfileError] = React.useState<string | null>(null)
+  const composerInputRef = React.useRef<TextInput>(null)
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
   const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
@@ -646,24 +692,43 @@ export default function ChatThreadScreen() {
     () => findMentionQuery(draft, selection.start),
     [draft, selection.start],
   )
+  // このチャンネルでメンションできる人。候補の絞り込みもプロフィールシートの「メンション」も同じ集合を使う
+  const mentionableMembers = React.useMemo(() => {
+    if (channelType === 'dm') return []
+    const channelMemberIds = new Set((channelMembers.data ?? []).map((member) => member.userId))
+    return isPrivate === '1'
+      ? (channelMembers.data ?? [])
+      : filterMentionCandidates(
+          workspaceMembers.data ?? [],
+          projectId
+            ? {
+                kind: 'project',
+                projectMemberIds: new Set((projectMembers.data ?? []).map((member) => member.userId)),
+              }
+            : channelType === 'workspace'
+              ? { kind: 'workspace', channelMemberIds }
+              : { kind: 'unresolved' },
+        )
+  }, [
+    channelMembers.data,
+    channelType,
+    isPrivate,
+    projectId,
+    projectMembers.data,
+    workspaceMembers.data,
+  ])
+  // 判定に必要なメンバー一覧が揃うまでは null（空集合と取り違えて「メンションできない」と確定させない）
+  const mentionableUserIds = React.useMemo(() => {
+    const ready =
+      isPrivate === '1'
+        ? !!channelMembers.data
+        : !!workspaceMembers.data &&
+          (projectId ? !!projectMembers.data : channelType === 'workspace' ? !!channelMembers.data : true)
+    return ready ? new Set(mentionableMembers.map((member) => member.userId)) : null
+  }, [channelMembers.data, channelType, isPrivate, mentionableMembers, projectId, projectMembers.data, workspaceMembers.data])
   // 候補の種類と並び（グループ → メンバー）は Web の入力欄と揃える
   const mentionCandidates = React.useMemo(() => {
     if (channelType === 'dm' || !mentionRange) return []
-    const channelMemberIds = new Set((channelMembers.data ?? []).map((member) => member.userId))
-    const members =
-      isPrivate === '1'
-        ? (channelMembers.data ?? [])
-        : filterMentionCandidates(
-            workspaceMembers.data ?? [],
-            projectId
-              ? {
-                  kind: 'project',
-                  projectMemberIds: new Set((projectMembers.data ?? []).map((member) => member.userId)),
-                }
-              : channelType === 'workspace'
-                ? { kind: 'workspace', channelMemberIds }
-                : { kind: 'unresolved' },
-          )
     const query = mentionRange.query.toLocaleLowerCase()
     type MentionCandidate = { tokenId: string; displayName: string; avatarUrl: string | null; hint?: string }
     const groups: MentionCandidate[] = []
@@ -680,7 +745,7 @@ export default function ChatThreadScreen() {
     }
     return [
       ...groups,
-      ...members
+      ...mentionableMembers
         .filter((member) => member.userId !== me?.id)
         .filter((member) => member.displayName.toLocaleLowerCase().includes(query))
         .map((member): MentionCandidate => ({
@@ -689,17 +754,7 @@ export default function ChatThreadScreen() {
           avatarUrl: member.avatarUrl,
         })),
     ]
-  }, [
-    channelMembers.data,
-    channelType,
-    isPrivate,
-    me?.id,
-    mentionRange,
-    projectId,
-    projectMembers.data,
-    t,
-    workspaceMembers.data,
-  ])
+  }, [channelType, me?.id, mentionRange, mentionableMembers, projectId, t])
   const mentionMembersError =
     channelType === 'dm'
       ? null
@@ -789,7 +844,9 @@ export default function ChatThreadScreen() {
   React.useEffect(() => {
     if (!isFocused) return
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (attachmentPreview || reactionPeople || reactionTarget || actionTarget) {
+      if (attachmentPreview || reactionPeople || reactionTarget || actionTarget || profileTarget) {
+        if (profilePending) return true
+        setProfileTarget(null)
         setAttachmentPreview(null)
         setReactionPeople(null)
         setReactionTarget(null)
@@ -1102,21 +1159,30 @@ export default function ChatThreadScreen() {
       },
       { text: t('Cancel'), style: 'cancel' },
     ])
-  const blockUser = async (message: MessageDto) => {
-    setActionTarget(null)
+  // ブロックを依頼し、成功したらメッセージを取り直す。失敗理由は呼び出し側が出す場所に表示する
+  const requestBlock = async (userId: string): Promise<string | null> => {
     const error = await apiActionError(
       apiFetch('/api/me/blocks', {
         method: 'POST',
-        body: JSON.stringify({ userId: message.senderId }),
+        body: JSON.stringify({ userId }),
       }),
       t('Could not block this user'),
     )
-    if (error) setSendError(error)
-    else {
-      await messagesQuery.refetch()
-      Alert.alert(t('User blocked'))
-    }
+    if (error) return error
+    await messagesQuery.refetch()
+    Alert.alert(t('User blocked'))
+    return null
   }
+  const blockUser = async (userId: string) => {
+    setActionTarget(null)
+    const error = await requestBlock(userId)
+    if (error) setSendError(error)
+  }
+  const confirmBlock = (onConfirm: () => void) =>
+    Alert.alert(t('Block this user?'), t('DMs and notifications with this person will also be stopped.'), [
+      { text: t('Cancel'), style: 'cancel' },
+      { text: t('Block'), style: 'destructive', onPress: onConfirm },
+    ])
 
   const canSubmit = editingMessage
     ? draft.trim().length > 0 && !editMessage.isPending
@@ -1159,6 +1225,104 @@ export default function ChatThreadScreen() {
   // セッション切れの 401 も「Unauthorized」等の生の文言を出さず、専用の案内にする
   const isSessionExpired =
     messagesQuery.error instanceof ChannelMessagesError && messagesQuery.error.status === 401
+
+  const closeProfile = () => {
+    setProfileTarget(null)
+    setProfileError(null)
+  }
+  const openProfile = (target: ProfileSheetTarget) => {
+    setProfileError(null)
+    setProfileTarget(target)
+  }
+  // メンバー一覧が取れていて相手がいなければ「有効なメンバーではない」。未取得・失敗なら判定しない
+  const profileMember = profileTarget
+    ? workspaceMembers.data?.find((member) => member.userId === profileTarget.userId)
+    : undefined
+  const profileNotMember = !!profileTarget && !!workspaceMembers.data && !profileMember
+  const profileMembersError = workspaceMembers.error ? workspaceMembers.error.message : null
+  const profileActions = profileTarget
+    ? profileSheetActions({
+        meId: me?.id,
+        targetId: profileTarget.userId,
+        blocked: profileTarget.blocked,
+        isActiveMember: workspaceMembers.data ? !profileNotMember : null,
+        // 相手との DM を開いている最中に同じ DM へ移動する操作は出さない
+        dmEnabled: FEATURE_FLAGS.dm && channelType !== 'dm',
+        canMention: canMentionUser({
+          composerAvailable: !isAccessDenied && !isSessionExpired,
+          channelType,
+          targetId: profileTarget.userId,
+          mentionableUserIds,
+        }),
+      })
+    : []
+
+  const mentionFromProfile = (target: ProfileSheetTarget) => {
+    // 入力中の文字列の末尾に、候補から選んだときと同じ形式（@表示名 + 空白）で追加する
+    const base = draft.length === 0 || /\s$/.test(draft) ? draft : `${draft} `
+    const inserted = insertMention(base, { start: base.length, end: base.length }, target.displayName)
+    mentionSelectionsRef.current = [
+      ...rebaseMentionSelections(draft, base, mentionSelectionsRef.current),
+      {
+        start: base.length,
+        end: base.length + target.displayName.length + 1,
+        userId: target.userId,
+        displayName: target.displayName,
+      },
+    ].sort((left, right) => left.start - right.start)
+    setDraft(inserted.text)
+    setSelection({ start: inserted.cursor, end: inserted.cursor })
+    closeProfile()
+    // シートの Modal が閉じ終わる前にフォーカスすると外れることがあるため、少し待つ
+    setTimeout(() => composerInputRef.current?.focus(), 250)
+  }
+
+  const handleProfileAction = async (action: ProfileSheetAction) => {
+    if (!profileTarget || profilePending) return
+    const target = profileTarget
+    if (action === 'mention') {
+      mentionFromProfile(target)
+      return
+    }
+    const run = async (task: () => Promise<string | null>) => {
+      setProfileError(null)
+      setProfilePending(action)
+      try {
+        const error = await task()
+        if (error) setProfileError(error)
+        else closeProfile()
+      } finally {
+        setProfilePending(null)
+      }
+    }
+    if (action === 'dm') {
+      await run(async () => {
+        try {
+          const { id } = await createDm.mutateAsync(target.userId)
+          router.push({
+            pathname: '/chats/[channelId]',
+            params: { channelId: id, channelName: target.displayName, channelType: 'dm' },
+          })
+          return null
+        } catch (error) {
+          return error instanceof Error ? error.message : t('Could not start the direct message')
+        }
+      })
+    } else if (action === 'block') {
+      confirmBlock(() => void run(() => requestBlock(target.userId)))
+    } else {
+      await run(async () => {
+        const error = await apiActionError(
+          apiFetch(`/api/me/blocks/${target.userId}`, { method: 'DELETE' }),
+          t('Could not unblock the user'),
+        )
+        if (error) return error
+        await messagesQuery.refetch()
+        Alert.alert(t('User unblocked'))
+        return null
+      })
+    }
+  }
 
   // FlatList を inverted 表示するため新しい順に並べ替える。
   const reversedMessages = [...messages].reverse()
@@ -1393,6 +1557,7 @@ export default function ChatThreadScreen() {
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
                     onOpenActions={setActionTarget}
+                    onOpenProfile={openProfile}
                     onOpenPreview={setAttachmentPreview}
                     onOpenTask={openTask}
                     onShowTasks={setLinkedTasksSheet}
@@ -1650,6 +1815,7 @@ export default function ChatThreadScreen() {
               ]}
             >
               <TextInput
+                ref={composerInputRef}
                 accessibilityLabel={t('Enter a message')}
                 style={[styles.input, { color: palette.text }]}
                 submitBehavior={chatInputSubmitBehavior(sendOnEnter, !!editingMessage)}
@@ -1768,7 +1934,7 @@ export default function ChatThreadScreen() {
                       {
                         text: t('Block'),
                         style: 'destructive',
-                        onPress: () => void blockUser(actionTarget),
+                        onPress: () => void blockUser(actionTarget.senderId),
                       },
                     ])
                   }
@@ -1839,6 +2005,21 @@ export default function ChatThreadScreen() {
             )}
           </View>
         </Modal>
+
+        <UserProfileSheet
+          target={profileTarget}
+          member={profileMember}
+          membersLoading={workspaceMembers.isLoading}
+          membersError={profileMembersError}
+          notMember={profileNotMember}
+          onRetryMembers={() => void workspaceMembers.refetch()}
+          actions={profileActions}
+          pendingAction={profilePending}
+          actionError={profileError}
+          palette={palette}
+          onAction={(action) => void handleProfileAction(action)}
+          onClose={closeProfile}
+        />
 
         <MoveToThreadSheet
           message={moveTarget}
@@ -2022,6 +2203,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   senderName: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  senderNameButton: { flexShrink: 1 },
   projectRole: {
     fontSize: 10,
     fontWeight: '700',
