@@ -208,6 +208,8 @@ export const appInteractionDeliveries = pgTable(
     foreignKey({ name: 'app_interaction_deliveries_installation_fk', columns: [t.installationId], foreignColumns: [appInstallations.id] }).onDelete('cascade'),
     foreignKey({ name: 'app_interaction_deliveries_user_fk', columns: [t.userId], foreignColumns: [profiles.id] }).onDelete('set null'),
     index('app_interaction_deliveries_installation_created_idx').on(t.installationId, t.createdAt),
+    // 30日を過ぎた記録の削除（全インストール横断の created_at の範囲）に使う
+    index('app_interaction_deliveries_created_idx').on(t.createdAt),
     check('app_interaction_deliveries_status_known', sql`${t.status} in ('delivered', 'failed', 'timeout', 'blocked')`),
   ],
 ).enableRLS()
