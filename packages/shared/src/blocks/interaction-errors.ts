@@ -17,6 +17,7 @@ const MESSAGES: Record<string, string> = {
   view_submitting: 'This form is already being submitted.',
   view_not_found: 'This form is no longer available.',
   app_invalid_response: 'The app returned an invalid response.',
+  card_changed: 'This card was updated. Check it and try again.',
 }
 
 export function cardActionErrorMessage(code: string | null | undefined): string {

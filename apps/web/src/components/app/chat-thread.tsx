@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { blocksRevision, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
@@ -258,7 +258,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const displaySenderName = senderApp?.name ?? senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, action), [messageId])
+  const cardRevision = React.useMemo(() => blocksRevision(blocks ?? null), [blocks])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, cardRevision, action), [messageId, cardRevision])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)

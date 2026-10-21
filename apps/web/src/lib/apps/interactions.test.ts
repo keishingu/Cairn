@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from 'vitest'
+import { normalizeMessageBlocks, prepareMessageBlocks } from '@cairn/shared'
 import { pollCardFixture } from '@cairn/shared/blocks/fixtures'
 import { buildBlockActionsPayload, deliverToApp, resolveAction } from './interactions'
 import { verifyRequestSignature } from './signing'
@@ -66,6 +67,17 @@ describe('block_actions のペイロード', () => {
       actions: [{ type: 'button', block_id: 'option-1', action_id: 'vote', value: 'option:1', action_ts: '1700000000.123000' }],
       cairn: { message_id: 'm1', interaction_id: 'interaction-1' },
     })
+  })
+})
+
+describe('ID を省いたカードの操作', () => {
+  it('受理時に振った block_id・action_id は、描画側の補った ID と同じなので押下を解決できる', () => {
+    const prepared = prepareMessageBlocks([{ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'OK' }, value: 'v' }] }])
+    if (!prepared.ok) throw new Error(prepared.errors.join('\n'))
+    const rendered = normalizeMessageBlocks(prepared.value).blocks[0]
+    if (rendered?.type !== 'actions' || rendered.elements[0]?.type !== 'button') throw new Error('unexpected render')
+    const result = resolveAction(prepared.value, { type: 'button', blockId: rendered.blockId, actionId: rendered.elements[0].actionId })
+    expect(result).toMatchObject({ ok: true, action: { block_id: 'cairn-b0', action_id: 'cairn-a0', value: 'v' } })
   })
 })
 
