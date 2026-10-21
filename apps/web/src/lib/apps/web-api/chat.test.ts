@@ -89,13 +89,27 @@ describe('Web API のスコープ', () => {
 })
 
 describe('blocks からの代替テキスト', () => {
-  it('見出し・本文・フィールド・補足の文字を行ごとに並べ、画像は含めない', () => {
+  it('見出し・本文・フィールド・補足の文字を行ごとに並べ、補足の画像は含めない', () => {
     const prepared = prepareMessageBlocks(JSON.parse(JSON.stringify(pollCardFixture)))
     if (!prepared.ok) throw new Error(prepared.errors.join('\n'))
     const text = fallbackTextFromBlocks(prepared.value)
     expect(text.split('\n')[0]).toBe('11月の登山本部 担当決め')
     expect(text).toContain('*第1週 (11/2〜)*')
     expect(text).toContain('単一選択 ・ 締切 11/20 23:59')
+  })
+})
+
+describe('blocks からの代替テキスト（画像と文字の無いカード）', () => {
+  it('単独の画像はタイトルか代替テキストを使う', () => {
+    const prepared = prepareMessageBlocks([{ type: 'image', image_url: 'https://example.com/a.png', alt_text: '山頂の写真' }])
+    if (!prepared.ok) throw new Error(prepared.errors.join('\n'))
+    expect(fallbackTextFromBlocks(prepared.value)).toBe('山頂の写真')
+  })
+
+  it('文字の無いカードを text なしで投稿しようとしたら no_text にする', async () => {
+    mockResolveBotChannel.mockResolvedValue({ ok: true, channel: { id: CHANNEL_ID, workspaceId: 'workspace-1', type: 'workspace', projectId: null } })
+    const blocks = [{ type: 'divider' }, { type: 'actions', elements: [{ type: 'button', action_id: 'a', text: { type: 'plain_text', text: '押す' } }] }]
+    await expect(chatPostMessage(bot, { channel: CHANNEL_ID, blocks })).resolves.toMatchObject({ ok: false, error: 'no_text' })
   })
 })
 

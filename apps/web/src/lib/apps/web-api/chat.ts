@@ -82,6 +82,8 @@ export function fallbackTextFromBlocks(blocks: MessageBlock[]): string {
     if (block.type === 'context') {
       for (const element of block.elements) if (element.type !== 'image') lines.push(element.text)
     }
+    // 単独の画像はカードの中身なので代替テキストを使う（補足やアクセサリの画像はアイコン等の飾りなので含めない）
+    if (block.type === 'image') lines.push(block.title?.text ?? block.alt_text)
   }
   return lines.join('\n').slice(0, MAX_TEXT_LENGTH)
 }
@@ -117,6 +119,8 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
   if (!text.ok) return text.result
   if (text.text === undefined && blocks.blocks === undefined) return fail('no_text')
   const content = text.text ?? fallbackTextFromBlocks(blocks.blocks!)
+  // ボタンや区切り線だけのカードは代替テキストを組み立てられない。通知・検索・引用で空のメッセージにしない
+  if (content === '') return fail('no_text', { response_metadata: { messages: ['カードに文字が無いため、text に代替テキストを指定してください'] } })
 
   const clientMsgId = stringArg(args, 'client_msg_id')
   if (clientMsgId !== undefined && !isUuid(clientMsgId)) {
@@ -127,22 +131,27 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
   const { eq, sql } = await import('drizzle-orm')
 
   // 同じ client_msg_id の再送は新しく投稿せず既存のメッセージを返す（再試行が同じメッセージに収束する。§7.4）
-  if (clientMsgId) {
-    const [existing] = await db
+  const findExisting = async (executor: Pick<typeof db, 'select'>): Promise<WebApiResult | null> => {
+    if (!clientMsgId) return null
+    const [existing] = await executor
       .select({ id: messages.id, channelId: messages.channelId, senderId: messages.senderId, content: messages.content, blocks: messageBlocks.blocks })
       .from(messages)
       .leftJoin(messageBlocks, eq(messageBlocks.messageId, messages.id))
       .where(eq(messages.id, clientMsgId))
       .limit(1)
-    if (existing) {
-      if (existing.channelId !== access.channel.id || existing.senderId !== bot.botProfileId) return fail('client_msg_id_conflict')
-      return messageResult({ id: existing.id, channelId: existing.channelId, text: existing.content, bot, blocks: (existing.blocks as MessageBlock[] | null) ?? undefined })
-    }
+    if (!existing) return null
+    if (existing.channelId !== access.channel.id || existing.senderId !== bot.botProfileId) return fail('client_msg_id_conflict')
+    return messageResult({ id: existing.id, channelId: existing.channelId, text: existing.content, bot, blocks: (existing.blocks as MessageBlock[] | null) ?? undefined })
   }
+  const existingBeforeLock = await findExisting(db)
+  if (existingBeforeLock) return existingBeforeLock
 
   const inserted = await db.transaction(async (tx) => {
     // 既読スナップショットと投稿順をチャンネル単位で直列化する（人の投稿と同じ）
     await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, access.channel.id)).for('update')
+    // 元の要求がまだ処理中に再送が重なると、どちらも上の確認を通る。ロックを取った後にもう一度確かめ、同じ ID の insert で失敗させない
+    const existing = await findExisting(tx)
+    if (existing) return { existing }
     const [message] = await tx
       .insert(messages)
       .values({
@@ -164,8 +173,10 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
         schemaVersion: BLOCKS_SCHEMA_VERSION,
       })
     }
-    return message
+    return { message }
   })
+  if ('existing' in inserted) return inserted.existing
+  const message = inserted.message
 
   const [app] = await db.select({ name: apps.name }).from(apps).where(eq(apps.id, bot.appId)).limit(1)
   // メンション通知・Push・AI インデックスは人の投稿と同じく on-message-created に任せる
@@ -173,7 +184,7 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
     .send({
       name: 'message/created',
       data: {
-        messageId: inserted.id,
+        messageId: message.id,
         channelId: access.channel.id,
         workspaceId: bot.workspaceId,
         senderId: bot.botProfileId,
@@ -186,7 +197,7 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
       console.warn('[inngest] message/created send failed (Inngest not running?):', err)
     })
 
-  return messageResult({ id: inserted.id, channelId: access.channel.id, text: content, bot, blocks: blocks.blocks })
+  return messageResult({ id: message.id, channelId: access.channel.id, text: content, bot, blocks: blocks.blocks })
 }
 
 type OwnMessage = { ok: true; id: string; channelId: string; content: string; messageType: string } | { ok: false; result: WebApiResult }
