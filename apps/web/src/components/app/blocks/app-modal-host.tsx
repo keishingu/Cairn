@@ -123,7 +123,9 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
       if (!res.ok) {
         const message = t(cardActionErrorMessage(body?.error))
         if (body?.error === 'view_changed') {
-          // 新しい版を取り直すとモーダルが作り直されるので、理由はホストに預ける
+          // 新しい版を取り直すとモーダルが作り直されるので、理由はホストにも預ける。
+          // 取り直しに失敗して今のモーダルが残る場合にも理由が見えるよう、今のモーダルにも出す
+          setFormError(message)
           onViewChanged(message)
           await refresh()
           return
