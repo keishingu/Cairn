@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   try {
     const { db, messages, messageBlocks, appInstallations, apps, channels, appChannelMemberships, workspaces, profiles, activeWorkspaceMembers } =
       await import('@cairn/db')
-    const { and, eq, inArray, isNull } = await import('drizzle-orm')
+    const { and, eq, inArray, isNull, sql } = await import('drizzle-orm')
 
     const [row] = await db
       .select({
@@ -58,6 +58,7 @@ export async function POST(req: Request) {
         content: messages.content,
         senderId: messages.senderId,
         blocks: messageBlocks.blocks,
+        blocksUpdatedAt: sql<string>`${messageBlocks.updatedAt}::text`,
         installationId: appInstallations.id,
         installationWorkspaceId: appInstallations.workspaceId,
         installationRevokedAt: appInstallations.revokedAt,
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
     if (!membership) return error('app_not_in_channel', 409)
 
     // 押されたのが今のカードか確かめる。chat.update の後に古いカードが押されたら、同じ ID の新しい値で届けない
-    if (cardRevision(row.blocks, row.messageId) !== parsed.revision) return error('card_changed', 409)
+    if (cardRevision(row.blocksUpdatedAt) !== parsed.revision) return error('card_changed', 409)
     const resolved = resolveAction(row.blocks, parsed)
     if (!resolved.ok) return error(resolved.error, 422)
     if (!row.requestUrl || !row.signingSecretEncrypted) return error('app_not_interactive', 409)

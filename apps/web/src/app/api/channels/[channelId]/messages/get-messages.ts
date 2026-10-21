@@ -54,7 +54,7 @@ export async function getMessages({
       appInstallations,
       apps,
     } = await import('@cairn/db')
-    const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc, sql } = await import('drizzle-orm')
 
     const selectFields = {
       id: messages.id,
@@ -71,6 +71,7 @@ export async function getMessages({
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
       blocks: messageBlocks.blocks,
+      blocksUpdatedAt: sql<string | null>`${messageBlocks.updatedAt}::text`,
       appName: apps.name,
       appIconUrl: apps.iconUrl,
       appRevokedAt: appInstallations.revokedAt,
@@ -130,6 +131,7 @@ export async function getMessages({
       createdAt: Date
       updatedAt: Date
       blocks: unknown
+      blocksUpdatedAt: string | null
       appName: string | null
       appIconUrl: string | null
       appRevokedAt: Date | null
@@ -441,7 +443,7 @@ export async function getMessages({
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
       blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
-      blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocks, row.id) : null,
+      blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocksUpdatedAt) : null,
       ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
       // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
       senderApp: row.appName
