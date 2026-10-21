@@ -24,12 +24,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <LocaleDbSync />
       <FocusWarmup />
       <AppBadgeSync />
-      {/* アプリの WebView ではネイティブ側がモーダルを出すので、二重に出さない */}
-      {!isWebView && <AppModalHost />}
       {isMobile ? (
-        <MobileShell hideNav={isWebView} webView={isWebView} />
+        // アプリの WebView ではネイティブ側がモーダルを出すので、二重に出さない
+        <MobileShell hideNav={isWebView} webView={isWebView} overlay={isWebView ? undefined : <AppModalHost />} />
       ) : (
-        <PCShell>{children}</PCShell>
+        <PCShell overlay={<AppModalHost />}>{children}</PCShell>
       )}
     </RealtimeProvider>
   )

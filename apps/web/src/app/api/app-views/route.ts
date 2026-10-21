@@ -46,6 +46,12 @@ export async function GET() {
     }))
     return NextResponse.json(result satisfies AppViewDto[])
   } catch (err) {
+    // デプロイがマイグレーションより先に動いた間（app_views が未作成）は、開いたモーダルがあり得ないので空にする。
+    // この取得は全画面で動くため、ここで 500 にすると全利用者にエラーが出続ける
+    if (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === '42P01') {
+      console.warn('[/api/app-views GET] app_views is not migrated yet:', err)
+      return NextResponse.json([] satisfies AppViewDto[])
+    }
     console.error('[/api/app-views GET] failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
