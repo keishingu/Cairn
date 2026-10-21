@@ -29,9 +29,15 @@ export async function issueTrigger(input: { installationId: string; userId: stri
 export type ConsumedTrigger = { ok: true; userId: string; channelId: string | null } | { ok: false; error: 'invalid_trigger_id' | 'expired_trigger_id' }
 
 /** 未使用・期限内のものだけを1回の UPDATE で使用済みにする（同じ trigger_id の同時利用でも1つだけが通る） */
-export async function consumeTrigger(installationId: string, token: string | undefined): Promise<ConsumedTrigger> {
+export async function consumeTrigger(
+  installationId: string,
+  token: string | undefined,
+  /** 呼び出し元のトランザクション。モーダルの保存に失敗したら、trigger_id の使用も取り消す */
+  executor?: Pick<Awaited<typeof import('@cairn/db')>['db'], 'select' | 'update'>,
+): Promise<ConsumedTrigger> {
   if (!token) return { ok: false, error: 'invalid_trigger_id' }
-  const { db, appTriggers } = await import('@cairn/db')
+  const { db: defaultDb, appTriggers } = await import('@cairn/db')
+  const db = executor ?? defaultDb
   const { and, eq, gt, isNull, sql } = await import('drizzle-orm')
   const tokenHash = hashTrigger(token)
   const [used] = await db

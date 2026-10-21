@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { isUuid } from '@/lib/apps/web-api/types'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { findOpenAppView } from '@/lib/apps/app-views'
 
@@ -10,7 +11,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ viewId
   const { ctx, error } = await getAuthContext()
   if (error) return error
   const { viewId } = await params
-  if (!/^[0-9a-f-]{36}$/i.test(viewId)) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
+  if (!isUuid(viewId)) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
   try {
     const view = await findOpenAppView({ viewId, userId: ctx.userId, workspaceId: ctx.workspaceId })
     if (!view) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
