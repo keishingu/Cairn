@@ -1274,4 +1274,5 @@ export const KO_MESSAGES: Record<string, string> = {
   'This part of the card cannot be shown in this version. Reload the page to see it.': '카드의 이 부분은 현재 버전에서 표시할 수 없습니다. 페이지를 새로 고치면 표시됩니다.',
   'This card cannot be shown in this version. Update the app to see it.': '이 카드는 현재 버전에서 표시할 수 없습니다. 앱을 업데이트하면 표시됩니다.',
   'This part of the card cannot be shown in this version. Update the app to see it.': '카드의 이 부분은 현재 버전에서 표시할 수 없습니다. 앱을 업데이트하면 표시됩니다.',
+  'Could not load the image: {alt}': '이미지를 불러오지 못했습니다: {alt}',
 }

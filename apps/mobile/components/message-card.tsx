@@ -115,9 +115,11 @@ function CardBlock({ block, context }: { block: RenderBlock; context: CardContex
       return (
         <View style={styles.imageBlock}>
           {block.title && <Text style={[styles.imageTitle, { color: palette.text3 }]}>{block.title}</Text>}
-          <Image
-            source={{ uri: block.url }}
-            accessibilityLabel={block.alt}
+          <CardImage
+            key={block.url}
+            url={block.url}
+            alt={block.alt}
+            palette={palette}
             resizeMode="contain"
             style={[styles.image, { borderColor: palette.border, backgroundColor: palette.card2 }]}
           />
@@ -166,7 +168,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
       // chat.update で初期選択が変わったら選び直した状態を捨てて新しい初期選択を表示する（key で作り直す）
       return <CardSelect key={element.initialValue ?? ''} element={element} blockId={blockId} context={context} />
     case 'image':
-      return <Image source={{ uri: element.url }} accessibilityLabel={element.alt} style={styles.accessoryImage} />
+      return <CardImage key={element.url} url={element.url} alt={element.alt} palette={palette} style={styles.accessoryImage} />
     case 'unsupported':
       return <UnsupportedPart palette={palette} />
   }
@@ -255,7 +257,7 @@ function mentionResolver(context: CardContext, t: (message: string) => string): 
 function ContextElement({ element, context }: { element: RenderContextElement; context: CardContext }) {
   switch (element.type) {
     case 'image':
-      return <Image source={{ uri: element.url }} accessibilityLabel={element.alt} style={styles.contextImage} />
+      return <CardImage key={element.url} url={element.url} alt={element.alt} palette={context.palette} style={styles.contextImage} inline />
     case 'text':
       return <CardText text={element.text} context={context} small />
     case 'unsupported':
@@ -315,6 +317,43 @@ function Run({ run, context }: { run: TextRun; context: CardContext }) {
     return <Text accessibilityRole="link" style={style} onPress={() => onLinkPress(url)}>{run.text}</Text>
   }
   return <Text style={style}>{run.text}</Text>
+}
+
+/**
+ * アプリが指定した外部の画像。読み込めない（404・証明書切れ・オフライン）ときに空白のまま隠さず、代替テキストと案内を出す
+ */
+function CardImage({
+  url,
+  alt,
+  palette,
+  style,
+  resizeMode,
+  inline,
+}: {
+  url: string
+  alt: string
+  palette: ThemePalette
+  style: React.ComponentProps<typeof Image>['style']
+  resizeMode?: React.ComponentProps<typeof Image>['resizeMode']
+  /** context の小さな画像。案内の枠を出さず、代替テキストだけを文字で出す */
+  inline?: boolean
+}) {
+  const t = useT()
+  const [failed, setFailed] = React.useState(false)
+  if (failed) {
+    const message = t('Could not load the image: {alt}', { alt })
+    if (inline) return <Text style={[styles.smallText, { color: palette.text3 }]}>{message}</Text>
+    return <UnsupportedNotice palette={palette}>{message}</UnsupportedNotice>
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      accessibilityLabel={alt}
+      onError={() => setFailed(true)}
+      {...(resizeMode ? { resizeMode } : {})}
+      style={style}
+    />
+  )
 }
 
 function UnsupportedPart({ palette }: { palette: ThemePalette }) {

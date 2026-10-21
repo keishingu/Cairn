@@ -67,6 +67,12 @@ describe('カードの文字の平坦化', () => {
     ])
   })
 
+  it('太字の中のインラインコードは太字を保つ', () => {
+    expect(cardTextParagraphs(mrkdwn('*前 `x` 後*'), nameOf, '@メンバー')).toEqual([
+      { type: 'paragraph', runs: [{ text: '前 ', bold: true }, { text: 'x', code: true, bold: true }, { text: ' 後', bold: true }] },
+    ])
+  })
+
   it('引用と複数行コードを段落として分ける', () => {
     expect(cardTextParagraphs(mrkdwn('> 引用\n```\ncode\n```'), nameOf, '@メンバー')).toEqual([
       { type: 'quote', runs: [{ text: '引用' }] },

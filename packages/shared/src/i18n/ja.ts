@@ -1274,4 +1274,5 @@ export const JA_MESSAGES: Record<string, string> = {
   'This part of the card cannot be shown in this version. Reload the page to see it.': 'カードのこの部分はこのバージョンでは表示できません。ページを再読み込みすると表示されます。',
   'This card cannot be shown in this version. Update the app to see it.': 'このカードはこのバージョンでは表示できません。アプリを更新すると表示されます。',
   'This part of the card cannot be shown in this version. Update the app to see it.': 'カードのこの部分はこのバージョンでは表示できません。アプリを更新すると表示されます。',
+  'Could not load the image: {alt}': '画像を読み込めませんでした：{alt}',
 }

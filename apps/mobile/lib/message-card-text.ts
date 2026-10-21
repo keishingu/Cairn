@@ -51,7 +51,8 @@ function flatten(
       case 'strike':
         return flatten(node.children, { ...style, strike: true }, nameOf, unknownMention)
       case 'code':
-        return [{ text: node.text, code: true }]
+        // まわりの太字・斜体・取り消しは Web と同じくコードにも引き継ぐ
+        return [{ text: node.text, code: true, ...style }]
       case 'link':
         return [{ text: node.text, url: node.url, ...style }]
       case 'mention': {
