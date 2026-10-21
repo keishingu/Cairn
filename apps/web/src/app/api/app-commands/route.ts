@@ -10,6 +10,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAppInChannel, parseEntryPoints } from '@/lib/apps/channel-apps'
 import { resolveRequestUrl } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
+import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
 
 // 入力欄の「＋」から選んだアプリの起動口を、スラッシュコマンドと同じ形（フィールドを並べた form）でアプリへ届ける。
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   if (forbidden) return forbidden
 
   try {
-    const { db, apps, appInstallations, channels, workspaces, profiles, activeWorkspaceMembers, appInteractionDeliveries } = await import('@cairn/db')
+    const { db, apps, appInstallations, channels, workspaces, profiles, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
     const [row] = await db
       .select({
@@ -88,20 +89,7 @@ export async function POST(req: Request) {
         trigger_id: triggerId,
       },
     })
-    // 配送の記録は運用のためのもの。記録だけ失敗しても、アプリが処理した結果を利用者へ返す（押し直しでコマンドを二重に実行させない）
-    await db
-      .insert(appInteractionDeliveries)
-      .values({
-        installationId: row.installationId,
-        userId: ctx.userId,
-        type: 'slash_command',
-        actionId: body.command,
-        status: delivery.status,
-        httpStatus: delivery.httpStatus,
-        durationMs: delivery.durationMs,
-        error: delivery.status === 'delivered' ? null : delivery.error.slice(0, 500),
-      })
-      .catch((err: unknown) => console.error('[/api/app-commands] failed to record delivery:', err))
+    recordDeliveryAfterResponse({ installationId: row.installationId, userId: ctx.userId, type: 'slash_command', actionId: body.command, delivery })
     if (delivery.status !== 'delivered') return NextResponse.json({ error: delivery.status === 'timeout' ? 'app_timeout' : 'app_unreachable' }, { status: 502 })
     return NextResponse.json({ ok: true })
   } catch (err) {
