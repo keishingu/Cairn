@@ -60,7 +60,7 @@ app_installations {
   id
   appId          → apps (cascade)
   workspaceId    → workspaces (cascade)
-  botProfileId   → profiles             // §3.2
+  botProfileId   → profiles  unique     // §3.2。1つの Bot profile を複数のインストールで共有させない
   grantedScopes  text[]
   installedBy    → profiles
   installedAt, revokedAt
@@ -71,6 +71,7 @@ app_bot_tokens {
   id
   installationId → app_installations (cascade)
   tokenHash      text unique            // SHA-256。平文は発行時に一度だけ表示（PAT と同じ）
+  tokenEncrypted text null             // ファーストパーティだけ。自動プロビジョニングで平文を受け取る人がいないため（§3.3）
   tokenPrefix    text
   lastUsedAt, revokedAt, createdAt
 }
@@ -92,7 +93,7 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
 
 `profiles.id` は `auth.users.id` の写しだが FK は張られていないため、**`auth.users` を作らずに Bot 用の profile 行を作れる**。
 
-- `profiles` に `kind text not null default 'human' check (kind in ('human','bot'))` を足す。Bot の profile は `app_installations.botProfileId` から1対1で参照される
+- `profiles` に `kind text not null default 'human' check (kind in ('human','bot'))` を足す。Bot の profile は `app_installations.botProfileId` から1対1で参照され、`botProfileId` の一意制約で DB に強制する
 - **Bot は `workspace_members` に入れない**。入れるとワークスペースロールを持ち、`active_workspace_members` を通る既存の認可（AGENTS.md の「権限はワークスペースロールだけで決める」）に Bot が紛れ込む。Bot は「ロールを持たない別種の主体」として扱い、権限はスコープ + `app_channel_memberships` だけで決める
 - **Bot は `channel_members` にも入れない**。未読・メンバー一覧・通知・メンション候補など `channel_members` を人間前提で読むクエリが多く、混ぜると影響範囲を追い切れない。チャンネルヘッダーのメンバー表示などで Bot を見せる場合は `app_channel_memberships` を別に引く
 - インストールを取り消しても Bot profile は消さない（過去のメッセージの送信者表示が壊れるため）。`revokedAt` で投稿・更新を止め、表示は「（アンインストール済み）」を添える
@@ -102,13 +103,14 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
 
 ### 3.3 Bot トークンと認可
 
+- **ファーストパーティのトークン**: 自動プロビジョニングされる投票アプリには平文を控える人がおらず、hash だけではプロセス再起動後に Bot API を認証できない。ファーストパーティのインストールに限り `app_bot_tokens.tokenEncrypted` に token-crypto で暗号化した平文も保存し、投票アプリは installation ID から復号して使う。外部アプリのトークンは従来どおり hash のみ（暗号化平文を持たせない）
 - 形式は `cairn_bot_<random>`。Slack の `xoxb-` は使わない（GitHub の secret scanning が Slack トークンとして誤検知・誤通報するため）。Bolt / `@slack/web-api` がトークンの接頭辞に依存しないかは第2段階で確認する（依存していれば互換モードで `xoxb-` 形式も発行する）
 - Bot トークンで認証された API 呼び出しは、人間のセッション・MCP の AsyncLocalStorage context とは**別の「アプリ主体」context** で処理する。人間用の Route Handler をそのまま通さず、アプリ API 用の薄い層から `packages/core` のユースケースを呼ぶ
 - 認可の判定:
   - インストールが有効（`revokedAt is null`）、トークンが有効
   - 要求操作に対応するスコープを `grantedScopes` に持つ
   - チャンネルを伴う操作は、そのチャンネルが `app_channel_memberships` にあり、かつチャンネル自体がアーカイブ・削除されていない
-  - **installation とチャンネルのワークスペースが一致する**。両方のワークスペースに所属するメンバーが、A のインストールを B のチャンネルへ関連付けると A の Bot トークンで B へ投稿できてしまうため、`app_channel_memberships` に `workspace_id` を持たせ、`(installation_id, workspace_id)` → `app_installations(id, workspace_id)` と `(channel_id, workspace_id)` → `channels(id, workspace_id)` の複合 FK で DB に固定する。Bot API 実行時も同じ一致を検証する（`message_blocks` を書く `chat.update` も、対象メッセージのチャンネルのワークスペースで照合する）
+  - **installation とチャンネルのワークスペースが一致する**。両方のワークスペースに所属するメンバーが、A のインストールを B のチャンネルへ関連付けると A の Bot トークンで B へ投稿できてしまうため、`app_channel_memberships` に `workspace_id` を持たせ、`(installation_id, workspace_id)` → `app_installations(id, workspace_id)` と `(channel_id, workspace_id)` → `channels(id, workspace_id)` の複合 FK で DB に固定する。旧プロジェクトチャンネルとその子スレッドには `channels.workspace_id` が null の行が残り得る（既存コードは `coalesce(channels.workspace_id, projects.workspace_id)` で補っている）ため、FK を張る前に `projects` → 親チャンネルの順で backfill する。Bot API 実行時も同じ一致を検証する（`message_blocks` を書く `chat.update` も、対象メッセージのチャンネルのワークスペースで照合する）
   - DM（`channel_type = 'dm'`）へは第1段階では投稿させない
 - 呼び出し回数の上限はトークン単位で毎分120回（PAT と同じ仕組み・同じ値）
 
@@ -213,17 +215,21 @@ Web は deploy で全員が即座に新しくなるが、ネイティブは EAS 
 ```
 [利用者がボタンを押す（Web / ネイティブ）]
    ▼ POST /api/app-interactions   { messageId, blockId, actionId, selectedOptionValue? }（人間のセッションで認証）
+     selectedOptionValue は static_select のときだけ。どの選択肢かを示す識別子で、保存済み blocks で検証する
 [Cairn: 検証]
    - 利用者がチャンネルを読める active メンバーか
    - message_blocks に該当の block_id / action_id があるか、value は保存済み blocks から取る
+   - static_select は selectedOptionValue が保存済みの options にあるか（無ければ 400）。選択肢のラベルはサーバーが blocks から引く
    - インストールが有効か
+   - Bot がそのチャンネルにまだ参加しているか（app_channel_memberships）。外された後の古いカードは押しても配送せず、
+     「このアプリはチャンネルから外されています」を表示する（配送して票だけ commit され、chat.update が not_in_channel で失敗し表示とずれるのを防ぐ）
    ▼ Slack 互換の block_actions ペイロードを組み立て、署名して POST
 [アプリの Request URL]  3秒以内に 200 を返す
    ▼ （アプリ側）chat.update / response_url / views.open で応答
 [Cairn: message_blocks 更新 → Broadcast → クライアントが再取得]
 ```
 
-- **クライアントが送るのは「どのボタンか」だけ**。`value` やボタンのラベルはクライアントから受け取らず、サーバーが保存済みの blocks から引く。改ざんした値をアプリへ届かせない
+- **クライアントが送るのは「どの要素か」と、static_select ならどの選択肢か、だけ**。ボタンの `value` やラベルはクライアントから受け取らず、サーバーが保存済みの blocks から引く。select の選択値も保存済みの options と照合してから届ける。改ざんした値をアプリへ届かせない
 - クライアントは押下後、該当ボタンを処理中表示にする。アプリからの更新（Broadcast）で解除し、タイムアウトやアプリのエラーは**ボタンの下にエラーを表示**する（サイレントに戻さない）
 
 ### 5.2 ペイロード（Slack 互換）
@@ -288,7 +294,7 @@ Slack と同じ方式にする。
 
 | メソッド | 第1段階 | 内容 |
 |---|---|---|
-| `chat.postMessage` | ○ | `channel` / `text` / `blocks` / `thread_ts`。`blocks` なしなら通常の `text` メッセージ |
+| `chat.postMessage` | ○ | `channel` / `text` / `blocks` / `thread_ts` / `client_msg_id`。`blocks` なしなら通常の `text` メッセージ。`client_msg_id` があればメッセージ ID に使い、同じ ID の再送は既存メッセージを返す |
 | `chat.update` | ○ | 自分（同じインストールの Bot）の投稿だけ |
 | `chat.delete` | ○ | 同上 |
 | `views.open` / `views.update` | ○ | §5.5 |
@@ -313,7 +319,12 @@ Slack と同じ方式にする。
 
 ### 7.1 構成
 
-- ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置き、Cairn 本体の内部関数を import しない。Cairn とのやり取りは**署名付きインタラクションの受信**と**Bot トークンでの Web API 呼び出し**だけ（ESLint の import 制限で強制する）
+- ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置く
+- **境界は向きごとに1つ**:
+  - **アプリ → Cairn**: Bot トークンでの Web API 呼び出し（HTTP）だけ。投票アプリは Cairn 本体の内部関数を import しない（ESLint の import 制限で強制する）
+  - **利用者の操作 → アプリ**: 署名付きインタラクションの受信（HTTP）だけ
+  - **Cairn 本体 → アプリ**（定期ジョブ・AI からの作成、§7.4）: 投票アプリの公開エントリ `first-party-apps/polls/index.ts` が export する `createPoll` だけ。Cairn 本体はそれ以外のファイルを import しない（同じく ESLint で強制）。`createPoll` の中身もアプリ → Cairn の HTTP 経路で投稿するので、本体の内部関数を直接呼ぶ近道にはならない
+  - [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) の `PollPort.createPoll`（`packages/core`）は置かない。この公開エントリが置き換える
 - Request URL は同じデプロイの Route Handler（例: `/api/first-party-apps/polls/interactions`）。署名検証は外部アプリと同じ v0 HMAC
 - 投票データは投票アプリが持つテーブル（下記）。Cairn 本体のコードは投票テーブルを読まない
 
@@ -324,7 +335,8 @@ Slack と同じ方式にする。
 ```ts
 polls        { id, installationId → app_installations (cascade), channelId, messageId → messages,
                createdBy, question, allowMultiple, anonymous, closesAt?, closedAt?,
-               version, renderedVersion, createdAt }
+               status, idempotencyKey, clientMsgId, version, renderedVersion, createdAt
+               unique(installationId, idempotencyKey) }
 poll_processed_interactions { interactionId primary key, pollId (cascade), createdAt }  // 30日で削除
 poll_options { id, pollId (cascade), label, position }
 poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, createdAt
@@ -358,12 +370,15 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
 
 ### 7.4 定期ジョブ・AI からの作成
 
-- 投票の作成は投票アプリ内のユースケース `createPoll`（検証 → `polls` 作成 → `chat.postMessage` で投稿 → `messageId` を保存）に一本化する
+- 投票の作成は投票アプリ内のユースケース `createPoll` に一本化し、**再試行しても同じ投票・同じメッセージに収束する**状態遷移にする:
+  1. 呼び出し元が渡す冪等キー（定期ジョブは `scheduled_job_runs.id`、モーダルは `view_id`、AI は tool call ID）で `polls` を `status='pending_post'` で作る。`unique(installationId, idempotencyKey)` なので再試行は既存の行を返す。同時にメッセージ ID にする UUID（`clientMsgId`）も採番して保存する
+  2. commit 後に `chat.postMessage` を `client_msg_id = clientMsgId` 付きで呼ぶ。Cairn の Bot API は `client_msg_id` をメッセージ ID に使い、同じ ID の再送は新規投稿せず既存のメッセージを返す（モバイルのオフラインキューと同じ冪等化）
+  3. 応答の `messageId` を保存して `status='posted'` にする。2〜3 の間で失敗しても、再試行は同じ `clientMsgId` で 2 からやり直すだけで、カードが二重に出ることはない
 - 起動口は3つで、すべて同じユースケースを通る:
   1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`
   2. 定期ジョブ（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §8 の create-poll ステップ）→ 投票アプリのユースケースを呼ぶ。`scheduled_jobs.senderId` は投票アプリの Bot profile になる
   3. AI の `create_poll` tool（[`10_ai_member_design.md`](./10_ai_member_design.md) Stage 2）
-- 2 と 3 は Cairn 本体側から投票アプリを呼ぶ形になる。第1段階は投票アプリが公開する内部関数を呼ぶ（Cairn → アプリの向き）。外部アプリには開かない（Slack の Workflow Steps 相当として第2段階以降に検討）
+- 2 と 3 は Cairn 本体側から投票アプリを呼ぶ形になる。第1段階は §7.1 の公開エントリ（`createPoll`）を呼ぶ。外部アプリには開かない（Slack の Workflow Steps 相当として第2段階以降に検討）
 - 定期ジョブは対象チャンネルに投票アプリの Bot が参加していることを保存時に検証し、未参加ならコンパイルエラーにする（発火時に初めて `not_in_channel` で失敗させない）
 
 ## 8. 実装順
