@@ -207,8 +207,8 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
   await ensureFirstPartyInstallations(workspaceId)
   const { db, apps, appInstallations, appBotTokens } = await import('@cairn/db')
   const { and, desc, eq, isNull, isNotNull } = await import('drizzle-orm')
-  const [row] = await db
-    .select({ id: appBotTokens.id, installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted })
+  const rows = await db
+    .select({ installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted })
     .from(appBotTokens)
     .innerJoin(appInstallations, eq(appInstallations.id, appBotTokens.installationId))
     .innerJoin(apps, eq(apps.id, appInstallations.appId))
@@ -223,23 +223,24 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
       ),
     )
     .orderBy(desc(appBotTokens.createdAt))
-    .limit(1)
-  if (!row?.tokenEncrypted) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
-  try {
-    return decryptToken(row.tokenEncrypted)
-  } catch (err) {
-    // 暗号鍵を入れ替えた後は復号できない。平文を控える人がいないので、新しいトークンを発行して古いものを取り消す
-    console.warn(`[first-party] bot token for ${slug} could not be decrypted; issuing a new one:`, err)
-    const token = createBotToken()
-    await db.transaction(async (tx) => {
-      await tx.update(appBotTokens).set({ revokedAt: new Date() }).where(eq(appBotTokens.id, row.id))
-      await tx.insert(appBotTokens).values({
-        installationId: row.installationId,
-        tokenHash: token.hash,
-        tokenPrefix: token.prefix,
-        tokenEncrypted: encryptToken(token.token),
-      })
-    })
-    return token.token
+  const installationId = rows[0]?.installationId
+  if (!installationId) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
+  // 復号できないのは「このデプロイの鍵では読めない」だけで、別の鍵のデプロイ（DB を共有する Preview など）が使っているかもしれない。
+  // 取り消さずに、今の鍵で読める有効なトークンを探し、無ければ今の鍵で読めるものを足す
+  for (const row of rows) {
+    try {
+      return decryptToken(row.tokenEncrypted!)
+    } catch {
+      // 別の鍵で暗号化されたトークン。次を試す
+    }
   }
+  console.warn(`[first-party] no bot token for ${slug} is readable with the current key; issuing one`)
+  const token = createBotToken()
+  await db.insert(appBotTokens).values({
+    installationId,
+    tokenHash: token.hash,
+    tokenPrefix: token.prefix,
+    tokenEncrypted: encryptToken(token.token),
+  })
+  return token.token
 }
