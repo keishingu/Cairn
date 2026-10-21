@@ -216,11 +216,12 @@ describe('ChatMessage copy action', () => {
 
   describe('タスク化済みの印', () => {
     type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }
-    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn(), content = '資料を確認する') {
+    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn(), content = '資料を確認する', messageType: 'text' | 'blocks' = 'text') {
       return render(
         <ChatMessage
           messageId="message-1"
-          messageType="text"
+          messageType={messageType}
+          {...(messageType === 'blocks' ? { blocks: [{ type: 'section', block_id: 's', text: { type: 'plain_text', text: content } }] } : {})}
           senderId="user-2"
           currentUserId="user-1"
           senderName="Alice"
@@ -288,6 +289,12 @@ describe('ChatMessage copy action', () => {
       const chip = screen.getByTestId('linked-task-chip')
       expect(chip).toHaveTextContent('タスク 2/2')
       expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    it('カードのメッセージは行末ラベルを出せないので、代替テキストの行に対応するタスクもチップで出す', () => {
+      renderLinked([task('task-1', 'todo', '資料を確認する', 0)], vi.fn(), '資料を確認する', 'blocks')
+      expect(screen.queryByTestId('line-task-label')).toBeNull()
+      expect(screen.getByTestId('linked-task-chip')).toHaveAttribute('href', '/tasks?taskId=task-1')
     })
 
     describe('行末ラベル', () => {
