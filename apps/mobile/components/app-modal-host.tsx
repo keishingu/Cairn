@@ -29,7 +29,12 @@ export function AppModalHost() {
       return res.json() as Promise<AppViewDto[]>
     },
   })
-  const current = query.data?.[0]
+  // 入力中のモーダルを出し続ける。別の端末などから新しいモーダルが開かれても、今のものを外して入力を失わせない
+  const [activeId, setActiveId] = React.useState<string | null>(null)
+  const current = query.data?.find((view) => view.id === activeId) ?? query.data?.[0]
+  React.useEffect(() => {
+    if (current && current.id !== activeId) setActiveId(current.id)
+  }, [current, activeId])
   // 送信の前にアプリが views.update した場合、作り直したモーダルに理由を出す
   const [changedNotice, setChangedNotice] = React.useState<{ viewId: string; message: string } | null>(null)
   if (query.isError && !current) {

@@ -29,7 +29,12 @@ async function fetchAppViews(): Promise<AppViewDto[]> {
 export function AppModalHost() {
   const t = useT()
   const query = useQuery({ queryKey: APP_VIEWS_QUERY_KEY, queryFn: fetchAppViews })
-  const current = query.data?.[0]
+  // 入力中のモーダルを出し続ける。別の端末などから新しいモーダルが開かれても、今のものを外して入力を失わせない
+  const [activeId, setActiveId] = React.useState<string | null>(null)
+  const current = query.data?.find((view) => view.id === activeId) ?? query.data?.[0]
+  React.useEffect(() => {
+    if (current && current.id !== activeId) setActiveId(current.id)
+  }, [current, activeId])
   // 送信の前にアプリが views.update した場合、作り直したモーダルに理由を出す
   const [changedNotice, setChangedNotice] = React.useState<{ viewId: string; message: string } | null>(null)
   // 表示中のモーダルがあるときの再取得の失敗では、入力中のモーダルを消さない（取り直しは次の Realtime・フォーカスで行う）
