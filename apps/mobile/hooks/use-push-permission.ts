@@ -2,7 +2,12 @@ import React from 'react'
 import { AppState, Linking } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import { pushPermissionView, type PushPermissionView } from '../lib/push-permission'
-import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../lib/push-registration'
+import {
+  ensureAndroidNotificationChannel,
+  isAndroidNotificationChannelDisabled,
+  registerPushToken,
+  supportsNotifications,
+} from '../lib/push-registration'
 
 type PushPermissionState =
   | { status: 'unsupported' }
@@ -20,7 +25,9 @@ export function usePushPermission() {
   const seq = React.useRef(0)
 
   const apply = React.useCallback(async (permission: Notifications.NotificationPermissionsStatus, id: number) => {
-    const view = pushPermissionView(permission)
+    // アプリ全体は許可済みでも、通知が届くチャンネルだけがオフなら届かないのでオン表示にしない
+    const channelDisabled = permission.granted ? await isAndroidNotificationChannelDisabled() : false
+    const view = pushPermissionView(permission, { channelDisabled })
     if (view !== 'granted') {
       if (id === seq.current) setState({ status: view, registerFailed: false })
       return

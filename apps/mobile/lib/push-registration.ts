@@ -22,6 +22,17 @@ export async function ensureAndroidNotificationChannel(): Promise<void> {
   })
 }
 
+/**
+ * 通知が届く default チャンネルを利用者がオフにしているか。アプリ全体の許可とは別に設定でき、
+ * getPermissionsAsync() には現れない。チャンネルを作り直してもアプリから重要度は上げられないので、利用者の設定は上書きしない
+ */
+export async function isAndroidNotificationChannelDisabled(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false
+  await ensureAndroidNotificationChannel()
+  const channel = await Notifications.getNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID)
+  return channel?.importance === Notifications.AndroidImportance.NONE
+}
+
 /** 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。 */
 export async function registerPushToken(): Promise<void> {
   await ensureAndroidNotificationChannel()
