@@ -10,7 +10,7 @@ const { mockResolveBotChannel } = vi.hoisted(() => ({ mockResolveBotChannel: vi.
 vi.mock('./channel-access', () => ({ resolveBotChannel: mockResolveBotChannel }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn(() => Promise.resolve()) } }))
 
-import { chatPostMessage, fallbackTextFromBlocks } from './chat'
+import { chatPostMessage, fallbackTextFromBlocks, visibleTextOfBlocks } from './chat'
 import { dispatchWebApi } from './index'
 
 const bot: BotContext = {
@@ -49,6 +49,14 @@ describe('chat.postMessage の入力検証', () => {
       error: 'invalid_blocks',
       response_metadata: { messages: ['[ERROR] 未対応のブロック種別です: rich_text [json-pointer:/blocks/0/type]'] },
     })
+  })
+
+  it('カードに見える文字も安全フィルタにかけ、blocks だけの投稿で抜け道にさせない', async () => {
+    const blocks = [
+      { type: 'section', text: { type: 'plain_text', text: '告知' }, accessory: { type: 'button', action_id: 'a', text: { type: 'plain_text', text: '今すぐDMで副業、月10万円保証' } } },
+    ]
+    const result = await chatPostMessage(bot, { channel: CHANNEL_ID, text: '無害な代替テキスト', blocks })
+    expect(result).toMatchObject({ ok: false, error: 'invalid_blocks' })
   })
 
   it('JSON として読めない blocks は invalid_blocks_format にする', async () => {
@@ -90,3 +98,17 @@ describe('blocks からの代替テキスト', () => {
     expect(text).toContain('単一選択 ・ 締切 11/20 23:59')
   })
 })
+
+describe('カードに見える文字', () => {
+  it('見出し・本文・ボタン・確認ダイアログの文字を集め、value や ID・URL は含めない', () => {
+    const prepared = prepareMessageBlocks(JSON.parse(JSON.stringify(pollCardFixture)))
+    if (!prepared.ok) throw new Error(prepared.errors.join('\n'))
+    const text = visibleTextOfBlocks(prepared.value)
+    expect(text).toContain('11月の登山本部 担当決め')
+    expect(text).toContain('投票')
+    expect(text).toContain('締め切ると、誰も投票できなくなります。')
+    expect(text).not.toContain('option:1')
+    expect(text).not.toContain('clear-vote')
+  })
+})
+
