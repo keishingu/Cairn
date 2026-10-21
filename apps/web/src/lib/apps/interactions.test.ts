@@ -77,7 +77,9 @@ describe('アプリへの配送', () => {
     expect(result).toMatchObject({ status: 'delivered', httpStatus: 200 })
 
     const input = send.mock.calls[0]![0]
-    expect(input.timeoutMs).toBe(3000)
+    // 期限は URL の検証にかかった時間を差し引いた残り
+    expect(input.timeoutMs).toBeGreaterThan(2900)
+    expect(input.timeoutMs).toBeLessThanOrEqual(3000)
     expect(input.allowLoopback).toBe(false)
     expect(new URLSearchParams(input.body).get('payload')).toBe('{"type":"block_actions"}')
     expect(verifyRequestSignature({ signingSecret: 'secret', timestamp: input.headers['X-Slack-Request-Timestamp']!, signature: input.headers['X-Slack-Signature']!, body: input.body })).toBe(true)
@@ -109,5 +111,18 @@ describe('アプリへの配送', () => {
     })
     expect(result).toMatchObject({ status: 'blocked', error: 'Request URL が内部のアドレスを指しています' })
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('URL の検証（名前解決）が止まっても、3秒の期限で timeout にする', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn()
+      const pending = deliverToApp({ requestUrl: 'https://a.example.com', signingSecret: 's', payload: {}, send, checkUrl: () => new Promise(() => {}) })
+      await vi.advanceTimersByTimeAsync(3000)
+      await expect(pending).resolves.toMatchObject({ status: 'timeout' })
+      expect(send).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
