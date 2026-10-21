@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getFirstPartyInstallationId } from '@/lib/apps/first-party'
-import { callBotApi } from './bot-client'
+import { callBotApi, PollsBotApiError } from './bot-client'
 import { renderPollCard, type PollForRender } from './render'
 
 // 投票の作成・投稿・カードの再描画。外部 HTTP（Bot API）はトランザクションの外で呼び、
@@ -93,27 +93,47 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
 export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
   const { pollId } = await createPendingPoll(input)
   const messageId = await postPoll(pollId)
+  // 定期ジョブ・AI からの作成では、投稿できなかったことを呼び出し元にエラーとして返す
+  if (!messageId) throw new Error(`poll ${pollId} could not be posted`)
   return { pollId, messageId }
 }
 
-/** 投稿待ちの投票を投稿する。client_msg_id を事前に採番しているので、途中で失敗しても再試行で二重に投稿されない */
-export async function postPoll(pollId: string): Promise<string> {
+/**
+ * 再試行しても通らない投稿の失敗（チャンネルのアーカイブ・アプリの取り外し・内容の拒否など）。
+ * モーダルを閉じた後に起きるので、投稿待ちのまま拾い直し続けず post_failed として止める
+ */
+const PERMANENT_POST_ERRORS = new Set(['is_archived', 'not_in_channel', 'channel_not_found', 'method_not_supported_for_channel_type', 'invalid_blocks', 'invalid_arguments', 'msg_too_long', 'no_text', 'client_msg_id_conflict'])
+
+/**
+ * 投稿待ちの投票を投稿する。client_msg_id を事前に採番しているので、途中で失敗しても再試行で二重に投稿されない。
+ * 再試行しても通らない理由で失敗したら post_failed にして null を返す
+ */
+export async function postPoll(pollId: string): Promise<string | null> {
   const loaded = await loadPoll(pollId)
   if (!loaded) throw new Error(`poll ${pollId} not found`)
   const { poll, forRender } = loaded
   if (poll.messageId) return poll.messageId
-
-  const workspaceId = await workspaceOfInstallation(poll.installationId)
-  const card = renderPollCard({ ...forRender, status: forRender.status === 'pending_post' ? 'posted' : forRender.status })
-  const result = await callBotApi<{ ts: string }>(workspaceId, 'chat.postMessage', {
-    channel: poll.channelId,
-    text: card.text,
-    blocks: card.blocks,
-    client_msg_id: poll.clientMsgId,
-  })
+  if (poll.status === 'post_failed') return null
 
   const { db, polls } = await import('@cairn/db')
   const { eq, sql } = await import('drizzle-orm')
+  const workspaceId = await workspaceOfInstallation(poll.installationId)
+  const card = renderPollCard({ ...forRender, status: forRender.status === 'pending_post' ? 'posted' : forRender.status })
+  let result: { ts: string }
+  try {
+    result = await callBotApi<{ ts: string }>(workspaceId, 'chat.postMessage', {
+      channel: poll.channelId,
+      text: card.text,
+      blocks: card.blocks,
+      client_msg_id: poll.clientMsgId,
+    })
+  } catch (err) {
+    if (!(err instanceof PollsBotApiError) || !PERMANENT_POST_ERRORS.has(err.code)) throw err
+    console.error(`[polls] poll ${pollId} could not be posted (${err.code}); giving up`)
+    await db.update(polls).set({ status: 'post_failed', postError: err.code, updatedAt: sql`now()` }).where(eq(polls.id, pollId))
+    return null
+  }
+
   await db
     .update(polls)
     .set({
@@ -132,12 +152,12 @@ export async function postPoll(pollId: string): Promise<string> {
  * カードを今の集計で描き直す。読んだ時点の version を描き、描いた版を rendered_version に記録する。
  * 投票ごとに1本ずつ実行される（Inngest の concurrency）ので、同時投票で古い集計が後勝ちしない
  */
-export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped'> {
+export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed'> {
   const loaded = await loadPoll(pollId)
   if (!loaded) return 'skipped'
   const { poll, forRender } = loaded
   if (!poll.messageId) {
-    await postPoll(pollId)
+    if ((await postPoll(pollId)) === null) return 'post_failed'
     // 投稿した（または前回の投稿を取り戻した）カードより新しい票があれば、続けて描き直す
     const after = await renderPoll(pollId)
     return after === 'skipped' ? 'posted' : after

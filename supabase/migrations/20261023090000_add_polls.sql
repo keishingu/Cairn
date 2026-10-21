@@ -10,6 +10,7 @@ CREATE TABLE "polls" (
 	"allow_multiple" boolean DEFAULT false NOT NULL,
 	"anonymous" boolean DEFAULT false NOT NULL,
 	"status" text DEFAULT 'pending_post' NOT NULL,
+	"post_error" text,
 	"idempotency_key" text NOT NULL,
 	"client_msg_id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
@@ -18,7 +19,7 @@ CREATE TABLE "polls" (
 	"closed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "polls_status_known" CHECK ("polls"."status" in ('pending_post', 'posted', 'closed')),
+	CONSTRAINT "polls_status_known" CHECK ("polls"."status" in ('pending_post', 'posted', 'closed', 'post_failed')),
 	CONSTRAINT "polls_question_not_empty" CHECK (length(trim("polls"."question")) > 0)
 );
 --> statement-breakpoint
@@ -59,7 +60,7 @@ CREATE UNIQUE INDEX "polls_installation_idempotency_idx" ON "polls" USING btree 
 CREATE UNIQUE INDEX "polls_message_idx" ON "polls" USING btree ("message_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "polls_client_msg_idx" ON "polls" USING btree ("client_msg_id");--> statement-breakpoint
 -- 描画待ち・投稿待ちを拾い直す cron 用
-CREATE INDEX "polls_needs_render_idx" ON "polls" USING btree ("updated_at") WHERE "polls"."version" > "polls"."rendered_version" or "polls"."status" = 'pending_post';--> statement-breakpoint
+CREATE INDEX "polls_needs_render_idx" ON "polls" USING btree ("updated_at") WHERE ("polls"."version" > "polls"."rendered_version" or "polls"."status" = 'pending_post') and "polls"."status" <> 'post_failed';--> statement-breakpoint
 -- 単一選択の1人1票を DB で強制する（並行の二重投票も防ぐ）
 CREATE UNIQUE INDEX "poll_votes_single_choice_idx" ON "poll_votes" USING btree ("poll_id","user_id") WHERE "poll_votes"."allow_multiple" = false;--> statement-breakpoint
 CREATE INDEX "poll_votes_poll_idx" ON "poll_votes" USING btree ("poll_id");--> statement-breakpoint

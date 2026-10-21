@@ -29,8 +29,10 @@ export const polls = pgTable(
     allowMultiple: boolean('allow_multiple').notNull().default(false),
     // 第1段階は匿名投票を出さない（§11 D2）。列は残すが常に false
     anonymous: boolean('anonymous').notNull().default(false),
-    // pending_post（投稿待ち）/ posted / closed
+    // pending_post（投稿待ち）/ posted / closed / post_failed（投稿が再試行しても通らない理由で失敗した。拾い直さない）
     status: text('status').notNull().default('pending_post'),
+    // post_failed の理由（Bot API のエラーコード）
+    postError: text('post_error'),
     idempotencyKey: text('idempotency_key').notNull(),
     // 投稿する前に採番するメッセージ ID（chat.postMessage の client_msg_id）
     clientMsgId: uuid('client_msg_id').notNull().defaultRandom(),
@@ -47,8 +49,8 @@ export const polls = pgTable(
     // カードの ts は client_msg_id なので、投稿直後の操作もこれで投票を引く
     uniqueIndex('polls_client_msg_idx').on(t.clientMsgId),
     // 描画待ち・投稿待ちを拾い直す cron 用
-    index('polls_needs_render_idx').on(t.updatedAt).where(sql`${t.version} > ${t.renderedVersion} or ${t.status} = 'pending_post'`),
-    check('polls_status_known', sql`${t.status} in ('pending_post', 'posted', 'closed')`),
+    index('polls_needs_render_idx').on(t.updatedAt).where(sql`(${t.version} > ${t.renderedVersion} or ${t.status} = 'pending_post') and ${t.status} <> 'post_failed'`),
+    check('polls_status_known', sql`${t.status} in ('pending_post', 'posted', 'closed', 'post_failed')`),
     check('polls_question_not_empty', sql`length(trim(${t.question})) > 0`),
   ],
 ).enableRLS()

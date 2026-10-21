@@ -8,7 +8,7 @@ export type PollForRender = {
   id: string
   question: string
   allowMultiple: boolean
-  status: 'pending_post' | 'posted' | 'closed'
+  status: 'pending_post' | 'posted' | 'closed' | 'post_failed'
   options: Array<{ id: string; label: string; position: number }>
   votes: Array<{ optionId: string; userId: string }>
 }

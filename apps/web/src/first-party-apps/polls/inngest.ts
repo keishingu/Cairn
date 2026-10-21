@@ -27,7 +27,13 @@ export const pollsCardSweep = inngest.createFunction(
       const stale = db
         .select({ id: polls.id })
         .from(polls)
-        .where(and(or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`), lt(polls.updatedAt, sql`now() - interval '1 minute'`)))
+        .where(
+          and(
+            or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`),
+            sql`${polls.status} <> 'post_failed'`,
+            lt(polls.updatedAt, sql`now() - interval '1 minute'`),
+          ),
+        )
         .orderBy(asc(polls.updatedAt))
         .limit(200)
       const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
