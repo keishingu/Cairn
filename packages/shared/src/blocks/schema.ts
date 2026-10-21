@@ -269,6 +269,11 @@ export const inputBlockSchema = z
     optional: z.boolean().optional(),
   })
   .strict()
+  // モーダルの選択肢の確認ダイアログは描けないので受け付けない（黙って確認を飛ばさない）
+  .refine((input) => !(input.element.type === 'static_select' && input.element.confirm), {
+    message: 'モーダルの入力欄の static_select には confirm を付けられません',
+    path: ['element', 'confirm'],
+  })
 
 const MESSAGE_BLOCK_SCHEMAS = {
   section: sectionBlockSchema,
