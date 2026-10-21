@@ -52,6 +52,7 @@ export function MessageCard({
   mentionNames,
   onLinkPress,
   onAction,
+  revision,
 }: {
   blocks: unknown
   /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
@@ -64,6 +65,8 @@ export function MessageCard({
    * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
    */
   onAction?: (action: CardAction) => void | Promise<void>
+  /** カードの版。見えないボタンの value だけの書き換えでは blocks が変わらないので、これでも書き換えの到着を知る */
+  revision?: string | null | undefined
 }) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
@@ -76,7 +79,7 @@ export function MessageCard({
     setBusy(false)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
-  React.useEffect(() => stopWaiting(), [blocks, stopWaiting])
+  React.useEffect(() => stopWaiting(), [blocks, revision, stopWaiting])
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
