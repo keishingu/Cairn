@@ -11,7 +11,7 @@ import { NotificationPanelProvider } from '../../components/notification-panel-p
 import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
-import { registerPushToken, supportsNotifications } from '../../lib/push-registration'
+import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../../lib/push-registration'
 
 if (supportsNotifications) {
   Notifications.setNotificationHandler({
@@ -29,6 +29,12 @@ if (supportsNotifications) {
 async function requestAndRegisterPush() {
   if (!supportsNotifications) return
 
+  // Android 13+ はチャンネルが無いと許可ダイアログが出ない
+  try {
+    await ensureAndroidNotificationChannel()
+  } catch {
+    console.warn('[Push] Failed to create the Android notification channel')
+  }
   const { status } = await Notifications.requestPermissionsAsync()
   if (status !== 'granted') return
 

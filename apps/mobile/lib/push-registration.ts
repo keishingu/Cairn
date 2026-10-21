@@ -7,8 +7,24 @@ import { apiFetch } from './api-fetch'
 const isExpoGo = Constants.appOwnership === 'expo'
 export const supportsNotifications = !(isExpoGo && Platform.OS === 'android')
 
+// サーバーは channelId を指定せずに送るため、Android では "default" チャンネルに届く
+export const ANDROID_NOTIFICATION_CHANNEL_ID = 'default'
+
+/**
+ * Android 13 以降は通知チャンネルが1つも無いと、許可を求めてもダイアログが出ず許可できない。
+ * 許可要求とトークン取得の前に必ず呼ぶ。同じ ID で作り直しても設定は保たれる（冪等）。iOS では何もしない
+ */
+export async function ensureAndroidNotificationChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return
+  await Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID, {
+    name: 'Cairn',
+    importance: Notifications.AndroidImportance.DEFAULT,
+  })
+}
+
 /** 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。 */
 export async function registerPushToken(): Promise<void> {
+  await ensureAndroidNotificationChannel()
   const projectId =
     Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.['eas']?.projectId
   if (!projectId) throw new Error('EAS projectId is not configured')

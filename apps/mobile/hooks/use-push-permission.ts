@@ -2,7 +2,7 @@ import React from 'react'
 import { AppState, Linking } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import { pushPermissionView, type PushPermissionView } from '../lib/push-permission'
-import { registerPushToken, supportsNotifications } from '../lib/push-registration'
+import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../lib/push-registration'
 
 type PushPermissionState =
   | { status: 'unsupported' }
@@ -59,6 +59,8 @@ export function usePushPermission() {
     const id = ++seq.current
     setRequesting(true)
     try {
+      // Android 13+ はチャンネルが無いと許可ダイアログが出ない
+      await ensureAndroidNotificationChannel()
       await apply(await Notifications.requestPermissionsAsync(), id)
     } catch {
       if (id === seq.current) setState({ status: 'error' })
