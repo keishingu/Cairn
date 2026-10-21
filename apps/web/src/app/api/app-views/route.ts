@@ -3,6 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
+import { extractMentionIds } from '@/lib/chat/mentions'
 
 export interface AppViewDto {
   id: string
@@ -11,6 +13,8 @@ export interface AppViewDto {
   view: unknown
   appName: string
   appIconUrl: string | null
+  /** モーダル内のメンション（`<@id>`）の表示名（非活性のメンバーも含む、サーバーで解決したもの） */
+  mentionNames: Record<string, string>
 }
 
 // 自分に開かれているモーダル（新しい順）。アプリが views.open すると Realtime で本人のトピックへ知らされ、クライアントがこれを取り直す
@@ -28,7 +32,19 @@ export async function GET() {
       .where(and(eq(appViews.userId, ctx.userId), eq(appViews.status, 'open'), eq(appInstallations.workspaceId, ctx.workspaceId), isNull(appInstallations.revokedAt)))
       .orderBy(desc(appViews.createdAt))
       .limit(10)
-    return NextResponse.json(rows satisfies AppViewDto[])
+    // カードと同じく、クライアントのメンバー一覧（active だけ）に無い人も「不明なメンバー」にしない
+    const viewJsons = rows.map((row) => JSON.stringify(row.view))
+    const nameMap = await buildMentionNameMap(ctx.workspaceId, viewJsons)
+    const result = rows.map((row, index) => ({
+      ...row,
+      mentionNames: Object.fromEntries(
+        extractMentionIds(viewJsons[index]!).flatMap((id) => {
+          const name = nameMap.get(id)
+          return name ? [[id, name] as const] : []
+        }),
+      ),
+    }))
+    return NextResponse.json(result satisfies AppViewDto[])
   } catch (err) {
     console.error('[/api/app-views GET] failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -12,7 +12,7 @@ import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
 import { CardBlock, type CardContext } from './message-card'
 
-type AppViewDto = { id: string; hash: string; view: unknown; appName: string; appIconUrl: string | null }
+type AppViewDto = { id: string; hash: string; view: unknown; appName: string; appIconUrl: string | null; mentionNames?: Record<string, string> }
 type FieldError = { code?: string; message?: string }
 type Values = Record<string, Record<string, string>>
 
@@ -127,7 +127,8 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
   // モーダル内のボタン（block_actions）は第1段階では押せない表示にする。リンクは外部ブラウザで開く（カードの URL は https のみ）
   const cardContext: CardContext = {
     palette,
-    mentionNames: new Map(),
+    // サーバーが解決した名前（非活性のメンバーも含む）
+    mentionNames: new Map(Object.entries(dto.mentionNames ?? {})),
     onLinkPress: (url) => {
       void Linking.openURL(url)
       return false

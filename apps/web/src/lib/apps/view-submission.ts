@@ -66,16 +66,19 @@ export type AppViewResponse =
   | { action: 'close' }
   | { action: 'errors'; errors: Record<string, FieldError> }
   | { action: 'update'; view: unknown }
+  | { action: 'invalid' }
 
-/** view_submission へのアプリの同期応答（response_action）。空の 200 は閉じる */
+/** view_submission へのアプリの同期応答（response_action）。空の 200 と clear は閉じ、読めない応答は閉じずに invalid にする */
 export function parseViewSubmissionResponse(body: string): AppViewResponse {
   if (!body.trim()) return { action: 'close' }
   let parsed: unknown
   try {
     parsed = JSON.parse(body)
   } catch {
-    return { action: 'close' }
+    // プロキシの HTML や途中で切れた応答で、入力を捨てて閉じない
+    return { action: 'invalid' }
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { action: 'invalid' }
   const responseAction = (parsed as { response_action?: unknown })?.response_action
   if (responseAction === 'errors') {
     const raw = (parsed as { errors?: unknown }).errors
@@ -89,7 +92,8 @@ export function parseViewSubmissionResponse(body: string): AppViewResponse {
   }
   // push は第1段階では重ねず差し替える（view の積み重ねは未対応）
   if (responseAction === 'update' || responseAction === 'push') return { action: 'update', view: (parsed as { view?: unknown }).view }
-  return { action: 'close' }
+  if (responseAction === undefined || responseAction === 'clear') return { action: 'close' }
+  return { action: 'invalid' }
 }
 
 /**

@@ -166,6 +166,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+          // アプリのモーダルも Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
+          void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           invalidateChannelLists(queryClient)
           return
         }

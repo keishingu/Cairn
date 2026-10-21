@@ -15,8 +15,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ viewId
     const view = await findOpenAppView({ viewId, userId: ctx.userId, workspaceId: ctx.workspaceId })
     if (!view) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
     const { db, appViews } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
-    await db.update(appViews).set({ status: 'closed' }).where(and(eq(appViews.id, viewId), eq(appViews.status, 'open')))
+    const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
+    // 別の端末から送信中（確保あり）のモーダルは閉じない。閉じるとアプリの応答（入力エラー・差し替え）をその端末で出せなくなる
+    const [closed] = await db
+      .update(appViews)
+      .set({ status: 'closed' })
+      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), or(isNull(appViews.submittingUntil), lt(appViews.submittingUntil, sql`now()`))))
+      .returning({ id: appViews.id })
+    if (!closed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[/api/app-views/[viewId]/close POST] failed:', err)
