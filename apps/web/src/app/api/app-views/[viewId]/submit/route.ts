@@ -100,25 +100,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
     }
 
-    // ここまでの DB 操作が遅れて確保が切れ、別の送信が取り直していたら、同じ送信を二重に届けない。
-    // 確保の間にアプリが views.update で差し替えていたら（hash が変わる）、古い版の意味で届けない。どちらでもなければ確保を延ばす
-    const [renewed] = await db
-      .update(appViews)
-      .set({ submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})` })
-      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash), ownsLease))
-      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
-    if (!renewed) {
-      const [current] = await db.select({ hash: appViews.hash }).from(appViews).where(eq(appViews.id, viewId)).limit(1)
-      if (current && current.hash !== renderedHash) {
-        await release()
-        return NextResponse.json({ error: 'view_changed' }, { status: 409 })
-      }
-      return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
-    }
-    lease = renewed.lease
-
     const interactionId = newInteractionId()
-    // trigger_id の期限は発行から数えるので、確保の確認が遅れても期限を使わないよう、届ける直前に発行する
+    // trigger_id は発行から6秒。発行の後は届ける直前の確認（UPDATE 1回）だけを挟む
     const triggerId = await issueTrigger({ installationId: view.installationId, userId: ctx.userId, channelId: view.channelId })
     const stored = view.view as Record<string, unknown>
     const payload = {
@@ -139,6 +122,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       },
       cairn: { interaction_id: interactionId, channel_id: view.channelId },
     }
+
+    // 届ける直前（ここより後に DB 操作を挟まない）に確かめる。ここまでの DB 操作が遅れて確保が切れ、別の送信が取り直していたら、同じ送信を二重に届けない。
+    // 確保の間にアプリが views.update で差し替えていたら（hash が変わる）、古い版の意味で届けない。どちらでもなければ確保を延ばす
+    const [renewed] = await db
+      .update(appViews)
+      .set({ submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})` })
+      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash), ownsLease))
+      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
+    if (!renewed) {
+      const [current] = await db.select({ hash: appViews.hash }).from(appViews).where(eq(appViews.id, viewId)).limit(1)
+      if (current && current.hash !== renderedHash) {
+        await release()
+        return NextResponse.json({ error: 'view_changed' }, { status: 409 })
+      }
+      return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
+    }
+    lease = renewed.lease
 
     let delivery: Awaited<ReturnType<typeof deliverToApp>>
     try {
