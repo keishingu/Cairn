@@ -68,6 +68,9 @@ describe('メッセージの blocks の受理', () => {
     expect(isHttpsUrl('https://[12345::1]/a')).toBe(false)
     expect(isHttpsUrl('https://[::1]/a')).toBe(true)
     expect(isHttpsUrl('https://[::ffff:192.0.2.1]/a')).toBe(true)
+    expect(isHttpsUrl('https://[192.0.2.1::]/a')).toBe(false)
+    expect(isHttpsUrl('https://[1:192.0.2.1::]/a')).toBe(false)
+    expect(isHttpsUrl('https://[192.0.2.1::1]/a')).toBe(false)
     expect(isHttpsUrl('https://[1:2:3:4:5:6:7:8]/a')).toBe(true)
   })
 
