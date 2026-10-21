@@ -5,10 +5,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
-import { decryptToken } from '@/lib/token-crypto'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { isAppInChannel, isChannelArchived, parseEntryPoints } from '@/lib/apps/channel-apps'
-import { resolveRequestTarget } from '@/lib/apps/first-party'
+import { resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
@@ -74,7 +73,7 @@ export async function POST(req: Request) {
     const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: body.channelId })
     const delivery = await deliverToApp({
       ...resolveRequestTarget(row.requestUrl),
-      signingSecret: decryptToken(row.signingSecretEncrypted),
+      signingSecret: resolveSigningSecret({ requestUrl: row.requestUrl, signingSecretEncrypted: row.signingSecretEncrypted }),
       // Slack のスラッシュコマンドと同じフィールド（ID は UUID のまま。§11 D3）
       form: {
         token: '',

@@ -7,8 +7,7 @@ import { BLOCKS_SCHEMA_VERSION, prepareModalView } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { resolveBotChannel } from '@/lib/apps/web-api/channel-access'
-import { decryptToken } from '@/lib/token-crypto'
-import { resolveRequestTarget } from '@/lib/apps/first-party'
+import { resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
@@ -142,7 +141,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     let delivery: Awaited<ReturnType<typeof deliverToApp>>
     try {
-      delivery = await deliverToApp({ ...resolveRequestTarget(view.requestUrl), signingSecret: decryptToken(view.signingSecretEncrypted), payload })
+      delivery = await deliverToApp({ ...resolveRequestTarget(view.requestUrl), signingSecret: resolveSigningSecret({ requestUrl: view.requestUrl, signingSecretEncrypted: view.signingSecretEncrypted }), payload })
     } catch (err) {
       await release()
       throw err

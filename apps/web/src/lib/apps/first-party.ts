@@ -96,6 +96,15 @@ function decryptsTo(encrypted: string | null, expected: string): boolean {
   }
 }
 
+/**
+ * 配送に使う署名シークレット。ファーストパーティ（Request URL がパス）は暗号鍵から毎回導くので、
+ * 鍵を入れ替えた直後で保存値がまだ古い鍵の暗号文でも配送できる。外部アプリは保存値を復号する
+ */
+export function resolveSigningSecret(stored: { requestUrl: string; signingSecretEncrypted: string }): string {
+  const firstParty = FIRST_PARTY_APPS.find((definition) => definition.requestPath === stored.requestUrl)
+  return firstParty ? firstPartySigningSecret(firstParty.slug) : decryptToken(stored.signingSecretEncrypted)
+}
+
 /** apps の行を作るか、今の定義に合わせる。戻り値は apps.id */
 async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise<string> {
   const { db, apps } = await import('@cairn/db')
@@ -109,7 +118,15 @@ async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise
     entryPoints: definition.entryPoints,
   }
   const [existing] = await db
-    .select({ id: apps.id, requestUrl: apps.requestUrl, entryPoints: apps.entryPoints, name: apps.name, signingSecretEncrypted: apps.signingSecretEncrypted })
+    .select({
+      id: apps.id,
+      requestUrl: apps.requestUrl,
+      entryPoints: apps.entryPoints,
+      name: apps.name,
+      description: apps.description,
+      requestedScopes: apps.requestedScopes,
+      signingSecretEncrypted: apps.signingSecretEncrypted,
+    })
     .from(apps)
     .where(and(eq(apps.slug, definition.slug), isNull(apps.ownerWorkspaceId)))
     .limit(1)
@@ -117,8 +134,14 @@ async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise
     // 定義が変わったときだけ書き換える（毎回の更新で updated_at を動かさない）
     // 暗号鍵を入れ替えた後は、保存済みの署名シークレットが今の鍵で復号できない（または導いた値と違う）ので書き直す
     const secretStale = decryptsTo(existing.signingSecretEncrypted, firstPartySigningSecret(definition.slug)) === false
+    // 書き込む項目はすべて比べる（説明やスコープだけを変えた版でも同期されるように）
     const changed =
-      secretStale || existing.requestUrl !== values.requestUrl || existing.name !== values.name || JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)
+      secretStale ||
+      existing.requestUrl !== values.requestUrl ||
+      existing.name !== values.name ||
+      existing.description !== values.description ||
+      JSON.stringify(existing.requestedScopes) !== JSON.stringify(values.requestedScopes) ||
+      JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)
     if (changed && canSyncFirstPartyDefinitions()) {
       await db.update(apps).set({ ...values, updatedAt: sql`now()` }).where(eq(apps.id, existing.id))
     }

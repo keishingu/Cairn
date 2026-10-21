@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { appBaseUrl, canSyncFirstPartyDefinitions, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl } from './first-party'
+import { appBaseUrl, canSyncFirstPartyDefinitions, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl, resolveSigningSecret } from './first-party'
 import { parseEntryPoints } from './channel-apps'
 
 const KEY = 'a'.repeat(64)
@@ -40,6 +40,17 @@ describe('ファーストパーティのアプリ', () => {
     expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'production' }))).toBe(true)
     expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'develop' }))).toBe(true)
     expect(canSyncFirstPartyDefinitions(env({ VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'feat/x' }))).toBe(false)
+  })
+
+  it('ファーストパーティの署名シークレットは保存値を復号せず暗号鍵から導く（鍵を入れ替えた直後でも配送できる）', () => {
+    const before = process.env['CALENDAR_TOKEN_ENCRYPTION_KEY']
+    process.env['CALENDAR_TOKEN_ENCRYPTION_KEY'] = KEY
+    try {
+      expect(resolveSigningSecret({ requestUrl: '/api/first-party-apps/polls/interactions', signingSecretEncrypted: 'old-key-ciphertext' })).toBe(firstPartySigningSecret('polls'))
+    } finally {
+      if (before === undefined) delete process.env['CALENDAR_TOKEN_ENCRYPTION_KEY']
+      else process.env['CALENDAR_TOKEN_ENCRYPTION_KEY'] = before
+    }
   })
 
   it('署名シークレットは暗号鍵とアプリごとに決まり、鍵が無ければ例外にする', () => {

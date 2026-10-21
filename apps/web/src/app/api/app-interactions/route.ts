@@ -6,8 +6,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
-import { decryptToken } from '@/lib/token-crypto'
-import { resolveRequestTarget } from '@/lib/apps/first-party'
+import { resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { cardRevision } from '@/lib/apps/blocks-for-client'
@@ -140,7 +139,7 @@ export async function POST(req: Request) {
 
     const delivery = await deliverToApp({
       ...resolveRequestTarget(row.requestUrl),
-      signingSecret: decryptToken(row.signingSecretEncrypted),
+      signingSecret: resolveSigningSecret({ requestUrl: row.requestUrl, signingSecretEncrypted: row.signingSecretEncrypted }),
       payload,
     })
 
