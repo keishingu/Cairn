@@ -510,6 +510,7 @@ export async function loadPhaseTwoChannelInput(
           content: messages.content,
           createdAt: messages.createdAt,
           deletedAt: messages.deletedAt,
+          senderKind: profiles.kind,
         })
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -550,7 +551,8 @@ export async function loadPhaseTwoChannelInput(
   const scanRows = isUnansweredAskRecheck
     ? recheckAnchor
       ? [
-          ...(recheckAnchor.deletedAt ? [] : [recheckAnchor]),
+          // 予約元が Bot の投稿なら（Bot を外す前に予約されたもの）、範囲の起点にだけ使い、判定の対象にはしない
+          ...(recheckAnchor.deletedAt || recheckAnchor.senderKind === 'bot' ? [] : [recheckAnchor]),
           ...(await db
             .select({
               id: messages.id,
@@ -654,10 +656,13 @@ export async function loadPhaseTwoChannelInput(
     ? await db
         .select({ id: messages.id, createdAt: messages.createdAt })
         .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
         .where(
           and(
             eq(messages.channelId, channel.channelId),
             isNull(messages.deletedAt),
+            // 次の再評価の予約元に Bot の投稿を選ばない（読み直すと判定の対象になってしまう）
+            ne(profiles.kind, 'bot'),
             or(
               gt(messages.createdAt, last.createdAt),
               and(eq(messages.createdAt, last.createdAt), gt(messages.id, last.id)),
