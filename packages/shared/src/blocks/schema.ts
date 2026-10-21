@@ -76,7 +76,8 @@ function isIpv6(literal: string): boolean {
   const groups = [...groupsOf(halves[0]!), ...(halves.length === 2 ? groupsOf(halves[1]!) : [])]
   let count = 0
   for (const [index, group] of groups.entries()) {
-    if (index === groups.length - 1 && group.includes('.')) {
+    // IPv4 の組は、`::` の前後をつないだ並びではなく、リテラル全体の末尾にあるときだけ認める（`[192.0.2.1::]` を通さない）
+    if (index === groups.length - 1 && group.includes('.') && !literal.endsWith('::') && literal.endsWith(group)) {
       if (!isIpv4(group.split('.'))) return false
       count += 2
     } else if (/^[0-9A-Fa-f]{1,4}$/.test(group)) {
