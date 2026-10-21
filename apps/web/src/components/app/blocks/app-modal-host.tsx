@@ -82,6 +82,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
   const [submitting, setSubmitting] = React.useState(false)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: APP_VIEWS_QUERY_KEY })
+  const removeFromCache = () => queryClient.setQueryData<AppViewDto[]>(APP_VIEWS_QUERY_KEY, (views) => views?.filter((view) => view.id !== dto.id))
 
   const close = async () => {
     // 送信中に閉じると、アプリの応答（入力エラー・差し替え）を受ける前にモーダルが閉じて入力も応答も失われる。
@@ -99,6 +100,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
       setFormError(t('Could not close the form. Please try again.'))
       return
     }
+    removeFromCache()
     await refresh()
   }
 
@@ -129,6 +131,8 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
         setFormError(message)
         return
       }
+      // 閉じたモーダルは取り直しの成否を待たずに一覧から外す（取り直しに失敗しても、閉じたフォームを出し続けない）
+      if (body?.status === 'closed') removeFromCache()
       await refresh()
     } catch {
       setFormError(t(cardActionErrorMessage(null)))

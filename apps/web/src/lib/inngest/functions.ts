@@ -1322,6 +1322,16 @@ export const cleanupAppInteractionDeliveries = inngest.createFunction(
       const deleted = await db.delete(appTriggers).where(lt(appTriggers.expiresAt, sql`now() - interval '1 day'`)).returning({ id: appTriggers.id })
       return deleted.length
     })
-    return { deliveries, triggers }
+    // 送信済み・閉じたモーダルは view（private_metadata を含む）を残し続けない
+    const views = await step.run('delete-finished-views', async () => {
+      const { db, appViews } = await import('@cairn/db')
+      const { and, inArray, lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appViews)
+        .where(and(inArray(appViews.status, ['submitted', 'closed']), lt(appViews.updatedAt, sql`now() - interval '30 days'`)))
+        .returning({ id: appViews.id })
+      return deleted.length
+    })
+    return { deliveries, triggers, views }
   },
 )

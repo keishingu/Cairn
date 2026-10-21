@@ -146,6 +146,11 @@ describe('blocks の正規化', () => {
     expect(normalizeMessageBlocks(null).nothingRenderable).toBe(true)
   })
 
+  it('受理では断る組み込みの名前の ID でも、保存済みのカードは描ける（描画では拒まない）', () => {
+    const card = normalizeMessageBlocks([{ type: 'section', block_id: 'constructor', text: { type: 'plain_text', text: '本文' } }])
+    expect(card.blocks[0]).toMatchObject({ type: 'section', blockId: 'constructor' })
+  })
+
   it('全 fixture を例外なく正規化できる', () => {
     for (const fixture of Object.values(MESSAGE_BLOCK_FIXTURES)) {
       expect(() => normalizeMessageBlocks(fixture)).not.toThrow()

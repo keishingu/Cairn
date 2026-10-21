@@ -19,7 +19,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ viewId
     // 別の端末から送信中（確保あり）のモーダルは閉じない。閉じるとアプリの応答（入力エラー・差し替え）をその端末で出せなくなる
     const [closed] = await db
       .update(appViews)
-      .set({ status: 'closed' })
+      .set({ status: 'closed', updatedAt: sql`now()` })
       .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), or(isNull(appViews.submittingUntil), lt(appViews.submittingUntil, sql`now()`))))
       .returning({ id: appViews.id })
     if (!closed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })

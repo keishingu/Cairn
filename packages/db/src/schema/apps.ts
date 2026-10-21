@@ -264,6 +264,8 @@ export const appViews = pgTable(
     // 送信をアプリへ届けている間だけ入る。同じモーダルの同時送信で view_submission が二重に届かないよう、送信前にこれで確保する。
     // 処理中に落ちても期限を過ぎれば再び送信できる
     submittingUntil: timestamp('submitting_until', { withTimezone: true }),
+    // この版の送信に使った interaction_id。届いたか分からないまま送り直されても同じ ID で届け、アプリが重複を除けるようにする
+    submissionInteractionId: uuid('submission_interaction_id'),
     schemaVersion: integer('schema_version').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
