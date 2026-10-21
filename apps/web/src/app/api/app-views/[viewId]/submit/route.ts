@@ -145,7 +145,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
       }
       // 届けている間の views.update と競合したら、先に確定したアプリの差し替えを残す
-      await db
+      const [updated] = await db
         .update(appViews)
         .set({
           view: prepared.value,
@@ -155,6 +155,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
           updatedAt: sql`clock_timestamp()`,
         })
         .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
+        .returning({ id: appViews.id })
+      // 先に差し替えられていたら、この送信の確保を外す（新しい版をすぐ送れるようにする）
+      if (!updated) await release()
       return NextResponse.json({ status: 'updated' })
     }
     // 送信を届けている間にアプリが views.update で差し替えていたら（hash が変わる）、その差し替えを黙って捨てて閉じない
