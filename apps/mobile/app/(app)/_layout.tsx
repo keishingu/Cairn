@@ -35,7 +35,14 @@ async function requestAndRegisterPush() {
   } catch {
     console.warn('[Push] Failed to create the Android notification channel')
   }
-  const { status } = await Notifications.requestPermissionsAsync()
+  // 起動時の要求に失敗しても、通知一覧の案内が許可状態を確かめ直してエラーや導線を出すため、ここでは記録して終える
+  let status: Notifications.PermissionStatus
+  try {
+    ;({ status } = await Notifications.requestPermissionsAsync())
+  } catch {
+    console.warn('[Push] Failed to request notification permission')
+    return
+  }
   if (status !== 'granted') return
 
   try {
