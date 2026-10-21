@@ -786,3 +786,79 @@ describe('AIエージェントのモデル選択', () => {
     expect(screen.getByRole('radio', { name: /Claude Opus 5\.5/ })).toBeDisabled()
   })
 })
+
+describe('AIエージェントのシステムプロンプト', () => {
+  function renderAiSection(wsRole: 'owner' | 'member', patchResponse?: Response) {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      }
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        return patchResponse ?? new Response(JSON.stringify({
+          aiChatModel: 'gpt-5',
+          aiChatSystemPrompt: JSON.parse(String(init.body)).aiChatSystemPrompt,
+        }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('保存済みのプロンプトを表示し、owner が編集して保存できる', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    const save = screen.getByRole('button', { name: '保存' })
+    expect(save).toBeDisabled()
+
+    fireEvent.change(textarea, { target: { value: 'タスクはチケットと呼ぶ' } })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatSystemPrompt: 'タスクはチケットと呼ぶ' }) }),
+      ),
+    )
+    expect(await screen.findByRole('button', { name: '保存済み' })).toBeInTheDocument()
+  })
+
+  it('owner 以外は読み取り専用で、保存できない', async () => {
+    renderAiSection('member')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    expect(textarea).toHaveAttribute('readonly')
+    expect(screen.getByText(/編集できるのはワークスペースのオーナーだけです。/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('保存に失敗したらエラーを表示する', async () => {
+    renderAiSection('owner', new Response(JSON.stringify({ error: 'failed' }), { status: 500 }))
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '変更' } })
+    const save = screen.getByRole('button', { name: '保存' })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+
+    expect(await screen.findByText('Failed to update workspace settings')).toBeInTheDocument()
+  })
+})

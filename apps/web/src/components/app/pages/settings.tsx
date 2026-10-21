@@ -33,6 +33,7 @@ import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
   AI_CHAT_MODELS,
+  AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
@@ -1419,7 +1420,103 @@ const SettingsAI = () => {
         <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
       )}
     </section>
+
+    <AiChatSystemPromptSection />
   </div>
+  )
+}
+
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiChatSystemPromptSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  const saved = wsSettings?.aiChatSystemPrompt ?? ''
+  const [draft, setDraft] = React.useState('')
+  const [justSaved, setJustSaved] = React.useState(false)
+
+  React.useEffect(() => {
+    if (wsSettings !== undefined) setDraft(wsSettings.aiChatSystemPrompt ?? '')
+  }, [wsSettings])
+
+  const unchanged = draft === saved
+  const handleSave = async () => {
+    try {
+      await updateSettings.mutateAsync({ aiChatSystemPrompt: draft })
+    } catch {
+      // エラーはミューテーションの状態として下に表示する
+      return
+    }
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 2000)
+  }
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.')}
+      </p>
+      <div className="card" style={{ padding: 14 }}>
+        <textarea
+          aria-label={t('System prompt')}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          readOnly={readOnly}
+          disabled={wsSettings === undefined}
+          maxLength={AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH}
+          rows={10}
+          placeholder={readOnly ? undefined : t('e.g. Call tasks "tickets". Answer in polite Japanese and end with one suggested next action.')}
+          title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '8px 10px',
+            border: '1px solid var(--border)',
+            borderRadius: 7,
+            background: 'var(--card-2)',
+            color: 'var(--text)',
+            fontSize: 13,
+            lineHeight: 1.6,
+            fontFamily: "'SF Mono', ui-monospace, monospace",
+            outline: 'none',
+            resize: 'vertical',
+            ...(readOnly ? { cursor: 'not-allowed' } : {}),
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            {t('{count} / {max} characters', { count: draft.length, max: AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH })}
+          </span>
+          {readOnly && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              · {t('Only the workspace owner can edit this.')}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={updateSettings.isPending || unchanged || readOnly || wsSettings === undefined}
+            title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+            className="btn btn-primary"
+            style={{
+              marginLeft: 'auto',
+              height: 32,
+              padding: '0 14px',
+              fontSize: 12.5,
+              ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+            }}
+          >
+            {justSaved ? t('Saved') : updateSettings.isPending ? t('Saving...') : t('Save')}
+          </button>
+        </div>
+        {updateSettings.isError && (
+          <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+        )}
+      </div>
+    </section>
   )
 }
 

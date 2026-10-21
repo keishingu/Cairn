@@ -9,6 +9,7 @@ const {
   mockIsBillingEnabled,
   mockResolveUploadEntitlements,
   mockReserveCredits,
+  mockStreamText,
   dbSelectResults,
 } = vi.hoisted(
   () => ({
@@ -22,6 +23,7 @@ const {
     mockIsBillingEnabled: vi.fn(),
     mockResolveUploadEntitlements: vi.fn(),
     mockReserveCredits: vi.fn(),
+    mockStreamText: vi.fn(),
     dbSelectResults: [] as unknown[][],
   }),
 )
@@ -36,6 +38,14 @@ vi.mock('@/lib/billing/credits', () => ({
   reserveCreditsForActiveBenefit: mockReserveCredits,
   refundActiveBenefitReservation: vi.fn(),
 }))
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
+  streamText: mockStreamText,
+}))
+vi.mock('@/lib/ai/workspace-research', () => ({
+  searchResearchDocuments: vi.fn().mockResolvedValue({ items: [] }),
+}))
+vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), desc: vi.fn(), asc: vi.fn() }))
 // select チェーンは where / from / orderBy をそのまま返し、limit で用意した結果を順に返す。
 vi.mock('@cairn/db', () => {
@@ -52,7 +62,7 @@ vi.mock('@cairn/db', () => {
       createdAt: 'createdAt',
       conversationId: 'conversationId',
     },
-    workspaces: { id: 'id', aiChatModel: 'aiChatModel' },
+    workspaces: { id: 'id', aiChatModel: 'aiChatModel', aiChatSystemPrompt: 'aiChatSystemPrompt' },
   }
 })
 
@@ -174,9 +184,38 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   }
 
   // 会話の存在確認、履歴、ワークスペースのモデル設定の順に select される。
-  const queueDbResults = (aiChatModel: string) => {
-    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel }])
+  const queueDbResults = (aiChatModel: string, aiChatSystemPrompt: string | null = null) => {
+    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel, aiChatSystemPrompt }])
   }
+
+  const streamedSystemPrompt = async (aiChatModel: string, aiChatSystemPrompt: string | null) => {
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults(aiChatModel, aiChatSystemPrompt)
+
+    const response = await postQuestion()
+    expect(response.status).toBe(200)
+    // ストリームを読み切り、execute 内の streamText 呼び出しを待つ。
+    await response.text()
+    expect(mockStreamText).toHaveBeenCalledTimes(1)
+    return (mockStreamText.mock.calls[0]![0] as { system: string }).system
+  }
+
+  it.each(['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'])(
+    '%s を選択中でも、ワークスペースのシステムプロンプトをチャットの system に渡す',
+    async (aiChatModel) => {
+      const system = await streamedSystemPrompt(aiChatModel, '社内用語ではタスクを「チケット」と呼ぶ')
+
+      expect(system).toContain('【ワークスペースの追加指示】')
+      expect(system).toContain('社内用語ではタスクを「チケット」と呼ぶ')
+    },
+  )
+
+  it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {
+    const system = await streamedSystemPrompt('gpt-5', null)
+
+    expect(system).not.toContain('【ワークスペースの追加指示】')
+  })
 
   it('Claude を選択中で ANTHROPIC_API_KEY が未設定なら、OpenAI へ切り替えず 503 を返す', async () => {
     process.env['OPENAI_API_KEY'] = 'test-key'

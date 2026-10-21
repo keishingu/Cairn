@@ -18,6 +18,8 @@ export type WorkspaceSettingsDto = WorkspaceSettings & {
   aiNudgesPhaseOneEnabled: boolean
   aiNudgesPhaseTwoEnabled: boolean
   aiChatModel: AiChatModel
+  // AI チャットへ毎回渡す追加指示。null は未設定。owner 以外にも読み取り専用で表示する。
+  aiChatSystemPrompt: string | null
   // 利用量はワークスペース owner にだけ公開する。
   aiNudgesPhaseTwoUsage?: AiNudgesPhaseTwoUsageDto
 }
@@ -28,6 +30,7 @@ function toSettingsDto(
     aiNudgesPhaseOneEnabled: boolean
     aiNudgesPhaseTwoEnabled: boolean
     aiChatModel: string
+    aiChatSystemPrompt: string | null
     aiNudgesPhaseTwoInputTokens: number
     aiNudgesPhaseTwoOutputTokens: number
     aiNudgesPhaseTwoTotalTokens: number
@@ -44,6 +47,7 @@ function toSettingsDto(
     aiNudgesPhaseOneEnabled: workspace?.aiNudgesPhaseOneEnabled ?? true,
     aiNudgesPhaseTwoEnabled: workspace?.aiNudgesPhaseTwoEnabled ?? false,
     aiChatModel: workspace && isAiChatModel(workspace.aiChatModel) ? workspace.aiChatModel : DEFAULT_AI_CHAT_MODEL,
+    aiChatSystemPrompt: workspace?.aiChatSystemPrompt ?? null,
     ...(includeUsage && workspace ? {
       aiNudgesPhaseTwoUsage: {
         inputTokens: workspace.aiNudgesPhaseTwoInputTokens,
@@ -70,6 +74,7 @@ export async function GET() {
         aiNudgesPhaseOneEnabled: workspaces.aiNudgesPhaseOneEnabled,
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
+        aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -122,6 +127,7 @@ export async function PATCH(req: Request) {
         aiNudgesPhaseOneEnabled: workspaces.aiNudgesPhaseOneEnabled,
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
+        aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -131,7 +137,7 @@ export async function PATCH(req: Request) {
       .where(eq(workspaces.id, ctx.workspaceId))
       .limit(1)
 
-    const { aiNudgesPhaseOneEnabled, aiNudgesPhaseTwoEnabled, aiChatModel, ...settingsPatch } = patch
+    const { aiNudgesPhaseOneEnabled, aiNudgesPhaseTwoEnabled, aiChatModel, aiChatSystemPrompt, ...settingsPatch } = patch
     const merged: WorkspaceSettings = { ...(ws?.settings ?? {}) }
     if (settingsPatch.projectLabel !== undefined) merged.projectLabel = settingsPatch.projectLabel
 
@@ -142,6 +148,7 @@ export async function PATCH(req: Request) {
         ...(aiNudgesPhaseOneEnabled === undefined ? {} : { aiNudgesPhaseOneEnabled }),
         ...(aiNudgesPhaseTwoEnabled === undefined ? {} : { aiNudgesPhaseTwoEnabled }),
         ...(aiChatModel === undefined ? {} : { aiChatModel }),
+        ...(aiChatSystemPrompt === undefined ? {} : { aiChatSystemPrompt }),
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, ctx.workspaceId))
@@ -150,6 +157,7 @@ export async function PATCH(req: Request) {
         aiNudgesPhaseOneEnabled: workspaces.aiNudgesPhaseOneEnabled,
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
+        aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
