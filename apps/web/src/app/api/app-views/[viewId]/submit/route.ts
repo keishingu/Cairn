@@ -189,8 +189,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         await release()
         return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
       }
-      // アプリは受け取って入力の誤りを返した。直した送信は別の操作なので、次は新しい interaction_id にする
-      await db.update(appViews).set({ submittingUntil: null, submissionInteractionId: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
+      // アプリは受け取って入力の誤りを返した。直した送信は別の操作なので、次は新しい interaction_id にする。
+      // アプリはもう処理したので、この更新が失敗しても 500 にせず入力の誤りをそのまま返す（送り直しを促さない）
+      await db
+        .update(appViews)
+        .set({ submittingUntil: null, submissionInteractionId: null })
+        .where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
+        .catch((err: unknown) => console.error('[/api/app-views submit] delivered but could not clear the submission:', err))
       return NextResponse.json({ status: 'errors', errors }, { status: 422 })
     }
     if (response.action === 'update') {
