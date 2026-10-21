@@ -41,23 +41,25 @@ export async function viewsOpen(bot: BotContext, args: WebApiArgs): Promise<WebA
   const prepared = prepareModalView(parsed.view)
   if (!prepared.ok) return fail('invalid_arguments', { response_metadata: { messages: prepared.errors } })
 
-  const trigger = await consumeTrigger(bot.installationId, stringArg(args, 'trigger_id'))
-  if (!trigger.ok) return fail(trigger.error)
-
   const { db, appViews } = await import('@cairn/db')
-  const [row] = await db
-    .insert(appViews)
-    .values({
-      installationId: bot.installationId,
-      userId: trigger.userId,
-      channelId: trigger.channelId,
-      view: prepared.value,
-      hash: newViewHash(),
-      schemaVersion: BLOCKS_SCHEMA_VERSION,
-    })
-    .returning({ id: appViews.id, hash: appViews.hash, view: appViews.view })
-  if (!row) throw new Error('Insert returned no rows')
-  return { ok: true, view: viewResult(bot, row) }
+  // trigger_id の使用とモーダルの保存を1つのトランザクションにする（保存に失敗したら trigger_id は使っていないことになり、送り直せる）
+  return db.transaction(async (tx) => {
+    const trigger = await consumeTrigger(bot.installationId, stringArg(args, 'trigger_id'), tx)
+    if (!trigger.ok) return fail(trigger.error)
+    const [row] = await tx
+      .insert(appViews)
+      .values({
+        installationId: bot.installationId,
+        userId: trigger.userId,
+        channelId: trigger.channelId,
+        view: prepared.value,
+        hash: newViewHash(),
+        schemaVersion: BLOCKS_SCHEMA_VERSION,
+      })
+      .returning({ id: appViews.id, hash: appViews.hash, view: appViews.view })
+    if (!row) throw new Error('Insert returned no rows')
+    return { ok: true, view: viewResult(bot, row) } satisfies WebApiResult
+  })
 }
 
 export async function viewsUpdate(bot: BotContext, args: WebApiArgs): Promise<WebApiResult> {

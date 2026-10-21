@@ -33,10 +33,13 @@ export async function GET() {
       .orderBy(desc(appViews.createdAt))
       .limit(10)
     // カードと同じく、クライアントのメンバー一覧（active だけ）に無い人も「不明なメンバー」にしない
-    const viewJsons = rows.map((row) => JSON.stringify(row.view))
+    const visibleViews = rows.map((row) => withoutPrivateMetadata(row.view))
+    const viewJsons = visibleViews.map((view) => JSON.stringify(view))
     const nameMap = await buildMentionNameMap(ctx.workspaceId, viewJsons)
     const result = rows.map((row, index) => ({
       ...row,
+      // private_metadata はアプリが自分のために持つ値。描画には使わず、送信はサーバーの保存値から組み立てるので利用者へは渡さない
+      view: visibleViews[index],
       mentionNames: Object.fromEntries(
         extractMentionIds(viewJsons[index]!).flatMap((id) => {
           const name = nameMap.get(id)
@@ -55,4 +58,11 @@ export async function GET() {
     console.error('[/api/app-views GET] failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+function withoutPrivateMetadata(view: unknown): unknown {
+  if (typeof view !== 'object' || view === null) return view
+  const rest = { ...(view as Record<string, unknown>) }
+  delete rest['private_metadata']
+  return rest
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { isUuid } from '@/lib/apps/web-api/types'
 import { z } from 'zod'
 import { BLOCKS_SCHEMA_VERSION, prepareModalView } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
@@ -32,7 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
   const { ctx, error } = await getAuthContext()
   if (error) return error
   const { viewId } = await params
-  if (!/^[0-9a-f-]{36}$/i.test(viewId)) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
+  if (!isUuid(viewId)) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
 
   let values: z.infer<typeof bodySchema>['values']
   let renderedHash: string
