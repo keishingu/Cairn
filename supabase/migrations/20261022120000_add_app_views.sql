@@ -2,24 +2,30 @@
 -- どちらもサーバー（service role / 直接接続）からのみ読み書きする。
 
 -- views.open に使う trigger_id。押した本人・インストールに結びつけ、発行から6秒・1回だけ使える
-CREATE TABLE "app_triggers" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"token_hash" text NOT NULL,
-	"installation_id" uuid NOT NULL,
-	"user_id" uuid NOT NULL,
-	"channel_id" uuid,
-	"expires_at" timestamp with time zone NOT NULL,
-	"used_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_installation_fk" FOREIGN KEY ("installation_id") REFERENCES "public"."app_installations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_user_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_channel_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "app_triggers_token_hash_idx" ON "app_triggers" USING btree ("token_hash");--> statement-breakpoint
-CREATE INDEX "app_triggers_expires_idx" ON "app_triggers" USING btree ("expires_at");--> statement-breakpoint
-ALTER TABLE "app_triggers" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-REVOKE ALL ON TABLE "app_triggers" FROM anon, authenticated;--> statement-breakpoint
+-- 表を作ってから RLS・REVOKE までの間に、authenticated から偽の trigger_id を入れられないよう、1つの DO ブロックで同時に作る
+-- （Supabase CLI は文ごとにトランザクションなしで流す。新しい表は既定で anon・authenticated に権限が付く）
+DO $$
+BEGIN
+  CREATE TABLE "app_triggers" (
+  	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  	"token_hash" text NOT NULL,
+  	"installation_id" uuid NOT NULL,
+  	"user_id" uuid NOT NULL,
+  	"channel_id" uuid,
+  	"expires_at" timestamp with time zone NOT NULL,
+  	"used_at" timestamp with time zone,
+  	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+  );
+
+  ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_installation_fk" FOREIGN KEY ("installation_id") REFERENCES "public"."app_installations"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_user_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "app_triggers" ADD CONSTRAINT "app_triggers_channel_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;
+  CREATE UNIQUE INDEX "app_triggers_token_hash_idx" ON "app_triggers" USING btree ("token_hash");
+  CREATE INDEX "app_triggers_expires_idx" ON "app_triggers" USING btree ("expires_at");
+  ALTER TABLE "app_triggers" ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE "app_triggers" FROM anon, authenticated;
+END
+$$;
 
 -- モーダルを開いた・差し替えた・閉じたことを本人のユーザートピックへ知らせる。
 -- 購読側は table 名だけで REST 再取得するため、view の中身を含む行全体は broadcast しない

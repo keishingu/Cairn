@@ -69,7 +69,7 @@ export async function viewsUpdate(bot: BotContext, args: WebApiArgs): Promise<We
   if (!prepared.ok) return fail('invalid_arguments', { response_metadata: { messages: prepared.errors } })
 
   const { db, appViews } = await import('@cairn/db')
-  const { and, eq, sql } = await import('drizzle-orm')
+  const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
   const expectedHash = stringArg(args, 'hash')
   const [row] = await db
     .update(appViews)
@@ -79,6 +79,9 @@ export async function viewsUpdate(bot: BotContext, args: WebApiArgs): Promise<We
         eq(appViews.id, viewId),
         eq(appViews.installationId, bot.installationId),
         eq(appViews.status, 'open'),
+        // 利用者の送信をアプリへ届けている間（確保あり）は差し替えない。届ける送信の中身が古い版になってしまう。
+        // 送信への応答で差し替えるときは response_action: update を使う（Slack と同じ）
+        or(isNull(appViews.submittingUntil), lt(appViews.submittingUntil, sql`now()`)),
         // hash を指定したら、その版のままのときだけ差し替える（他の更新と競合したら hash_conflict）
         ...(expectedHash ? [eq(appViews.hash, expectedHash)] : []),
       ),
@@ -87,9 +90,10 @@ export async function viewsUpdate(bot: BotContext, args: WebApiArgs): Promise<We
   if (row) return { ok: true, view: viewResult(bot, row) }
 
   const [existing] = await db
-    .select({ id: appViews.id })
+    .select({ id: appViews.id, submitting: sql<boolean>`${appViews.submittingUntil} is not null and ${appViews.submittingUntil} >= now()` })
     .from(appViews)
     .where(and(eq(appViews.id, viewId), eq(appViews.installationId, bot.installationId), eq(appViews.status, 'open')))
     .limit(1)
+  if (existing?.submitting) return fail('view_is_submitting', { response_metadata: { messages: ['利用者の送信を処理している間は views.update できません。送信への応答で差し替えるときは response_action: update を返してください'] } })
   return fail(existing && expectedHash ? 'hash_conflict' : 'not_found')
 }
