@@ -17,8 +17,11 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
-/** カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため） */
-type CardRun = (action: CardAction) => Promise<boolean>
+/**
+ * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
+ * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
+ */
+type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
 
 /** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
 const CARD_UPDATE_WAIT_MS = 8000
@@ -51,7 +54,18 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
-    return async (action: CardAction) => {
+    return async (action: CardAction, options?: { link?: boolean }) => {
+      if (options?.link) {
+        setActionError(null)
+        try {
+          await onAction(action)
+          return true
+        } catch (err) {
+          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+          setActionError(t(cardActionErrorMessage(code)))
+          return false
+        }
+      }
       setBusy(true)
       setActionError(null)
       try {
@@ -138,14 +152,16 @@ function CardElement({ element, blockId, mentionNames, onAction }: { element: Re
   switch (element.type) {
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
-      // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
+      // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
+      const action = { type: 'button' as const, blockId, actionId: element.actionId }
+      const notifyLink = () => { void onAction?.(action, { link: true }) }
       const activate = element.url
-        ? () => { window.open(element.url, '_blank', 'noopener,noreferrer') }
-        : () => { void onAction?.({ type: 'button', blockId, actionId: element.actionId }) }
+        ? () => { window.open(element.url, '_blank', 'noopener,noreferrer'); notifyLink() }
+        : () => { void onAction?.(action) }
       return (
         <ConfirmGate confirm={element.confirm} mentionNames={mentionNames} onConfirmed={activate}>
           {(request) => element.url && !element.confirm ? (
-            <a className={className} href={element.url} target="_blank" rel="noopener noreferrer">{element.text}</a>
+            <a className={className} href={element.url} target="_blank" rel="noopener noreferrer" onClick={notifyLink}>{element.text}</a>
           ) : (
             <button type="button" className={className} disabled={!element.url && !onAction} onClick={request}>
               {element.text}

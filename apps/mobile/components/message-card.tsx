@@ -25,8 +25,11 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
-/** カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため） */
-type CardRun = (action: CardAction) => Promise<boolean>
+/**
+ * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
+ * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
+ */
+type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
 
 /** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
 const CARD_UPDATE_WAIT_MS = 8000
@@ -75,7 +78,18 @@ export function MessageCard({
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
-    return async (action: CardAction) => {
+    return async (action: CardAction, options?: { link?: boolean }) => {
+      if (options?.link) {
+        setActionError(null)
+        try {
+          await onAction(action)
+          return true
+        } catch (err) {
+          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+          setActionError(t(cardActionErrorMessage(code)))
+          return false
+        }
+      }
       setBusy(true)
       setActionError(null)
       try {
@@ -185,7 +199,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
   switch (element.type) {
     case 'button': {
       const filled = element.style === 'primary' ? palette.accent : element.style === 'danger' ? palette.redText : null
-      // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
+      // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
       const disabled = !element.url && !onAction
       return (
         <Pressable
@@ -195,8 +209,10 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
           onPress={() => {
             const url = element.url
             confirmThen(element.confirm, mentionResolver(context, t), () => {
-              if (url) onLinkPress(url)
-              else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
+              if (url) {
+                onLinkPress(url)
+                void onAction?.({ type: 'button', blockId, actionId: element.actionId }, { link: true })
+              } else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
             })
           }}
           style={({ pressed }) => [

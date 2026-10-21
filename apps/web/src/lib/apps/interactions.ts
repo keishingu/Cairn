@@ -23,7 +23,7 @@ export type ResolvedAction =
 
 export type ResolveActionResult = { ok: true; action: ResolvedAction } | { ok: false; error: 'action_not_found' | 'invalid_option' }
 
-/** 保存済み blocks の中から、押された要素を block_id と action_id で探す。URL だけのボタンは配送対象にしない */
+/** 保存済み blocks の中から、押された要素を block_id と action_id で探す。URL ボタンも Slack と同じく押下を届ける */
 export function resolveAction(storedBlocks: unknown, request: CardActionRequest): ResolveActionResult {
   if (!Array.isArray(storedBlocks)) return { ok: false, error: 'action_not_found' }
   const block = storedBlocks.find(
