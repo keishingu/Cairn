@@ -1,3 +1,51 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "src/first-party-apps/**/*.ts",
+        "src/first-party-apps/**/*.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^@/(?!lib/apps/first-party$|lib/apps/signing$|lib/inngest/client$)",
+                "message": "ファーストパーティのアプリは Cairn 本体の内部関数を使わず、Bot API（HTTP）と @/lib/apps/first-party・@/lib/apps/signing・@/lib/inngest/client だけを使う（docs/app-platform-design.md §7.1）"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/**/*.ts",
+        "src/**/*.tsx"
+      ],
+      "excludedFiles": [
+        "src/first-party-apps/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@/first-party-apps/*/*"
+                ],
+                "message": "ファーストパーティのアプリは公開エントリ（@/first-party-apps/<app>）からだけ import する（docs/app-platform-design.md §7.1）"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

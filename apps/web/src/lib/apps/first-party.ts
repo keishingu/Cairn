@@ -337,3 +337,18 @@ function isReadable(encrypted: string | null): boolean {
     return false
   }
 }
+
+/** ファーストパーティのアプリのインストール（取り消されていないもの）の ID。欠けていれば作る */
+export async function getFirstPartyInstallationId(slug: FirstPartyAppSlug, workspaceId: string): Promise<string> {
+  await ensureFirstPartyInstallations(workspaceId)
+  const { db, apps, appInstallations } = await import('@cairn/db')
+  const { and, eq, isNull } = await import('drizzle-orm')
+  const [row] = await db
+    .select({ id: appInstallations.id })
+    .from(appInstallations)
+    .innerJoin(apps, eq(apps.id, appInstallations.appId))
+    .where(and(eq(apps.slug, slug), isNull(apps.ownerWorkspaceId), eq(appInstallations.workspaceId, workspaceId), isNull(appInstallations.revokedAt)))
+    .limit(1)
+  if (!row) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
+  return row.id
+}
