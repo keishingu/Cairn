@@ -77,11 +77,12 @@ async function checkOpenAI(): Promise<ServiceStatus> {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-5-mini',
-        messages: [{ role: 'user', content: 'hi' }],
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
         // GPT-5 系は max_tokens を受け付けないため、Chat Completions の後継パラメータを使う。
-        // 推論モデルは上限 1 だと推論だけで尽きて 400 になるため、推論を最小にして余裕を持たせる。
+        // 推論モデルは推論と本文が上限を共有し、回答を書き切れないと 400 になる。
+        // 16 でも開発環境で上限到達の 400 が出たため、推論を最小にしたうえで十分な余裕を取る。
         reasoning_effort: 'minimal',
-        max_completion_tokens: 16,
+        max_completion_tokens: 256,
       }),
     })
     const latencyMs = Date.now() - t

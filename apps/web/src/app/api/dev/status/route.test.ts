@@ -114,9 +114,9 @@ describe('dev/status API の認可と手動診断', () => {
         method: 'POST',
         body: JSON.stringify({
           model: 'gpt-5-mini',
-          messages: [{ role: 'user', content: 'hi' }],
+          messages: [{ role: 'user', content: 'Reply with OK.' }],
           reasoning_effort: 'minimal',
-          max_completion_tokens: 16,
+          max_completion_tokens: 256,
         }),
       }),
     )
