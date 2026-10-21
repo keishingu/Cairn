@@ -169,6 +169,17 @@ describe('カード型メッセージの描画', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
+  it('URL ボタンを押したら、リンクを開くとともに押下もアプリへ知らせ、カードの操作は止めない', async () => {
+    const onAction = vi.fn(() => Promise.resolve())
+    render(<MessageCard blocks={allElementsFixture} fallbackText="" onAction={onAction} />)
+    const link = screen.getByRole('link', { name: '外部リンク' })
+    link.addEventListener('click', (event) => event.preventDefault())
+    await act(async () => { fireEvent.click(link) })
+    expect(onAction).toHaveBeenCalledTimes(1)
+    expect(onAction.mock.calls[0]).toMatchObject([{ type: 'button' }])
+    expect(screen.getAllByRole('button').some((button) => !(button as HTMLButtonElement).disabled)).toBe(true)
+  })
+
   it('外部画像は参照元を送らずに読み込む', () => {
     render(<MessageCard blocks={allElementsFixture} fallbackText="" />)
     expect(screen.getByAltText('ルート図')).toHaveAttribute('referrerpolicy', 'no-referrer')
