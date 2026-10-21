@@ -930,6 +930,49 @@ describe('AIエージェントのシステムプロンプト', () => {
     expect(screen.queryByText(/AIエージェントの設定を読み込めませんでした。/)).not.toBeInTheDocument()
   })
 
+  it('保存中や保存直後に書き足した内容は「保存済み」と表示せず、下書きとして残す', async () => {
+    let resolvePatch: (response: Response) => void = () => {}
+    renderAiSection('owner')
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole: 'owner' }))
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        return new Promise<Response>((resolve) => { resolvePatch = resolve })
+      }
+      if (input === '/api/workspaces/settings') {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '送信した内容' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith('/api/workspaces/settings', expect.objectContaining({ method: 'PATCH' })))
+
+    fireEvent.change(textarea, { target: { value: '送信した内容と書き足し' } })
+    resolvePatch(new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '送信した内容' })))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeEnabled())
+    expect(textarea).toHaveValue('送信した内容と書き足し')
+    expect(screen.queryByRole('button', { name: '保存済み' })).not.toBeInTheDocument()
+  })
+
+  it('保存直後に編集したら「保存済み」の表示を消す', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '保存する内容' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('button', { name: '保存済み' })
+
+    fireEvent.change(textarea, { target: { value: '保存する内容と追記' } })
+
+    expect(screen.queryByRole('button', { name: '保存済み' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  })
+
   it('owner 以外は読み取り専用で、保存できない', async () => {
     renderAiSection('member')
 

@@ -1465,6 +1465,10 @@ const AiChatSystemPromptSection = () => {
   }, [loaded, saved])
 
   const unchanged = draft === saved
+  // 保存の応答を待つ間に書き足されたかを、await 後に最新の下書きで判定する。
+  const draftRef = React.useRef(draft)
+  draftRef.current = draft
+
   const handleSave = async () => {
     const submitted = draft
     let updated: Awaited<ReturnType<typeof updateSettings.mutateAsync>>
@@ -1476,7 +1480,9 @@ const AiChatSystemPromptSection = () => {
     }
     // サーバーは前後の空白を除き、空白だけなら null にする。保存後に編集していなければ、
     // 実際に保存された値を表示し、保存されていない空白を残したまま「保存済み」に見せない。
-    setDraft((current) => (current === submitted ? (updated.aiChatSystemPrompt ?? '') : current))
+    // 保存中に書き足した下書きは保存されていないので、残したまま「保存済み」も出さない。
+    if (draftRef.current !== submitted) return
+    setDraft(updated.aiChatSystemPrompt ?? '')
     setJustSaved(true)
     setTimeout(() => setJustSaved(false), 2000)
   }
@@ -1491,7 +1497,11 @@ const AiChatSystemPromptSection = () => {
         <textarea
           aria-label={t('System prompt')}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
+            setJustSaved(false)
+          }}
           readOnly={readOnly}
           disabled={wsSettings === undefined}
           maxLength={AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH}
