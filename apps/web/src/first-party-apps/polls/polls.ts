@@ -4,6 +4,7 @@
 import { getFirstPartyInstallationId } from '@/lib/apps/first-party'
 import { callBotApi, PollsBotApiError } from './bot-client'
 import { renderPollCard, type PollForRender } from './render'
+import { pollInputErrors } from './validate'
 
 // 投票の作成・投稿・カードの再描画。外部 HTTP（Bot API）はトランザクションの外で呼び、
 // DB の状態（status・version・rendered_version）から再試行が同じ結果に収束するようにする（docs/app-platform-design.md §7.3・§7.4）
@@ -91,7 +92,12 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
 
 /** 投票を作り、カードを投稿する。同じ冪等キーの再試行は同じ投票・同じメッセージに収束する */
 export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
-  const { pollId } = await createPendingPoll(input)
+  // 定期ジョブ・AI からの作成もモーダルと同じ規則で、作る前に確かめる（作った後に投稿だけが失敗すると、同じ冪等キーでは作り直せない）
+  const inputErrors = pollInputErrors(input.question, input.options)
+  if (inputErrors) throw new Error(`invalid poll input: ${Object.values(inputErrors).join(' / ')}`)
+  const { pollId, sameInput } = await createPendingPoll(input)
+  // 同じ冪等キーで内容が違う呼び出しは、前の投票を黙って返さない
+  if (!sameInput) throw new Error(`poll ${pollId} already exists for this idempotency key with different content`)
   const messageId = await postPoll(pollId)
   // 定期ジョブ・AI からの作成では、投稿できなかったことを呼び出し元にエラーとして返す
   if (!messageId) throw new Error(`poll ${pollId} could not be posted`)

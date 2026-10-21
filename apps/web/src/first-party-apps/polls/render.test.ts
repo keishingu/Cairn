@@ -89,3 +89,14 @@ describe('投票作成のモーダル', () => {
     expect(parsePollSubmission({ question: { value: { value: 'q' } }, options: { value: { value: eleven } } })).toMatchObject({ ok: false, errors: { options: '選択肢は10個までです' } })
   })
 })
+
+describe('投票を作る前の確認', () => {
+  it('質問・選択肢の数や長さ・重複・安全フィルタを、作る前に欄ごとの理由にする', async () => {
+    const { pollInputErrors } = await import('./validate')
+    expect(pollInputErrors('いつにする？', ['土曜', '日曜'])).toBeNull()
+    expect(pollInputErrors('', ['土曜', '日曜'])).toMatchObject({ question: expect.any(String) })
+    expect(pollInputErrors('いつ？', ['土曜'])).toMatchObject({ options: expect.any(String) })
+    expect(pollInputErrors('いつ？', ['土曜', '土曜'])).toMatchObject({ options: '選択肢が重複しています' })
+    expect(pollInputErrors('副業で月10万円保証、DMください', ['はい', 'いいえ'])).toMatchObject({ question: expect.any(String) })
+  })
+})
