@@ -730,3 +730,59 @@ describe('モバイル設定のセクション', () => {
     expect(isSettingsSection('billing', false)).toBe(true)
   })
 })
+
+describe('AIエージェントのモデル選択', () => {
+  function renderAiSection(wsRole: 'owner' | 'member') {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      }
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ aiChatModel: 'claude-sonnet-5-5' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('ワークスペースの設定値を選択中として表示し、Claude を選ぶと保存する', async () => {
+    renderAiSection('owner')
+
+    const gpt = await screen.findByRole('radio', { name: /GPT-5/ })
+    await waitFor(() => expect(gpt).toHaveAttribute('aria-checked', 'true'))
+    const sonnet = screen.getByRole('radio', { name: /Claude Sonnet 5\.5/ })
+    await waitFor(() => expect(sonnet).toBeEnabled())
+
+    fireEvent.click(sonnet)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatModel: 'claude-sonnet-5-5' }) }),
+      ),
+    )
+    await waitFor(() => expect(sonnet).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  it('owner 以外はモデルを変更できない', async () => {
+    renderAiSection('member')
+
+    const gpt = await screen.findByRole('radio', { name: /GPT-5/ })
+    await waitFor(() => expect(gpt).toHaveAttribute('aria-checked', 'true'))
+    expect(screen.getByRole('radio', { name: /Claude Opus 5\.5/ })).toBeDisabled()
+  })
+})

@@ -33,7 +33,6 @@ import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
   AI_CHAT_MODELS,
-  DEFAULT_AI_CHAT_MODEL,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
@@ -1323,8 +1322,27 @@ const SettingsWorkflow = () => {
   )
 }
 
+const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
+  'gpt-5': 'GPT-5 (default)',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-opus-5-5': 'Claude Opus 5.5',
+}
+
+const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
+  'gpt-5': 'OpenAI · default',
+  'claude-sonnet-5-5': 'Anthropic · balanced speed and quality',
+  'claude-opus-5-5': 'Anthropic · most capable, higher cost',
+}
+
 const SettingsAI = () => {
   const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selectedModel = wsSettings?.aiChatModel
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
   <div style={{ maxWidth: 780 }}>
     <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
@@ -1335,49 +1353,71 @@ const SettingsAI = () => {
     </p>
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
+      </p>
       <div
         className="card"
-        style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
+        role="radiogroup"
+        aria-label={t('Chat model')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}
       >
-        {[
-          { n: 'GPT-5', d: t('High accuracy, recommended'), on: true },
-          { n: 'GPT-5 mini', d: t('Fast and lower cost'), on: false },
-        ].map((m, i) => (
-          <div
-            key={i}
-            style={{
-              padding: 12,
-              borderRadius: 8,
-              border: `2px solid ${m.on ? 'var(--accent)' : 'var(--border)'}`,
-              background: m.on ? 'var(--accent-soft)' : 'var(--card-2)',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icon
-                name="sparkles"
-                size={14}
-                color={m.on ? 'var(--accent-text)' : 'var(--text-3)'}
-              />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{m.n}</span>
-              {m.on && (
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: 'var(--accent-text)',
-                  }}
-                >
-                  {t('Selected')}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{m.d}</div>
-          </div>
-        ))}
+        {AI_CHAT_MODELS.map((model) => {
+          const on = model === selectedModel
+          return (
+            <button
+              key={model}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiChatModel: model })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon
+                  name="sparkles"
+                  size={14}
+                  color={on ? 'var(--accent-text)' : 'var(--text-3)'}
+                />
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_MODEL_LABELS[model])}</span>
+                {on && (
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: 'var(--accent-text)',
+                    }}
+                  >
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_CHAT_MODEL_DESCRIPTIONS[model])}
+              </div>
+            </button>
+          )
+        })}
       </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
     </section>
 
     <section style={{ marginBottom: 24 }}>
@@ -1429,12 +1469,6 @@ const SettingsAI = () => {
     </section>
   </div>
   )
-}
-
-const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
-  'gpt-5': 'GPT-5 (default)',
-  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
-  'claude-opus-5-5': 'Claude Opus 5.5',
 }
 
 const SettingsWorkspaceGeneral = () => {
@@ -1537,7 +1571,6 @@ const SettingsWorkspaceGeneral = () => {
     )
   }
 
-  const aiChatModel = wsSettings?.aiChatModel ?? DEFAULT_AI_CHAT_MODEL
   const phaseOneEnabled = wsSettings?.aiNudgesPhaseOneEnabled ?? true
   const phaseTwoEnabled = wsSettings?.aiNudgesPhaseTwoEnabled ?? false
   const phaseTwoUsage = wsSettings?.aiNudgesPhaseTwoUsage
@@ -1785,39 +1818,6 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* AI アシスタントのモデル */}
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('AI assistant')}</h2>
-        <div className="card" style={{ padding: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Chat model')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>
-                {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
-              </div>
-            </div>
-            <select
-              className="form-control"
-              value={aiChatModel}
-              onChange={(e) => updateSettings.mutate({ aiChatModel: e.target.value as AiChatModel })}
-              disabled={updateSettings.isPending || readOnly || wsSettings === undefined}
-              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
-              aria-label={t('Chat model')}
-              style={{ minWidth: 180, cursor: readOnly ? 'not-allowed' : 'pointer', ...(readOnly ? { opacity: 0.5 } : {}) }}
-            >
-              {AI_CHAT_MODELS.map((model) => (
-                <option key={model} value={model}>
-                  {t(AI_CHAT_MODEL_LABELS[model])}
-                </option>
-              ))}
-            </select>
-          </div>
-          {updateSettings.isError && updateSettings.variables?.aiChatModel !== undefined && (
-            <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
-          )}
         </div>
       </section>
 
