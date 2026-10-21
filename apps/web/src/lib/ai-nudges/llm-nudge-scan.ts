@@ -358,14 +358,17 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
       cursorMessageAt: sql<Date | null>`(
         select m.created_at from messages m where m.id = ${aiScanStates.lastScannedMessageId}
       )`,
+      // アプリ（Bot）の投稿は巡回の対象外。最新に含めると、Bot の投稿だけが増えたチャンネルを毎回選んでは何も読まずに終わる
       latestMessageId: sql<string | null>`(
         select m.id from messages m
         where m.channel_id = ${channels.id} and m.deleted_at is null
+          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind = 'bot')
         order by m.created_at desc, m.id desc limit 1
       )`,
       latestMessageAt: sql<Date | null>`(
         select m.created_at from messages m
         where m.channel_id = ${channels.id} and m.deleted_at is null
+          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind = 'bot')
         order by m.created_at desc, m.id desc limit 1
       )`,
       nextUnansweredAskCheckAt: aiScanStates.nextUnansweredAskCheckAt,
