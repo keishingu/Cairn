@@ -119,7 +119,9 @@ export async function postPoll(pollId: string): Promise<string> {
     .set({
       messageId: result.ts,
       status: sql`case when ${polls.status} = 'pending_post' then 'posted' else ${polls.status} end`,
-      renderedVersion: sql`greatest(${polls.renderedVersion}, ${poll.version})`,
+      // 描いたと記録するのは作成時の版（0）まで。前回の投稿が成功していた（message_id の保存だけ失敗した）場合、
+      // client_msg_id の冪等化で返るのは前回のカードで、その後の投票は描かれていない。今の版を描いたことにすると描き直されなくなる
+      renderedVersion: sql`greatest(${polls.renderedVersion}, 0)`,
       updatedAt: sql`now()`,
     })
     .where(eq(polls.id, pollId))
@@ -136,7 +138,9 @@ export async function renderPoll(pollId: string): Promise<'posted' | 'updated' |
   const { poll, forRender } = loaded
   if (!poll.messageId) {
     await postPoll(pollId)
-    return 'posted'
+    // 投稿した（または前回の投稿を取り戻した）カードより新しい票があれば、続けて描き直す
+    const after = await renderPoll(pollId)
+    return after === 'skipped' ? 'posted' : after
   }
   if (poll.version <= poll.renderedVersion) return 'skipped'
 
