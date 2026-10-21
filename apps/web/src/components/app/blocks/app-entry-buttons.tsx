@@ -4,11 +4,10 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Modal } from '@/components/app/primitives'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useAppEntryPoints } from '@/hooks/use-app-entry-points'
 import type { AppEntryPointDto } from '@/app/api/channels/[channelId]/app-entry-points/route'
 
 // 入力欄の「＋」に並べるアプリの起動口（docs/app-platform-design.md §6.1）。選ぶとスラッシュコマンドと同じ形でアプリへ届き、
@@ -16,54 +15,17 @@ import type { AppEntryPointDto } from '@/app/api/channels/[channelId]/app-entry-
 
 type PendingEntry = { app: AppEntryPointDto; command: string }
 
-async function readError(res: Response): Promise<string | null> {
-  const body = (await res.json().catch(() => null)) as { error?: unknown } | null
-  return typeof body?.error === 'string' ? body.error : null
-}
-
 export function AppEntryButtons({ channelId, onError, compact }: { channelId: string; onError: (message: string | null) => void; compact?: boolean }) {
   const t = useT()
-  const queryClient = useQueryClient()
-  const queryKey = ['app-entry-points', channelId] as const
-  const query = useQuery({
-    queryKey,
-    queryFn: async (): Promise<AppEntryPointDto[]> => {
-      const res = await fetchWithAuth(`/api/channels/${channelId}/app-entry-points`)
-      if (!res.ok) throw new Error(`app-entry-points ${res.status}`)
-      return res.json()
-    },
-  })
+  const { query, invoke: invokeEntry, busy } = useAppEntryPoints(channelId)
   const [confirming, setConfirming] = React.useState<PendingEntry | null>(null)
-  const [busy, setBusy] = React.useState(false)
 
   const invoke = async ({ app, command }: PendingEntry) => {
-    setBusy(true)
     onError(null)
-    try {
-      if (!app.inChannel) {
-        const added = await fetchWithAuth(`/api/channels/${channelId}/apps`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ installationId: app.installationId }),
-        })
-        if (!added.ok) {
-          // 本文の理由は日本語固定なので見せず、状態コードから表示言語の案内にする
-          onError(t(appAddErrorMessage(added.status)))
-          return
-        }
-        await queryClient.invalidateQueries({ queryKey })
-      }
-      const res = await fetchWithAuth('/api/app-commands', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ installationId: app.installationId, channelId, command }),
-      })
-      if (!res.ok) onError(t(cardActionErrorMessage(await readError(res))))
-    } catch {
-      onError(t(cardActionErrorMessage(null)))
-    } finally {
-      setBusy(false)
-    }
+    const failure = await invokeEntry(app, command)
+    if (!failure) return
+    // 追加 API の本文は日本語固定なので見せず、状態コードから表示言語の案内にする
+    onError(t(failure.step === 'add' ? appAddErrorMessage(failure.status) : cardActionErrorMessage(failure.code)))
   }
 
   const buttonStyle: React.CSSProperties = compact

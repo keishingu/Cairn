@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess } from '@/lib/permissions'
+import { requireChannelAccess, requireRole } from '@/lib/permissions'
 
 const bodySchema = z.object({ installationId: z.string().uuid() })
 
@@ -13,7 +13,8 @@ const bodySchema = z.object({ installationId: z.string().uuid() })
 export async function POST(req: Request, { params }: { params: Promise<{ channelId: string }> }) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-  if (ctx.role === 'guest') return NextResponse.json({ error: 'ゲストはアプリをチャンネルに追加できません' }, { status: 403 })
+  const notMember = requireRole(ctx.role, 'member')
+  if (notMember) return notMember
   const { channelId } = await params
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
@@ -30,8 +31,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ channel
   try {
     const { db, appInstallations, appChannelMemberships, channels, auditLogs } = await import('@cairn/db')
     const { and, eq, isNull } = await import('drizzle-orm')
-    const [channel] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1)
-    if (!channel || channel.type === 'dm') return NextResponse.json({ error: 'このチャンネルにはアプリを追加できません' }, { status: 422 })
+    const [channel] = await db.select({ type: channels.type, archivedAt: channels.archivedAt }).from(channels).where(eq(channels.id, channelId)).limit(1)
+    // 確認中にアーカイブされたチャンネルにも追加しない（追加だけ残って、続く起動は channel_archived で失敗する）
+    if (!channel || channel.type === 'dm' || channel.archivedAt) return NextResponse.json({ error: 'このチャンネルにはアプリを追加できません' }, { status: 422 })
     const [installation] = await db
       .select({ id: appInstallations.id })
       .from(appInstallations)

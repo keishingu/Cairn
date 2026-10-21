@@ -4,59 +4,21 @@
 import React from 'react'
 import { Alert, Pressable, StyleSheet, Text } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
-import { apiFetch } from '../lib/api-fetch'
+import { useAppEntryPoints, type AppEntryPointDto } from '../hooks/use-app-entry-points'
 import type { ThemePalette } from '../lib/theme'
 import { useT } from './locale-provider'
 
-type AppEntryPointDto = {
-  installationId: string
-  appName: string
-  appIconUrl: string | null
-  inChannel: boolean
-  entryPoints: Array<{ command: string; label: string }>
-}
-
-async function readError(res: Response): Promise<string | null> {
-  const body = (await res.json().catch(() => null)) as { error?: unknown } | null
-  return typeof body?.error === 'string' ? body.error : null
-}
-
 export function AppEntryActions({ channelId, palette, onError }: { channelId: string; palette: ThemePalette; onError: (message: string | null) => void }) {
   const t = useT()
-  const queryClient = useQueryClient()
-  const queryKey = ['app-entry-points', channelId] as const
-  const query = useQuery<AppEntryPointDto[]>({
-    queryKey,
-    queryFn: async () => {
-      const res = await apiFetch(`/api/channels/${channelId}/app-entry-points`)
-      if (!res.ok) throw new Error(`app-entry-points ${res.status}`)
-      return res.json() as Promise<AppEntryPointDto[]>
-    },
-  })
-  const [busy, setBusy] = React.useState(false)
+  const { query, invoke: invokeEntry, busy } = useAppEntryPoints(channelId)
 
   const invoke = async (app: AppEntryPointDto, command: string) => {
-    setBusy(true)
     onError(null)
-    try {
-      if (!app.inChannel) {
-        const added = await apiFetch(`/api/channels/${channelId}/apps`, { method: 'POST', body: JSON.stringify({ installationId: app.installationId }) })
-        if (!added.ok) {
-          // 本文の理由は日本語固定なので見せず、状態コードから表示言語の案内にする
-          onError(t(appAddErrorMessage(added.status)))
-          return
-        }
-        await queryClient.invalidateQueries({ queryKey })
-      }
-      const res = await apiFetch('/api/app-commands', { method: 'POST', body: JSON.stringify({ installationId: app.installationId, channelId, command }) })
-      if (!res.ok) onError(t(cardActionErrorMessage(await readError(res))))
-    } catch {
-      onError(t(cardActionErrorMessage(null)))
-    } finally {
-      setBusy(false)
-    }
+    const failure = await invokeEntry(app, command)
+    if (!failure) return
+    // 追加 API の本文は日本語固定なので見せず、状態コードから表示言語の案内にする
+    onError(t(failure.step === 'add' ? appAddErrorMessage(failure.status) : cardActionErrorMessage(failure.code)))
   }
 
   const choose = (app: AppEntryPointDto, command: string) => {

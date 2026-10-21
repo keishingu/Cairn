@@ -1198,7 +1198,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
+        {/* アプリの起動口が並ぶとスマホ幅では1行に収まらないため、折り返して右端のスイッチを切らない */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
           <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={13}/> {t('Image')}
           </button>
