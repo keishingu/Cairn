@@ -52,7 +52,11 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
     setBusy(false)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
-  React.useEffect(() => stopWaiting(), [blocks, revision, stopWaiting])
+  React.useEffect(() => {
+    stopWaiting()
+    // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
+    setActionError(null)
+  }, [blocks, revision, stopWaiting])
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
