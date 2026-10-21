@@ -20,13 +20,17 @@ export const pollsCardSweep = inngest.createFunction(
   async ({ step }) => {
     const pollIds = await step.run('find-stale-polls', async () => {
       const { db, polls, pollProcessedInteractions } = await import('@cairn/db')
-      const { and, lt, or, sql } = await import('drizzle-orm')
+      const { and, asc, inArray, lt, or, sql } = await import('drizzle-orm')
       await db.delete(pollProcessedInteractions).where(lt(pollProcessedInteractions.createdAt, sql`now() - interval '30 days'`))
-      const rows = await db
+      // 古いものから拾い、拾った投票は updated_at を進めて列の後ろへ回す。投稿し続けて失敗する投票があっても、
+      // 同じ投票ばかりを毎回拾って、イベントを失っただけの投票が拾われないままにならない
+      const stale = db
         .select({ id: polls.id })
         .from(polls)
         .where(and(or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`), lt(polls.updatedAt, sql`now() - interval '1 minute'`)))
+        .orderBy(asc(polls.updatedAt))
         .limit(200)
+      const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
       return rows.map((row) => row.id)
     })
     if (pollIds.length > 0) {
