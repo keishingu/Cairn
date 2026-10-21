@@ -37,8 +37,9 @@ function inputBlocksOf(view: unknown): StoredInputBlock[] {
 }
 
 export function validateSubmission(view: unknown, submitted: SubmittedValues): SubmissionResult {
-  const values: Record<string, Record<string, StateValue>> = {}
-  const errors: Record<string, FieldError> = {}
+  // block_id は アプリが決める文字列（"__proto__" も通る）ので、プロトタイプの無い入れ物に入れる
+  const values: Record<string, Record<string, StateValue>> = Object.create(null)
+  const errors: Record<string, FieldError> = Object.create(null)
   for (const block of inputBlocksOf(view)) {
     const { element } = block
     const raw = submitted[block.block_id]?.[element.action_id]
@@ -50,13 +51,13 @@ export function validateSubmission(view: unknown, submitted: SubmittedValues): S
     if (element.type === 'plain_text_input') {
       if (value !== null && element.min_length !== undefined && value.length < element.min_length) errors[block.block_id] = { code: 'too_short' }
       else if (value !== null && value.length > (element.max_length ?? 3000)) errors[block.block_id] = { code: 'too_long' }
-      else values[block.block_id] = { [element.action_id]: { type: 'plain_text_input', value } }
+      else values[block.block_id] = Object.assign(Object.create(null), { [element.action_id]: { type: 'plain_text_input', value } })
       continue
     }
     if (element.type === 'static_select') {
       const option = value === null ? null : (element.options ?? []).find((candidate) => candidate.value === value)
       if (value !== null && !option) errors[block.block_id] = { code: 'invalid_option' }
-      else values[block.block_id] = { [element.action_id]: { type: 'static_select', selected_option: option ?? null } }
+      else values[block.block_id] = Object.assign(Object.create(null), { [element.action_id]: { type: 'static_select', selected_option: option ?? null } })
     }
   }
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, values }

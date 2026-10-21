@@ -70,3 +70,18 @@ describe('アプリが返した errors の表示', () => {
     expect(displayableErrors(pollModalFixture, {})).toBeNull()
   })
 })
+
+describe('block_id が __proto__ の入力欄', () => {
+  const view = {
+    type: 'modal',
+    blocks: [{ type: 'input', block_id: '__proto__', label: { type: 'plain_text', text: '名前' }, element: { type: 'plain_text_input', action_id: 'v' } }],
+  }
+
+  it('空なら必須のエラーにし、値があれば届ける state に入れる（プロトタイプの書き換えにしない）', () => {
+    const empty = validateSubmission(view, {})
+    expect(empty.ok).toBe(false)
+    expect(!empty.ok && Object.keys(empty.errors)).toEqual(['__proto__'])
+    const filled = validateSubmission(view, JSON.parse('{"__proto__":{"v":"山田"}}'))
+    expect(filled.ok && JSON.parse(JSON.stringify(filled.values))).toEqual(JSON.parse('{"__proto__":{"v":{"type":"plain_text_input","value":"山田"}}}'))
+  })
+})
