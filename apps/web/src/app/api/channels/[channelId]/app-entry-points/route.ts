@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { ensureFirstPartyInstallations } from '@/lib/apps/first-party'
-import { isAppInChannel, parseEntryPoints, type EntryPoint } from '@/lib/apps/channel-apps'
+import { isAppInChannel, isChannelArchived, parseEntryPoints, type EntryPoint } from '@/lib/apps/channel-apps'
 
 export interface AppEntryPointDto {
   installationId: string
@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
       .where(eq(channels.id, channelId))
       .limit(1)
     // アーカイブ済みのチャンネル・スレッドではアプリが投稿できないので、起動口を出さない
-    if (!channel || channel.type === 'dm' || channel.archivedAt) return NextResponse.json([] satisfies AppEntryPointDto[])
+    if (!channel || channel.type === 'dm' || (await isChannelArchived(channel))) return NextResponse.json([] satisfies AppEntryPointDto[])
 
     // 既定のインストールが欠けていたら補う（ワークスペース作成時に失敗した・本機能より前に作られたワークスペース）
     await ensureFirstPartyInstallations(ctx.workspaceId)

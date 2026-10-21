@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireRole } from '@/lib/permissions'
+import { isChannelArchived } from '@/lib/apps/channel-apps'
 
 const bodySchema = z.object({ installationId: z.string().uuid() })
 
@@ -31,9 +32,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ channel
   try {
     const { db, appInstallations, appChannelMemberships, channels, auditLogs } = await import('@cairn/db')
     const { and, eq, isNull } = await import('drizzle-orm')
-    const [channel] = await db.select({ type: channels.type, archivedAt: channels.archivedAt }).from(channels).where(eq(channels.id, channelId)).limit(1)
+    const [channel] = await db
+      .select({ type: channels.type, archivedAt: channels.archivedAt, parentChannelId: channels.parentChannelId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
     // 確認中にアーカイブされたチャンネルにも追加しない（追加だけ残って、続く起動は channel_archived で失敗する）
-    if (!channel || channel.type === 'dm' || channel.archivedAt) return NextResponse.json({ error: 'このチャンネルにはアプリを追加できません' }, { status: 422 })
+    if (!channel || channel.type === 'dm' || (await isChannelArchived(channel))) return NextResponse.json({ error: 'このチャンネルにはアプリを追加できません' }, { status: 422 })
     const [installation] = await db
       .select({ id: appInstallations.id })
       .from(appInstallations)

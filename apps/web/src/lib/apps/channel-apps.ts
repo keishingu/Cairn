@@ -24,3 +24,13 @@ export async function isAppInChannel(installationId: string, channelId: string, 
     .limit(1)
   return !!membership
 }
+
+/** アーカイブ済みか。親チャンネルをアーカイブしても配下スレッドの archived_at は残らないため、親も見る（一覧・AI 巡回と同じ扱い） */
+export async function isChannelArchived(channel: { archivedAt: Date | null; parentChannelId: string | null }): Promise<boolean> {
+  if (channel.archivedAt) return true
+  if (!channel.parentChannelId) return false
+  const { db, channels } = await import('@cairn/db')
+  const { eq } = await import('drizzle-orm')
+  const [parent] = await db.select({ archivedAt: channels.archivedAt }).from(channels).where(eq(channels.id, channel.parentChannelId)).limit(1)
+  return !!parent?.archivedAt
+}

@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { decryptToken } from '@/lib/token-crypto'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import { isAppInChannel, parseEntryPoints } from '@/lib/apps/channel-apps'
+import { isAppInChannel, isChannelArchived, parseEntryPoints } from '@/lib/apps/channel-apps'
 import { resolveRequestTarget } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       .limit(1)
     if (!channel || channel.type === 'dm') return NextResponse.json({ error: 'app_not_in_channel' }, { status: 409 })
     // アーカイブ済み（スレッドを含む）にはアプリが投稿できない。起動してフォームを開かせてから投稿だけ失敗させない
-    if (channel.archivedAt) return NextResponse.json({ error: 'channel_archived' }, { status: 409 })
+    if (await isChannelArchived(channel)) return NextResponse.json({ error: 'channel_archived' }, { status: 409 })
     if (!(await isAppInChannel(row.installationId, body.channelId, channel.parentChannelId))) return NextResponse.json({ error: 'app_not_in_channel' }, { status: 409 })
 
     const [[workspace], [member]] = await Promise.all([
