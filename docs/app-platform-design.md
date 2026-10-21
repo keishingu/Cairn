@@ -247,7 +247,7 @@ Slack と同じく `application/x-www-form-urlencoded` の `payload=<JSON>` で�
   "container": { "type": "message", "message_ts": "<ts>", "channel_id": "<channelId>" },
   "channel": { "id": "<channelId>", "name": "<チャンネル名>" },
   "message": { "ts": "<ts>", "text": "<代替テキスト>", "blocks": [ ... ] },
-  "trigger_id": "<一時ID>",           // モーダルを開くため。3秒で失効
+  "trigger_id": "<一時ID>",           // モーダルを開くため。発行から6秒（配送の3秒＋応答後の3秒）で失効
   "response_url": "https://<host>/api/app-response/<一時ID>",
   "actions": [{ "type": "button", "block_id": "...", "action_id": "...", "value": "...", "action_ts": "..." }],
   "cairn": { "message_id": "<uuid>", "interaction_id": "<uuid>" } // Cairn 独自の拡張。Slack アプリは無視する
@@ -283,7 +283,7 @@ Slack と同じ方式にする。
 |---|---|---|
 | `chat.update`（Bot トークン） | ○ | カード全体の更新（票数の反映） |
 | `response_url` への POST | 後回し | `replace_original` でカード更新。有効期限30分・5回（Slack と同じ）。投票アプリは `chat.update` を使うので、外部アプリを公開する前に足す（Bolt の `respond()` が使う） |
-| `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は3秒・1回限りで、押した本人・インストールに結びつける。アプリが開くと Realtime で本人のトピック（`user:<id>`）へ知らせ、クライアントが開く。`response_action: push` は重ねず差し替える。モーダル内のボタン（block_actions）と `view_closed` は後回し |
+| `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は1回限りで、押した本人・インストールに結びつける。有効期限は発行から6秒（配送の期限3秒に、アプリが応答した後で `views.open` する3秒を足す。Slack は応答から3秒）。アプリが開くと Realtime で本人のトピック（`user:<id>`）へ知らせ、クライアントが開く。`response_action: push` は重ねず差し替える。モーダル内のボタン（block_actions）と `view_closed` は後回し |
 | `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
 | エフェメラル（本人だけに見える）メッセージ | × | 後続。匿名投票を出すときの前提になる |
 

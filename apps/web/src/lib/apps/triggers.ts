@@ -3,8 +3,9 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 
-// trigger_id は Slack と同じく3秒・1回だけ使える。押した本人・インストールに結びつけ、他人の画面へモーダルを開かせない
-export const TRIGGER_TTL_MS = 3000
+// trigger_id は1回だけ使える。押した本人・インストールに結びつけ、他人の画面へモーダルを開かせない。
+// 有効期限は発行時点から数えるので、Slack の「応答から3秒」に合わせ、配送の期限（3秒）にアプリが応答した後で views.open する3秒を足す
+export const TRIGGER_TTL_MS = 6000
 
 function hashTrigger(token: string): string {
   return createHash('sha256').update(token).digest('hex')
