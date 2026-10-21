@@ -292,12 +292,16 @@ function firstReadableToken(rows: Array<{ tokenEncrypted: string | null }>): { t
 
 /**
  * 退役した鍵のトークンを有効なまま残し続けない。今の鍵で読めるトークンができてから猶予が過ぎていれば、
- * 今の鍵で読めないトークンを取り消す。猶予の間は、古い鍵で動いている別のデプロイがまだ使えるようにしておく
+ * それより前に作られた読めないトークンを取り消す。猶予の間は、古い鍵で動いている別のデプロイがまだ使えるようにしておく
  */
 async function revokeRetiredTokens(rows: Array<{ id: string; tokenEncrypted: string | null; createdAt: Date }>, readableIndex: number): Promise<void> {
   const current = rows[readableIndex]
   if (!current || current.createdAt.getTime() > Date.now() - UNREADABLE_TOKEN_GRACE_MS) return
-  const retired = rows.filter((row, index) => index !== readableIndex && !isReadable(row.tokenEncrypted)).map((row) => row.id)
+  // 退役とみなすのは、今の鍵のトークンより前に作られた読めないトークン（鍵を入れ替える前のもの）だけ。
+  // 今の鍵のトークンより後に作られた読めないトークンは、別の鍵で動いている別のデプロイが今使っているものなので残す
+  const retired = rows
+    .filter((row, index) => index !== readableIndex && row.createdAt.getTime() < current.createdAt.getTime() && !isReadable(row.tokenEncrypted))
+    .map((row) => row.id)
   if (retired.length === 0) return
   const { db, appBotTokens } = await import('@cairn/db')
   const { inArray } = await import('drizzle-orm')
