@@ -8,6 +8,10 @@ export type AiChatModel = (typeof AI_CHAT_MODELS)[number]
 
 export const DEFAULT_AI_CHAT_MODEL: AiChatModel = 'gpt-5'
 
+// ワークスペースのシステムプロンプト（workspaces.ai_chat_system_prompt）の最大文字数。
+// 毎回のチャットの入力に乗るため、AGENTS.md 程度の分量に収める。CHECK 制約と同じ値。
+export const AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH = 10000
+
 export type AiChatProvider = 'openai' | 'anthropic'
 
 export function isAiChatModel(value: unknown): value is AiChatModel {

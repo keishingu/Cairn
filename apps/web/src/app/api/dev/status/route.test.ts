@@ -115,13 +115,33 @@ describe('dev/status API の認可と手動診断', () => {
         body: JSON.stringify({
           model: 'gpt-5-mini',
           messages: [{ role: 'user', content: 'hi' }],
-          max_completion_tokens: 1,
+          reasoning_effort: 'minimal',
+          max_completion_tokens: 16,
         }),
       }),
     )
     expect(body.openai.status).toBe('ok')
     expect(body.openai.detail).toBe('クレジット有効・API 正常')
     expect(body.openai.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it('OpenAI が分類できないエラーを返したときは、原因を特定できるようメッセージも表示する', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test'
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { type: 'invalid_request_error', code: null, message: 'Unsupported parameter' },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    const { POST } = await import('./route')
+
+    const res = await POST()
+    const body = await res.json() as { openai: { status: string; detail?: string } }
+
+    expect(body.openai.status).toBe('error')
+    expect(body.openai.detail).toBe('HTTP 400 (invalid_request_error): Unsupported parameter')
   })
 
   it('GET は Anthropic を呼ばず設定の有無だけを返す', async () => {
