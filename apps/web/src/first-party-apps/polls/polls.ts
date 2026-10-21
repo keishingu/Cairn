@@ -99,14 +99,16 @@ export async function createPoll(input: CreatePollInput): Promise<{ pollId: stri
 }
 
 /**
- * 再試行しても通らない投稿の失敗（チャンネルのアーカイブ・アプリの取り外し・内容の拒否など）。
+ * 再試行しても通らない投稿の失敗（チャンネルが消えた・内容の拒否など）。
  * モーダルを閉じた後に起きるので、投稿待ちのまま拾い直し続けず post_failed として止める
  */
-const PERMANENT_POST_ERRORS = new Set(['is_archived', 'not_in_channel', 'channel_not_found', 'method_not_supported_for_channel_type', 'invalid_blocks', 'invalid_arguments', 'msg_too_long', 'no_text', 'client_msg_id_conflict'])
+const PERMANENT_POST_ERRORS = new Set(['channel_not_found', 'method_not_supported_for_channel_type', 'invalid_blocks', 'invalid_arguments', 'msg_too_long', 'no_text', 'client_msg_id_conflict'])
+/** 元に戻り得る投稿の失敗（アーカイブの解除・アプリの再追加）。投稿待ちのまま残し、拾い直しの間隔だけ空ける */
+const REVERSIBLE_POST_ERRORS = new Set(['is_archived', 'not_in_channel'])
 
 /**
  * 投稿待ちの投票を投稿する。client_msg_id を事前に採番しているので、途中で失敗しても再試行で二重に投稿されない。
- * 再試行しても通らない理由で失敗したら post_failed にして null を返す
+ * 再試行しても通らない理由で失敗したら post_failed にし、元に戻り得る理由なら投稿待ちのまま、どちらも null を返す
  */
 export async function postPoll(pollId: string): Promise<string | null> {
   const loaded = await loadPoll(pollId)
@@ -128,7 +130,14 @@ export async function postPoll(pollId: string): Promise<string | null> {
       client_msg_id: poll.clientMsgId,
     })
   } catch (err) {
-    if (!(err instanceof PollsBotApiError) || !PERMANENT_POST_ERRORS.has(err.code)) throw err
+    if (!(err instanceof PollsBotApiError)) throw err
+    if (REVERSIBLE_POST_ERRORS.has(err.code)) {
+      // アーカイブの解除やアプリの再追加で投稿できるようになったら投稿する。5分ごとの cron が拾い直し続けないよう間隔を空ける
+      console.warn(`[polls] poll ${pollId} cannot be posted now (${err.code}); retrying after ${REVERSIBLE_RETRY_INTERVAL}`)
+      await db.update(polls).set({ postError: err.code, updatedAt: sql`now() + ${REVERSIBLE_RETRY_INTERVAL}::interval` }).where(eq(polls.id, pollId))
+      return null
+    }
+    if (!PERMANENT_POST_ERRORS.has(err.code)) throw err
     console.error(`[polls] poll ${pollId} could not be posted (${err.code}); giving up`)
     await db.update(polls).set({ status: 'post_failed', postError: err.code, updatedAt: sql`now()` }).where(eq(polls.id, pollId))
     return null
@@ -158,12 +167,12 @@ const PERMANENT_UPDATE_ERRORS = new Set(['channel_not_found', 'message_not_found
 const REVERSIBLE_UPDATE_ERRORS = new Set(['is_archived', 'not_in_channel'])
 const REVERSIBLE_RETRY_INTERVAL = '1 day'
 
-export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed' | 'update_abandoned' | 'update_deferred'> {
+export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed_or_deferred' | 'update_abandoned' | 'update_deferred'> {
   const loaded = await loadPoll(pollId)
   if (!loaded) return 'skipped'
   const { poll, forRender } = loaded
   if (!poll.messageId) {
-    if ((await postPoll(pollId)) === null) return 'post_failed'
+    if ((await postPoll(pollId)) === null) return 'post_failed_or_deferred'
     // 投稿した（または前回の投稿を取り戻した）カードより新しい票があれば、続けて描き直す
     const after = await renderPoll(pollId)
     return after === 'skipped' ? 'posted' : after
