@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
@@ -73,7 +73,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     allowMultiple: parsed.allowMultiple,
     idempotencyKey: `view:${payload.view.id}`,
   })
-  await sendRenderEvent(pollId)
+  sendRenderEvent(pollId)
   return new NextResponse('', { status: 200 })
 }
 
@@ -81,10 +81,17 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   const action = payload.actions[0]
   const interactionId = payload.cairn?.interaction_id
   if (!action || !interactionId) return new NextResponse('', { status: 200 })
+  // ts は Cairn のメッセージ ID（UUID）。それ以外は uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
+  if (!/^[0-9a-f-]{36}$/i.test(payload.container.message_ts)) return new NextResponse('invalid message_ts', { status: 400 })
 
   const { db, polls, pollOptions, pollVotes, pollProcessedInteractions } = await import('@cairn/db')
-  const { and, eq, sql } = await import('drizzle-orm')
-  const [poll] = await db.select({ id: polls.id, createdBy: polls.createdBy }).from(polls).where(eq(polls.messageId, payload.container.message_ts)).limit(1)
+  const { and, eq, or, sql } = await import('drizzle-orm')
+  // カードの ts は投稿前に採番した client_msg_id。投稿直後に message_id の保存が遅れても（失敗して回復待ちでも）同じ投票に届ける
+  const [poll] = await db
+    .select({ id: polls.id, createdBy: polls.createdBy })
+    .from(polls)
+    .where(or(eq(polls.messageId, payload.container.message_ts), eq(polls.clientMsgId, payload.container.message_ts)))
+    .limit(1)
   if (!poll) return new NextResponse('', { status: 200 })
 
   if (action.action_id === 'close' && poll.createdBy !== payload.user.id) {
@@ -122,13 +129,15 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   })
 
   // カードの描き直しは commit の後
-  if (changed) await sendRenderEvent(poll.id)
+  if (changed) sendRenderEvent(poll.id)
   return new NextResponse('', { status: 200 })
 }
 
-// 送れなくても、投稿待ち・描画待ちの投票は cron が拾い直す（§7.3）
-async function sendRenderEvent(pollId: string): Promise<void> {
-  await inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
-    console.warn('[polls] card render event failed (Inngest not running?):', err)
-  })
+// 応答を返した後に送る。Inngest が遅くても3秒の配信期限を使わせない。送れなくても、投稿待ち・描画待ちの投票は cron が拾い直す（§7.3）
+function sendRenderEvent(pollId: string): void {
+  after(() =>
+    inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
+      console.warn('[polls] card render event failed (Inngest not running?):', err)
+    }),
+  )
 }
