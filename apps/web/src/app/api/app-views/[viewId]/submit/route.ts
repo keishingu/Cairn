@@ -12,7 +12,7 @@ import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
-import { issueTrigger } from '@/lib/apps/triggers'
+import { TRIGGER_TTL_MS, hashTrigger, issueTrigger } from '@/lib/apps/triggers'
 import { displayableErrors, parseViewSubmissionResponse, validateSubmission } from '@/lib/apps/view-submission'
 
 // モーダルの送信。入力値をサーバーで検証してから Slack と同じ view_submission をアプリへ届け、
@@ -62,7 +62,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const validated = validateSubmission(view.view, values)
     if (!validated.ok) return NextResponse.json({ status: 'errors', errors: validated.errors }, { status: 422 })
 
-    const { db, appViews, workspaces } = await import('@cairn/db')
+    const { db, appViews, appTriggers, workspaces } = await import('@cairn/db')
     const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
 
     // 届ける前に、この版のモーダルの送信を1つだけ確保する。同時に押された2つ目は届けない
@@ -124,11 +124,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     // 届ける直前（ここより後に DB 操作を挟まない）に確かめる。ここまでの DB 操作が遅れて確保が切れ、別の送信が取り直していたら、同じ送信を二重に届けない。
     // 確保の間にアプリが views.update で差し替えていたら（hash が変わる）、古い版の意味で届けない。どちらでもなければ確保を延ばす
-    const [renewed] = await db
-      .update(appViews)
-      .set({ submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})` })
-      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash), ownsLease))
-      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
+    // 同じ文で trigger_id の期限もこの時点から数え直す（確認が接続待ちで遅れても、届く trigger_id を切らさない）
+    const renewal = await db.execute<{ lease: string }>(sql`
+      with renewed as (
+        update ${appViews}
+        set submitting_until = now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})
+        where ${appViews.id} = ${viewId} and ${appViews.status} = 'open' and ${appViews.hash} = ${renderedHash} and ${ownsLease}
+        returning submitting_until::text as lease
+      ), refreshed as (
+        update ${appTriggers}
+        set expires_at = clock_timestamp() + make_interval(secs => ${TRIGGER_TTL_MS / 1000})
+        where token_hash = ${hashTrigger(triggerId)} and exists (select 1 from renewed)
+      )
+      select lease from renewed
+    `)
+    const renewed = renewal.rows[0]
     if (!renewed) {
       const [current] = await db.select({ hash: appViews.hash }).from(appViews).where(eq(appViews.id, viewId)).limit(1)
       if (current && current.hash !== renderedHash) {
@@ -181,8 +191,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         await release()
         return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
       }
-      // 届けている間の views.update と競合したら、先に確定したアプリの差し替えを残す
-      const [updated] = await db
+      // 届けている間の views.update と競合したら、先に確定したアプリの差し替えを残す。
+      // アプリはもう処理したので、DB の失敗を「送り直せる失敗」にしない（1回やり直してもだめならログに残して差し替え済みと返す）
+      const writeUpdate = () => db
         .update(appViews)
         .set({
           view: prepared.value,
@@ -193,16 +204,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         })
         .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
         .returning({ id: appViews.id })
+      let updated: { id: string } | undefined
+      try {
+        ;[updated] = await writeUpdate().catch(() => writeUpdate())
+      } catch (err) {
+        console.error('[/api/app-views submit] delivered but could not store the updated view:', err)
+        return NextResponse.json({ status: 'updated' })
+      }
       // 先に差し替えられていたら、この送信の確保を外す（新しい版をすぐ送れるようにする）
       if (!updated) await release()
       return NextResponse.json({ status: 'updated' })
     }
-    // 送信を届けている間にアプリが views.update で差し替えていたら（hash が変わる）、その差し替えを黙って捨てて閉じない
-    const [submitted] = await db
-      .update(appViews)
-      .set({ status: 'submitted', submittingUntil: null })
-      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
-      .returning({ id: appViews.id })
+    // 送信を届けている間にアプリが views.update で差し替えていたら（hash が変わる）、その差し替えを黙って捨てて閉じない。
+    // アプリはもう処理したので、ここで DB が失敗しても「送り直せる失敗」を返さない（新しい interaction_id で二重に処理させない）。
+    // 1回やり直してもだめなら閉じたと返し、確保は残して（45秒）すぐには送り直せないようにする
+    const markSubmitted = () =>
+      db
+        .update(appViews)
+        .set({ status: 'submitted', submittingUntil: null })
+        .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
+        .returning({ id: appViews.id })
+    let submitted: { id: string } | undefined
+    try {
+      ;[submitted] = await markSubmitted().catch(() => markSubmitted())
+    } catch (err) {
+      console.error('[/api/app-views submit] delivered but could not mark the view submitted:', err)
+      return NextResponse.json({ status: 'closed' })
+    }
     if (!submitted) {
       await release()
       return NextResponse.json({ status: 'updated' })
