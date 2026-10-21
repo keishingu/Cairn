@@ -86,6 +86,16 @@ export function canSyncFirstPartyDefinitions(env: NodeJS.ProcessEnv = process.en
   return env['VERCEL_ENV'] === 'production' || env['VERCEL_GIT_COMMIT_REF'] === 'develop'
 }
 
+/** 今の鍵で復号して期待した値になるか。復号できない（鍵の入れ替え後など）も false */
+function decryptsTo(encrypted: string | null, expected: string): boolean {
+  if (!encrypted) return false
+  try {
+    return decryptToken(encrypted) === expected
+  } catch {
+    return false
+  }
+}
+
 /** apps の行を作るか、今の定義に合わせる。戻り値は apps.id */
 async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise<string> {
   const { db, apps } = await import('@cairn/db')
@@ -99,13 +109,16 @@ async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise
     entryPoints: definition.entryPoints,
   }
   const [existing] = await db
-    .select({ id: apps.id, requestUrl: apps.requestUrl, entryPoints: apps.entryPoints, name: apps.name })
+    .select({ id: apps.id, requestUrl: apps.requestUrl, entryPoints: apps.entryPoints, name: apps.name, signingSecretEncrypted: apps.signingSecretEncrypted })
     .from(apps)
     .where(and(eq(apps.slug, definition.slug), isNull(apps.ownerWorkspaceId)))
     .limit(1)
   if (existing) {
     // 定義が変わったときだけ書き換える（毎回の更新で updated_at を動かさない）
-    const changed = existing.requestUrl !== values.requestUrl || existing.name !== values.name || JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)
+    // 暗号鍵を入れ替えた後は、保存済みの署名シークレットが今の鍵で復号できない（または導いた値と違う）ので書き直す
+    const secretStale = decryptsTo(existing.signingSecretEncrypted, firstPartySigningSecret(definition.slug)) === false
+    const changed =
+      secretStale || existing.requestUrl !== values.requestUrl || existing.name !== values.name || JSON.stringify(existing.entryPoints) !== JSON.stringify(values.entryPoints)
     if (changed && canSyncFirstPartyDefinitions()) {
       await db.update(apps).set({ ...values, updatedAt: sql`now()` }).where(eq(apps.id, existing.id))
     }
@@ -172,7 +185,7 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
   const { db, apps, appInstallations, appBotTokens } = await import('@cairn/db')
   const { and, desc, eq, isNull, isNotNull } = await import('drizzle-orm')
   const [row] = await db
-    .select({ tokenEncrypted: appBotTokens.tokenEncrypted })
+    .select({ id: appBotTokens.id, installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted })
     .from(appBotTokens)
     .innerJoin(appInstallations, eq(appInstallations.id, appBotTokens.installationId))
     .innerJoin(apps, eq(apps.id, appInstallations.appId))
@@ -189,5 +202,21 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
     .orderBy(desc(appBotTokens.createdAt))
     .limit(1)
   if (!row?.tokenEncrypted) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
-  return decryptToken(row.tokenEncrypted)
+  try {
+    return decryptToken(row.tokenEncrypted)
+  } catch (err) {
+    // 暗号鍵を入れ替えた後は復号できない。平文を控える人がいないので、新しいトークンを発行して古いものを取り消す
+    console.warn(`[first-party] bot token for ${slug} could not be decrypted; issuing a new one:`, err)
+    const token = createBotToken()
+    await db.transaction(async (tx) => {
+      await tx.update(appBotTokens).set({ revokedAt: new Date() }).where(eq(appBotTokens.id, row.id))
+      await tx.insert(appBotTokens).values({
+        installationId: row.installationId,
+        tokenHash: token.hash,
+        tokenPrefix: token.prefix,
+        tokenEncrypted: encryptToken(token.token),
+      })
+    })
+    return token.token
+  }
 }
