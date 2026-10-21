@@ -1314,4 +1314,5 @@ export const KO_MESSAGES: Record<string, string> = {
   'This form is already being submitted.': '이 양식을 보내는 중입니다.',
   'Could not close the form. Please try again.': '양식을 닫지 못했습니다. 다시 시도해 주세요.',
   'Could not load the app form. Tap to retry.': '앱 양식을 불러오지 못했습니다. 탭하여 다시 시도하세요.',
+  'Could not load the app form.': '앱 양식을 불러오지 못했습니다.',
 }

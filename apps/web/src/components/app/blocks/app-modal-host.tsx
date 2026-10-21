@@ -36,8 +36,10 @@ export function AppModalHost() {
   if (query.isError && !current) {
     // 開いたはずのモーダルを黙って出さないままにしない
     return (
-      <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>
-        {t('This form is no longer available.')}
+      <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>
+        {t('Could not load the app form.')}
+        {/* 一時的な通信・サーバーの失敗でも全画面に出続けないよう、その場で取り直せるようにする */}
+        <button type="button" className="btn btn-sm" onClick={() => void query.refetch()} disabled={query.isFetching}>{t('Retry')}</button>
       </div>
     )
   }

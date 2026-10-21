@@ -1314,4 +1314,5 @@ export const JA_MESSAGES: Record<string, string> = {
   'This form is already being submitted.': 'このフォームは送信中です。',
   'Could not close the form. Please try again.': 'フォームを閉じられませんでした。もう一度お試しください。',
   'Could not load the app form. Tap to retry.': 'アプリのフォームを読み込めませんでした。タップして再試行してください。',
+  'Could not load the app form.': 'アプリのフォームを読み込めませんでした。',
 }
