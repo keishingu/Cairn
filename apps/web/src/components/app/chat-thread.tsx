@@ -521,7 +521,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           </div>
         ) : messageType === 'blocks' ? (
           <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-            <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} onAction={handleCardAction} />
+            <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} onAction={handleCardAction} revision={blocksRevision} />
           </div>
         ) : (
           content && (

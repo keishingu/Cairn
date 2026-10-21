@@ -338,6 +338,7 @@ function ChatMessageRow({
               mentionNames={cardMentionNames}
               onLinkPress={onLinkPress}
               onAction={handleCardAction}
+              revision={message.blocksRevision}
             />
           ) : (
             message.content.length > 0 && (

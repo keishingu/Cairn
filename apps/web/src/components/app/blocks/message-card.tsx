@@ -36,9 +36,11 @@ type MessageCardProps = {
    * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
    */
   onAction?: ((action: CardAction) => void | Promise<void>) | undefined
+  /** カードの版。見えないボタンの value だけの書き換えでは blocks が変わらないので、これでも書き換えの到着を知る */
+  revision?: string | null | undefined
 }
 
-export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction }: MessageCardProps) {
+export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction, revision }: MessageCardProps) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
   const [busy, setBusy] = React.useState(false)
@@ -50,7 +52,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
     setBusy(false)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
-  React.useEffect(() => stopWaiting(), [blocks, stopWaiting])
+  React.useEffect(() => stopWaiting(), [blocks, revision, stopWaiting])
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
