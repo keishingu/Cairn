@@ -51,6 +51,8 @@ export function AppModalHost() {
       dto={current}
       initialFormError={changedNotice?.viewId === current.id ? changedNotice.message : null}
       onViewChanged={(message) => setChangedNotice({ viewId: current.id, message })}
+      // 案内は差し替え直後の1回だけ。次の送信を始めたら消し、その後の差し替えで古い案内を出し直さない
+      onSubmitStart={() => setChangedNotice(null)}
     />
   )
 }
@@ -64,7 +66,7 @@ function initialValues(modal: RenderModal | null): Values {
   return values
 }
 
-function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; initialFormError: string | null; onViewChanged: (message: string) => void }) {
+function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto: AppViewDto; initialFormError: string | null; onViewChanged: (message: string) => void; onSubmitStart: () => void }) {
   const t = useT()
   const queryClient = useQueryClient()
   const modal = React.useMemo(() => normalizeModalView(dto.view), [dto.view])
@@ -98,6 +100,7 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
   const submit = async () => {
     setSubmitting(true)
     setFormError(null)
+    onSubmitStart()
     setFieldErrors({})
     try {
       const res = await fetchWithAuth(`/api/app-views/${dto.id}/submit`, {
