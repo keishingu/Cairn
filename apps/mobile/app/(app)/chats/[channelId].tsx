@@ -51,7 +51,7 @@ import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSub
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
+import { FEATURE_FLAGS, blocksRevision, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -222,7 +222,8 @@ function ChatMessageRow({
   const senderName = message.senderApp?.name ?? message.senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, action), [message.id])
+  const cardRevision = React.useMemo(() => blocksRevision(message.blocks ?? null), [message.blocks])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, cardRevision, action), [message.id, cardRevision])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)

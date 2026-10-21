@@ -3,12 +3,14 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { blocksRevision } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { decryptToken } from '@/lib/token-crypto'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
+import { blocksForClient } from '@/lib/apps/blocks-for-client'
 import { issueTrigger } from '@/lib/apps/triggers'
 
 // カードのボタン押下・選択を、アプリの Request URL へ署名付きで届ける（docs/app-platform-design.md §5）。
@@ -16,10 +18,11 @@ import { issueTrigger } from '@/lib/apps/triggers'
 // エラーはコードで返し、文言はクライアントが表示言語で出す
 
 const bodySchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('button'), messageId: z.string().uuid(), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
+  z.object({ type: z.literal('button'), messageId: z.string().uuid(), revision: z.string().max(64), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
   z.object({
     type: z.literal('static_select'),
     messageId: z.string().uuid(),
+    revision: z.string().max(64),
     blockId: z.string().min(1).max(255),
     actionId: z.string().min(1).max(255),
     selectedOptionValue: z.string().min(1).max(150),
@@ -90,6 +93,8 @@ export async function POST(req: Request) {
       .limit(1)
     if (!membership) return error('app_not_in_channel', 409)
 
+    // 押されたのが今のカードか確かめる。chat.update の後に古いカードが押されたら、同じ ID の新しい値で届けない
+    if (blocksRevision(blocksForClient(row.blocks)) !== parsed.revision) return error('card_changed', 409)
     const resolved = resolveAction(row.blocks, parsed)
     if (!resolved.ok) return error(resolved.error, 422)
     if (!row.requestUrl || !row.signingSecretEncrypted) return error('app_not_interactive', 409)
