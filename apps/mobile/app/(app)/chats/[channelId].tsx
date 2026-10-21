@@ -76,6 +76,8 @@ import {
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
+import { TextSelectSheet } from '../../../components/text-select-sheet'
+import * as Clipboard from 'expo-clipboard'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
@@ -581,6 +583,12 @@ export default function ChatThreadScreen() {
   const [sendKeyPreferenceError, setSendKeyPreferenceError] = React.useState<string | null>(null)
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
+  const [selectableText, setSelectableText] = React.useState<string | null>(null)
+  const [copiedNotice, setCopiedNotice] = React.useState(false)
+  const copiedNoticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => () => {
+    if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
+  }, [])
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
@@ -1083,8 +1091,19 @@ export default function ChatThreadScreen() {
       }),
       t('Could not submit the report'),
     )
-    if (error) setSendError(error)
-    else Alert.alert(t('Reported'), t('The moderators will review it.'))
+    if (error) {
+      setSendError(error)
+      return
+    }
+    // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
+    if (message.senderId === me?.id || message.blocked) {
+      Alert.alert(t('Reported'), t('The moderators will review it.'))
+      return
+    }
+    Alert.alert(t('Reported'), t('The moderators will review it.'), [
+      { text: t('Block this user'), style: 'destructive', onPress: () => void blockUser(message) },
+      { text: t('Close'), style: 'cancel' },
+    ])
   }
   const reportMenu = (message: MessageDto) =>
     Alert.alert(t('Report reason'), t('Choose a reason'), [
@@ -1255,6 +1274,25 @@ export default function ChatThreadScreen() {
     },
     [openMarkdownLink, t],
   )
+
+  const copyMessageText = async (message: MessageDto) => {
+    setActionTarget(null)
+    const body = parseMentions(message.content, t)
+    if (body.trim().length === 0) return
+    try {
+      await Clipboard.setStringAsync(body)
+      if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
+      setCopiedNotice(true)
+      copiedNoticeTimer.current = setTimeout(() => setCopiedNotice(false), 1600)
+    } catch {
+      setSendError(t('Could not copy the message'))
+    }
+  }
+
+  const beginSelectText = (message: MessageDto) => {
+    setActionTarget(null)
+    setSelectableText(parseMentions(message.content, t))
+  }
 
   const shareMessage = async (message: MessageDto) => {
     setActionTarget(null)
@@ -1748,44 +1786,41 @@ export default function ChatThreadScreen() {
                 }}
               />
             )}
-            {actionTarget?.senderId !== me?.id && (
+            {actionTarget?.senderId === me?.id && (
+              <ActionButton
+                icon="create-outline"
+                label={t('Edit')}
+                palette={palette}
+                onPress={() => actionTarget && beginEdit(actionTarget)}
+              />
+            )}
+            {actionTarget && !actionTarget.blocked && actionTarget.content.trim().length > 0 && (
               <>
                 <ActionButton
-                  icon="flag-outline"
-                  label={t('Report')}
+                  icon="copy-outline"
+                  label={t('Copy text')}
                   palette={palette}
-                  onPress={() => actionTarget && reportMenu(actionTarget)}
+                  onPress={() => void copyMessageText(actionTarget)}
                 />
                 <ActionButton
-                  icon="person-remove-outline"
-                  label={t('Block')}
+                  icon="text-outline"
+                  label={t('Select text')}
                   palette={palette}
-                  destructive
-                  onPress={() =>
-                    actionTarget &&
-                    Alert.alert(t('Block this user?'), t('DMs and notifications with this person will also be stopped.'), [
-                      { text: t('Cancel'), style: 'cancel' },
-                      {
-                        text: t('Block'),
-                        style: 'destructive',
-                        onPress: () => void blockUser(actionTarget),
-                      },
-                    ])
-                  }
+                  onPress={() => beginSelectText(actionTarget)}
                 />
               </>
             )}
-            <ActionButton
-              icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
-              label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
-              palette={palette}
-              onPress={() => actionTarget && handleBookmark(actionTarget)}
-            />
             <ActionButton
               icon="checkbox-outline"
               label={t('Make a task')}
               palette={palette}
               onPress={() => actionTarget && void makeTask(actionTarget)}
+            />
+            <ActionButton
+              icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
+              label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
+              palette={palette}
+              onPress={() => actionTarget && handleBookmark(actionTarget)}
             />
             <ActionButton
               icon="happy-outline"
@@ -1820,25 +1855,35 @@ export default function ChatThreadScreen() {
                   }}
                 />
               )}
-            {actionTarget?.senderId === me?.id && (
-              <>
-                <ActionButton
-                  icon="create-outline"
-                  label={t('Edit')}
-                  palette={palette}
-                  onPress={() => actionTarget && beginEdit(actionTarget)}
-                />
-                <ActionButton
-                  icon="trash-outline"
-                  label={t('Delete')}
-                  palette={palette}
-                  destructive
-                  onPress={() => actionTarget && confirmDelete(actionTarget)}
-                />
-              </>
+            {actionTarget?.senderId === me?.id ? (
+              <ActionButton
+                icon="trash-outline"
+                label={t('Delete')}
+                palette={palette}
+                destructive
+                onPress={() => actionTarget && confirmDelete(actionTarget)}
+              />
+            ) : (
+              <ActionButton
+                icon="flag-outline"
+                label={t('Report')}
+                palette={palette}
+                destructive
+                onPress={() => actionTarget && reportMenu(actionTarget)}
+              />
             )}
           </View>
         </Modal>
+
+        <TextSelectSheet text={selectableText} palette={palette} onClose={() => setSelectableText(null)} />
+
+        {copiedNotice && (
+          <View pointerEvents="none" style={styles.copiedNoticeWrap}>
+            <View style={[styles.copiedNotice, { backgroundColor: palette.text }]}>
+              <Text style={[styles.copiedNoticeLabel, { color: palette.bg }]}>{t('Copied the message')}</Text>
+            </View>
+          </View>
+        )}
 
         <MoveToThreadSheet
           message={moveTarget}
@@ -2234,6 +2279,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingHorizontal: 12,
   },
+  copiedNoticeWrap: { position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' },
+  copiedNotice: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
+  copiedNoticeLabel: { fontSize: 13, fontWeight: '600' },
   sheetGrip: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 6 },
   actionButton: {
     minHeight: 48,
