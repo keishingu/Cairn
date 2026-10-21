@@ -14,6 +14,7 @@ const MESSAGES: Record<string, string> = {
   invalid_option: 'This action is no longer available.',
   message_not_found: 'This action is no longer available.',
   channel_archived: 'Apps cannot be used in an archived channel.',
+  user_not_found: 'You can no longer use this workspace.',
   card_changed: 'This card was updated. Check it and try again.',
 }
 

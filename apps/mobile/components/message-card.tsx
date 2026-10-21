@@ -79,7 +79,10 @@ export function MessageCard({
     setBusy(false)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
+  const generation = React.useRef(0)
   React.useEffect(() => {
+    generation.current += 1
     stopWaiting()
     // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
     setActionError(null)
@@ -88,12 +91,15 @@ export function MessageCard({
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
     return async (action: CardAction, options?: { link?: boolean }) => {
+      const startedAt = generation.current
+      const superseded = () => generation.current !== startedAt
       if (options?.link) {
         setActionError(null)
         try {
           await onAction(action)
           return true
         } catch (err) {
+          if (superseded()) return true
           const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
           setActionError(t(cardActionErrorMessage(code)))
           return false
@@ -104,11 +110,14 @@ export function MessageCard({
       try {
         await onAction(action)
       } catch (err) {
+        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない
+        if (superseded()) return true
         const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
         setActionError(t(cardActionErrorMessage(code)))
         stopWaiting()
         return false
       }
+      if (superseded()) return true
       // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
       // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
       if (waitTimer.current) clearTimeout(waitTimer.current)
