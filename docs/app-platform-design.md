@@ -176,7 +176,7 @@ message_blocks {
 | `rich_text`, `multi_*_select`, `users_select`, `datepicker`, `checkboxes`, `radio_buttons`, `overflow`, `video`, `file` | × | 後続。日程調整（調整さん相当）で `datepicker` / `checkboxes` が要るなら次の拡張候補 |
 
 - 上限は Slack に合わせる（メッセージ50ブロック・モーダル100ブロック、テキスト3000文字、`action_id` 255文字、`value` 2000文字）
-- **mrkdwn は Cairn の Markdown とは別物**として扱う（`*太字*`・`_斜体_`・`~取り消し~`・`` `code` ``・`<url|表示>`・`<@userId>`・改行）。共通のパーサーでトークン列にし、各プラットフォームはトークン列を描くだけにする
+- **mrkdwn は Cairn の Markdown とは別物**として扱う（`*太字*`・`_斜体_`・`~取り消し~`・`` `code` ``・`<url|表示>`・`<@userId>`・改行）。共通のパーサーでトークン列にし、各プラットフォームはトークン列を描くだけにする。書式記号の前後が単語の続きかは ASCII の英数字だけで判定する（Slack と同じく `snake_case` や `2*3*4` は崩さず、日本語の `これは*太字*です` は太字にする）
 - `<@userId>` のメンションは Cairn の canonical 形式（`lib/chat/mentions.ts`）と同じ記法なので、そのまま解決して表示する。ID 体系の Slack 対応は §9
 
 ### 4.3 描画方針（Web とネイティブ）
@@ -188,14 +188,14 @@ packages/shared/src/blocks/
   schema.ts        Zod スキーマ（サブセットの定義そのもの。サーバーの受理判定にも使う）
   mrkdwn.ts        mrkdwn → トークン列
   normalize.ts     blocks → 描画用の中間表現（上限の切り詰め、未対応要素の判定、URL 検証）
-  fixtures/        代表的なカードの JSON（投票カード、全要素入り、未対応要素入り…）
+  fixtures.ts      代表的なカード（投票カード、全要素入り、未対応要素入り…）。`@cairn/shared/blocks/fixtures` から読み、本体の bundle には含めない
 
 apps/web/src/components/app/blocks/      DOM で描く（Tailwind / 既存の UI 部品）
 apps/mobile/components/blocks/           React Native で描く
 ```
 
 - 検証・mrkdwn・正規化・未対応判定は `packages/shared` に1つだけ置き、両プラットフォームで同じ結果になるようにする。各プラットフォームに残るのは中間表現 → 部品の写像だけ
-- `fixtures/` を Web とネイティブ双方のテストで読み、「全 fixture を例外なく描ける」「未対応要素は代替表示になる」を両方で確かめる。サブセットに要素を足すときは fixture を足し、片方の描画漏れをテストで落とす
+- `fixtures.ts` を Web とネイティブ双方のテストで読み、「全 fixture を例外なく描ける」「未対応要素は代替表示になる」を両方で確かめる。サブセットに要素を足すときは fixture を足し、片方の描画漏れをテストで落とす
 - ネイティブのカード描画は**純 JS（既存依存の範囲）で書き、ネイティブモジュールを足さない**。これで `runtimeVersion` を上げずに EAS Update で配信できる。select は既存の ActionSheet / モーダル部品、画像は既存の画像表示部品を使う
 - ネイティブで WebView にカードを描かせる案は採らない。メッセージリスト内の WebView は高さ計測・スクロール性能・タップの受け渡しが悪く、カードが多いチャンネルで破綻するため
 - モーダルは Web ではダイアログ、ネイティブではシート（チャットはネイティブ実装なので WebView に逃がさない）
