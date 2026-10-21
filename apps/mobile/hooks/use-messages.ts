@@ -33,6 +33,10 @@ export interface MessageDto {
   bookmarked: boolean
   linkedTasks: { id: string; title: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }[]
   blocked?: boolean
+  /** messageType が blocks のときのカード本体（サーバーがボタンの value を落としたもの）。それ以外は null */
+  blocks?: unknown[] | null
+  /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
+  senderApp?: { name: string; iconUrl: string | null; uninstalled: boolean } | null
 }
 
 // サーバーが read 時に `<@id|表示名>` へ解決済みのため最新名を表示できる。

@@ -44,6 +44,7 @@ import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
+import { MessageCard } from '../../../components/message-card'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -190,6 +191,7 @@ function AttachmentChip({
 function ChatMessageRow({
   message,
   palette,
+  mentionNames,
   accessToken,
   onToggleReaction,
   onAddReaction,
@@ -202,6 +204,8 @@ function ChatMessageRow({
 }: {
   message: MessageDto
   palette: Palette
+  /** userId → 現在の表示名。カードの mrkdwn のメンション（`<@id>`、名前なし）を解決する */
+  mentionNames: Map<string, string>
   accessToken?: string
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
@@ -244,12 +248,18 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+      <UserAvatar name={message.senderName} url={message.senderApp ? message.senderApp.iconUrl : message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
           <View style={styles.messageMeta}>
             <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {message.senderApp && (
+              <Text style={[styles.projectRole, { backgroundColor: palette.card2, color: palette.text3 }]}>
+                {message.senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </Text>
+            )}
             {projectRoleLabelText && (
               <Text
                 style={[
@@ -307,6 +317,14 @@ function ChatMessageRow({
 
           {message.blocked ? (
             <Text style={[styles.messageText, { color: palette.text3 }]}>{t('Message from a blocked user (long-press the menu to show it)')}</Text>
+          ) : message.messageType === 'blocks' ? (
+            <MessageCard
+              blocks={message.blocks}
+              fallbackText={message.content}
+              palette={palette}
+              mentionNames={mentionNames}
+              onLinkPress={onLinkPress}
+            />
           ) : (
             message.content.length > 0 && (
               <MobileMarkdown
@@ -564,6 +582,11 @@ export default function ChatThreadScreen() {
           ? t('Open to everyone')
           : undefined
   const workspaceMembers = useWorkspaceMembers()
+  // userId → 現在の表示名。本文のメンションはサーバーが名前を埋めて返すが、カードの mrkdwn は名前なしの `<@id>` のため
+  const mentionNames = React.useMemo(
+    () => new Map((workspaceMembers.data ?? []).map((member) => [member.userId, member.displayName])),
+    [workspaceMembers.data],
+  )
   // 公開チャンネルでも、ゲストを候補に出してよいかの判定に channel_members が要る
   const channelMembers = useChannelMembers(
     channelId ?? null,
@@ -1388,6 +1411,7 @@ export default function ChatThreadScreen() {
                   <ChatMessageRow
                     message={item.message}
                     palette={palette}
+                    mentionNames={mentionNames}
                     onToggleReaction={handleToggleReaction}
                     onAddReaction={setReactionTarget}
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
@@ -1756,7 +1780,8 @@ export default function ChatThreadScreen() {
                   palette={palette}
                   onPress={() => actionTarget && reportMenu(actionTarget)}
                 />
-                <ActionButton
+                {/* アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す） */}
+                {!actionTarget?.senderApp && <ActionButton
                   icon="person-remove-outline"
                   label={t('Block')}
                   palette={palette}
@@ -1772,7 +1797,7 @@ export default function ChatThreadScreen() {
                       },
                     ])
                   }
-                />
+                />}
               </>
             )}
             <ActionButton
