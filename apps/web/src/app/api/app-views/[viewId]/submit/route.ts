@@ -90,7 +90,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       db
         .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
-        .leftJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
+        // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら行が無くなり、下で断る
+        .innerJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
         .limit(1),
     ])

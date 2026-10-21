@@ -35,6 +35,8 @@ export interface MessageDto {
   blocked?: boolean
   /** messageType が blocks のときのカード本体（サーバーがボタンの value を落としたもの）。それ以外は null */
   blocks?: unknown[] | null
+  /** カードの版（サーバーが計算したもの）。押下時に送り返す */
+  blocksRevision?: string | null
   /** カード内のメンションの userId → 表示名（非活性のメンバーも含む、サーバーで解決したもの）。blocks のメッセージだけ */
   mentionNames?: Record<string, string>
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */

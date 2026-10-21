@@ -10,7 +10,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import { canAccessChannel } from '@/lib/permissions'
 import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
-import { blocksForClient } from '@/lib/apps/blocks-for-client'
+import { blocksForClient, cardRevision } from '@/lib/apps/blocks-for-client'
 import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
@@ -441,6 +441,7 @@ export async function getMessages({
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
       blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
+      blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocks, row.id) : null,
       ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
       // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
       senderApp: row.appName
