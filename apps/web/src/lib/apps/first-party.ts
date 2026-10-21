@@ -206,7 +206,7 @@ export async function ensureFirstPartyInstallations(workspaceId: string): Promis
 export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId: string): Promise<string> {
   await ensureFirstPartyInstallations(workspaceId)
   const { db, apps, appInstallations, appBotTokens } = await import('@cairn/db')
-  const { and, desc, eq, isNull, isNotNull } = await import('drizzle-orm')
+  const { and, desc, eq, inArray, isNull, isNotNull, sql } = await import('drizzle-orm')
   const rows = await db
     .select({ installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted })
     .from(appBotTokens)
@@ -226,21 +226,48 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
   const installationId = rows[0]?.installationId
   if (!installationId) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
   // 復号できないのは「このデプロイの鍵では読めない」だけで、別の鍵のデプロイ（DB を共有する Preview など）が使っているかもしれない。
-  // 取り消さずに、今の鍵で読める有効なトークンを探し、無ければ今の鍵で読めるものを足す
+  // すぐには取り消さず、今の鍵で読める有効なトークンを探し、無ければ今の鍵で読めるものを足す
+  const readable = firstReadableToken(rows)
+  if (readable) return readable
+
+  return db.transaction(async (tx) => {
+    // 同時に足さないよう、インストールごとに直列化してから読み直す
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`first-party-bot-token:${installationId}`}))`)
+    const again = await tx
+      .select({ tokenEncrypted: appBotTokens.tokenEncrypted, createdAt: appBotTokens.createdAt, id: appBotTokens.id })
+      .from(appBotTokens)
+      .where(and(eq(appBotTokens.installationId, installationId), isNull(appBotTokens.revokedAt), isNotNull(appBotTokens.tokenEncrypted)))
+      .orderBy(desc(appBotTokens.createdAt))
+    const readableNow = firstReadableToken(again)
+    if (readableNow) return readableNow
+
+    console.warn(`[first-party] no bot token for ${slug} is readable with the current key; issuing one`)
+    const token = createBotToken()
+    await tx.insert(appBotTokens).values({
+      installationId,
+      tokenHash: token.hash,
+      tokenPrefix: token.prefix,
+      tokenEncrypted: encryptToken(token.token),
+    })
+    // 退役した鍵のトークンを有効なまま残し続けない。どのデプロイも読めなくなってから十分経ったもの（猶予を過ぎたもの）は取り消す。
+    // 猶予の間は、古い鍵で動いている別のデプロイがまだ使えるようにしておく
+    const staleIds = again.filter((row) => row.createdAt.getTime() < Date.now() - UNREADABLE_TOKEN_GRACE_MS).map((row) => row.id)
+    if (staleIds.length > 0) await tx.update(appBotTokens).set({ revokedAt: new Date() }).where(inArray(appBotTokens.id, staleIds))
+    return token.token
+  })
+}
+
+/** 古い鍵で暗号化されたトークンを取り消すまでの猶予。鍵を入れ替えた後も古い鍵の Preview がしばらく動けるようにする */
+const UNREADABLE_TOKEN_GRACE_MS = 7 * 24 * 60 * 60 * 1000
+
+function firstReadableToken(rows: Array<{ tokenEncrypted: string | null }>): string | null {
   for (const row of rows) {
+    if (!row.tokenEncrypted) continue
     try {
-      return decryptToken(row.tokenEncrypted!)
+      return decryptToken(row.tokenEncrypted)
     } catch {
       // 別の鍵で暗号化されたトークン。次を試す
     }
   }
-  console.warn(`[first-party] no bot token for ${slug} is readable with the current key; issuing one`)
-  const token = createBotToken()
-  await db.insert(appBotTokens).values({
-    installationId,
-    tokenHash: token.hash,
-    tokenPrefix: token.prefix,
-    tokenEncrypted: encryptToken(token.token),
-  })
-  return token.token
+  return null
 }
