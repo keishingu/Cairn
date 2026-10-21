@@ -732,15 +732,13 @@ describe('モバイル設定のセクション', () => {
 })
 
 describe('AIエージェントのモデル選択', () => {
-  function renderAiSection(wsRole: 'owner' | 'member', options?: { settingsError?: boolean }) {
+  function renderAiSection(wsRole: 'owner' | 'member') {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
       if (input === '/api/me' && !init) {
         return new Response(JSON.stringify({ id: USER_ID, wsRole }))
       }
       if (input === '/api/workspaces/settings' && !init) {
-        return options?.settingsError
-          ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
-          : new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
       }
       if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
         return new Response(JSON.stringify({ aiChatModel: 'claude-sonnet-5-5' }))
@@ -787,11 +785,214 @@ describe('AIエージェントのモデル選択', () => {
     await waitFor(() => expect(gpt).toHaveAttribute('aria-checked', 'true'))
     expect(screen.getByRole('radio', { name: /Claude Opus 5\.5/ })).toBeDisabled()
   })
+})
 
-  it('設定の取得に失敗したときは、読み込み中と区別できるようエラーを表示する', async () => {
-    renderAiSection('owner', { settingsError: true })
+describe('AIエージェントのシステムプロンプト', () => {
+  function renderAiSection(wsRole: 'owner' | 'member', patchResponse?: Response) {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      }
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        return patchResponse ?? new Response(JSON.stringify({
+          aiChatModel: body.aiChatModel ?? 'gpt-5',
+          aiChatSystemPrompt: 'aiChatSystemPrompt' in body ? (body.aiChatSystemPrompt.trim() || null) : '敬体で答える',
+        }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
 
-    expect(await screen.findByText(/AI モデルの設定を読み込めませんでした|Could not load the AI model setting/)).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /GPT-5/ })).toHaveAttribute('aria-checked', 'false')
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('保存済みのプロンプトを表示し、owner が編集して保存できる', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    const save = screen.getByRole('button', { name: '保存' })
+    expect(save).toBeDisabled()
+
+    fireEvent.change(textarea, { target: { value: 'タスクはチケットと呼ぶ' } })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatSystemPrompt: 'タスクはチケットと呼ぶ' }) }),
+      ),
+    )
+    expect(await screen.findByRole('button', { name: '保存済み' })).toBeInTheDocument()
+  })
+
+  it('保存前にモデルを変えても、編集中のプロンプトを消さない', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '未保存の編集' } })
+    const opus = screen.getByRole('radio', { name: /Claude Opus 5\.5/ })
+    await waitFor(() => expect(opus).toBeEnabled())
+    fireEvent.click(opus)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatModel: 'claude-opus-5-5' }) }),
+      ),
+    )
+    await waitFor(() => expect(opus).toHaveAttribute('aria-checked', 'true'))
+    expect(textarea).toHaveValue('未保存の編集')
+  })
+
+  it('保存後はサーバーが整形した値を表示し、空白だけなら空欄に戻す', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    const save = screen.getByRole('button', { name: '保存' })
+
+    fireEvent.change(textarea, { target: { value: '  前後に空白  ' } })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+    await waitFor(() => expect(textarea).toHaveValue('前後に空白'))
+
+    fireEvent.change(textarea, { target: { value: '   ' } })
+    fireEvent.click(await screen.findByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(textarea).toHaveValue(''))
+  })
+
+  it('入力欄は共通のフォーム部品として、フォーカス表示を消さない', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    expect(textarea).toHaveClass('form-control')
+    expect(textarea.style.outline).toBe('')
+  })
+
+  it('プロンプト保存後のモデル変更の応答が古いプロンプトを含んでいても、保存した内容を表示し続ける', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '新しいプロンプト' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('button', { name: '保存済み' })
+
+    // モデルだけの PATCH の応答は、テストのモックでは古いプロンプト（敬体で答える）を返す
+    const opus = screen.getByRole('radio', { name: /Claude Opus 5\.5/ })
+    fireEvent.click(opus)
+    await waitFor(() => expect(opus).toHaveAttribute('aria-checked', 'true'))
+
+    expect(textarea).toHaveValue('新しいプロンプト')
+  })
+
+  it('設定の読み込みに失敗したらエラーを表示し、再試行できる', async () => {
+    let failing = true
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole: 'owner' }))
+      if (input === '/api/workspaces/settings' && !init) {
+        return failing
+          ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
+          : new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText(/AIエージェントの設定を読み込めませんでした。/)).toBeInTheDocument()
+    failing = false
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'システムプロンプト' })).toHaveValue('敬体で答える'))
+    expect(screen.queryByText(/AIエージェントの設定を読み込めませんでした。/)).not.toBeInTheDocument()
+  })
+
+  it('保存中や保存直後に書き足した内容は「保存済み」と表示せず、下書きとして残す', async () => {
+    let resolvePatch: (response: Response) => void = () => {}
+    renderAiSection('owner')
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole: 'owner' }))
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        return new Promise<Response>((resolve) => { resolvePatch = resolve })
+      }
+      if (input === '/api/workspaces/settings') {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '送信した内容' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith('/api/workspaces/settings', expect.objectContaining({ method: 'PATCH' })))
+
+    fireEvent.change(textarea, { target: { value: '送信した内容と書き足し' } })
+    resolvePatch(new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '送信した内容' })))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeEnabled())
+    expect(textarea).toHaveValue('送信した内容と書き足し')
+    expect(screen.queryByRole('button', { name: '保存済み' })).not.toBeInTheDocument()
+  })
+
+  it('保存直後に編集したら「保存済み」の表示を消す', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '保存する内容' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('button', { name: '保存済み' })
+
+    fireEvent.change(textarea, { target: { value: '保存する内容と追記' } })
+
+    expect(screen.queryByRole('button', { name: '保存済み' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  })
+
+  it('owner 以外は読み取り専用で、保存できない', async () => {
+    renderAiSection('member')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    expect(textarea).toHaveAttribute('readonly')
+    expect(screen.getByText(/編集できるのはワークスペースのオーナーだけです。/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('保存に失敗したらエラーを表示する', async () => {
+    renderAiSection('owner', new Response(JSON.stringify({ error: 'failed' }), { status: 500 }))
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '変更' } })
+    const save = screen.getByRole('button', { name: '保存' })
+    await waitFor(() => expect(save).toBeEnabled())
+    fireEvent.click(save)
+
+    expect(await screen.findByText('Failed to update workspace settings')).toBeInTheDocument()
   })
 })

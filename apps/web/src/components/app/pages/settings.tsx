@@ -33,6 +33,7 @@ import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
   AI_CHAT_MODELS,
+  AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
@@ -1336,7 +1337,7 @@ const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
 
 const SettingsAI = () => {
   const t = useT()
-  const { data: wsSettings, error: wsSettingsError } = useWorkspaceSettings()
+  const { data: wsSettings, isError: loadFailed, refetch, isFetching } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
   const { isOwner } = useWorkspacePermissions()
   const readOnly = !isOwner
@@ -1351,6 +1352,22 @@ const SettingsAI = () => {
     <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
       {t('Configure the AI assistant that stays with each project.')}
     </p>
+
+    {/* 読み込み失敗を「読み込み中」と区別できるよう、モデル欄・システムプロンプト欄の上に出す */}
+    {loadFailed && (
+      <InlineError variant="box" style={{ marginBottom: 16 }}>
+        {t('Could not load the AI agent settings.')}{' '}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          style={{ height: 26, padding: '0 10px', fontSize: 12, marginLeft: 4 }}
+        >
+          {t('Retry')}
+        </button>
+      </InlineError>
+    )}
 
     <section style={{ marginBottom: 24 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
@@ -1415,17 +1432,125 @@ const SettingsAI = () => {
           )
         })}
       </div>
-      {/* 取得失敗を読み込み中や権限不足と見分けられるよう、選択欄が無効な理由をエラーとして示す */}
-      {wsSettingsError && (
-        <InlineError style={{ marginTop: 8 }}>
-          {t('Could not load the AI model setting.')} {(wsSettingsError as Error).message}
-        </InlineError>
-      )}
       {updateSettings.isError && (
         <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
       )}
     </section>
+
+    <AiChatSystemPromptSection />
   </div>
+  )
+}
+
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiChatSystemPromptSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  const loaded = wsSettings !== undefined
+  const saved = wsSettings?.aiChatSystemPrompt ?? ''
+  const [draft, setDraft] = React.useState('')
+  const [justSaved, setJustSaved] = React.useState(false)
+  // 直前に下書きへ反映した保存済みの値。モデル変更などで設定オブジェクトが差し替わっても、
+  // 保存済みのプロンプト自体が変わったときだけ、未編集の下書きを追従させる。
+  const syncedSavedRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (!loaded) return
+    const previous = syncedSavedRef.current
+    syncedSavedRef.current = saved
+    setDraft((current) => (previous === null || current === previous ? saved : current))
+  }, [loaded, saved])
+
+  const unchanged = draft === saved
+  // 保存の応答を待つ間に書き足されたかを、await 後に最新の下書きで判定する。
+  const draftRef = React.useRef(draft)
+  draftRef.current = draft
+
+  const handleSave = async () => {
+    const submitted = draft
+    let updated: Awaited<ReturnType<typeof updateSettings.mutateAsync>>
+    try {
+      updated = await updateSettings.mutateAsync({ aiChatSystemPrompt: submitted })
+    } catch {
+      // エラーはミューテーションの状態として下に表示する
+      return
+    }
+    // サーバーは前後の空白を除き、空白だけなら null にする。保存後に編集していなければ、
+    // 実際に保存された値を表示し、保存されていない空白を残したまま「保存済み」に見せない。
+    // 保存中に書き足した下書きは保存されていないので、残したまま「保存済み」も出さない。
+    if (draftRef.current !== submitted) return
+    setDraft(updated.aiChatSystemPrompt ?? '')
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 2000)
+  }
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.')}
+      </p>
+      <div className="card" style={{ padding: 14 }}>
+        <textarea
+          aria-label={t('System prompt')}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
+            setJustSaved(false)
+          }}
+          readOnly={readOnly}
+          disabled={wsSettings === undefined}
+          maxLength={AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH}
+          rows={10}
+          placeholder={readOnly ? undefined : t('e.g. Call tasks "tickets". Answer in polite Japanese and end with one suggested next action.')}
+          title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+          className="form-control"
+          style={{
+            width: '100%',
+            height: 'auto',
+            boxSizing: 'border-box',
+            padding: '8px 10px',
+            lineHeight: 1.6,
+            fontFamily: "'SF Mono', ui-monospace, monospace",
+            resize: 'vertical',
+            ...(readOnly ? { cursor: 'not-allowed' } : {}),
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            {t('{count} / {max} characters', { count: draft.length, max: AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH })}
+          </span>
+          {readOnly && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              · {t('Only the workspace owner can edit this.')}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={updateSettings.isPending || unchanged || readOnly || wsSettings === undefined}
+            title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+            className="btn btn-primary"
+            style={{
+              marginLeft: 'auto',
+              height: 32,
+              padding: '0 14px',
+              fontSize: 12.5,
+              ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+            }}
+          >
+            {justSaved ? t('Saved') : updateSettings.isPending ? t('Saving...') : t('Save')}
+          </button>
+        </div>
+        {updateSettings.isError && (
+          <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+        )}
+      </div>
+    </section>
   )
 }
 
