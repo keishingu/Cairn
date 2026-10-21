@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess } from '@/lib/permissions'
+import { requireChannelAccess, requireRole } from '@/lib/permissions'
 import { ensureFirstPartyInstallations } from '@/lib/apps/first-party'
 import { isAppInChannel, isChannelArchived, parseEntryPoints, type EntryPoint } from '@/lib/apps/channel-apps'
 
@@ -55,8 +55,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
           entryPoints: row.entryPoints,
         })),
     )
-    // ゲストは Bot をチャンネルへ追加できない（POST /apps が拒む）。成功しない起動口は Web・ネイティブとも出さない
-    const visible = ctx.role === 'guest' ? result.filter((app) => app.inChannel) : result
+    // Bot をチャンネルへ追加できない人（POST /apps と同じ requireRole の判定）には、追加が要る起動口を Web・ネイティブとも出さない
+    const canAddApps = requireRole(ctx.role, 'member') === null
+    const visible = canAddApps ? result : result.filter((app) => app.inChannel)
     return NextResponse.json(visible satisfies AppEntryPointDto[])
   } catch (err) {
     console.error('[/api/channels/[channelId]/app-entry-points GET] failed:', err)
