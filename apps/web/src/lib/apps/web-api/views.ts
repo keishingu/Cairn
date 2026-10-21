@@ -73,7 +73,7 @@ export async function viewsUpdate(bot: BotContext, args: WebApiArgs): Promise<We
   const expectedHash = stringArg(args, 'hash')
   const [row] = await db
     .update(appViews)
-    .set({ view: prepared.value, hash: newViewHash(), schemaVersion: BLOCKS_SCHEMA_VERSION, updatedAt: sql`clock_timestamp()` })
+    .set({ view: prepared.value, hash: newViewHash(), schemaVersion: BLOCKS_SCHEMA_VERSION, submissionInteractionId: null, updatedAt: sql`clock_timestamp()` })
     .where(
       and(
         eq(appViews.id, viewId),

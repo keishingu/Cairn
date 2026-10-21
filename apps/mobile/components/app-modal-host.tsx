@@ -83,6 +83,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
   const [submitting, setSubmitting] = React.useState(false)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: APP_VIEWS_QUERY_KEY })
+  const removeFromCache = () => queryClient.setQueryData<AppViewDto[]>(APP_VIEWS_QUERY_KEY, (views) => views?.filter((view) => view.id !== dto.id))
   const close = async () => {
     // 送信中に閉じると、アプリの応答（入力エラー・差し替え）を受ける前にモーダルが閉じて入力も応答も失われる。
     // キャンセルボタンだけでなく Esc・背景のクリック・戻る操作もここを通るので、ここで止める
@@ -99,6 +100,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
       setFormError(t('Could not close the form. Please try again.'))
       return
     }
+    removeFromCache()
     await refresh()
   }
   const submit = async () => {
@@ -108,7 +110,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
     setFieldErrors({})
     try {
       const res = await apiFetch(`/api/app-views/${dto.id}/submit`, { method: 'POST', body: JSON.stringify({ hash: dto.hash, values }) })
-      const body = (await res.json().catch(() => null)) as { errors?: Record<string, FieldError>; error?: string } | null
+      const body = (await res.json().catch(() => null)) as { status?: string; errors?: Record<string, FieldError>; error?: string } | null
       if (res.status === 422 && body?.errors) {
         setFieldErrors(body.errors)
         return
@@ -124,6 +126,8 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
         setFormError(message)
         return
       }
+      // 閉じたモーダルは取り直しの成否を待たずに一覧から外す（取り直しに失敗しても、閉じたフォームを出し続けない）
+      if (body?.status === 'closed') removeFromCache()
       await refresh()
     } catch {
       setFormError(t(cardActionErrorMessage(null)))

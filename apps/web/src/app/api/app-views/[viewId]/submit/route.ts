@@ -68,7 +68,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     // 届ける前に、この版のモーダルの送信を1つだけ確保する。同時に押された2つ目は届けない
     const [claimed] = await db
       .update(appViews)
-      .set({ submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})` })
+      .set({
+        submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})`,
+        // 同じ版の送り直しには前回と同じ interaction_id を使う。届いたか分からない（時間切れ・届けた後の DB の失敗）まま
+        // 送り直されても、アプリが interaction_id で重複を除ける。アプリが応答して版が進んだら（errors・update）消す
+        submissionInteractionId: sql`coalesce(${appViews.submissionInteractionId}, ${newInteractionId()}::uuid)`,
+      })
       .where(
         and(
           eq(appViews.id, viewId),
@@ -77,7 +82,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
           or(isNull(appViews.submittingUntil), lt(appViews.submittingUntil, sql`now()`)),
         ),
       )
-      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
+      .returning({ lease: sql<string>`${appViews.submittingUntil}::text`, interactionId: appViews.submissionInteractionId })
     if (!claimed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
     // 確保の値そのものを自分の確保の印にする（別の送信が取り直すと値が変わる）
     let lease = claimed.lease
@@ -95,7 +100,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
     }
 
-    const interactionId = newInteractionId()
+    const interactionId = claimed.interactionId ?? newInteractionId()
     // trigger_id は発行から6秒。発行の後は届ける直前の確認（UPDATE 1回）だけを挟む
     // 発行に失敗したら、届けていないのに確保が45秒残って送り直せなくならないよう、確保を外してから失敗を返す
     const triggerId = await issueTrigger({ installationId: view.installationId, userId: ctx.userId, channelId: view.channelId }).catch(async (err: unknown) => {
@@ -176,7 +181,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
     }
     if (response.action === 'errors') {
-      await release()
+      // アプリは受け取って入力の誤りを返した。直した送信は別の操作なので、次は新しい interaction_id にする
+      await db.update(appViews).set({ submittingUntil: null, submissionInteractionId: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
       const errors = displayableErrors(view.view, response.errors)
       if (!errors) {
         console.warn('[/api/app-views submit] app returned errors for no input of this view:', Object.keys(response.errors))
@@ -200,6 +206,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
           hash: `${Date.now()}.${interactionId.slice(0, 8)}`,
           schemaVersion: BLOCKS_SCHEMA_VERSION,
           submittingUntil: null,
+          submissionInteractionId: null,
           updatedAt: sql`clock_timestamp()`,
         })
         .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
@@ -221,7 +228,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const markSubmitted = () =>
       db
         .update(appViews)
-        .set({ status: 'submitted', submittingUntil: null })
+        .set({ status: 'submitted', submittingUntil: null, updatedAt: sql`now()` })
         .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
         .returning({ id: appViews.id })
     let submitted: { id: string } | undefined

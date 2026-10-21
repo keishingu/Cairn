@@ -63,6 +63,7 @@ BEGIN
   	"hash" text NOT NULL,
   	"status" text DEFAULT 'open' NOT NULL,
   	"submitting_until" timestamp with time zone,
+  	"submission_interaction_id" uuid,
   	"schema_version" integer NOT NULL,
   	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
   	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,

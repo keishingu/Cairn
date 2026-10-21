@@ -118,8 +118,9 @@ const textObject = (max: number) => z.discriminatedUnion('type', [plainText(max)
 const RESERVED_IDS = new Set(['__proto__', ...Object.getOwnPropertyNames(Object.prototype)])
 const notReservedId = (id: string) => !RESERVED_IDS.has(id)
 const reservedIdMessage = 'この ID は使えません（__proto__ や constructor などオブジェクトの組み込みの名前）'
-const blockId = z.string().min(1).max(BLOCK_LIMITS.blockId).refine(notReservedId, reservedIdMessage)
-const actionId = z.string().min(1).max(BLOCK_LIMITS.actionId).refine(notReservedId, reservedIdMessage)
+// 断るのは新しく受理するときだけ（prepare*）。描画（normalize）は同じスキーマで保存済みの値も読むので、ここでは拒まない
+const blockId = z.string().min(1).max(BLOCK_LIMITS.blockId)
+const actionId = z.string().min(1).max(BLOCK_LIMITS.actionId)
 
 const confirmSchema = z
   .object({
@@ -431,7 +432,21 @@ function prepare<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, input: unknown,
   if (!recheck.success) {
     return { ok: false, errors: recheck.error.issues.map((issue) => formatIssue(issue, pointerRoot)) }
   }
+  const reserved = reservedIdErrors(blocks, Array.isArray(value) ? pointerRoot : `${pointerRoot}/blocks`)
+  if (reserved.length > 0) return { ok: false, errors: reserved }
   return { ok: true, value: recheck.data }
+}
+
+function reservedIdErrors(blocks: BlockWithElements[], pointer: string): string[] {
+  const errors: string[] = []
+  blocks.forEach((block, blockIndex) => {
+    if (block.block_id !== undefined && !notReservedId(block.block_id)) errors.push(`[ERROR] ${reservedIdMessage} [json-pointer:${pointer}/${blockIndex}/block_id]`)
+    interactiveElements(block).forEach(([element, path]) => {
+      const id = (element as { action_id?: string }).action_id
+      if (id !== undefined && !notReservedId(id)) errors.push(`[ERROR] ${reservedIdMessage} [json-pointer:${pointer}/${blockIndex}/${path.join('/')}/action_id]`)
+    })
+  })
+  return errors
 }
 
 function assignMissingIds(blocks: BlockWithElements[]) {
