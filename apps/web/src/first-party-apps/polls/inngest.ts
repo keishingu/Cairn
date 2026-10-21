@@ -18,6 +18,17 @@ export const pollsCardSweep = inngest.createFunction(
   { id: 'polls-card-sweep', concurrency: { limit: 1 } },
   { cron: 'TZ=Asia/Tokyo */5 * * * *' },
   async ({ step }) => {
+    // 締切を過ぎた投票を締める。版を進めるので、下の拾い直しで描き直される（締めるのは投稿済みのものだけ。冪等）
+    const closed = await step.run('close-due-polls', async () => {
+      const { db, polls } = await import('@cairn/db')
+      const { and, eq, isNotNull, lte, sql } = await import('drizzle-orm')
+      const rows = await db
+        .update(polls)
+        .set({ status: 'closed', closedAt: sql`now()`, version: sql`${polls.version} + 1`, updatedAt: sql`now() - interval '1 minute'` })
+        .where(and(eq(polls.status, 'posted'), isNotNull(polls.closesAt), lte(polls.closesAt, sql`now()`)))
+        .returning({ id: polls.id })
+      return rows.map((row) => row.id)
+    })
     const pollIds = await step.run('find-stale-polls', async () => {
       const { db, polls, pollProcessedInteractions } = await import('@cairn/db')
       const { and, asc, inArray, lt, or, sql } = await import('drizzle-orm')
@@ -42,6 +53,6 @@ export const pollsCardSweep = inngest.createFunction(
     if (pollIds.length > 0) {
       await step.sendEvent('rerender', pollIds.map((pollId) => ({ name: POLL_RENDER_EVENT, data: { pollId } })))
     }
-    return { requeued: pollIds.length }
+    return { closed: closed.length, requeued: pollIds.length }
   },
 )

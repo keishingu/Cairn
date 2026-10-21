@@ -18,6 +18,8 @@ export type CreatePollInput = {
   allowMultiple: boolean
   /** 呼び出し元ごとに一意（定期ジョブは run の ID、モーダルは view の ID）。再試行は既存の投票を返す */
   idempotencyKey: string
+  /** 締切。過ぎたら定期の処理（polls-card-sweep）が締め、カードを描き直す。作成者のいない定期ジョブの投票はこれで締める */
+  closesAt?: Date | null
 }
 
 async function loadPoll(pollId: string) {
@@ -66,6 +68,7 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
         createdBy: input.createdBy,
         question: input.question,
         allowMultiple: input.allowMultiple,
+        closesAt: input.closesAt ?? null,
         idempotencyKey: input.idempotencyKey,
       })
       .onConflictDoNothing({ target: [polls.installationId, polls.idempotencyKey] })

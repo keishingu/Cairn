@@ -14,6 +14,8 @@ import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, par
 
 export const POLL_RENDER_EVENT = 'polls/card.render'
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 type BlockActionsPayload = {
   type: 'block_actions'
   team: { id: string }
@@ -21,7 +23,8 @@ type BlockActionsPayload = {
   trigger_id: string
   container: { message_ts: string; channel_id: string }
   actions: Array<{ action_id: string; value?: string }>
-  cairn?: { interaction_id?: string }
+  /** Cairn 独自の識別子。ts（message_ts）は Slack 互換の表記に変わり得るので、投票の特定には cairn.message_id を使う（§5.2） */
+  cairn?: { interaction_id?: string; message_id?: string }
 }
 
 type ViewSubmissionPayload = {
@@ -92,16 +95,17 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   const action = payload.actions[0]
   const interactionId = payload.cairn?.interaction_id
   if (!action || !interactionId) return new NextResponse('', { status: 200 })
-  // ts は Cairn のメッセージ ID（UUID）。それ以外は uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
-  if (!/^[0-9a-f-]{36}$/i.test(payload.container.message_ts)) return new NextResponse('invalid message_ts', { status: 400 })
+  const messageId = payload.cairn?.message_id
+  // UUID でなければ uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
+  if (!messageId || !UUID.test(messageId)) return new NextResponse('invalid cairn.message_id', { status: 400 })
 
   const { db, polls, pollOptions, pollVotes, pollProcessedInteractions } = await import('@cairn/db')
   const { and, eq, or, sql } = await import('drizzle-orm')
-  // カードの ts は投稿前に採番した client_msg_id。投稿直後に message_id の保存が遅れても（失敗して回復待ちでも）同じ投票に届ける
+  // カードのメッセージ ID は投稿前に採番した client_msg_id。投稿直後に message_id の保存が遅れても（失敗して回復待ちでも）同じ投票に届ける
   const [poll] = await db
     .select({ id: polls.id, createdBy: polls.createdBy })
     .from(polls)
-    .where(or(eq(polls.messageId, payload.container.message_ts), eq(polls.clientMsgId, payload.container.message_ts)))
+    .where(or(eq(polls.messageId, messageId), eq(polls.clientMsgId, messageId)))
     .limit(1)
   if (!poll) return new NextResponse('', { status: 200 })
 
@@ -113,12 +117,17 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
 
   const changed = await db.transaction(async (tx) => {
     // 投票ごとに直列化し、締切との競合や同時投票で集計がずれないようにする
-    const [locked] = await tx.select({ status: polls.status, allowMultiple: polls.allowMultiple }).from(polls).where(eq(polls.id, poll.id)).for('update')
+    const [locked] = await tx
+      .select({ status: polls.status, allowMultiple: polls.allowMultiple, pastDeadline: sql<boolean>`coalesce(${polls.closesAt} <= now(), false)` })
+      .from(polls)
+      .where(eq(polls.id, poll.id))
+      .for('update')
     if (!locked) return false
     // 応答が失われて同じ押下が再送されても二重に処理しない（§5.4）
     const processed = await tx.insert(pollProcessedInteractions).values({ interactionId, pollId: poll.id }).onConflictDoNothing().returning({ id: pollProcessedInteractions.interactionId })
     if (processed.length === 0) return false
-    if (locked.status === 'closed') return false
+    // 締切を過ぎたら、定期の処理が締める前でも票を受け付けない
+    if (locked.status === 'closed' || locked.pastDeadline) return false
 
     if (action.action_id === 'vote') {
       const optionId = action.value?.startsWith('option:') ? action.value.slice('option:'.length) : null
