@@ -147,7 +147,10 @@ const MAX_RESPONSE_BYTES = 256 * 1024
 export async function deliverToApp(input: {
   requestUrl: string
   signingSecret: string
-  payload: unknown
+  /** block_actions・view_submission は payload=<JSON> で送る */
+  payload?: unknown
+  /** スラッシュコマンドと同じく、フィールドを並べた form で送る（作成メニューからの起動。§6.1） */
+  form?: Record<string, string>
   send?: Sender
   checkUrl?: typeof checkRequestUrl
 }): Promise<DeliveryResult> {
@@ -155,8 +158,8 @@ export async function deliverToApp(input: {
   const check = await (input.checkUrl ?? checkRequestUrl)(input.requestUrl)
   if (!check.ok) return { status: 'blocked', httpStatus: null, durationMs: Date.now() - started, error: check.reason }
 
-  // Bolt が読む形。payload=<JSON> の form-urlencoded
-  const body = new URLSearchParams({ payload: JSON.stringify(input.payload) }).toString()
+  // Bolt が読む形。interactivity は payload=<JSON>、スラッシュコマンドはフィールドを並べた form-urlencoded
+  const body = new URLSearchParams(input.form ?? { payload: JSON.stringify(input.payload) }).toString()
   const timestamp = Math.floor(Date.now() / 1000)
   try {
     const response = await (input.send ?? nodeSender)({

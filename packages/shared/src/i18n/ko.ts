@@ -1302,4 +1302,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'Part of this form cannot be shown in this version, so it cannot be submitted. Reload the page to see it.': '양식의 일부를 현재 버전에서 표시할 수 없어 보낼 수 없습니다. 페이지를 새로 고치면 표시됩니다.',
   'Part of this form cannot be shown in this version, so it cannot be submitted. Update the app to see it.': '양식의 일부를 현재 버전에서 표시할 수 없어 보낼 수 없습니다. 앱을 업데이트하면 표시됩니다.',
   'Submitting...': '보내는 중…',
+  'Create a poll': '투표 만들기',
+  'Could not load apps': '앱을 불러오지 못했습니다',
+  'Add {app} to this channel?': '이 채널에 {app}을(를) 추가할까요?',
+  'The app will be able to post to this channel.': '추가하면 앱이 이 채널에 게시할 수 있게 됩니다.',
 }

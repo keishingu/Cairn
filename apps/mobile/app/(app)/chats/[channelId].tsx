@@ -45,6 +45,7 @@ import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { MessageCard, type CardAction } from '../../../components/message-card'
+import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
@@ -1558,6 +1559,7 @@ export default function ChatThreadScreen() {
                   <Ionicons name="attach-outline" size={15} color={palette.text3} />
                   <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
                 </Pressable>
+                {channelType !== 'dm' && channelId && <AppEntryActions channelId={channelId} palette={palette} onError={setSendError} />}
                 <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
                   <Pressable
                     accessibilityRole="switch"

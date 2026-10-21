@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { BLOCKS_SCHEMA_VERSION, prepareModalView } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { decryptToken } from '@/lib/token-crypto'
+import { resolveRequestUrl } from '@/lib/apps/first-party'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
@@ -76,7 +77,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       cairn: { interaction_id: interactionId, channel_id: view.channelId },
     }
 
-    const delivery = await deliverToApp({ requestUrl: view.requestUrl, signingSecret: decryptToken(view.signingSecretEncrypted), payload })
+    const delivery = await deliverToApp({ requestUrl: resolveRequestUrl(view.requestUrl), signingSecret: decryptToken(view.signingSecretEncrypted), payload })
     await db.insert(appInteractionDeliveries).values({
       installationId: view.installationId,
       userId: ctx.userId,

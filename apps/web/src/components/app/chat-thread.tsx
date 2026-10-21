@@ -7,6 +7,7 @@ import React from 'react'
 import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
+import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
 import { postCardAction } from '@/lib/apps/card-actions'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
@@ -732,7 +733,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -761,6 +762,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   mentionNames?: Map<string, string>
   onMentionInserted?: (tokenId: string, displayName: string) => void
   onCreateTextFile: () => void
+  /** アプリの起動口（投票など）。DM では渡さない */
+  appEntryButtons?: React.ReactNode
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
 }) => {
@@ -1161,6 +1164,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
+            {appEntryButtons}
             <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
@@ -1203,6 +1207,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={13}/> {t('Text file')}
           </button>
+          {appEntryButtons}
           <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
@@ -2404,6 +2409,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
+        {...(!isDm && channelId ? { appEntryButtons: <AppEntryButtons channelId={channelId} onError={setSendError} {...(compact ? { compact: true } : {})} /> } : {})}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}
