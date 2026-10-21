@@ -143,6 +143,15 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
+  it('見えない値だけの書き換えで blocks が同じでも、版が変われば待つのをやめる', async () => {
+    const onAction = vi.fn(() => Promise.resolve())
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).toBeDisabled()
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
+  })
+
   it('届かなかった選択は元の選択に戻す', async () => {
     const blocks = [{
       type: 'actions',
