@@ -623,6 +623,8 @@ export async function loadPhaseTwoChannelInput(
       and(
         eq(messages.channelId, channel.channelId),
         isNull(messages.deletedAt),
+        // アプリ（Bot）の投稿は文脈にも入れない。カードが依頼への返答のように見えて判定を変えないようにする
+        ne(profiles.kind, 'bot'),
         or(
           lt(messages.createdAt, first.createdAt),
           and(eq(messages.createdAt, first.createdAt), lt(messages.id, first.id)),
@@ -1083,6 +1085,8 @@ export async function loadPhaseTwoContinuationContext(
   const continuationWhere = and(
     eq(messages.channelId, input.channelId),
     isNull(messages.deletedAt),
+    // アプリ（Bot）の投稿は文脈にも入れない（候補・再確認と同じ）
+    ne(profiles.kind, 'bot'),
     lte(messages.createdAt, evaluatedAt),
     or(
       gt(messages.createdAt, scannedThrough),

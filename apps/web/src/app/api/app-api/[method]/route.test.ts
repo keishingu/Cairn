@@ -70,6 +70,12 @@ describe('/api/app-api/[method]', () => {
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'ratelimited' })
   })
 
+  it('1MB を超える本文は認証の前に読み切らず invalid_form_data にする（マルチバイトはバイト数で数える）', async () => {
+    const res = await call('chat.postMessage', { body: 'あ'.repeat(400_000), headers: { 'content-type': 'application/x-www-form-urlencoded' } })
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'invalid_form_data' })
+    expect(mockVerifyBotToken).not.toHaveBeenCalled()
+  })
+
   it('壊れた JSON の本文は invalid_form_data にする', async () => {
     const res = await call('chat.postMessage', { body: '{', headers: { 'content-type': 'application/json' } })
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'invalid_form_data' })
