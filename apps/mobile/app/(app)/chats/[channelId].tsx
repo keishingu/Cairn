@@ -1246,7 +1246,13 @@ export default function ChatThreadScreen() {
     ? workspaceMembers.data?.find((member) => member.userId === profileTarget.userId)
     : undefined
   const profileNotMember = !!profileTarget && !!workspaceMembers.data && !profileMember
-  const profileMembersError = workspaceMembers.error ? workspaceMembers.error.message : myBlocks.error ? myBlocks.error.message : null
+  // 取得済みの一覧が残っていれば、裏の再取得の失敗でプロフィールを隠さない（判定も同じ data を使う）
+  const profileMembersError =
+    workspaceMembers.error && !workspaceMembers.data
+      ? workspaceMembers.error.message
+      : myBlocks.error && !myBlocks.data
+        ? myBlocks.error.message
+        : null
   const profileBlockedByMe =
     profileTarget && myBlocks.data ? myBlocks.data.some((block) => block.userId === profileTarget.userId) : null
   const profileActions = profileTarget
