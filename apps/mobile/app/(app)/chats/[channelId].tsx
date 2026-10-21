@@ -217,6 +217,15 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
 }) {
   const t = useT()
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const senderName = message.senderApp?.name ?? message.senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  const cardMentionNames = React.useMemo(() => {
+    if (!message.mentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(message.mentionNames)) merged.set(id, name)
+    return merged
+  }, [message.mentionNames, mentionNames])
   const projectRoleLabelText = chatProjectRoleLabel({
     legacyRole: message.senderProjectRole,
     roleName: message.senderProjectRoleName,
@@ -248,12 +257,12 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      <UserAvatar name={message.senderName} url={message.senderApp ? message.senderApp.iconUrl : message.senderAvatarUrl} size={36} />
+      <UserAvatar name={senderName} url={message.senderApp ? message.senderApp.iconUrl : message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
           <View style={styles.messageMeta}>
-            <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
             {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
             {message.senderApp && (
               <Text style={[styles.projectRole, { backgroundColor: palette.card2, color: palette.text3 }]}>
@@ -322,7 +331,7 @@ function ChatMessageRow({
               blocks={message.blocks}
               fallbackText={message.content}
               palette={palette}
-              mentionNames={mentionNames}
+              mentionNames={cardMentionNames}
               onLinkPress={onLinkPress}
             />
           ) : (

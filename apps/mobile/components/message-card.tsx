@@ -4,11 +4,13 @@
 // ネイティブモジュールを足さず既存の react-native の部品だけで描き、runtimeVersion を上げずに EAS Update で配信できるようにする。
 
 import React from 'react'
-import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
+  mrkdwnToPlainText,
   normalizeMessageBlocks,
   parseMrkdwn,
   type RenderBlock,
+  type RenderConfirm,
   type RenderContextElement,
   type RenderElement,
   type RenderText,
@@ -141,8 +143,11 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
           accessibilityState={{ disabled }}
           disabled={disabled}
           onPress={() => {
-            if (element.url) onLinkPress(element.url)
-            else onAction?.({ type: 'button', blockId, actionId: element.actionId })
+            const url = element.url
+            confirmThen(element.confirm, () => {
+              if (url) onLinkPress(url)
+              else onAction?.({ type: 'button', blockId, actionId: element.actionId })
+            })
           }}
           style={({ pressed }) => [
             styles.button,
@@ -157,7 +162,8 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
       )
     }
     case 'static_select':
-      return <CardSelect element={element} blockId={blockId} context={context} />
+      // chat.update で初期選択が変わったら選び直した状態を捨てて新しい初期選択を表示する（key で作り直す）
+      return <CardSelect key={element.initialValue ?? ''} element={element} blockId={blockId} context={context} />
     case 'image':
       return <Image source={{ uri: element.url }} accessibilityLabel={element.alt} style={styles.accessoryImage} />
     case 'unsupported':
@@ -203,8 +209,10 @@ function CardSelect({
                   accessibilityState={{ selected: option.value === selected }}
                   onPress={() => {
                     setOpen(false)
-                    setSelected(option.value)
-                    onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value })
+                    confirmThen(element.confirm, () => {
+                      setSelected(option.value)
+                      onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value })
+                    })
                   }}
                   style={({ pressed }) => [styles.sheetOption, pressed && { backgroundColor: palette.cardHover }]}
                 >
@@ -218,6 +226,24 @@ function CardSelect({
       </Modal>
     </>
   )
+}
+
+/**
+ * アプリが confirm を指定したら、確認を挟んでから操作する（Slack と同じく確認を飛ばさない）。
+ * 確認の本文は書式を落とした文字列にする（Alert は書式を描けない）
+ */
+function confirmThen(confirm: RenderConfirm | undefined, run: () => void) {
+  if (!confirm) {
+    run()
+    return
+  }
+  const message = confirm.text.kind === 'plain'
+    ? confirm.text.text
+    : mrkdwnToPlainText(confirm.text.blocks, () => '')
+  Alert.alert(confirm.title, message, [
+    { text: confirm.deny, style: 'cancel' },
+    { text: confirm.confirm, style: confirm.style === 'danger' ? 'destructive' : 'default', onPress: run },
+  ])
 }
 
 function ContextElement({ element, context }: { element: RenderContextElement; context: CardContext }) {
