@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { pollModalFixture } from '@cairn/shared/blocks/fixtures'
-import { parseViewSubmissionResponse, validateSubmission } from './view-submission'
+import { displayableErrors, parseViewSubmissionResponse, validateSubmission } from './view-submission'
 
 const view = JSON.parse(JSON.stringify(pollModalFixture)) as unknown
 
@@ -53,5 +53,13 @@ describe('view_submission へのアプリの応答', () => {
   it('update と push は差し替えとして扱う', () => {
     expect(parseViewSubmissionResponse('{"response_action":"update","view":{"type":"modal"}}')).toEqual({ action: 'update', view: { type: 'modal' } })
     expect(parseViewSubmissionResponse('{"response_action":"push","view":{"type":"modal"}}')).toEqual({ action: 'update', view: { type: 'modal' } })
+  })
+})
+
+describe('アプリが返した errors の表示', () => {
+  it('今の view の入力欄に出せるものだけを残し、1つも出せなければ null にする', () => {
+    expect(displayableErrors(pollModalFixture, { question: { message: '長すぎます' }, unknown: { message: 'x' } })).toEqual({ question: { message: '長すぎます' } })
+    expect(displayableErrors(pollModalFixture, { unknown: { message: 'x' } })).toBeNull()
+    expect(displayableErrors(pollModalFixture, {})).toBeNull()
   })
 })

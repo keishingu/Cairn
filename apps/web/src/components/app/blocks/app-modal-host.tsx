@@ -32,7 +32,8 @@ export function AppModalHost() {
   const current = query.data?.[0]
   // 送信の前にアプリが views.update した場合、作り直したモーダルに理由を出す
   const [changedNotice, setChangedNotice] = React.useState<{ viewId: string; message: string } | null>(null)
-  if (query.isError) {
+  // 表示中のモーダルがあるときの再取得の失敗では、入力中のモーダルを消さない（取り直しは次の Realtime・フォーカスで行う）
+  if (query.isError && !current) {
     // 開いたはずのモーダルを黙って出さないままにしない
     return (
       <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>

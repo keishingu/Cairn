@@ -91,3 +91,18 @@ export function parseViewSubmissionResponse(body: string): AppViewResponse {
   if (responseAction === 'update' || responseAction === 'push') return { action: 'update', view: (parsed as { view?: unknown }).view }
   return { action: 'close' }
 }
+
+/**
+ * アプリが返した errors のうち、今の view の入力欄に出せるものだけを残す。
+ * 1つも出せなければ null（送信しても何も起きないように見えるため、呼び出し側は不正な応答として扱う）
+ */
+export function displayableErrors(view: unknown, errors: Record<string, FieldError>): Record<string, FieldError> | null {
+  const blocks = (view as { blocks?: unknown })?.blocks
+  const inputIds = new Set(
+    (Array.isArray(blocks) ? blocks : [])
+      .filter((block): block is { type: 'input'; block_id: string } => (block as { type?: unknown })?.type === 'input' && typeof (block as { block_id?: unknown }).block_id === 'string')
+      .map((block) => block.block_id),
+  )
+  const shown = Object.fromEntries(Object.entries(errors).filter(([blockId]) => inputIds.has(blockId)))
+  return Object.keys(shown).length > 0 ? shown : null
+}
