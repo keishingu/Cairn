@@ -1337,7 +1337,7 @@ const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
 
 const SettingsAI = () => {
   const t = useT()
-  const { data: wsSettings } = useWorkspaceSettings()
+  const { data: wsSettings, isError: loadFailed, refetch, isFetching } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
   const { isOwner } = useWorkspacePermissions()
   const readOnly = !isOwner
@@ -1352,6 +1352,22 @@ const SettingsAI = () => {
     <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
       {t('Configure the AI assistant that stays with each project.')}
     </p>
+
+    {/* 読み込み失敗を「読み込み中」と区別できるよう、モデル欄・システムプロンプト欄の上に出す */}
+    {loadFailed && (
+      <InlineError variant="box" style={{ marginBottom: 16 }}>
+        {t('Could not load the AI agent settings.')}{' '}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          style={{ height: 26, padding: '0 10px', fontSize: 12, marginLeft: 4 }}
+        >
+          {t('Retry')}
+        </button>
+      </InlineError>
+    )}
 
     <section style={{ marginBottom: 24 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>

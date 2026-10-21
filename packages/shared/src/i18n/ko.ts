@@ -774,6 +774,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'All projects': '전체',
   'Project scope': '표시할 프로젝트 범위',
   'Could not load your user info': '사용자 정보를 불러오지 못했습니다',
+  'Could not load the AI agent settings.': 'AI 에이전트 설정을 불러오지 못했습니다.',
   'System prompt': '시스템 프롬프트',
   'Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.': 'AGENTS.md처럼 이 워크스페이스에서 AI 어시스턴트가 항상 따르는 지시입니다. 용어, 말투, 답변 형식, 팀의 규칙 등을 적습니다. 권한이나 안전 규칙은 덮어쓸 수 없습니다. 비워 두면 기본 동작이 됩니다.',
   'e.g. Call tasks "tickets". Answer in polite Japanese and end with one suggested next action.': '예: 태스크는 "티켓"이라고 부른다. 존댓말로 답하고 마지막에 다음 액션을 하나 제안한다.',

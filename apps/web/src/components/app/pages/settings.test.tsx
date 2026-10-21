@@ -885,6 +885,51 @@ describe('AIエージェントのシステムプロンプト', () => {
     expect(textarea.style.outline).toBe('')
   })
 
+  it('プロンプト保存後のモデル変更の応答が古いプロンプトを含んでいても、保存した内容を表示し続ける', async () => {
+    renderAiSection('owner')
+
+    const textarea = await screen.findByRole('textbox', { name: 'システムプロンプト' })
+    await waitFor(() => expect(textarea).toHaveValue('敬体で答える'))
+    fireEvent.change(textarea, { target: { value: '新しいプロンプト' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('button', { name: '保存済み' })
+
+    // モデルだけの PATCH の応答は、テストのモックでは古いプロンプト（敬体で答える）を返す
+    const opus = screen.getByRole('radio', { name: /Claude Opus 5\.5/ })
+    fireEvent.click(opus)
+    await waitFor(() => expect(opus).toHaveAttribute('aria-checked', 'true'))
+
+    expect(textarea).toHaveValue('新しいプロンプト')
+  })
+
+  it('設定の読み込みに失敗したらエラーを表示し、再試行できる', async () => {
+    let failing = true
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole: 'owner' }))
+      if (input === '/api/workspaces/settings' && !init) {
+        return failing
+          ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
+          : new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText(/AIエージェントの設定を読み込めませんでした。/)).toBeInTheDocument()
+    failing = false
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'システムプロンプト' })).toHaveValue('敬体で答える'))
+    expect(screen.queryByText(/AIエージェントの設定を読み込めませんでした。/)).not.toBeInTheDocument()
+  })
+
   it('owner 以外は読み取り専用で、保存できない', async () => {
     renderAiSection('member')
 
