@@ -78,7 +78,7 @@ export function normalizeMessageBlocks(input: unknown): RenderCard {
         unsupported(TRUNCATED, `cairn-truncated-${index}`),
       )
     : []
-  markAmbiguousIds(blocks)
+  if (Array.isArray(input)) markAmbiguousIds(blocks, input)
   const hasUnsupported = !Array.isArray(input) || blocks.some(containsUnsupported)
   const nothingRenderable = !blocks.some(isRenderable)
   return { blocks, hasUnsupported, nothingRenderable }
@@ -209,22 +209,31 @@ const CONTAINER_KEYS = new Set(['type', 'block_id', 'elements'])
 /**
  * 受理時の refineUniqueIds と同じ一意性を、保存値にもかけ直す。壊れた保存値や新しい版の blocks で
  * block_id やブロック内の action_id が重複すると、押下をどのボタンに届けるか一意に決まらないため、
- * 重複したものは最初の1つも含めてすべて unsupported にする
+ * 重複したものは最初の1つも含めてすべて unsupported にする。
+ * 重複は上限で切り捨てる前の保存値全体で数える（サーバーは保存値全体と照合するので、切り捨てた側にある重複も宛先を曖昧にする）
  */
-function markAmbiguousIds(blocks: RenderBlock[]) {
-  const blockIdCounts = countBy(blocks.filter((block) => block.type !== 'unsupported').map((block) => block.blockId))
+function markAmbiguousIds(blocks: RenderBlock[], raw: unknown[]) {
+  const blockIdCounts = countBy(raw.map((block, index) => blockIdOf(block, index)))
   blocks.forEach((block, index) => {
-    if (block.type !== 'unsupported' && (blockIdCounts.get(block.blockId) ?? 0) > 1) {
+    if (block.type === 'unsupported') return
+    if ((blockIdCounts.get(block.blockId) ?? 0) > 1) {
       blocks[index] = unsupported(block.type, block.blockId)
       return
     }
     if (block.type === 'actions') {
-      const actionIdCounts = countBy(block.elements.flatMap(actionIdOf))
+      const rawElements = (raw[index] as { elements: unknown[] }).elements
+      const actionIdCounts = countBy(rawElements.map((element, i) => rawActionIdOf(element, `${block.blockId}-${i}`)))
       block.elements = block.elements.map((element) =>
         actionIdOf(element).some((id) => (actionIdCounts.get(id) ?? 0) > 1) ? unsupportedElement(element.type) : element,
       )
     }
   })
+}
+
+/** 正規化で補うのと同じ規則で、保存値の要素の action_id を求める */
+function rawActionIdOf(element: unknown, fallbackId: string): string {
+  const id = typeof element === 'object' && element !== null ? (element as { action_id?: unknown }).action_id : undefined
+  return typeof id === 'string' ? id : fallbackId
 }
 
 function actionIdOf(element: RenderElement): string[] {

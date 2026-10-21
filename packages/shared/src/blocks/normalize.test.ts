@@ -113,6 +113,21 @@ describe('blocks の正規化', () => {
     expect(card.hasUnsupported).toBe(true)
   })
 
+  it('上限で切り捨てた側にある重複も数え、見えている方を unsupported にする', () => {
+    const button = (id: string) => ({ type: 'button', action_id: id, text: { type: 'plain_text', text: id } })
+    const elements = [button('dup'), ...Array.from({ length: 24 }, (_, i) => button(`b${i}`)), button('dup')]
+    const card = normalizeMessageBlocks([
+      { type: 'header', block_id: 'h', text: { type: 'plain_text', text: '見出し' } },
+      { type: 'actions', block_id: 'a', elements },
+      ...Array.from({ length: 48 }, (_, i) => ({ type: 'divider', block_id: `d${i}` })),
+      { type: 'divider', block_id: 'h' },
+    ])
+    expect(card.blocks[0]).toEqual({ type: 'unsupported', original: 'header', blockId: 'h' })
+    const actions = card.blocks[1]
+    expect(actions?.type === 'actions' && actions.elements[0]).toEqual({ type: 'unsupported', original: 'button' })
+    expect(actions?.type === 'actions' && actions.elements[1]).toMatchObject({ type: 'button', actionId: 'b0' })
+  })
+
   it('actions / context の空や長すぎる block_id はブロックごと unsupported にする', () => {
     const elements = [{ type: 'plain_text', text: '補足' }]
     const card = normalizeMessageBlocks([
