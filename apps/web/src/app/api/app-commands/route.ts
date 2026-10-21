@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
   try {
     const { db, apps, appInstallations, channels, workspaces } = await import('@cairn/db')
-    const { and, eq } = await import('drizzle-orm')
+    const { eq } = await import('drizzle-orm')
     const [row] = await db
       .select({
         installationId: appInstallations.id,
