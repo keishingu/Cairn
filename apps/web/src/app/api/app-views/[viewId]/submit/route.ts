@@ -139,6 +139,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     }
 
     const response = parseViewSubmissionResponse(delivery.body)
+    if (response.action === 'invalid') {
+      console.warn('[/api/app-views submit] app returned an unreadable response')
+      await release()
+      return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
+    }
     if (response.action === 'errors') {
       await release()
       const errors = displayableErrors(view.view, response.errors)

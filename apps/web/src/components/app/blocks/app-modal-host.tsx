@@ -68,6 +68,7 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
   const t = useT()
   const queryClient = useQueryClient()
   const modal = React.useMemo(() => normalizeModalView(dto.view), [dto.view])
+  const mentionNames = React.useMemo(() => new Map(Object.entries(dto.mentionNames ?? {})), [dto.mentionNames])
   const [values, setValues] = React.useState<Values>(() => initialValues(modal))
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, FieldError>>({})
   const [formError, setFormError] = React.useState<string | null>(initialFormError)
@@ -145,6 +146,7 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
                 <ModalBlock
                   key={block.blockId}
                   block={block}
+                  mentionNames={mentionNames}
                   value={block.type === 'input' ? values[block.blockId]?.[block.element.actionId] ?? '' : ''}
                   error={fieldErrors[block.blockId]}
                   onChange={(next) => {
@@ -175,10 +177,10 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
   )
 }
 
-function ModalBlock({ block, value, error, onChange }: { block: RenderModalBlock; value: string; error: FieldError | undefined; onChange: (value: string) => void }) {
+function ModalBlock({ block, value, error, mentionNames, onChange }: { block: RenderModalBlock; value: string; error: FieldError | undefined; mentionNames: Map<string, string>; onChange: (value: string) => void }) {
   const t = useT()
   // モーダル内のボタン（block_actions）は第1段階では押せない表示にする
-  if (block.type !== 'input') return <CardBlock block={block} />
+  if (block.type !== 'input') return <CardBlock block={block} mentionNames={mentionNames} />
   const id = `app-modal-${block.blockId}`
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

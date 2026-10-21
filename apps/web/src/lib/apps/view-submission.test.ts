@@ -43,6 +43,13 @@ describe('view_submission へのアプリの応答', () => {
     expect(parseViewSubmissionResponse('{"response_action":"clear"}')).toEqual({ action: 'close' })
   })
 
+  it('読めない応答・知らない response_action は閉じずに invalid にする（入力を捨てない）', () => {
+    expect(parseViewSubmissionResponse('<html>Bad Gateway</html>')).toEqual({ action: 'invalid' })
+    expect(parseViewSubmissionResponse('{"response_action":"errors"')).toEqual({ action: 'invalid' })
+    expect(parseViewSubmissionResponse('[1]')).toEqual({ action: 'invalid' })
+    expect(parseViewSubmissionResponse('{"response_action":"unknown"}')).toEqual({ action: 'invalid' })
+  })
+
   it('errors はアプリが返した文言を入力欄ごとに持つ', () => {
     expect(parseViewSubmissionResponse('{"response_action":"errors","errors":{"options":"2つ以上入力してください","bad":1}}')).toEqual({
       action: 'errors',
