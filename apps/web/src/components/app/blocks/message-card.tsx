@@ -1,0 +1,161 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+'use client'
+
+import React from 'react'
+import { normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderContextElement, type RenderElement } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
+import { MrkdwnView, RenderTextView } from './mrkdwn-view'
+
+// アプリが投稿したカード（Block Kit サブセット）を描く。中間表現への変換は packages/shared の normalizeMessageBlocks が持ち、
+// ここは部品への写像だけにする（ネイティブの描画と解釈をずらさないため。docs/app-platform-design.md §4.3）
+
+/** 押下されたボタン・選ばれた選択肢。インタラクションの送信（実装順5）で使う */
+export type CardAction =
+  | { type: 'button'; blockId: string; actionId: string }
+  | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
+
+type MessageCardProps = {
+  blocks: unknown
+  /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
+  fallbackText: string
+  mentionNames?: Map<string, string> | undefined
+  /** 未指定なら操作できない表示にする。インタラクションの送信を実装するまでの間と、閲覧専用の場面のため */
+  onAction?: ((action: CardAction) => void) | undefined
+}
+
+export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction }: MessageCardProps) {
+  const t = useT()
+  const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
+
+  if (card.nothingRenderable) {
+    return (
+      <div>
+        {fallbackText && <MrkdwnView blocks={parseMrkdwn(fallbackText)} mentionNames={mentionNames} />}
+        <UnsupportedNotice>{t('This card cannot be shown in this version. Reload the page to see it.')}</UnsupportedNotice>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
+      {card.blocks.map((block) => (
+        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={onAction} />
+      ))}
+    </div>
+  )
+})
+
+function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+  switch (block.type) {
+    case 'header':
+      return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
+    case 'section':
+      return (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {block.text && <div><RenderTextView text={block.text} mentionNames={mentionNames} /></div>}
+            {block.fields.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px 16px' }}>
+                {block.fields.map((field, index) => <div key={index}><RenderTextView text={field} mentionNames={mentionNames} /></div>)}
+              </div>
+            )}
+          </div>
+          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} onAction={onAction} /></div>}
+        </div>
+      )
+    case 'actions':
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} onAction={onAction} />)}
+        </div>
+      )
+    case 'context':
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
+          {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} />)}
+        </div>
+      )
+    case 'image':
+      return (
+        <figure style={{ margin: 0 }}>
+          {block.title && <figcaption style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>{block.title}</figcaption>}
+          <ExternalImage url={block.url} alt={block.alt} style={{ maxWidth: '100%', maxHeight: 320, borderRadius: 8, border: '1px solid var(--border)' }} />
+        </figure>
+      )
+    case 'divider':
+      return <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '2px 0', width: '100%' }} />
+    case 'unsupported':
+      return <UnsupportedPart />
+  }
+}
+
+function CardElement({ element, blockId, onAction }: { element: RenderElement; blockId: string; onAction?: MessageCardProps['onAction'] }) {
+  const t = useT()
+  switch (element.type) {
+    case 'button': {
+      const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
+      // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
+      if (element.url) {
+        return <a className={className} href={element.url} target="_blank" rel="noopener noreferrer">{element.text}</a>
+      }
+      return (
+        <button
+          type="button"
+          className={className}
+          disabled={!onAction}
+          onClick={() => onAction?.({ type: 'button', blockId, actionId: element.actionId })}
+        >
+          {element.text}
+        </button>
+      )
+    }
+    case 'static_select':
+      return (
+        <select
+          aria-label={element.placeholder ?? t('Choose an option')}
+          disabled={!onAction}
+          defaultValue={element.initialValue ?? ''}
+          onChange={(event) => onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: event.target.value })}
+          style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
+        >
+          {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
+          {element.options.map((option) => <option key={option.value} value={option.value}>{option.text}</option>)}
+        </select>
+      )
+    case 'image':
+      return <ExternalImage url={element.url} alt={element.alt} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
+    case 'unsupported':
+      return <UnsupportedPart />
+  }
+}
+
+function ContextElement({ element, mentionNames }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined }) {
+  switch (element.type) {
+    case 'image':
+      return <ExternalImage url={element.url} alt={element.alt} style={{ width: 16, height: 16, borderRadius: 4, objectFit: 'cover' }} />
+    case 'text':
+      return <span><RenderTextView text={element.text} mentionNames={mentionNames} /></span>
+    case 'unsupported':
+      return <UnsupportedPart />
+  }
+}
+
+// アプリが指定した外部の画像。閲覧中のページの URL をアプリ側へ渡さない
+function ExternalImage({ url, alt, style }: { url: string; alt: string; style: React.CSSProperties }) {
+  return <img src={url} alt={alt} loading="lazy" referrerPolicy="no-referrer" style={style} />
+}
+
+function UnsupportedPart() {
+  const t = useT()
+  return <UnsupportedNotice>{t('This part of the card cannot be shown in this version. Reload the page to see it.')}</UnsupportedNotice>
+}
+
+function UnsupportedNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="note" style={{ fontSize: 11.5, color: 'var(--text-3)', border: '1px dashed var(--border-2)', borderRadius: 6, padding: '4px 8px' }}>
+      {children}
+    </div>
+  )
+}

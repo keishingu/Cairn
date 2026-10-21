@@ -10,6 +10,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import { canAccessChannel } from '@/lib/permissions'
 import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
+import { blocksForClient } from '@/lib/apps/blocks-for-client'
 import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
@@ -49,6 +50,9 @@ export async function getMessages({
       channels,
       projectMembers,
       projectRoles,
+      messageBlocks,
+      appInstallations,
+      apps,
     } = await import('@cairn/db')
     const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc } = await import('drizzle-orm')
 
@@ -66,7 +70,50 @@ export async function getMessages({
       senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
+      blocks: messageBlocks.blocks,
+      appName: apps.name,
+      appIconUrl: apps.iconUrl,
+      appRevokedAt: appInstallations.revokedAt,
     }
+
+    // 送信者の表示（ワークスペースでの表示名・プロジェクトロール）と、アプリのカード・送信者情報を付けた共通の土台。
+    // Bot は workspace_members にいないため LEFT JOIN で落とさず、表示名は profiles.display_name に戻る
+    const selectMessages = () =>
+      db
+        .select(selectFields)
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .leftJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.userId, messages.senderId),
+            eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.userId, messages.senderId),
+            eq(projectMembers.projectId, channels.projectId),
+          ),
+        )
+        .leftJoin(
+          projectRoles,
+          and(
+            eq(projectMembers.roleId, projectRoles.id),
+            eq(projectRoles.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(messageBlocks, eq(messageBlocks.messageId, messages.id))
+        .leftJoin(
+          appInstallations,
+          and(
+            eq(appInstallations.botProfileId, messages.senderId),
+            eq(appInstallations.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(apps, eq(apps.id, appInstallations.appId))
 
     let rows: Array<{
       id: string
@@ -82,6 +129,10 @@ export async function getMessages({
       senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
+      blocks: unknown
+      appName: string | null
+      appIconUrl: string | null
+      appRevokedAt: Date | null
     }>
 
     let hasMore = false
@@ -104,32 +155,7 @@ export async function getMessages({
       }
 
       const [beforeAndAnchor, after] = await Promise.all([
-        db
-          .select(selectFields)
-          .from(messages)
-          .innerJoin(profiles, eq(messages.senderId, profiles.id))
-          .innerJoin(channels, eq(messages.channelId, channels.id))
-          .leftJoin(
-            workspaceMembers,
-            and(
-              eq(workspaceMembers.userId, messages.senderId),
-              eq(workspaceMembers.workspaceId, workspaceId),
-            ),
-          )
-          .leftJoin(
-            projectMembers,
-            and(
-              eq(projectMembers.userId, messages.senderId),
-              eq(projectMembers.projectId, channels.projectId),
-            ),
-          )
-          .leftJoin(
-            projectRoles,
-            and(
-              eq(projectMembers.roleId, projectRoles.id),
-              eq(projectRoles.workspaceId, workspaceId),
-            ),
-          )
+        selectMessages()
           .where(
             and(
               eq(messages.channelId, channelId),
@@ -142,32 +168,7 @@ export async function getMessages({
           )
           .orderBy(desc(messages.createdAt), desc(messages.id))
           .limit(50),
-        db
-          .select(selectFields)
-          .from(messages)
-          .innerJoin(profiles, eq(messages.senderId, profiles.id))
-          .innerJoin(channels, eq(messages.channelId, channels.id))
-          .leftJoin(
-            workspaceMembers,
-            and(
-              eq(workspaceMembers.userId, messages.senderId),
-              eq(workspaceMembers.workspaceId, workspaceId),
-            ),
-          )
-          .leftJoin(
-            projectMembers,
-            and(
-              eq(projectMembers.userId, messages.senderId),
-              eq(projectMembers.projectId, channels.projectId),
-            ),
-          )
-          .leftJoin(
-            projectRoles,
-            and(
-              eq(projectMembers.roleId, projectRoles.id),
-              eq(projectRoles.workspaceId, workspaceId),
-            ),
-          )
+        selectMessages()
           .where(
             and(
               eq(messages.channelId, channelId),
@@ -200,32 +201,7 @@ export async function getMessages({
         cursor = found
       }
 
-      const pageRows = await db
-        .select(selectFields)
-        .from(messages)
-        .innerJoin(profiles, eq(messages.senderId, profiles.id))
-        .innerJoin(channels, eq(messages.channelId, channels.id))
-        .leftJoin(
-          workspaceMembers,
-          and(
-            eq(workspaceMembers.userId, messages.senderId),
-            eq(workspaceMembers.workspaceId, workspaceId),
-          ),
-        )
-        .leftJoin(
-          projectMembers,
-          and(
-            eq(projectMembers.userId, messages.senderId),
-            eq(projectMembers.projectId, channels.projectId),
-          ),
-        )
-        .leftJoin(
-          projectRoles,
-          and(
-            eq(projectMembers.roleId, projectRoles.id),
-            eq(projectRoles.workspaceId, workspaceId),
-          ),
-        )
+      const pageRows = await selectMessages()
         .where(and(
           eq(messages.channelId, channelId),
           isNull(messages.deletedAt),
@@ -459,6 +435,11 @@ export async function getMessages({
       bookmarked: bookmarkedIds.has(row.id),
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
+      blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
+      // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
+      senderApp: row.appName
+        ? { name: row.appName, iconUrl: row.appIconUrl ?? null, uninstalled: row.appRevokedAt != null }
+        : null,
     }))
 
     return NextResponse.json(result, {

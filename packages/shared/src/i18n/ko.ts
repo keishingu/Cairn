@@ -1267,4 +1267,9 @@ export const KO_MESSAGES: Record<string, string> = {
   'Added {count} tasks': '작업 {count}개를 추가했습니다',
   'Task {done}/{total}': '작업 {done}/{total}',
   'Show tasks': '작업 보기',
+  App: '앱',
+  Uninstalled: '제거됨',
+  'Choose an option': '선택하세요',
+  'This card cannot be shown in this version. Reload the page to see it.': '이 카드는 현재 버전에서 표시할 수 없습니다. 페이지를 새로 고치면 표시됩니다.',
+  'This part of the card cannot be shown in this version. Reload the page to see it.': '카드의 이 부분은 현재 버전에서 표시할 수 없습니다. 페이지를 새로 고치면 표시됩니다.',
 }

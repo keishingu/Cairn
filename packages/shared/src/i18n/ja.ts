@@ -1267,4 +1267,9 @@ export const JA_MESSAGES: Record<string, string> = {
   'Added {count} tasks': '{count}件のタスクを追加しました',
   'Task {done}/{total}': 'タスク {done}/{total}',
   'Show tasks': 'タスクを表示',
+  App: 'アプリ',
+  Uninstalled: 'アンインストール済み',
+  'Choose an option': '選択してください',
+  'This card cannot be shown in this version. Reload the page to see it.': 'このカードはこのバージョンでは表示できません。ページを再読み込みすると表示されます。',
+  'This part of the card cannot be shown in this version. Reload the page to see it.': 'カードのこの部分はこのバージョンでは表示できません。ページを再読み込みすると表示されます。',
 }

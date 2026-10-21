@@ -5,7 +5,8 @@
 
 import React from 'react'
 import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
-import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
+import { MessageCard } from '@/components/app/blocks/message-card'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
@@ -200,7 +201,7 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -223,6 +224,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // memo を効かせるため、linkedTasks は配列でなく id / status / lineIndex / title を連結したキー文字列で受ける
   linkedTasksKey?: string | undefined
   blocked?: boolean | undefined
+  /** messageType が blocks のときのカード本体。サーバーがボタンの value を落としたもの */
+  blocks?: unknown[] | null | undefined
+  /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
+  senderApp?: SenderAppDto | null | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -379,7 +384,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
-    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
+    // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
+    ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -425,12 +432,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         />
       )}
       <div title={senderEmail ?? undefined}>
-        <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+        <Avatar name={senderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
           <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
             <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {senderApp && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+                {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </span>
+            )}
             {visibleProjectRole && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
                 {visibleProjectRole}
@@ -488,6 +501,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               <button type="button" className="btn btn-sm" onClick={() => setEditMode(false)}>{t('Cancel')}</button>
               {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
+          </div>
+        ) : messageType === 'blocks' ? (
+          <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
+            <MessageCard blocks={blocks} fallbackText={content} mentionNames={mentionNames} />
           </div>
         ) : (
           content && (
@@ -2294,6 +2311,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               bookmarked={item.message.bookmarked}
               linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
+              blocks={item.message.blocks}
+              senderApp={item.message.senderApp}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
