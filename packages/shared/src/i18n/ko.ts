@@ -1305,6 +1305,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Submitting...': '보내는 중…',
   'This form was updated by the app. Check the content and submit again.': '앱이 이 양식을 업데이트했습니다. 내용을 확인하고 다시 보내 주세요.',
   'This form is already being submitted.': '이 양식을 보내는 중입니다.',
+  'This form can no longer be submitted to this channel.': '이 채널에는 더 이상 이 양식을 보낼 수 없습니다.',
   'Could not close the form. Please try again.': '양식을 닫지 못했습니다. 다시 시도해 주세요.',
   'Could not load the app form. Tap to retry.': '앱 양식을 불러오지 못했습니다. 탭하여 다시 시도하세요.',
   'Could not load the app form.': '앱 양식을 불러오지 못했습니다.',

@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   action_not_found: 'This action is no longer available.',
   invalid_option: 'This action is no longer available.',
   message_not_found: 'This action is no longer available.',
+  channel_unavailable: 'This form can no longer be submitted to this channel.',
   view_changed: 'This form was updated by the app. Check the content and submit again.',
   view_submitting: 'This form is already being submitted.',
   view_not_found: 'This form is no longer available.',

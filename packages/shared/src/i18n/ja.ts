@@ -1305,6 +1305,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Submitting...': '送信中…',
   'This form was updated by the app. Check the content and submit again.': 'このフォームはアプリによって更新されました。内容を確認して、もう一度送信してください。',
   'This form is already being submitted.': 'このフォームは送信中です。',
+  'This form can no longer be submitted to this channel.': 'このチャンネルにはこのフォームを送信できなくなりました。',
   'Could not close the form. Please try again.': 'フォームを閉じられませんでした。もう一度お試しください。',
   'Could not load the app form. Tap to retry.': 'アプリのフォームを読み込めませんでした。タップして再試行してください。',
   'Could not load the app form.': 'アプリのフォームを読み込めませんでした。',

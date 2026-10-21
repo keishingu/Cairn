@@ -5,6 +5,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { BLOCKS_SCHEMA_VERSION, prepareModalView } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireChannelAccess } from '@/lib/permissions'
+import { resolveBotChannel } from '@/lib/apps/web-api/channel-access'
 import { decryptToken } from '@/lib/token-crypto'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { findOpenAppView } from '@/lib/apps/app-views'
@@ -46,6 +48,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const view = await findOpenAppView({ viewId, userId: ctx.userId, workspaceId: ctx.workspaceId })
     if (!view) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })
     if (view.hash !== renderedHash) return NextResponse.json({ error: 'view_changed' }, { status: 409 })
+    if (view.channelId) {
+      // モーダルは開いたまま残り得る。送る時点で、送信者がまだそのチャンネルを見られ、アプリがまだ投稿できるかを確かめる
+      // （外された人に Bot 経由で投稿させない・アーカイブ済みへの投稿を閉じた後に失敗させ続けない）
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, view.channelId, ctx.role)
+      if (forbidden) return NextResponse.json({ error: 'channel_unavailable' }, { status: 403 })
+      const botChannel = await resolveBotChannel({ workspaceId: ctx.workspaceId, installationId: view.installationId }, view.channelId)
+      if (!botChannel.ok) return NextResponse.json({ error: 'channel_unavailable' }, { status: 409 })
+    }
     if (!view.requestUrl || !view.signingSecretEncrypted) return NextResponse.json({ error: 'app_not_interactive' }, { status: 409 })
 
     const validated = validateSubmission(view.view, values)

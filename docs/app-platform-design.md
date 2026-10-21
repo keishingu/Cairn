@@ -287,7 +287,7 @@ Slack と同じ方式にする。
 | `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
 | エフェメラル（本人だけに見える）メッセージ | × | 後続。匿名投票を出すときの前提になる |
 
-モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。送信もクライアントが描いていた `hash` を付け、一致しなければ `view_changed` で拒む（差し替え後の意味で古い入力を解釈しない）。同じモーダルの同時送信は、届ける前に `submitting_until`（15秒の確保）を1つだけ取れた送信だけを `view_submission` にする
+モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。送信もクライアントが描いていた `hash` を付け、一致しなければ `view_changed` で拒む（差し替え後の意味で古い入力を解釈しない）。同じモーダルの同時送信は、届ける前に `submitting_until`（15秒の確保）を1つだけ取れた送信だけを `view_submission` にする。起点のチャンネルがあるモーダルは、送る時点で送信者のチャンネルへのアクセスとアプリの投稿可否（参加・アーカイブ）を確かめ直し、だめなら `channel_unavailable` で拒む
 
 ## 6. 内部 API（Bot から使う Web API）
 
