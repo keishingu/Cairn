@@ -77,6 +77,9 @@ function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; i
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: APP_VIEWS_QUERY_KEY })
   const close = async () => {
+    // 送信中に閉じると、アプリの応答（入力エラー・差し替え）を受ける前にモーダルが閉じて入力も応答も失われる。
+    // キャンセルボタンだけでなく Esc・背景のクリック・戻る操作もここを通るので、ここで止める
+    if (submitting) return
     setFormError(null)
     try {
       const res = await apiFetch(`/api/app-views/${dto.id}/close`, { method: 'POST' })
