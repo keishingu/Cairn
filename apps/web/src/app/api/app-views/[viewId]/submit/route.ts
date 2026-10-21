@@ -11,7 +11,7 @@ import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
-import { parseViewSubmissionResponse, validateSubmission } from '@/lib/apps/view-submission'
+import { displayableErrors, parseViewSubmissionResponse, validateSubmission } from '@/lib/apps/view-submission'
 
 // モーダルの送信。入力値をサーバーで検証してから Slack と同じ view_submission をアプリへ届け、
 // アプリの同期応答（response_action）に従って、エラー表示・差し替え・閉じるのどれかにする（docs/app-platform-design.md §5.5）
@@ -130,7 +130,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
     const response = parseViewSubmissionResponse(delivery.body)
     if (response.action === 'errors') {
       await release()
-      return NextResponse.json({ status: 'errors', errors: response.errors }, { status: 422 })
+      const errors = displayableErrors(view.view, response.errors)
+      if (!errors) {
+        console.warn('[/api/app-views submit] app returned errors for no input of this view:', Object.keys(response.errors))
+        return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
+      }
+      return NextResponse.json({ status: 'errors', errors }, { status: 422 })
     }
     if (response.action === 'update') {
       const prepared = prepareModalView(response.view)
