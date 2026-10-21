@@ -78,6 +78,7 @@ app_bot_tokens {
 app_channel_memberships {               // Bot が投稿できるチャンネル
   installationId → app_installations (cascade)
   channelId      → channels (cascade)
+  workspaceId                           // 複合 FK で installation とチャンネルの両方に一致させる（§3.3）
   addedBy        → profiles
   createdAt
   primary key(installationId, channelId)
@@ -85,7 +86,7 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
 ```
 
 - 署名シークレットは既存の `apps/web/src/lib/token-crypto.ts`（`connected_accounts` のトークン暗号化）で暗号化して保存する。Bot トークンは検証だけでよいので hash 保存
-- ファーストパーティの投票アプリはマイグレーションで `apps` に1行入れ、全ワークスペースに既定でインストール済みにする。Bot のチャンネルへの追加は手動（§11 D7）
+- ファーストパーティの投票アプリは全ワークスペースに既定でインストール済みにする（§11 D7）。マイグレーションでは適用時点のワークスペースにしか作れないため、`apps` 行・installation・Bot profile の作成は冪等な `ensureFirstPartyInstallations(workspaceId)` に一本化し、**ワークスペース作成処理から呼ぶ**。既存ワークスペースはデプロイ後に同じ関数で backfill し、インストール一覧・作成メニューの表示時にも同じ関数で欠けを補う（遅延初期化）。署名シークレットは環境変数から暗号化して入れるため SQL では作らない。Bot のチャンネルへの追加は手動
 
 ### 3.2 Bot profile
 
@@ -107,6 +108,7 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
   - インストールが有効（`revokedAt is null`）、トークンが有効
   - 要求操作に対応するスコープを `grantedScopes` に持つ
   - チャンネルを伴う操作は、そのチャンネルが `app_channel_memberships` にあり、かつチャンネル自体がアーカイブ・削除されていない
+  - **installation とチャンネルのワークスペースが一致する**。両方のワークスペースに所属するメンバーが、A のインストールを B のチャンネルへ関連付けると A の Bot トークンで B へ投稿できてしまうため、`app_channel_memberships` に `workspace_id` を持たせ、`(installation_id, workspace_id)` → `app_installations(id, workspace_id)` と `(channel_id, workspace_id)` → `channels(id, workspace_id)` の複合 FK で DB に固定する。Bot API 実行時も同じ一致を検証する（`message_blocks` を書く `chat.update` も、対象メッセージのチャンネルのワークスペースで照合する）
   - DM（`channel_type = 'dm'`）へは第1段階では投稿させない
 - 呼び出し回数の上限はトークン単位で毎分120回（PAT と同じ仕組み・同じ値）
 
@@ -241,7 +243,7 @@ Slack と同じく `application/x-www-form-urlencoded` の `payload=<JSON>` で�
   "trigger_id": "<一時ID>",           // モーダルを開くため。3秒で失効
   "response_url": "https://<host>/api/app-response/<一時ID>",
   "actions": [{ "type": "button", "block_id": "...", "action_id": "...", "value": "...", "action_ts": "..." }],
-  "cairn": { "message_id": "<uuid>" } // Cairn 独自の拡張。Slack アプリは無視する
+  "cairn": { "message_id": "<uuid>", "interaction_id": "<uuid>" } // Cairn 独自の拡張。Slack アプリは無視する
 }
 ```
 
@@ -261,9 +263,11 @@ Slack と同じ方式にする。
 
 ### 5.4 配送と失敗
 
-- タイムアウトは Slack と同じ3秒。リトライはしない（ボタン押下は利用者がやり直せるため。二重処理を避けるのを優先）
+- タイムアウトは Slack と同じ3秒。Cairn は自動リトライしない
+- **配送結果は不確定になり得る前提で契約を決める**。アプリへ届いて処理された後に応答だけが失われると、Cairn からは失敗に見え、利用者がやり直す。そこで (a) 押下ごとに `cairn.interaction_id` を付け、アプリは処理済みの ID を記録して同じ ID の再送を二重に処理しない、(b) アプリはボタンの意味を**冪等**に設計する（「この選択肢に投票する」は何度押しても同じ結果。トグルにしない）。投票アプリの取り消しは別のボタンにする（§7.3）
 - `app_interaction_deliveries`（installationId / type / userId / status / httpStatus / 所要ms / error / createdAt）に記録し、設定画面からアプリ管理者が直近の失敗を見られるようにする。保持期間は30日
 - `requestUrl` は https のみ。登録時と送信時に、プライベート IP・ループバック・リンクローカルへの名前解決を拒否する（SSRF 対策）。ファーストパーティの投票アプリも同じ検証を通る
+- 例外は開発環境だけ。ローカルの Web は `http://localhost:3128` で動き、投票アプリの Request URL も同じ origin になるため、`NODE_ENV !== 'production'` かつ環境変数 `APP_PLATFORM_ALLOW_LOOPBACK_REQUEST_URL=true` のときに限り、`APP_URL` と同じ origin の http ループバックを許可する。本番・Preview では設定しても無効にする
 - 失敗時（タイムアウト・非2xx・署名不備の応答）は、押した本人にだけ「アプリが応答しませんでした」を出す。カードは変えない
 
 ### 5.5 応答の手段
@@ -319,7 +323,9 @@ Slack と同じ方式にする。
 
 ```ts
 polls        { id, installationId → app_installations (cascade), channelId, messageId → messages,
-               createdBy, question, allowMultiple, anonymous, closesAt?, closedAt?, createdAt }
+               createdBy, question, allowMultiple, anonymous, closesAt?, closedAt?,
+               version, renderedVersion, createdAt }
+poll_processed_interactions { interactionId primary key, pollId (cascade), createdAt }  // 30日で削除
 poll_options { id, pollId (cascade), label, position }
 poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, createdAt
                unique(pollId, optionId, userId)
@@ -341,11 +347,11 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
 [section]  第2週 (11/9〜) ░░░░░ 0票      [button「投票」]
  ...
 [context]  単一選択 ・ 締切 11/20 23:59 ・ 作成: 定期ジョブ
-[actions]  [締め切る]（作成者のみ有効）
+[actions]  [自分の票を取り消す] [締め切る]（作成者のみ有効）
 ```
 
-- **票の受付**: `block_actions` を受けたら、`poll_votes` を1トランザクションで更新（単一選択は既存票の削除→挿入、同じ選択肢をもう一度押したら取り消し）
-- **カードの再描画**: 同じトランザクション内で `polls` 行を `FOR UPDATE` で押さえて集計し直し、`chat.update` でカード全体を差し替える。行ロックで直列化するので、同時投票で古い集計が後勝ちすることはない
+- **票の受付**: `block_actions` を受けたら、`poll_votes` を1トランザクションで更新し、同じトランザクションで `polls.version` を1つ進め、処理済みの `cairn.interaction_id` を記録する。「投票」ボタンは冪等（単一選択は既存票をその選択肢に置き換え、同じ選択肢をもう一度押しても変わらない）。取り消しは `actions` の「自分の票を取り消す」ボタンで行う
+- **カードの再描画は commit の後**: `chat.update` は `/api/app-api/` への別 HTTP 呼び出しで、投票のトランザクションには参加できない。トランザクション内で呼ぶと、カードだけが先に更新されて投票の commit が失敗した場合に表示と実データが食い違う。そこで commit 後に Inngest イベント（`polls/card.render`、`pollId`）を送り、**`concurrency: { key: pollId, limit: 1 }`** の関数がその時点の最新の集計からカードを描いて `chat.update` する。描画は常に commit 済みの最新状態から作るので、同時投票で順序が入れ替わっても最後の描画が最新になり、`chat.update` の失敗は Inngest のリトライで回収する。描画済みの `version` を `polls.renderedVersion` に記録し、最新版を描画済みなら skip する
 - **リアルタイム**: `message_blocks` の UPDATE に DB トリガーを張り、`realtime.broadcast_changes()` でチャンネルの topic へ流す。クライアントは該当メッセージのクエリを invalidate して REST で再取得する（Broadcast from Database のみ。postgres_changes・ポーリングは使わない）
 - **「自分の票」**: Block Kit は**全員に同じカード**を描く仕組みで、閲覧者ごとの表示を持たない（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §6 の「自分の投票状態」はそのままでは描けない）。`context` に投票者を並べて代える（Slack の投票アプリと同じ）。**第1段階は匿名投票を出さない**（`anonymous` カラムは残すが常に false。§11 D2）
 - **締切**: `closesAt` を過ぎたら Inngest の遅延関数で締め、ボタンを外したカードへ `chat.update` する。結果のサマリを投稿するかは既存の未決事項のまま
