@@ -152,10 +152,13 @@ export async function postPoll(pollId: string): Promise<string | null> {
  * カードを今の集計で描き直す。読んだ時点の version を描き、描いた版を rendered_version に記録する。
  * 投票ごとに1本ずつ実行される（Inngest の concurrency）ので、同時投票で古い集計が後勝ちしない
  */
-/** 再試行しても通らないカードの書き換えの失敗（チャンネルのアーカイブ・アプリの取り外し・メッセージの削除など） */
-const PERMANENT_UPDATE_ERRORS = new Set(['is_archived', 'not_in_channel', 'channel_not_found', 'message_not_found', 'cant_update_message', 'method_not_supported_for_channel_type'])
+/** 二度と書き換えられないカードの失敗（メッセージ・チャンネルが消えたなど）。この版で描き直しをやめる */
+const PERMANENT_UPDATE_ERRORS = new Set(['channel_not_found', 'message_not_found', 'cant_update_message', 'method_not_supported_for_channel_type'])
+/** 元に戻り得る失敗（アーカイブの解除・アプリの再追加）。描画待ちのまま残し、拾い直しの間隔だけ空ける */
+const REVERSIBLE_UPDATE_ERRORS = new Set(['is_archived', 'not_in_channel'])
+const REVERSIBLE_RETRY_INTERVAL = '1 day'
 
-export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed' | 'update_abandoned'> {
+export async function renderPoll(pollId: string): Promise<'posted' | 'updated' | 'skipped' | 'post_failed' | 'update_abandoned' | 'update_deferred'> {
   const loaded = await loadPoll(pollId)
   if (!loaded) return 'skipped'
   const { poll, forRender } = loaded
@@ -174,8 +177,19 @@ export async function renderPoll(pollId: string): Promise<'posted' | 'updated' |
   try {
     await callBotApi(workspaceId, 'chat.update', { channel: poll.channelId, ts: poll.messageId, blocks: card.blocks })
   } catch (err) {
-    if (!(err instanceof PollsBotApiError) || !PERMANENT_UPDATE_ERRORS.has(err.code)) throw err
-    // カードはもう書き換えられない（アーカイブなど）。描画待ちのまま cron が拾い直し続けないよう、この版で描き直しをやめる
+    if (!(err instanceof PollsBotApiError)) throw err
+    if (REVERSIBLE_UPDATE_ERRORS.has(err.code)) {
+      // アーカイブの解除などで書き換えられるようになったら、締切や票を描けるよう描画待ちのまま残す。
+      // 5分ごとの cron が拾い直し続けないよう、次に拾うまでの間隔を空ける（updated_at を先にずらす）
+      console.warn(`[polls] card of poll ${pollId} cannot be updated now (${err.code}); retrying after ${REVERSIBLE_RETRY_INTERVAL}`)
+      await db
+        .update(polls)
+        .set({ updatedAt: sql`now() + ${REVERSIBLE_RETRY_INTERVAL}::interval` })
+        .where(eq(polls.id, pollId))
+      return 'update_deferred'
+    }
+    if (!PERMANENT_UPDATE_ERRORS.has(err.code)) throw err
+    // カードはもう書き換えられない（メッセージが消えたなど）。描画待ちのまま cron が拾い直し続けないよう、この版で描き直しをやめる
     console.error(`[polls] card of poll ${pollId} can no longer be updated (${err.code}); giving up re-rendering`)
     await db
       .update(polls)
