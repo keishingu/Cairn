@@ -8,7 +8,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { decryptToken } from '@/lib/token-crypto'
-import { resolveRequestUrl } from '@/lib/apps/first-party'
+import { resolveRequestTarget } from '@/lib/apps/first-party'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { blocksForClient } from '@/lib/apps/blocks-for-client'
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
     )
 
     const delivery = await deliverToApp({
-      requestUrl: resolveRequestUrl(row.requestUrl),
+      ...resolveRequestTarget(row.requestUrl),
       signingSecret: decryptToken(row.signingSecretEncrypted),
       payload,
     })

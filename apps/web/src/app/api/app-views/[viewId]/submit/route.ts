@@ -8,7 +8,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { resolveBotChannel } from '@/lib/apps/web-api/channel-access'
 import { decryptToken } from '@/lib/token-crypto'
-import { resolveRequestUrl } from '@/lib/apps/first-party'
+import { resolveRequestTarget } from '@/lib/apps/first-party'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
@@ -120,7 +120,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     let delivery: Awaited<ReturnType<typeof deliverToApp>>
     try {
-      delivery = await deliverToApp({ requestUrl: resolveRequestUrl(view.requestUrl), signingSecret: decryptToken(view.signingSecretEncrypted), payload })
+      delivery = await deliverToApp({ ...resolveRequestTarget(view.requestUrl), signingSecret: decryptToken(view.signingSecretEncrypted), payload })
     } catch (err) {
       await release()
       throw err

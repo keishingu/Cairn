@@ -52,6 +52,21 @@ export function resolveRequestUrl(stored: string, env: NodeJS.ProcessEnv = proce
 }
 
 /**
+ * 同じデプロイへの呼び出し（ファーストパーティの Request URL・投票アプリの Bot API）に付けるヘッダー。
+ * Preview のデプロイ固有 URL は Deployment Protection がかかるため、Vercel の「Protection Bypass for Automation」を
+ * 有効にしたときに配られる VERCEL_AUTOMATION_BYPASS_SECRET を付けて通す。外部アプリへは決して付けない
+ */
+export function selfCallHeaders(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const secret = env['VERCEL_AUTOMATION_BYPASS_SECRET']
+  return secret ? { 'x-vercel-protection-bypass': secret } : {}
+}
+
+/** 配送先の URL と、同じデプロイへの呼び出しならそのためのヘッダー */
+export function resolveRequestTarget(stored: string, env: NodeJS.ProcessEnv = process.env): { requestUrl: string; headers: Record<string, string> } {
+  return { requestUrl: resolveRequestUrl(stored, env), headers: stored.startsWith('/') ? selfCallHeaders(env) : {} }
+}
+
+/**
  * ファーストパーティの署名シークレット。新しい環境変数を増やさず、既存の暗号鍵から用途ごとに導く（鍵が無ければ例外）。
  * アプリ側の検証も同じ関数を使う
  */

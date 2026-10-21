@@ -8,7 +8,7 @@ import { requireChannelAccess } from '@/lib/permissions'
 import { decryptToken } from '@/lib/token-crypto'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { isAppInChannel, parseEntryPoints } from '@/lib/apps/channel-apps'
-import { resolveRequestUrl } from '@/lib/apps/first-party'
+import { resolveRequestTarget } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { issueTrigger } from '@/lib/apps/triggers'
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     if (!workspace || !member) return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
     const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: body.channelId })
     const delivery = await deliverToApp({
-      requestUrl: resolveRequestUrl(row.requestUrl),
+      ...resolveRequestTarget(row.requestUrl),
       signingSecret: decryptToken(row.signingSecretEncrypted),
       // Slack のスラッシュコマンドと同じフィールド（ID は UUID のまま。§11 D3）
       form: {

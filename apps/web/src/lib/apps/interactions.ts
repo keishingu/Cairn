@@ -151,6 +151,8 @@ export async function deliverToApp(input: {
   payload?: unknown
   /** スラッシュコマンドと同じく、フィールドを並べた form で送る（作成メニューからの起動。§6.1） */
   form?: Record<string, string>
+  /** 署名以外に付けるヘッダー（同じデプロイへの呼び出しの Deployment Protection 回避だけに使う） */
+  headers?: Record<string, string>
   send?: Sender
   checkUrl?: typeof checkRequestUrl
 }): Promise<DeliveryResult> {
@@ -169,6 +171,7 @@ export async function deliverToApp(input: {
     const response = await (input.send ?? nodeSender)({
       url: check.url,
       headers: {
+        ...input.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
         [TIMESTAMP_HEADER]: String(timestamp),
         [SIGNATURE_HEADER]: signRequest(input.signingSecret, timestamp, body),

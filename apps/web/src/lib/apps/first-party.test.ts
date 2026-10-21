@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { appBaseUrl, firstPartySigningSecret, resolveRequestUrl } from './first-party'
+import { appBaseUrl, firstPartySigningSecret, resolveRequestTarget, resolveRequestUrl } from './first-party'
 import { parseEntryPoints } from './channel-apps'
 
 const KEY = 'a'.repeat(64)
@@ -23,6 +23,15 @@ describe('ファーストパーティのアプリ', () => {
   it('APP_URL が無ければ Vercel の URL を使い、どちらも無ければ黙って空にせず例外にする', () => {
     expect(appBaseUrl({ VERCEL_URL: 'cairn-git-x.vercel.app' } as unknown as NodeJS.ProcessEnv)).toBe('https://cairn-git-x.vercel.app')
     expect(() => appBaseUrl({} as NodeJS.ProcessEnv)).toThrow('APP_URL is not configured')
+  })
+
+  it('Deployment Protection の回避ヘッダーは同じデプロイへの呼び出しにだけ付け、外部アプリへは付けない', () => {
+    const env = { VERCEL_URL: 'cairn-git-x.vercel.app', VERCEL_ENV: 'preview', VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass' } as unknown as NodeJS.ProcessEnv
+    expect(resolveRequestTarget('/api/first-party-apps/polls/interactions', env)).toEqual({
+      requestUrl: 'https://cairn-git-x.vercel.app/api/first-party-apps/polls/interactions',
+      headers: { 'x-vercel-protection-bypass': 'bypass' },
+    })
+    expect(resolveRequestTarget('https://app.example.org/slack/events', env)).toEqual({ requestUrl: 'https://app.example.org/slack/events', headers: {} })
   })
 
   it('署名シークレットは暗号鍵とアプリごとに決まり、鍵が無ければ例外にする', () => {
