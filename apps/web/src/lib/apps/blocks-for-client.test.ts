@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { pollCardFixture } from '@cairn/shared/blocks/fixtures'
-import { blocksForClient } from './blocks-for-client'
+import { blocksForClient, cardRevision } from './blocks-for-client'
 
 describe('クライアントへ返す blocks', () => {
   it('ボタンの value を落とし、それ以外の構造は保つ', () => {
@@ -35,5 +35,20 @@ describe('クライアントへ返す blocks', () => {
   it('配列でない保存値は null にする', () => {
     expect(blocksForClient(null)).toBeNull()
     expect(blocksForClient({ broken: true })).toBeNull()
+  })
+})
+
+describe('カードの版', () => {
+  const card = (value: string) => [{ type: 'actions', block_id: 'b', elements: [{ type: 'button', action_id: 'a', text: { type: 'plain_text', text: '押す' }, value }] }]
+
+  it('クライアントへ返さないボタンの value が変わっても版は変わり、value そのものは含めない', () => {
+    const before = cardRevision(card('v1'), 'm1')
+    expect(cardRevision(card('v2'), 'm1')).not.toBe(before)
+    expect(cardRevision(card('v1'), 'm1')).toBe(before)
+    expect(before).not.toContain('v1')
+  })
+
+  it('同じ中身でもメッセージが違えば別の版にする', () => {
+    expect(cardRevision(card('v1'), 'm1')).not.toBe(cardRevision(card('v1'), 'm2'))
   })
 })

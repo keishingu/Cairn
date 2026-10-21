@@ -39,6 +39,8 @@ export type CardContext = {
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
   onAction: CardRun | undefined
+  /** URL ボタンの押下の通知。ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため） */
+  onLinkAction?: CardRun | undefined
 }
 
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
@@ -108,7 +110,7 @@ export function MessageCard({
     }
   }, [onAction, t, stopWaiting])
   // 送信中は同じカードの操作を止め、二重に押させない
-  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run }
+  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run, onLinkAction: run }
 
   if (card.nothingRenderable) {
     return (
@@ -212,7 +214,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
             confirmThen(element.confirm, mentionResolver(context, t), () => {
               if (url) {
                 onLinkPress(url)
-                void onAction?.({ type: 'button', blockId, actionId: element.actionId }, { link: true })
+                void (context.onLinkAction ?? onAction)?.({ type: 'button', blockId, actionId: element.actionId }, { link: true })
               } else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
             })
           }}

@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { blocksRevision, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { postCardAction } from '@/lib/apps/card-actions'
@@ -202,7 +202,7 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -227,6 +227,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   blocked?: boolean | undefined
   /** messageType が blocks のときのカード本体。サーバーがボタンの value を落としたもの */
   blocks?: unknown[] | null | undefined
+  /** カードの版（サーバーが計算したもの）。押下時に送り返す */
+  blocksRevision?: string | null | undefined
   /** カード内のメンションの表示名（非活性のメンバーも含む、サーバーで解決したもの） */
   cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
@@ -257,8 +259,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const displaySenderName = senderApp?.name ?? senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const cardRevision = React.useMemo(() => blocksRevision(blocks ?? null), [blocks])
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, cardRevision, action), [messageId, cardRevision])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action), [messageId, blocksRevision])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -2328,6 +2329,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
               blocks={item.message.blocks}
+              blocksRevision={item.message.blocksRevision}
               cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
               onReact={handleReact}
