@@ -206,9 +206,9 @@ export async function ensureFirstPartyInstallations(workspaceId: string): Promis
 export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId: string): Promise<string> {
   await ensureFirstPartyInstallations(workspaceId)
   const { db, apps, appInstallations, appBotTokens } = await import('@cairn/db')
-  const { and, desc, eq, inArray, isNull, isNotNull, sql } = await import('drizzle-orm')
+  const { and, desc, eq, isNull, isNotNull, sql } = await import('drizzle-orm')
   const rows = await db
-    .select({ installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted })
+    .select({ id: appBotTokens.id, installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted, createdAt: appBotTokens.createdAt })
     .from(appBotTokens)
     .innerJoin(appInstallations, eq(appInstallations.id, appBotTokens.installationId))
     .innerJoin(apps, eq(apps.id, appInstallations.appId))
@@ -228,7 +228,10 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
   // 復号できないのは「このデプロイの鍵では読めない」だけで、別の鍵のデプロイ（DB を共有する Preview など）が使っているかもしれない。
   // すぐには取り消さず、今の鍵で読める有効なトークンを探し、無ければ今の鍵で読めるものを足す
   const readable = firstReadableToken(rows)
-  if (readable) return readable
+  if (readable) {
+    await revokeRetiredTokens(rows, readable.index)
+    return readable.token
+  }
 
   return db.transaction(async (tx) => {
     // 同時に足さないよう、インストールごとに直列化してから読み直す
@@ -239,7 +242,7 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
       .where(and(eq(appBotTokens.installationId, installationId), isNull(appBotTokens.revokedAt), isNotNull(appBotTokens.tokenEncrypted)))
       .orderBy(desc(appBotTokens.createdAt))
     const readableNow = firstReadableToken(again)
-    if (readableNow) return readableNow
+    if (readableNow) return readableNow.token
 
     console.warn(`[first-party] no bot token for ${slug} is readable with the current key; issuing one`)
     const token = createBotToken()
@@ -249,25 +252,48 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
       tokenPrefix: token.prefix,
       tokenEncrypted: encryptToken(token.token),
     })
-    // 退役した鍵のトークンを有効なまま残し続けない。どのデプロイも読めなくなってから十分経ったもの（猶予を過ぎたもの）は取り消す。
-    // 猶予の間は、古い鍵で動いている別のデプロイがまだ使えるようにしておく
-    const staleIds = again.filter((row) => row.createdAt.getTime() < Date.now() - UNREADABLE_TOKEN_GRACE_MS).map((row) => row.id)
-    if (staleIds.length > 0) await tx.update(appBotTokens).set({ revokedAt: new Date() }).where(inArray(appBotTokens.id, staleIds))
     return token.token
   })
 }
 
-/** 古い鍵で暗号化されたトークンを取り消すまでの猶予。鍵を入れ替えた後も古い鍵の Preview がしばらく動けるようにする */
+/**
+ * 古い鍵で暗号化されたトークンを取り消すまでの猶予。猶予は「今の鍵で読めるトークンができてから」数える
+ * （古いトークン自体の作成日時から数えると、鍵を入れ替えた直後に取り消されて、古い鍵のデプロイが急に 401 になる）
+ */
 const UNREADABLE_TOKEN_GRACE_MS = 7 * 24 * 60 * 60 * 1000
 
-function firstReadableToken(rows: Array<{ tokenEncrypted: string | null }>): string | null {
-  for (const row of rows) {
+function firstReadableToken(rows: Array<{ tokenEncrypted: string | null }>): { token: string; index: number } | null {
+  for (const [index, row] of rows.entries()) {
     if (!row.tokenEncrypted) continue
     try {
-      return decryptToken(row.tokenEncrypted)
+      return { token: decryptToken(row.tokenEncrypted), index }
     } catch {
       // 別の鍵で暗号化されたトークン。次を試す
     }
   }
   return null
+}
+
+/**
+ * 退役した鍵のトークンを有効なまま残し続けない。今の鍵で読めるトークンができてから猶予が過ぎていれば、
+ * 今の鍵で読めないトークンを取り消す。猶予の間は、古い鍵で動いている別のデプロイがまだ使えるようにしておく
+ */
+async function revokeRetiredTokens(rows: Array<{ id: string; tokenEncrypted: string | null; createdAt: Date }>, readableIndex: number): Promise<void> {
+  const current = rows[readableIndex]
+  if (!current || current.createdAt.getTime() > Date.now() - UNREADABLE_TOKEN_GRACE_MS) return
+  const retired = rows.filter((row, index) => index !== readableIndex && !isReadable(row.tokenEncrypted)).map((row) => row.id)
+  if (retired.length === 0) return
+  const { db, appBotTokens } = await import('@cairn/db')
+  const { inArray } = await import('drizzle-orm')
+  await db.update(appBotTokens).set({ revokedAt: new Date() }).where(inArray(appBotTokens.id, retired))
+}
+
+function isReadable(encrypted: string | null): boolean {
+  if (!encrypted) return false
+  try {
+    decryptToken(encrypted)
+    return true
+  } catch {
+    return false
+  }
 }
