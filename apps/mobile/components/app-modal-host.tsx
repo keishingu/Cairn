@@ -28,9 +28,18 @@ export function AppModalHost() {
     },
   })
   const current = query.data?.[0]
+  // 送信の前にアプリが views.update した場合、作り直したモーダルに理由を出す
+  const [changedNotice, setChangedNotice] = React.useState<{ viewId: string; message: string } | null>(null)
   if (!current) return null
   // 差し替え（views.update）で中身が変わったら入力状態を作り直す
-  return <AppModal key={`${current.id}:${current.hash}`} dto={current} />
+  return (
+    <AppModal
+      key={`${current.id}:${current.hash}`}
+      dto={current}
+      initialFormError={changedNotice?.viewId === current.id ? changedNotice.message : null}
+      onViewChanged={(message) => setChangedNotice({ viewId: current.id, message })}
+    />
+  )
 }
 
 function initialValues(modal: RenderModal | null): Values {
@@ -42,19 +51,30 @@ function initialValues(modal: RenderModal | null): Values {
   return values
 }
 
-function AppModal({ dto }: { dto: AppViewDto }) {
+function AppModal({ dto, initialFormError, onViewChanged }: { dto: AppViewDto; initialFormError: string | null; onViewChanged: (message: string) => void }) {
   const t = useT()
   const { palette } = useAppAppearance()
   const queryClient = useQueryClient()
   const modal = React.useMemo(() => normalizeModalView(dto.view), [dto.view])
   const [values, setValues] = React.useState<Values>(() => initialValues(modal))
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, FieldError>>({})
-  const [formError, setFormError] = React.useState<string | null>(null)
+  const [formError, setFormError] = React.useState<string | null>(initialFormError)
   const [submitting, setSubmitting] = React.useState(false)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: APP_VIEWS_QUERY_KEY })
   const close = async () => {
-    await apiFetch(`/api/app-views/${dto.id}/close`, { method: 'POST' }).catch(() => null)
+    setFormError(null)
+    try {
+      const res = await apiFetch(`/api/app-views/${dto.id}/close`, { method: 'POST' })
+      // すでに閉じられた・使えなくなったモーダルは、取り直せば消える
+      if (!res.ok && res.status !== 404) {
+        setFormError(t('Could not close the form. Please try again.'))
+        return
+      }
+    } catch {
+      setFormError(t('Could not close the form. Please try again.'))
+      return
+    }
     await refresh()
   }
   const submit = async () => {
@@ -62,14 +82,21 @@ function AppModal({ dto }: { dto: AppViewDto }) {
     setFormError(null)
     setFieldErrors({})
     try {
-      const res = await apiFetch(`/api/app-views/${dto.id}/submit`, { method: 'POST', body: JSON.stringify({ values }) })
+      const res = await apiFetch(`/api/app-views/${dto.id}/submit`, { method: 'POST', body: JSON.stringify({ hash: dto.hash, values }) })
       const body = (await res.json().catch(() => null)) as { errors?: Record<string, FieldError>; error?: string } | null
       if (res.status === 422 && body?.errors) {
         setFieldErrors(body.errors)
         return
       }
       if (!res.ok) {
-        setFormError(t(cardActionErrorMessage(body?.error)))
+        const message = t(cardActionErrorMessage(body?.error))
+        if (body?.error === 'view_changed') {
+          // 新しい版を取り直すとモーダルが作り直されるので、理由はホストに預ける
+          onViewChanged(message)
+          await refresh()
+          return
+        }
+        setFormError(message)
         return
       }
       await refresh()

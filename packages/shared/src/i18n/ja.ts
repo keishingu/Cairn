@@ -1302,4 +1302,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Part of this form cannot be shown in this version, so it cannot be submitted. Reload the page to see it.': 'フォームの一部をこのバージョンでは表示できないため、送信できません。ページを再読み込みすると表示されます。',
   'Part of this form cannot be shown in this version, so it cannot be submitted. Update the app to see it.': 'フォームの一部をこのバージョンでは表示できないため、送信できません。アプリを更新すると表示されます。',
   'Submitting...': '送信中…',
+  'This form was updated by the app. Check the content and submit again.': 'このフォームはアプリによって更新されました。内容を確認して、もう一度送信してください。',
+  'This form is already being submitted.': 'このフォームは送信中です。',
+  'Could not close the form. Please try again.': 'フォームを閉じられませんでした。もう一度お試しください。',
 }

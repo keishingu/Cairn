@@ -257,6 +257,9 @@ export const appViews = pgTable(
     hash: text('hash').notNull(),
     // open / submitted / closed
     status: text('status').notNull().default('open'),
+    // 送信をアプリへ届けている間だけ入る。同じモーダルの同時送信で view_submission が二重に届かないよう、送信前にこれで確保する。
+    // 処理中に落ちても期限を過ぎれば再び送信できる
+    submittingUntil: timestamp('submitting_until', { withTimezone: true }),
     schemaVersion: integer('schema_version').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

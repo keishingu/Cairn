@@ -1302,4 +1302,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Part of this form cannot be shown in this version, so it cannot be submitted. Reload the page to see it.': '양식의 일부를 현재 버전에서 표시할 수 없어 보낼 수 없습니다. 페이지를 새로 고치면 표시됩니다.',
   'Part of this form cannot be shown in this version, so it cannot be submitted. Update the app to see it.': '양식의 일부를 현재 버전에서 표시할 수 없어 보낼 수 없습니다. 앱을 업데이트하면 표시됩니다.',
   'Submitting...': '보내는 중…',
+  'This form was updated by the app. Check the content and submit again.': '앱이 이 양식을 업데이트했습니다. 내용을 확인하고 다시 보내 주세요.',
+  'This form is already being submitted.': '이 양식을 보내는 중입니다.',
+  'Could not close the form. Please try again.': '양식을 닫지 못했습니다. 다시 시도해 주세요.',
 }
