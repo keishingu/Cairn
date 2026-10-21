@@ -29,7 +29,29 @@ function parseBlocksArg(args: WebApiArgs): ParsedBlocks {
   }
   const prepared = prepareMessageBlocks(value)
   if (!prepared.ok) return { ok: false, result: fail('invalid_blocks', { response_metadata: { messages: prepared.errors } }) }
+  // カードに見える文字も、人の投稿・text と同じ安全フィルタにかける（blocks だけの投稿で抜け道にさせない）
+  const unsafe = unsafeMessageError(visibleTextOfBlocks(prepared.value))
+  if (unsafe) return { ok: false, result: fail('invalid_blocks', { response_metadata: { messages: [unsafe] } }) }
   return { ok: true, blocks: prepared.value }
+}
+
+/** 安全フィルタにかける、カードに見えるすべての文字（見出し・本文・フィールド・補足・ボタン・選択肢・確認ダイアログ・画像の代替文） */
+export function visibleTextOfBlocks(blocks: MessageBlock[]): string {
+  const texts: string[] = []
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(walk)
+    if (typeof node !== 'object' || node === null) return
+    const record = node as Record<string, unknown>
+    if ((record['type'] === 'plain_text' || record['type'] === 'mrkdwn') && typeof record['text'] === 'string') texts.push(record['text'])
+    if (typeof record['alt_text'] === 'string') texts.push(record['alt_text'])
+    for (const [key, value] of Object.entries(record)) {
+      // 値・ID・URL は表示されない（URL ボタンの遷移先は表示文と別に扱う）
+      if (key !== 'text' && key !== 'value' && key !== 'action_id' && key !== 'block_id' && key !== 'url' && key !== 'image_url') walk(value)
+      else if (key === 'text' && typeof value === 'object') walk(value)
+    }
+  }
+  walk(blocks)
+  return texts.join('\n')
 }
 
 type ParsedText = { ok: true; text: string | undefined } | { ok: false; result: WebApiResult }
@@ -201,15 +223,19 @@ export async function chatUpdate(bot: BotContext, args: WebApiArgs): Promise<Web
   const { eq, sql } = await import('drizzle-orm')
   // text を省いた更新では代替テキストを書き換えない（アプリが投稿時に書いた通知・検索用の文を、blocks から組み立てた文で上書きしない）
   const content = text.text ?? own.content
+  // Slack と同じく、text だけの更新はカードを外して通常のメッセージにする（古いカードが残ったまま成功を返さない）
+  const dropBlocks = blocks.blocks === undefined && own.messageType === 'blocks'
+  const nextType = blocks.blocks ? ('blocks' as const) : dropBlocks ? ('text' as const) : undefined
 
   await db.transaction(async (tx) => {
     // messages.updated_at は動かさない。現行の「編集済み」は updated_at > created_at で決まり、票が入るたびに付いてしまうため（§4.1）
-    if (content !== own.content || (blocks.blocks && own.messageType !== 'blocks')) {
+    if (content !== own.content || (nextType && nextType !== own.messageType)) {
       await tx
         .update(messages)
-        .set({ content, ...(blocks.blocks ? { messageType: 'blocks' as const } : {}) })
+        .set({ content, ...(nextType ? { messageType: nextType } : {}) })
         .where(eq(messages.id, own.id))
     }
+    if (dropBlocks) await tx.delete(messageBlocks).where(eq(messageBlocks.messageId, own.id))
     if (blocks.blocks) {
       await tx
         .insert(messageBlocks)
