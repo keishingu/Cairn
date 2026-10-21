@@ -161,7 +161,7 @@ function sendRenderEvent(pollId: string): void {
 }
 
 // views.open は応答を返した後に呼ぶ。Bot API が遅くても3秒の配信期限を使わせず、起動が app_timeout になって押し直しで二重に開くのを防ぐ。
-// trigger_id は発行から3秒有効なので、応答の直後に呼べば間に合う
+// trigger_id は発行から6秒（配送の3秒＋応答後の3秒）有効なので、応答の直後に呼べば間に合う
 function openViewAfterResponse(workspaceId: string, triggerId: string | null, view: unknown): void {
   after(() =>
     callBotApi(workspaceId, 'views.open', { trigger_id: triggerId, view }).catch((err: unknown) => {
