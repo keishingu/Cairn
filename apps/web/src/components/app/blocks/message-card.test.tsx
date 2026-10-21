@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import {
   MESSAGE_BLOCK_FIXTURES,
@@ -57,6 +57,41 @@ describe('カード型メッセージの描画', () => {
     render(<MessageCard blocks={[{ type: 'actions', block_id: 'b', elements: [select] }]} fallbackText="" onAction={onAction} />)
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'yes' } })
     expect(onAction).toHaveBeenLastCalledWith({ type: 'static_select', blockId: 'b', actionId: 'pick', selectedOptionValue: 'yes' })
+  })
+
+  it('confirm 付きのボタンは確認で確定するまで操作を渡さず、取り消せば渡さない', () => {
+    const onAction = vi.fn()
+    render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '締め切る' }))
+    expect(onAction).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('締め切ると、誰も投票できなくなります。')
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }))
+    expect(onAction).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '締め切る' }))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '締め切る' }))
+    expect(onAction).toHaveBeenCalledWith({ type: 'button', blockId: 'controls', actionId: 'close' })
+  })
+
+  it('カードの更新で初期選択が変わったら、select の表示も新しい初期選択にする', () => {
+    const select = (initial: string) => [{
+      type: 'actions',
+      block_id: 'b',
+      elements: [{
+        type: 'static_select',
+        action_id: 'pick',
+        options: [{ text: { type: 'plain_text', text: '参加' }, value: 'yes' }, { text: { type: 'plain_text', text: '不参加' }, value: 'no' }],
+        initial_option: initial === 'yes'
+          ? { text: { type: 'plain_text', text: '参加' }, value: 'yes' }
+          : { text: { type: 'plain_text', text: '不参加' }, value: 'no' },
+      }],
+    }]
+    const { rerender } = render(<MessageCard blocks={select('yes')} fallbackText="" onAction={vi.fn()} />)
+    expect(screen.getByRole('combobox')).toHaveValue('yes')
+    rerender(<MessageCard blocks={select('no')} fallbackText="" onAction={vi.fn()} />)
+    expect(screen.getByRole('combobox')).toHaveValue('no')
   })
 
   it('URL ボタンは新しいタブで開くリンクにする', () => {

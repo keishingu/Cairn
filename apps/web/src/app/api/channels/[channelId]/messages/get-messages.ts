@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import type { MessageType, ProjectMemberRole } from '@cairn/shared'
 import { linkedTaskLineIndexes } from '@/lib/tasks/task-candidates'
-import { hydrateMentions } from '@/lib/chat/mentions'
+import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
@@ -399,8 +399,13 @@ export async function getMessages({
 
     // メンションは canonical な `<@id>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
     // ユーザー・@all・@project_members・属性をまとめて解決する。
+    // カードの mrkdwn のメンションも、非活性になったメンバーを含めて同じ時点の名前で解決する
+    const blocksJsonById = new Map(
+      rows.filter((row) => row.messageType === 'blocks').map((row) => [row.id, JSON.stringify(row.blocks ?? null)]),
+    )
     const nameMap = await buildMentionNameMap(workspaceId, [
       ...rows.map((row) => row.content),
+      ...blocksJsonById.values(),
       ...parentRows.flatMap((parent) => (parent.deletedAt ? [] : [parent.content])),
     ])
 
@@ -436,6 +441,7 @@ export async function getMessages({
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
       blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
+      ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
       // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
       senderApp: row.appName
         ? { name: row.appName, iconUrl: row.appIconUrl ?? null, uninstalled: row.appRevokedAt != null }
@@ -449,4 +455,15 @@ export async function getMessages({
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+// カード内のメンション（`<@id>`、名前なし）の表示名。クライアントのメンバー一覧は active だけなので、
+// 非活性になったメンバーへのメンションを「不明なメンバー」にしないよう、サーバーで解決した名前を添える
+function cardMentionNames(blocksJson: string, nameMap: Map<string, string>): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const id of extractMentionIds(blocksJson)) {
+    const name = nameMap.get(id)
+    if (name) names[id] = name
+  }
+  return names
 }

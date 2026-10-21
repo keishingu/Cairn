@@ -61,5 +61,7 @@ export interface MessageDto {
   blocked?: boolean
   /** messageType が blocks のときのカード本体（ボタンの value は含めない）。それ以外は null */
   blocks?: unknown[] | null
+  /** カード内のメンションの userId → 表示名（非活性のメンバーも含む）。blocks のメッセージだけ */
+  mentionNames?: Record<string, string>
   senderApp?: SenderAppDto | null
 }

@@ -374,6 +374,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
           },
         ],
         senderApp: { name: '投票', iconUrl: 'https://example.com/polls.png', uninstalled: false },
+        mentionNames: {},
       }),
       expect.objectContaining({ id: 'msg-human', blocks: null, senderApp: null }),
     ])

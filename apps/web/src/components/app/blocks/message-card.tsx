@@ -4,8 +4,9 @@
 'use client'
 
 import React from 'react'
-import { normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderContextElement, type RenderElement } from '@cairn/shared'
+import { normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
+import { Modal } from '@/components/app/primitives'
 import { MrkdwnView, RenderTextView } from './mrkdwn-view'
 
 // アプリが投稿したカード（Block Kit サブセット）を描く。中間表現への変換は packages/shared の normalizeMessageBlocks が持ち、
@@ -97,38 +98,84 @@ function CardElement({ element, blockId, onAction }: { element: RenderElement; b
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
       // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
-      if (element.url) {
-        return <a className={className} href={element.url} target="_blank" rel="noopener noreferrer">{element.text}</a>
-      }
+      const activate = element.url
+        ? () => { window.open(element.url, '_blank', 'noopener,noreferrer') }
+        : () => onAction?.({ type: 'button', blockId, actionId: element.actionId })
       return (
-        <button
-          type="button"
-          className={className}
-          disabled={!onAction}
-          onClick={() => onAction?.({ type: 'button', blockId, actionId: element.actionId })}
-        >
-          {element.text}
-        </button>
+        <ConfirmGate confirm={element.confirm} onConfirmed={activate}>
+          {(request) => element.url && !element.confirm ? (
+            <a className={className} href={element.url} target="_blank" rel="noopener noreferrer">{element.text}</a>
+          ) : (
+            <button type="button" className={className} disabled={!element.url && !onAction} onClick={request}>
+              {element.text}
+            </button>
+          )}
+        </ConfirmGate>
       )
     }
     case 'static_select':
-      return (
-        <select
-          aria-label={element.placeholder ?? t('Choose an option')}
-          disabled={!onAction}
-          defaultValue={element.initialValue ?? ''}
-          onChange={(event) => onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: event.target.value })}
-          style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
-        >
-          {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
-          {element.options.map((option) => <option key={option.value} value={option.value}>{option.text}</option>)}
-        </select>
-      )
+      // chat.update で初期選択が変わったら選び直した状態を捨てて新しい初期選択を表示する（key で作り直す）
+      return <CardSelect key={element.initialValue ?? ''} element={element} blockId={blockId} onAction={onAction} />
     case 'image':
       return <ExternalImage url={element.url} alt={element.alt} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
     case 'unsupported':
       return <UnsupportedPart />
   }
+}
+
+function CardSelect({ element, blockId, onAction }: { element: Extract<RenderElement, { type: 'static_select' }>; blockId: string; onAction?: MessageCardProps['onAction'] }) {
+  const t = useT()
+  const [value, setValue] = React.useState(element.initialValue ?? '')
+  const [pending, setPending] = React.useState<string | null>(null)
+  const commit = (next: string) => {
+    setValue(next)
+    onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: next })
+  }
+  return (
+    <>
+      <select
+        aria-label={element.placeholder ?? t('Choose an option')}
+        disabled={!onAction}
+        value={value}
+        onChange={(event) => (element.confirm ? setPending(event.target.value) : commit(event.target.value))}
+        style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
+      >
+        {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
+        {element.options.map((option) => <option key={option.value} value={option.value}>{option.text}</option>)}
+      </select>
+      {element.confirm && pending !== null && (
+        <CardConfirmDialog confirm={element.confirm} onConfirm={() => { commit(pending); setPending(null) }} onClose={() => setPending(null)} />
+      )}
+    </>
+  )
+}
+
+/** アプリが confirm を指定したら、確認を挟んでから操作する（Slack と同じく確認を飛ばさない） */
+function ConfirmGate({ confirm, onConfirmed, children }: { confirm: RenderConfirm | undefined; onConfirmed: () => void; children: (request: () => void) => React.ReactNode }) {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <>
+      {children(() => (confirm ? setOpen(true) : onConfirmed()))}
+      {confirm && open && <CardConfirmDialog confirm={confirm} onConfirm={() => { setOpen(false); onConfirmed() }} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+function CardConfirmDialog({ confirm, onConfirm, onClose }: { confirm: RenderConfirm; onConfirm: () => void; onClose: () => void }) {
+  return (
+    <Modal onClose={onClose} label={confirm.title} role="alertdialog">
+      <div className="card" style={{ width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>{confirm.title}</h2>
+        <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>
+          <RenderTextView text={confirm.text} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn" onClick={onClose}>{confirm.deny}</button>
+          <button type="button" className={`btn ${confirm.style === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>{confirm.confirm}</button>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 function ContextElement({ element, mentionNames }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined }) {

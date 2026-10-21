@@ -201,7 +201,7 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -226,6 +226,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   blocked?: boolean | undefined
   /** messageType が blocks のときのカード本体。サーバーがボタンの value を落としたもの */
   blocks?: unknown[] | null | undefined
+  /** カード内のメンションの表示名（非活性のメンバーも含む、サーバーで解決したもの） */
+  cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
   onReact: (messageId: string, emoji: string) => void
@@ -250,6 +252,15 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const t = useT()
   const router = useRouter()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const displaySenderName = senderApp?.name ?? senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  const cardNames = React.useMemo(() => {
+    if (!cardMentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(cardMentionNames)) merged.set(id, name)
+    return merged
+  }, [cardMentionNames, mentionNames])
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
@@ -432,12 +443,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         />
       )}
       <div title={senderEmail ?? undefined}>
-        <Avatar name={senderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
+        <Avatar name={displaySenderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
           <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{displaySenderName}</span>
             {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
             {senderApp && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
@@ -504,7 +515,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           </div>
         ) : messageType === 'blocks' ? (
           <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-            <MessageCard blocks={blocks} fallbackText={content} mentionNames={mentionNames} />
+            <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} />
           </div>
         ) : (
           content && (
@@ -2312,6 +2323,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
               blocks={item.message.blocks}
+              cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
               onReact={handleReact}
               onEdit={handleEdit}
