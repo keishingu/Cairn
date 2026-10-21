@@ -596,6 +596,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Expires in 30 days': '有効期限: 30日間',
   'External link': '外部リンク',
   'External services': '外部サービス',
+  'Could not load the AI model setting.': 'AI モデルの設定を読み込めませんでした。',
   'OpenAI · default': 'OpenAI・既定',
   'Anthropic · balanced speed and quality': 'Anthropic・速度と品質のバランス',
   'Anthropic · most capable, higher cost': 'Anthropic・最高性能（高コスト）',

@@ -596,6 +596,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Expires in 30 days': '유효 기간: 30일',
   'External link': '외부 링크',
   'External services': '외부 서비스',
+  'Could not load the AI model setting.': 'AI 모델 설정을 불러오지 못했습니다.',
   'OpenAI · default': 'OpenAI·기본',
   'Anthropic · balanced speed and quality': 'Anthropic·속도와 품질의 균형',
   'Anthropic · most capable, higher cost': 'Anthropic·최고 성능(고비용)',

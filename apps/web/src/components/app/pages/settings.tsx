@@ -1336,7 +1336,7 @@ const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
 
 const SettingsAI = () => {
   const t = useT()
-  const { data: wsSettings } = useWorkspaceSettings()
+  const { data: wsSettings, error: wsSettingsError } = useWorkspaceSettings()
   const updateSettings = useUpdateWorkspaceSettings()
   const { isOwner } = useWorkspacePermissions()
   const readOnly = !isOwner
@@ -1415,6 +1415,12 @@ const SettingsAI = () => {
           )
         })}
       </div>
+      {/* 取得失敗を読み込み中や権限不足と見分けられるよう、選択欄が無効な理由をエラーとして示す */}
+      {wsSettingsError && (
+        <InlineError style={{ marginTop: 8 }}>
+          {t('Could not load the AI model setting.')} {(wsSettingsError as Error).message}
+        </InlineError>
+      )}
       {updateSettings.isError && (
         <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
       )}

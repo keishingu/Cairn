@@ -732,13 +732,15 @@ describe('モバイル設定のセクション', () => {
 })
 
 describe('AIエージェントのモデル選択', () => {
-  function renderAiSection(wsRole: 'owner' | 'member') {
+  function renderAiSection(wsRole: 'owner' | 'member', options?: { settingsError?: boolean }) {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
       if (input === '/api/me' && !init) {
         return new Response(JSON.stringify({ id: USER_ID, wsRole }))
       }
       if (input === '/api/workspaces/settings' && !init) {
-        return new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
+        return options?.settingsError
+          ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
+          : new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
       }
       if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
         return new Response(JSON.stringify({ aiChatModel: 'claude-sonnet-5-5' }))
@@ -784,5 +786,12 @@ describe('AIエージェントのモデル選択', () => {
     const gpt = await screen.findByRole('radio', { name: /GPT-5/ })
     await waitFor(() => expect(gpt).toHaveAttribute('aria-checked', 'true'))
     expect(screen.getByRole('radio', { name: /Claude Opus 5\.5/ })).toBeDisabled()
+  })
+
+  it('設定の取得に失敗したときは、読み込み中と区別できるようエラーを表示する', async () => {
+    renderAiSection('owner', { settingsError: true })
+
+    expect(await screen.findByText(/AI モデルの設定を読み込めませんでした|Could not load the AI model setting/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /GPT-5/ })).toHaveAttribute('aria-checked', 'false')
   })
 })
