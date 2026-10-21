@@ -66,6 +66,8 @@ export async function POST(req: Request) {
         .where(eq(profiles.id, ctx.userId))
         .limit(1),
     ])
+    // 認証の後にワークスペースや利用者が消えていたら、空の名前で署名付きのコマンドを届けない
+    if (!workspace || !member) return NextResponse.json({ error: 'user_not_found' }, { status: 404 })
     const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: body.channelId })
     const delivery = await deliverToApp({
       requestUrl: resolveRequestUrl(row.requestUrl),
@@ -74,11 +76,11 @@ export async function POST(req: Request) {
       form: {
         token: '',
         team_id: ctx.workspaceId,
-        team_domain: workspace?.slug ?? '',
+        team_domain: workspace.slug,
         channel_id: body.channelId,
         channel_name: channel.name ?? '',
         user_id: ctx.userId,
-        user_name: member?.name ?? '',
+        user_name: member.name,
         command: body.command,
         text: '',
         api_app_id: row.appId,
