@@ -18,8 +18,9 @@ import { displayableErrors, parseViewSubmissionResponse, validateSubmission } fr
 // モーダルの送信。入力値をサーバーで検証してから Slack と同じ view_submission をアプリへ届け、
 // アプリの同期応答（response_action）に従って、エラー表示・差し替え・閉じるのどれかにする（docs/app-platform-design.md §5.5）
 
-// 送信を確保しておく時間。アプリへの配信（3秒）と前後の DB 操作が収まる長さにする
-const SUBMIT_LEASE_SECONDS = 15
+// 送信を確保しておく時間。DB の query_timeout（30秒）とアプリへの配信（3秒）より長くする。
+// それでも届ける直前に確保がまだ自分のものかを確かめる（期限切れの間に別の送信が確保していたら届けない）
+const SUBMIT_LEASE_SECONDS = 45
 
 const bodySchema = z.object({
   // 描いていた版。views.update で中身が変わった後の古い入力を、新しい版の意味で解釈しない
@@ -76,10 +77,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
           or(isNull(appViews.submittingUntil), lt(appViews.submittingUntil, sql`now()`)),
         ),
       )
-      .returning({ id: appViews.id })
+      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
     if (!claimed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
-    // モーダルを開いたまま返すときは確保を外し、直して送り直せるようにする
-    const release = () => db.update(appViews).set({ submittingUntil: null }).where(eq(appViews.id, viewId))
+    // 確保の値そのものを自分の確保の印にする（別の送信が取り直すと値が変わる）
+    let lease = claimed.lease
+    const ownsLease = sql`${appViews.submittingUntil}::text = ${lease}`
+    // モーダルを開いたまま返すときは確保を外し、直して送り直せるようにする。外すのは自分の確保だけ
+    const release = () => db.update(appViews).set({ submittingUntil: null }).where(and(eq(appViews.id, viewId), sql`${appViews.submittingUntil}::text = ${lease}`))
     const [[workspace], [member]] = await Promise.all([
       db.select({ slug: workspaces.slug }).from(workspaces).where(eq(workspaces.id, ctx.workspaceId)).limit(1),
       db
@@ -116,6 +120,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
       },
       cairn: { interaction_id: interactionId, channel_id: view.channelId },
     }
+
+    // ここまでの DB 操作が遅れて確保が切れ、別の送信が取り直していたら、同じ送信を二重に届けない。自分の確保なら延ばす
+    const [renewed] = await db
+      .update(appViews)
+      .set({ submittingUntil: sql`now() + make_interval(secs => ${SUBMIT_LEASE_SECONDS})` })
+      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), ownsLease))
+      .returning({ lease: sql<string>`${appViews.submittingUntil}::text` })
+    if (!renewed) return NextResponse.json({ error: 'view_submitting' }, { status: 409 })
+    lease = renewed.lease
 
     let delivery: Awaited<ReturnType<typeof deliverToApp>>
     try {
