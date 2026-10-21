@@ -106,7 +106,7 @@ export function resolveSigningSecret(stored: { requestUrl: string; signingSecret
 }
 
 /** apps の行を作るか、今の定義に合わせる。戻り値は apps.id */
-async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise<string> {
+async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise<string | null> {
   const { db, apps } = await import('@cairn/db')
   const { and, eq, isNull, sql } = await import('drizzle-orm')
   const values = {
@@ -147,6 +147,8 @@ async function ensureFirstPartyApp(definition: FirstPartyAppDefinition): Promise
     }
     return existing.id
   }
+  // 共有の行を新しく作るのも本番・develop・ローカルだけ。PR の Preview が作ると、その経路を持たない develop にも起動口が出てしまう
+  if (!canSyncFirstPartyDefinitions()) return null
   const [created] = await db
     .insert(apps)
     .values({ slug: definition.slug, ...values })
@@ -168,8 +170,10 @@ export async function ensureFirstPartyInstallations(workspaceId: string): Promis
   const { and, eq, sql } = await import('drizzle-orm')
   for (const definition of FIRST_PARTY_APPS) {
     const appId = await ensureFirstPartyApp(definition)
+    // まだ develop などで作られていないアプリは、PR の Preview ではインストールしない（使おうとすると未インストールのエラーになる）
+    if (!appId) continue
     const [installed] = await db
-      .select({ id: appInstallations.id, botProfileId: appInstallations.botProfileId, botName: profiles.displayName })
+      .select({ id: appInstallations.id, botProfileId: appInstallations.botProfileId, botName: profiles.displayName, grantedScopes: appInstallations.grantedScopes })
       .from(appInstallations)
       .innerJoin(profiles, eq(profiles.id, appInstallations.botProfileId))
       .where(and(eq(appInstallations.appId, appId), eq(appInstallations.workspaceId, workspaceId)))
@@ -179,6 +183,10 @@ export async function ensureFirstPartyInstallations(workspaceId: string): Promis
       // 定義の同期と同じく、書き換えるのは本番・develop・ローカルだけ
       if (installed.botName !== definition.name && canSyncFirstPartyDefinitions()) {
         await db.update(profiles).set({ displayName: definition.name }).where(eq(profiles.id, installed.botProfileId))
+      }
+      // 必要なスコープを足した版では、既存のインストールの許可も合わせる（古い許可のままだと Bot API が missing_scope になる）
+      if (JSON.stringify([...installed.grantedScopes].sort()) !== JSON.stringify([...APP_SCOPES].sort()) && canSyncFirstPartyDefinitions()) {
+        await db.update(appInstallations).set({ grantedScopes: [...APP_SCOPES] }).where(eq(appInstallations.id, installed.id))
       }
       continue
     }

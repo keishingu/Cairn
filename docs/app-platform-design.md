@@ -88,7 +88,7 @@ app_channel_memberships {               // Bot が投稿できるチャンネル
 - 署名シークレットは既存の `apps/web/src/lib/token-crypto.ts`（`connected_accounts` のトークン暗号化）で暗号化して保存する。Bot トークンは検証だけでよいので hash 保存
 - ファーストパーティかどうかは `ownerWorkspaceId is null` で決める（専用のフラグは持たない）
 - `requestUrl` の https 限定はアプリ側で検証する（開発環境の例外は §5.4。DB では縛らない）。`requestUrl` があるのに署名シークレットがない行は DB の CHECK で拒否する
-- ファーストパーティの投票アプリは全ワークスペースに既定でインストール済みにする（§11 D7）。マイグレーションでは適用時点のワークスペースにしか作れないため、`apps` 行・installation・Bot profile の作成は冪等な `ensureFirstPartyInstallations(workspaceId)` に一本化し、**ワークスペース作成処理から呼ぶ**。既存ワークスペースはデプロイ後に同じ関数で backfill し、インストール一覧・作成メニューの表示時にも同じ関数で欠けを補う（遅延初期化）。署名シークレットは環境変数から暗号化して入れるため SQL では作らない。Bot のチャンネルへの追加は手動。`apps` 行の定義（名前・Request URL のパス・起動口）を今のコードに合わせて書き換えるのは本番・develop・ローカルだけで、DB を共有する PR の Preview は行が無いときに作るだけにする（版の違う Preview 同士で定義を書き換え合わない）
+- ファーストパーティの投票アプリは全ワークスペースに既定でインストール済みにする（§11 D7）。マイグレーションでは適用時点のワークスペースにしか作れないため、`apps` 行・installation・Bot profile の作成は冪等な `ensureFirstPartyInstallations(workspaceId)` に一本化し、**ワークスペース作成処理から呼ぶ**。既存ワークスペースはデプロイ後に同じ関数で backfill し、インストール一覧・作成メニューの表示時にも同じ関数で欠けを補う（遅延初期化）。署名シークレットは環境変数から暗号化して入れるため SQL では作らない。Bot のチャンネルへの追加は手動。`apps` 行の定義（名前・Request URL のパス・起動口）を今のコードに合わせて書き換えるのは本番・develop・ローカルだけで、DB を共有する PR の Preview は行を作りも書き換えもしない（版の違う Preview 同士で定義を書き換え合わず、Preview で作った新しいアプリの起動口がその経路を持たない develop に出ない）。Bot の表示名・インストールの許可スコープも同じ条件で定義に合わせる
 
 ### 3.2 Bot profile
 
