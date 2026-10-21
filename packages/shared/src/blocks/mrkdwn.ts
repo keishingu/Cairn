@@ -83,8 +83,16 @@ function parseLines(text: string, autolink: boolean): MrkdwnBlock[] {
   return blocks
 }
 
-/** 1行分。改行をまたぐ書式は Slack と同じく作らない */
-export function parseMrkdwnInline(line: string, autolink = true): MrkdwnInline[] {
+// 書式の入れ子の上限。これより深い記号は文字として残す（再帰で解析時間が伸びないようにする）
+const MAX_FORMAT_DEPTH = 4
+
+/**
+ * 1行分。改行をまたぐ書式は Slack と同じく作らない。
+ * 本文はアプリが送る未信頼の値で、1つの text だけで 3000 文字ある。閉じ記号の探索で行を何度も走査すると
+ * 細工した本文で描画が固まるため、`<…>` とコードの範囲・閉じ記号の候補を1回の走査で先に求めておく
+ */
+export function parseMrkdwnInline(line: string, autolink = true, depth = 0): MrkdwnInline[] {
+  const { atomEnd, closers } = analyzeLine(line)
   const nodes: MrkdwnInline[] = []
   let buffer = ''
   const flushText = () => {
@@ -94,30 +102,19 @@ export function parseMrkdwnInline(line: string, autolink = true): MrkdwnInline[]
   let i = 0
   while (i < line.length) {
     const char = line[i]!
-    if (char === '<') {
-      const end = line.indexOf('>', i + 1)
-      if (end > i + 1) {
-        flushText()
-        nodes.push(parseTag(line.slice(i + 1, end)))
-        i = end + 1
-        continue
-      }
+    const end = atomEnd[i] ?? -1
+    if (end !== -1) {
+      flushText()
+      nodes.push(char === '<' ? parseTag(line.slice(i + 1, end)) : { type: 'code', text: unescapeEntities(line.slice(i + 1, end)) })
+      i = end + 1
+      continue
     }
-    if (char === '`') {
-      const end = line.indexOf('`', i + 1)
-      if (end > i + 1) {
+    if (char in FORMAT_TYPES && depth < MAX_FORMAT_DEPTH) {
+      const close = findClosingMarker(line, i, char as FormatMarker, closers[char as FormatMarker])
+      if (close !== -1) {
         flushText()
-        nodes.push({ type: 'code', text: unescapeEntities(line.slice(i + 1, end)) })
-        i = end + 1
-        continue
-      }
-    }
-    if (char in FORMAT_TYPES) {
-      const end = findClosingMarker(line, i, char as FormatMarker)
-      if (end !== -1) {
-        flushText()
-        nodes.push({ type: FORMAT_TYPES[char as FormatMarker], children: parseMrkdwnInline(line.slice(i + 1, end), autolink) })
-        i = end + 1
+        nodes.push({ type: FORMAT_TYPES[char as FormatMarker], children: parseMrkdwnInline(line.slice(i + 1, close), autolink, depth + 1) })
+        i = close + 1
         continue
       }
     }
@@ -128,42 +125,60 @@ export function parseMrkdwnInline(line: string, autolink = true): MrkdwnInline[]
   return nodes
 }
 
-function findClosingMarker(line: string, start: number, marker: FormatMarker): number {
+type LineAnalysis = {
+  /** `<` や `` ` `` の位置 → 対応する閉じ位置。原子（中で書式を解釈しない範囲）の開始位置だけが値を持つ */
+  atomEnd: number[]
+  /** 記号ごとの、閉じ記号になれる位置（昇順）。原子の内側は含まない */
+  closers: Record<FormatMarker, number[]>
+}
+
+/** 1回の走査で、原子の範囲と閉じ記号の候補を求める */
+function analyzeLine(line: string): LineAnalysis {
+  const atomEnd: number[] = []
+  const closers: Record<FormatMarker, number[]> = { '*': [], _: [], '~': [] }
+  // indexOf が一度見つからなければ、それ以降にもその文字はない。同じ文字を探して行を何度も走査しない
+  let noMoreGt = false
+  let noMoreBacktick = false
+  let k = 0
+  while (k < line.length) {
+    const char = line[k]!
+    if ((char === '<' && !noMoreGt) || (char === '`' && !noMoreBacktick)) {
+      const end = line.indexOf(char === '<' ? '>' : '`', k + 1)
+      if (end === -1) {
+        if (char === '<') noMoreGt = true
+        else noMoreBacktick = true
+      } else if (end > k + 1) {
+        atomEnd[k] = end
+        k = end + 1
+        continue
+      }
+    }
+    if (char in FORMAT_TYPES && k > 0) {
+      const last = line[k - 1]!
+      const after = line[k + 1]
+      if (!/\s/.test(last) && !(after !== undefined && (WORD_CHAR.test(after) || after === char))) {
+        closers[char as FormatMarker].push(k)
+      }
+    }
+    k += 1
+  }
+  return { atomEnd, closers }
+}
+
+function findClosingMarker(line: string, start: number, marker: FormatMarker, candidates: number[]): number {
   const before = line[start - 1]
   const first = line[start + 1]
   if (before !== undefined && (WORD_CHAR.test(before) || before === marker)) return -1
   if (first === undefined || /\s/.test(first) || first === marker) return -1
-  for (let j = start + 2; j < line.length; j += 1) {
-    if (line[j] !== marker) continue
-    // `<...>` やコードの中の記号を閉じ記号に数えない
-    if (insideAtom(line, start + 1, j)) continue
-    const last = line[j - 1]!
-    const after = line[j + 1]
-    if (/\s/.test(last)) continue
-    if (after !== undefined && (WORD_CHAR.test(after) || after === marker)) continue
-    return j
+  // start + 2 以降で最初の候補を二分探索で引く
+  let low = 0
+  let high = candidates.length
+  while (low < high) {
+    const mid = (low + high) >> 1
+    if (candidates[mid]! < start + 2) low = mid + 1
+    else high = mid
   }
-  return -1
-}
-
-/** start..position の間で `<` か `` ` `` が開いたまま閉じていなければ、position はその中にある */
-function insideAtom(line: string, start: number, position: number): boolean {
-  let openTag = false
-  let openCode = false
-  for (let k = start; k < position; k += 1) {
-    const char = line[k]
-    if (openCode) {
-      if (char === '`') openCode = false
-      continue
-    }
-    if (openTag) {
-      if (char === '>') openTag = false
-      continue
-    }
-    if (char === '`' && line.indexOf('`', k + 1) !== -1) openCode = true
-    else if (char === '<' && line.indexOf('>', k + 1) !== -1) openTag = true
-  }
-  return openTag || openCode
+  return candidates[low] ?? -1
 }
 
 function parseTag(body: string): MrkdwnInline {

@@ -124,3 +124,19 @@ describe('mrkdwn のブロック', () => {
     expect(mrkdwnToPlainText(blocks, (id) => (id === 'u1' ? '山田' : '不明'))).toBe('担当 @山田 へ\n@here')
   })
 })
+
+describe('mrkdwn の解析時間', () => {
+  // 本文はアプリが送る未信頼の値。閉じ記号の探索で行を繰り返し走査すると、細工した本文で描画が固まる
+  it('閉じない記号と開いたタグが大量にある本文でもすぐに終わる', () => {
+    const hostile = ['*a'.repeat(1500), '<*'.repeat(1500), '`*_'.repeat(1000), ' *x'.repeat(1000)]
+    const started = Date.now()
+    for (const text of hostile) parseMrkdwn(text.slice(0, 3000))
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
+  it('入れ子が上限（4段）に達したら、それより深い記号は文字として残す', () => {
+    expect(parseMrkdwnInline('*x*', true, 3)).toEqual([{ type: 'bold', children: [{ type: 'text', text: 'x' }] }])
+    expect(parseMrkdwnInline('*x*', true, 4)).toEqual([{ type: 'text', text: '*x*' }])
+  })
+})
+
