@@ -141,6 +141,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         await release()
         return NextResponse.json({ error: 'app_invalid_response' }, { status: 502 })
       }
+      // 届けている間の views.update と競合したら、先に確定したアプリの差し替えを残す
       await db
         .update(appViews)
         .set({
@@ -150,10 +151,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
           submittingUntil: null,
           updatedAt: sql`clock_timestamp()`,
         })
-        .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open')))
+        .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
       return NextResponse.json({ status: 'updated' })
     }
-    await db.update(appViews).set({ status: 'submitted', submittingUntil: null }).where(and(eq(appViews.id, viewId), eq(appViews.status, 'open')))
+    // 送信を届けている間にアプリが views.update で差し替えていたら（hash が変わる）、その差し替えを黙って捨てて閉じない
+    const [submitted] = await db
+      .update(appViews)
+      .set({ status: 'submitted', submittingUntil: null })
+      .where(and(eq(appViews.id, viewId), eq(appViews.status, 'open'), eq(appViews.hash, renderedHash)))
+      .returning({ id: appViews.id })
+    if (!submitted) {
+      await release()
+      return NextResponse.json({ status: 'updated' })
+    }
     return NextResponse.json({ status: 'closed' })
   } catch (err) {
     console.error('[/api/app-views/[viewId]/submit POST] failed:', err)

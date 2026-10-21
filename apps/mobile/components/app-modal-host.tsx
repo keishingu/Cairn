@@ -19,6 +19,8 @@ type Values = Record<string, Record<string, string>>
 const APP_VIEWS_QUERY_KEY = ['app-views'] as const
 
 export function AppModalHost() {
+  const t = useT()
+  const { palette } = useAppAppearance()
   const query = useQuery<AppViewDto[]>({
     queryKey: APP_VIEWS_QUERY_KEY,
     queryFn: async () => {
@@ -30,6 +32,18 @@ export function AppModalHost() {
   const current = query.data?.[0]
   // 送信の前にアプリが views.update した場合、作り直したモーダルに理由を出す
   const [changedNotice, setChangedNotice] = React.useState<{ viewId: string; message: string } | null>(null)
+  if (query.isError && !current) {
+    // 開いたはずのモーダルを黙って出さないままにしない（Web の AppModalHost と同じ）
+    return (
+      <Pressable
+        accessibilityRole="alert"
+        onPress={() => void query.refetch()}
+        style={[styles.loadError, { backgroundColor: palette.card, borderColor: palette.border }]}
+      >
+        <Text style={{ color: palette.redText, fontSize: 12 }}>{t('Could not load the app form. Tap to retry.')}</Text>
+      </Pressable>
+    )
+  }
   if (!current) return null
   // 差し替え（views.update）で中身が変わったら入力状態を作り直す
   return (
@@ -257,6 +271,7 @@ function InputElement({
 }
 
 const styles = StyleSheet.create({
+  loadError: { position: 'absolute', left: 16, right: 16, bottom: 96, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
   sheet: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   titleBox: { flex: 1, alignItems: 'center' },
