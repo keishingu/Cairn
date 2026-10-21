@@ -3,14 +3,13 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { blocksRevision } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { decryptToken } from '@/lib/token-crypto'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
-import { blocksForClient } from '@/lib/apps/blocks-for-client'
+import { cardRevision } from '@/lib/apps/blocks-for-client'
 
 // カードのボタン押下・選択を、アプリの Request URL へ署名付きで届ける（docs/app-platform-design.md §5）。
 // クライアントが送るのは「どの要素か」と select の選択肢だけ。値やラベルは保存済みの blocks から引く。
@@ -93,7 +92,7 @@ export async function POST(req: Request) {
     if (!membership) return error('app_not_in_channel', 409)
 
     // 押されたのが今のカードか確かめる。chat.update の後に古いカードが押されたら、同じ ID の新しい値で届けない
-    if (blocksRevision(blocksForClient(row.blocks)) !== parsed.revision) return error('card_changed', 409)
+    if (cardRevision(row.blocks, row.messageId) !== parsed.revision) return error('card_changed', 409)
     const resolved = resolveAction(row.blocks, parsed)
     if (!resolved.ok) return error(resolved.error, 422)
     if (!row.requestUrl || !row.signingSecretEncrypted) return error('app_not_interactive', 409)
@@ -103,7 +102,8 @@ export async function POST(req: Request) {
       db
         .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
         .from(profiles)
-        .leftJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
+        // 非活性になった人は未所属と同じ。認証の後に非活性になっていたら行が無くなり、下で断る
+        .innerJoin(activeWorkspaceMembers, and(eq(activeWorkspaceMembers.userId, profiles.id), eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId)))
         .where(eq(profiles.id, ctx.userId))
         .limit(1),
     ])

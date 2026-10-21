@@ -12,7 +12,7 @@ export class CardActionError extends Error {
   }
 }
 
-/** revision は描いているカードの blocksRevision。サーバーの今のカードと違えば card_changed で断られる */
+/** revision は描いているカードの版（メッセージの blocksRevision）。サーバーの今のカードと違えば card_changed で断られる */
 export async function postCardAction(messageId: string, revision: string, action: CardAction): Promise<void> {
   const res = await fetchWithAuth('/api/app-interactions', {
     method: 'POST',

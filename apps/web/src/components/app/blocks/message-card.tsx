@@ -97,14 +97,15 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
     <div aria-busy={busy} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
       {card.blocks.map((block) => (
         // 送信中は同じカードの操作を止め、二重に押させない
-        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} />
+        // URL ボタンの押下の通知は、ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため）
+        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} onLinkAction={run} />
       ))}
       {actionError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{actionError}</div>}
     </div>
   )
 })
 
-function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
+function CardBlock({ block, mentionNames, onAction, onLinkAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
   switch (block.type) {
     case 'header':
       return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
@@ -119,13 +120,13 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
               </div>
             )}
           </div>
-          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} /></div>}
+          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} /></div>}
         </div>
       )
     case 'actions':
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} />)}
+          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} />)}
         </div>
       )
     case 'context':
@@ -148,13 +149,13 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
   }
 }
 
-function CardElement({ element, blockId, mentionNames, onAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
+function CardElement({ element, blockId, mentionNames, onAction, onLinkAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
   switch (element.type) {
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
       // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
       const action = { type: 'button' as const, blockId, actionId: element.actionId }
-      const notifyLink = () => { void onAction?.(action, { link: true }) }
+      const notifyLink = () => { void (onLinkAction ?? onAction)?.(action, { link: true }) }
       const activate = element.url
         ? () => { window.open(element.url, '_blank', 'noopener,noreferrer'); notifyLink() }
         : () => { void onAction?.(action) }
