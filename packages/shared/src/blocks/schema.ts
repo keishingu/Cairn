@@ -7,6 +7,7 @@
 // 要素を足すときは Web とネイティブの描画を先に出し、OTA が行き渡ってから BLOCKS_SCHEMA_VERSION を上げて受理する。
 
 import { z } from 'zod'
+import { FEATURE_FLAGS } from '../config/feature-flags'
 
 /** message_blocks.schema_version に記録する、受理に使ったスキーマの版 */
 export const BLOCKS_SCHEMA_VERSION = 1
@@ -41,6 +42,9 @@ export const BLOCK_LIMITS = {
   modalButton: 24,
   privateMetadata: 3000,
   callbackId: 255,
+  /** メッセージ内の markdown ブロックの合計文字数（Slack と同じ） */
+  markdownTotal: 12000,
+  meterLabel: 2000,
 } as const
 
 /** https の URL だけを通す。http は Web では混在コンテンツ、iOS では ATS で表示できない（§11 D9） */
@@ -193,6 +197,22 @@ export const imageElementSchema = z
   })
   .strict()
 
+/**
+ * 量を表すバー（HTML の <meter> と同じ意味）。Slack にはない Cairn 独自の context 要素で、投票の得票率などに使う。
+ * min は省略すると 0。label は読み上げ用（バーの横に見せる文字は、同じ context の text 要素で出す）
+ */
+export const meterElementSchema = z
+  .object({
+    type: z.literal('meter'),
+    value: z.number().finite(),
+    min: z.number().finite().optional(),
+    max: z.number().finite(),
+    label: z.string().min(1).max(BLOCK_LIMITS.meterLabel).optional(),
+  })
+  .strict()
+  .refine((meter) => (meter.min ?? 0) < meter.max, { message: 'max は min より大きくしてください', path: ['max'] })
+  .refine((meter) => meter.value >= (meter.min ?? 0) && meter.value <= meter.max, { message: 'value は min 以上 max 以下にしてください', path: ['value'] })
+
 export const plainTextInputElementSchema = z
   .object({
     type: z.literal('plain_text_input'),
@@ -235,7 +255,7 @@ export const contextBlockSchema = z
     type: z.literal('context'),
     block_id: blockId.optional(),
     elements: z
-      .array(z.union([imageElementSchema, plainText(BLOCK_LIMITS.text), mrkdwnText(BLOCK_LIMITS.text)]))
+      .array(z.union([imageElementSchema, meterElementSchema, plainText(BLOCK_LIMITS.text), mrkdwnText(BLOCK_LIMITS.text)]))
       .min(1)
       .max(BLOCK_LIMITS.contextElements),
   })
@@ -248,6 +268,18 @@ export const imageBlockSchema = z
     image_url: httpsUrl(BLOCK_LIMITS.url),
     alt_text: z.string().min(1).max(BLOCK_LIMITS.altText),
     title: plainText(BLOCK_LIMITS.imageTitle).optional(),
+  })
+  .strict()
+
+/**
+ * 標準の Markdown（Slack の markdown ブロックと同じ形）。普段のメッセージと同じ描画部品で描き、Mermaid のコードブロックも図にする。
+ * 文字数は1つずつではなく、メッセージ内の合計で数える
+ */
+export const markdownBlockSchema = z
+  .object({
+    type: z.literal('markdown'),
+    block_id: blockId.optional(),
+    text: z.string().min(1).max(BLOCK_LIMITS.markdownTotal),
   })
   .strict()
 
@@ -289,9 +321,12 @@ const MESSAGE_BLOCK_SCHEMAS = {
   image: imageBlockSchema,
   divider: dividerBlockSchema,
   header: headerBlockSchema,
+  markdown: markdownBlockSchema,
 } as const
 
-const MODAL_BLOCK_SCHEMAS = { ...MESSAGE_BLOCK_SCHEMAS, input: inputBlockSchema } as const
+// markdown ブロックは Slack と同じくメッセージだけ。モーダルでは受け付けない
+const { markdown: _markdown, ...MODAL_NON_INPUT_SCHEMAS } = MESSAGE_BLOCK_SCHEMAS
+const MODAL_BLOCK_SCHEMAS = { ...MODAL_NON_INPUT_SCHEMAS, input: inputBlockSchema } as const
 
 /** 対応しているブロック種別。クライアントはこれ以外を「このバージョンでは表示できない」として扱う */
 export const MESSAGE_BLOCK_TYPES = Object.keys(MESSAGE_BLOCK_SCHEMAS) as Array<keyof typeof MESSAGE_BLOCK_SCHEMAS>
@@ -333,6 +368,8 @@ export type ContextBlock = z.infer<typeof contextBlockSchema>
 export type ImageBlock = z.infer<typeof imageBlockSchema>
 export type DividerBlock = z.infer<typeof dividerBlockSchema>
 export type HeaderBlock = z.infer<typeof headerBlockSchema>
+export type MarkdownBlock = z.infer<typeof markdownBlockSchema>
+export type MeterElement = z.infer<typeof meterElementSchema>
 export type InputBlock = z.infer<typeof inputBlockSchema>
 export type MessageBlock = z.infer<typeof messageBlockSchema>
 export type ModalBlock = z.infer<typeof modalBlockSchema>
@@ -366,6 +403,18 @@ function refineUniqueIds(blocks: BlockWithElements[], ctx: z.RefinementCtx) {
   })
 }
 
+/** markdown ブロックの文字数は、1つずつではなくメッセージ内の合計で上限をかける（Slack と同じ） */
+function refineMarkdownTotal(blocks: Array<{ type: string; text?: unknown }>, ctx: z.RefinementCtx) {
+  let total = 0
+  blocks.forEach((block, blockIndex) => {
+    if (block.type !== 'markdown' || typeof block.text !== 'string') return
+    total += block.text.length
+    if (total > BLOCK_LIMITS.markdownTotal) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [blockIndex, 'text'], message: `markdown ブロックの文字数はメッセージ内の合計で ${BLOCK_LIMITS.markdownTotal} 文字までです` })
+    }
+  })
+}
+
 function interactiveElements(block: BlockWithElements): Array<[unknown, Array<string | number>]> {
   const found: Array<[unknown, Array<string | number>]> = []
   if (block.type === 'actions') block.elements?.forEach((element, index) => found.push([element, ['elements', index]]))
@@ -380,6 +429,7 @@ export const messageBlocksSchema = z
   .min(1)
   .max(BLOCK_LIMITS.messageBlocks)
   .superRefine(refineUniqueIds)
+  .superRefine(refineMarkdownTotal)
 
 export const modalBlocksSchema = z
   .array(modalBlockSchema)
@@ -411,8 +461,31 @@ export type BlocksValidationResult<T> = { ok: true; value: T } | { ok: false; er
  * Slack の invalid_blocks と同じく `[ERROR] <理由> [json-pointer:/blocks/0/text]` の形でエラーを返す。
  * 省略された block_id / action_id は補う（Slack も自動で振る）。インタラクションの宛先を保存済み blocks から一意に引くため
  */
-export function prepareMessageBlocks(input: unknown): BlocksValidationResult<MessageBlock[]> {
-  return prepare(messageBlocksSchema, input, '/blocks')
+export function prepareMessageBlocks(
+  input: unknown,
+  options: { acceptMarkdownAndMeter?: boolean } = {},
+): BlocksValidationResult<MessageBlock[]> {
+  const result = prepare(messageBlocksSchema, input, '/blocks')
+  if (!result.ok || (options.acceptMarkdownAndMeter ?? FEATURE_FLAGS.cardMarkdownAndMeter)) return result
+  const unreleased = unreleasedErrors(result.value)
+  return unreleased.length > 0 ? { ok: false, errors: unreleased } : result
+}
+
+/**
+ * 描画を配信したが、まだ受理を有効にしていないブロック・要素（§4.4「描画を先に、受理を後に」）。
+ * 古いネイティブでは描けないので、OTA が行き渡って FEATURE_FLAGS.cardMarkdownAndMeter を有効にするまでは断る
+ */
+function unreleasedErrors(blocks: MessageBlock[]): string[] {
+  const errors: string[] = []
+  blocks.forEach((block, blockIndex) => {
+    if (block.type === 'markdown') errors.push(`[ERROR] 未対応のブロック種別です: markdown [json-pointer:/blocks/${blockIndex}/type]`)
+    if (block.type === 'context') {
+      block.elements.forEach((element, elementIndex) => {
+        if (element.type === 'meter') errors.push(`[ERROR] 未対応の要素です: meter [json-pointer:/blocks/${blockIndex}/elements/${elementIndex}/type]`)
+      })
+    }
+  })
+  return errors
 }
 
 export function prepareModalView(input: unknown): BlocksValidationResult<ModalView> {

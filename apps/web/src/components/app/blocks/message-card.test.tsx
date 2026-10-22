@@ -36,6 +36,31 @@ describe('カード型メッセージの描画', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
+  it('markdown ブロックを Markdown として描き、画像は読み込まずリンクに、相対リンクは文字にする', () => {
+    render(
+      <MessageCard
+        blocks={[{ type: 'markdown', text: '## 見出し\n\n**太字** [外部](https://example.com/a) [内部](/settings)\n\n![山の写真](https://example.com/m.png)' }]}
+        fallbackText=""
+      />,
+    )
+    expect(screen.getByRole('heading', { name: '見出し' })).toBeInTheDocument()
+    expect(screen.getByText('太字').tagName).toBe('STRONG')
+    expect(screen.getByRole('link', { name: '外部' })).toHaveAttribute('href', 'https://example.com/a')
+    expect(screen.queryByRole('link', { name: '内部' })).not.toBeInTheDocument()
+    expect(screen.getByText('内部')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '山の写真' })).toHaveAttribute('href', 'https://example.com/m.png')
+  })
+
+  it('meter を値と範囲つきのバーとして描く', () => {
+    render(<MessageCard blocks={[{ type: 'context', elements: [{ type: 'meter', value: 3, max: 4, label: '4人中3人' }] }]} fallbackText="" />)
+    const meter = screen.getByRole('meter', { name: '4人中3人' })
+    expect(meter).toHaveAttribute('aria-valuenow', '3')
+    expect(meter).toHaveAttribute('aria-valuemin', '0')
+    expect(meter).toHaveAttribute('aria-valuemax', '4')
+    expect((meter.firstElementChild as HTMLElement).style.width).toBe('75%')
+  })
+
   it('解決できないメンションは「不明なメンバー」にする', () => {
     render(<MessageCard blocks={pollCardFixture} fallbackText="" />)
     expect(screen.getAllByText('@不明なメンバー').length).toBeGreaterThan(0)

@@ -9,4 +9,9 @@
 export const FEATURE_FLAGS = {
   dm: true,
   aiPmo: true,
+  /**
+   * カードの markdown ブロックと meter 要素を受理する（docs/app-platform-design.md §4.4「描画を先に、受理を後に」）。
+   * 描画は先に配信済み。ネイティブの OTA が行き渡ってから true にし、同時に BLOCKS_SCHEMA_VERSION を上げる
+   */
+  cardMarkdownAndMeter: false,
 } as const

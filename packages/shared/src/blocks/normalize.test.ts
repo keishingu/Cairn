@@ -11,6 +11,28 @@ describe('blocks の正規化', () => {
     expect(normalizeMessageBlocks(allElementsFixture).hasUnsupported).toBe(false)
   })
 
+  it('markdown ブロックと meter を描画用の形にする', () => {
+    const card = normalizeMessageBlocks([
+      { type: 'markdown', block_id: 'md', text: '**太字**' },
+      { type: 'context', elements: [{ type: 'meter', value: 2, max: 8 }, { type: 'meter', value: 1, min: -1, max: 1, label: '満点' }] },
+    ])
+    expect(card.hasUnsupported).toBe(false)
+    expect(card.blocks[0]).toEqual({ type: 'markdown', blockId: 'md', text: '**太字**' })
+    expect(card.blocks[1]).toMatchObject({
+      type: 'context',
+      elements: [
+        { type: 'meter', value: 2, min: 0, max: 8 },
+        { type: 'meter', value: 1, min: -1, max: 1, label: '満点' },
+      ],
+    })
+  })
+
+  it('範囲外の meter は描けない要素として案内する', () => {
+    const card = normalizeMessageBlocks([{ type: 'context', elements: [{ type: 'meter', value: 9, max: 8 }, { type: 'plain_text', text: '本文' }] }])
+    expect(card.hasUnsupported).toBe(true)
+    expect(card.blocks[0]).toMatchObject({ type: 'context', elements: [{ type: 'unsupported', original: 'meter' }, { type: 'text' }] })
+  })
+
   it('投票カードを描画用の形にする', () => {
     const card = normalizeMessageBlocks(pollCardFixture)
     expect(card.blocks[0]).toEqual({ type: 'header', blockId: 'title', text: '11月の登山本部 担当決め' })

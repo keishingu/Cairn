@@ -33,11 +33,27 @@ describe('投票カード', () => {
   })
 
   it('選択肢を並び順に出し、票数・バー・投票者のメンションを付ける', () => {
-    const blocks = renderPollCard(poll).blocks as Block[]
+    const blocks = renderPollCard(poll, { meter: true }).blocks as Block[]
     expect(blocks[2]).toMatchObject({ type: 'section', text: { type: 'plain_text', text: '第1週 (11/2〜)' }, accessory: { action_id: 'vote', value: 'option:o1' } })
-    expect(blocks[3]!.elements?.[0]?.text).toBe('`▓▓▓▓▓▓▓▓▓▓` 2票 ・ <@u1> <@u2>')
-    expect(blocks[5]!.elements?.[0]?.text).toBe('`░░░░░░░░░░` 0票')
+    expect(blocks[3]!.elements).toEqual([
+      { type: 'meter', value: 2, max: 2, label: '2人中2人がこの選択肢に投票' },
+      { type: 'mrkdwn', text: '2票 ・ <@u1> <@u2>' },
+    ])
+    expect(blocks[5]!.elements?.[1]).toMatchObject({ type: 'mrkdwn', text: '0票' })
     expect(blocks[1]!.elements?.[0]?.text).toBe('単一選択 ・ 2人が投票')
+  })
+
+  it('まだ誰も投票していなくても、受理される範囲の空のバーにする', () => {
+    const card = renderPollCard({ ...poll, votes: [] }, { meter: true })
+    const blocks = card.blocks as Block[]
+    expect(blocks[3]!.elements?.[0]).toMatchObject({ type: 'meter', value: 0, max: 1 })
+    expect(prepareMessageBlocks(card.blocks, { acceptMarkdownAndMeter: true }).ok).toBe(true)
+  })
+
+  it('meter の受理を有効にするまでは、文字のバーで描く', () => {
+    const blocks = renderPollCard(poll, { meter: false }).blocks as Block[]
+    expect(blocks[3]!.elements).toEqual([{ type: 'mrkdwn', text: '`▓▓▓▓▓▓▓▓▓▓` 2票 ・ <@u1> <@u2>' }])
+    expect(blocks[5]!.elements).toEqual([{ type: 'mrkdwn', text: '`░░░░░░░░░░` 0票' }])
   })
 
   it('選択肢や質問の書式記号を mrkdwn として解釈させない（plain_text で出す）', () => {

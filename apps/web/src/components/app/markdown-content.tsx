@@ -151,14 +151,21 @@ interface MarkdownContentProps {
   /** タスク化した行の行末に「✓ タスク」ラベルを出す。呼び出し側は安定参照で渡すこと */
   lineTasks?: readonly LineTask[] | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
+  /**
+   * アプリなど外部から届いた本文（カードの markdown ブロック）。画像は自動で読み込まずリンクにし（Slack と同じ。閲覧を送り手に知らせない）、
+   * リンクは http(s)・mailto だけにする（相対パスで Cairn の画面へ誘導させない）
+   */
+  external?: boolean
 }
+
+const EXTERNAL_LINK = /^(?:https?:\/\/|mailto:)/i
 
 // メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
 // パースが走る。入力欄のキーストロークなど親の再レンダーごとに全件を再パースするとモバイルの
 // WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
 // props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
 // や mentionNames を安定参照で渡すこと）。
-export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle }: MarkdownContentProps) {
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle, external = false }: MarkdownContentProps) {
   const t = useT()
   // 目印は描画用の派生文字列にだけ差し込む（呼び出し側の content、コピー・編集の対象には混ぜない）
   const markedContent = React.useMemo(
@@ -231,7 +238,16 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             />
           )
         },
+        ...(external ? {
+          img: ({ src, alt }: { src?: string | Blob | undefined; alt?: string | undefined }) => {
+            const label = alt || t('Image')
+            return typeof src === 'string' && EXTERNAL_LINK.test(src)
+              ? <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{label}</a>
+              : <span>{label}</span>
+          },
+        } : {}),
         a: ({ href, children }) => {
+          if (external && !(href && EXTERNAL_LINK.test(href))) return <span>{children}</span>
           // 自動リンク化された生URL（リンクテキスト=URL自体）だけ表示を省略する。
           // `[表示名](url)` のようにテキストを明示したリンクはそのまま表示する
           const linkText = typeof children === 'string'

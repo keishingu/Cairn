@@ -124,5 +124,17 @@ describe('カードに見える文字', () => {
     expect(text).not.toContain('option:1')
     expect(text).not.toContain('clear-vote')
   })
+
+  it('markdown ブロックの本文と meter の読み上げ文も、安全フィルタにかける文字に含める', () => {
+    const prepared = prepareMessageBlocks([
+      { type: 'markdown', text: '**markdown の本文**' },
+      { type: 'context', elements: [{ type: 'meter', value: 1, max: 2, label: 'メーターの説明' }] },
+    ], { acceptMarkdownAndMeter: true })
+    if (!prepared.ok) throw new Error(prepared.errors.join('\n'))
+    const text = visibleTextOfBlocks(prepared.value)
+    expect(text).toContain('**markdown の本文**')
+    expect(text).toContain('メーターの説明')
+    expect(fallbackTextFromBlocks(prepared.value)).toBe('**markdown の本文**')
+  })
 })
 
