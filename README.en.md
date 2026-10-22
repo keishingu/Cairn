@@ -16,6 +16,8 @@ Run commands from the repository root.
 pnpm install
 supabase start                                          # PostgreSQL / Auth / Storage / Realtime / Studio
 cp apps/web/.env.local.example apps/web/.env.local      # default keys from supabase start are already filled in
+# set the output of the next command as CALENDAR_TOKEN_ENCRYPTION_KEY in apps/web/.env.local (required; encrypts the poll app's signing secret and Bot token)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 supabase migration up --local --include-all             # apply only migrations that are not applied yet
 pnpm dev                                                # http://localhost:3128
 ```
