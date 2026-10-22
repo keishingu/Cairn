@@ -243,24 +243,20 @@ export async function getFirstPartyBotToken(slug: FirstPartyAppSlug, workspaceId
   await ensureFirstPartyInstallations(workspaceId)
   const { db, apps, appInstallations, appBotTokens } = await import('@cairn/db')
   const { and, desc, eq, isNull, isNotNull, sql } = await import('drizzle-orm')
-  const rows = await db
-    .select({ id: appBotTokens.id, installationId: appBotTokens.installationId, tokenEncrypted: appBotTokens.tokenEncrypted, createdAt: appBotTokens.createdAt })
-    .from(appBotTokens)
-    .innerJoin(appInstallations, eq(appInstallations.id, appBotTokens.installationId))
+  // インストールはトークンとは別に引く。有効なトークンが1つも残っていない（すべて取り消された）インストールでも、未インストール扱いにせず発行し直す
+  const [installation] = await db
+    .select({ id: appInstallations.id })
+    .from(appInstallations)
     .innerJoin(apps, eq(apps.id, appInstallations.appId))
-    .where(
-      and(
-        eq(apps.slug, slug),
-        isNull(apps.ownerWorkspaceId),
-        eq(appInstallations.workspaceId, workspaceId),
-        isNull(appInstallations.revokedAt),
-        isNull(appBotTokens.revokedAt),
-        isNotNull(appBotTokens.tokenEncrypted),
-      ),
-    )
-    .orderBy(desc(appBotTokens.createdAt))
-  const installationId = rows[0]?.installationId
+    .where(and(eq(apps.slug, slug), isNull(apps.ownerWorkspaceId), eq(appInstallations.workspaceId, workspaceId), isNull(appInstallations.revokedAt)))
+    .limit(1)
+  const installationId = installation?.id
   if (!installationId) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
+  const rows = await db
+    .select({ id: appBotTokens.id, tokenEncrypted: appBotTokens.tokenEncrypted, createdAt: appBotTokens.createdAt })
+    .from(appBotTokens)
+    .where(and(eq(appBotTokens.installationId, installationId), isNull(appBotTokens.revokedAt), isNotNull(appBotTokens.tokenEncrypted)))
+    .orderBy(desc(appBotTokens.createdAt))
   // 復号できないのは「このデプロイの鍵では読めない」だけで、別の鍵のデプロイ（DB を共有する Preview など）が使っているかもしれない。
   // すぐには取り消さず、今の鍵で読める有効なトークンを探し、無ければ今の鍵で読めるものを足す
   const readable = firstReadableToken(rows)
@@ -336,4 +332,19 @@ function isReadable(encrypted: string | null): boolean {
   } catch {
     return false
   }
+}
+
+/** ファーストパーティのアプリのインストール（取り消されていないもの）の ID。欠けていれば作る */
+export async function getFirstPartyInstallationId(slug: FirstPartyAppSlug, workspaceId: string): Promise<string> {
+  await ensureFirstPartyInstallations(workspaceId)
+  const { db, apps, appInstallations } = await import('@cairn/db')
+  const { and, eq, isNull } = await import('drizzle-orm')
+  const [row] = await db
+    .select({ id: appInstallations.id })
+    .from(appInstallations)
+    .innerJoin(apps, eq(apps.id, appInstallations.appId))
+    .where(and(eq(apps.slug, slug), isNull(apps.ownerWorkspaceId), eq(appInstallations.workspaceId, workspaceId), isNull(appInstallations.revokedAt)))
+    .limit(1)
+  if (!row) throw new Error(`first-party app ${slug} is not installed in workspace ${workspaceId}`)
+  return row.id
 }

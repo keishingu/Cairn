@@ -1,7 +1,7 @@
 # アプリ（プラグイン）基盤 設計書 — 第1段階
 
 作成日: 2026-10-21
-ステータス: 構想・設計段階（未実装。第1段階の論点は 2026-10-21 に決定済み → §11）
+ステータス: 第1段階を実装中（実装順1〜7。実装順8の定期ジョブは未着手）。第1段階の論点は 2026-10-21 に決定済み → §11
 
 調整さん・アンケート・装備管理のような機能を Cairn 本体へ個別に作り込まず、**「Bot 送信者 + カード型メッセージ + インタラクションのコールバック」という汎用の仕組みに載る「アプリ」**として作るための基盤。第1段階では、既に設計済みのアプリ内投票（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §5.3〜§7）を**ファーストパーティのアプリとして**この基盤の上に作り、基盤を自分で使いながら固める。
 
@@ -320,9 +320,12 @@ Slack と同じ方式にする。
 
 ### 7.1 構成
 
+> 実装メモ: 文言は英語をキーにして `translate` で表示言語（ja / en / ko）にする。カードはチャンネルの全員に同じものが出るので、作成した人の言語を `polls.locale` に保存してその言語で描く。モーダルと入力の誤りは、操作した人の言語（ペイロードの `cairn.locale`、スラッシュコマンドは `locale` 欄。§5.2）で返す。投票アプリへの配送と投票アプリの Bot API 呼び出しは同じデプロイへの HTTP なので、Deployment Protection がかかった Preview では、Vercel の「Protection Bypass for Automation」を有効にして配られる `VERCEL_AUTOMATION_BYPASS_SECRET` を `x-vercel-protection-bypass` ヘッダーで付けて通す（同じデプロイへの呼び出しだけに付け、外部アプリへは送らない）。未設定の Preview では保護画面に阻まれて動かない（本番・ローカルでは動く）。
+
+
 - ファーストパーティのアプリ `polls`。コードは `apps/web` 内の独立したモジュール（例: `apps/web/src/first-party-apps/polls/`）に置く
 - **境界は向きごとに1つ**:
-  - **アプリ → Cairn**: Bot トークンでの Web API 呼び出し（HTTP）だけ。投票アプリは Cairn 本体の内部関数を import しない（ESLint の import 制限で強制する）
+  - **アプリ → Cairn**: Bot トークンでの Web API 呼び出し（HTTP）だけ。投票アプリは Cairn 本体の内部関数を import しない（ESLint の import 制限で強制する）。例外は、ファーストパーティの設定（`lib/apps/first-party`）・署名（`lib/apps/signing`）・Inngest クライアント・投稿の安全フィルタ（`lib/safety/message-filter`。Bot API と同じ判定をモーダルの応答前に行い、閉じた後に投稿だけが失敗し続けないようにする）だけ
   - **利用者の操作 → アプリ**: 署名付きインタラクションの受信（HTTP）だけ
   - **Cairn 本体 → アプリ**（定期ジョブ・AI からの作成、§7.4）: 投票アプリの公開エントリ `first-party-apps/polls/index.ts` が export する `createPoll` だけ。Cairn 本体はそれ以外のファイルを import しない（同じく ESLint で強制）。`createPoll` の中身もアプリ → Cairn の HTTP 経路で投稿するので、本体の内部関数を直接呼ぶ近道にはならない
   - [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) の `PollPort.createPoll`（`packages/core`）は置かない。この公開エントリが置き換える
@@ -365,7 +368,7 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
 
 - **票の受付**: `block_actions` を受けたら、`poll_votes` を1トランザクションで更新し、同じトランザクションで `polls.version` を1つ進め、処理済みの `cairn.interaction_id` を記録する。「投票」ボタンは冪等（単一選択は既存票をその選択肢に置き換え、同じ選択肢をもう一度押しても変わらない）。取り消しは `actions` の「自分の票を取り消す」ボタンで行う
 - **カードの再描画は commit の後**: `chat.update` は `/api/app-api/` への別 HTTP 呼び出しで、投票のトランザクションには参加できない。トランザクション内で呼ぶと、カードだけが先に更新されて投票の commit が失敗した場合に表示と実データが食い違う。そこで commit 後に Inngest イベント（`polls/card.render`、`pollId`）を送り、**`concurrency: { key: pollId, limit: 1 }`** の関数がその時点の最新の集計からカードを描いて `chat.update` する。描画は常に commit 済みの最新状態から作るので、同時投票で順序が入れ替わっても最後の描画が最新になり、`chat.update` の失敗は Inngest のリトライで回収する。描画済みの `version` を `polls.renderedVersion` に記録し、最新版を描画済みなら skip する
-- **イベント送信漏れの回復**: commit の後、Inngest へイベントを送る前にプロセスが止まると、リトライの起点そのものが無くなる。`version > renderedVersion` は commit 済みの「描画待ち」を表す outbox として働くので、Inngest cron（`polls/card.sweep`、5分ごと）が `version > renderedVersion` かつ最終更新から1分以上たった投票と、`status='pending_post'` のまま1分以上たった投票を拾い、同じ `polls/card.render` / 投稿の再開を送り直す。どちらの処理も冪等なので、通常経路と重なっても結果は変わらない。描画待ちを拾う部分索引 `(id) WHERE version > rendered_version OR status = 'pending_post'` を張る
+- **イベント送信漏れの回復**: commit の後、Inngest へイベントを送る前にプロセスが止まると、リトライの起点そのものが無くなる。`version > renderedVersion` は commit 済みの「描画待ち」を表す outbox として働くので、Inngest cron（`polls/card.sweep`、5分ごと）が `version > renderedVersion` かつ最終更新から1分以上たった投票と、`status='pending_post'` のまま1分以上たった投票を拾い、同じ `polls/card.render` / 投稿の再開を送り直す。どちらの処理も冪等なので、通常経路と重なっても結果は変わらない。投稿が再試行しても通らない理由（チャンネルのアーカイブ・アプリの取り外し・内容の拒否など）で失敗したら `status='post_failed'`（理由は `post_error`）にして拾い直さない。作成者への通知は、利用者へ知らせる手段（DM・通知の Bot API）と一緒に後で足す。描画待ちを拾う部分索引 `(id) WHERE version > rendered_version OR status = 'pending_post'` を張る
 - **リアルタイム**: `message_blocks` の UPDATE に DB トリガーを張り、`realtime.broadcast_changes()` でチャンネルの topic へ流す。クライアントは該当メッセージのクエリを invalidate して REST で再取得する（Broadcast from Database のみ。postgres_changes・ポーリングは使わない）
 - **「自分の票」**: Block Kit は**全員に同じカード**を描く仕組みで、閲覧者ごとの表示を持たない（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §6 の「自分の投票状態」はそのままでは描けない）。`context` に投票者を並べて代える（Slack の投票アプリと同じ）。**第1段階は匿名投票を出さない**（`anonymous` カラムは残すが常に false。§11 D2）
 - **締切**: `closesAt` を過ぎたら Inngest の遅延関数で締め、ボタンを外したカードへ `chat.update` する。結果のサマリを投稿するかは既存の未決事項のまま
@@ -377,7 +380,7 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
   2. commit 後に `chat.postMessage` を `client_msg_id = clientMsgId` 付きで呼ぶ。Cairn の Bot API は `client_msg_id` をメッセージ ID に使い、同じ ID の再送は新規投稿せず既存のメッセージを返す（モバイルのオフラインキューと同じ冪等化）
   3. 応答の `messageId` を保存して `status='posted'` にする。2〜3 の間で失敗しても、再試行は同じ `clientMsgId` で 2 からやり直すだけで、カードが二重に出ることはない
 - 起動口は3つで、すべて同じユースケースを通る:
-  1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`
+  1. 作成メニュー（§6.1）→ モーダルで質問・選択肢を入力 → `view_submission`。配信は3秒で打ち切られるので、ここでは 1 だけ行って応答し、2〜3 は `polls/card.render`（投稿前なら投稿する）に任せる。イベントを送れなくても `pending_post` を cron が拾う
   2. 定期ジョブ（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §8 の create-poll ステップ）→ 投票アプリのユースケースを呼ぶ。`scheduled_jobs.senderId` は投票アプリの Bot profile になる
   3. AI の `create_poll` tool（[`10_ai_member_design.md`](./10_ai_member_design.md) Stage 2）
 - 2 と 3 は Cairn 本体側から投票アプリを呼ぶ形になる。第1段階は §7.1 の公開エントリ（`createPoll`）を呼ぶ。外部アプリには開かない（Slack の Workflow Steps 相当として第2段階以降に検討）
