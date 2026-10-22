@@ -135,8 +135,13 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
     // 応答が失われて同じ押下が再送されても二重に処理しない（§5.4）
     const processed = await tx.insert(pollProcessedInteractions).values({ interactionId, pollId: poll.id }).onConflictDoNothing().returning({ id: pollProcessedInteractions.interactionId })
     if (processed.length === 0) return false
-    // 締切を過ぎたら、定期の処理が締める前でも票を受け付けない
-    if (locked.status === 'closed' || locked.pastDeadline) return false
+    if (locked.status === 'closed') return false
+    if (locked.pastDeadline) {
+      // 締切を過ぎたら、定期の処理が締める前でも票を受け付けない。押されたカードはまだボタンが出ているので、
+      // ここで締めて描き直し、操作が黙って捨てられたように見せない
+      await tx.update(polls).set({ status: 'closed', closedAt: sql`now()`, version: sql`${polls.version} + 1`, updatedAt: sql`now()` }).where(eq(polls.id, poll.id))
+      return true
+    }
 
     if (action.action_id === 'vote') {
       const optionId = action.value?.startsWith('option:') ? action.value.slice('option:'.length) : null
