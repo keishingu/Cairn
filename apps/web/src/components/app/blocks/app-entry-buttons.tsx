@@ -24,7 +24,7 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
   const t = useT()
   const { query, invoke: invokeEntry, busy } = useAppEntryPoints(channelId)
   const [confirming, setConfirming] = React.useState<PendingEntry | null>(null)
-  const [menuPosition, setMenuPosition] = React.useState<{ left: number; top: number } | null>(null)
+  const [menuPosition, setMenuPosition] = React.useState<{ left: number; top: number; maxHeight: number } | null>(null)
   const buttonRef = React.useRef<HTMLButtonElement>(null)
   const menuRef = React.useRef<HTMLDivElement>(null)
   const closeMenu = React.useCallback(() => setMenuPosition(null), [])
@@ -40,13 +40,18 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
       closeMenu()
       buttonRef.current?.focus()
     }
+    // 画面のスクロールでは閉じる（ボタンとずれるため）。項目が多いときのメニュー内のスクロールでは閉じない
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      closeMenu()
+    }
     window.addEventListener('resize', closeMenu)
-    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('scroll', handleScroll, true)
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('resize', closeMenu)
-      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('scroll', handleScroll, true)
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
@@ -81,8 +86,10 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
     const rect = buttonRef.current?.getBoundingClientRect()
     if (!rect) return
     // 入力欄は画面の下にあるので、メニューはボタンの上に開く（bottom 指定は fixed の基準が画面と一致しない祖先があるとずれるため top で置く）
-    const menuHeight = entries.length * MENU_ITEM_HEIGHT + 10
-    setMenuPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8)), top: Math.max(8, rect.top - menuHeight - 4) })
+    // 項目が多くボタンの上に収まらないときは、収まる高さにしてメニューの中をスクロールさせる
+    const maxHeight = Math.max(MENU_ITEM_HEIGHT + 10, rect.top - 12)
+    const menuHeight = Math.min(entries.length * MENU_ITEM_HEIGHT + 10, maxHeight)
+    setMenuPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8)), top: Math.max(8, rect.top - menuHeight - 4), maxHeight })
   }
 
   return (
@@ -106,7 +113,17 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
           ref={menuRef}
           role="menu"
           aria-label={t('Apps')}
-          style={{ position: 'fixed', left: menuPosition.left, top: menuPosition.top, width: MENU_WIDTH, padding: 4, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 8, boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)' }}
+          onKeyDown={(event) => {
+            // 上下の矢印で項目を移る（画面をスクロールさせてメニューを閉じない）
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+            event.preventDefault()
+            const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])]
+            if (items.length === 0) return
+            const current = items.indexOf(document.activeElement as HTMLElement)
+            const next = event.key === 'ArrowDown' ? (current + 1) % items.length : (current - 1 + items.length) % items.length
+            items[next]?.focus()
+          }}
+          style={{ position: 'fixed', left: menuPosition.left, top: menuPosition.top, maxHeight: menuPosition.maxHeight, overflowY: 'auto', boxSizing: 'border-box', width: MENU_WIDTH, padding: 4, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 8, boxShadow: 'var(--shadow-pop)', zIndex: 'var(--z-popover)' }}
         >
           {entries.map(({ app, entry }, index) => {
             const appName = displayAppName({ name: app.appName, firstParty: app.firstParty }, t)
@@ -117,6 +134,8 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
                 role="menuitem"
                 autoFocus={index === 0}
                 onClick={() => {
+                  // 選んだ項目はメニューごと消えるので、先に起動ボタンへフォーカスを戻す（追加確認を閉じた後の戻り先にもなる）
+                  buttonRef.current?.focus()
                   closeMenu()
                   if (app.inChannel) void invoke({ app, command: entry.command })
                   else setConfirming({ app, command: entry.command })

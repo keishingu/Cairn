@@ -3,7 +3,7 @@
 // Bot がまだチャンネルにいなければ、起動の前に追加を確かめる
 
 import React from 'react'
-import { Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { displayAppName, appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
@@ -18,6 +18,7 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
   // iOS はシートを閉じ終える前に Alert を出すと表示が重なって捨てられるため、閉じ終えてから（onDismiss で）選んだ起動口を処理する
   const pendingChoiceRef = React.useRef<{ app: AppEntryPointDto; command: string } | null>(null)
   const insets = useSafeAreaInsets()
+  const { height: windowHeight } = useWindowDimensions()
 
   const invoke = async (app: AppEntryPointDto, command: string) => {
     onError(null)
@@ -75,23 +76,26 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
         <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border, paddingBottom: insets.bottom + 12 }]}>
           <View style={[styles.grip, { backgroundColor: palette.border }]} />
           <Text style={[styles.sheetTitle, { color: palette.text3 }]}>{t('Apps')}</Text>
-          {entries.map(({ app, entry }) => (
-            <Pressable
-              key={`${app.installationId}:${entry.command}`}
-              accessibilityRole="button"
-              style={[styles.sheetItem, { borderTopColor: palette.divider }]}
-              onPress={() => {
-                setSheetOpen(false)
-                // onDismiss は iOS でしか呼ばれない。Android は閉じかけのシートの上でも Alert を出せるので、そのまま処理する
-                if (Platform.OS === 'ios') pendingChoiceRef.current = { app, command: entry.command }
-                else choose(app, entry.command)
-              }}
-            >
-              <Ionicons name="list-outline" size={19} color={palette.text2} />
-              <Text style={[styles.sheetLabel, { color: palette.text }]} numberOfLines={1}>{t(entry.label)}</Text>
-              <Text style={[styles.sheetApp, { color: palette.text4 }]} numberOfLines={1}>{displayAppName({ name: app.appName, firstParty: app.firstParty }, t)}</Text>
-            </Pressable>
-          ))}
+          {/* 項目が多くても上の項目を選べるよう、画面の6割までにして中をスクロールさせる */}
+          <ScrollView style={{ maxHeight: windowHeight * 0.6 }} bounces={false}>
+            {entries.map(({ app, entry }) => (
+              <Pressable
+                key={`${app.installationId}:${entry.command}`}
+                accessibilityRole="button"
+                style={[styles.sheetItem, { borderTopColor: palette.divider }]}
+                onPress={() => {
+                  setSheetOpen(false)
+                  // onDismiss は iOS でしか呼ばれない。Android は閉じかけのシートの上でも Alert を出せるので、そのまま処理する
+                  if (Platform.OS === 'ios') pendingChoiceRef.current = { app, command: entry.command }
+                  else choose(app, entry.command)
+                }}
+              >
+                <Ionicons name="list-outline" size={19} color={palette.text2} />
+                <Text style={[styles.sheetLabel, { color: palette.text }]} numberOfLines={1}>{t(entry.label)}</Text>
+                <Text style={[styles.sheetApp, { color: palette.text4 }]} numberOfLines={1}>{displayAppName({ name: app.appName, firstParty: app.firstParty }, t)}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       </Modal>
     </>
