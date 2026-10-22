@@ -837,6 +837,45 @@ describe('リアクションした人の表示', () => {
     const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
     expect(dialog).toHaveTextContent('メンバー12')
   })
+
+  it('PCで画面の右上に近いリアクションは、ツールチップをボタンの右端に揃えて下に出す', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[{ emoji: '👍', count: 1, mine: false, userNames: ['メンバーA'] }]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /👍 1/ }).parentElement!
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({ left: window.innerWidth - 60, right: window.innerWidth - 10, top: 40, bottom: 64, width: 50, height: 24, x: window.innerWidth - 60, y: 40, toJSON: () => ({}) })
+
+    await user.hover(chip)
+    const tooltip = screen.getByText('メンバーA')
+    expect(tooltip.style.right).toBe('10px')
+    expect(tooltip.style.left).toBe('')
+    expect(tooltip.style.top).toBe('70px')
+    expect(tooltip.style.bottom).toBe('')
+  })
 })
 
 describe('isNearMessageTimelineEnd', () => {

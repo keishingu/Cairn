@@ -203,6 +203,9 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
 }
 
 const REACTION_TOOLTIP_MAX_NAMES = 10
+const REACTION_TOOLTIP_MAX_WIDTH = 320
+// 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
+const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
 export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
@@ -275,7 +278,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
   // メッセージ一覧のスクロール領域で切れないよう、ツールチップは fixed でボタンの上に置く
-  const [hoveredReaction, setHoveredReaction] = React.useState<{ index: number; left: number; bottom: number; maxWidth: number } | null>(null)
+  const [hoveredReaction, setHoveredReaction] = React.useState<{ index: number; position: React.CSSProperties } | null>(null)
   // 「リアクションした人」の一覧で選択中の絵文字。null は閉じている
   const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
   // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、他の絵文字には名前があるのに「表示できません」から始まる）
@@ -634,7 +637,14 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               onMouseEnter={e => {
                 if (isMobile) return
                 const rect = e.currentTarget.getBoundingClientRect()
-                setHoveredReaction({ index: i, left: rect.left, bottom: window.innerHeight - rect.top + 6, maxWidth: Math.min(320, window.innerWidth - rect.left - 8) })
+                // 右端に近ければボタンの右端に揃えて左へ広げ、上に余白がなければ下に出す（幅が潰れて縦長になったり画面外へ出たりしないように）
+                const horizontal = rect.left + REACTION_TOOLTIP_MAX_WIDTH + 8 <= window.innerWidth
+                  ? { left: rect.left }
+                  : { right: Math.max(8, window.innerWidth - rect.right) }
+                const vertical = rect.top >= REACTION_TOOLTIP_MIN_SPACE_ABOVE
+                  ? { bottom: window.innerHeight - rect.top + 6 }
+                  : { top: rect.bottom + 6 }
+                setHoveredReaction({ index: i, position: { ...horizontal, ...vertical } })
               }}
               onMouseLeave={() => !isMobile && setHoveredReaction(null)}
             >
@@ -650,9 +660,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               {/* PCはホバーで抜粋、全員はPC・モバイルWebともメッセージの「…」メニューから表示 */}
               {!isMobile && hoveredReaction?.index === i && r.userNames.length > 0 && (
                 <span style={{
-                  position: 'fixed', left: hoveredReaction.left, bottom: hoveredReaction.bottom,
+                  position: 'fixed', ...hoveredReaction.position,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: hoveredReaction.maxWidth, overflowWrap: 'anywhere', zIndex: 'var(--z-popover)',
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: `min(${REACTION_TOOLTIP_MAX_WIDTH}px, calc(100vw - 16px))`, overflowWrap: 'anywhere', zIndex: 'var(--z-popover)',
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
                   {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
