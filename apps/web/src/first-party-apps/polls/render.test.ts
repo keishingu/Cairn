@@ -12,6 +12,7 @@ const poll: PollForRender = {
   question: '11月の登山本部 担当決め',
   allowMultiple: false,
   locale: 'ja',
+  closesAt: null,
   status: 'posted',
   options: [
     { id: 'o2', label: '第2週 (11/9〜)', position: 1 },
@@ -62,6 +63,13 @@ describe('投票カード', () => {
     const card = renderPollCard(many)
     expect(prepareMessageBlocks(card.blocks).ok).toBe(true)
     expect(JSON.stringify(card.blocks)).toContain('ほか170人')
+  })
+
+  it('自動で締め切る投票は締切の日時をタイムゾーン付きで出し、締め切った後は出さない', () => {
+    const closesAt = new Date('2026-11-01T03:00:00.000Z')
+    expect(JSON.stringify(renderPollCard({ ...poll, closesAt }).blocks)).toContain('2026年11月1日 12:00 JSTに締め切り')
+    expect(JSON.stringify(renderPollCard({ ...poll, closesAt, locale: 'en' }).blocks)).toMatch(/Closes Nov 1, 2026, 12:00\s?PM GMT\+9/)
+    expect(JSON.stringify(renderPollCard({ ...poll, closesAt, status: 'closed' }).blocks)).not.toContain('に締め切り')
   })
 
   it('作成した人の表示言語でカードの文言を描く', () => {

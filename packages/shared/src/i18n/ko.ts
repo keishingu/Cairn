@@ -1351,4 +1351,5 @@ export const KO_MESSAGES: Record<string, string> = {
   'This content cannot be posted for safety reasons. Please revise the wording.': '안전상의 이유로 이 내용은 게시할 수 없습니다. 표현을 다시 확인해 주세요.',
   "Can't create the poll because the channel is unknown": '채널을 알 수 없어 만들 수 없습니다',
   'A poll was already created from this form (it will be posted with the previous content). Cancel to close.': '이 양식으로 이미 투표를 만들었습니다(이전 내용으로 게시됩니다). 취소를 눌러 닫아 주세요.',
+  'Closes {date}': '{date}에 마감',
 }

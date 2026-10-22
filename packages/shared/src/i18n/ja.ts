@@ -1351,4 +1351,5 @@ export const JA_MESSAGES: Record<string, string> = {
   'This content cannot be posted for safety reasons. Please revise the wording.': 'この内容は安全上の理由で投稿できません。表現を見直してください。',
   "Can't create the poll because the channel is unknown": 'チャンネルが分からないため作成できません',
   'A poll was already created from this form (it will be posted with the previous content). Cancel to close.': 'このフォームからはすでに投票を作成しました（前回の内容で投稿されます）。キャンセルして閉じてください',
+  'Closes {date}': '{date}に締め切り',
 }

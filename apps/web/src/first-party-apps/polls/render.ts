@@ -15,6 +15,8 @@ export type PollForRender = {
   status: 'pending_post' | 'posted' | 'closed' | 'post_failed'
   /** カードの文言の言語（作成した人の表示言語） */
   locale: AppLocale
+  /** 自動で締め切る日時。カードに出し、知らないうちに締め切られたように見せない */
+  closesAt: Date | null
   options: Array<{ id: string; label: string; position: number }>
   votes: Array<{ optionId: string; userId: string }>
 }
@@ -26,6 +28,13 @@ const MAX_VOTERS_SHOWN = 30
 function bar(count: number, total: number): string {
   const filled = total === 0 ? 0 : Math.round((count / total) * BAR_CELLS)
   return '▓'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)
+}
+
+// 利用者ごとのタイムゾーンを持たないため、カードは日本時間で描き、誤読されないようタイムゾーン名を添える
+const CARD_TIME_ZONE = 'Asia/Tokyo'
+
+function formatDeadline(date: Date, locale: AppLocale): string {
+  return new Intl.DateTimeFormat(locale, { timeZone: CARD_TIME_ZONE, year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(date)
 }
 
 function truncate(text: string, max: number): string {
@@ -45,7 +54,7 @@ export function renderPollCard(poll: PollForRender): { text: string; blocks: unk
       elements: [
         {
           type: 'plain_text',
-          text: [poll.allowMultiple ? t('Multiple choice') : t('Single choice'), t('{count} voted', { count: voters.size }), ...(closed ? [t('Poll closed')] : [])].join(' ・ '),
+          text: [poll.allowMultiple ? t('Multiple choice') : t('Single choice'), t('{count} voted', { count: voters.size }), ...(closed ? [t('Poll closed')] : poll.closesAt ? [t('Closes {date}', { date: formatDeadline(poll.closesAt, poll.locale) })] : [])].join(' ・ '),
         },
       ],
     },

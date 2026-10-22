@@ -13,7 +13,6 @@ import { pollInputErrors } from './validate'
 export type CreatePollInput = {
   workspaceId: string
   channelId: string
-  createdBy: string | null
   question: string
   options: string[]
   allowMultiple: boolean
@@ -21,9 +20,11 @@ export type CreatePollInput = {
   locale: AppLocale
   /** 呼び出し元ごとに一意（定期ジョブは run の ID、モーダルは view の ID）。再試行は既存の投票を返す */
   idempotencyKey: string
-  /** 締切。過ぎたら定期の処理（polls-card-sweep）が締め、カードを描き直す。作成者のいない定期ジョブの投票はこれで締める */
-  closesAt?: Date | null
-}
+} & (
+  | { createdBy: string; /** 締切。過ぎたら定期の処理（polls-card-sweep）が締め、カードを描き直す */ closesAt?: Date | null }
+  // 作成者のいない投票（定期ジョブ・AI）は誰も締め切りを押せないので、締切を必須にする（無いと票を受け付け続ける）
+  | { createdBy: null; closesAt: Date }
+)
 
 async function loadPoll(pollId: string) {
   const { db, polls, pollOptions, pollVotes } = await import('@cairn/db')
@@ -39,6 +40,7 @@ async function loadPoll(pollId: string) {
     question: poll.question,
     allowMultiple: poll.allowMultiple,
     locale: storedLocale(poll),
+    closesAt: poll.closesAt,
     status: poll.status as PollForRender['status'],
     options,
     votes,
@@ -67,6 +69,8 @@ async function workspaceOfInstallation(installationId: string): Promise<string> 
 export async function createPendingPoll(input: CreatePollInput): Promise<{ pollId: string; sameInput: boolean }> {
   const { db, polls, pollOptions } = await import('@cairn/db')
   const { and, asc, eq } = await import('drizzle-orm')
+  // 型で必須にしているが、JS や any 経由の呼び出しでも締められない投票を作らない
+  if (input.createdBy === null && !input.closesAt) throw new Error('a poll without a creator requires closesAt')
   const installationId = await getFirstPartyInstallationId('polls', input.workspaceId)
 
   return db.transaction(async (tx) => {
