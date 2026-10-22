@@ -9,6 +9,7 @@ import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { forThisDeployment, resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
+import { deliveryLocale } from '@/lib/apps/locale'
 import { cardRevision } from '@/lib/apps/blocks-for-client'
 import { issueTrigger } from '@/lib/apps/triggers'
 
@@ -17,11 +18,12 @@ import { issueTrigger } from '@/lib/apps/triggers'
 // エラーはコードで返し、文言はクライアントが表示言語で出す
 
 const bodySchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('button'), messageId: z.string().uuid(), revision: z.string().max(64), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
+  z.object({ type: z.literal('button'), messageId: z.string().uuid(), revision: z.string().max(64), locale: z.string().max(8).optional(), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
   z.object({
     type: z.literal('static_select'),
     messageId: z.string().uuid(),
     revision: z.string().max(64),
+    locale: z.string().max(8).optional(),
     blockId: z.string().min(1).max(255),
     actionId: z.string().min(1).max(255),
     selectedOptionValue: z.string().min(1).max(150),
@@ -138,6 +140,7 @@ export async function POST(req: Request) {
         message: { id: row.messageId, text: row.content, botProfileId: row.senderId, installationId: row.installationId, blocks: row.blocks },
         action: resolved.action,
         triggerId,
+        locale: deliveryLocale(req, parsed.locale),
       },
       interactionId,
     )

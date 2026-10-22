@@ -10,12 +10,13 @@ import { isAppInChannel, isChannelArchived, parseEntryPoints } from '@/lib/apps/
 import { forThisDeployment, resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { deliverToApp } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
+import { deliveryLocale } from '@/lib/apps/locale'
 import { issueTrigger } from '@/lib/apps/triggers'
 
 // 入力欄の「＋」から選んだアプリの起動口を、スラッシュコマンドと同じ形（フィールドを並べた form）でアプリへ届ける。
 // コンポーザーで `/poll` と打つ入力（第2段階）を足しても、アプリ側の受け口は変わらない（docs/app-platform-design.md §6.1）
 
-const bodySchema = z.object({ installationId: z.string().uuid(), channelId: z.string().uuid(), command: z.string().min(1).max(64) })
+const bodySchema = z.object({ installationId: z.string().uuid(), channelId: z.string().uuid(), command: z.string().min(1).max(64), locale: z.string().max(8).optional() })
 
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -92,6 +93,8 @@ export async function POST(req: Request) {
         api_app_id: row.appId,
         is_enterprise_install: 'false',
         trigger_id: triggerId,
+        // 起動した人の表示言語。アプリがモーダルをその言語で開けるようにする（Slack のスラッシュコマンドには無い Cairn の追加）
+        locale: deliveryLocale(req, body.locale),
       },
     })
     recordDeliveryAfterResponse({ installationId: row.installationId, userId: ctx.userId, type: 'slash_command', actionId: body.command, delivery })

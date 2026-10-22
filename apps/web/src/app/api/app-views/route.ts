@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { isFirstPartyApp } from '@/lib/apps/first-party'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { extractMentionIds } from '@/lib/chat/mentions'
 
@@ -12,6 +13,8 @@ export interface AppViewDto {
   hash: string
   view: unknown
   appName: string
+  /** ファーストパーティのアプリ。名前（英語）を表示言語に翻訳して出す */
+  firstParty: boolean
   appIconUrl: string | null
   /** モーダル内のメンション（`<@id>`）の表示名（非活性のメンバーも含む、サーバーで解決したもの） */
   mentionNames: Record<string, string>
@@ -25,7 +28,7 @@ export async function GET() {
     const { db, appViews, appInstallations, apps } = await import('@cairn/db')
     const { and, desc, eq, isNull } = await import('drizzle-orm')
     const rows = await db
-      .select({ id: appViews.id, hash: appViews.hash, view: appViews.view, appName: apps.name, appIconUrl: apps.iconUrl })
+      .select({ id: appViews.id, hash: appViews.hash, view: appViews.view, appName: apps.name, appIconUrl: apps.iconUrl, appSlug: apps.slug, appOwnerWorkspaceId: apps.ownerWorkspaceId })
       .from(appViews)
       .innerJoin(appInstallations, eq(appInstallations.id, appViews.installationId))
       .innerJoin(apps, eq(apps.id, appInstallations.appId))
@@ -36,8 +39,9 @@ export async function GET() {
     const visibleViews = rows.map((row) => withoutPrivateMetadata(row.view))
     const viewJsons = visibleViews.map((view) => JSON.stringify(view))
     const nameMap = await buildMentionNameMap(ctx.workspaceId, viewJsons)
-    const result = rows.map((row, index) => ({
+    const result = rows.map(({ appSlug, appOwnerWorkspaceId, ...row }, index) => ({
       ...row,
+      firstParty: isFirstPartyApp({ slug: appSlug, ownerWorkspaceId: appOwnerWorkspaceId }),
       // private_metadata はアプリが自分のために持つ値。描画には使わず、送信はサーバーの保存値から組み立てるので利用者へは渡さない
       view: visibleViews[index],
       mentionNames: Object.fromEntries(

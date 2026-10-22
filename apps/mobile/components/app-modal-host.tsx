@@ -5,14 +5,14 @@
 import React from 'react'
 import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { cardActionErrorMessage, normalizeModalView, viewFieldErrorMessage, type RenderInputElement, type RenderModal, type RenderModalBlock } from '@cairn/shared'
+import { displayAppName, cardActionErrorMessage, normalizeModalView, viewFieldErrorMessage, type RenderInputElement, type RenderModal, type RenderModalBlock } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
 import type { ThemePalette } from '../lib/theme'
 import { useAppAppearance } from './appearance-provider'
-import { useT } from './locale-provider'
+import { useAppLocale, useT } from './locale-provider'
 import { CardBlock, type CardContext } from './message-card'
 
-type AppViewDto = { id: string; hash: string; view: unknown; appName: string; appIconUrl: string | null; mentionNames?: Record<string, string> }
+type AppViewDto = { id: string; hash: string; view: unknown; appName: string; firstParty?: boolean; appIconUrl: string | null; mentionNames?: Record<string, string> }
 type FieldError = { code?: string; message?: string }
 type Values = Record<string, Record<string, string>>
 
@@ -73,6 +73,7 @@ function initialValues(modal: RenderModal | null): Values {
 }
 
 function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto: AppViewDto; initialFormError: string | null; onViewChanged: (message: string) => void; onSubmitStart: () => void }) {
+  const { locale } = useAppLocale()
   const t = useT()
   const { palette } = useAppAppearance()
   const queryClient = useQueryClient()
@@ -109,7 +110,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
     onSubmitStart()
     setFieldErrors({})
     try {
-      const res = await apiFetch(`/api/app-views/${dto.id}/submit`, { method: 'POST', body: JSON.stringify({ hash: dto.hash, values }) })
+      const res = await apiFetch(`/api/app-views/${dto.id}/submit`, { method: 'POST', body: JSON.stringify({ hash: dto.hash, locale, values }) })
       const body = (await res.json().catch(() => null)) as { status?: string; errors?: Record<string, FieldError>; error?: string } | null
       if (res.status === 422 && body?.errors) {
         setFieldErrors(body.errors)
@@ -158,8 +159,8 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
             <Text style={{ color: palette.text2, fontSize: 15 }}>{modal?.close ?? t('Cancel')}</Text>
           </Pressable>
           <View style={styles.titleBox}>
-            <Text style={{ color: palette.text3, fontSize: 11 }} numberOfLines={1}>{dto.appName}</Text>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>{modal?.title ?? dto.appName}</Text>
+            <Text style={{ color: palette.text3, fontSize: 11 }} numberOfLines={1}>{displayAppName({ name: dto.appName, firstParty: dto.firstParty }, t)}</Text>
+            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>{modal?.title ?? displayAppName({ name: dto.appName, firstParty: dto.firstParty }, t)}</Text>
           </View>
           {modal?.submit ? (
             <Pressable accessibilityRole="button" onPress={() => void submit()} disabled={submitting || modal.hasUnsupported} hitSlop={8}>

@@ -1,10 +1,13 @@
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api-fetch'
+import { useAppLocale } from '../components/locale-provider'
 
 export type AppEntryPointDto = {
   installationId: string
   appName: string
+  /** ファーストパーティのアプリ（名前を表示言語に翻訳して出す） */
+  firstParty?: boolean
   appIconUrl: string | null
   inChannel: boolean
   entryPoints: Array<{ command: string; label: string }>
@@ -20,6 +23,8 @@ async function readError(res: Response): Promise<string | null> {
 
 /** チャンネルで起動できるアプリと、その起動（Bot が未参加なら先に追加する）。Web の useAppEntryPoints と同じ流れ */
 export function useAppEntryPoints(channelId: string) {
+  // アプリがモーダルを今の表示言語で開けるよう、起動のときに送る
+  const { locale } = useAppLocale()
   const queryClient = useQueryClient()
   const queryKey = React.useMemo(() => ['app-entry-points', channelId] as const, [channelId])
   const query = useQuery<AppEntryPointDto[]>({
@@ -41,7 +46,7 @@ export function useAppEntryPoints(channelId: string) {
           if (!added.ok) return { step: 'add', status: added.status }
           await queryClient.invalidateQueries({ queryKey })
         }
-        const res = await apiFetch('/api/app-commands', { method: 'POST', body: JSON.stringify({ installationId: app.installationId, channelId, command }) })
+        const res = await apiFetch('/api/app-commands', { method: 'POST', body: JSON.stringify({ installationId: app.installationId, channelId, command, locale }) })
         return res.ok ? null : { step: 'command', code: await readError(res) }
       } catch {
         return { step: 'command', code: null }
@@ -49,7 +54,7 @@ export function useAppEntryPoints(channelId: string) {
         setBusy(false)
       }
     },
-    [channelId, queryClient, queryKey],
+    [channelId, locale, queryClient, queryKey],
   )
 
   return { query, invoke, busy }

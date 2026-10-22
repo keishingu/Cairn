@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
@@ -52,7 +52,7 @@ import {
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
-import { useT } from '@/components/locale-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
 import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
@@ -257,10 +257,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const router = useRouter()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
-  const displaySenderName = senderApp?.name ?? senderName
+  const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action), [messageId, blocksRevision])
+  const { locale } = useLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale), [messageId, blocksRevision, locale])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)

@@ -5,6 +5,7 @@ import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AppEntryPointDto } from '@/app/api/channels/[channelId]/app-entry-points/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useLocale } from '@/components/locale-provider'
 
 /** 起動の失敗。文言は表示側が表示言語で出す（追加は状態コード、起動はエラーコードから） */
 export type AppEntryFailure = { step: 'add'; status: number } | { step: 'command'; code: string | null }
@@ -16,6 +17,8 @@ async function readError(res: Response): Promise<string | null> {
 
 /** チャンネルで起動できるアプリと、その起動（Bot が未参加なら先に追加する）。docs/app-platform-design.md §6.1 */
 export function useAppEntryPoints(channelId: string) {
+  // アプリがモーダルを今の表示言語で開けるよう、起動のときに送る
+  const { locale } = useLocale()
   const queryClient = useQueryClient()
   const queryKey = React.useMemo(() => ['app-entry-points', channelId] as const, [channelId])
   const query = useQuery({
@@ -44,7 +47,7 @@ export function useAppEntryPoints(channelId: string) {
         const res = await fetchWithAuth('/api/app-commands', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ installationId: app.installationId, channelId, command }),
+          body: JSON.stringify({ installationId: app.installationId, channelId, command, locale }),
         })
         return res.ok ? null : { step: 'command', code: await readError(res) }
       } catch {
@@ -53,7 +56,7 @@ export function useAppEntryPoints(channelId: string) {
         setBusy(false)
       }
     },
-    [channelId, queryClient, queryKey],
+    [channelId, locale, queryClient, queryKey],
   )
 
   return { query, invoke, busy }

@@ -52,7 +52,7 @@ import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSub
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
+import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -80,7 +80,7 @@ import {
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
-import { useT } from '../../../components/locale-provider'
+import { useAppLocale, useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
@@ -220,10 +220,11 @@ function ChatMessageRow({
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
-  const senderName = message.senderApp?.name ?? message.senderName
+  const senderName = message.senderApp ? displayAppName(message.senderApp, t) : message.senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action), [message.id, message.blocksRevision])
+  const { locale } = useAppLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)

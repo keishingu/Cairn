@@ -48,7 +48,7 @@ describe('アプリのモーダル', () => {
     expect(await screen.findByText('2つ以上入力してください')).toBeInTheDocument()
     expect(screen.getByText('入力してください。')).toBeInTheDocument()
     const submitCall = mockFetch.mock.calls.find(([url]) => String(url).endsWith('/submit'))!
-    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toEqual({ hash: 'h1', values: { question: { value: '' }, options: { value: '第1週' }, mode: { value: '' } } })
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toEqual({ hash: 'h1', locale: 'ja', values: { question: { value: '' }, options: { value: '第1週' }, mode: { value: '' } } })
   })
 
   it('閉じるとサーバーに伝え、一覧から消えたらモーダルを閉じる', async () => {

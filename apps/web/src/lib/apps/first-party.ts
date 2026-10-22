@@ -25,8 +25,9 @@ type FirstPartyAppDefinition = {
 export const FIRST_PARTY_APPS: readonly FirstPartyAppDefinition[] = [
   {
     slug: 'polls',
-    name: '投票',
-    description: 'チャンネルで投票をとる',
+    // 名前・説明は英語で持ち、画面では表示言語に翻訳する（displayAppName）。Bot の表示名にも使う
+    name: 'Polls',
+    description: 'Run polls in a channel',
     requestPath: '/api/first-party-apps/polls/interactions',
     entryPoints: [{ command: '/poll', label: 'Create a poll' }],
   },
@@ -94,6 +95,11 @@ function decryptsTo(encrypted: string | null, expected: string): boolean {
   } catch {
     return false
   }
+}
+
+/** ファーストパーティのアプリか（名前を表示言語に翻訳する対象か） */
+export function isFirstPartyApp(app: { slug: string | null; ownerWorkspaceId: string | null }): boolean {
+  return app.ownerWorkspaceId === null && FIRST_PARTY_APPS.some((definition) => definition.slug === app.slug)
 }
 
 /**

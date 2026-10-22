@@ -5,8 +5,8 @@
 
 import React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { cardActionErrorMessage, normalizeModalView, viewFieldErrorMessage, type RenderInputElement, type RenderModal, type RenderModalBlock } from '@cairn/shared'
-import { useT } from '@/components/locale-provider'
+import { displayAppName, cardActionErrorMessage, normalizeModalView, viewFieldErrorMessage, type RenderInputElement, type RenderModal, type RenderModalBlock } from '@cairn/shared'
+import { useLocale, useT } from '@/components/locale-provider'
 import { Modal } from '@/components/app/primitives'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { AppViewDto } from '@/app/api/app-views/route'
@@ -72,6 +72,7 @@ function initialValues(modal: RenderModal | null): Values {
 }
 
 function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto: AppViewDto; initialFormError: string | null; onViewChanged: (message: string) => void; onSubmitStart: () => void }) {
+  const { locale } = useLocale()
   const t = useT()
   const queryClient = useQueryClient()
   const modal = React.useMemo(() => normalizeModalView(dto.view), [dto.view])
@@ -113,7 +114,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
       const res = await fetchWithAuth(`/api/app-views/${dto.id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hash: dto.hash, values }),
+        body: JSON.stringify({ hash: dto.hash, locale, values }),
       })
       const body = (await res.json().catch(() => null)) as { status?: string; errors?: Record<string, FieldError>; error?: string } | null
       if (res.status === 422 && body?.errors) {
@@ -143,12 +144,13 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
     }
   }
 
-  const title = modal?.title ?? dto.appName
+  const appName = displayAppName({ name: dto.appName, firstParty: dto.firstParty }, t)
+  const title = modal?.title ?? appName
   return (
     <Modal onClose={() => void close()} label={title}>
       <div className="card" style={{ width: 480, maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{dto.appName}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{appName}</div>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
         </div>
         <div style={{ padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>

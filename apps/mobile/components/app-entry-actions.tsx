@@ -4,7 +4,7 @@
 import React from 'react'
 import { Alert, Pressable, StyleSheet, Text } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
+import { displayAppName, appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { useAppEntryPoints, type AppEntryPointDto } from '../hooks/use-app-entry-points'
 import type { ThemePalette } from '../lib/theme'
 import { useT } from './locale-provider'
@@ -23,7 +23,7 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
 
   const choose = (app: AppEntryPointDto, command: string) => {
     if (app.inChannel) return void invoke(app, command)
-    Alert.alert(t('Add {app} to this channel?', { app: app.appName }), t('The app will be able to post to this channel.'), [
+    Alert.alert(t('Add {app} to this channel?', { app: displayAppName({ name: app.appName, firstParty: app.firstParty }, t) }), t('The app will be able to post to this channel.'), [
       { text: t('Cancel'), style: 'cancel' },
       { text: t('Add'), onPress: () => void invoke(app, command) },
     ])

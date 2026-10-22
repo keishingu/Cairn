@@ -35,7 +35,7 @@ describe('アプリの起動口', () => {
     fireEvent.click(await screen.findByRole('button', { name: '投票を作成' }))
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/app-commands', expect.objectContaining({ method: 'POST' })))
     const body = JSON.parse(String(mockFetch.mock.calls.find(([url]) => url === '/api/app-commands')![1].body))
-    expect(body).toEqual({ installationId: 'i1', channelId: 'c1', command: '/poll' })
+    expect(body).toEqual({ installationId: 'i1', channelId: 'c1', command: '/poll', locale: 'ja' })
   })
 
   it('Bot がいなければ追加を確かめ、追加してから起動する', async () => {

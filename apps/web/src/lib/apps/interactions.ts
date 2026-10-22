@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomUUID } from 'node:crypto'
+import type { AppLocale } from '@cairn/shared'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { checkRequestUrl, guardedLookup } from './request-url'
@@ -71,6 +72,8 @@ export type BlockActionsContext = {
   action: ResolvedAction
   /** views.open に使う。押した本人とインストールに結びついた、3秒・1回だけの ID */
   triggerId: string
+  /** 押した人の表示言語。アプリがモーダルや案内をその言語で返せるよう cairn.locale で渡す */
+  locale: AppLocale
 }
 
 /** Slack の block_actions と同じ形。ID は UUID のまま入れ、cairn.* にも併記する（§11 D3） */
@@ -94,7 +97,7 @@ export function buildBlockActionsPayload(context: BlockActionsContext, interacti
       blocks: context.message.blocks,
     },
     actions: [{ ...context.action, action_ts: (nowMs / 1000).toFixed(6) }],
-    cairn: { message_id: context.message.id, interaction_id: interactionId },
+    cairn: { message_id: context.message.id, interaction_id: interactionId, locale: context.locale },
   }
 }
 

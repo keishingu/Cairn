@@ -1306,6 +1306,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Part of this form cannot be shown in this version, so it cannot be submitted. Update the app to see it.': 'フォームの一部をこのバージョンでは表示できないため、送信できません。アプリを更新すると表示されます。',
   'Submitting...': '送信中…',
   'Create a poll': '投票を作成',
+  Polls: '投票',
+  'Run polls in a channel': 'チャンネルで投票をとる',
   'Could not load apps': 'アプリを読み込めませんでした',
   'Add {app} to this channel?': 'このチャンネルに{app}を追加しますか？',
   'The app will be able to post to this channel.': '追加すると、アプリがこのチャンネルに投稿できるようになります。',

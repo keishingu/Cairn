@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
+import { displayAppName, appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Modal } from '@/components/app/primitives'
 import { useAppEntryPoints } from '@/hooks/use-app-entry-points'
@@ -49,7 +49,7 @@ export function AppEntryButtons({ channelId, onError, compact }: { channelId: st
             key={`${app.installationId}:${entry.command}`}
             type="button"
             disabled={busy}
-            title={`${app.appName}: ${t(entry.label)}`}
+            title={`${displayAppName({ name: app.appName, firstParty: app.firstParty }, t)}: ${t(entry.label)}`}
             aria-label={t(entry.label)}
             onClick={() => (app.inChannel ? void invoke({ app, command: entry.command }) : setConfirming({ app, command: entry.command }))}
             style={buttonStyle}
@@ -60,9 +60,9 @@ export function AppEntryButtons({ channelId, onError, compact }: { channelId: st
         )),
       )}
       {confirming && (
-        <Modal onClose={() => setConfirming(null)} label={t('Add {app} to this channel?', { app: confirming.app.appName })} role="alertdialog">
+        <Modal onClose={() => setConfirming(null)} label={t('Add {app} to this channel?', { app: displayAppName({ name: confirming.app.appName, firstParty: confirming.app.firstParty }, t) })} role="alertdialog">
           <div className="card" style={{ width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-            <h2 style={{ margin: '0 0 10px', fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>{t('Add {app} to this channel?', { app: confirming.app.appName })}</h2>
+            <h2 style={{ margin: '0 0 10px', fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>{t('Add {app} to this channel?', { app: displayAppName({ name: confirming.app.appName, firstParty: confirming.app.firstParty }, t) })}</h2>
             <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16 }}>{t('The app will be able to post to this channel.')}</div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn" onClick={() => setConfirming(null)}>{t('Cancel')}</button>

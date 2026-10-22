@@ -4,12 +4,14 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess, requireRole } from '@/lib/permissions'
-import { ensureFirstPartyInstallations, forThisDeployment } from '@/lib/apps/first-party'
+import { ensureFirstPartyInstallations, forThisDeployment, isFirstPartyApp } from '@/lib/apps/first-party'
 import { isAppInChannel, isChannelArchived, parseEntryPoints, type EntryPoint } from '@/lib/apps/channel-apps'
 
 export interface AppEntryPointDto {
   installationId: string
   appName: string
+  /** ファーストパーティのアプリ。名前（英語）を表示言語に翻訳して出す */
+  firstParty: boolean
   appIconUrl: string | null
   /** Bot がこのチャンネルにまだいなければ、起動前に追加を確かめる */
   inChannel: boolean
@@ -54,6 +56,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ channel
         .map(async (row) => ({
           installationId: row.installationId,
           appName: row.appName,
+          firstParty: isFirstPartyApp(row),
           appIconUrl: row.appIconUrl,
           inChannel: await isAppInChannel(row.installationId, channelId, channel.parentChannelId),
           entryPoints: row.entryPoints,
