@@ -245,7 +245,7 @@ function ConfirmGate({ confirm, mentionNames, onConfirmed, children }: { confirm
 function CardConfirmDialog({ confirm, mentionNames, onConfirm, onClose }: { confirm: RenderConfirm; mentionNames?: Map<string, string> | undefined; onConfirm: () => void; onClose: () => void }) {
   return (
     <Modal onClose={onClose} label={confirm.title} role="alertdialog">
-      <div className="card" style={{ width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
         <h2 style={{ margin: '0 0 10px', fontSize: 14.5, fontWeight: 700, color: 'var(--text)' }}>{confirm.title}</h2>
         <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>
           <RenderTextView text={confirm.text} mentionNames={mentionNames} />

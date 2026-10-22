@@ -403,7 +403,8 @@ export const Modal = ({ onClose, label, role = 'dialog', children }: {
       >
         {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
         <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
-        <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
+        {/* 背景幕は中身の後ろに置く。中身が position を持たないと、absolute の背景幕が手前に描かれて暗く、押せなくなる */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: -1, background: 'var(--overlay)' }} onClick={onClose}/>
         {children}
       </DialogPrimitive.Content>
     </DialogPrimitive.Root>
