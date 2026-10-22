@@ -138,6 +138,39 @@ describe('メッセージの blocks の受理', () => {
 })
 
 describe('モーダルの受理', () => {
+  it('__proto__ や constructor などオブジェクトの組み込みの名前は block_id・action_id に使えない', () => {
+    const modal = (blockIdValue: string, actionIdValue: string) => ({
+      type: 'modal',
+      title: { type: 'plain_text', text: '設定' },
+      submit: { type: 'plain_text', text: '保存' },
+      blocks: [{ type: 'input', block_id: blockIdValue, label: { type: 'plain_text', text: '名前' }, element: { type: 'plain_text_input', action_id: actionIdValue } }],
+    })
+    expect(prepareModalView(modal('__proto__', 'v')).ok).toBe(false)
+    expect(prepareModalView(modal('constructor', 'name')).ok).toBe(false)
+    expect(prepareModalView(modal('name', 'toString')).ok).toBe(false)
+    expect(prepareModalView(modal('name', 'value')).ok).toBe(true)
+  })
+
+  it('入力欄の static_select の confirm は描けないので受け付けない', () => {
+    const result = prepareModalView({
+      type: 'modal',
+      title: { type: 'plain_text', text: '設定' },
+      submit: { type: 'plain_text', text: '保存' },
+      blocks: [{
+        type: 'input',
+        block_id: 'mode',
+        label: { type: 'plain_text', text: '方式' },
+        element: {
+          type: 'static_select',
+          action_id: 'v',
+          options: [{ text: { type: 'plain_text', text: '削除' }, value: 'delete' }],
+          confirm: { title: { type: 'plain_text', text: '確認' }, text: { type: 'plain_text', text: '本当に？' }, confirm: { type: 'plain_text', text: 'はい' }, deny: { type: 'plain_text', text: 'いいえ' } },
+        },
+      }],
+    })
+    expect(result.ok).toBe(false)
+  })
+
   it('投票作成のモーダルを受理する', () => {
     expect(prepareModalView(clone(pollModalFixture)).ok).toBe(true)
   })

@@ -247,7 +247,7 @@ Slack と同じく `application/x-www-form-urlencoded` の `payload=<JSON>` で�
   "container": { "type": "message", "message_ts": "<ts>", "channel_id": "<channelId>" },
   "channel": { "id": "<channelId>", "name": "<チャンネル名>" },
   "message": { "ts": "<ts>", "text": "<代替テキスト>", "blocks": [ ... ] },
-  "trigger_id": "<一時ID>",           // モーダルを開くため。3秒で失効
+  "trigger_id": "<一時ID>",           // モーダルを開くため。発行から6秒（配送の3秒＋応答後の3秒）で失効
   "response_url": "https://<host>/api/app-response/<一時ID>",
   "actions": [{ "type": "button", "block_id": "...", "action_id": "...", "value": "...", "action_ts": "..." }],
   "cairn": { "message_id": "<uuid>", "interaction_id": "<uuid>" } // Cairn 独自の拡張。Slack アプリは無視する
@@ -283,11 +283,11 @@ Slack と同じ方式にする。
 |---|---|---|
 | `chat.update`（Bot トークン） | ○ | カード全体の更新（票数の反映） |
 | `response_url` への POST | 後回し | `replace_original` でカード更新。有効期限30分・5回（Slack と同じ）。投票アプリは `chat.update` を使うので、外部アプリを公開する前に足す（Bolt の `respond()` が使う） |
-| `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は3秒・1回限り |
+| `views.open` / `views.update` / `views.push` | open / update のみ | モーダル。`trigger_id` は1回限りで、押した本人・インストールに結びつける。有効期限は発行から6秒（配送の期限3秒に、アプリが応答した後で `views.open` する3秒を足す。Slack は応答から3秒）。アプリが開くと Realtime で本人のトピック（`user:<id>`）へ知らせ、クライアントが開く。`response_action: push` は重ねず差し替える。利用者の送信をアプリへ届けている間（`submitting_until` の確保あり）は `views.update` を `view_is_submitting` で断る（届ける送信の中身を古い版にしない。送信への応答で差し替えるときは `response_action: update`）。モーダル内のボタン（block_actions）と `view_closed` は後回し |
 | `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
 | エフェメラル（本人だけに見える）メッセージ | × | 後続。匿名投票を出すときの前提になる |
 
-モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。
+モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。送信もクライアントが描いていた `hash` を付け、一致しなければ `view_changed` で拒む（差し替え後の意味で古い入力を解釈しない）。同じモーダルの同時送信は、届ける前に `submitting_until`（45秒の確保。DB の query_timeout より長い）を1つだけ取れた送信だけを `view_submission` にし、届ける直前にも確保がまだ自分のもの（値が変わっていない）かを確かめて延ばす。起点のチャンネルが消えたモーダルは行ごと消す（`channel_id` は cascade）。起点のチャンネルがあるモーダルは、送る時点で送信者のチャンネルへのアクセスとアプリの投稿可否（参加・アーカイブ）を確かめ直し、だめなら `channel_unavailable` で拒む
 
 ## 6. 内部 API（Bot から使う Web API）
 

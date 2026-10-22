@@ -43,7 +43,7 @@ function loadStoredView(): ProjectsView {
   return isValidView(saved) ? saved : 'list'
 }
 
-function PCShellInner({ children }: { children: React.ReactNode }) {
+function PCShellInner({ children, overlay }: { children: React.ReactNode; overlay?: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -163,6 +163,7 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       {/* .app の部品スタイルが portal 先（.app-root）にも当たるよう、ルート自体を .app にする */}
       <div className="app app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
+        {overlay}
         <div style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
           <Sidebar page={page} setPage={navigate} prefetchPage={prefetchPage} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
@@ -197,10 +198,11 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function PCShell({ children }: { children: React.ReactNode }) {
+/** overlay は .app-root の中に出す全画面の要素（アプリのモーダルなど）。外に出すとテーマ変数と .app の部品スタイルが当たらない */
+export function PCShell({ children, overlay }: { children: React.ReactNode; overlay?: React.ReactNode }) {
   return (
     <CommandProvider>
-      <PCShellInner>{children}</PCShellInner>
+      <PCShellInner overlay={overlay}>{children}</PCShellInner>
     </CommandProvider>
   )
 }

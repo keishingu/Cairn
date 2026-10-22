@@ -10,6 +10,7 @@ import { decryptToken } from '@/lib/token-crypto'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
 import { cardRevision } from '@/lib/apps/blocks-for-client'
+import { issueTrigger } from '@/lib/apps/triggers'
 
 // カードのボタン押下・選択を、アプリの Request URL へ署名付きで届ける（docs/app-platform-design.md §5）。
 // クライアントが送るのは「どの要素か」と select の選択肢だけ。値やラベルは保存済みの blocks から引く。
@@ -117,6 +118,12 @@ export async function POST(req: Request) {
     if (!workspace || !member) return error('user_not_found', 404)
 
     const interactionId = newInteractionId()
+    // アプリがこの押下からモーダルを開けるよう、押した本人に結びついた trigger_id を渡す。
+    // 発行できなくても（デプロイ直後でマイグレーションが未適用など）既存のボタン操作は止めない。その場合 views.open は invalid_trigger_id になる
+    const triggerId = await issueTrigger({ installationId: row.installationId, userId: ctx.userId, channelId: row.channelId }).catch((err: unknown) => {
+      console.error('[/api/app-interactions] failed to issue trigger_id:', err)
+      return ''
+    })
     const payload = buildBlockActionsPayload(
       {
         workspace: { id: ctx.workspaceId, slug: workspace.slug },
@@ -125,6 +132,7 @@ export async function POST(req: Request) {
         channel: { id: row.channelId, name: row.channelName },
         message: { id: row.messageId, text: row.content, botProfileId: row.senderId, installationId: row.installationId, blocks: row.blocks },
         action: resolved.action,
+        triggerId,
       },
       interactionId,
     )

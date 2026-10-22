@@ -8,6 +8,7 @@ import { AppearanceProvider } from '../../components/appearance-provider'
 import { RealtimeProvider } from '../../components/realtime-provider'
 import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
+import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
@@ -116,6 +117,7 @@ export default function AppLayout() {
                 <Tabs.Screen name="signout/index" options={{ href: null }} />
                 <Tabs.Screen name="menu/index" options={{ href: null }} />
               </Tabs>
+              <AppModalHost />
             </ProjectsViewProvider>
           </NotificationPanelProvider>
         </AppearanceProvider>

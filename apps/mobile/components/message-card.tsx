@@ -34,7 +34,7 @@ type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boo
 /** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
 const CARD_UPDATE_WAIT_MS = 8000
 
-type CardContext = {
+export type CardContext = {
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
@@ -151,7 +151,8 @@ export function MessageCard({
   )
 }
 
-function CardBlock({ block, context }: { block: RenderBlock; context: CardContext }) {
+/** モーダルの中の入力欄以外のブロックも同じ見た目で描くため、外から使えるようにする */
+export function CardBlock({ block, context }: { block: RenderBlock; context: CardContext }) {
   const { palette } = context
   switch (block.type) {
     case 'header':

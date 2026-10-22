@@ -15,7 +15,7 @@ export type BotChannelResult = { ok: true; channel: BotChannel } | { ok: false; 
  * - スレッドは親チャンネルに Bot が参加していれば使える（スレッドは親の会話の一部のため）
  * - アーカイブ済みのスレッド（親チャンネルがアーカイブ済みのものを含む）には書き込ませない
  */
-export async function resolveBotChannel(bot: BotContext, channelId: string | undefined): Promise<BotChannelResult> {
+export async function resolveBotChannel(bot: Pick<BotContext, 'workspaceId' | 'installationId'>, channelId: string | undefined): Promise<BotChannelResult> {
   if (!isUuid(channelId)) return { ok: false, error: 'channel_not_found' }
 
   const { db, channels, appChannelMemberships } = await import('@cairn/db')

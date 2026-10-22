@@ -112,6 +112,13 @@ const mrkdwnText = (max: number) =>
 
 const textObject = (max: number) => z.discriminatedUnion('type', [plainText(max), mrkdwnText(max)])
 
+// JavaScript のオブジェクトのキーとして特別な意味を持つ名前（__proto__ や constructor など）は ID にさせない。
+// サーバー・Web・ネイティブで block_id / action_id をキーにした入れ物を作るため、どこかで1つでも普通のオブジェクトを使うと、
+// 値が抜けたり継承した値を読んだりする
+const RESERVED_IDS = new Set(['__proto__', ...Object.getOwnPropertyNames(Object.prototype)])
+const notReservedId = (id: string) => !RESERVED_IDS.has(id)
+const reservedIdMessage = 'この ID は使えません（__proto__ や constructor などオブジェクトの組み込みの名前）'
+// 断るのは新しく受理するときだけ（prepare*）。描画（normalize）は同じスキーマで保存済みの値も読むので、ここでは拒まない
 const blockId = z.string().min(1).max(BLOCK_LIMITS.blockId)
 const actionId = z.string().min(1).max(BLOCK_LIMITS.actionId)
 
@@ -269,6 +276,11 @@ export const inputBlockSchema = z
     optional: z.boolean().optional(),
   })
   .strict()
+  // モーダルの選択肢の確認ダイアログは描けないので受け付けない（黙って確認を飛ばさない）
+  .refine((input) => !(input.element.type === 'static_select' && input.element.confirm), {
+    message: 'モーダルの入力欄の static_select には confirm を付けられません',
+    path: ['element', 'confirm'],
+  })
 
 const MESSAGE_BLOCK_SCHEMAS = {
   section: sectionBlockSchema,
@@ -420,7 +432,21 @@ function prepare<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, input: unknown,
   if (!recheck.success) {
     return { ok: false, errors: recheck.error.issues.map((issue) => formatIssue(issue, pointerRoot)) }
   }
+  const reserved = reservedIdErrors(blocks, Array.isArray(value) ? pointerRoot : `${pointerRoot}/blocks`)
+  if (reserved.length > 0) return { ok: false, errors: reserved }
   return { ok: true, value: recheck.data }
+}
+
+function reservedIdErrors(blocks: BlockWithElements[], pointer: string): string[] {
+  const errors: string[] = []
+  blocks.forEach((block, blockIndex) => {
+    if (block.block_id !== undefined && !notReservedId(block.block_id)) errors.push(`[ERROR] ${reservedIdMessage} [json-pointer:${pointer}/${blockIndex}/block_id]`)
+    interactiveElements(block).forEach(([element, path]) => {
+      const id = (element as { action_id?: string }).action_id
+      if (id !== undefined && !notReservedId(id)) errors.push(`[ERROR] ${reservedIdMessage} [json-pointer:${pointer}/${blockIndex}/${path.join('/')}/action_id]`)
+    })
+  })
+  return errors
 }
 
 function assignMissingIds(blocks: BlockWithElements[]) {

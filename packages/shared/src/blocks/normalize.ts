@@ -16,6 +16,7 @@ import {
   headerBlockSchema,
   imageBlockSchema,
   imageElementSchema,
+  inputBlockSchema,
   sectionBlockSchema,
   staticSelectElementSchema,
   type ButtonElement,
@@ -332,3 +333,95 @@ function unsupportedElement(raw: unknown): RenderUnsupported {
   // 文字列は原因（truncated）や元の種別をそのまま記録する
   return { type: 'unsupported', original: typeof raw === 'string' ? raw : typeOf(raw) }
 }
+
+export type RenderInputElement =
+  | {
+      type: 'plain_text_input'
+      actionId: string
+      placeholder?: string
+      initialValue?: string
+      multiline: boolean
+      minLength?: number
+      maxLength?: number
+    }
+  | { type: 'static_select'; actionId: string; placeholder?: string; options: RenderOption[]; initialValue?: string }
+
+export type RenderModalBlock =
+  | RenderBlock
+  | { type: 'input'; blockId: string; label: string; hint?: string; optional: boolean; element: RenderInputElement }
+
+export type RenderModal = {
+  title: string
+  submit?: string
+  close?: string
+  blocks: RenderModalBlock[]
+  /**
+   * 描けない部分がある。入力欄が欠けたまま送ると、アプリが受け取るべき値を黙って落とすことになるため、
+   * 描画側は送信を止めて更新を促す
+   */
+  hasUnsupported: boolean
+}
+
+/**
+ * アプリが開いたモーダル（views.open で受理済み）を描画用の形にする。カードと同じく、知らない要素は黙って消さず unsupported にする。
+ * タイトルすら読めない壊れた保存値は null（描画側はエラーを出して閉じられるようにする）
+ */
+export function normalizeModalView(view: unknown): RenderModal | null {
+  if (typeof view !== 'object' || view === null) return null
+  const raw = view as { title?: unknown; submit?: unknown; close?: unknown; blocks?: unknown }
+  const title = plainTextOf(raw.title)
+  if (title === undefined) return null
+  const rawBlocks = Array.isArray(raw.blocks) ? raw.blocks : []
+  const blocks: RenderModalBlock[] = withTruncation(
+    rawBlocks,
+    BLOCK_LIMITS.modalBlocks,
+    (block, index): RenderModalBlock => (typeOf(block) === 'input' ? normalizeInputBlock(block, index) : normalizeBlock(block, index)),
+    (index) => unsupported(TRUNCATED, `cairn-truncated-${index}`),
+  )
+  // カードと同じく、宛先が一意に決まらない ID は unsupported にする（入力欄も block_id で値を返すため対象）
+  markAmbiguousIds(blocks as RenderBlock[], rawBlocks)
+  const hasUnsupported = !Array.isArray(raw.blocks) || blocks.some((block) => (block.type === 'input' ? false : containsUnsupported(block)))
+  const submit = plainTextOf(raw.submit)
+  const close = plainTextOf(raw.close)
+  return { title, ...(submit !== undefined ? { submit } : {}), ...(close !== undefined ? { close } : {}), blocks, hasUnsupported }
+}
+
+function normalizeInputBlock(raw: unknown, index: number): RenderModalBlock {
+  const blockId = blockIdOf(raw, index)
+  const input = parse(inputBlockSchema, raw)
+  if (!input) return unsupported('input', blockId)
+  const element = input.element
+  const actionId = element.action_id ?? `${blockId}-input`
+  const base = { type: 'input' as const, blockId, label: input.label.text, ...(input.hint ? { hint: input.hint.text } : {}), optional: input.optional ?? false }
+  if (element.type === 'plain_text_input') {
+    return {
+      ...base,
+      element: {
+        type: 'plain_text_input',
+        actionId,
+        multiline: element.multiline ?? false,
+        ...(element.placeholder ? { placeholder: element.placeholder.text } : {}),
+        ...(element.initial_value !== undefined ? { initialValue: element.initial_value } : {}),
+        ...(element.min_length !== undefined ? { minLength: element.min_length } : {}),
+        ...(element.max_length !== undefined ? { maxLength: element.max_length } : {}),
+      },
+    }
+  }
+  return {
+    ...base,
+    element: {
+      type: 'static_select',
+      actionId,
+      options: element.options.map((option) => ({ text: option.text.text, value: option.value, ...(option.description ? { description: option.description.text } : {}) })),
+      ...(element.placeholder ? { placeholder: element.placeholder.text } : {}),
+      ...(element.initial_option ? { initialValue: element.initial_option.value } : {}),
+    },
+  }
+}
+
+function plainTextOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const text = (value as { type?: unknown; text?: unknown })
+  return text.type === 'plain_text' && typeof text.text === 'string' && text.text.length > 0 ? text.text : undefined
+}
+

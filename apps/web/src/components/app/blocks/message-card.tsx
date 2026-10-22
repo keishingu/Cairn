@@ -120,7 +120,8 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   )
 })
 
-function CardBlock({ block, mentionNames, onAction, onLinkAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
+/** モーダルの中の入力欄以外のブロックも同じ見た目で描くため、外から使えるようにする */
+export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
   switch (block.type) {
     case 'header':
       return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>

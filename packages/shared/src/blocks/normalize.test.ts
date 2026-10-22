@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { MESSAGE_BLOCK_FIXTURES, allElementsFixture, nothingRenderableFixture, pollCardFixture, unsupportedFixture } from './fixtures'
-import { normalizeMessageBlocks } from './normalize'
+import { MESSAGE_BLOCK_FIXTURES, allElementsFixture, nothingRenderableFixture, pollCardFixture, pollModalFixture, unsupportedFixture } from './fixtures'
+import { normalizeMessageBlocks, normalizeModalView } from './normalize'
 
 describe('blocks の正規化', () => {
   it('対応しているカードは案内なしで描ける', () => {
@@ -146,9 +146,46 @@ describe('blocks の正規化', () => {
     expect(normalizeMessageBlocks(null).nothingRenderable).toBe(true)
   })
 
+  it('受理では断る組み込みの名前の ID でも、保存済みのカードは描ける（描画では拒まない）', () => {
+    const card = normalizeMessageBlocks([{ type: 'section', block_id: 'constructor', text: { type: 'plain_text', text: '本文' } }])
+    expect(card.blocks[0]).toMatchObject({ type: 'section', blockId: 'constructor' })
+  })
+
   it('全 fixture を例外なく正規化できる', () => {
     for (const fixture of Object.values(MESSAGE_BLOCK_FIXTURES)) {
       expect(() => normalizeMessageBlocks(fixture)).not.toThrow()
     }
+  })
+})
+
+describe('モーダルの正規化', () => {
+  it('投票作成のモーダルを、入力欄つきの描画用の形にする', () => {
+    const modal = normalizeModalView(pollModalFixture)
+    expect(modal).toMatchObject({ title: '投票を作成', submit: '作成', close: 'キャンセル', hasUnsupported: false })
+    expect(modal?.blocks[0]).toEqual({
+      type: 'input',
+      blockId: 'question',
+      label: '質問',
+      optional: false,
+      element: { type: 'plain_text_input', actionId: 'value', multiline: false, maxLength: 200 },
+    })
+    expect(modal?.blocks[1]).toMatchObject({ hint: '2〜10個', element: { multiline: true } })
+    expect(modal?.blocks[2]).toMatchObject({ optional: true, element: { type: 'static_select', options: [{ value: 'single' }, { value: 'multiple' }] } })
+  })
+
+  it('知らない入力欄は unsupported にし、送信を止められるよう hasUnsupported にする', () => {
+    const modal = normalizeModalView({
+      type: 'modal',
+      title: { type: 'plain_text', text: '日程' },
+      submit: { type: 'plain_text', text: '送信' },
+      blocks: [{ type: 'input', block_id: 'd', label: { type: 'plain_text', text: '日付' }, element: { type: 'datepicker', action_id: 'v' } }],
+    })
+    expect(modal?.blocks[0]).toEqual({ type: 'unsupported', original: 'input', blockId: 'd' })
+    expect(modal?.hasUnsupported).toBe(true)
+  })
+
+  it('タイトルが読めない壊れた保存値は null にする', () => {
+    expect(normalizeModalView({ type: 'modal', blocks: [] })).toBeNull()
+    expect(normalizeModalView(null)).toBeNull()
   })
 })

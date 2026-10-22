@@ -213,3 +213,68 @@ export const appInteractionDeliveries = pgTable(
     check('app_interaction_deliveries_status_known', sql`${t.status} in ('delivered', 'failed', 'timeout', 'blocked')`),
   ],
 ).enableRLS()
+
+/**
+ * モーダルを開くための trigger_id。インタラクションを届けるときに発行し、3秒・1回だけ使える（Slack と同じ）。
+ * 押した本人・アプリのインストールに結びつけ、他人の画面にモーダルを開かせない。平文は送るだけで、DB には hash を置く
+ */
+export const appTriggers = pgTable(
+  'app_triggers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: text('token_hash').notNull(),
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('app_triggers_token_hash_idx').on(t.tokenHash),
+    index('app_triggers_expires_idx').on(t.expiresAt),
+  ],
+).enableRLS()
+
+/**
+ * アプリが開いたモーダル（view）。開いた本人の画面にだけ出す。Realtime で本人のトピックへ知らせ、クライアントが開く。
+ * hash は views.update の競合検出に使う（Slack と同じ）
+ */
+export const appViews = pgTable(
+  'app_views',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    installationId: uuid('installation_id')
+      .notNull()
+      .references(() => appInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // 開いた起点のチャンネル。作成メニューから開いたモーダルの送信先を後で解決するため
+    // チャンネルが消えたらモーダルも消す（null にすると、送信時のチャンネルの確認を素通りして届いてしまう）
+    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'cascade' }),
+    view: jsonb('view').notNull(),
+    hash: text('hash').notNull(),
+    // open / submitted / closed
+    status: text('status').notNull().default('open'),
+    // 送信をアプリへ届けている間だけ入る。同じモーダルの同時送信で view_submission が二重に届かないよう、送信前にこれで確保する。
+    // 処理中に落ちても期限を過ぎれば再び送信できる
+    submittingUntil: timestamp('submitting_until', { withTimezone: true }),
+    // この版の送信に使った interaction_id。届いたか分からないまま送り直されても同じ ID で届け、アプリが重複を除けるようにする
+    submissionInteractionId: uuid('submission_interaction_id'),
+    // その interaction_id で送った値の指紋。値が違う送信には同じ ID を使わない
+    submissionValuesHash: text('submission_values_hash'),
+    schemaVersion: integer('schema_version').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('app_views_user_status_idx').on(t.userId, t.status),
+    check('app_views_status_known', sql`${t.status} in ('open', 'submitted', 'closed')`),
+    check('app_views_view_object', sql`jsonb_typeof(${t.view}) = 'object'`),
+  ],
+).enableRLS()
