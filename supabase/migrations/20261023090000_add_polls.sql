@@ -12,6 +12,7 @@ BEGIN
   	"created_by" uuid,
   	"question" text NOT NULL,
   	"allow_multiple" boolean DEFAULT false NOT NULL,
+  	"locale" text NOT NULL,
   	"anonymous" boolean DEFAULT false NOT NULL,
   	"status" text DEFAULT 'pending_post' NOT NULL,
   	"post_error" text,
@@ -24,7 +25,8 @@ BEGIN
   	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
   	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   	CONSTRAINT "polls_status_known" CHECK ("polls"."status" in ('pending_post', 'posted', 'closed', 'post_failed')),
-  	CONSTRAINT "polls_question_not_empty" CHECK (length(trim("polls"."question")) > 0)
+  	CONSTRAINT "polls_question_not_empty" CHECK (length(trim("polls"."question")) > 0),
+  	CONSTRAINT "polls_locale_known" CHECK ("polls"."locale" in ('ja', 'en', 'ko'))
   );
 
   CREATE TABLE "poll_options" (

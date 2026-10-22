@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { isAppLocale, type AppLocale } from '@cairn/shared'
 import { getFirstPartyInstallationId } from '@/lib/apps/first-party'
 import { callBotApi, PollsBotApiError } from './bot-client'
 import { renderPollCard, type PollForRender } from './render'
@@ -16,6 +17,8 @@ export type CreatePollInput = {
   question: string
   options: string[]
   allowMultiple: boolean
+  /** カードを描く言語（作成者の表示言語）。入力の誤りもこの言語で返す */
+  locale: AppLocale
   /** 呼び出し元ごとに一意（定期ジョブは run の ID、モーダルは view の ID）。再試行は既存の投票を返す */
   idempotencyKey: string
   /** 締切。過ぎたら定期の処理（polls-card-sweep）が締め、カードを描き直す。作成者のいない定期ジョブの投票はこれで締める */
@@ -35,11 +38,18 @@ async function loadPoll(pollId: string) {
     id: poll.id,
     question: poll.question,
     allowMultiple: poll.allowMultiple,
+    locale: storedLocale(poll),
     status: poll.status as PollForRender['status'],
     options,
     votes,
   }
   return { poll, forRender }
+}
+
+function storedLocale(poll: { id: string; locale: string }): AppLocale {
+  // DB の check で保証しているが、列の値を型として信じる前に確かめる
+  if (!isAppLocale(poll.locale)) throw new Error(`poll ${poll.id} has unknown locale ${poll.locale}`)
+  return poll.locale
 }
 
 async function workspaceOfInstallation(installationId: string): Promise<string> {
@@ -68,6 +78,7 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
         createdBy: input.createdBy,
         question: input.question,
         allowMultiple: input.allowMultiple,
+        locale: input.locale,
         closesAt: input.closesAt ?? null,
         idempotencyKey: input.idempotencyKey,
       })
@@ -81,7 +92,8 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
         .limit(1)
       if (!existing) throw new Error('poll idempotency conflict without a row')
       const options = await tx.select({ label: pollOptions.label }).from(pollOptions).where(eq(pollOptions.pollId, existing.id)).orderBy(asc(pollOptions.position))
-      // 保存する項目はすべて比べる（チャンネル・作成者・締切が違う呼び出しに、前の投票を黙って返さない）
+      // 保存する項目はすべて比べる（チャンネル・作成者・締切が違う呼び出しに、前の投票を黙って返さない）。
+      // 言語は表示だけなので比べない（送り直す間に表示言語を変えても、作成済みの投票は同じ）
       const sameInput =
         existing.channelId === input.channelId &&
         existing.createdBy === input.createdBy &&
@@ -100,7 +112,7 @@ export async function createPendingPoll(input: CreatePollInput): Promise<{ pollI
 /** 投票を作り、カードを投稿する。同じ冪等キーの再試行は同じ投票・同じメッセージに収束する */
 export async function createPoll(input: CreatePollInput): Promise<{ pollId: string; messageId: string }> {
   // 定期ジョブ・AI からの作成もモーダルと同じ規則で、作る前に確かめる（作った後に投稿だけが失敗すると、同じ冪等キーでは作り直せない）
-  const inputErrors = pollInputErrors(input.question, input.options)
+  const inputErrors = pollInputErrors(input.question, input.options, input.locale)
   if (inputErrors) throw new Error(`invalid poll input: ${Object.values(inputErrors).join(' / ')}`)
   const { pollId, sameInput } = await createPendingPoll(input)
   // 同じ冪等キーで内容が違う呼び出しは、前の投票を黙って返さない

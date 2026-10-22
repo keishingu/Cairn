@@ -11,6 +11,7 @@ const poll: PollForRender = {
   id: 'p1',
   question: '11月の登山本部 担当決め',
   allowMultiple: false,
+  locale: 'ja',
   status: 'posted',
   options: [
     { id: 'o2', label: '第2週 (11/9〜)', position: 1 },
@@ -62,12 +63,20 @@ describe('投票カード', () => {
     expect(prepareMessageBlocks(card.blocks).ok).toBe(true)
     expect(JSON.stringify(card.blocks)).toContain('ほか170人')
   })
+
+  it('作成した人の表示言語でカードの文言を描く', () => {
+    const en = renderPollCard({ ...poll, locale: 'en' })
+    expect(en.text).toBe('Poll: 11月の登山本部 担当決め')
+    expect(JSON.stringify(en.blocks)).toContain('2 voted')
+    expect(JSON.stringify(en.blocks)).not.toContain('投票')
+    expect(JSON.stringify(renderPollCard({ ...poll, locale: 'ko' }).blocks)).toContain('2명 투표')
+  })
 })
 
 describe('投票作成のモーダル', () => {
   it('Cairn の受理判定を通るモーダルを作る', () => {
-    expect(prepareModalView(createPollModal('c1')).ok).toBe(true)
-    expect(prepareModalView(onlyCreatorCanCloseModal()).ok).toBe(true)
+    expect(prepareModalView(createPollModal('c1', 'ja')).ok).toBe(true)
+    expect(prepareModalView(onlyCreatorCanCloseModal('ja')).ok).toBe(true)
   })
 
   it('送信値から質問・選択肢（空行と重複を除く）・選び方を取り出す', () => {
@@ -76,27 +85,32 @@ describe('投票作成のモーダル', () => {
         question: { value: { value: '  11月  ' } },
         options: { value: { value: '第1週\n\n第2週\n第1週\n' } },
         mode: { value: { selected_option: { value: 'multiple' } } },
-      }),
+      }, 'ja'),
     ).toEqual({ ok: true, question: '11月', options: ['第1週', '第2週'], allowMultiple: true })
   })
 
   it('質問が空・選択肢が足りない・多すぎるときは入力欄ごとのエラーにする', () => {
-    expect(parsePollSubmission({ question: { value: { value: '' } }, options: { value: { value: '1つだけ' } } })).toEqual({
+    expect(parsePollSubmission({ question: { value: { value: '' } }, options: { value: { value: '1つだけ' } } }, 'ja')).toEqual({
       ok: false,
       errors: { question: '質問を入力してください', options: '選択肢を2つ以上入力してください（重複は1つにまとめます）' },
     })
     const eleven = Array.from({ length: 11 }, (_, i) => `案${i}`).join('\n')
-    expect(parsePollSubmission({ question: { value: { value: 'q' } }, options: { value: { value: eleven } } })).toMatchObject({ ok: false, errors: { options: '選択肢は10個までです' } })
+    expect(parsePollSubmission({ question: { value: { value: 'q' } }, options: { value: { value: eleven } } }, 'ja')).toMatchObject({ ok: false, errors: { options: '選択肢は10個までです' } })
+  })
+
+  it('モーダルと入力の誤りは操作した人の表示言語で出す', () => {
+    expect(JSON.stringify(createPollModal('c1', 'en'))).toContain('Options (one per line)')
+    expect(parsePollSubmission({ question: { value: { value: '' } }, options: { value: { value: 'a\nb' } } }, 'en')).toEqual({ ok: false, errors: { question: 'Enter a question' } })
   })
 })
 
 describe('投票を作る前の確認', () => {
   it('質問・選択肢の数や長さ・重複・安全フィルタを、作る前に欄ごとの理由にする', async () => {
     const { pollInputErrors } = await import('./validate')
-    expect(pollInputErrors('いつにする？', ['土曜', '日曜'])).toBeNull()
-    expect(pollInputErrors('', ['土曜', '日曜'])).toMatchObject({ question: expect.any(String) })
-    expect(pollInputErrors('いつ？', ['土曜'])).toMatchObject({ options: expect.any(String) })
-    expect(pollInputErrors('いつ？', ['土曜', '土曜'])).toMatchObject({ options: '選択肢が重複しています' })
-    expect(pollInputErrors('副業で月10万円保証、DMください', ['はい', 'いいえ'])).toMatchObject({ question: expect.any(String) })
+    expect(pollInputErrors('いつにする？', ['土曜', '日曜'], 'ja')).toBeNull()
+    expect(pollInputErrors('', ['土曜', '日曜'], 'ja')).toMatchObject({ question: expect.any(String) })
+    expect(pollInputErrors('いつ？', ['土曜'], 'ja')).toMatchObject({ options: expect.any(String) })
+    expect(pollInputErrors('いつ？', ['土曜', '土曜'], 'ja')).toMatchObject({ options: '選択肢が重複しています' })
+    expect(pollInputErrors('副業で月10万円保証、DMください', ['はい', 'いいえ'], 'ja')).toMatchObject({ question: expect.any(String) })
   })
 })

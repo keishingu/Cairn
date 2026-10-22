@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { isAppLocale, translate, type AppLocale } from '@cairn/shared'
 import { after, NextResponse } from 'next/server'
 import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
@@ -24,7 +25,7 @@ type BlockActionsPayload = {
   container: { message_ts: string; channel_id: string }
   actions: Array<{ action_id: string; value?: string }>
   /** Cairn 独自の識別子。ts（message_ts）は Slack 互換の表記に変わり得るので、投票の特定には cairn.message_id を使う（§5.2） */
-  cairn?: { interaction_id?: string; message_id?: string }
+  cairn?: { interaction_id?: string; message_id?: string; locale?: string }
 }
 
 type ViewSubmissionPayload = {
@@ -32,6 +33,12 @@ type ViewSubmissionPayload = {
   team: { id: string }
   user: { id: string }
   view: { id: string; callback_id?: string; private_metadata?: string; state: { values: Parameters<typeof parsePollSubmission>[0] } }
+  cairn?: { locale?: string }
+}
+
+/** 押した人の表示言語。Cairn は常に送るので、無ければ日本語で応える（古い配信や外部からの再送） */
+function actorLocale(value: string | null | undefined): AppLocale {
+  return isAppLocale(value) ? value : 'ja'
 }
 
 export async function handlePollsRequest(req: Request): Promise<Response> {
@@ -49,7 +56,7 @@ export async function handlePollsRequest(req: Request): Promise<Response> {
   if (rawPayload === null) {
     if (form.get('command') !== '/poll') return new NextResponse('', { status: 200 })
     // 作成メニューの「投票を作成」。押した本人にだけモーダルを開く
-    openViewAfterResponse(form.get('team_id') ?? '', form.get('trigger_id'), createPollModal(form.get('channel_id') ?? ''))
+    openViewAfterResponse(form.get('team_id') ?? '', form.get('trigger_id'), createPollModal(form.get('channel_id') ?? '', actorLocale(form.get('locale'))))
     return new NextResponse('', { status: 200 })
   }
 
@@ -61,13 +68,14 @@ export async function handlePollsRequest(req: Request): Promise<Response> {
 
 async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Response> {
   if (payload.view.callback_id !== CREATE_POLL_CALLBACK_ID) return new NextResponse('', { status: 200 })
-  const parsed = parsePollSubmission(payload.view.state.values)
+  const locale = actorLocale(payload.cairn?.locale)
+  const parsed = parsePollSubmission(payload.view.state.values, locale)
   if (!parsed.ok) return NextResponse.json({ response_action: 'errors', errors: parsed.errors })
   // 投稿は応答の後なので、作る前に投稿の安全フィルタも含めて確かめ、閉じたモーダルの裏で投稿だけが失敗し続けないようにする
-  const inputErrors = pollInputErrors(parsed.question, parsed.options)
+  const inputErrors = pollInputErrors(parsed.question, parsed.options, locale)
   if (inputErrors) return NextResponse.json({ response_action: 'errors', errors: inputErrors })
   const { channelId } = JSON.parse(payload.view.private_metadata ?? '{}') as { channelId?: string }
-  if (!channelId) return NextResponse.json({ response_action: 'errors', errors: { question: 'チャンネルが分からないため作成できません' } })
+  if (!channelId) return NextResponse.json({ response_action: 'errors', errors: { question: translate(locale, "Can't create the poll because the channel is unknown") } })
 
   // 同じモーダルの送信の再試行（応答が失われて押し直した場合）は、同じ投票に収束させる。
   // 配信は3秒で打ち切られるので、ここでは投稿待ちで保存して応答し、カードの投稿は描画イベントに任せる
@@ -78,6 +86,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     question: parsed.question,
     options: parsed.options,
     allowMultiple: parsed.allowMultiple,
+    locale,
     idempotencyKey: `view:${payload.view.id}`,
   })
   sendRenderEvent(pollId)
@@ -85,7 +94,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     // 前の送信は応答が届かなかっただけで作成済み。直した内容で作り直したように見せず、作成済みであることを伝える
     return NextResponse.json({
       response_action: 'errors',
-      errors: { question: 'このフォームからはすでに投票を作成しました（前回の内容で投稿されます）。キャンセルして閉じてください' },
+      errors: { question: translate(locale, 'A poll was already created from this form (it will be posted with the previous content). Cancel to close.') },
     })
   }
   return new NextResponse('', { status: 200 })
@@ -111,7 +120,7 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
 
   if (action.action_id === 'close' && poll.createdBy !== payload.user.id) {
     // カードは全員に同じなので、押した本人にだけ知らせるにはモーダルを使う
-    openViewAfterResponse(payload.team.id, payload.trigger_id, onlyCreatorCanCloseModal())
+    openViewAfterResponse(payload.team.id, payload.trigger_id, onlyCreatorCanCloseModal(actorLocale(payload.cairn?.locale)))
     return new NextResponse('', { status: 200 })
   }
 

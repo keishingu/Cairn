@@ -27,6 +27,8 @@ export const polls = pgTable(
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     question: text('question').notNull(),
     allowMultiple: boolean('allow_multiple').notNull().default(false),
+    // カードを描く言語。カードはチャンネルの全員に同じなので、作成者の表示言語で描く
+    locale: text('locale').notNull(),
     // 第1段階は匿名投票を出さない（§11 D2）。列は残すが常に false
     anonymous: boolean('anonymous').notNull().default(false),
     // pending_post（投稿待ち）/ posted / closed / post_failed（投稿が再試行しても通らない理由で失敗した。拾い直さない）
@@ -52,6 +54,7 @@ export const polls = pgTable(
     index('polls_needs_render_idx').on(t.updatedAt).where(sql`(${t.version} > ${t.renderedVersion} or ${t.status} = 'pending_post') and ${t.status} <> 'post_failed'`),
     check('polls_status_known', sql`${t.status} in ('pending_post', 'posted', 'closed', 'post_failed')`),
     check('polls_question_not_empty', sql`length(trim(${t.question})) > 0`),
+    check('polls_locale_known', sql`${t.locale} in ('ja', 'en', 'ko')`),
   ],
 ).enableRLS()
 
