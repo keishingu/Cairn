@@ -21,3 +21,11 @@ function stripButtonValues(node: unknown): unknown {
     entries.filter(([key]) => !(isButton && key === 'value')).map(([key, value]) => [key, stripButtonValues(value)]),
   )
 }
+
+/**
+ * カードの版。chat.update のたびに進む message_blocks.updated_at（DB の精度の文字列）をそのまま使う。
+ * 見えないボタンの value の変更でも変わり、value から計算した値をクライアントへ渡さない（ハッシュだと値の総当たりで推測され得る）
+ */
+export function cardRevision(blocksUpdatedAt: string | null): string | null {
+  return blocksUpdatedAt
+}

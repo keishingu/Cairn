@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
+import { cardActionErrorMessage, normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Modal } from '@/components/app/primitives'
 import { MrkdwnView, RenderTextView } from './mrkdwn-view'
@@ -17,18 +17,87 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
+/**
+ * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
+ * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
+ */
+type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
+
+/** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
+const CARD_UPDATE_WAIT_MS = 8000
+
 type MessageCardProps = {
   blocks: unknown
   /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
   fallbackText: string
   mentionNames?: Map<string, string> | undefined
-  /** 未指定なら操作できない表示にする。インタラクションの送信を実装するまでの間と、閲覧専用の場面のため */
-  onAction?: ((action: CardAction) => void) | undefined
+  /**
+   * 未指定なら操作できない表示にする（閲覧専用の場面のため）。Promise を返したら終わるまでカードの操作を止め、
+   * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
+   */
+  onAction?: ((action: CardAction) => void | Promise<void>) | undefined
+  /** カードの版。見えないボタンの value だけの書き換えでは blocks が変わらないので、これでも書き換えの到着を知る */
+  revision?: string | null | undefined
 }
 
-export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction }: MessageCardProps) {
+export const MessageCard = React.memo(function MessageCard({ blocks, fallbackText, mentionNames, onAction, revision }: MessageCardProps) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopWaiting = React.useCallback(() => {
+    if (waitTimer.current) clearTimeout(waitTimer.current)
+    waitTimer.current = null
+    setBusy(false)
+  }, [])
+  // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
+  const generation = React.useRef(0)
+  React.useEffect(() => {
+    generation.current += 1
+    stopWaiting()
+    // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
+    setActionError(null)
+  }, [blocks, revision, stopWaiting])
+  React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
+  const run = React.useMemo<CardRun | undefined>(() => {
+    if (!onAction) return undefined
+    return async (action: CardAction, options?: { link?: boolean }) => {
+      const startedAt = generation.current
+      const superseded = () => generation.current !== startedAt
+      if (options?.link) {
+        setActionError(null)
+        try {
+          await onAction(action)
+          return true
+        } catch (err) {
+          if (superseded()) return true
+          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+          setActionError(t(cardActionErrorMessage(code)))
+          return false
+        }
+      }
+      setBusy(true)
+      setActionError(null)
+      try {
+        await onAction(action)
+      } catch (err) {
+        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない
+        if (superseded()) return true
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+        setActionError(t(cardActionErrorMessage(code)))
+        stopWaiting()
+        return false
+      }
+      if (superseded()) return true
+      // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
+      // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
+      if (waitTimer.current) clearTimeout(waitTimer.current)
+      waitTimer.current = setTimeout(stopWaiting, CARD_UPDATE_WAIT_MS)
+      return true
+    }
+  }, [onAction, t, stopWaiting])
 
   if (card.nothingRenderable) {
     return (
@@ -40,15 +109,18 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
+    <div aria-busy={busy} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 600 }}>
       {card.blocks.map((block) => (
-        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={onAction} />
+        // 送信中は同じカードの操作を止め、二重に押させない
+        // URL ボタンの押下の通知は、ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため）
+        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} onLinkAction={run} />
       ))}
+      {actionError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{actionError}</div>}
     </div>
   )
 })
 
-function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardBlock({ block, mentionNames, onAction, onLinkAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
   switch (block.type) {
     case 'header':
       return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
@@ -63,13 +135,13 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
               </div>
             )}
           </div>
-          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} /></div>}
+          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} /></div>}
         </div>
       )
     case 'actions':
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} />)}
+          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} />)}
         </div>
       )
     case 'context':
@@ -92,18 +164,20 @@ function CardBlock({ block, mentionNames, onAction }: { block: RenderBlock; ment
   }
 }
 
-function CardElement({ element, blockId, mentionNames, onAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardElement({ element, blockId, mentionNames, onAction, onLinkAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
   switch (element.type) {
     case 'button': {
       const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
-      // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
+      // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
+      const action = { type: 'button' as const, blockId, actionId: element.actionId }
+      const notifyLink = () => { void (onLinkAction ?? onAction)?.(action, { link: true }) }
       const activate = element.url
-        ? () => { window.open(element.url, '_blank', 'noopener,noreferrer') }
-        : () => onAction?.({ type: 'button', blockId, actionId: element.actionId })
+        ? () => { window.open(element.url, '_blank', 'noopener,noreferrer'); notifyLink() }
+        : () => { void onAction?.(action) }
       return (
         <ConfirmGate confirm={element.confirm} mentionNames={mentionNames} onConfirmed={activate}>
           {(request) => element.url && !element.confirm ? (
-            <a className={className} href={element.url} target="_blank" rel="noopener noreferrer">{element.text}</a>
+            <a className={className} href={element.url} target="_blank" rel="noopener noreferrer" onClick={notifyLink}>{element.text}</a>
           ) : (
             <button type="button" className={className} disabled={!element.url && !onAction} onClick={request}>
               {element.text}
@@ -122,13 +196,15 @@ function CardElement({ element, blockId, mentionNames, onAction }: { element: Re
   }
 }
 
-function CardSelect({ element, blockId, mentionNames, onAction }: { element: Extract<RenderElement, { type: 'static_select' }>; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: MessageCardProps['onAction'] }) {
+function CardSelect({ element, blockId, mentionNames, onAction }: { element: Extract<RenderElement, { type: 'static_select' }>; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined }) {
   const t = useT()
   const [value, setValue] = React.useState(element.initialValue ?? '')
   const [pending, setPending] = React.useState<string | null>(null)
-  const commit = (next: string) => {
+  const commit = async (next: string) => {
+    const previous = value
     setValue(next)
-    onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: next })
+    // 届かなかった選択を、選んだまま見せない（アプリは受け取っていない）
+    if ((await onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: next })) === false) setValue(previous)
   }
   return (
     <>
@@ -136,7 +212,7 @@ function CardSelect({ element, blockId, mentionNames, onAction }: { element: Ext
         aria-label={element.placeholder ?? t('Choose an option')}
         disabled={!onAction}
         value={value}
-        onChange={(event) => (element.confirm ? setPending(event.target.value) : commit(event.target.value))}
+        onChange={(event) => (element.confirm ? setPending(event.target.value) : void commit(event.target.value))}
         style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
       >
         {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
@@ -148,7 +224,7 @@ function CardSelect({ element, blockId, mentionNames, onAction }: { element: Ext
         ))}
       </select>
       {element.confirm && pending !== null && (
-        <CardConfirmDialog confirm={element.confirm} mentionNames={mentionNames} onConfirm={() => { commit(pending); setPending(null) }} onClose={() => setPending(null)} />
+        <CardConfirmDialog confirm={element.confirm} mentionNames={mentionNames} onConfirm={() => { void commit(pending); setPending(null) }} onClose={() => setPending(null)} />
       )}
     </>
   )

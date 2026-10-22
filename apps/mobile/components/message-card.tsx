@@ -6,6 +6,7 @@
 import React from 'react'
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
+  cardActionErrorMessage,
   mrkdwnToPlainText,
   normalizeMessageBlocks,
   parseMrkdwn,
@@ -24,11 +25,22 @@ export type CardAction =
   | { type: 'button'; blockId: string; actionId: string }
   | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
 
+/**
+ * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
+ * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
+ */
+type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
+
+/** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
+const CARD_UPDATE_WAIT_MS = 8000
+
 type CardContext = {
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
-  onAction: ((action: CardAction) => void) | undefined
+  onAction: CardRun | undefined
+  /** URL ボタンの押下の通知。ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため） */
+  onLinkAction?: CardRun | undefined
 }
 
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
@@ -40,6 +52,7 @@ export function MessageCard({
   mentionNames,
   onLinkPress,
   onAction,
+  revision,
 }: {
   blocks: unknown
   /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
@@ -47,12 +60,73 @@ export function MessageCard({
   palette: ThemePalette
   mentionNames: Map<string, string>
   onLinkPress: (url: string) => boolean
-  /** 未指定なら操作できない表示にする。インタラクションの送信を実装するまでの間のため */
-  onAction?: (action: CardAction) => void
+  /**
+   * 未指定なら操作できない表示にする。Promise を返したら終わるまでカードの操作を止め、
+   * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
+   */
+  onAction?: (action: CardAction) => void | Promise<void>
+  /** カードの版。見えないボタンの value だけの書き換えでは blocks が変わらないので、これでも書き換えの到着を知る */
+  revision?: string | null | undefined
 }) {
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
-  const context: CardContext = { palette, mentionNames, onLinkPress, onAction }
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopWaiting = React.useCallback(() => {
+    if (waitTimer.current) clearTimeout(waitTimer.current)
+    waitTimer.current = null
+    setBusy(false)
+  }, [])
+  // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
+  const generation = React.useRef(0)
+  React.useEffect(() => {
+    generation.current += 1
+    stopWaiting()
+    // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
+    setActionError(null)
+  }, [blocks, revision, stopWaiting])
+  React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
+  const run = React.useMemo<CardRun | undefined>(() => {
+    if (!onAction) return undefined
+    return async (action: CardAction, options?: { link?: boolean }) => {
+      const startedAt = generation.current
+      const superseded = () => generation.current !== startedAt
+      if (options?.link) {
+        setActionError(null)
+        try {
+          await onAction(action)
+          return true
+        } catch (err) {
+          if (superseded()) return true
+          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+          setActionError(t(cardActionErrorMessage(code)))
+          return false
+        }
+      }
+      setBusy(true)
+      setActionError(null)
+      try {
+        await onAction(action)
+      } catch (err) {
+        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない
+        if (superseded()) return true
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+        setActionError(t(cardActionErrorMessage(code)))
+        stopWaiting()
+        return false
+      }
+      if (superseded()) return true
+      // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
+      // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
+      if (waitTimer.current) clearTimeout(waitTimer.current)
+      waitTimer.current = setTimeout(stopWaiting, CARD_UPDATE_WAIT_MS)
+      return true
+    }
+  }, [onAction, t, stopWaiting])
+  // 送信中は同じカードの操作を止め、二重に押させない
+  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run, onLinkAction: run }
 
   if (card.nothingRenderable) {
     return (
@@ -64,10 +138,15 @@ export function MessageCard({
   }
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessibilityState={{ busy }}>
       {card.blocks.map((block) => (
         <CardBlock key={block.blockId} block={block} context={context} />
       ))}
+      {actionError && (
+        <Text accessibilityRole="alert" style={[styles.smallText, { color: palette.redText }]}>
+          {actionError}
+        </Text>
+      )}
     </View>
   )
 }
@@ -138,7 +217,7 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
   switch (element.type) {
     case 'button': {
       const filled = element.style === 'primary' ? palette.accent : element.style === 'danger' ? palette.redText : null
-      // URL ボタンはリンクとして開く。押下の通知（Slack は url ボタンでも block_actions を送る）は実装順5で足す
+      // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
       const disabled = !element.url && !onAction
       return (
         <Pressable
@@ -148,8 +227,10 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
           onPress={() => {
             const url = element.url
             confirmThen(element.confirm, mentionResolver(context, t), () => {
-              if (url) onLinkPress(url)
-              else onAction?.({ type: 'button', blockId, actionId: element.actionId })
+              if (url) {
+                onLinkPress(url)
+                void (context.onLinkAction ?? onAction)?.({ type: 'button', blockId, actionId: element.actionId }, { link: true })
+              } else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
             })
           }}
           style={({ pressed }) => [
@@ -213,8 +294,12 @@ function CardSelect({
                   onPress={() => {
                     setOpen(false)
                     confirmThen(element.confirm, mentionResolver(context, t), () => {
+                      const previous = selected
                       setSelected(option.value)
-                      onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value })
+                      // 届かなかった選択を、選んだまま見せない（アプリは受け取っていない）
+                      void onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value }).then((ok) => {
+                        if (!ok) setSelected(previous)
+                      })
                     })
                   }}
                   style={({ pressed }) => [styles.sheetOption, pressed && { backgroundColor: palette.cardHover }]}

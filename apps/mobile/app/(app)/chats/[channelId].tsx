@@ -44,7 +44,8 @@ import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
-import { MessageCard } from '../../../components/message-card'
+import { MessageCard, type CardAction } from '../../../components/message-card'
+import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -220,6 +221,8 @@ function ChatMessageRow({
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
   const senderName = message.senderApp?.name ?? message.senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action), [message.id, message.blocksRevision])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -334,6 +337,8 @@ function ChatMessageRow({
               palette={palette}
               mentionNames={cardMentionNames}
               onLinkPress={onLinkPress}
+              onAction={handleCardAction}
+              revision={message.blocksRevision}
             />
           ) : (
             message.content.length > 0 && (

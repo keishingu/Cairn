@@ -181,3 +181,35 @@ export const messageBlocks = pgTable(
     check('message_blocks_schema_version_positive', sql`${t.schemaVersion} > 0`),
   ],
 ).enableRLS()
+
+/**
+ * アプリへのインタラクション（ボタン押下・選択・モーダル送信）の配送ログ。設定画面でアプリ管理者が直近の失敗を見るため。
+ * 中身（ペイロード）は残さない。30日で消す（docs/app-platform-design.md §5.4・§11 D10）
+ */
+export const appInteractionDeliveries = pgTable(
+  'app_interaction_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    installationId: uuid('installation_id').notNull(),
+    // 押した人。退会しても配送ログは残す
+    userId: uuid('user_id'),
+    // block_actions / view_submission / view_closed
+    type: text('type').notNull(),
+    actionId: text('action_id'),
+    // delivered / failed / timeout / blocked（送り先の検証で送らなかった）
+    status: text('status').notNull(),
+    httpStatus: integer('http_status'),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Drizzle の既定名は 63 文字を超えて Postgres に切り詰められるため、短い名前を明示する（マイグレーションと同じ名前）
+    foreignKey({ name: 'app_interaction_deliveries_installation_fk', columns: [t.installationId], foreignColumns: [appInstallations.id] }).onDelete('cascade'),
+    foreignKey({ name: 'app_interaction_deliveries_user_fk', columns: [t.userId], foreignColumns: [profiles.id] }).onDelete('set null'),
+    index('app_interaction_deliveries_installation_created_idx').on(t.installationId, t.createdAt),
+    // 30日を過ぎた記録の削除（全インストール横断の created_at の範囲）に使う
+    index('app_interaction_deliveries_created_idx').on(t.createdAt),
+    check('app_interaction_deliveries_status_known', sql`${t.status} in ('delivered', 'failed', 'timeout', 'blocked')`),
+  ],
+).enableRLS()

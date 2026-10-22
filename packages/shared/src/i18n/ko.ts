@@ -1285,4 +1285,12 @@ export const KO_MESSAGES: Record<string, string> = {
   'This card cannot be shown in this version. Update the app to see it.': '이 카드는 현재 버전에서 표시할 수 없습니다. 앱을 업데이트하면 표시됩니다.',
   'This part of the card cannot be shown in this version. Update the app to see it.': '카드의 이 부분은 현재 버전에서 표시할 수 없습니다. 앱을 업데이트하면 표시됩니다.',
   'Could not load the image: {alt}': '이미지를 불러오지 못했습니다: {alt}',
+  'The app did not respond. Please try again.': '앱이 응답하지 않았습니다. 다시 시도해 주세요.',
+  'This card was updated. Check it and try again.': '이 카드가 업데이트되었습니다. 내용을 확인하고 다시 시도해 주세요.',
+  'You can no longer use this workspace.': '이 워크스페이스를 더 이상 사용할 수 없습니다.',
+  'Apps cannot be used in an archived channel.': '보관된 채널에서는 앱을 사용할 수 없습니다.',
+  'This app has been uninstalled.': '이 앱은 제거되었습니다.',
+  'This app has been removed from this channel.': '이 앱은 채널에서 제외되었습니다.',
+  'This action is no longer available.': '이 작업은 더 이상 사용할 수 없습니다.',
+  'Could not send the action. Please try again.': '작업을 보내지 못했습니다. 다시 시도해 주세요.',
 }

@@ -37,3 +37,4 @@ describe('クライアントへ返す blocks', () => {
     expect(blocksForClient({ broken: true })).toBeNull()
   })
 })
+

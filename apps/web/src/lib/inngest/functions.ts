@@ -1300,3 +1300,20 @@ export const cleanupExpiredUploadRequests = inngest.createFunction(
     })
   },
 )
+
+// アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）
+export const cleanupAppInteractionDeliveries = inngest.createFunction(
+  { id: 'cleanup-app-interaction-deliveries', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 40 3 * * *' },
+  async ({ step }) => {
+    return step.run('delete-old-deliveries', async () => {
+      const { db, appInteractionDeliveries } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appInteractionDeliveries)
+        .where(lt(appInteractionDeliveries.createdAt, sql`now() - interval '30 days'`))
+        .returning({ id: appInteractionDeliveries.id })
+      return { deleted: deleted.length }
+    })
+  },
+)
