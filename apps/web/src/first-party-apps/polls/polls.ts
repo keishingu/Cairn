@@ -147,9 +147,19 @@ export async function postPoll(pollId: string): Promise<string | null> {
   if (poll.status === 'post_failed') return null
 
   const { db, polls } = await import('@cairn/db')
-  const { eq, sql } = await import('drizzle-orm')
+  const { and, eq, sql } = await import('drizzle-orm')
   const workspaceId = await workspaceOfInstallation(poll.installationId)
-  const card = renderPollCard({ ...forRender, status: forRender.status === 'pending_post' ? 'posted' : forRender.status })
+  let status = forRender.status
+  if (status === 'pending_post' && poll.closesAt && poll.closesAt.getTime() <= Date.now()) {
+    // 投稿できないまま締切を過ぎた（アーカイブ中など）。締切の処理は投稿済みの投票だけを締めるので、開いたカードで投稿して
+    // 押せるのに票が入らないボタンを出さないよう、ここで締めてから締め切り済みのカードを投稿する
+    await db
+      .update(polls)
+      .set({ status: 'closed', closedAt: sql`now()`, version: sql`${polls.version} + 1`, updatedAt: sql`now()` })
+      .where(and(eq(polls.id, pollId), eq(polls.status, 'pending_post')))
+    status = 'closed'
+  }
+  const card = renderPollCard({ ...forRender, status: status === 'pending_post' ? 'posted' : status })
   let result: { ts: string }
   try {
     result = await callBotApi<{ ts: string }>(workspaceId, 'chat.postMessage', {
