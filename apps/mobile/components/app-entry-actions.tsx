@@ -3,7 +3,7 @@
 // Bot がまだチャンネルにいなければ、起動の前に追加を確かめる
 
 import React from 'react'
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { displayAppName, appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
@@ -15,6 +15,8 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
   const t = useT()
   const { query, invoke: invokeEntry, busy } = useAppEntryPoints(channelId)
   const [sheetOpen, setSheetOpen] = React.useState(false)
+  // iOS はシートを閉じ終える前に Alert を出すと表示が重なって捨てられるため、閉じ終えてから（onDismiss で）選んだ起動口を処理する
+  const pendingChoiceRef = React.useRef<{ app: AppEntryPointDto; command: string } | null>(null)
   const insets = useSafeAreaInsets()
 
   const invoke = async (app: AppEntryPointDto, command: string) => {
@@ -58,7 +60,17 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
       >
         <Ionicons name="grid-outline" size={17} color={palette.text3} />
       </Pressable>
-      <Modal transparent visible={sheetOpen} animationType="fade" onRequestClose={() => setSheetOpen(false)}>
+      <Modal
+        transparent
+        visible={sheetOpen}
+        animationType="fade"
+        onRequestClose={() => setSheetOpen(false)}
+        onDismiss={() => {
+          const pending = pendingChoiceRef.current
+          pendingChoiceRef.current = null
+          if (pending) choose(pending.app, pending.command)
+        }}
+      >
         <Pressable style={styles.backdrop} accessibilityLabel={t('Close')} onPress={() => setSheetOpen(false)} />
         <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border, paddingBottom: insets.bottom + 12 }]}>
           <View style={[styles.grip, { backgroundColor: palette.border }]} />
@@ -70,7 +82,9 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
               style={[styles.sheetItem, { borderTopColor: palette.divider }]}
               onPress={() => {
                 setSheetOpen(false)
-                choose(app, entry.command)
+                // onDismiss は iOS でしか呼ばれない。Android は閉じかけのシートの上でも Alert を出せるので、そのまま処理する
+                if (Platform.OS === 'ios') pendingChoiceRef.current = { app, command: entry.command }
+                else choose(app, entry.command)
               }}
             >
               <Ionicons name="list-outline" size={19} color={palette.text2} />
