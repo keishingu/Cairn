@@ -202,6 +202,11 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
+const REACTION_TOOLTIP_MAX_NAMES = 10
+const REACTION_TOOLTIP_MAX_WIDTH = 320
+// 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
+const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
+
 export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
@@ -272,8 +277,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const [editDraft, setEditDraft] = React.useState('')
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
-  const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
-  // モバイルWebの「リアクションした人」シートで選択中の絵文字。null は閉じている
+  // メッセージ一覧のスクロール領域で切れないよう、ツールチップは fixed でボタンの上に置く
+  const [hoveredReaction, setHoveredReaction] = React.useState<{ index: number; position: React.CSSProperties } | null>(null)
+  // 「リアクションした人」の一覧で選択中の絵文字。null は閉じている
   const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
   // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、他の絵文字には名前があるのに「表示できません」から始まる）
   const defaultReaction = reactions.find(reaction => reaction.userNames.length > 0) ?? reactions[0]
@@ -400,7 +406,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
     { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
-    ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
+    ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
     ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
@@ -628,7 +634,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
-              onMouseEnter={() => !isMobile && setHoveredReaction(i)}
+              onMouseEnter={e => {
+                if (isMobile) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                // 右端に近ければボタンの右端に揃えて左へ広げ、上に余白がなければ下に出す（幅が潰れて縦長になったり画面外へ出たりしないように）
+                const horizontal = rect.left + REACTION_TOOLTIP_MAX_WIDTH + 8 <= window.innerWidth
+                  ? { left: rect.left }
+                  : { right: Math.max(8, window.innerWidth - rect.right) }
+                const vertical = rect.top >= REACTION_TOOLTIP_MIN_SPACE_ABOVE
+                  ? { bottom: window.innerHeight - rect.top + 6 }
+                  : { top: rect.bottom + 6 }
+                setHoveredReaction({ index: i, position: { ...horizontal, ...vertical } })
+              }}
               onMouseLeave={() => !isMobile && setHoveredReaction(null)}
             >
               <button onClick={() => onReact(messageId, r.emoji)} style={{
@@ -640,15 +657,17 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {/* PCはホバー、モバイルWebはメッセージの「…」メニューから表示 */}
-              {!isMobile && hoveredReaction === i && r.userNames.length > 0 && (
+              {/* PCはホバーで抜粋、全員はPC・モバイルWebともメッセージの「…」メニューから表示 */}
+              {!isMobile && hoveredReaction?.index === i && r.userNames.length > 0 && (
                 <span style={{
-                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
+                  position: 'fixed', ...hoveredReaction.position,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 'var(--z-dropdown)',
-                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: `min(${REACTION_TOOLTIP_MAX_WIDTH}px, calc(100vw - 16px))`, overflowWrap: 'anywhere', zIndex: 'var(--z-popover)',
+                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
-                  {r.userNames.join(t(', '))}
+                  {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
+                  {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
             </span>
@@ -668,11 +687,13 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       {!isMobile && messageActions}
       {selectedReaction && (
         <Modal onClose={() => setReactionPeopleEmoji(null)} label={t('Show who reacted')}>
+          {/* モバイルWebは下からのシート、PCは中央のカード */}
           <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '70dvh',
-            background: 'var(--card)', borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)',
+            ...(isMobile
+              ? { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)', animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)' }
+              : { position: 'relative', width: 400, maxWidth: '100%', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }),
+            maxHeight: '70dvh', background: 'var(--card)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
           }}>
             <ModalHeader title={t('Reactions ({count})', { count: reactions.reduce((total, reaction) => total + reaction.count, 0) })} onClose={() => setReactionPeopleEmoji(null)} />
             <div style={{ display: 'flex', gap: 6, padding: '12px 20px', overflowX: 'auto', flexShrink: 0 }}>
