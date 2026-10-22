@@ -56,6 +56,7 @@ export const KO_MESSAGES: Record<string, string> = {
   '{count} members': '{count}명',
   '{count} minutes ago': '{count}분 전',
   '{count} more': '외 {count}건',
+  '{count} more people': '외 {count}명',
   '{count} or more results': '{count}건 이상',
   '{count} participating': '{count}명 참여 중',
   '{count} people': '{count}명',

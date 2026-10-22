@@ -691,7 +691,7 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
   })
 })
 
-describe('モバイルWebのリアクション表示', () => {
+describe('リアクションした人の表示', () => {
   it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
     const user = userEvent.setup()
     render(
@@ -795,6 +795,47 @@ describe('モバイルWebのリアクション表示', () => {
     await user.click(screen.getByRole('button', { name: /👍 2/ }))
     expect(onReact).toHaveBeenCalledWith('message-reactions', '👍')
     expect(screen.queryByRole('dialog', { name: 'リアクションした人を表示' })).not.toBeInTheDocument()
+  })
+
+  it('PCではホバーで先頭10人と残り人数を表示し、全員は「…」メニューから開ける', async () => {
+    const user = userEvent.setup()
+    const userNames = Array.from({ length: 12 }, (_, index) => `メンバー${index + 1}`)
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[{ emoji: '👍', count: 12, mine: false, userNames }]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    await user.hover(screen.getByRole('button', { name: /👍 12/ }))
+    const tooltip = screen.getByText(/メンバー1、/)
+    expect(tooltip).toHaveTextContent('メンバー10 他 2 人')
+    expect(tooltip).not.toHaveTextContent('メンバー11')
+
+    fireEvent.click(screen.getByRole('button', { name: '操作' }))
+    fireEvent.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
+    expect(dialog).toHaveTextContent('メンバー12')
   })
 })
 

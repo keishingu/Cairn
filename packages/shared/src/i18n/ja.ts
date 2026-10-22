@@ -56,6 +56,7 @@ export const JA_MESSAGES: Record<string, string> = {
   '{count} members': '{count}名',
   '{count} minutes ago': '{count}分前',
   '{count} more': '他 {count} 件',
+  '{count} more people': '他 {count} 人',
   '{count} or more results': '{count} 件以上',
   '{count} participating': '{count}名が参加中',
   '{count} people': '{count}人',
