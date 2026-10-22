@@ -23,6 +23,10 @@ export async function POST(req: Request) {
 
 `getAuthContext()` は `Authorization: Bearer <token>` ヘッダーを優先し、なければ Cookie にフォールバックする。
 
+### 例外: アプリの Bot が使う `/api/app-api/<method>`
+
+アプリ（プラグイン）の Bot だけが使う Web API は `getAuthContext()` を使わず、Bot トークン（`cairn_bot_...`）を `verifyBotToken()` で検証する。人間のセッション・PAT・MCP の資格情報では通さない。権限はワークスペースロールではなく、インストールのスコープと Bot が参加しているチャンネル（`app_channel_memberships`）だけで決める。応答は Slack の Web API に合わせ、HTTP ステータスは常に 200（呼び出し回数の超過だけ 429）で `{ ok, error }` を返す。詳細は [`app-platform-design.md`](./app-platform-design.md) §3.3・§6。
+
 ---
 
 ## サインアップフロー
