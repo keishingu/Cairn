@@ -6,9 +6,10 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
-import { decryptToken } from '@/lib/token-crypto'
+import { forThisDeployment, resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { buildBlockActionsPayload, deliverToApp, newInteractionId, resolveAction } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
+import { deliveryLocale } from '@/lib/apps/locale'
 import { cardRevision } from '@/lib/apps/blocks-for-client'
 import { issueTrigger } from '@/lib/apps/triggers'
 
@@ -17,11 +18,12 @@ import { issueTrigger } from '@/lib/apps/triggers'
 // エラーはコードで返し、文言はクライアントが表示言語で出す
 
 const bodySchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('button'), messageId: z.string().uuid(), revision: z.string().max(64), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
+  z.object({ type: z.literal('button'), messageId: z.string().uuid(), revision: z.string().max(64), locale: z.string().max(8).optional(), blockId: z.string().min(1).max(255), actionId: z.string().min(1).max(255) }),
   z.object({
     type: z.literal('static_select'),
     messageId: z.string().uuid(),
     revision: z.string().max(64),
+    locale: z.string().max(8).optional(),
     blockId: z.string().min(1).max(255),
     actionId: z.string().min(1).max(255),
     selectedOptionValue: z.string().min(1).max(150),
@@ -50,7 +52,7 @@ export async function POST(req: Request) {
       await import('@cairn/db')
     const { and, eq, inArray, isNull, sql } = await import('drizzle-orm')
 
-    const [row] = await db
+    const [found] = await db
       .select({
         messageId: messages.id,
         channelId: messages.channelId,
@@ -62,6 +64,8 @@ export async function POST(req: Request) {
         installationWorkspaceId: appInstallations.workspaceId,
         installationRevokedAt: appInstallations.revokedAt,
         appId: apps.id,
+        slug: apps.slug,
+        ownerWorkspaceId: apps.ownerWorkspaceId,
         requestUrl: apps.requestUrl,
         signingSecretEncrypted: apps.signingSecretEncrypted,
         channelName: channels.name,
@@ -77,7 +81,10 @@ export async function POST(req: Request) {
       .limit(1)
 
     // 別ワークスペースのカードは存在しないものとして扱う
-    if (!row || row.installationWorkspaceId !== ctx.workspaceId) return error('message_not_found', 404)
+    // ファーストパーティはこのデプロイの定義の経路へ送る（このデプロイが知らないアプリには送らない）
+    const row = found ? forThisDeployment(found) : null
+    if (!found || found.installationWorkspaceId !== ctx.workspaceId) return error('message_not_found', 404)
+    if (!row) return error('app_not_interactive', 409)
 
     const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, row.channelId, ctx.role)
     if (forbidden) return forbidden
@@ -133,13 +140,14 @@ export async function POST(req: Request) {
         message: { id: row.messageId, text: row.content, botProfileId: row.senderId, installationId: row.installationId, blocks: row.blocks },
         action: resolved.action,
         triggerId,
+        locale: deliveryLocale(req, parsed.locale),
       },
       interactionId,
     )
 
     const delivery = await deliverToApp({
-      requestUrl: row.requestUrl,
-      signingSecret: decryptToken(row.signingSecretEncrypted),
+      ...resolveRequestTarget(row.requestUrl),
+      signingSecret: resolveSigningSecret({ requestUrl: row.requestUrl, signingSecretEncrypted: row.signingSecretEncrypted }),
       payload,
     })
 

@@ -31,6 +31,8 @@ export interface LinkedTaskDto {
 // アプリ（Bot）が送信者のときの表示情報。人間の送信者なら null
 export interface SenderAppDto {
   name: string
+  /** ファーストパーティのアプリ。名前（英語）を表示言語に翻訳して出す */
+  firstParty: boolean
   iconUrl: string | null
   /** インストールが取り消し済み。過去のメッセージの送信者表示は残すため、表示で区別する */
   uninstalled: boolean

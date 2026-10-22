@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomUUID } from 'node:crypto'
+import type { AppLocale } from '@cairn/shared'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { checkRequestUrl, guardedLookup } from './request-url'
@@ -71,6 +72,8 @@ export type BlockActionsContext = {
   action: ResolvedAction
   /** views.open に使う。押した本人とインストールに結びついた、3秒・1回だけの ID */
   triggerId: string
+  /** 押した人の表示言語。アプリがモーダルや案内をその言語で返せるよう cairn.locale で渡す */
+  locale: AppLocale
 }
 
 /** Slack の block_actions と同じ形。ID は UUID のまま入れ、cairn.* にも併記する（§11 D3） */
@@ -94,7 +97,7 @@ export function buildBlockActionsPayload(context: BlockActionsContext, interacti
       blocks: context.message.blocks,
     },
     actions: [{ ...context.action, action_ts: (nowMs / 1000).toFixed(6) }],
-    cairn: { message_id: context.message.id, interaction_id: interactionId },
+    cairn: { message_id: context.message.id, interaction_id: interactionId, locale: context.locale },
   }
 }
 
@@ -147,7 +150,12 @@ const MAX_RESPONSE_BYTES = 256 * 1024
 export async function deliverToApp(input: {
   requestUrl: string
   signingSecret: string
-  payload: unknown
+  /** block_actions・view_submission は payload=<JSON> で送る */
+  payload?: unknown
+  /** スラッシュコマンドと同じく、フィールドを並べた form で送る（作成メニューからの起動。§6.1） */
+  form?: Record<string, string>
+  /** 署名以外に付けるヘッダー（同じデプロイへの呼び出しの Deployment Protection 回避だけに使う） */
+  headers?: Record<string, string>
   send?: Sender
   checkUrl?: typeof checkRequestUrl
 }): Promise<DeliveryResult> {
@@ -159,13 +167,14 @@ export async function deliverToApp(input: {
   const remainingMs = INTERACTION_TIMEOUT_MS - (Date.now() - started)
   if (remainingMs <= 0) return { status: 'timeout', httpStatus: null, durationMs: Date.now() - started, error: 'Request URL の検証が時間内に終わりませんでした' }
 
-  // Bolt が読む形。payload=<JSON> の form-urlencoded
-  const body = new URLSearchParams({ payload: JSON.stringify(input.payload) }).toString()
+  // Bolt が読む形。interactivity は payload=<JSON>、スラッシュコマンドはフィールドを並べた form-urlencoded
+  const body = new URLSearchParams(input.form ?? { payload: JSON.stringify(input.payload) }).toString()
   const timestamp = Math.floor(Date.now() / 1000)
   try {
     const response = await (input.send ?? nodeSender)({
       url: check.url,
       headers: {
+        ...input.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
         [TIMESTAMP_HEADER]: String(timestamp),
         [SIGNATURE_HEADER]: signRequest(input.signingSecret, timestamp, body),

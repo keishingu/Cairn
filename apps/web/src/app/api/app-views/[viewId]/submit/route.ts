@@ -9,11 +9,12 @@ import { BLOCKS_SCHEMA_VERSION, prepareModalView } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { resolveBotChannel } from '@/lib/apps/web-api/channel-access'
-import { decryptToken } from '@/lib/token-crypto'
+import { resolveRequestTarget, resolveSigningSecret } from '@/lib/apps/first-party'
 import { getActiveMemberIdentity } from '@/lib/access/membership'
 import { findOpenAppView } from '@/lib/apps/app-views'
 import { deliverToApp, newInteractionId } from '@/lib/apps/interactions'
 import { recordDeliveryAfterResponse } from '@/lib/apps/delivery-log'
+import { deliveryLocale } from '@/lib/apps/locale'
 import { TRIGGER_TTL_MS, hashTrigger, issueTrigger } from '@/lib/apps/triggers'
 import { displayableErrors, parseViewSubmissionResponse, validateSubmission } from '@/lib/apps/view-submission'
 
@@ -27,6 +28,8 @@ const SUBMIT_LEASE_SECONDS = 45
 const bodySchema = z.object({
   // 描いていた版。views.update で中身が変わった後の古い入力を、新しい版の意味で解釈しない
   hash: z.string().min(1).max(255),
+  /** 送った人の表示言語。アプリが入力の誤りや次の画面をその言語で返せるよう cairn.locale で渡す */
+  locale: z.string().max(8).optional(),
   values: z.record(z.string().max(255), z.record(z.string().max(255), z.string().max(3000).nullable())),
 })
 
@@ -38,11 +41,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
   let values: z.infer<typeof bodySchema>['values']
   let renderedHash: string
+  let requestedLocale: string | undefined
   try {
     const parsed = bodySchema.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
     values = parsed.data.values
     renderedHash = parsed.data.hash
+    requestedLocale = parsed.data.locale
   } catch {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
   }
@@ -136,7 +141,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
         bot_id: view.installationId,
         state: { values: validated.values },
       },
-      cairn: { interaction_id: interactionId, channel_id: view.channelId },
+      cairn: { interaction_id: interactionId, channel_id: view.channelId, locale: deliveryLocale(req, requestedLocale) },
     }
 
     // 届ける直前（ここより後に DB 操作を挟まない）に確かめる。ここまでの DB 操作が遅れて確保が切れ、別の送信が取り直していたら、同じ送信を二重に届けない。
@@ -168,7 +173,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ viewId:
 
     let delivery: Awaited<ReturnType<typeof deliverToApp>>
     try {
-      delivery = await deliverToApp({ requestUrl: view.requestUrl, signingSecret: decryptToken(view.signingSecretEncrypted), payload })
+      delivery = await deliverToApp({ ...resolveRequestTarget(view.requestUrl), signingSecret: resolveSigningSecret({ requestUrl: view.requestUrl, signingSecretEncrypted: view.signingSecretEncrypted }), payload })
     } catch (err) {
       await release()
       throw err

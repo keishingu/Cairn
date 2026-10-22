@@ -11,6 +11,7 @@ import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import { canAccessChannel } from '@/lib/permissions'
 import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
 import { blocksForClient, cardRevision } from '@/lib/apps/blocks-for-client'
+import { isFirstPartyApp } from '@/lib/apps/first-party'
 import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
@@ -73,6 +74,8 @@ export async function getMessages({
       blocks: messageBlocks.blocks,
       blocksUpdatedAt: sql<string | null>`${messageBlocks.updatedAt}::text`,
       appName: apps.name,
+      appSlug: apps.slug,
+      appOwnerWorkspaceId: apps.ownerWorkspaceId,
       appIconUrl: apps.iconUrl,
       appRevokedAt: appInstallations.revokedAt,
     }
@@ -135,6 +138,8 @@ export async function getMessages({
       appName: string | null
       appIconUrl: string | null
       appRevokedAt: Date | null
+      appSlug: string | null
+      appOwnerWorkspaceId: string | null
     }>
 
     let hasMore = false
@@ -447,7 +452,12 @@ export async function getMessages({
       ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
       // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
       senderApp: row.appName
-        ? { name: row.appName, iconUrl: row.appIconUrl ?? null, uninstalled: row.appRevokedAt != null }
+        ? {
+            name: row.appName,
+            firstParty: isFirstPartyApp({ slug: row.appSlug, ownerWorkspaceId: row.appOwnerWorkspaceId }),
+            iconUrl: row.appIconUrl ?? null,
+            uninstalled: row.appRevokedAt != null,
+          }
         : null,
     }))
 

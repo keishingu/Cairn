@@ -40,7 +40,8 @@ export interface MessageDto {
   /** カード内のメンションの userId → 表示名（非活性のメンバーも含む、サーバーで解決したもの）。blocks のメッセージだけ */
   mentionNames?: Record<string, string>
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
-  senderApp?: { name: string; iconUrl: string | null; uninstalled: boolean } | null
+  /** firstParty はファーストパーティのアプリ（名前を表示言語に翻訳して出す） */
+  senderApp?: { name: string; firstParty?: boolean; iconUrl: string | null; uninstalled: boolean } | null
 }
 
 // サーバーが read 時に `<@id|表示名>` へ解決済みのため最新名を表示できる。

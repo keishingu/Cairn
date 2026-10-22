@@ -39,3 +39,14 @@ export function viewFieldErrorMessage(error: { code?: string; message?: string }
   if (error.message) return error.message
   return translate((error.code && FIELD_MESSAGES[error.code]) || 'Please check this field.')
 }
+
+/**
+ * Bot をチャンネルへ追加する API（/api/channels/[channelId]/apps）の失敗を、利用者に見せる文言（英語のキー）にする。
+ * 本文の日本語メッセージは表示言語に従わないため使わず、状態コードで決める
+ */
+export function appAddErrorMessage(status: number): string {
+  if (status === 403) return 'You do not have permission to add apps to this channel.'
+  if (status === 404) return 'This app has been uninstalled.'
+  if (status === 422) return 'Apps cannot be added to this channel.'
+  return 'Could not add the app. Please try again.'
+}

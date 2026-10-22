@@ -16,6 +16,8 @@
 pnpm install
 supabase start                                          # PostgreSQL / Auth / Storage / Realtime / Studio
 cp apps/web/.env.local.example apps/web/.env.local      # supabase start の既定キーが設定済み
+# apps/web/.env.local の CALENDAR_TOKEN_ENCRYPTION_KEY に次の出力を設定する（必須。投票アプリの署名・Bot トークンの暗号化に使う）
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 supabase migration up --local --include-all             # 未適用のマイグレーションだけ適用
 pnpm dev                                                # http://localhost:3128
 ```

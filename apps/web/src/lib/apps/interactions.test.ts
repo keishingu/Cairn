@@ -39,7 +39,7 @@ describe('押された要素の解決', () => {
 })
 
 describe('block_actions のペイロード', () => {
-  it('Slack と同じ形で、UUID の ID と cairn.interaction_id を入れる', () => {
+  it('Slack と同じ形で、UUID の ID と cairn.interaction_id・押した人の表示言語（cairn.locale）を入れる', () => {
     const resolved = resolveAction(stored, { type: 'button', blockId: 'option-1', actionId: 'vote' })
     if (!resolved.ok) throw new Error('unreachable')
     const payload = buildBlockActionsPayload(
@@ -51,6 +51,7 @@ describe('block_actions のペイロード', () => {
         message: { id: 'm1', text: '代替', botProfileId: 'b1', installationId: 'i1', blocks: stored },
         action: resolved.action,
         triggerId: 'trigger-1',
+        locale: 'en',
       },
       'interaction-1',
       1700000000123,
@@ -65,7 +66,7 @@ describe('block_actions のペイロード', () => {
       channel: { id: 'c1', name: '登山本部' },
       message: { ts: 'm1', text: '代替', user: 'b1', bot_id: 'i1' },
       actions: [{ type: 'button', block_id: 'option-1', action_id: 'vote', value: 'option:1', action_ts: '1700000000.123000' }],
-      cairn: { message_id: 'm1', interaction_id: 'interaction-1' },
+      cairn: { message_id: 'm1', interaction_id: 'interaction-1', locale: 'en' },
     })
   })
 })

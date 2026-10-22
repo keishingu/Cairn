@@ -45,13 +45,14 @@ import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
 import { MessageCard, type CardAction } from '../../../components/message-card'
+import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
+import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -79,7 +80,7 @@ import {
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
-import { useT } from '../../../components/locale-provider'
+import { useAppLocale, useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
@@ -219,10 +220,11 @@ function ChatMessageRow({
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
-  const senderName = message.senderApp?.name ?? message.senderName
+  const senderName = message.senderApp ? displayAppName(message.senderApp, t) : message.senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action), [message.id, message.blocksRevision])
+  const { locale } = useAppLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -1559,6 +1561,7 @@ export default function ChatThreadScreen() {
                   <Ionicons name="attach-outline" size={15} color={palette.text3} />
                   <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
                 </Pressable>
+                {channelType !== 'dm' && channelId && <AppEntryActions channelId={channelId} palette={palette} onError={setSendError} />}
                 <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
                   <Pressable
                     accessibilityRole="switch"
@@ -2206,7 +2209,8 @@ const styles = StyleSheet.create({
   composerContextText: { flex: 1, minWidth: 0 },
   composerContextTitle: { fontSize: 11.5, fontWeight: '700' },
   composerContextBody: { fontSize: 11.5, marginTop: 1 },
-  attachmentActions: { flexDirection: 'row', gap: 16, paddingHorizontal: 4, paddingBottom: 7 },
+  // アプリの起動口が並ぶと狭い端末・大きな文字で1行に収まらないため、折り返して右端のスイッチを画面外に出さない
+  attachmentActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingHorizontal: 4, paddingBottom: 7 },
   attachmentAction: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 28 },
   attachmentActionText: { fontSize: 12, fontWeight: '600' },
   uploads: { gap: 5, marginBottom: 7 },
