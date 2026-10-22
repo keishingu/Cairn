@@ -149,7 +149,8 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { blo
     case 'context':
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
-          {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} />)}
+          {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
+          {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} fill={block.elements.some((item) => item.type === 'meter')} />)}
         </div>
       )
     case 'image':
@@ -263,12 +264,12 @@ function CardConfirmDialog({ confirm, mentionNames, onConfirm, onClose }: { conf
   )
 }
 
-function ContextElement({ element, mentionNames }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined }) {
+function ContextElement({ element, mentionNames, fill }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined; fill?: boolean }) {
   switch (element.type) {
     case 'image':
       return <ExternalImage url={element.url} alt={element.alt} style={{ width: 16, height: 16, borderRadius: 4, objectFit: 'cover' }} />
     case 'text':
-      return <span><RenderTextView text={element.text} mentionNames={mentionNames} /></span>
+      return <span style={fill ? { flex: '1 1 0', minWidth: 0 } : undefined}><RenderTextView text={element.text} mentionNames={mentionNames} /></span>
     case 'meter':
       return <CardMeter meter={element} />
     case 'unsupported':

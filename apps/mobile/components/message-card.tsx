@@ -187,8 +187,9 @@ export function CardBlock({ block, context }: { block: RenderBlock; context: Car
     case 'context':
       return (
         <View style={styles.context}>
+          {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
           {block.elements.map((element, index) => (
-            <ContextElement key={index} element={element} context={context} />
+            <ContextElement key={index} element={element} context={context} fill={block.elements.some((item) => item.type === 'meter')} />
           ))}
         </View>
       )
@@ -354,12 +355,18 @@ function mentionResolver(context: CardContext, t: (message: string) => string): 
   return (userId) => context.mentionNames.get(userId) ?? t('Unknown member')
 }
 
-function ContextElement({ element, context }: { element: RenderContextElement; context: CardContext }) {
+function ContextElement({ element, context, fill }: { element: RenderContextElement; context: CardContext; fill?: boolean }) {
   switch (element.type) {
     case 'image':
       return <CardImage key={element.url} url={element.url} alt={element.alt} palette={context.palette} style={styles.contextImage} inline />
     case 'text':
-      return <CardText text={element.text} context={context} small />
+      return fill ? (
+        <View style={styles.contextFill}>
+          <CardText text={element.text} context={context} small />
+        </View>
+      ) : (
+        <CardText text={element.text} context={context} small />
+      )
     case 'meter':
       return <CardMeter meter={element} palette={context.palette} />
     case 'unsupported':
@@ -501,6 +508,7 @@ const styles = StyleSheet.create({
   image: { width: '100%', height: 200, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
   accessoryImage: { width: 56, height: 56, borderRadius: 8 },
   contextImage: { width: 16, height: 16, borderRadius: 4 },
+  contextFill: { flex: 1, minWidth: 0 },
   meter: { width: 96, height: 8, borderRadius: 4, overflow: 'hidden' },
   meterFill: { height: '100%', borderRadius: 4 },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
