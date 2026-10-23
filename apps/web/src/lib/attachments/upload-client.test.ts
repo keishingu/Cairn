@@ -40,12 +40,12 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
   })
 
   it('URL 発行で拒否されたら、サーバーが返した理由を持つエラーにし、Storage へは送らない', async () => {
-    mockFetch.mockResolvedValueOnce(json({ error: 'ファイルサイズは 10MB 以下にしてください' }, 400))
+    mockFetch.mockResolvedValueOnce(json({ error: 'ファイルサイズは 50MiB 以下にしてください' }, 400))
 
     const error = await uploadAttachment('channel-1', new File(['x'], 'big.pdf', { type: 'application/pdf' })).catch(e => e)
 
     expect(error).toBeInstanceOf(AttachmentUploadError)
-    expect(error).toMatchObject({ failure: 'prepare', serverMessage: 'ファイルサイズは 10MB 以下にしてください' })
+    expect(error).toMatchObject({ failure: 'prepare', serverMessage: 'ファイルサイズは 50MiB 以下にしてください' })
     expect(uploadToSignedUrl).not.toHaveBeenCalled()
   })
 

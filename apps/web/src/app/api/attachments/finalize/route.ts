@@ -6,6 +6,7 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import {
   ALLOWED_MIME_TYPES,
   FREE_ATTACHMENT_MAX_FILE_SIZE,
+  MAX_FILE_SIZE,
   normalizeMimeType,
   resolveFileType,
 } from '@/lib/attachments'
@@ -180,6 +181,38 @@ export async function POST(req: Request) {
 
   const actualSize =
     typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
+  if (actualSize > MAX_FILE_SIZE) {
+    let committed: {
+      id: string
+      fileName: string
+      mimeType: string | null
+      fileSize: number | null
+    } | null
+    try {
+      committed = await removeIfUnfinalized([storagePath])
+    } catch (cleanupError) {
+      console.error('[/api/attachments/finalize] Oversized object cleanup failed:', cleanupError)
+      return NextResponse.json(
+        { error: 'アップロード済みファイルの削除に失敗しました' },
+        { status: 500 },
+      )
+    }
+    if (committed) {
+      return NextResponse.json(
+        {
+          fileId: committed.id,
+          fileName: committed.fileName,
+          mimeType: committed.mimeType,
+          fileSize: committed.fileSize,
+        },
+        { status: 200 },
+      )
+    }
+    return NextResponse.json(
+      { error: 'ファイルサイズは 50MiB 以下にしてください' },
+      { status: 400 },
+    )
+  }
   if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.rights.canUploadLargeFile) {

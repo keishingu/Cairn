@@ -264,7 +264,7 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
     mockList.mockResolvedValue({
-      data: [{ name: 'x.pdf', metadata: { size: 6 * 1024 * 1024 } }],
+      data: [{ name: 'x.pdf', metadata: { size: 5 * 1024 * 1024 + 1 } }],
       error: null,
     })
     mockTransactionSelectLimit.mockResolvedValue([])
@@ -441,5 +441,66 @@ describe('/api/attachments/finalize のCSV MIMEタイプ正規化', () => {
     expect(await res.json()).toMatchObject({ fileId: 'file-existing' })
     expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
     expect(mockInngestSend).not.toHaveBeenCalled()
+  })
+})
+
+describe('/api/attachments/finalize の実サイズ上限', () => {
+  beforeEach(() => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      error: null,
+    })
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: true } })
+    mockIsBillingEnabled.mockReturnValue(false)
+    mockSelectLimit
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1' }])
+      .mockResolvedValueOnce([{ projectId: null }])
+    mockTransactionSelectLimit.mockReset().mockResolvedValue([])
+    mockIsIndexable.mockReturnValue(false)
+    mockCreateThumbnailFromStorage.mockResolvedValue(null)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('Storageの実サイズ50MiBちょうどを確定する', async () => {
+    mockList.mockResolvedValue({
+      data: [{ name: 'large.pdf', metadata: { size: 50 * 1024 * 1024 } }],
+      error: null,
+    })
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('large.pdf'),
+      fileName: 'large.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 50 * 1024 * 1024,
+    }))
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).fileSize).toBe(50 * 1024 * 1024)
+  })
+
+  it('申告値が上限内でもStorageの実サイズが50MiBを超えたら削除して拒否する', async () => {
+    mockList.mockResolvedValue({
+      data: [{ name: 'large.pdf', metadata: { size: 50 * 1024 * 1024 + 1 } }],
+      error: null,
+    })
+    const { POST } = await import('./route')
+    const res = await POST(post({
+      channelId: CHANNEL_ID,
+      storagePath: storagePathFor('large.pdf'),
+      fileName: 'large.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 50 * 1024 * 1024,
+    }))
+
+    expect(res.status).toBe(400)
+    expect(mockRemove).toHaveBeenCalledWith([storagePathFor('large.pdf')])
+    expect(mockInsertReturning).not.toHaveBeenCalled()
   })
 })

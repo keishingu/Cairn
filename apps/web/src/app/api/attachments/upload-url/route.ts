@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   }
 
   if (fileSize > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
+    return NextResponse.json({ error: 'ファイルサイズは 50MiB 以下にしてください' }, { status: 400 })
   }
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)

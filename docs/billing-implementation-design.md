@@ -26,7 +26,7 @@
 | 課金ポイント | Free | 支援者本人（funded WS） | 執行ポイント |
 |---|---|---|---|
 | ギャラリー画像 | 圧縮派生のみ（長辺2048px。EXIF の撮影日時・GPS は保持） | オリジナルも保存（閲覧は全員） | `projects/[id]/gallery/upload-url` / `finalize` |
-| チャット添付・ファイル | 5MB/ファイル | 10MB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
+| チャット添付・ファイル | 5MiB/ファイル | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
 | 動画、チャット添付の音声・ZIP | 不可（MIME whitelist 外） | 未開放（`canUploadVideo` の権利判定だけ定義済み） | — |
 | ストレージ保有 | 10GB まで | 残高が家賃を払える限り | 家賃 cron（§6） |
 | AI 能動利用（`/ai`） | 不可 | クレジットを消費 | `api/ai/conversations/[id]/messages` |
