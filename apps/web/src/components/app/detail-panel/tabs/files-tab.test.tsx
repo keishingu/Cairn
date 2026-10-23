@@ -147,6 +147,25 @@ describe('ファイルタブ', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf: アップロードに失敗しました')
   })
 
+  it('finalize 失敗の再試行は同じ保存済みファイルを使い、アップロードを呼び直さない', async () => {
+    const retryFinalize = vi.fn().mockResolvedValue(uploaded)
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(
+      'finalize', 'PDF最適化の開始に失敗しました。再試行してください', retryFinalize,
+    ))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/guide\.pdf: PDF最適化の開始に失敗しました/)
+    expect(screen.queryByRole('alert')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    expect(retryFinalize).toHaveBeenCalledTimes(1)
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+  })
+
   it('対応していない形式は、形式の案内を表示する', async () => {
     mockUpload.mockRejectedValue(new AttachmentUploadError('unsupported_type'))
     renderFilesTab()

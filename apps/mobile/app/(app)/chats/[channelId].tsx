@@ -1609,6 +1609,16 @@ export default function ChatThreadScreen() {
                         ? `${pending.fileName}: ${pending.error}`
                         : pending.fileName}
                     </Text>
+                    {pending.status === 'error' && pending.retryFinalize && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('Retry')}
+                        onPress={() => void upload.retryUpload(pending.id)}
+                        hitSlop={8}
+                      >
+                        <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '600' }}>{t('Retry')}</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={t('Remove {name}', { name: pending.fileName })}

@@ -66,7 +66,7 @@ export async function compressPdfImages(buffer: Buffer): Promise<Buffer>
 2. `finalize` は検索インデックス用の `file/uploaded` と、圧縮専用の `file/pdf-compression-requested` を別々に送る
 3. 圧縮ジョブは原本から `compressPdfImages(buffer)` を実行し、縮小できた場合は `pdf-derivatives/` に派生物を保存して `derivedStoragePath` / `derivedFileSize` に記録する。原本の `storagePath` / `fileSize` は変更しない。縮小できないPDFは同じ原本を最適化版として使う
 4. 通常表示は最適化版を短期署名URLで配信し、原本取得は支援者本人かつ残高のあるワークスペース（または課金無効環境）に限定する。`pdf-originals/` は Storage RLS でもバイト取得を拒否する
-5. この認可は新しいPDFに限る。既存PDFの取得動作は変えない。最適化中・失敗時は明示的なエラーを返し、Freeへ原本をフォールバックしない。finalize再試行で圧縮イベントを再送できる
+5. この認可は新しいPDFに限る。既存PDFの取得動作は変えない。最適化中・失敗時は明示的なエラーを返し、Freeへ原本をフォールバックしない。圧縮イベントの送信に失敗して finalize が 503 を返した場合、クライアントは同じ `storagePath` を含む finalize 要求を画面内に保持し、利用者の「再試行」で finalize だけを再送する。保存済み原本を再アップロードせず、再試行状態は画面再読み込みまで保持する
 
 ### 圧縮対象の判定（写真スクショの狙い撃ち）
 

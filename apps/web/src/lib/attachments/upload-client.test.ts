@@ -59,6 +59,44 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
+  it('finalize が失敗した後は同じ保存先を finalize だけで再試行する', async () => {
+    mockFetch
+      .mockResolvedValueOnce(json(signed))
+      .mockResolvedValueOnce(json({ error: 'PDF最適化の開始に失敗しました。再試行してください' }, 503))
+      .mockResolvedValueOnce(json({ fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }, 200))
+    const file = new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' })
+
+    const error = await uploadAttachment('channel-1', file).catch(e => e)
+    expect(error).toBeInstanceOf(AttachmentUploadError)
+    expect(error).toMatchObject({ failure: 'finalize' })
+    await expect(error.retryFinalize()).resolves.toMatchObject({ fileId: 'f1' })
+
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/attachments/upload-url', '/api/attachments/finalize', '/api/attachments/finalize',
+    ])
+    expect(JSON.parse(mockFetch.mock.calls[1]![1]!.body as string)).toEqual(
+      JSON.parse(mockFetch.mock.calls[2]![1]!.body as string),
+    )
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it('finalize の応答が失われても同じ finalize 要求を再試行できる', async () => {
+    mockFetch
+      .mockResolvedValueOnce(json(signed))
+      .mockRejectedValueOnce(new TypeError('network unavailable'))
+      .mockResolvedValueOnce(json({ fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }, 200))
+    const file = new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' })
+
+    const error = await uploadAttachment('channel-1', file).catch(e => e)
+    expect(error).toMatchObject({ failure: 'finalize', serverMessage: 'network unavailable' })
+    await expect(error.retryFinalize()).resolves.toMatchObject({ fileId: 'f1' })
+
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/attachments/upload-url', '/api/attachments/finalize', '/api/attachments/finalize',
+    ])
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1)
+  })
+
   it('対応していない形式は、API を呼ぶ前に弾く', async () => {
     await expect(uploadAttachment('channel-1', new File(['x'], 'archive.zip', { type: 'application/zip' }))).rejects.toMatchObject({
       failure: 'unsupported_type',

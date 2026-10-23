@@ -3,6 +3,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import { File } from 'expo-file-system'
 import { apiFetch } from '../lib/api-fetch'
+import { AttachmentFinalizeError, finalizeAttachment } from '../lib/attachment-finalize'
 import { hasFailedUploads } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 import { useT } from '../components/locale-provider'
@@ -22,10 +23,12 @@ const ALLOWED_DOCUMENT_TYPES = [
 
 export interface PendingUpload {
   id: string
+  channelId: string
   fileName: string
   status: 'uploading' | 'done' | 'error'
   fileId?: string
-  error?: string
+  error?: string | undefined
+  retryFinalize?: (() => Promise<{ fileId: string }>) | undefined
 }
 
 type PickedFile = {
@@ -54,6 +57,10 @@ export function useAttachmentUpload(channelId: string) {
   const t = useT()
   const [uploads, setUploads] = React.useState<PendingUpload[]>([])
 
+  React.useEffect(() => {
+    setUploads([])
+  }, [channelId])
+
   const patchUpload = React.useCallback((id: string, patch: Partial<PendingUpload>) => {
     setUploads((current) =>
       current.map((upload) => (upload.id === id ? { ...upload, ...patch } : upload)),
@@ -67,6 +74,7 @@ export function useAttachmentUpload(channelId: string) {
         ...current,
         {
           id,
+          channelId,
           fileName: picked.fileName,
           status: 'uploading',
         },
@@ -95,25 +103,20 @@ export function useAttachmentUpload(channelId: string) {
           })
         if (storageError) throw storageError
 
-        const finalizeResponse = await apiFetch('/api/attachments/finalize', {
-          method: 'POST',
-          body: JSON.stringify({
-            channelId,
-            storagePath: signed.storagePath,
-            fileName: picked.fileName,
-            mimeType: signed.mimeType,
-            fileSize: picked.fileSize,
-          }),
-        })
-        if (!finalizeResponse.ok)
-          throw await responseError(finalizeResponse, t('Could not register the upload'))
-        const finalized = (await finalizeResponse.json()) as { fileId: string }
+        const finalized = await finalizeAttachment({
+          channelId,
+          storagePath: signed.storagePath,
+          fileName: picked.fileName,
+          mimeType: signed.mimeType,
+          fileSize: picked.fileSize,
+        }, t('Could not register the upload'))
         patchUpload(id, { status: 'done', fileId: finalized.fileId })
       } catch (error) {
         console.error('[useAttachmentUpload] アップロードに失敗:', error)
         patchUpload(id, {
           status: 'error',
           error: error instanceof Error ? error.message : t('Upload failed'),
+          retryFinalize: error instanceof AttachmentFinalizeError ? error.retryFinalize : undefined,
         })
       }
     },
@@ -158,6 +161,22 @@ export function useAttachmentUpload(channelId: string) {
   const removeUpload = React.useCallback((id: string) => {
     setUploads((current) => current.filter((upload) => upload.id !== id))
   }, [])
+  const retryUpload = React.useCallback(async (id: string) => {
+    const pending = uploads.find((upload) => upload.id === id)
+    if (!pending?.retryFinalize || pending.channelId !== channelId) return
+    patchUpload(id, { status: 'uploading' })
+    try {
+      const finalized = await pending.retryFinalize()
+      patchUpload(id, { status: 'done', fileId: finalized.fileId, error: undefined, retryFinalize: undefined })
+    } catch (error) {
+      console.error('[useAttachmentUpload] finalize の再試行に失敗:', error)
+      patchUpload(id, {
+        status: 'error',
+        error: error instanceof Error ? error.message : t('Upload failed'),
+        retryFinalize: error instanceof AttachmentFinalizeError ? error.retryFinalize : pending.retryFinalize,
+      })
+    }
+  }, [channelId, patchUpload, t, uploads])
   const clearUploads = React.useCallback(() => setUploads([]), [])
   const doneFileIds = uploads.flatMap((upload) =>
     upload.status === 'done' && upload.fileId ? [upload.fileId] : [],
@@ -168,6 +187,7 @@ export function useAttachmentUpload(channelId: string) {
     pickImage,
     pickDocument,
     removeUpload,
+    retryUpload,
     clearUploads,
     doneFileIds,
     isUploading: uploads.some((upload) => upload.status === 'uploading'),
