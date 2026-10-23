@@ -32,9 +32,10 @@ export function usePushPermission() {
       if (id === seq.current) setState({ status: view, registerFailed: false })
       return
     }
+    // 許可状態は先に見せる。トークン登録を待つと、その間（決着しなければずっと）何も表示されない
+    if (id === seq.current) setState({ status: 'granted', registerFailed: false })
     try {
       await registerPushToken()
-      if (id === seq.current) setState({ status: 'granted', registerFailed: false })
     } catch {
       if (id === seq.current) setState({ status: 'granted', registerFailed: true })
     }
