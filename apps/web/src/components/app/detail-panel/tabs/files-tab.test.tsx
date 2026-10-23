@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { FilesTab } from './files-tab'
 import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
+import { useProjectFiles } from '@/hooks/use-project-files'
 
 // 送信の手順（URL 発行 → Storage → 登録）は upload-client.test.ts で確かめる。ここでは画面の振る舞いだけを見る
 vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
@@ -97,6 +98,54 @@ describe('ファイルタブ', () => {
     expect(input?.accept).toContain('.csv')
     expect(input?.accept).toContain('.pptx')
     expect(input?.accept).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation')
+  })
+
+  it('PDF のアクションメニューから原本ダウンロード URL を開く', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderFilesTab()
+
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download original PDF (new PDFs are supporter only)' }))
+
+    expect(open).toHaveBeenCalledWith('/api/attachments/pdf-1?original=1', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+    vi.mocked(useProjectFiles).mockImplementation(() => ({
+      data: [], isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>))
+  })
+
+  it('スコープ切替後は未完了アップロードを待たずに次のファイルを選べる', async () => {
+    let finishOldUpload: ((value: typeof uploaded) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise(resolve => { finishOldUpload = resolve }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+    expect(screen.getByRole('button', { name: 'アップロード中...' })).toBeDisabled()
+
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-2" channelId="channel-2" />
+      </QueryClientProvider>,
+    )
+    const nextInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(screen.getByRole('button', { name: 'ファイルを追加' })).toBeEnabled()
+    mockUpload.mockResolvedValueOnce(uploaded)
+    fireEvent.change(nextInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      finishOldUpload?.(uploaded)
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
+    expect(toastMocks.success).toHaveBeenCalledTimes(1)
   })
 
   it('detail panel から PDF をアップロードできる', async () => {

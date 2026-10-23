@@ -88,7 +88,11 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   }>>([])
   const activeScopeRef = React.useRef({ channelId, projectId })
   activeScopeRef.current = { channelId, projectId }
-  React.useEffect(() => setFinalizeRetries([]), [channelId, projectId])
+  React.useEffect(() => {
+    setIsUploading(false)
+    setUploadError(null)
+    setFinalizeRetries([])
+  }, [channelId, projectId])
   const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const { data: files = [], isLoading, isError, deleteMutation, setLatestMutation } = useProjectFiles(projectId)
 
@@ -170,7 +174,9 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       // 複数選択で一部だけ失敗したとき、先頭の1件だけでなく失敗したものをすべて示す
       if (failures.length > 0) setUploadError(failures)
     } catch (error) {
-      setUploadError([error instanceof Error ? error.message : t('Could not upload')])
+      if (activeScopeRef.current.channelId === uploadChannelId && activeScopeRef.current.projectId === uploadProjectId) {
+        setUploadError([error instanceof Error ? error.message : t('Could not upload')])
+      }
     } finally {
       if (activeScopeRef.current.channelId === uploadChannelId && activeScopeRef.current.projectId === uploadProjectId) setIsUploading(false)
     }
@@ -303,6 +309,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
+                ...(f.mimeType === 'application/pdf' ? [{ icon: 'external-link' as const, label: t('Download original PDF (new PDFs are supporter only)'), onSelect: () => window.open(`/api/attachments/${f.id}?original=1`, '_blank', 'noopener,noreferrer') }] : []),
                 f.isLatest
                   ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
                   : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },

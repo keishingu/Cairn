@@ -1575,6 +1575,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
   React.useEffect(() => {
+    setIsUploading(false)
     if (!channelId) {
       setDraft('')
       setPendingAttachments([])
@@ -2169,6 +2170,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch (error) {
+      if (activeChannelIdRef.current !== uploadChannelId) return null
       const uploadError = error instanceof AttachmentUploadError ? error : null
       const retryFinalize = uploadError?.retryFinalize
       if (retryFinalize) {
