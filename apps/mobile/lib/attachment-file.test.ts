@@ -3,6 +3,7 @@ import {
   attachmentCacheFileName,
   attachmentViewer,
   isImageMime,
+  isMarkdownDocument,
   isOfficeDocument,
   isPdfMime,
   isPreviewableAttachment,
@@ -44,6 +45,20 @@ describe('添付ファイルの表示とキャッシュ', () => {
     expect(isPreviewableAttachment('application/msword', 'a.doc', 'android')).toBe(false)
     // MIME だけ Office でも、拡張子が違えば HTML などとして描画されうるため画面内では開かない
     expect(isPreviewableAttachment('application/msword', 'a.html', 'ios')).toBe(false)
+  })
+
+  it('Markdown は Web と同じく MIME か拡張子で判定し、.txt は除く', () => {
+    expect(isMarkdownDocument('text/markdown', 'notes')).toBe(true)
+    expect(isMarkdownDocument('application/octet-stream', 'README.MD')).toBe(true)
+    expect(isMarkdownDocument(null, 'a.markdown')).toBe(true)
+    expect(isMarkdownDocument('text/markdown', 'a.txt')).toBe(false)
+    expect(isMarkdownDocument('text/plain', 'a.mdx')).toBe(false)
+  })
+
+  it('Markdown は両 OS で画面内で開く', () => {
+    expect(attachmentViewer('text/markdown', 'a.md', 'ios')).toBe('markdown')
+    expect(attachmentViewer('text/markdown', 'a.md', 'android')).toBe('markdown')
+    expect(attachmentViewer('image/png', 'a.md', 'android')).toBe('image')
   })
 
   it('画像と PDF は MIME を拡張子より優先してビューアを選ぶ', () => {
