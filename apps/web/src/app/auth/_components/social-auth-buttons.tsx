@@ -4,27 +4,40 @@
 'use client'
 
 import React from 'react'
+import { useT } from '@/components/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   inviteToken?: string | null
+  nextPath?: string | null
 }
 
-export function SocialAuthButtons({ inviteToken }: Props) {
+export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
+  const t = useT()
   const [loadingProvider, setLoadingProvider] = React.useState<'google' | 'apple' | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
 
   async function handleOAuth(provider: 'google' | 'apple') {
     setLoadingProvider(provider)
+    setError(null)
     const supabase = createClient()
-    const callbackUrl = inviteToken
-      ? `${window.location.origin}/api/auth/callback?invite=${inviteToken}`
-      : `${window.location.origin}/api/auth/callback`
+    const callbackUrl = new URL('/api/auth/callback', window.location.origin)
+    if (inviteToken) callbackUrl.searchParams.set('invite', inviteToken)
+    if (nextPath) callbackUrl.searchParams.set('next', nextPath)
 
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: callbackUrl },
-    })
-    // リダイレクトするのでローディングはリセットしない
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: callbackUrl.toString() },
+      })
+
+      if (!oauthError) return
+    } catch {
+      // SDKまたはネットワークエラーは同じ復帰導線へ進む
+    }
+
+    setError(t('Could not start sign-in. Please try again in a moment.'))
+    setLoadingProvider(null)
   }
 
   return (
@@ -51,11 +64,11 @@ export function SocialAuthButtons({ inviteToken }: Props) {
         }}
       >
         {loadingProvider === 'google' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>リダイレクト中...</span>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <GoogleIcon />
-            Google でサインイン
+            {t('Sign in with Google')}
           </>
         )}
       </button>
@@ -82,14 +95,30 @@ export function SocialAuthButtons({ inviteToken }: Props) {
         }}
       >
         {loadingProvider === 'apple' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>リダイレクト中...</span>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <AppleIcon />
-            Apple でサインイン
+            {t('Sign in with Apple')}
           </>
         )}
       </button>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: 'var(--red-soft)',
+            border: '1px solid var(--red)',
+            color: 'var(--red-text)',
+            fontSize: 12.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   )
 }

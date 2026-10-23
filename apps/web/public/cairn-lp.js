@@ -51,13 +51,30 @@
     root.setAttribute('data-headline', t.headline);
     root.setAttribute('data-lang', t.lang);
     root.lang = t.lang;
+    document.title = t.lang === 'en'
+      ? 'Cairn — Chat and project management, free.'
+      : 'Cairn — 無料でチャットも、プロジェクト管理も。';
     applyAccent(t.accent);
   }
 
-  var state = Object.assign({}, TWEAK_DEFAULTS);
+  function readInitialLang() {
+    try {
+      var saved = localStorage.getItem('cairn-lp-lang');
+      if (saved === 'ja' || saved === 'en') return saved;
+    } catch (e) {}
+    try {
+      var match = document.cookie.match(/(?:^|; )cairn-locale-preference=(ja|en)(?:;|$)/);
+      if (match) return match[1];
+    } catch (e) {}
+    var navLang = (navigator.language || '').toLowerCase();
+    return navLang.indexOf('en') === 0 ? 'en' : 'ja';
+  }
+
+  var state = Object.assign({}, TWEAK_DEFAULTS, { lang: readInitialLang() });
   apply(state);
 
-  /* ── persona variant (?p=team|alpineclub, default team) ────────── */
+  /* ── persona variant (?p=team|alpineclub, default team) ──────────
+     Kept for old URLs. The public LP story is no longer persona-switched. */
   var persona = 'team';
   try {
     var pParam = new URLSearchParams(location.search).get('p');
@@ -143,7 +160,7 @@
         ACCENTS.map(function (c) { return '<button data-v="' + c + '" style="background:' + c + '"></button>'; }).join('') +
       '</div></div>' +
     '</div>' +
-    '<div class="cl-foot"><a href="#top">Cairn — One Project. One Place.</a></div>';
+    '<div class="cl-foot"><a href="#top">Cairn — Chat and project management, free.</a></div>';
   document.body.appendChild(panel);
 
   function paint() {
@@ -171,6 +188,10 @@
     state[k] = v;
     apply(state);
     paint();
+    if (k === 'lang' && (v === 'ja' || v === 'en')) {
+      try { localStorage.setItem('cairn-lp-lang', v); } catch (e) {}
+      document.cookie = 'cairn-locale-preference=' + v + ';path=/;max-age=31536000;SameSite=Lax';
+    }
     try {
       var edits = {}; edits[k] = v;
       window.parent.postMessage({ type: '__edit_mode_set_keys', edits: edits }, '*');

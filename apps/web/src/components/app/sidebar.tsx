@@ -2,25 +2,22 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
+import { usePushNotifications } from '@/lib/push/client'
 import { createClient } from '@/lib/supabase/client'
-import type { CurrentUserDto } from '@/app/api/me/route'
 import type { UserStatus } from '@/lib/user-status'
-import type { WorkspaceDto } from '@/app/api/workspaces/route'
-import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
+import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
+import { useSidebarCurrentUser, useSidebarProjects, useSidebarWorkspace, useSidebarWorkspaceList } from '@/hooks/use-sidebar'
 import type { ProjectDto } from '@/app/api/projects/route'
 
-export type PageId =
-  | 'projects' | 'calendar' | 'kanban'
+export type PageId = 'projects' | 'calendar' | 'kanban'
   | 'tasks' | 'chats' | 'files' | 'gallery' | 'ai'
   | 'members' | 'settings'
 
@@ -30,10 +27,12 @@ interface SidebarItemProps {
   active?: boolean
   badge?: number | undefined
   onClick?: () => void
+  // hover 時に遷移先ルートを先読みする（コールドスタート対策 A-1）
+  onPrefetch?: () => void
   indent?: boolean
 }
 
-const SidebarItem = ({ icon, label, active, badge, onClick, indent }: SidebarItemProps) => (
+const SidebarItem = ({ icon, label, active, badge, onClick, onPrefetch, indent }: SidebarItemProps) => (
   <button onClick={onClick} style={{
     display: 'flex', alignItems: 'center', gap: 10, width: '100%',
     padding: indent ? '7px 10px 7px 30px' : '8px 10px', borderRadius: 8, border: 'none',
@@ -43,8 +42,8 @@ const SidebarItem = ({ icon, label, active, badge, onClick, indent }: SidebarIte
     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
     transition: 'background .12s', position: 'relative',
   }}
-    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    className={!active ? 'hover-bg' : undefined}
+    onMouseEnter={() => { onPrefetch?.() }}
   >
     {active && <span style={{ position: 'absolute', left: -12, top: 6, bottom: 6, width: 3, borderRadius: 2, background: 'var(--accent)' }}/>}
     {icon && <Icon name={icon} size={17}/>}
@@ -65,10 +64,11 @@ interface SidebarGroupProps {
   label: string
   page: PageId
   setPage: (p: PageId) => void
+  prefetchPage?: ((p: PageId) => void) | undefined
   items: SidebarGroupItem[]
 }
 
-const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) => {
+const SidebarGroup = ({ icon, label, page, setPage, prefetchPage, items }: SidebarGroupProps) => {
   const isChildActive = items.some(it => it.id === page)
   const [open, setOpen] = React.useState(isChildActive)
   React.useEffect(() => { if (isChildActive) setOpen(true) }, [isChildActive])
@@ -82,8 +82,8 @@ const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) 
         fontWeight: isChildActive ? 600 : 500, fontSize: 13.5,
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
-        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        className="hover-bg"
+        onMouseEnter={() => { prefetchPage?.(items[0]?.id ?? page) }}
       >
         <Icon name={icon} size={17}/>
         <span style={{ flex: 1 }}>{label}</span>
@@ -96,7 +96,8 @@ const SidebarGroup = ({ icon, label, page, setPage, items }: SidebarGroupProps) 
           {items.map(it => (
             <SidebarItem key={it.id} icon={it.icon} label={it.label}
               {...(it.badge !== undefined ? { badge: it.badge } : {})}
-              active={page === it.id} onClick={() => setPage(it.id)} indent/>
+              active={page === it.id} onClick={() => setPage(it.id)}
+              onPrefetch={() => prefetchPage?.(it.id)} indent/>
           ))}
         </div>
       )}
@@ -112,6 +113,7 @@ interface PinnedProjectItemProps {
 }
 
 const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemProps) => {
+  const t = useT()
   const [hovered, setHovered] = React.useState(false)
   return (
     <div
@@ -135,14 +137,13 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
       {hovered && (
         <button
           onClick={e => { e.stopPropagation(); onUnpin() }}
-          title="ピン留めを解除"
+          title={t('Unpin')}
           style={{
             position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
             border: 'none', background: 'transparent', cursor: 'pointer',
             color: 'var(--text-4)', padding: 2, borderRadius: 4, display: 'flex', alignItems: 'center',
           }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-4)'}
+          className="hover-text"
         >
           <Icon name="close" size={11}/>
         </button>
@@ -154,32 +155,29 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
 interface SidebarProps {
   page: PageId
   setPage: (p: PageId) => void
+  // hover 時に遷移先ルートを先読みするコールバック（コールドスタート対策 A-1）
+  prefetchPage?: (p: PageId) => void
   openPanel?: (project: ProjectDto) => void
   collapsed?: boolean
   onToggleCollapse?: () => void
 }
 
-export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
+export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = false, onToggleCollapse }: SidebarProps) => {
   const router = useRouter()
+  const t = useT()
   const projectLabel = useProjectLabel()
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
-  // アーカイブ済みプロジェクトは折りたたみで隠れているため、未読バッジ総数には含めない
-  const totalChatUnread = React.useMemo(
-    () => [...projectChannels.filter(c => !c.archived), ...workspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
-    [projectChannels, workspaceChannels, dms],
-  )
-  const { data: workspace } = useQuery<WorkspaceDto>({
-    queryKey: ['workspace'],
-    queryFn: () => fetchWithAuth('/api/workspaces').then(r => r.json()),
-    staleTime: 60_000,
-  })
-  const { data: workspaceList = [] } = useQuery<WorkspaceListItemDto[]>({
-    queryKey: ['workspace-list'],
-    queryFn: () => fetchWithAuth('/api/workspaces/list').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  // アーカイブ済みのプロジェクト・チャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
+  // 折りたたみで隠れているため、未読バッジ総数には含めない
+  const totalChatUnread = React.useMemo(() => {
+    const archivedParentIds = new Set(workspaceChannels.filter(c => c.archived && c.parentChannelId === null).map(c => c.id))
+    const visibleWorkspaceChannels = workspaceChannels.filter(c => !c.archived && !(c.parentChannelId !== null && archivedParentIds.has(c.parentChannelId)))
+    return [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)
+  }, [projectChannels, workspaceChannels, dms])
+  const { data: workspace } = useSidebarWorkspace()
+  const { data: workspaceList = [] } = useSidebarWorkspaceList()
   const [switcherOpen, setSwitcherOpen] = React.useState(false)
 
   // ⌘⌥; : ワークスペース切替ポップオーバーをトグル
@@ -189,20 +187,16 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
     // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
-    window.location.href = '/projects'
+    window.location.href = '/chats'
   }
   const projectChildren: SidebarGroupItem[] = [
-    { id: 'projects', icon: 'list',     label: '一覧' },
-    { id: 'calendar', icon: 'calendar', label: 'カレンダー' },
-    { id: 'kanban',   icon: 'kanban',   label: 'カンバン' },
+    { id: 'projects', icon: 'list',     label: t('List') },
+    { id: 'calendar', icon: 'calendar', label: t('Calendar') },
+    { id: 'kanban',   icon: 'kanban',   label: t('Kanban') },
   ]
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const unpinProject = useUnpinProject()
-  const { data: allProjects = [] } = useQuery<ProjectDto[]>({
-    queryKey: ['projects'],
-    queryFn: () => fetchWithAuth('/api/projects').then(r => r.json()),
-    staleTime: 30_000,
-  })
+  const { data: allProjects = [] } = useSidebarProjects()
 
   const logoEl = (
     <div style={{
@@ -236,28 +230,27 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
         <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'center', borderBottom: '1px solid var(--divider)', position: 'relative' }}>
           <button
             onClick={() => setSwitcherOpen(o => !o)}
-            title={workspace?.name ?? 'ワークスペース'}
+            title={workspace?.name ?? t('Workspace')}
             style={{
               border: 'none', background: switcherOpen ? 'var(--card-hover)' : 'transparent',
               cursor: 'pointer', padding: 4, borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-            onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-            onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            className={!switcherOpen ? 'hover-bg' : undefined}
           >
             {logoEl}
           </button>
 
           {switcherOpen && (
             <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSwitcherOpen(false)}/>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }} onClick={() => setSwitcherOpen(false)}/>
               <div style={{
                 position: 'absolute', top: '100%', left: 4, right: 4,
-                zIndex: 100,
+                zIndex: 'var(--z-dropdown)',
                 background: 'var(--card)',
                 border: '1px solid var(--border)',
                 borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                boxShadow: 'var(--shadow-pop)',
                 padding: '6px',
                 marginTop: 4,
                 minWidth: 200,
@@ -273,8 +266,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                       background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
                       cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                     }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                    className="hover-bg"
                   >
                     <div style={{
                       width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -308,8 +300,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                     color: 'var(--text-3)',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  className="hover-bg"
                 >
                   <div style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -318,7 +309,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                   }}>
                     <Icon name="plus" size={14} color="var(--text-4)"/>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>新しいワークスペースを作成</span>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{t('Create a new workspace')}</span>
                 </button>
               </div>
             </>
@@ -327,18 +318,18 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
 
         {/* アイコンナビ */}
         <nav style={{ flex: 1, overflow: 'auto', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <CollapsedNavItem icon="list"     label={`${projectLabel}：一覧`}       active={page === 'projects'} onClick={() => setPage('projects')}/>
-          <CollapsedNavItem icon="calendar" label={`${projectLabel}：カレンダー`} active={page === 'calendar'} onClick={() => setPage('calendar')}/>
-          <CollapsedNavItem icon="kanban"   label={`${projectLabel}：カンバン`}   active={page === 'kanban'}   onClick={() => setPage('kanban')}/>
-          <CollapsedNavItem icon="check"    label="マイタスク"     active={page === 'tasks'}   onClick={() => setPage('tasks')}/>
-          <CollapsedNavItem icon="chat"     label="チャット一覧"   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')}/>
+          <CollapsedNavItem icon="chat"     label={t('Chats')}   badge={totalChatUnread || undefined} active={page === 'chats'}   onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
+          <CollapsedNavItem icon="list"     label={t('{label}: {view}', { label: projectLabel, view: t('List') })}       active={page === 'projects'} onClick={() => setPage('projects')} onPrefetch={() => prefetchPage?.('projects')}/>
+          <CollapsedNavItem icon="calendar" label={t('{label}: {view}', { label: projectLabel, view: t('Calendar') })} active={page === 'calendar'} onClick={() => setPage('calendar')} onPrefetch={() => prefetchPage?.('calendar')}/>
+          <CollapsedNavItem icon="kanban"   label={t('{label}: {view}', { label: projectLabel, view: t('Kanban') })}   active={page === 'kanban'}   onClick={() => setPage('kanban')} onPrefetch={() => prefetchPage?.('kanban')}/>
+          <CollapsedNavItem icon="check"    label={t('My tasks')}     active={page === 'tasks'}   onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
-          <CollapsedNavItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
-          <CollapsedNavItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <CollapsedNavItem icon="file"     label={t('Files')}       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
+          <CollapsedNavItem icon="image"    label={t('Gallery')}     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
+          <CollapsedNavItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
-          <CollapsedNavItem icon="users"    label="メンバー"       active={page === 'members'}  onClick={() => setPage('members')}/>
-          <CollapsedNavItem icon="settings" label="設定"           active={page === 'settings'} onClick={() => setPage('settings')}/>
+          <CollapsedNavItem icon="users"    label={t('Members')}       active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
+          <CollapsedNavItem icon="settings" label={t('Settings')}           active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </nav>
         <SidebarUserFooter collapsed={true} onToggle={onToggleCollapse}/>
       </aside>
@@ -363,8 +354,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
             background: switcherOpen ? 'var(--card-hover)' : 'transparent',
             cursor: 'pointer', textAlign: 'left',
           }}
-          onMouseEnter={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-          onMouseLeave={e => { if (!switcherOpen) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          className={!switcherOpen ? 'hover-bg' : undefined}
         >
           {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -380,16 +370,16 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
         {switcherOpen && (
           <>
             <div
-              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)' }}
               onClick={() => setSwitcherOpen(false)}
             />
             <div style={{
               position: 'absolute', top: '100%', left: 12, right: 12,
-              zIndex: 100,
+              zIndex: 'var(--z-dropdown)',
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--shadow-pop)',
               padding: '6px',
               marginTop: 4,
             }}>
@@ -404,8 +394,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                     background: ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent',
                     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ws.id === workspace?.id ? 'var(--card-hover)' : 'transparent' }}
+                  className="hover-bg"
                 >
                   <div style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -439,8 +428,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                   cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                   color: 'var(--text-3)',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <div style={{
                   width: 28, height: 28, borderRadius: 7, flexShrink: 0,
@@ -449,7 +437,7 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
                 }}>
                   <Icon name="plus" size={14} color="var(--text-4)"/>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>新しいワークスペースを作成</span>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{t('Create a new workspace')}</span>
               </button>
             </div>
           </>
@@ -458,28 +446,42 @@ export const Sidebar = ({ page, setPage, openPanel, collapsed = false, onToggleC
       </div>
 
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>ワークスペース</div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
+          }}
+        >
+          {t('Workspace')}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} items={projectChildren}/>
-          <SidebarItem icon="check" label="マイタスク" active={page === 'tasks'} onClick={() => setPage('tasks')}/>
-          <SidebarItem icon="chat" label="チャット一覧" badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')}/>
+          <SidebarItem icon="chat" label={t('Chats')} badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
+          <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} prefetchPage={prefetchPage} items={projectChildren}/>
+          <SidebarItem icon="check" label={t('My tasks')} active={page === 'tasks'} onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>ライブラリ</div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase',
+          }}
+        >
+          {t('Library')}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarItem icon="file"     label="ファイル"       active={page === 'files'}   onClick={() => setPage('files')}/>
-          <SidebarItem icon="image"    label="ギャラリー"     active={page === 'gallery'} onClick={() => setPage('gallery')}/>
-          <SidebarItem icon="sparkles" label="AIアシスタント" active={page === 'ai'}      onClick={() => setPage('ai')}/>
+          <SidebarItem icon="file"     label={t('Files')}       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
+          <SidebarItem icon="image"    label={t('Gallery')}     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
+          <SidebarItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase' }}>管理</div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase',
+          }}
+        >
+          {t('Manage')}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <SidebarItem icon="users"    label="メンバー" active={page === 'members'}  onClick={() => setPage('members')}/>
-          <SidebarItem icon="settings" label="設定"     active={page === 'settings'} onClick={() => setPage('settings')}/>
+          <SidebarItem icon="users"    label={t('Members')} active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
+          <SidebarItem icon="settings" label={t('Settings')}     active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase' }}>
-          ピン留め{projectLabel}
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase',
+          }}
+        >
+          {t('Pinned {label}', { label: projectLabel })}
         </div>
 
         {pinnedProjects.map(p => (
@@ -512,9 +514,11 @@ interface CollapsedNavItemProps {
   active?: boolean
   badge?: number | undefined
   onClick?: () => void
+  // hover 時に遷移先ルートを先読みする（コールドスタート対策 A-1）
+  onPrefetch?: () => void
 }
 
-const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavItemProps) => (
+const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: CollapsedNavItemProps) => (
   <button
     onClick={onClick}
     title={label}
@@ -525,8 +529,8 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
       color: active ? 'var(--accent)' : 'var(--text-3)',
       cursor: 'pointer', position: 'relative',
     }}
-    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+    className={!active ? 'hover-bg' : undefined}
+    onMouseEnter={() => { onPrefetch?.() }}
   >
     <Icon name={icon} size={18}/>
     {badge != null && (
@@ -536,10 +540,10 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick }: CollapsedNavI
 )
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
-  { value: 'online',  label: 'オンライン',   color: '#22C55E' },
-  { value: 'away',    label: '退席中',       color: '#F59E0B' },
-  { value: 'busy',    label: '取り込み中',   color: '#EF4444' },
-  { value: 'offline', label: 'オフライン',   color: '#9CA3AF' },
+  { value: 'online',  label: 'Online',   color: 'var(--emerald)' },
+  { value: 'away',    label: 'Away',       color: 'var(--amber)' },
+  { value: 'busy',    label: 'Busy',   color: 'var(--red)' },
+  { value: 'offline', label: 'Offline',   color: 'var(--text-4)' },
 ]
 
 const statusLabel = (status: UserStatus | undefined) =>
@@ -555,56 +559,16 @@ const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size
 )
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
+  const t = useT()
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   // ⌘⌥0: ユーザーメニューをトグル
   useCommand('app.userMenu', () => setMenuOpen(o => !o))
 
-  const { data: me } = useQuery<CurrentUserDto>({
-    queryKey: ['me'],
-    queryFn: () => fetchWithAuth('/api/me').then(r => r.json()),
-    staleTime: 60_000,
-  })
+  const { data: me, statusMutation, statusMessageMutation } = useSidebarCurrentUser()
   const displayName = me?.displayName ?? '…'
-
-  const statusMutation = useMutation({
-    mutationFn: async (status: UserStatus) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスの更新に失敗しました')
-      }
-      return status
-    },
-    onSuccess: (status) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, status } : prev)
-    },
-  })
-
-  const statusMessageMutation = useMutation({
-    mutationFn: async (statusMessage: string | null) => {
-      const res = await fetchWithAuth('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statusMessage }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(d.error ?? 'ステータスメッセージの更新に失敗しました')
-      }
-      return statusMessage
-    },
-    onSuccess: (statusMessage) => {
-      queryClient.setQueryData<CurrentUserDto>(['me'], prev => prev ? { ...prev, statusMessage } : prev)
-    },
-  })
 
   const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
   React.useEffect(() => {
@@ -637,11 +601,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     <div style={{
       position: 'absolute', bottom: '100%', left: collapsed ? -4 : 12, right: collapsed ? -4 : 12,
       background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 100,
+      borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 'var(--z-dropdown)',
       minWidth: 160,
     }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>
-        ステータス
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
+        }}
+      >
+        {t('Status')}
       </div>
       {STATUS_OPTIONS.map(opt => (
         <button
@@ -653,17 +619,18 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
             background: 'transparent', color: 'var(--text)', fontSize: 13,
             fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
           }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+          className="hover-bg"
         >
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: opt.color, flexShrink: 0 }}/>
-          <span style={{ flex: 1 }}>{opt.label}</span>
+          <span style={{ flex: 1 }}>{t(opt.label)}</span>
           {(me?.status ?? 'online') === opt.value && <Icon name="check" size={14} color="var(--accent)"/>}
         </button>
       ))}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase' }}>
-        ステータスメッセージ
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
+        }}
+      >
+        {t('Status message')}
       </div>
       <input
         value={statusMessageDraft}
@@ -676,7 +643,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
             ;(e.currentTarget as HTMLInputElement).blur()
           }
         }}
-        placeholder="例: 7/10〜17休みます"
+        placeholder={t('e.g. Out until Friday')}
         maxLength={100}
         style={{
           width: '100%', boxSizing: 'border-box', padding: '6px 10px', margin: '0 0 6px',
@@ -693,11 +660,10 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
         }}
-        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--red-soft)'}
-        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        className="hover-bg-danger"
       >
-        <Icon name="logout" size={14}/>
-        ログアウト
+        <Icon name="logout" size={14} />
+        {t('Log out')}
       </button>
     </div>
   )
@@ -712,14 +678,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const toggleBtn = (
     <button
       onClick={onToggle}
-      title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+      title={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
       style={{
         border: 'none', background: 'transparent', cursor: 'pointer',
         color: 'var(--text-4)', padding: '5px 6px', borderRadius: 7,
         display: 'flex', alignItems: 'center', flexShrink: 0,
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-4)' }}
+      className="hover-bg hover-text"
     >
       <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={15}/>
     </button>
@@ -730,7 +695,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} ref={menuRef}>
         <button
           onClick={() => setMenuOpen(v => !v)}
-          title={me?.statusMessage ? `${displayName}（${statusLabel(me?.status)} / ${me.statusMessage}）` : `${displayName}（${statusLabel(me?.status)}）`}
+          title={me?.statusMessage ? `${displayName}（${t(statusLabel(me?.status))} / ${me.statusMessage}）` : `${displayName}（${t(statusLabel(me?.status))}）`}
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, borderRadius: '50%', flexShrink: 0 }}
         >
           {avatarWithDot}
@@ -754,7 +719,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {me?.statusMessage ? me.statusMessage : statusLabel(me?.status)}
+            {me?.statusMessage ? me.statusMessage : t(statusLabel(me?.status))}
           </div>
         </div>
       </button>
@@ -767,8 +732,14 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
 export function BellButton({ size = 16 }: { size?: number }) {
   const { openNotif } = useAppShell()
   const unreadCount = useUnreadNotificationCount()
+  const push = usePushNotifications()
+  const handleOpen = () => {
+    // クリックのユーザー操作中に許可を求める。effect からの要求を弾くブラウザでも確実に表示できる。
+    if (push.permission === 'default' && Notification.permission === 'default' && !push.loading) void push.subscribe()
+    openNotif()
+  }
   return (
-    <button onClick={openNotif} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+    <button onClick={handleOpen} className="btn btn-ghost" style={{ width: 34, padding: 0, justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
       <Icon name="bell" size={size}/>
       <UnreadBadge count={unreadCount} size="sm" style={{ position: 'absolute', top: 1, right: 1, border: '2px solid var(--card)' }} />
     </button>

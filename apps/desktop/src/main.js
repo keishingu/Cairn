@@ -1,6 +1,8 @@
-const { app, BrowserWindow, Menu, session } = require('electron')
+const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
+const { registerExternalNavigation } = require('./external-navigation')
+const { registerPermissionPolicy } = require('./permission-policy')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
 const isDev = process.env.NODE_ENV === 'development'
@@ -9,11 +11,11 @@ const isMac = process.platform === 'darwin'
 // サイドメニューへのジャンプ（⌘/Ctrl + 数字）。番号は表示順と一致させる。
 // クリック時はフォーカス中ウィンドウへ navigate アクションを送る（preload 経由で Web が受ける）。
 const NAV_ITEMS = [
-  { label: 'プロジェクト一覧', accelerator: 'CmdOrCtrl+1', action: 'projects' },
-  { label: 'カレンダー',       accelerator: 'CmdOrCtrl+2', action: 'calendar' },
-  { label: 'カンバン',         accelerator: 'CmdOrCtrl+3', action: 'kanban' },
-  { label: 'マイタスク',       accelerator: 'CmdOrCtrl+4', action: 'tasks' },
-  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+5', action: 'chats' },
+  { label: 'チャット一覧',     accelerator: 'CmdOrCtrl+1', action: 'chats' },
+  { label: 'プロジェクト一覧', accelerator: 'CmdOrCtrl+2', action: 'projects' },
+  { label: 'カレンダー',       accelerator: 'CmdOrCtrl+3', action: 'calendar' },
+  { label: 'カンバン',         accelerator: 'CmdOrCtrl+4', action: 'kanban' },
+  { label: 'マイタスク',       accelerator: 'CmdOrCtrl+5', action: 'tasks' },
   { label: 'ファイル',         accelerator: 'CmdOrCtrl+6', action: 'files' },
   { label: 'ギャラリー',       accelerator: 'CmdOrCtrl+7', action: 'gallery' },
   { label: 'AIアシスタント',   accelerator: 'CmdOrCtrl+8', action: 'ai' },
@@ -59,6 +61,33 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+// Windows タスクバーの未読オーバーレイ（赤ドット）。読み込みは一度だけ。
+// macOS/Linux では未使用（Web の navigator.setAppBadge が Dock/ランチャーに数字を出す）。
+let overlayDot = null
+function getOverlayDot() {
+  if (!overlayDot) {
+    overlayDot = nativeImage.createFromPath(path.join(__dirname, 'assets', 'badge-dot.png'))
+  }
+  return overlayDot
+}
+
+// 未読バッジ数を受け取り、Windows のみタスクバーにオーバーレイを出す。
+// Electron の app.badgeCount / navigator.setAppBadge は Windows 非対応のため、
+// setOverlayIcon で代替する（今回は件数によらずドット表示。数字化は将来対応）。
+function registerBadgeBridge() {
+  ipcMain.on('cairn:set-badge', (event, count) => {
+    if (process.platform !== 'win32') return
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return
+    const n = typeof count === 'number' && Number.isFinite(count) ? count : 0
+    if (n > 0) {
+      win.setOverlayIcon(getOverlayDot(), `未読 ${n} 件`)
+    } else {
+      win.setOverlayIcon(null, '')
+    }
+  })
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -72,6 +101,7 @@ function createWindow() {
     },
   })
 
+  registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
   win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、
@@ -88,11 +118,11 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Web Push (PushManager) の購読・通知許可ダイアログを許可する
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'notifications' || permission === 'push')
-  })
+  // Cairn が使用する権限だけを同一オリジンに許可する。
+  // Clipboard API は clipboard-sanitized-write の許可がないと Desktop 版で失敗する。
+  registerPermissionPolicy(session.defaultSession, APP_URL)
 
+  registerBadgeBridge()
   buildMenu()
   createWindow()
 

@@ -1,0 +1,1 @@
+ALTER TABLE "ai_scan_states" ADD COLUMN "next_unanswered_ask_check_at" timestamp with time zone;

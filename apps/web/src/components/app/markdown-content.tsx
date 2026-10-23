@@ -7,11 +7,29 @@ import React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { UNKNOWN_MENTION_NAME } from '@/lib/chat/mentions'
+import Link from 'next/link'
+import { insertLineTaskMarkers, LINE_TASK_MARKER_CLOSE, LINE_TASK_MARKER_OPEN, removeLineTaskMarkers } from '@cairn/shared'
+import { useT } from '@/components/locale-provider'
+import { Icon } from './primitives'
+import { MermaidDiagram } from './mermaid-diagram'
+
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
+
+/** 行末に「✓ タスク」ラベルを出すタスク。lineIndex は本文を `\n` で分けた元の行番号（0始まり） */
+export interface LineTask {
+  id: string
+  status: 'todo' | 'in_progress' | 'done'
+  lineIndex: number | null
+}
 
 // 構造化メンション。canonical な `<@userId>` と旧形式 `<@userId|displayName>` の両方を受理する
 const STRUCTURED_MENTION_RE = /<@([^|>\s]+)(?:\|([^>\n]+))?>/g
+// 行末ラベルの目印（insertLineTaskMarkers が差し込む）
+const LINE_TASK_MARKER_RE = `${LINE_TASK_MARKER_OPEN}(\\d+)${LINE_TASK_MARKER_CLOSE}`
 const URL_RE = /https?:\/\/[^\s<>"']+/g
+// AI の過去回答に Markdown 化されず残っている内部パスも遷移可能にする。
+// 対象はアプリが evidence.href として返す画面・添付ファイルのパスに限定する。
+const INTERNAL_HREF_RE = /\/(?:projects\?open=|tasks\?taskId=)[^\s<>"']+|\/(?:chats|members|api\/attachments)\/[^\s<>"']+/g
 
 // 長いURL（クエリパラメータ付きなど）は短縮URLにせず見た目だけ「…」で省略する。リンク先(href)は元のまま
 const URL_DISPLAY_MAX = 50
@@ -19,32 +37,89 @@ function truncateUrlForDisplay(url: string): string {
   return url.length > URL_DISPLAY_MAX ? `${url.slice(0, URL_DISPLAY_MAX)}…` : url
 }
 
-function renderInlineText(text: string, mentionNames?: Map<string, string>): React.ReactNode {
+function internalHrefLabel(href: string, t: TranslateFn): string {
+  if (href.startsWith('/projects')) return t('Open project')
+  if (href.startsWith('/tasks')) return t('Open task')
+  if (href.startsWith('/chats')) return t('Open message')
+  if (href.startsWith('/members')) return t('Open member')
+  return t('Open file')
+}
+
+function isInternalHref(href: string | undefined): boolean {
+  return href?.startsWith('/') === true && !href.startsWith('//')
+}
+
+// タスク化した行の行末ラベル。未完了はアクセント色、完了は薄い色＋チェック塗り。押すとタスク画面を開く
+function LineTaskLabel({ task, t }: { task: LineTask; t: TranslateFn }) {
+  const done = task.status === 'done'
+  return (
+    <Link
+      href={`/tasks?taskId=${encodeURIComponent(task.id)}`}
+      data-testid="line-task-label"
+      data-task-status={task.status}
+      title={t('Open task')}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 2, padding: '0 6px',
+        borderRadius: 10, fontSize: '0.8em', fontWeight: 600, lineHeight: 1.5, textDecoration: 'none',
+        verticalAlign: 'baseline', whiteSpace: 'nowrap',
+        background: done ? 'var(--card-2)' : 'var(--accent-soft)',
+        border: `1px solid ${done ? 'var(--border)' : 'var(--accent-border)'}`,
+        color: done ? 'var(--text-3)' : 'var(--accent-text)',
+        opacity: done ? 0.75 : 1,
+      }}
+    >
+      {done ? (
+        <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 11, height: 11, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--card)' }}>
+          <Icon name="check" size={8}/>
+        </span>
+      ) : (
+        <Icon name="check" size={11}/>
+      )}
+      {t('Task')}
+    </Link>
+  )
+}
+
+function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[], external = false): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}`, 'g')
+  // 取り出す添字: mention は 1・2、行末ラベルの目印は 3
+  const re = new RegExp(`${STRUCTURED_MENTION_RE.source}|${URL_RE.source}|${INTERNAL_HREF_RE.source}|${LINE_TASK_MARKER_RE}`, 'g')
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index))
     const token = match[0]!
-    if (token.startsWith('<@')) {
+    if (token.startsWith(LINE_TASK_MARKER_OPEN)) {
+      const task = lineTasks?.[Number(match[3])]
+      if (task) nodes.push(<LineTaskLabel key={match.index} task={task} t={t}/>)
+    } else if (token.startsWith('<@')) {
       // 現在の表示名を優先し、無ければ旧データの埋め込み名、それも無ければフォールバック
       const mentionedId = match[1]!
       const embeddedName = match[2]
-      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? UNKNOWN_MENTION_NAME
+      const displayName = mentionNames?.get(mentionedId) ?? embeddedName ?? t('Unknown member')
       nodes.push(
         <span key={match.index} style={{ display: 'inline', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 4, padding: '1px 5px', fontWeight: 600, fontSize: '0.92em' }}>
           @{displayName}
         </span>,
       )
     } else {
-      const url = token.replace(/[.,;:!?)>\]]+$/, '')
+      const url = token.replace(/[.,;:!?)>\]。、，；：！？）〉》】］]+$/, '')
+      const isInternal = isInternalHref(url)
+      if (external && isInternal) {
+        // 外部から届いた本文の内部パスはリンクにしない（Cairn の画面へ誘導させない。リンクは http(s)・mailto だけ）
+        nodes.push(token)
+        last = match.index + token.length
+        continue
+      }
       nodes.push(
-        <a key={match.index} href={url} target="_blank" rel="noopener noreferrer"
+        <a key={match.index} href={url}
+          target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
           style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
-          {truncateUrlForDisplay(url)}
+          {isInternal ? internalHrefLabel(url, t) : truncateUrlForDisplay(url)}
         </a>,
       )
+      const trailingPunctuation = token.slice(url.length)
+      if (trailingPunctuation) nodes.push(trailingPunctuation)
     }
     last = match.index + token.length
   }
@@ -52,12 +127,12 @@ function renderInlineText(text: string, mentionNames?: Map<string, string>): Rea
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode, mentionNames?: Map<string, string>): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children, mentionNames)
+function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[], external = false): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, t, mentionNames, lineTasks, external)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child, mentionNames)
+        const processed = renderInlineText(child, t, mentionNames, lineTasks, external)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -67,20 +142,42 @@ function processChildren(children: React.ReactNode, mentionNames?: Map<string, s
   return children
 }
 
+function mermaidDefinitionFromCodeBlock(children: React.ReactNode): string | null {
+  if (!React.isValidElement<{ className?: string; children?: React.ReactNode }>(children)) return null
+  const classNames = children.props.className?.split(/\s+/) ?? []
+  if (!classNames.some(className => className.toLowerCase() === 'language-mermaid')) return null
+  return React.Children.toArray(children.props.children).join('').replace(/\n$/, '')
+}
+
 interface MarkdownContentProps {
   content: string
   fontSize?: number
   lineHeight?: number
   mentionNames?: Map<string, string> | undefined
+  /** タスク化した行の行末に「✓ タスク」ラベルを出す。呼び出し側は安定参照で渡すこと */
+  lineTasks?: readonly LineTask[] | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
+  /**
+   * アプリなど外部から届いた本文（カードの markdown ブロック）。画像は自動で読み込まずリンクにし（Slack と同じ。閲覧を送り手に知らせない）、
+   * リンクは http(s)・mailto だけにする（相対パスで Cairn の画面へ誘導させない）
+   */
+  external?: boolean
 }
+
+const EXTERNAL_LINK = /^(?:https?:\/\/|mailto:)/i
 
 // メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
 // パースが走る。入力欄のキーストロークなど親の再レンダーごとに全件を再パースするとモバイルの
 // WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
 // props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
 // や mentionNames を安定参照で渡すこと）。
-export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, onCheckboxToggle }: MarkdownContentProps) {
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle, external = false }: MarkdownContentProps) {
+  const t = useT()
+  // 目印は描画用の派生文字列にだけ差し込む（呼び出し側の content、コピー・編集の対象には混ぜない）
+  const markedContent = React.useMemo(
+    () => insertLineTaskMarkers(content, lineTasks ?? []).text,
+    [content, lineTasks],
+  )
   const checkboxCounter = React.useRef(0)
   checkboxCounter.current = 0
 
@@ -89,25 +186,28 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, mentionNames)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames, lineTasks, external)}</p>
         ),
         h1: ({ children }) => (
-          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{children}</h1>
+          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h1>
         ),
         h2: ({ children }) => (
-          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{children}</h2>
+          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h2>
         ),
         h3: ({ children }) => (
-          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{children}</h3>
+          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h3>
         ),
+        h4: ({ children }) => <h4>{processChildren(children, t, mentionNames, lineTasks, external)}</h4>,
+        h5: ({ children }) => <h5>{processChildren(children, t, mentionNames, lineTasks, external)}</h5>,
+        h6: ({ children }) => <h6>{processChildren(children, t, mentionNames, lineTasks, external)}</h6>,
         strong: ({ children }) => (
-          <strong style={{ fontWeight: 700 }}>{children}</strong>
+          <strong style={{ fontWeight: 700 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</strong>
         ),
         em: ({ children }) => (
-          <em style={{ fontStyle: 'italic' }}>{children}</em>
+          <em style={{ fontStyle: 'italic' }}>{processChildren(children, t, mentionNames, lineTasks, external)}</em>
         ),
         del: ({ children }) => (
-          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{children}</del>
+          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</del>
         ),
         ul: ({ children }) => (
           <ul style={{ paddingLeft: 20, margin: '2px 0 4px', listStyleType: 'disc' }}>{children}</ul>
@@ -122,7 +222,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children, mentionNames)}
+              {processChildren(children, t, mentionNames, lineTasks, external)}
             </li>
           )
         },
@@ -144,7 +244,16 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             />
           )
         },
+        ...(external ? {
+          img: ({ src, alt }: { src?: string | Blob | undefined; alt?: string | undefined }) => {
+            const label = alt || t('Image')
+            return typeof src === 'string' && EXTERNAL_LINK.test(src)
+              ? <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{label}</a>
+              : <span>{label}</span>
+          },
+        } : {}),
         a: ({ href, children }) => {
+          if (external && !(href && EXTERNAL_LINK.test(href))) return <span>{children}</span>
           // 自動リンク化された生URL（リンクテキスト=URL自体）だけ表示を省略する。
           // `[表示名](url)` のようにテキストを明示したリンクはそのまま表示する
           const linkText = typeof children === 'string'
@@ -152,15 +261,21 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string'
               ? children[0]
               : null
-          const display = linkText !== null && linkText === href ? truncateUrlForDisplay(linkText) : children
+          const isInternal = isInternalHref(href)
+          const display = linkText !== null && linkText === href
+            ? (isInternal ? internalHrefLabel(linkText, t) : truncateUrlForDisplay(linkText))
+            : children
           return (
-            <a href={href} target="_blank" rel="noopener noreferrer"
+            <a href={href}
+              target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
               style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>
               {display}
             </a>
           )
         },
-        code: ({ children, className }) => {
+        code: ({ children: rawChildren, className }) => {
+          // コードには行末ラベルを出さない。目印が紛れても表示に残さない
+          const children = typeof rawChildren === 'string' ? removeLineTaskMarkers(rawChildren) : rawChildren
           const isBlock = className?.startsWith('language-')
           if (isBlock) return <code className={className} style={{ fontSize: fontSize * 0.9, fontFamily: 'monospace' }}>{children}</code>
           return (
@@ -171,25 +286,44 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             }}>{children}</code>
           )
         },
-        pre: ({ children }) => (
-          <pre style={{
-            background: 'var(--card-2)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '8px 12px', overflowX: 'auto',
-            margin: '4px 0', fontSize: fontSize * 0.9, fontFamily: 'monospace', lineHeight: 1.5,
-          }}>{children}</pre>
-        ),
+        pre: ({ children }) => {
+          const mermaidDefinition = mermaidDefinitionFromCodeBlock(children)
+          if (mermaidDefinition !== null) return <MermaidDiagram definition={mermaidDefinition} />
+          // 言語名の無いコードブロック（```だけ）は code に language- のクラスが付かず、インラインコードの枠が
+          // ブロックの枠の内側に重なる。pre の中身は常にブロックのコードとして、枠を付けずに描く
+          const block = React.isValidElement<{ className?: string; children?: React.ReactNode }>(children) ? children.props : null
+          const code = block ? (typeof block.children === 'string' ? removeLineTaskMarkers(block.children) : block.children) : children
+          return (
+            <pre style={{
+              background: 'var(--card-2)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '8px 12px', overflowX: 'auto',
+              margin: '4px 0', fontSize: fontSize * 0.9, fontFamily: 'monospace', lineHeight: 1.5,
+            }}><code className={block?.className} style={{ fontFamily: 'monospace' }}>{code}</code></pre>
+          )
+        },
         blockquote: ({ children }) => (
           <blockquote style={{
             borderLeft: '3px solid var(--border-2)', paddingLeft: 10,
             margin: '4px 0', color: 'var(--text-3)', fontStyle: 'italic',
           }}>{children}</blockquote>
         ),
+        table: ({ children }) => (
+          <div style={{ margin: '8px 0', overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse' }}>{children}</table>
+          </div>
+        ),
+        th: ({ children, style }) => (
+          <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap', ...style }}>{children}</th>
+        ),
+        td: ({ children, style }) => (
+          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames, lineTasks, external)}</td>
+        ),
         hr: () => (
           <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '8px 0' }} />
         ),
       }}
     >
-      {content}
+      {markedContent}
     </ReactMarkdown>
   )
 })

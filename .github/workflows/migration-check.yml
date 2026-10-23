@@ -1,0 +1,93 @@
+name: Migration Check
+
+# マイグレーションを含む PR で、本番の DB Migrate（migrate.yml）と同じ `supabase db push` を
+# 使い捨てのローカル Supabase DB に実適用して、SQL の実行エラーをマージ前に検出する。
+# - base ブランチ時点のマイグレーションでローカル DB を作り、PR の head（merge ref）の
+#   マイグレーションを `db push --include-all` で差分適用する（既存 DB へ追加適用する本番と同じ経路）
+# - Supabase CLI は文ごとにトランザクションなしで実行するため、トランザクション内でしか使えない文
+#   （LOCK TABLE など）や、既存スキーマとの不整合はここで失敗する
+# - Secret は使わない（接続先は CI 内のローカル DB のみ）
+on:
+  pull_request:
+    # migration-edit-ok ラベルの付け外しでも再判定する
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/migration-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Apply migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.121.0
+
+      - name: Reject edits to existing migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ALLOW_EDIT: ${{ contains(github.event.pull_request.labels.*.name, 'migration-edit-ok') }}
+        run: |
+          set -euo pipefail
+          # db push は適用済みのタイムスタンプを飛ばすため、既存ファイルの書き換えは検証も反映もされない。
+          # 変更は新しいマイグレーションで行う。どの環境にも未適用のファイルを直すときだけ
+          # PR に migration-edit-ok ラベルを付けて通す。
+          # --no-renames: 名前変更（タイムスタンプ変更で再適用される等）も削除+追加として扱い、削除側で検出する
+          edited=$(git diff --no-renames --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations)
+          if [ -n "$edited" ]; then
+            if [ "$ALLOW_EDIT" = "true" ]; then
+              echo "::warning::既存のマイグレーションが変更されています（migration-edit-ok ラベルにより許可）: $edited"
+            else
+              echo "::error::既存のマイグレーションは変更・削除せず、新しいマイグレーションを追加してください（適用済みの環境には反映されません）。どの環境にも未適用のファイルを直す場合のみ PR に migration-edit-ok ラベルを付けてください: $edited"
+              exit 1
+            fi
+          fi
+
+      - name: Start local DB with base migrations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # base 時点のマイグレーションだけを置いた状態でローカル DB を起動・適用する
+          rm -rf supabase/migrations
+          git checkout "$BASE_SHA" -- supabase/migrations
+          # migration-edit-ok で許可した書き換え・削除があれば、その最も古いファイル以降を base の土台から外す。
+          # 書き換えは次の db push で新しい SQL とそれに依存する後続を実際に検証させ（旧版を当てると適用済み扱いで飛ばされる）、
+          # 削除は消したファイルのスキーマに依存する新しいマイグレーションを通さないようにする（適用はタイムスタンプ順）
+          first=$(git diff --no-renames --name-only --diff-filter=MD "$BASE_SHA" HEAD -- supabase/migrations | xargs -r -n1 basename | sort | head -n1)
+          if [ -n "$first" ]; then
+            for f in supabase/migrations/*; do
+              name=$(basename "$f")
+              if [[ ! "$name" < "$first" ]]; then rm -f "$f"; fi
+            done
+          fi
+          supabase db start
+          supabase migration up --local --include-all
+
+      - name: Push PR migrations
+        run: |
+          set -euo pipefail
+          # PR の head（merge ref）のマイグレーションに戻し、本番と同じ db push で差分を適用する
+          rm -rf supabase/migrations
+          git checkout HEAD -- supabase/migrations
+          supabase db push --local --include-all
+
+      - name: Stop local DB
+        if: always()
+        run: supabase stop --no-backup || true

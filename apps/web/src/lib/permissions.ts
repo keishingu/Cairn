@@ -2,69 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { db, workspaceMembers, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
-import { eq, and, sql } from 'drizzle-orm'
+import { FEATURE_FLAGS } from '@cairn/shared'
+import { db, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
+import { eq, and, sql, inArray } from 'drizzle-orm'
+import { getWorkspaceRole, isWorkspaceMember, type WorkspaceRole } from './access/membership'
 
-async function getWorkspaceRole(workspaceId: string, userId: string) {
-  const [member] = await db
-    .select({ role: workspaceMembers.role })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
-    .limit(1)
-  return member?.role ?? null
-}
-
-export function isWorkspaceOwner(role: string | null): boolean {
-  return role === 'owner'
-}
-
-export function isWorkspaceAdmin(role: string | null): boolean {
-  return role === 'owner' || role === 'admin'
-}
-
-export function isWorkspaceMember(role: string | null): boolean {
-  return role === 'owner' || role === 'admin' || role === 'member'
-}
-
-export async function getWorkspaceMemberRole(workspaceId: string, userId: string) {
-  return getWorkspaceRole(workspaceId, userId)
-}
-
-// workspace の owner のみ許可（WS名・ロゴ等の設定変更）
-export async function requireWorkspaceOwner(
-  workspaceId: string,
-  userId: string,
-): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
-  if (!isWorkspaceOwner(role)) {
-    return NextResponse.json({ error: 'この操作にはオーナー権限が必要です' }, { status: 403 })
-  }
-  return null
-}
-
-// workspace の admin または owner のみ許可（メンバー管理・プロジェクト作成削除・ゲスト招待）
-export async function requireWorkspaceAdmin(
-  workspaceId: string,
-  userId: string,
-): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
-  if (!isWorkspaceAdmin(role)) {
-    return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
-  }
-  return null
-}
-
-// workspace の member 以上（owner/admin/member）を許可。guest は不可（プロジェクト編集・メンバー追加削除）
-export async function requireWorkspaceMember(
-  workspaceId: string,
-  userId: string,
-): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
-  if (!isWorkspaceMember(role)) {
-    return NextResponse.json({ error: 'ゲストはこの操作を実行できません' }, { status: 403 })
-  }
-  return null
-}
+// role の解決・判定・active 要求は access/membership に一元化した（active_workspace_members
+// ビュー経由で非活性メンバーを構造的に除外し、role 参照系がすべて非活性を 403 で弾く）。
+// 既存 import 互換のためここから re-export する。
+export {
+  getWorkspaceRole,
+  getWorkspaceMemberRole,
+  isWorkspaceOwner,
+  isWorkspaceAdmin,
+  isWorkspaceMember,
+  requireRole,
+  requireWorkspaceOwner,
+  requireWorkspaceAdmin,
+  requireWorkspaceMember,
+} from './access/membership'
+export type { WorkspaceRole } from './access/membership'
 
 // ゲストがアクセス可能なプロジェクトID集合（project_members に行があるプロジェクト）を返す。
 // member 以上はワークスペース全体を参照できるため、この関数はゲストの可視範囲を絞る用途で使う。
@@ -88,8 +45,11 @@ export async function requireProjectAccess(
   workspaceId: string,
   userId: string,
   projectId: string,
+  // getAuthContext 取得済みの role（ctx.role）を渡すと、内部の getWorkspaceRole を省く。
+  // 未指定なら従来通り DB から解決する（後方互換）。
+  knownRole?: WorkspaceRole | null,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
+  const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
   if (isWorkspaceMember(role)) return null
 
   const [membership] = await db
@@ -112,20 +72,26 @@ export async function requireProjectAccess(
   return null
 }
 
-// チャンネルへのアクセス可否を検証する。
+type ChannelAccessDecision =
+  | { allowed: true }
+  | { allowed: false; status: 403 | 404; error: string }
+
+// チャンネルへのアクセス可否を判定する。
 // - 指定ワークスペースに属さないチャンネルは 403（チャンネルID総当たりによる越境アクセスを防ぐ）
 //   旧データのプロジェクトチャンネルは channels.workspace_id が null のことがあるため、
 //   project の workspace_id にフォールバックして判定する（migration 0033 と同じ coalesce）。
-// - プライベートチャンネルと DM は channel_members に参加しているユーザーのみ許可。
+// - プライベートチャンネルと DM、および guest の通常チャンネルは
+//   channel_members に参加しているユーザーのみ許可。
 //   DM は is_private=false でも参加者を channel_members で管理するため、type も判定に含める。
 // - プロジェクトチャンネルはゲストの場合、参加プロジェクト（project_members）のみ許可。
 //   非プライベートでもゲストが参加外プロジェクトのチャットを閲覧/投稿できないようにする。
-// アクセス可なら null、不可なら 403 の NextResponse を返す。
-export async function requireChannelAccess(
+async function getChannelAccessDecision(
   workspaceId: string,
   userId: string,
   channelId: string,
-): Promise<NextResponse | null> {
+  // ctx.role を渡すとゲスト判定時の getWorkspaceRole を省く（未指定なら DB 解決）
+  knownRole?: WorkspaceRole | null,
+): Promise<ChannelAccessDecision> {
   const [channel] = await db
     .select({
       isPrivate: channels.isPrivate,
@@ -139,10 +105,17 @@ export async function requireChannelAccess(
     .limit(1)
 
   if (!channel || channel.effectiveWorkspaceId !== workspaceId) {
-    return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+    return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
   }
 
-  const membersOnly = channel.isPrivate || channel.type === 'dm'
+  if (channel.type === 'dm' && !FEATURE_FLAGS.dm) {
+    return { allowed: false, status: 404, error: 'DM機能は現在利用できません' }
+  }
+
+  const role = channel.type === 'workspace' || channel.type === 'project'
+    ? (knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId))
+    : knownRole
+  const membersOnly = channel.isPrivate || channel.type === 'dm' || (channel.type === 'workspace' && role === 'guest')
   if (membersOnly) {
     const [membership] = await db
       .select({ userId: channelMembers.userId })
@@ -151,13 +124,12 @@ export async function requireChannelAccess(
       .limit(1)
 
     if (!membership) {
-      return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+      return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
     }
   }
 
   // プロジェクトチャンネルはゲストの場合、参加プロジェクトに限定する
   if (channel.type === 'project' && channel.projectId) {
-    const role = await getWorkspaceRole(workspaceId, userId)
     if (role === 'guest') {
       const [pm] = await db
         .select({ id: projectMembers.id })
@@ -166,12 +138,33 @@ export async function requireChannelAccess(
         .limit(1)
 
       if (!pm) {
-        return NextResponse.json({ error: 'このチャンネルにアクセスする権限がありません' }, { status: 403 })
+        return { allowed: false, status: 403, error: 'このチャンネルにアクセスする権限がありません' }
       }
     }
   }
 
-  return null
+  return { allowed: true }
+}
+
+export async function canAccessChannel(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+  knownRole?: WorkspaceRole | null,
+): Promise<boolean> {
+  return (await getChannelAccessDecision(workspaceId, userId, channelId, knownRole)).allowed
+}
+
+// Route Handler 用。アクセス可なら null、不可なら判定理由に対応するレスポンスを返す。
+export async function requireChannelAccess(
+  workspaceId: string,
+  userId: string,
+  channelId: string,
+  knownRole?: WorkspaceRole | null,
+): Promise<NextResponse | null> {
+  const decision = await getChannelAccessDecision(workspaceId, userId, channelId, knownRole)
+  if (decision.allowed) return null
+  return NextResponse.json({ error: decision.error }, { status: decision.status })
 }
 
 export interface FileAccessRow {
@@ -193,11 +186,13 @@ export async function canAccessFile(
   workspaceId: string,
   userId: string,
   file: FileAccessRow,
+  // ctx.role を渡すと内部の getWorkspaceRole を省く（未指定なら DB 解決）
+  knownRole?: WorkspaceRole | null,
 ): Promise<boolean> {
   if (file.workspaceId !== workspaceId) return false
   if (file.uploadedBy === userId) return true
 
-  const role = await getWorkspaceRole(workspaceId, userId)
+  const role = knownRole !== undefined ? knownRole : await getWorkspaceRole(workspaceId, userId)
   // ワークスペース非所属（role なし）は不可
   if (!isWorkspaceMember(role) && role !== 'guest') return false
 
@@ -222,10 +217,6 @@ export async function canAccessFile(
   if (Array.isArray(channelIdsArr)) {
     for (const id of channelIdsArr) if (typeof id === 'string') metadataChannelIds.add(id)
   }
-  for (const metadataChannelId of metadataChannelIds) {
-    const forbidden = await requireChannelAccess(workspaceId, userId, metadataChannelId)
-    if (!forbidden) return true
-  }
 
   // メッセージ添付ファイル: 添付先チャンネルのいずれかにアクセスできれば可
   const attached = await db
@@ -234,9 +225,91 @@ export async function canAccessFile(
     .innerJoin(messages, eq(messageAttachments.messageId, messages.id))
     .where(eq(messageAttachments.fileId, file.id))
 
-  for (const { channelId } of attached) {
-    const forbidden = await requireChannelAccess(workspaceId, userId, channelId)
-    if (!forbidden) return true
+  // 全候補チャンネルを一括チェック（N+1 を避けるため requireChannelAccess をループで呼ばない）
+  const allCandidateChannelIds = [...new Set([...metadataChannelIds, ...attached.map(r => r.channelId)])]
+  if (allCandidateChannelIds.length === 0) return false
+
+  return canAccessViaAnyChannel(workspaceId, userId, role, allCandidateChannelIds)
+}
+
+// 指定チャンネル群のうち少なくとも1つにアクセスできるか一括チェックする。
+// requireChannelAccess をループで呼ぶ N+1 を避けるため、チャンネルメタデータと
+// メンバーシップを2回のバッチクエリで取得して評価する。
+async function canAccessViaAnyChannel(
+  workspaceId: string,
+  userId: string,
+  role: string | null,
+  channelIds: string[],
+): Promise<boolean> {
+  const channelRows = await db
+    .select({
+      id: channels.id,
+      isPrivate: channels.isPrivate,
+      type: channels.type,
+      projectId: channels.projectId,
+      effectiveWorkspaceId: sql<string | null>`coalesce(${channels.workspaceId}, ${projects.workspaceId})`,
+    })
+    .from(channels)
+    .leftJoin(projects, eq(channels.projectId, projects.id))
+    .where(inArray(channels.id, channelIds))
+
+  const wsChannels = channelRows.filter(c =>
+    c.effectiveWorkspaceId === workspaceId && (FEATURE_FLAGS.dm || c.type !== 'dm'),
+  )
+  if (wsChannels.length === 0) return false
+
+  const isGuest = role === 'guest'
+
+  // member以上: 非プライベート・非DMチャンネルが1つでもあれば即時許可
+  if (!isGuest && wsChannels.some(c => !c.isPrivate && c.type !== 'dm')) return true
+
+  // プライベートまたはDMと、guestの通常チャンネルはチャンネルメンバーシップが必要
+  const needsChannelCheck = wsChannels.filter(c =>
+    c.isPrivate || c.type === 'dm' || (isGuest && c.type === 'workspace'),
+  )
+  // ゲストのプロジェクトチャンネルはプロジェクトメンバーシップが必要（open/private 両方）
+  const guestProjectChannels = isGuest ? wsChannels.filter(c => c.type === 'project' && c.projectId) : []
+  const guestProjectIds = [...new Set(guestProjectChannels.map(c => c.projectId!))]
+
+  if (needsChannelCheck.length === 0 && guestProjectIds.length === 0) return false
+
+  const [membershipRows, projectMemberRows] = await Promise.all([
+    needsChannelCheck.length > 0
+      ? db
+          .select({ channelId: channelMembers.channelId })
+          .from(channelMembers)
+          .where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, needsChannelCheck.map(c => c.id))))
+      : Promise.resolve([]),
+    guestProjectIds.length > 0
+      ? db
+          .select({ projectId: projectMembers.projectId })
+          .from(projectMembers)
+          .where(and(eq(projectMembers.userId, userId), inArray(projectMembers.projectId, guestProjectIds)))
+      : Promise.resolve([]),
+  ])
+
+  // member以上: プライベート/DMチャンネルのいずれかのメンバーであれば許可
+  if (!isGuest) return membershipRows.length > 0
+
+  // guest: チャンネルごとに requireChannelAccess と同じ条件で評価する
+  const joinedChannelIds = new Set(membershipRows.map(r => r.channelId))
+  const joinedProjectIds = new Set(projectMemberRows.map(r => r.projectId))
+
+  for (const ch of wsChannels) {
+    if (ch.type === 'project' && ch.projectId) {
+      if (ch.isPrivate) {
+        // プライベートプロジェクトチャンネル: チャンネルメンバーシップ AND プロジェクトメンバーシップ
+        if (joinedChannelIds.has(ch.id) && joinedProjectIds.has(ch.projectId)) return true
+      } else {
+        // 非プライベートプロジェクトチャンネル: プロジェクトメンバーシップのみ
+        if (joinedProjectIds.has(ch.projectId)) return true
+      }
+    } else if (ch.isPrivate || ch.type === 'dm') {
+      // プライベート/DM（非プロジェクト）: チャンネルメンバーシップのみ
+      if (joinedChannelIds.has(ch.id)) return true
+    } else if (ch.type === 'workspace' && joinedChannelIds.has(ch.id)) {
+      return true
+    }
   }
 
   return false

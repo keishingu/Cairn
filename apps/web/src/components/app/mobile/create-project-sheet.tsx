@@ -8,6 +8,7 @@ import type { PlacePhoto } from '@/app/api/places/photos/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { LocationInput } from '../location-input'
+import { useT } from '@/components/locale-provider'
 
 async function createProject(body: {
   title: string
@@ -19,13 +20,13 @@ async function createProject(body: {
   placeId?: string | undefined
   placePhotoName?: string | undefined
   memberUserIds?: string[] | undefined
-}): Promise<ProjectDto> {
+}, t: (message: string, values?: Record<string, string | number>) => string): Promise<ProjectDto> {
   const res = await fetchWithAuth('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error('プロジェクトの作成に失敗しました')
+  if (!res.ok) throw new Error(t('Could not create the project'))
   return res.json() as Promise<ProjectDto>
 }
 
@@ -36,7 +37,7 @@ async function fetchPlacePhotos(placeId: string): Promise<PlacePhoto[]> {
 }
 
 async function fetchWorkspaceMembers(): Promise<WorkspaceMemberDto[]> {
-  const res = await fetchWithAuth('/api/workspaces/members')
+  const res = await fetchWithAuth('/api/workspaces/members?status=active')
   if (!res.ok) throw new Error('fetch failed')
   return res.json() as Promise<WorkspaceMemberDto[]>
 }
@@ -58,16 +59,19 @@ const inputErrorStyle: React.CSSProperties = {
 interface CreateProjectSheetProps {
   onClose: () => void
   onCreated: (project: ProjectDto) => void
+  initialStartDate?: string
+  initialEndDate?: string
 }
 
-export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetProps) {
+export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', initialEndDate = '' }: CreateProjectSheetProps) {
+  const t = useT()
   const queryClient = useQueryClient()
-  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members'], queryFn: fetchWorkspaceMembers })
+  const { data: workspaceMembers = [] } = useQuery({ queryKey: ['workspace-members', 'active'], queryFn: fetchWorkspaceMembers })
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [startDate, setStartDate] = React.useState('')
-  const [endDate, setEndDate] = React.useState('')
+  const [startDate, setStartDate] = React.useState(initialStartDate)
+  const [endDate, setEndDate] = React.useState(initialEndDate)
   const [location, setLocation] = React.useState('')
   const [placeId, setPlaceId] = React.useState('')
   const [placePhotos, setPlacePhotos] = React.useState<PlacePhoto[]>([])
@@ -81,7 +85,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
   React.useEffect(() => { setTimeout(() => titleRef.current?.focus(), 150) }, [])
 
   const mutation = useMutation({
-    mutationFn: createProject,
+    mutationFn: (body: Parameters<typeof createProject>[0]) => createProject(body, t),
     onSuccess: (project) => {
       queryClient.setQueryData<ProjectDto[]>(['projects'], old => [project, ...(old ?? [])])
       onCreated(project)
@@ -94,16 +98,16 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
     e.preventDefault()
     let hasError = false
     if (!title.trim()) {
-      setTitleError('プロジェクト名を入力してください')
+      setTitleError(t('Enter a project name'))
       hasError = true
     } else if (title.trim().length > 60) {
-      setTitleError('60文字以内で入力してください')
+      setTitleError(t('Enter 60 characters or fewer'))
       hasError = true
     } else {
       setTitleError('')
     }
     if (startDate && endDate && endDate < startDate) {
-      setEndDateError('終了日は開始日以降にしてください')
+      setEndDateError(t('End date must be on or after the start date'))
       hasError = true
     } else {
       setEndDateError('')
@@ -128,17 +132,17 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
       <div
         onClick={onClose}
         style={{
-          position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+          background: 'var(--overlay)',
         }}
       />
 
       {/* Sheet */}
       <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 301,
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-modal-content)',
         background: 'var(--card)',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+        boxShadow: 'var(--shadow-sheet)',
         maxHeight: '90dvh',
         display: 'flex', flexDirection: 'column',
         animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
@@ -154,8 +158,8 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
             <Icon name="folder" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>新規プロジェクト</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>基本情報を入力してください</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('New project')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('Enter the basics')}</div>
           </div>
           <button
             onClick={onClose}
@@ -171,7 +175,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
               <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-                プロジェクト名 <span style={{ color: 'var(--red)' }}>*</span>
+                {t('Project name')} <span style={{ color: 'var(--red)' }}>*</span>
               </label>
               <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{title.length}/60</span>
             </div>
@@ -179,7 +183,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
               ref={titleRef}
               value={title}
               onChange={e => { setTitle(e.target.value); if (titleError) setTitleError('') }}
-              placeholder="例: 新規顧客向け導入プロジェクト"
+              placeholder={t('e.g. New customer rollout')}
               style={titleError ? inputErrorStyle : inputStyle}
             />
             {titleError && (
@@ -193,13 +197,13 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           {/* Description */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>説明</label>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Description')}</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
             </div>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="目的・日程の概要・備考など"
+              placeholder={t('Purpose, schedule, and notes')}
               rows={3}
               style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'none', lineHeight: 1.55 }}
             />
@@ -208,8 +212,8 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           {/* Location */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>場所</label>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Location')}</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
             </div>
             <LocationInput
               value={location}
@@ -231,27 +235,27 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                 setSelectedPhotoName(null)
               }}
               inputStyle={inputStyle}
-              placeholder="例: 東京都渋谷区、オンライン"
+              placeholder={t('e.g. Shibuya, Tokyo, or online')}
             />
           </div>
 
           {/* Cover photo */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>カバー写真</label>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>任意</span>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Cover photo')}</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
             </div>
 
             {photosLoading ? (
               <div style={{ padding: '12px 14px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icon name="loader" size={14}/>
-                場所の写真を取得中…
+                {t('Loading place photos…')}
               </div>
             ) : placePhotos.length === 0 ? (
               <div style={{ padding: '14px 16px', borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
                 <Icon name="image" size={20} color="var(--text-4)"/>
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-3)' }}>
-                  場所を入力すると自動で候補が表示されます
+                  {t('Enter a place and photo suggestions appear')}
                 </div>
               </div>
             ) : (
@@ -268,8 +272,8 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     }}
                   >
-                    <Icon name="x" size={13}/>
-                    自動
+                    <Icon name="close" size={13}/>
+                    {t('Automatic')}
                   </button>
 
                   {placePhotos.map(photo => {
@@ -308,10 +312,10 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                   return (
                     <div style={{ marginTop: 4, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={previewUrl} alt="カバープレビュー" style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
+                      <img src={previewUrl} alt={t('Cover preview')} style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
                       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px' }}>
                         <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {title || 'プロジェクト名'}
+                          {title || t('Project name')}
                         </span>
                       </div>
                     </div>
@@ -323,8 +327,8 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
 
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>メンバー</label>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{memberUserIds.length > 0 ? `${memberUserIds.length}人選択` : '任意'}</span>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Members')}</label>
+              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{memberUserIds.length > 0 ? t('{count} selected members', { count: memberUserIds.length }) : t('Optional')}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
               {workspaceMembers.map(member => {
@@ -366,9 +370,11 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
                       <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {member.displayName}
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
-                        {member.email ?? 'メール未設定'}
-                      </div>
+                      {member.email && (
+                        <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 1 }}>
+                          {member.email}
+                        </div>
+                      )}
                     </div>
                   </button>
                 )
@@ -379,7 +385,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
           {/* Dates */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>開始日</label>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>{t('Start date')}</label>
               <input
                 type="date"
                 value={startDate}
@@ -388,7 +394,7 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
               />
             </div>
             <div>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>終了日</label>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>{t('End date')}</label>
               <input
                 type="date"
                 value={endDate}
@@ -417,29 +423,18 @@ export function CreateProjectSheet({ onClose, onCreated }: CreateProjectSheetPro
             type="button"
             onClick={onClose}
             disabled={mutation.isPending}
-            style={{
-              flex: 1, height: 46, borderRadius: 12,
-              border: '1px solid var(--border)', background: 'var(--card-2)',
-              color: 'var(--text-2)', fontSize: 15, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
+            className="btn btn-lg"
+            style={{ flex: 1, height: 46, borderRadius: 12, fontSize: 15 }}
           >
-            キャンセル
+            {t('Cancel')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={mutation.isPending}
-            style={{
-              flex: 2, height: 46, borderRadius: 12,
-              border: 'none',
-              background: mutation.isPending ? 'var(--card-2)' : 'var(--accent)',
-              color: mutation.isPending ? 'var(--text-4)' : 'var(--on-accent)',
-              fontSize: 15, fontWeight: 700,
-              cursor: mutation.isPending ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', transition: 'background 0.15s',
-            }}
+            className="btn btn-primary btn-lg"
+            style={{ flex: 2, height: 46, borderRadius: 12, fontSize: 15 }}
           >
-            {mutation.isPending ? '作成中…' : '作成する'}
+            {mutation.isPending ? t('Creating…') : t('Create')}
           </button>
         </div>
       </div>

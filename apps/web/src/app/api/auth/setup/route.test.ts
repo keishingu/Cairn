@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
-const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
+const { mockUser, mockSupabase, mockDb, mockHeaders } = vi.hoisted(() => {
   const mockUser = {
     id: 'user-00000001',
     email: 'test@example.com',
@@ -19,7 +19,8 @@ const { mockUser, mockSupabase, mockDb } = vi.hoisted(() => {
     select: vi.fn(),
     insert: vi.fn(),
   }
-  return { mockUser, mockSupabase, mockDb }
+  const mockHeaders = vi.fn().mockResolvedValue(new Headers())
+  return { mockUser, mockSupabase, mockDb, mockHeaders }
 })
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -28,7 +29,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({ get: vi.fn() }),
-  headers: vi.fn().mockResolvedValue(new Headers()),
+  headers: mockHeaders,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -45,6 +46,10 @@ vi.mock('@cairn/db', () => ({
     userId: 'wm.userId',
     role: 'wm.role',
   },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
+  },
   channels: {
     workspaceId: 'ch.workspaceId',
     type: 'ch.type',
@@ -55,6 +60,13 @@ vi.mock('@cairn/db', () => ({
     name: 'ps.name',
     color: 'ps.color',
     sortOrder: 'ps.sortOrder',
+  },
+  projectRoles: {
+    workspaceId: 'pr.workspaceId',
+    name: 'pr.name',
+    color: 'pr.color',
+    sortOrder: 'pr.sortOrder',
+    legacyRole: 'pr.legacyRole',
   },
 }))
 
@@ -97,6 +109,7 @@ describe('POST /api/auth/setup', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+    mockHeaders.mockResolvedValue(new Headers())
   })
 
   it('不正な JSON には 400 を返す', async () => {
@@ -147,6 +160,28 @@ describe('POST /api/auth/setup', () => {
     await expect(res.json()).resolves.toEqual({ ok: true, needsWorkspace: false })
   })
 
+  it('Bearer token でもネイティブのセットアップを認証できる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer native-access-token',
+        },
+        body: JSON.stringify({}),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('native-access-token')
+  })
+
   it('workspaceName あり・既存メンバーシップがあっても新規ワークスペースを作成する', async () => {
     // プロフィール存在確認のみ（membership チェックは workspaceName 指定時はスキップ）
     mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
@@ -155,6 +190,7 @@ describe('POST /api/auth/setup', () => {
       .mockReturnValueOnce(insertChainReturning([{ id: 'new-ws-id-999' }])) // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
       .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
+      .mockReturnValueOnce(insertChainPlain())                               // projectRoles
       .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
     const { POST } = await import('./route')
@@ -171,8 +207,8 @@ describe('POST /api/auth/setup', () => {
     expect(body.ok).toBe(true)
     expect(body.needsWorkspace).toBe(false)
     expect(body.workspaceId).toBe('new-ws-id-999')
-    // insert が4回呼ばれること（workspaces / channels / projectStatuses / workspaceMembers）
-    expect(mockDb.insert).toHaveBeenCalledTimes(4)
+    // insert が5回呼ばれること（workspaces / channels / projectStatuses / projectRoles / workspaceMembers）
+    expect(mockDb.insert).toHaveBeenCalledTimes(5)
   })
 
   it('workspaceName あり・プロフィール未作成 → プロフィールも同時に作成する', async () => {
@@ -183,6 +219,7 @@ describe('POST /api/auth/setup', () => {
       .mockReturnValueOnce(insertChainReturning([{ id: 'ws-new-777' }]))    // workspaces
       .mockReturnValueOnce(insertChainPlain())                               // channels
       .mockReturnValueOnce(insertChainPlain())                               // projectStatuses
+      .mockReturnValueOnce(insertChainPlain())                               // projectRoles
       .mockReturnValueOnce(insertChainPlain())                               // workspaceMembers
 
     const { POST } = await import('./route')
@@ -195,7 +232,7 @@ describe('POST /api/auth/setup', () => {
     )
 
     expect(res.status).toBe(200)
-    // profiles も含めて insert が5回（profiles / workspaces / channels / projectStatuses / workspaceMembers）
-    expect(mockDb.insert).toHaveBeenCalledTimes(5)
+    // profiles も含めて insert が6回（profiles / workspaces / channels / projectStatuses / projectRoles / workspaceMembers）
+    expect(mockDb.insert).toHaveBeenCalledTimes(6)
   })
 })

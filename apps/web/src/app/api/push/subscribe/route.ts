@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { Expo } from 'expo-server-sdk'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 const webSchema = z.object({
@@ -13,7 +14,11 @@ const webSchema = z.object({
 
 const expoSchema = z.object({
   deviceType: z.literal('expo'),
-  expoToken: z.string().startsWith('ExponentPushToken['),
+  // SDK は角括弧内が空でも受理するため、空白だけの本体も登録前に拒否する。
+  expoToken: z.string().refine(
+    (token) => Expo.isExpoPushToken(token) && !/^Expo(nent)?PushToken\[\s*\]$/.test(token),
+    { message: 'Invalid Expo push token' },
+  ),
 })
 
 const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])

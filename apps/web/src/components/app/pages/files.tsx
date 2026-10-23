@@ -1,19 +1,28 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
+import { InlineFileNameEditor } from '../inline-file-name-editor'
+import { FileFilterToolbar } from '../file-filter-toolbar'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
 import type { FileDto } from '@/app/api/files/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
-
-type FilterKey = 'all' | 'pdf' | 'img' | 'doc'
+import { useRenameFile } from '@/hooks/use-rename-file'
+import { useSavedFileFilters } from '@/hooks/use-saved-file-filters'
+import {
+  DEFAULT_FILE_FILTER_CONDITIONS,
+  type FileFilterConditions,
+  type FileTypeFilter,
+} from '@/lib/files/saved-file-filter'
 
 const DOC_MIME_TYPES = [
   'application/msword',
@@ -48,6 +57,11 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function localDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function isImageFile(file: FileDto): boolean {
   return file.fileType !== 'link' && (file.mimeType?.startsWith('image/') ?? false)
 }
@@ -65,17 +79,14 @@ function isMarkdownFile(file: FileDto): boolean {
 }
 
 function isPlainTextFile(file: FileDto): boolean {
-  return (
-    file.fileType !== 'link' &&
-    (file.mimeType === 'text/plain' || hasTxtExtension(file))
-  )
+  return file.fileType !== 'link' && (file.mimeType === 'text/plain' || hasTxtExtension(file))
 }
 
 function isPreviewableTextFile(file: FileDto): boolean {
   return isMarkdownFile(file) || isPlainTextFile(file)
 }
 
-function matchesFilter(file: FileDto, filter: FilterKey): boolean {
+function matchesFilter(file: FileDto, filter: FileTypeFilter): boolean {
   if (filter === 'all') return true
   if (filter === 'pdf') return file.mimeType === 'application/pdf'
   if (filter === 'img') return file.mimeType?.startsWith('image/') ?? false
@@ -92,6 +103,7 @@ const FileRow = ({
   onReindex,
   onImageClick,
   onTextPreviewClick,
+  onRename,
   selected,
   index,
 }: {
@@ -101,15 +113,46 @@ const FileRow = ({
   onReindex: (id: string) => void
   onImageClick: (id: string) => void
   onTextPreviewClick: (file: FileDto) => void
+  onRename: (fileId: string, fileName: string) => Promise<unknown>
   selected?: boolean
   index?: number
 }) => {
+  const t = useT()
+  const router = useRouter()
+  const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
-  const projectLabel = file.projectTitle ?? file.channelName ?? 'チャット'
+  const projectLabel = file.projectTitle ?? file.channelName ?? t('Chats')
   const metaParts = [projectLabel, sizeStr, dateStr].filter(Boolean).join(' · ')
   const isImage = isImageFile(file)
   const isPreviewableText = isPreviewableTextFile(file)
+  const chatHref = file.sourceChannelId
+    ? `/chats/${encodeURIComponent(file.sourceChannelId)}${file.sourceMessageId ? `?m=${encodeURIComponent(file.sourceMessageId)}` : ''}`
+    : null
+  const fileIcon = (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {file.fileType === 'link' && file.externalUrl ? (
+        <GoogleDocsIcon url={file.externalUrl} />
+      ) : (
+        <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
+      )}
+      <IndexDot status={file.indexingStatus} />
+    </div>
+  )
+  const fileMeta = (
+    <div
+      style={{
+        fontSize: 11,
+        color: 'var(--text-3)',
+        marginTop: 2,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {metaParts}
+    </div>
+  )
 
   return (
     <div
@@ -129,82 +172,86 @@ const FileRow = ({
         if (!selected) (e.currentTarget as HTMLElement).style.background = 'transparent'
       }}
     >
-      <a
-        href={file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={
-          isImage
-            ? (e) => {
-                e.preventDefault()
-                onImageClick(file.id)
-              }
-            : isPreviewableText
+      {isRenaming ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          {fileIcon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <InlineFileNameEditor
+              fileName={file.fileName}
+              onSave={(fileName) => onRename(file.id, fileName)}
+              onCancel={() => setIsRenaming(false)}
+            />
+            {fileMeta}
+          </div>
+        </div>
+      ) : (
+        <a
+          href={
+            file.fileType === 'link' ? (file.externalUrl ?? '#') : `/api/attachments/${file.id}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={
+            isImage
               ? (e) => {
                   e.preventDefault()
-                  onTextPreviewClick(file)
+                  onImageClick(file.id)
                 }
-              : undefined
-        }
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          flex: 1,
-          minWidth: 0,
-          textDecoration: 'none',
-          cursor: 'pointer',
-        }}
-      >
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          {file.fileType === 'link' && file.externalUrl ? (
-            <GoogleDocsIcon url={file.externalUrl} />
-          ) : (
-            <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id} />
-          )}
-          <IndexDot status={file.indexingStatus} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {file.fileName}
+              : isPreviewableText
+                ? (e) => {
+                    e.preventDefault()
+                    onTextPreviewClick(file)
+                  }
+                : undefined
+          }
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flex: 1,
+            minWidth: 0,
+            textDecoration: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          {fileIcon}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--text)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {file.fileName}
+            </div>
+            {fileMeta}
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text-3)',
-              marginTop: 2,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {metaParts}
-          </div>
-        </div>
-      </a>
+        </a>
+      )}
       <Avatar name={file.uploaderName} url={file.uploaderAvatarUrl} size={22} />
-      <RowActionMenu
-        actions={[
-          ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
-            ? [{ icon: 'refresh', label: '再インデックス', onSelect: () => onReindex(file.id) }]
-            : []),
-          {
-            icon: 'trash',
-            label: '削除',
-            danger: true,
-            onSelect: () => onDelete(file.id, file.fileName),
-          },
-        ]}
-      />
+      {!isRenaming && (
+        <RowActionMenu
+          actions={[
+            ...(chatHref
+              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => router.push(chatHref) }]
+              : []),
+            { icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) },
+            ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
+              ? [{ icon: 'refresh', label: t('Reindex'), onSelect: () => onReindex(file.id) }]
+              : []),
+            {
+              icon: 'trash',
+              label: t('Delete'),
+              danger: true,
+              onSelect: () => onDelete(file.id, file.fileName),
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -246,6 +293,60 @@ const FileRowSkeleton = () => (
   </div>
 )
 
+const FileSection = ({
+  label,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) => (
+  <section>
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '10px 16px',
+        border: 'none',
+        background: 'var(--card-2)',
+        borderBottom: '1px solid var(--divider)',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        textAlign: 'left',
+      }}
+    >
+      <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
+      <Icon name="folder" size={14} color="var(--text-3)" />
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', flex: 1 }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--text-3)',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
+          padding: '1px 6px',
+          borderRadius: 999,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+    {open && children}
+  </section>
+)
+
 // ─── PageFiles ────────────────────────────────────────────────────
 
 export const PageFiles = ({
@@ -255,10 +356,15 @@ export const PageFiles = ({
   isMobile?: boolean
   externalSearch?: string
 }) => {
+  const t = useT()
   const queryClient = useQueryClient()
-  const [filter, setFilter] = React.useState<FilterKey>('all')
-  const [search, setSearch] = React.useState('')
-  const effectiveSearch = isMobile ? search : (externalSearch ?? search)
+  const renameFile = useRenameFile()
+  const [conditions, setConditions] = React.useState<FileFilterConditions>(
+    DEFAULT_FILE_FILTER_CONDITIONS,
+  )
+  const [activeSavedFilterId, setActiveSavedFilterId] = React.useState<string | null>(null)
+  const [filterDeleteTarget, setFilterDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
+  const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
@@ -271,6 +377,14 @@ export const PageFiles = ({
   })
 
   const {
+    data: savedFilters = [],
+    isLoading: isLoadingSavedFilters,
+    isError: isSavedFiltersError,
+    createMutation: createSavedFilter,
+    deleteMutation: deleteSavedFilter,
+  } = useSavedFileFilters()
+
+  const {
     data: textPreviewContent,
     isLoading: isTextPreviewLoading,
     isError: isTextPreviewError,
@@ -278,9 +392,9 @@ export const PageFiles = ({
     queryKey: ['attachment-text-preview', textPreviewFile?.id],
     enabled: textPreviewFile !== null,
     queryFn: async () => {
-      if (!textPreviewFile) throw new Error('プレビュー対象のテキストファイルがありません')
+      if (!textPreviewFile) throw new Error(t('No text file to preview'))
       const res = await fetchWithAuth(`/api/attachments/${textPreviewFile.id}`)
-      if (!res.ok) throw new Error('テキストプレビューの取得に失敗しました')
+      if (!res.ok) throw new Error(t('Could not fetch the text preview'))
       return res.text()
     },
   })
@@ -288,7 +402,7 @@ export const PageFiles = ({
   const deleteFile = useMutation({
     mutationFn: (fileId: string) =>
       fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw new Error('削除に失敗しました')
+        if (!r.ok) throw new Error(t('Could not delete the file'))
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['files'] })
@@ -299,7 +413,7 @@ export const PageFiles = ({
   const reindexFile = useMutation({
     mutationFn: (fileId: string) =>
       fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error('再インデックスに失敗しました')
+        if (!r.ok) throw new Error(t('Could not reindex the file'))
       }),
     onMutate: (fileId: string) => {
       queryClient.setQueryData<FileDto[]>(['files'], (prev) =>
@@ -318,15 +432,26 @@ export const PageFiles = ({
   }
 
   const filtered = React.useMemo(() => {
-    const q = effectiveSearch.trim().toLowerCase()
+    const q = conditions.search.trim().toLowerCase()
+    const externalQ = isMobile ? '' : (externalSearch ?? '').trim().toLowerCase()
     return files.filter(
       (f) =>
-        matchesFilter(f, filter) &&
+        matchesFilter(f, conditions.type) &&
+        (conditions.projectId === 'all' ||
+          (conditions.projectId === 'none'
+            ? f.projectId === null
+            : f.projectId === conditions.projectId)) &&
+        (conditions.uploaderId === 'all' || f.uploaderId === conditions.uploaderId) &&
+        (!conditions.createdFrom || localDate(f.createdAt) >= conditions.createdFrom) &&
+        (!conditions.createdTo || localDate(f.createdAt) <= conditions.createdTo) &&
         (!q ||
           f.fileName.toLowerCase().includes(q) ||
-          (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)),
+          (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)) &&
+        (!externalQ ||
+          f.fileName.toLowerCase().includes(externalQ) ||
+          (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(externalQ)),
     )
-  }, [files, filter, effectiveSearch])
+  }, [files, conditions, externalSearch, isMobile])
 
   // 現在の絞り込み結果に含まれる画像だけをライトボックスで前後送りできるようにする
   const imageFiles = React.useMemo(() => filtered.filter(isImageFile), [filtered])
@@ -349,7 +474,7 @@ export const PageFiles = ({
 
   React.useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [filter, effectiveSearch])
+  }, [conditions, externalSearch])
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current
@@ -374,14 +499,54 @@ export const PageFiles = ({
     [files],
   )
 
-  const visibleFiles = filtered.slice(0, visibleCount)
+  const pagedFiles = filtered.slice(0, visibleCount)
 
-  const filterDefs: { id: FilterKey; label: string }[] = [
-    { id: 'all', label: `すべて (${counts.all})` },
-    { id: 'pdf', label: `PDF (${counts.pdf})` },
-    { id: 'img', label: `画像 (${counts.img})` },
-    { id: 'doc', label: `ドキュメント (${counts.doc})` },
-  ]
+  const grouped = React.useMemo(() => {
+    const projectOrder: string[] = []
+    const projectMap = new Map<string, FileDto[]>()
+    for (const file of filtered) {
+      const key = file.projectId ?? 'none'
+      if (!projectMap.has(key)) {
+        projectMap.set(key, [])
+        projectOrder.push(key)
+      }
+      projectMap.get(key)!.push(file)
+    }
+    const pagedIds = new Set(pagedFiles.map((file) => file.id))
+    return projectOrder
+      .map((projectId) => {
+        const allProjectFiles = projectMap.get(projectId)!
+        return {
+          key: projectId,
+          label: allProjectFiles[0]!.projectTitle ?? t('No project'),
+          count: allProjectFiles.length,
+          files: allProjectFiles.filter((file) => pagedIds.has(file.id)),
+        }
+      })
+      .filter((group) => group.files.length > 0)
+  }, [filtered, pagedFiles, t])
+
+  const isSectionOpen = React.useCallback(
+    (key: string, index: number) => sectionOverride[key] ?? index < 3,
+    [sectionOverride],
+  )
+
+  const visibleFiles = React.useMemo(
+    () => grouped.flatMap((group, index) => (isSectionOpen(group.key, index) ? group.files : [])),
+    [grouped, isSectionOpen],
+  )
+
+  const sectionBases = React.useMemo(() => {
+    const bases: number[] = []
+    let cursor = 0
+    grouped.forEach((group, index) => {
+      bases[index] = cursor
+      if (isSectionOpen(group.key, index)) cursor += group.files.length
+    })
+    return bases
+  }, [grouped, isSectionOpen])
+
+  const filterDefs: FileTypeFilter[] = ['all', 'pdf', 'img', 'doc']
 
   const { selectedIndex: navIdx, setSelectedIndex: setNavIdx } = useListSelection({
     count: visibleFiles.length,
@@ -398,12 +563,16 @@ export const PageFiles = ({
 
   // ⌥[ / ⌥]: フィルタタブ切替
   const cycleFilterTab = (dir: 'prev' | 'next') => {
-    const idx = filterDefs.findIndex((f) => f.id === filter)
+    const idx = filterDefs.indexOf(conditions.type)
     const next =
       dir === 'next'
         ? (idx + 1) % filterDefs.length
         : (idx - 1 + filterDefs.length) % filterDefs.length
-    setFilter(filterDefs[next]!.id)
+    const nextType = filterDefs[next]!
+    setConditions((current) =>
+      nextType === 'all' ? DEFAULT_FILE_FILTER_CONDITIONS : { ...current, type: nextType },
+    )
+    setActiveSavedFilterId(null)
   }
   useCommand('ctx.filterTabPrev', () => cycleFilterTab('prev'))
   useCommand('ctx.filterTabNext', () => cycleFilterTab('next'))
@@ -425,89 +594,67 @@ export const PageFiles = ({
   // フィルタ変更で選択をリセット
   React.useEffect(() => {
     setNavIdx(-1)
-  }, [filter, effectiveSearch, setNavIdx])
+  }, [conditions, externalSearch, grouped.length, setNavIdx])
+
+  const projectOptions = React.useMemo(() => {
+    const projects = new Map<string, string>()
+    files.forEach((file) => {
+      if (file.projectId && file.projectTitle) projects.set(file.projectId, file.projectTitle)
+    })
+    return [...projects]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ja'))
+  }, [files])
+
+  const uploaderOptions = React.useMemo(() => {
+    const uploaders = new Map<string, string>()
+    files.forEach((file) => uploaders.set(file.uploaderId, file.uploaderName))
+    return [...uploaders]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ja'))
+  }, [files])
+
+  const handleConditionsChange = (next: FileFilterConditions) => {
+    setConditions(next)
+    setActiveSavedFilterId(null)
+  }
+
+  const handleSaveFilter = async (name: string) => {
+    await createSavedFilter.mutateAsync({ name, conditions })
+    setConditions(DEFAULT_FILE_FILTER_CONDITIONS)
+    setActiveSavedFilterId(null)
+  }
+
+  const handleDeleteSavedFilter = (filterId: string) => {
+    const filter = savedFilters.find(item => item.id === filterId)
+    if (filter) setFilterDeleteTarget(filter)
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* Toolbar */}
-      <div
-        style={{
-          padding: isMobile ? '8px 12px' : '10px 20px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          flexShrink: 0,
+      <FileFilterToolbar
+        isMobile={isMobile}
+        conditions={conditions}
+        counts={counts}
+        projects={projectOptions}
+        uploaders={uploaderOptions}
+        savedFilters={savedFilters}
+        activeSavedFilterId={activeSavedFilterId}
+        isSaving={createSavedFilter.isPending}
+        isLoadingSavedFilters={isLoadingSavedFilters}
+        savedFiltersError={isSavedFiltersError}
+        onChange={handleConditionsChange}
+        onApplySavedFilter={(savedFilter) => {
+          setConditions(savedFilter.conditions)
+          setActiveSavedFilterId(savedFilter.id)
         }}
-      >
-        {isMobile && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'var(--card-2)',
-              border: '1px solid var(--border)',
-              borderRadius: 7,
-              padding: '0 10px',
-              height: 32,
-            }}
-          >
-            <Icon name="search" size={13} color="var(--text-4)" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ファイル名・プロジェクトで検索"
-              style={{
-                flex: 1,
-                fontSize: 12.5,
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                color: 'var(--text)',
-                caretColor: 'var(--accent)',
-              }}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  padding: 0,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  color: 'var(--text-4)',
-                }}
-              >
-                <Icon name="close" size={12} />
-              </button>
-            )}
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto' }}>
-          {filterDefs.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              style={{
-                padding: isMobile ? '6px 8px' : '6px 10px',
-                borderRadius: 6,
-                border: 'none',
-                background: filter === f.id ? 'var(--card-hover)' : 'transparent',
-                color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: isMobile ? 12 : 12.5,
-                fontWeight: filter === f.id ? 600 : 500,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        onDeleteSavedFilter={handleDeleteSavedFilter}
+        onSave={handleSaveFilter}
+        onClear={() => {
+          setConditions(DEFAULT_FILE_FILTER_CONDITIONS)
+          setActiveSavedFilterId(null)
+        }}
+      />
 
       {/* Content */}
       <div
@@ -519,7 +666,18 @@ export const PageFiles = ({
         }}
       >
         {isLoading ? (
-          Array.from({ length: 8 }).map((_, i) => <FileRowSkeleton key={i} />)
+          <div
+            style={{
+              margin: isMobile ? 12 : '16px 20px',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              overflow: 'hidden',
+            }}
+          >
+            {Array.from({ length: 8 }).map((_, i) => (
+              <FileRowSkeleton key={i} />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div
             style={{
@@ -546,37 +704,79 @@ export const PageFiles = ({
             >
               <Icon name="file" size={22} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>ファイルはありません</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No files')}</div>
             <div style={{ fontSize: 12.5 }}>
-              {filter === 'all'
-                ? 'チャットでファイルを送ると、ここに表示されます'
-                : 'このフィルターに一致するファイルはありません'}
+              {files.length === 0
+                ? t('Files you send in chat show up here')
+                : t('No files match this filter')}
             </div>
           </div>
         ) : (
           <>
-            {visibleFiles.map((f, i) => (
-              <FileRow
-                key={f.id}
-                file={f}
-                isMobile={isMobile}
-                onDelete={handleDelete}
-                onReindex={handleReindex}
-                onImageClick={openLightbox}
-                onTextPreviewClick={setTextPreviewFile}
-                selected={i === navIdx}
-                index={i}
-              />
-            ))}
+            <div
+              style={{
+                margin: isMobile ? 12 : '16px 20px',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                overflow: 'hidden',
+              }}
+            >
+              {grouped.map((group, groupIndex) => (
+                <FileSection
+                  key={group.key}
+                  label={group.label}
+                  count={group.count}
+                  open={isSectionOpen(group.key, groupIndex)}
+                  onToggle={() =>
+                    setSectionOverride((current) => ({
+                      ...current,
+                      [group.key]: !isSectionOpen(group.key, groupIndex),
+                    }))
+                  }
+                >
+                  {group.files.map((file, fileIndex) => {
+                    const index = (sectionBases[groupIndex] ?? 0) + fileIndex
+                    return (
+                      <FileRow
+                        key={file.id}
+                        file={file}
+                        isMobile={isMobile}
+                        onDelete={handleDelete}
+                        onReindex={handleReindex}
+                        onImageClick={openLightbox}
+                        onTextPreviewClick={setTextPreviewFile}
+                        onRename={(fileId, fileName) =>
+                          renameFile.mutateAsync({ fileId, fileName })
+                        }
+                        selected={index === navIdx}
+                        index={index}
+                      />
+                    )
+                  })}
+                </FileSection>
+              ))}
+            </div>
             <div ref={sentinelRef} />
           </>
         )}
       </div>
 
       <ConfirmDialog
+        open={filterDeleteTarget !== null}
+        title={t('Delete saved filter')}
+        message={t('Delete "{name}"? The files stay. This cannot be undone.', { name: filterDeleteTarget?.name ?? '' })}
+        onConfirm={async () => {
+          if (!filterDeleteTarget) return
+          await deleteSavedFilter.mutateAsync(filterDeleteTarget.id)
+          if (activeSavedFilterId === filterDeleteTarget.id) setActiveSavedFilterId(null)
+        }}
+        onClose={() => setFilterDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
         open={deleteTarget !== null}
-        title="ファイルを削除"
-        message={`「${deleteTarget?.name}」を削除しますか？この操作は取り消せません。`}
+        title={t('Delete this file')}
+        message={t('Delete "{name}"? This cannot be undone.', { name: deleteTarget?.name ?? '' })}
         onConfirm={async () => {
           if (deleteTarget) await deleteFile.mutateAsync(deleteTarget.id)
         }}
@@ -587,13 +787,13 @@ export const PageFiles = ({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${textPreviewFile.fileName} のプレビュー`}
+          aria-label={t('Preview of {name}', { name: textPreviewFile.fileName })}
           onClick={() => setTextPreviewFile(null)}
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.45)',
+            zIndex: 'var(--z-modal)',
+            background: 'var(--overlay)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -610,7 +810,7 @@ export const PageFiles = ({
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 12,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+              boxShadow: 'var(--shadow-pop)',
               overflow: 'hidden',
             }}
           >
@@ -654,11 +854,11 @@ export const PageFiles = ({
                   fontWeight: 600,
                 }}
               >
-                別タブで開く
+                {t('Open in a new tab')}
               </a>
               <button
                 onClick={() => setTextPreviewFile(null)}
-                aria-label="プレビューを閉じる"
+                aria-label={t('Close preview')}
                 style={{
                   border: 'none',
                   background: 'transparent',
@@ -682,11 +882,11 @@ export const PageFiles = ({
             >
               {isTextPreviewLoading ? (
                 <div style={{ color: 'var(--text-3)', fontSize: 13 }}>
-                  テキストを読み込んでいます...
+                  {t('Loading text...')}
                 </div>
               ) : isTextPreviewError ? (
                 <div style={{ color: 'var(--danger)', fontSize: 13 }}>
-                  テキストプレビューを読み込めませんでした。
+                  {t('Could not load the text preview.')}
                 </div>
               ) : isMarkdownFile(textPreviewFile) ? (
                 <MarkdownContent

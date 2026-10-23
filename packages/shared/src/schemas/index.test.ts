@@ -1,10 +1,69 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createMilestoneSchema,
   createProjectSchema,
   createTaskSchema,
+  updateTaskSchema,
+  patchMilestoneSchema,
+  patchMeSchema,
+  patchProfileAttributesSchema,
+  patchWorkspaceSettingsSchema,
   postMessageSchema,
-  uploadGalleryItemSchema,
 } from './index'
+import { AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
+
+describe('patchMeSchema', () => {
+  it('テーマとハイライトカラーの許可値を受け入れる', () => {
+    expect(patchMeSchema.safeParse({ theme: 'dark', accentId: 'violet' }).success).toBe(true)
+  })
+
+  it('未定義のハイライトカラーを拒否する', () => {
+    expect(patchMeSchema.safeParse({ accentId: 'unknown' }).success).toBe(false)
+  })
+
+  it('言語設定の許可値を受け入れ、未知の値を拒否する', () => {
+    expect(patchMeSchema.safeParse({ locale: 'en' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ locale: 'ko' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ locale: 'system' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ locale: 'fr' }).success).toBe(false)
+  })
+
+
+  it('カレンダーの週の始まりは日曜と月曜だけ受け入れる', () => {
+    expect(patchMeSchema.safeParse({ calendarWeekStart: 'monday' }).success).toBe(true)
+    expect(patchMeSchema.safeParse({ calendarWeekStart: 'friday' }).success).toBe(false)
+  })
+})
+
+describe('patchProfileAttributesSchema', () => {
+  it('属性IDの順序を保つ', () => {
+    const result = patchProfileAttributesSchema.safeParse({
+      attributeIds: [
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.attributeIds).toEqual([
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000002',
+      ])
+    }
+  })
+
+  it('重複・6件以上・UUID以外を拒否する', () => {
+    const first = '00000000-0000-0000-0000-000000000001'
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: [first, first] }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({
+      attributeIds: Array.from(
+        { length: 6 },
+        (_, index) => `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`,
+      ),
+    }).success).toBe(false)
+    expect(patchProfileAttributesSchema.safeParse({ attributeIds: ['not-a-uuid'] }).success).toBe(false)
+  })
+})
 
 describe('createProjectSchema', () => {
   it('有効なデータを受け入れる', () => {
@@ -88,9 +147,163 @@ describe('createTaskSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('通常チャンネルを指定できる', () => {
+    const result = createTaskSchema.safeParse({
+      channelId: '00000000-0000-0000-0000-000000000002',
+      title: '最後にバックアップを取る',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('プロジェクトと通常チャンネルの同時指定は拒否する', () => {
+    const result = createTaskSchema.safeParse({
+      projectId: '00000000-0000-0000-0000-000000000001',
+      channelId: '00000000-0000-0000-0000-000000000002',
+      title: '曖昧な所属',
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('createTaskSchema の説明', () => {
+  const base = { projectId: '00000000-0000-0000-0000-000000000001', title: 'タスク' }
+
+  it('説明は10000文字まで受け付ける', () => {
+    expect(createTaskSchema.safeParse({ ...base, description: 'あ'.repeat(10000) }).success).toBe(true)
+  })
+
+  it('説明が10001文字以上ならエラーになる', () => {
+    expect(createTaskSchema.safeParse({ ...base, description: 'あ'.repeat(10001) }).success).toBe(false)
+  })
+})
+
+describe('updateTaskSchema', () => {
+  it('説明だけの更新を受け付ける', () => {
+    const result = updateTaskSchema.safeParse({ description: '詳細メモ' })
+    expect(result.success).toBe(true)
+  })
+
+  it('説明を null にして消去できる', () => {
+    const result = updateTaskSchema.safeParse({ description: null })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.description).toBeNull()
+  })
+
+  it('説明が10001文字以上ならエラーになる', () => {
+    expect(updateTaskSchema.safeParse({ description: 'あ'.repeat(10001) }).success).toBe(false)
+  })
+
+  it('更新項目が1つもなければエラーになる', () => {
+    expect(updateTaskSchema.safeParse({}).success).toBe(false)
+  })
+})
+
+describe('createMilestoneSchema', () => {
+  it('有効なデータを受け入れる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      description: '標高に慣れる期間',
+      startDate: '2026-08-01',
+      endDate: '2026-08-03',
+      startTime: '09:30',
+      endTime: '17:00',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('タイトルを trim して空ならエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '   ',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('日付形式でない場合はエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      startDate: '2026/08/01',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('時刻形式でない場合はエラーになる', () => {
+    const result = createMilestoneSchema.safeParse({
+      title: '高所順応',
+      startTime: '25:00',
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('patchMilestoneSchema', () => {
+  it('completed だけの更新を受け入れる', () => {
+    const result = patchMilestoneSchema.safeParse({ completed: true })
+    expect(result.success).toBe(true)
+  })
+
+  it('nullable な日付と説明を受け入れる', () => {
+    const result = patchMilestoneSchema.safeParse({
+      description: null,
+      startDate: null,
+      endDate: null,
+      startTime: null,
+      endTime: null,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('更新対象が空ならエラーになる', () => {
+    const result = patchMilestoneSchema.safeParse({})
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('ワークスペース設定更新スキーマ', () => {
+  it('空のプロジェクト名称を既定値へ戻すため null に正規化する', () => {
+    const result = patchWorkspaceSettingsSchema.safeParse({ projectLabel: '   ' })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.projectLabel).toBeNull()
+    }
+  })
+
+  it('AIチャットのモデルは選択肢のID（日付サフィックスなし）だけ受け入れる', () => {
+    for (const aiChatModel of ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(true)
+    }
+    for (const aiChatModel of ['claude-sonnet-5-5-20260101', 'claude-haiku-5-5', 'gpt-5-mini', '']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(false)
+    }
+  })
+
+  it('AIチャットのシステムプロンプトは前後の空白を除き、空なら未設定（null）に戻す', () => {
+    const trimmed = patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: '\n 敬体で答える \n' })
+    expect(trimmed.success && trimmed.data.aiChatSystemPrompt).toBe('敬体で答える')
+    for (const aiChatSystemPrompt of ['', '  \n ', null]) {
+      const result = patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt })
+      expect(result.success && result.data.aiChatSystemPrompt).toBeNull()
+    }
+  })
+
+  it('AIチャットのシステムプロンプトは上限の文字数までだけ受け入れる', () => {
+    const atLimit = 'あ'.repeat(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH)
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: atLimit }).success).toBe(true)
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: `${atLimit}あ` }).success).toBe(false)
+  })
 })
 
 describe('postMessageSchema', () => {
+  it('オフライン再送用のclientMessageIdを受け付ける', () => {
+    expect(
+      postMessageSchema.safeParse({
+        channelId: '10000000-0000-4000-8000-000000000001',
+        clientMessageId: '20000000-0000-4000-8000-000000000001',
+        content: '圏外から送信',
+      }).success,
+    ).toBe(true)
+  })
+
   it('デフォルトの messageType は text になる', () => {
     const result = postMessageSchema.safeParse({
       channelId: '00000000-0000-0000-0000-000000000001',
@@ -106,27 +319,6 @@ describe('postMessageSchema', () => {
     const result = postMessageSchema.safeParse({
       channelId: '00000000-0000-0000-0000-000000000001',
       content: '',
-    })
-    expect(result.success).toBe(false)
-  })
-})
-
-describe('uploadGalleryItemSchema', () => {
-  it('有効な座標を受け入れる', () => {
-    const result = uploadGalleryItemSchema.safeParse({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      fileId: '00000000-0000-0000-0000-000000000002',
-      latitude: 36.2848,
-      longitude: 137.6490,
-    })
-    expect(result.success).toBe(true)
-  })
-
-  it('範囲外の緯度はエラーになる', () => {
-    const result = uploadGalleryItemSchema.safeParse({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      fileId: '00000000-0000-0000-0000-000000000002',
-      latitude: 999,
     })
     expect(result.success).toBe(false)
   })

@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
+import { isWorkspaceAdmin } from '@/lib/permissions'
 
 export interface MemberProjectDto {
   projectId: string
@@ -11,6 +11,8 @@ export interface MemberProjectDto {
   statusName: string | null
   statusColor: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
+  roleName: string | null
+  roleColor: string | null
   startDate: string | null
   endDate: string | null
   memberCount: number
@@ -34,12 +36,14 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, workspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, projectRoles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count, inArray } = await import('drizzle-orm')
 
-    // verify the target user belongs to this workspace
+    // 対象ユーザーが当該 WS に所属していることを確認する。ここはアーカイブ（非活性）済み
+    // メンバーの保存済みプロジェクト履歴を管理者が閲覧する経路でもあるため、active に絞らず
+    // workspace_members を引く（§5: 履歴は本人名義で残し、閲覧できるようにする）
     const [wsMember] = await db
-      .select({ id: workspaceMembers.id })
+      .select({ id: workspaceMembers.id, membershipStatus: workspaceMembers.membershipStatus })
       .from(workspaceMembers)
       .where(and(
         eq(workspaceMembers.workspaceId, ctx.workspaceId),
@@ -50,9 +54,13 @@ export async function GET(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
     }
 
+    const callerRole = ctx.role
+    if (wsMember.membershipStatus === 'inactive' && !isWorkspaceAdmin(callerRole)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     // ゲストは対象ユーザーのプロジェクトを丸ごと見られない。
     // 自分が参加するプロジェクトとの共通分だけに絞り、参加していないプロジェクトの存在が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
     let guestProjectIds: string[] | null = null
     if (callerRole === 'guest') {
       const ownProjects = await db
@@ -75,6 +83,8 @@ export async function GET(
         statusName:  projectStatuses.name,
         statusColor: projectStatuses.color,
         role:        projectMembers.role,
+        roleName:    projectRoles.name,
+        roleColor:   projectRoles.color,
         startDate:   projects.startDate,
         endDate:     projects.endDate,
         archived:    projects.archived,
@@ -82,6 +92,10 @@ export async function GET(
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
+      .leftJoin(projectRoles, and(
+        eq(projectMembers.roleId, projectRoles.id),
+        eq(projectRoles.workspaceId, ctx.workspaceId),
+      ))
       .where(and(
         eq(projectMembers.userId, userId),
         eq(projects.workspaceId, ctx.workspaceId),
@@ -92,6 +106,10 @@ export async function GET(
     const memberCounts = await db
       .select({ projectId: projectMembers.projectId, n: count() })
       .from(projectMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, projectMembers.userId),
+      ))
       .groupBy(projectMembers.projectId)
     const countMap = new Map(memberCounts.map(r => [r.projectId, Number(r.n)]))
 
@@ -102,6 +120,8 @@ export async function GET(
         statusName:    r.statusName ?? null,
         statusColor:   r.statusColor ?? null,
         role:          r.role,
+        roleName:      r.roleName ?? null,
+        roleColor:     r.roleColor ?? null,
         startDate:     r.startDate ?? null,
         endDate:       r.endDate ?? null,
         memberCount:   countMap.get(r.projectId) ?? 0,

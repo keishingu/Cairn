@@ -3,7 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/get-auth-context'
+import { explicitLocaleFromCookie } from '@/lib/i18n/initial-locale'
 
 const setupSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -23,20 +24,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Native clients send their Supabase session as a Bearer token. Request自身の
+  // ヘッダーを渡し、Route Handler外のリクエストコンテキストに依存しない。
+  const { userId, user, error } = await getAuthUser(req.headers.get('Authorization'))
+  if (error || !userId || !user) {
+    return error ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     const { db } = await import('@cairn/db')
-    const { profiles, workspaces, workspaceMembers, channels } = await import('@cairn/db')
+    const { profiles, workspaces, workspaceMembers, activeWorkspaceMembers, channels } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
 
     const existing = await db.select({ id: profiles.id }).from(profiles).where(
-      eq(profiles.id, user.id)
+      eq(profiles.id, userId)
     ).limit(1)
 
     if (existing.length === 0) {
@@ -45,16 +46,20 @@ export async function POST(req: Request) {
         (user.user_metadata?.['display_name'] as string | undefined) ??
         user.email ??
         'ユーザー'
-      await db.insert(profiles).values({ id: user.id, displayName })
+      const locale = explicitLocaleFromCookie(req.headers.get('cookie'))
+      await db.insert(profiles).values({ id: userId, displayName,
+        ...(locale ? { locale } : {}), })
     }
 
     // workspaceName が指定されていれば必ず新規ワークスペースを作成（複数WS対応）
     // 指定がない場合のみ既存メンバーシップを確認してオンボーディング要否を返す
     if (!parsed.data.workspaceName) {
+      // active membership のみを所属とみなす。全 WS で非活性のユーザーは「未所属」として
+      // オンボーディングへ誘導する（get-auth-context が非活性を弾くため /projects だと 403 ループになる）
       const existingMembership = await db
-        .select({ workspaceId: workspaceMembers.workspaceId })
-        .from(workspaceMembers)
-        .where(eq(workspaceMembers.userId, user.id))
+        .select({ workspaceId: activeWorkspaceMembers.workspaceId })
+        .from(activeWorkspaceMembers)
+        .where(eq(activeWorkspaceMembers.userId, userId))
         .limit(1)
 
       return NextResponse.json({
@@ -69,7 +74,7 @@ export async function POST(req: Request) {
 
     const [ws] = await db
       .insert(workspaces)
-      .values({ name: workspaceName, slug, createdBy: user.id })
+      .values({ name: workspaceName, slug, createdBy: userId })
       .returning({ id: workspaces.id })
     if (!ws) throw new Error('workspace insert failed')
 
@@ -78,7 +83,7 @@ export async function POST(req: Request) {
       { workspaceId: ws.id, type: 'workspace' as const, name: '連絡事項' },
     ])
 
-    const { projectStatuses } = await import('@cairn/db')
+    const { projectRoles, projectStatuses } = await import('@cairn/db')
     await db.insert(projectStatuses).values([
       { workspaceId: ws.id, name: '計画中',     color: '#3B82F6', sortOrder: '1' },
       { workspaceId: ws.id, name: '審議中',     color: '#F59E0B', sortOrder: '2' },
@@ -88,17 +93,32 @@ export async function POST(req: Request) {
       { workspaceId: ws.id, name: '完了',       color: '#6B7280', sortOrder: '6' },
     ])
 
+    await db.insert(projectRoles).values([
+      { workspaceId: ws.id, name: 'リーダー',     color: '#3B82F6', sortOrder: 1, legacyRole: 'leader' },
+      { workspaceId: ws.id, name: 'サブリーダー', color: '#8B5CF6', sortOrder: 2, legacyRole: 'subleader' },
+      { workspaceId: ws.id, name: 'メンバー',     color: '#6B7280', sortOrder: 3, legacyRole: 'member' },
+    ])
+
     await db.insert(workspaceMembers).values({
       workspaceId: ws.id,
-      userId: user.id,
+      userId,
       role: 'owner',
     })
+
+    // ファーストパーティのアプリ（投票など）を既定でインストールする（§11 D7）。失敗してもワークスペースは作れたので止めず、
+    // 起動口・トークンを使う時点の ensureFirstPartyInstallations で欠けを補う
+    try {
+      const { ensureFirstPartyInstallations } = await import('@/lib/apps/first-party')
+      await ensureFirstPartyInstallations(ws.id)
+    } catch (err) {
+      console.warn('[auth/setup] first-party app installation failed (will retry lazily):', err)
+    }
 
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'member/upserted',
-        data: { userId: user.id, workspaceId: ws.id },
+        data: { userId, workspaceId: ws.id },
       })
     } catch (e) {
       console.warn('[/api/auth/setup] Inngest event send failed (indexing skipped):', e)

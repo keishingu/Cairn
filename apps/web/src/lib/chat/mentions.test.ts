@@ -3,14 +3,26 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+  ALL_MENTION_ID,
+  PROJECT_MEMBERS_MENTION_ID,
+  UNKNOWN_ATTRIBUTE_NAME,
+  UNKNOWN_MENTION_NAME,
+  attributeMentionTokenId,
+  extractAttributeMentionIds,
   extractMentionIds,
+  hasAllMention,
+  hasGroupMention,
+  hasProjectMembersMention,
   canonicalizeMentions,
   hydrateMentions,
   stripMentionsToText,
-  UNKNOWN_MENTION_NAME,
 } from './mentions'
 
-const names: Record<string, string> = { u1: '田中', u2: 'John Doe' }
+const names: Record<string, string> = {
+  u1: '田中',
+  u2: 'John Doe',
+  [attributeMentionTokenId('attr-1')]: 'コーチ',
+}
 const nameOf = (id: string) => names[id]
 
 describe('extractMentionIds', () => {
@@ -22,18 +34,35 @@ describe('extractMentionIds', () => {
     expect(extractMentionIds('<@u1> <@u1>')).toEqual(['u1'])
   })
 
+  it('@all / @project_members / 属性トークンは userId として抽出しない', () => {
+    expect(
+      extractMentionIds(`<@${ALL_MENTION_ID}> <@${PROJECT_MEMBERS_MENTION_ID}> <@attr:attr-1> <@u1>`),
+    ).toEqual(['u1'])
+  })
+
   it('メンションが無ければ空配列', () => {
     expect(extractMentionIds('ただのテキスト')).toEqual([])
   })
 })
 
-describe('canonicalizeMentions', () => {
-  it('旧形式の埋め込み名を除去して canonical 形式にする', () => {
-    expect(canonicalizeMentions('<@u1|田中> こんにちは')).toBe('<@u1> こんにちは')
+describe('グループメンション抽出', () => {
+  it('属性メンションの attributeId を抽出する', () => {
+    expect(extractAttributeMentionIds('<@attr:a1> と <@attr:a2|コーチ> <@attr:a1>')).toEqual(['a1', 'a2'])
   })
 
-  it('canonical 形式はそのまま保つ', () => {
-    expect(canonicalizeMentions('<@u1> やあ')).toBe('<@u1> やあ')
+  it('@all / @project_members の有無を判定する', () => {
+    expect(hasAllMention('<@all> 確認')).toBe(true)
+    expect(hasProjectMembersMention('<@project_members> 確認')).toBe(true)
+    expect(hasGroupMention('<@u1>')).toBe(false)
+    expect(hasGroupMention('<@attr:a1>')).toBe(true)
+  })
+})
+
+describe('canonicalizeMentions', () => {
+  it('旧形式の埋め込み名を除去して canonical 形式にする', () => {
+    expect(canonicalizeMentions('<@u1|田中> <@all|all> <@attr:a1|コーチ>')).toBe(
+      '<@u1> <@all> <@attr:a1>',
+    )
   })
 })
 
@@ -42,21 +71,26 @@ describe('hydrateMentions', () => {
     expect(hydrateMentions('<@u1> さん', nameOf)).toBe('<@u1|田中> さん')
   })
 
-  it('旧形式の埋め込み名より現在名を優先する（名前変更を反映）', () => {
-    expect(hydrateMentions('<@u1|古い名前> さん', nameOf)).toBe('<@u1|田中> さん')
+  it('@all / @project_members / 属性も解決する', () => {
+    expect(
+      hydrateMentions(
+        `<@${ALL_MENTION_ID}> <@${PROJECT_MEMBERS_MENTION_ID}> <@attr:attr-1>`,
+        nameOf,
+      ),
+    ).toBe('<@all|all> <@project_members|project_members> <@attr:attr-1|コーチ>')
   })
 
-  it('解決できない userId はフォールバック名で埋める', () => {
-    expect(hydrateMentions('<@unknown> さん', nameOf)).toBe(`<@unknown|${UNKNOWN_MENTION_NAME}> さん`)
+  it('解決できない userId / 属性はフォールバック名で埋める', () => {
+    expect(hydrateMentions('<@unknown> <@attr:missing>', nameOf)).toBe(
+      `<@unknown|${UNKNOWN_MENTION_NAME}> <@attr:missing|${UNKNOWN_ATTRIBUTE_NAME}>`,
+    )
   })
 })
 
 describe('stripMentionsToText', () => {
   it('最新名で @表示名 に変換する', () => {
-    expect(stripMentionsToText('<@u2|古い> やあ', nameOf)).toBe('@John Doe やあ')
-  })
-
-  it('nameOf 未指定なら旧形式の埋め込み名を使う', () => {
-    expect(stripMentionsToText('<@u1|田中> やあ')).toBe('@田中 やあ')
+    expect(stripMentionsToText('<@u2|古い> <@all> <@attr:attr-1>', nameOf)).toBe(
+      '@John Doe @all @コーチ',
+    )
   })
 })

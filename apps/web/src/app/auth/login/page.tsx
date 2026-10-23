@@ -7,6 +7,7 @@ import React from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/locale-provider'
 import { SocialAuthButtons } from '../_components/social-auth-buttons'
 
 export default function LoginPage() {
@@ -18,9 +19,14 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const t = useT()
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteToken = searchParams.get('invite')
+  const nextPath = searchParams.get('next')
+  const accountDeleted = searchParams.get('accountDeleted') === '1'
+  const callbackError = searchParams.get('error') === 'callback'
+  const safeNextPath = nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : null
 
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -36,7 +42,7 @@ function LoginForm() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
-      setError('メールアドレスまたはパスワードが正しくありません')
+      setError(t('Email or password is incorrect.'))
       setLoading(false)
       return
     }
@@ -59,7 +65,7 @@ function LoginForm() {
     if (body.needsWorkspace) {
       router.push('/onboarding')
     } else {
-      router.push('/projects')
+      router.push(safeNextPath ?? '/chats')
     }
     router.refresh()
   }
@@ -70,7 +76,7 @@ function LoginForm() {
         <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>アカウントにサインイン</div>
+        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('Sign in to your account')}</div>
       </div>
 
       <div style={{
@@ -80,19 +86,48 @@ function LoginForm() {
         padding: '28px 28px 24px',
         boxShadow: 'var(--shadow-sm)',
       }}>
-        <SocialAuthButtons inviteToken={inviteToken} />
+        {accountDeleted && (
+          <div
+            role="status"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--green-soft)',
+              color: 'var(--green-text)',
+              fontSize: 12.5,
+            }}
+          >
+            {t('Your account has been deleted.')}
+          </div>
+        )}
+        {callbackError && (
+          <div
+            role="alert"
+            style={{
+              padding: '8px 12px',
+              marginBottom: 16,
+              borderRadius: 8,
+              background: 'var(--red-soft)',
+              border: '1px solid var(--red)',
+              color: 'var(--red-text)',
+              fontSize: 12.5,
+            }}
+          >
+            {t('Could not finish signing in. Please try again.')}
+          </div>
+        )}
+        <SocialAuthButtons inviteToken={inviteToken} nextPath={safeNextPath} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>またはメールで続ける</span>
+          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{t('or continue with email')}</span>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              メールアドレス
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -114,9 +149,7 @@ function LoginForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-              パスワード
-            </label>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
@@ -153,20 +186,10 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: loading ? 'var(--border-2)' : 'var(--accent)',
-              color: loading ? 'var(--text-4)' : 'var(--on-accent)',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              marginTop: 4,
-            }}
+            className="btn btn-primary btn-lg"
+            style={{ marginTop: 4 }}
           >
-            {loading ? 'サインイン中...' : 'サインイン'}
+            {loading ? t('Signing in...') : t('Sign in')}
           </button>
         </form>
       </div>
@@ -174,12 +197,10 @@ function LoginForm() {
       <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
         <Link
           href={inviteToken ? `/auth/signup?invite=${inviteToken}` : '/auth/signup'}
-          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}
-        >
-          新しいワークスペースを作成する →
+          style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'none' }}>
+          {t('Create a new workspace →')}
         </Link>
       </div>
     </div>
   )
 }
-

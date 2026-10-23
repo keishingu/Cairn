@@ -1,7 +1,10 @@
 'use client'
 
 import React from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { avatarGradient, avatarInitial } from '@cairn/shared'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -48,6 +51,7 @@ const PATHS: Record<string, React.ReactNode> = {
   bell:        <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></>,
   'bell-off':  <><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M10.7 3.1a6 6 0 0 1 7.2 5c0 2.5-.5 4.2-1.1 5.5"/><path d="M6 9c0 2-.5 3.8-1 5"/><path d="M3 3l18 18"/><path d="M9 9a6 6 0 0 0-.4 2.1"/><path d="M3 9h1"/><path d="M21 12h-1"/></>,
   chevDown:    <><polyline points="6 9 12 15 18 9"/></>,
+  chevUp:      <><polyline points="6 15 12 9 18 15"/></>,
   chevRight:   <><polyline points="9 6 15 12 9 18"/></>,
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
   chevronsLeft:  <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>,
@@ -62,6 +66,7 @@ const PATHS: Record<string, React.ReactNode> = {
   pin:         <><path d="M12 17v5"/><path d="M9 11l-3 3h12l-3-3V3H9z"/></>,
   flag:        <><path d="M4 21V4h14l-3 5 3 5H4"/></>,
   arrowUp:     <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></>,
+  arrowDown:   <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></>,
   mountain:    <><path d="M3 20l6-9 4 6 3-4 5 7z"/><circle cx="9" cy="6" r="1.5"/></>,
   folder:      <><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
   download:    <><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></>,
@@ -76,6 +81,7 @@ const PATHS: Record<string, React.ReactNode> = {
   moon:        <><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></>,
   sun:         <><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/></>,
   book:        <><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5V4.5z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/></>,
+  grid:        <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
   list:        <><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></>,
   layers:      <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
   lock:        <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></>,
@@ -96,6 +102,8 @@ const PATHS: Record<string, React.ReactNode> = {
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
   reply:       <><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></>,
   bookmark:    <><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></>,
+  'external-link': <><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></>,
+  loader:      <><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></>,
   info:        <><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
 }
 
@@ -110,22 +118,6 @@ export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.
 )
 
 // ─── Avatar ───────────────────────────────────────────────────────
-const AV_GRADS = [
-  ['#34D399', '#10B981'],
-  ['#60A5FA', '#3B82F6'],
-  ['#F59E0B', '#F97316'],
-  ['#F472B6', '#EC4899'],
-  ['#A78BFA', '#7C3AED'],
-  ['#FB7185', '#E11D48'],
-  ['#22D3EE', '#0891B2'],
-  ['#FBBF24', '#D97706'],
-]
-function hashName(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
-
 interface AvatarProps {
   name?: string
   url?: string | null
@@ -135,8 +127,8 @@ interface AvatarProps {
 }
 
 export const Avatar = ({ name = '', url, size = 28, ring = false, style }: AvatarProps) => {
-  const initials = name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() : '?'
-  const g = AV_GRADS[hashName(name) % AV_GRADS.length]!
+  const initials = avatarInitial(name)
+  const g = avatarGradient(name)
   const base: React.CSSProperties = {
     width: size, height: size, borderRadius: '50%',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -220,16 +212,19 @@ interface ArchivedBadgeProps {
   onDark?: boolean
 }
 
-export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => {
+  const t = useT()
+  return (
   <span
     className="chip"
     style={onDark
       ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
       : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
   >
-    アーカイブ
+    {t('Archive')}
   </span>
-)
+  )
+}
 
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
@@ -303,15 +298,16 @@ export const Switch = ({ checked, onChange, disabled = false, size = 'md', title
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
-  height?: number
+  height?: number | string
+  imageWidth?: number
   flat?: boolean
   radius?: number | string
 }
 
-export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: MountainPhotoProps) => (
+export const MountainPhoto = ({ idx = 0, height = 200, imageWidth = 800, flat = false, radius }: MountainPhotoProps) => (
   <div style={{
     width: '100%', height,
-    backgroundImage: `url("${photoUrl(idx, 800, Math.round(height * 1.6))}")`,
+    backgroundImage: `url("${photoUrl(idx, imageWidth, typeof height === 'number' ? Math.round(height * 1.6) : imageWidth)}")`,
     backgroundSize: 'cover', backgroundPosition: 'center',
     borderRadius: radius != null ? radius : (flat ? 0 : '10px 10px 0 0'),
     backgroundColor: '#1f2937',
@@ -319,11 +315,13 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+export const TopBarSearch = ({ value, onChange, placeholder }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
 }) => {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('Search…')
   const inputRef = React.useRef<HTMLInputElement>(null)
   // ⌥S: 検索フォーカス
   useCommand('ctx.searchFocus', () => inputRef.current?.focus())
@@ -334,7 +332,7 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         ref={inputRef}
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
@@ -352,7 +350,9 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
 }
 
 // ─── Placeholder page ─────────────────────────────────────────────
-export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
+export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => {
+  const t = useT()
+  return (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
     <div style={{ maxWidth: 360, textAlign: 'center' }}>
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -360,32 +360,72 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
       </div>
       <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
-        このセクションはサイドバーから他のページへ移動できることを示すプレースホルダーです。実装時にはここに専用のビューが表示されます。
+        {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
     </div>
   </div>
-)
+  )
+}
 
 // ─── Modal ────────────────────────────────────────────────────────
-export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+// フォーカスの閉じ込め・背後の非表示（aria-hidden）・スクロール固定・重なったときの Escape は
+// Radix Dialog に任せる。自前で持つと portal・入れ子・無効ボタンなどの端のケースを追い切れないため。
+const visuallyHidden: React.CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
+}
+
+export const Modal = ({ onClose, label, role = 'dialog', children }: {
+  onClose: () => void
+  /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
+  label: string
+  role?: 'dialog' | 'alertdialog'
+  children: React.ReactNode
+}) => {
+  // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
+  const [opener] = React.useState(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  )
 
   return (
-    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-      {children}
-    </div>
+    <DialogPrimitive.Root open onOpenChange={open => { if (!open) onClose() }}>
+      {/* portal にすると .app / .app-root のテーマ変数・ボタン用クラスが効かなくなるため、その場に描画する */}
+      <DialogPrimitive.Content
+        data-cairn-modal
+        role={role}
+        aria-describedby={undefined}
+        // 背景幕のクリックは下の div で扱う。トーストなど中身の外にある要素への操作では閉じない
+        onInteractOutside={e => e.preventDefault()}
+        onCloseAutoFocus={e => {
+          e.preventDefault()
+          if (opener && document.contains(opener)) opener.focus()
+        }}
+        style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      >
+        {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
+        <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
+        {/* 背景幕は中身の後ろに置く。中身が position を持たないと、absolute の背景幕が手前に描かれて暗く、押せなくなる */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: -1, background: 'var(--overlay)' }} onClick={onClose}/>
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Root>
   )
+}
+
+/**
+ * createPortal の出し先。モーダルの中ならモーダル内に出して、フォーカスの閉じ込めや背後の非表示の
+ * 対象に含める（外に出すとフォーカスできない・読み上げられない）。それ以外はテーマ変数の効く .app-root。
+ */
+export function portalHostFor(el: Element | null | undefined): HTMLElement | null {
+  return el?.closest<HTMLElement>('[data-cairn-modal]') ?? el?.closest<HTMLElement>('.app-root') ?? null
 }
 
 export const ModalHeader = ({ icon, title, subtitle, onClose }: {
   icon?: string; title: string; subtitle?: string; onClose: () => void
-}) => (
-  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
+}) => {
+  const t = useT()
+  return (
+  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
     {icon && (
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={16}/>
@@ -395,14 +435,12 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-    >
+    <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
     </button>
   </header>
-)
+  )
+}
 
 // ─── Form field ───────────────────────────────────────────────────
 interface FieldProps {
@@ -434,7 +472,7 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     width: '100%', height: 36, padding: '0 12px',
     border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    fontSize: 13, fontFamily: 'inherit',
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
@@ -468,8 +506,8 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
       background: 'var(--accent)', color: 'var(--on-accent)',
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-      zIndex: 50,
+      boxShadow: 'var(--shadow-fab)',
+      zIndex: 'var(--z-nav)',
     }}
   >
     <Icon name="plus" size={22}/>

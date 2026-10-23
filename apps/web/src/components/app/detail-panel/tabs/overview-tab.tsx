@@ -1,23 +1,35 @@
 'use client'
 
 import React from 'react'
+import { useRouter } from 'next/navigation'
 import { Icon, StatusChip } from '../../primitives'
 import { ConfirmDialog } from '../../confirm-dialog'
+import { InlineError } from '../../inline-error'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { LocationInput } from '../../location-input'
 import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
+import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
+import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 
-export function formatDateRange(start: string | null, end: string | null): string {
-  if (!start) return '—'
+const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
+
+export function formatDateRange(start: string | null, end: string | null, startTime?: string | null, endTime?: string | null): string {
   const fmt = (d: string) => {
     const [, m, day] = d.split('-')
     return `${Number(m)}/${Number(day)}`
   }
-  return end && end !== start ? `${fmt(start)} ~ ${fmt(end)}` : fmt(start)
+  const st = formatTime(startTime ?? null)
+  const et = formatTime(endTime ?? null)
+  if (!start) return end ? `~ ${fmt(end)}${et ? ` ${et}` : ''}` : '—'
+  const startLabel = `${fmt(start)}${st ? ` ${st}` : ''}`
+  if (!end || end === start) return et ? `${startLabel} ~ ${et}` : startLabel
+  return `${startLabel} ~ ${fmt(end)}${et ? ` ${et}` : ''}`
 }
 
 const cardLabelStyle: React.CSSProperties = {
@@ -93,88 +105,205 @@ const InlineText = ({
   )
 }
 
-const InlineDatePair = ({
-  startDate, endDate, onSave, readOnly = false,
+export const InlineDatePair = ({
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false,
 }: {
   startDate: string | null
   endDate: string | null
-  onSave: (start: string | null, end: string | null) => void
+  startTime?: string | null
+  endTime?: string | null
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
+  const [startClock, setStartClock] = React.useState(formatTime(startTime) ?? '')
+  const [endClock, setEndClock] = React.useState(formatTime(endTime) ?? '')
   const wrapRef = React.useRef<HTMLDivElement>(null)
 
-  React.useEffect(() => { setStart(startDate ?? ''); setEnd(endDate ?? '') }, [startDate, endDate])
+  React.useEffect(() => {
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
+  }, [startDate, endDate, startTime, endTime])
+
+  // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
+  const openRef = React.useRef(false)
+  const reversed = isEndBeforeStart(start, end)
+  const dateErrorId = React.useId()
 
   const commit = () => {
+    if (!openRef.current) return
+    // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
+    if (reversed) return
+    openRef.current = false
     setEditing(false)
     const ns = start || null
     const ne = end || null
-    if (ns !== startDate || ne !== endDate) onSave(ns, ne)
+    const nst = startClock || null
+    const net = endClock || null
+    if (ns !== startDate || ne !== endDate || nst !== formatTime(startTime) || net !== formatTime(endTime)) onSave(ns, ne, nst, net)
   }
 
   const cancel = () => {
+    openRef.current = false
     setEditing(false)
     setStart(startDate ?? '')
     setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
   }
 
-  // フォーカスがペア全体から外れた時だけ確定する（開始↔終了の移動では確定しない）
+  // フォーカスが別の要素へ移った時だけ確定する（開始↔終了の移動では確定しない）。
+  // スマホのネイティブピッカーを閉じると移動先のない blur が来るため、そこで確定すると
+  // 終了日に触れる前に編集欄が閉じてしまう
   const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    if (wrapRef.current?.contains(e.relatedTarget as Node | null)) return
+    const next = e.relatedTarget as Node | null
+    if (!next || wrapRef.current?.contains(next)) return
     commit()
   }
 
+  // 移動先のない blur では確定しない代わりに、ペアの外を押した時に確定する
+  const commitRef = React.useRef(commit)
+  commitRef.current = commit
+  React.useEffect(() => {
+    if (!editing) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (wrapRef.current?.contains(e.target as Node | null)) return
+      commitRef.current()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [editing])
+
+  // タッチ端末では押しやすい高さにし、iOS が 16px 未満の入力欄をフォーカス時に拡大するのを避ける
+  const [coarse, setCoarse] = React.useState(false)
+  React.useEffect(() => {
+    setCoarse(window.matchMedia?.('(pointer: coarse)').matches ?? false)
+  }, [])
+
   const inputStyle: React.CSSProperties = {
-    height: 30, padding: '0 8px', borderRadius: 6,
+    height: coarse ? 40 : 30, padding: coarse ? '0 6px' : '0 8px', borderRadius: 6, minWidth: 0, boxSizing: 'border-box',
     border: '1px solid var(--border)', background: 'var(--card)',
-    color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    color: 'var(--text)', fontSize: coarse ? 16 : 12.5, fontFamily: 'inherit', outline: 'none',
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') cancel()
+    if (e.key === 'Enter') commit()
   }
 
   if (!editing) {
     return (
       <button
-        onClick={() => { if (!readOnly) setEditing(true) }}
+        onClick={() => { if (!readOnly) { openRef.current = true; setEditing(true) } }}
         disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 4,
           padding: '2px 0', border: 'none',
           background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
         }}
-        title={readOnly ? undefined : 'クリックして編集'}
+        title={readOnly ? undefined : t('Click to edit')}
       >
         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
-          {formatDateRange(startDate, endDate)}
+          {formatDateRange(startDate, endDate, startTime, endTime)}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
     )
   }
 
+  const dateStyle: React.CSSProperties = { ...inputStyle, flex: '1 1 132px' }
+  const timeStyle: React.CSSProperties = { ...inputStyle, flex: '1 1 96px' }
+  const rowStyle: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4 }
+
+  // 開始と終了を別の行に分ける。スマホの概要カードは日付1つ分の幅しかなく、
+  // 4つを1列に流すとどれが終了日か分からなくなる
   return (
     <div
       ref={wrapRef}
       onBlur={handleBlur}
-      style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
-      <input
-        type="date"
-        value={start}
-        autoFocus
-        onChange={e => setStart(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={inputStyle}
-      />
-      <span style={{ color: 'var(--text-4)', fontSize: 12 }}>〜</span>
-      <input
-        type="date"
-        value={end}
-        onChange={e => setEnd(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Escape') cancel() }}
-        style={inputStyle}
-      />
+      <div style={rowStyle}>
+        <input
+          type="date"
+          value={start}
+          autoFocus
+          aria-label={t('Start date')}
+          onChange={e => setStart(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={dateStyle}
+        />
+        <input
+          type="time"
+          value={startClock}
+          aria-label={t('Start time')}
+          onChange={e => setStartClock(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={timeStyle}
+        />
+      </div>
+      <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
+      <div style={rowStyle}>
+        <input
+          type="date"
+          value={end}
+          // ピッカー側でも開始日より前を選びにくくする（手入力や開始日の変更では超えられるので、下でも判定する）
+          min={start || undefined}
+          aria-label={t('End date')}
+          aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
+          onChange={e => setEnd(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
+        />
+        <input
+          type="time"
+          value={endClock}
+          aria-label={t('End time')}
+          onChange={e => setEndClock(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={timeStyle}
+        />
+      </div>
+      {reversed && (
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+        {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
+        <button
+          type="button"
+          onClick={cancel}
+          style={{
+            // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+          }}
+        >
+          {t('Cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={commit}
+          disabled={reversed}
+          style={{
+            height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
+            background: 'var(--accent)', color: 'var(--on-accent)',
+            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            cursor: reversed ? 'default' : 'pointer', opacity: reversed ? 0.5 : 1,
+          }}
+        >
+          {t('Done')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -186,6 +315,7 @@ const InlineStatus = ({
   onSave: (name: string) => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
 
@@ -210,14 +340,14 @@ const InlineStatus = ({
           background: 'transparent', border: 'none',
           padding: '2px 0', cursor: readOnly ? 'default' : 'pointer',
         }}
-        title={readOnly ? undefined : 'クリックして変更'}
+        title={readOnly ? undefined : t('Click to change')}
       >
         <StatusChip name={statusName ?? '—'} color={statuses.find(s => s.name === statusName)?.color ?? '#9CA3AF'}/>
         {!readOnly && <Icon name="chevDown" size={11} color="var(--text-4)"/>}
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20,
+          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 'var(--z-dropdown)',
           background: 'var(--card)', border: '1px solid var(--border)',
           borderRadius: 9, boxShadow: 'var(--shadow-lg)', minWidth: 140, padding: 4,
         }}>
@@ -232,8 +362,7 @@ const InlineStatus = ({
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }}/>
               {s.name}
@@ -254,6 +383,7 @@ const InlineLocation = ({
   onClear: () => void
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
 
   const inputStyle: React.CSSProperties = {
@@ -275,11 +405,11 @@ const InlineLocation = ({
           background: 'transparent', cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
           maxWidth: '100%',
         }}
-        title={readOnly ? undefined : 'クリックして編集'}
+        title={readOnly ? undefined : t('Click to edit')}
       >
         <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
         <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {location ?? (readOnly ? '未設定' : '場所を設定…')}
+          {location ?? (readOnly ? t('Not set') : t('Set a location…'))}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
@@ -293,15 +423,292 @@ const InlineLocation = ({
         onSelect={(desc, pid) => { onSave(desc, pid); setEditing(false) }}
         onClear={() => { onClear(); setEditing(false) }}
         inputStyle={inputStyle}
-        placeholder="場所を検索…"
+        placeholder={t('Search for a place…')}
       />
       <button
         onClick={() => setEditing(false)}
         className="btn btn-ghost"
         style={{ alignSelf: 'flex-start', height: 26, fontSize: 11.5, padding: '0 8px' }}
       >
-        キャンセル
+        {t('Cancel')}
       </button>
+    </div>
+  )
+}
+
+const isPastDue = (milestone: MilestoneDto) => {
+  if (milestone.completed || !milestone.endDate) return false
+  const today = new Date()
+  const yyyy = today.getFullYear()
+  const mm = String(today.getMonth() + 1).padStart(2, '0')
+  const dd = String(today.getDate()).padStart(2, '0')
+  return milestone.endDate < `${yyyy}-${mm}-${dd}`
+}
+
+export const MilestoneCreateForm = ({ onCreate, disabled }: {
+  onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
+  disabled?: boolean
+}) => {
+  const t = useT()
+  const [open, setOpen] = React.useState(false)
+  const [title, setTitle] = React.useState('')
+  const [description, setDescription] = React.useState('')
+  const [startDate, setStartDate] = React.useState('')
+  const [endDate, setEndDate] = React.useState('')
+  const [startTime, setStartTime] = React.useState('')
+  const [endTime, setEndTime] = React.useState('')
+
+  const reversed = isEndBeforeStart(startDate, endDate)
+  const dateErrorId = React.useId()
+
+  const reset = () => {
+    setTitle('')
+    setDescription('')
+    setStartDate('')
+    setEndDate('')
+    setStartTime('')
+    setEndTime('')
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = title.trim()
+    if (!trimmed) return
+    // 送信するとフォームを閉じて入力を消すため、サーバーに拒否される逆転した期間は送る前に止める
+    if (reversed) return
+    onCreate({
+      title: trimmed,
+      ...(description.trim() ? { description: description.trim() } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+      ...(startTime ? { startTime } : {}),
+      ...(endTime ? { endTime } : {}),
+    })
+    reset()
+    setOpen(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        className="btn btn-ghost"
+        style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+      >
+        <Icon name="plus" size={12}/> {t('Add')}
+      </button>
+    )
+  }
+
+  const inputStyle: React.CSSProperties = {
+    height: 32,
+    border: '1px solid var(--border)',
+    borderRadius: 7,
+    background: 'var(--card)',
+    color: 'var(--text)',
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    padding: '0 9px',
+    outline: 'none',
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)' }}>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t('Title')} autoFocus style={inputStyle}/>
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        placeholder={t('Description')}
+        rows={2}
+        style={{ ...inputStyle, height: 'auto', resize: 'vertical', paddingTop: 8, lineHeight: 1.5 }}
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
+        <input
+          type="date"
+          value={endDate}
+          min={startDate || undefined}
+          onChange={e => setEndDate(e.target.value)}
+          aria-label={t('End date')}
+          aria-invalid={reversed}
+          aria-describedby={reversed ? dateErrorId : undefined}
+          style={reversed ? { ...inputStyle, border: '1px solid var(--red)' } : inputStyle}
+        />
+      </div>
+      {reversed && (
+        // 終了日の入力欄から参照できるよう id を持つ要素で包む
+        <div id={dateErrorId}>
+          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
+        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>
+        <button type="submit" className="btn btn-primary" disabled={!title.trim() || reversed}>{t('Create entry')}</button>
+      </div>
+    </form>
+  )
+}
+
+const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
+  milestone: MilestoneDto
+  canEdit: boolean
+  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => void
+  onDelete: (milestone: MilestoneDto) => void
+}) => {
+  const t = useT()
+  const router = useRouter()
+  const overdue = isPastDue(milestone)
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => router.push(`/chats/${milestone.channelId}`)}
+      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) router.push(`/chats/${milestone.channelId}`) }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr auto',
+        gap: 8,
+        padding: 10,
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        background: milestone.completed ? 'var(--card)' : 'var(--card-2)',
+        cursor: 'pointer',
+        opacity: milestone.completed ? 0.72 : 1,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={milestone.completed}
+        disabled={!canEdit}
+        onClick={e => e.stopPropagation()}
+        onChange={e => onPatch(milestone.id, { completed: e.target.checked })}
+        style={{ marginTop: 7, cursor: canEdit ? 'pointer' : 'not-allowed' }}
+        aria-label={t('Complete')}
+      />
+      <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>
+        <InlineText
+          value={milestone.title}
+          onSave={v => onPatch(milestone.id, { title: v })}
+          placeholder={t('Milestone name')}
+          required
+          readOnly={!canEdit}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: overdue ? 700 : 500 }}>
+            <Icon name="calendar" size={11}/>
+            <InlineDatePair
+              startDate={milestone.startDate}
+              endDate={milestone.endDate}
+              startTime={milestone.startTime}
+              endTime={milestone.endTime}
+              onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
+              readOnly={!canEdit}
+            />
+          </span>
+          <button
+            type="button"
+            onClick={() => router.push(`/chats/${milestone.channelId}`)}
+            className="btn btn-ghost"
+            style={{ height: 24, fontSize: 11.5, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
+            <Icon name="chat" size={11}/> {t('Thread')}
+          </button>
+        </div>
+        <InlineText
+          value={milestone.description ?? ''}
+          onSave={v => onPatch(milestone.id, { description: v || null })}
+          placeholder={t('Enter a description…')}
+          multiline
+          readOnly={!canEdit}
+        />
+      </div>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onDelete(milestone) }}
+          aria-label={t('Delete milestone')}
+          style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer' }}
+        >
+          <Icon name="trash" size={13}/>
+        </button>
+      )}
+    </div>
+  )
+}
+
+const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: boolean }) => {
+  const t = useT()
+  const milestones = useProjectMilestones(projectId)
+  const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
+
+  // API のエラー文は日本語固定で、通信失敗ではブラウザの英語文も来る。そのまま出すと表示言語と食い違うため、
+  // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
+  // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
+  const milestoneErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message === DATE_ORDER_ERROR
+      ? t('End date must be on or after the start date')
+      : fallback
+
+  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
+    milestones.patchMutation.mutate(
+      { id, input },
+      { onError: error => toast.error(milestoneErrorMessage(error, t('Could not update this milestone'))) },
+    )
+  }
+
+  return (
+    <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ ...cardLabelStyle, marginBottom: 0 }}>{t('Milestones')}</div>
+        <div style={{ marginLeft: 'auto' }}>
+          <MilestoneCreateForm
+            disabled={!canEdit || milestones.createMutation.isPending}
+            onCreate={input => milestones.createMutation.mutate(input, {
+              onSuccess: () => toast.success(t('Milestone created')),
+              onError: error => toast.error(milestoneErrorMessage(error, t('Could not create the milestone'))),
+            })}
+          />
+        </div>
+      </div>
+      {milestones.isLoading ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading…')}</div>
+      ) : milestones.isError ? (
+        <div style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
+      ) : milestones.data && milestones.data.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {milestones.data.map(m => (
+            <MilestoneRow
+              key={m.id}
+              milestone={m}
+              canEdit={canEdit}
+              onPatch={handlePatch}
+              onDelete={setDeleteTarget}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: 'var(--text-4)', lineHeight: 1.6 }}>
+          {t('No milestones yet.')}
+        </div>
+      )}
+      <ConfirmDialog
+        open={deleteTarget != null}
+        title={t('Delete milestone')}
+        message={deleteTarget ? t('Delete "{name}"? This also deletes every message in the milestone thread. This cannot be undone.', { name: deleteTarget.title }) : ''}
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          await milestones.deleteMutation.mutateAsync(deleteTarget.id)
+          toast.success(t('Milestone deleted'))
+        }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
@@ -313,6 +720,7 @@ interface OverviewTabProps {
 }
 
 export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
+  const t = useT()
   const patch = usePatchProject(project.id)
   const archivePatch = usePatchProject(project.id)
   const deleteMutation = useDeleteProject(project.id)
@@ -329,32 +737,30 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       <InlineText
         value={project.title}
         onSave={v => patch.mutate({ title: v })}
-        placeholder="プロジェクト名"
+        placeholder={t('Project name')}
         large
         required
         readOnly={readOnly}
       />
 
       {patch.isError && (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', marginTop: -10 }}>
-          ⚠ {(patch.error as Error).message}
-        </div>
+        <InlineError style={{ fontSize: 11.5, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
 
       {/* 日程 + ステータス */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>日程</div>
+          <div style={cardLabelStyle}>{t('Dates')}</div>
           <InlineDatePair
             startDate={project.startDate}
             endDate={project.endDate}
             onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
             readOnly={readOnly}
           />
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{project.memberCount}人参加</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>ステータス</div>
+          <div style={cardLabelStyle}>{t('Status')}</div>
           <InlineStatus
             statusName={project.statusName}
             onSave={name => patch.mutate({ statusName: name })}
@@ -365,7 +771,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 場所 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>場所</div>
+        <div style={cardLabelStyle}>{t('Location')}</div>
         <InlineLocation
           location={project.location}
           onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
@@ -376,59 +782,61 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* サマリー */}
       <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>サマリー</div>
+        <div style={cardLabelStyle}>{t('Summary')}</div>
         <InlineText
           value={project.description ?? ''}
           onSave={v => patch.mutate({ description: v || null })}
-          placeholder="プロジェクトの概要や目標をクリックして入力…"
+          placeholder={t('Click to enter a summary or goals…')}
           multiline
           readOnly={readOnly}
         />
       </div>
 
+      <MilestoneSection projectId={project.id} canEdit={canEdit} />
+
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>アーカイブ</div>
+        <div style={cardLabelStyle}>{t('Archive')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
           {project.archived
-            ? 'このプロジェクトはアーカイブされています。解除するとプロジェクト一覧に再表示されます。'
-            : 'アーカイブすると一覧の「アーカイブ」タブに移動します。データは保持されます。'}
+            ? t('This project is archived. Unarchiving shows it in the project list again.')
+            : t('Archiving moves it to the Archive tab. Data is kept.')}
         </div>
         <button
           onClick={() => archivePatch.mutate(
             { archived: !project.archived },
             {
-              onSuccess: () => toast.success(project.archived ? 'アーカイブを解除しました' : 'アーカイブしました'),
-              onError: () => toast.error('操作に失敗しました'),
+              onSuccess: () => toast.success(project.archived ? t('Project unarchived') : t('Project archived')),
+              onError: () => toast.error(t('The action failed')),
             },
           )}
           disabled={archivePatch.isPending || !canEdit}
-          title={canEdit ? undefined : 'アーカイブの変更にはメンバー以上の権限が必要です'}
+          title={canEdit ? undefined : t('Changing the archive requires member access or higher')}
           className="btn btn-ghost"
           style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
-          <Icon name={project.archived ? 'refresh' : 'close'} size={11}/>
-          {archivePatch.isPending ? '処理中…' : project.archived ? 'アーカイブを解除する' : 'アーカイブする'}
+          <Icon name={project.archived ? 'refresh' : 'archive'} size={13}/>
+          {archivePatch.isPending ? t('Working...') : project.archived ? t('Unarchive') : t('Archive project')}
         </button>
       </div>
 
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>削除</div>
+        <div style={cardLabelStyle}>{t('Delete')}</div>
         <button
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}
-          title={canDelete ? undefined : 'プロジェクトの削除には管理者以上の権限が必要です'}
+          title={canDelete ? undefined : t('Deleting a project requires admin access or higher')}
           style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
         >
-          プロジェクトを削除する
+          {t('Delete this project')}
         </button>
       </div>
 
       <ConfirmDialog
         open={confirmDelete}
-        title="プロジェクトを削除"
-        message={`「${project.title}」を削除しますか？チャット・ファイル・タスクを含むすべてのデータが完全に削除されます。この操作は取り消せません。`}
+        title={t('Delete project')}
+        message={t('Delete "{name}"? Chat, files, tasks, and all other data will be permanently deleted. This cannot be undone.', { name: project.title })}
         onConfirm={async () => {
           await deleteMutation.mutateAsync()
           onDeleted()

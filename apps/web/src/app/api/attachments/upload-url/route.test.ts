@@ -7,18 +7,53 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockRequireChannelAccess, mockCreateSignedUploadUrl } = vi.hoisted(() => ({
+const {
+  mockGetAuthContext,
+  mockRequireChannelAccess,
+  mockResolveUploadEntitlements,
+  mockCreateSignedUploadUrl,
+  mockInsertValues,
+  mockDeleteWhere,
+  mockHasAttachmentUploadRequestSchema,
+  mockUpdateSet,
+} = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
-  mockCreateSignedUploadUrl: vi.fn().mockResolvedValue({ data: { token: 'tok', path: 'p' }, error: null }),
+  mockResolveUploadEntitlements: vi.fn(),
+  mockCreateSignedUploadUrl: vi
+    .fn()
+    .mockResolvedValue({ data: { token: 'tok', path: 'p' }, error: null }),
+  mockInsertValues: vi.fn(),
+  mockDeleteWhere: vi.fn(),
+  mockHasAttachmentUploadRequestSchema: vi.fn(),
+  mockUpdateSet: vi.fn(),
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireChannelAccess: mockRequireChannelAccess }))
+vi.mock('@/lib/billing/entitlements', () => ({
+  resolveUploadEntitlements: mockResolveUploadEntitlements,
+}))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: { from: () => ({ createSignedUploadUrl: mockCreateSignedUploadUrl }) },
   }),
+}))
+vi.mock('@/lib/uploads/schema-readiness', () => ({
+  hasAttachmentUploadRequestSchema: mockHasAttachmentUploadRequestSchema,
+}))
+vi.mock('@cairn/db', () => ({
+  db: {
+    insert: () => ({
+      values: (values: unknown) => {
+        mockInsertValues(values)
+        return { returning: () => Promise.resolve([{ id: 'upload-1' }]) }
+      },
+    }),
+    delete: () => ({ where: mockDeleteWhere }),
+    update: () => ({ set: mockUpdateSet }),
+  },
+  uploadRequests: { id: 'upload_requests.id' },
 }))
 
 function post(body: unknown): Request {
@@ -27,11 +62,14 @@ function post(body: unknown): Request {
 
 describe('/api/attachments/upload-url', () => {
   beforeEach(() => {
+    mockHasAttachmentUploadRequestSchema.mockResolvedValue(true)
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
       error: null,
     })
     mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    mockUpdateSet.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
   })
 
   afterEach(() => {
@@ -44,7 +82,14 @@ describe('/api/attachments/upload-url', () => {
     )
 
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 100 }))
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 6 * 1024 * 1024,
+      }),
+    )
 
     expect(res.status).toBe(403)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
@@ -52,7 +97,14 @@ describe('/api/attachments/upload-url', () => {
 
   it('10MBを超えるファイルは拒否する', async () => {
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'big.pdf', mimeType: 'application/pdf', fileSize: 11 * 1024 * 1024 }))
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'big.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 11 * 1024 * 1024,
+      }),
+    )
 
     expect(res.status).toBe(400)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
@@ -60,36 +112,97 @@ describe('/api/attachments/upload-url', () => {
 
   it('対応していないMIMEタイプは拒否する', async () => {
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.exe', mimeType: 'application/x-msdownload', fileSize: 100 }))
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'a.exe',
+        mimeType: 'application/x-msdownload',
+        fileSize: 100,
+      }),
+    )
 
     expect(res.status).toBe(400)
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
   })
 
+  it('原本保存の権利が無い場合は署名付きURLを発行しない', async () => {
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 6 * 1024 * 1024,
+      }),
+    )
+
+    expect(res.status).toBe(403)
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
+  })
+
   it('妥当なリクエストには署名付きURLトークンと正規化後MIMEを返す', async () => {
     const { POST } = await import('./route')
-    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'data.csv', mimeType: 'application/vnd.ms-excel', fileSize: 100 }))
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'data.csv',
+        mimeType: 'application/vnd.ms-excel',
+        fileSize: 100,
+      }),
+    )
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { token: string; storagePath: string; mimeType: string }
+    const body = (await res.json()) as { token: string; storagePath: string; mimeType: string }
     expect(body.token).toBe('tok')
     expect(body.mimeType).toBe('text/csv')
-    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
+    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/`)).toBe(
+      true,
+    )
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedBy: DEV_USER_ID,
+        storageBucket: 'chat-attachments',
+        derivedStoragePath: body.storagePath,
+      }),
+    )
   })
 
   it('拡張子が無いファイル名ではMIMEタイプから保存パスの拡張子を補完する', async () => {
     const { POST } = await import('./route')
-    const res = await POST(post({
-      channelId: CHANNEL_ID,
-      fileName: '三洋物産様向け提案資料_v0_1',
-      mimeType: 'application/pdf',
-      fileSize: 100,
-    }))
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: '三洋物産様向け提案資料_v0_1',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+      }),
+    )
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { storagePath: string; mimeType: string }
+    const body = (await res.json()) as { storagePath: string; mimeType: string }
     expect(body.mimeType).toBe('application/pdf')
-    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/`)).toBe(true)
+    expect(body.storagePath.startsWith(`${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/`)).toBe(
+      true,
+    )
     expect(body.storagePath.endsWith('.pdf')).toBe(true)
+  })
+
+  it('migration適用前は署名付きURLを発行しない', async () => {
+    mockHasAttachmentUploadRequestSchema.mockResolvedValue(false)
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'a.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 100,
+      }),
+    )
+
+    expect(res.status).toBe(503)
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
   })
 })

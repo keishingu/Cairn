@@ -3,8 +3,10 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
-import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
+import { isWorkspaceAdmin } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
+import type { ProfileAttributeDto } from '@cairn/shared'
 
 export interface WorkspaceMemberDto {
   userId: string
@@ -12,16 +14,18 @@ export interface WorkspaceMemberDto {
   email: string | null
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
+  membershipStatus: 'active' | 'inactive'
+  profileAttributes: ProfileAttributeDto[]
   joinedAt: string
   projectCount: number
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   try {
-    const admin = createServiceRoleClient()
+    const statusParam = new URL(req.url).searchParams.get('status')
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
@@ -29,8 +33,10 @@ export async function GET() {
     // ゲストはワークスペース全体のメンバー一覧を見られない。
     // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
     // 参加していないプロジェクトの存在が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     const isGuest = callerRole === 'guest'
+    const includeInactive = statusParam === 'all' && isWorkspaceAdmin(callerRole)
+    const activeOnly = !includeInactive
 
     let guestProjectIds: string[] = []
     let visibleUserIds: string[] = []
@@ -73,9 +79,10 @@ export async function GET() {
     const rows = await db
       .select({
         userId: profiles.id,
-        displayName: profiles.displayName,
+        displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
+        membershipStatus: workspaceMembers.membershipStatus,
         joinedAt: workspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
@@ -84,19 +91,32 @@ export async function GET() {
       .leftJoin(projectCountSq, eq(projectCountSq.userId, workspaceMembers.userId))
       .where(
         isGuest
-          ? and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, visibleUserIds))
-          : eq(workspaceMembers.workspaceId, ctx.workspaceId),
+          ? and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              inArray(workspaceMembers.userId, visibleUserIds),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
+            )
+          : and(
+              eq(workspaceMembers.workspaceId, ctx.workspaceId),
+              ...(activeOnly ? [eq(workspaceMembers.membershipStatus, 'active')] : []),
+            ),
       )
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
-
+    const profileAttributes = await getProfileAttributesByUserIds(
+      ctx.workspaceId,
+      rows.map(row => row.userId),
+    )
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      email: emails.get(r.userId) ?? null,
+      // Email is intentionally not exposed by the general member-list API.
+      // Keep the field temporarily for DTO compatibility while callers migrate away from it.
+      email: null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
+      membershipStatus: r.membershipStatus,
+      profileAttributes: profileAttributes.get(r.userId) ?? [],
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),
     }))

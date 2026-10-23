@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { z } from 'zod'
+import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
+import { AI_CHAT_MODELS, AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
+import { CALENDAR_WEEK_STARTS } from '../config/calendar'
+import { LOCALE_PREFERENCES } from '../config/locale'
+import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
+
+const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
 export const createProjectSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -22,11 +29,34 @@ export const updateProjectStatusSchema = z.object({
   statusId: z.string().uuid(),
 })
 
+export const createMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  description: z.string().max(1000).optional(),
+  startDate: z.string().date().optional(),
+  endDate: z.string().date().optional(),
+  startTime: timeStringSchema.optional(),
+  endTime: timeStringSchema.optional(),
+})
+
+export const patchMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  startTime: timeStringSchema.nullable().optional(),
+  endTime: timeStringSchema.nullable().optional(),
+  completed: z.boolean().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
 export const postMessageSchema = z
   .object({
     channelId: z.string().uuid(),
     content: z.string().max(10000).default(''),
     messageType: z.enum(['text', 'html']).default('text'),
+    clientMessageId: z.string().uuid().optional(),
     parentMessageId: z.string().uuid().optional(),
     attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
   })
@@ -40,17 +70,23 @@ export const editMessageSchema = z.object({
 })
 
 export const createTaskSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
+  channelId: z.string().uuid().optional(),
   title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(10000).optional(),
   priority: z.enum(['high', 'medium', 'low']).default('medium'),
   assigneeId: z.string().uuid().optional(),
   dueDate: z.string().date().optional(),
-})
+}).refine(
+  data => !(data.projectId && data.channelId),
+  { message: 'projectId and channelId cannot both be specified' },
+)
 
 export const updateTaskSchema = z.object({
   title: z.string().min(1).max(200).optional(),
+  description: z.string().max(10000).nullable().optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
   dueDate: z.string().date().nullable().optional(),
   status: z.enum(['todo', 'in_progress', 'done']).optional(),
 }).refine(
@@ -58,22 +94,138 @@ export const updateTaskSchema = z.object({
   { message: 'At least one field is required' },
 )
 
-export const uploadGalleryItemSchema = z.object({
-  projectId: z.string().uuid(),
-  fileId: z.string().uuid(),
-  caption: z.string().max(500).optional(),
-  takenAt: z.string().datetime().optional(),
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
+export const patchProjectSchema = z.object({
+  title: z.string().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  startDate: z.string().date().nullable().optional(),
+  endDate: z.string().date().nullable().optional(),
+  statusName: z.string().max(100).optional(),
+  archived: z.boolean().optional(),
+  coverPhotoUrl: z.string().url().nullable().optional(),
+  placePhotoName: z.string().max(500).optional(),
+  location: z.string().max(500).nullable().optional(),
+  placeId: z.string().max(500).nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchWorkspaceSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  logoUrl: z.string().url().nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchMeSchema = z.object({
+  displayName: z.string().trim().min(1).max(100).optional(),
+  bio: z.string().max(1000).nullable().optional(),
+  status: z.enum(['online', 'away', 'busy', 'offline']).optional(),
+  statusMessage: z.string().max(100).nullable().optional(),
+  aiNudgesEnabled: z.boolean().optional(),
+  theme: z.enum(APPEARANCE_THEMES).optional(),
+  accentId: z.enum(ACCENT_IDS).optional(),
+  locale: z.enum(LOCALE_PREFERENCES).optional(),
+  calendarWeekStart: z.enum(CALENDAR_WEEK_STARTS).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const createProjectStatusSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 })
+
+export const createProjectRoleSchema = z.object({
+  name: z.string().trim().min(1).max(30),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+})
+
+export const patchProjectRoleSchema = z.object({
+  name: z.string().trim().min(1).max(30).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const assignProjectRoleSchema = z.object({
+  roleId: z.string().uuid(),
+})
+
+const profileAttributeNameSchema = z.string().trim().min(1).max(20)
+export const profileAttributeColorSchema = z.enum(PROFILE_ATTRIBUTE_COLOR_IDS)
+
+export const createProfileAttributeSchema = z.object({
+  name: profileAttributeNameSchema,
+  color: profileAttributeColorSchema,
+})
+
+export const patchProfileAttributeSchema = z.object({
+  name: profileAttributeNameSchema.optional(),
+  color: profileAttributeColorSchema.optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+
+export const patchProfileAttributesSchema = z.object({
+  attributeIds: z
+    .array(z.string().uuid())
+    .max(5)
+    .superRefine((attributeIds, ctx) => {
+      if (new Set(attributeIds).size !== attributeIds.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '同じ属性は設定できません' })
+      }
+    }),
+})
+
+export const patchWorkspaceSettingsSchema = z.object({
+  // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
+  projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
+  aiNudgesPhaseOneEnabled: z.boolean().optional(),
+  aiNudgesPhaseTwoEnabled: z.boolean().optional(),
+  aiChatModel: z.enum(AI_CHAT_MODELS).optional(),
+  // 空白だけの入力は「未設定」に戻す意図なので null にし、チャットへ空の指示ブロックを渡さない。
+  aiChatSystemPrompt: z.string().trim().max(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH).transform(value => value || null).nullable().optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
+export type CreateProjectStatusInput = z.infer<typeof createProjectStatusSchema>
+export type CreateProjectRoleInput = z.infer<typeof createProjectRoleSchema>
+export type PatchProjectRoleInput = z.infer<typeof patchProjectRoleSchema>
+export type AssignProjectRoleInput = z.infer<typeof assignProjectRoleSchema>
+
+export const patchProjectStatusSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  sortOrder: z.string().max(100).optional(),
+}).refine(
+  data => Object.values(data).some(value => value !== undefined),
+  { message: 'At least one field is required' },
+)
 
 export type EditMessageInput = z.infer<typeof editMessageSchema>
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectStatusInput = z.infer<typeof updateProjectStatusSchema>
+export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>
+export type PatchMilestoneInput = z.infer<typeof patchMilestoneSchema>
 export type PostMessageInput = z.infer<typeof postMessageSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>
-export type UploadGalleryItemInput = z.infer<typeof uploadGalleryItemSchema>
+export type PatchProjectInput = z.infer<typeof patchProjectSchema>
+export type PatchWorkspaceInput = z.infer<typeof patchWorkspaceSchema>
+export type PatchWorkspaceSettingsInput = z.infer<typeof patchWorkspaceSettingsSchema>
+export type PatchMeInput = z.infer<typeof patchMeSchema>
+export type CreateProfileAttributeInput = z.infer<typeof createProfileAttributeSchema>
+export type PatchProfileAttributeInput = z.infer<typeof patchProfileAttributeSchema>
+export type PatchProfileAttributesInput = z.infer<typeof patchProfileAttributesSchema>
+export type PatchProjectStatusInput = z.infer<typeof patchProjectStatusSchema>
 
 export interface AttachmentDto {
   id: string

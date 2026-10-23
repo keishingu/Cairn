@@ -1,13 +1,18 @@
 import React from 'react'
-import { Platform } from 'react-native'
+import { Alert } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
-import Constants from 'expo-constants'
-import { apiFetch } from '../../lib/api-fetch'
-
-// Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
-const isExpoGo = Constants.appOwnership === 'expo'
-const supportsNotifications = !(isExpoGo && Platform.OS === 'android')
+import { MobileNav } from '../../components/mobile-nav'
+import { ProjectsViewProvider } from '../../components/projects-view-context'
+import { AppearanceProvider } from '../../components/appearance-provider'
+import { RealtimeProvider } from '../../components/realtime-provider'
+import { OfflineMessageQueueProvider } from '../../components/offline-message-queue-provider'
+import { NotificationPanelProvider } from '../../components/notification-panel-provider'
+import { AppModalHost } from '../../components/app-modal-host'
+import { useT } from '../../components/locale-provider'
+import { followNotification } from '../../lib/follow-notification'
+import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
+import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../../lib/push-registration'
 
 if (supportsNotifications) {
   Notifications.setNotificationHandler({
@@ -21,67 +26,102 @@ if (supportsNotifications) {
   })
 }
 
-async function registerPushToken() {
+// 起動時に一度だけ許可を求める。拒否後の再許可は通知画面の案内から行う
+async function requestAndRegisterPush() {
   if (!supportsNotifications) return
 
-  const { status } = await Notifications.requestPermissionsAsync()
+  // Android 13+ はチャンネルが無いと許可ダイアログが出ない
+  try {
+    await ensureAndroidNotificationChannel()
+  } catch {
+    console.warn('[Push] Failed to create the Android notification channel')
+  }
+  // 起動時の要求に失敗しても、通知一覧の案内が許可状態を確かめ直してエラーや導線を出すため、ここでは記録して終える
+  let status: Notifications.PermissionStatus
+  try {
+    ;({ status } = await Notifications.requestPermissionsAsync())
+  } catch {
+    console.warn('[Push] Failed to request notification permission')
+    return
+  }
   if (status !== 'granted') return
 
-  const projectId = process.env['EXPO_PUBLIC_EAS_PROJECT_ID']
-  if (!projectId) return
-
   try {
-    const token = await Notifications.getExpoPushTokenAsync({ projectId })
-    await apiFetch('/api/push/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ deviceType: 'expo', expoToken: token.data }),
-    })
+    await registerPushToken()
   } catch {
     console.warn('[Push] Failed to register Expo push token')
   }
 }
 
-// Push の data.url（Web ルート）をネイティブのトップレベルタブへマップする。
-// 個別チャンネルへのディープリンクは Phase 2 で対応予定。まずは該当セクションまで遷移させる
 function routeFromNotificationResponse(
   response: Notifications.NotificationResponse,
   router: ReturnType<typeof useRouter>,
+  t: ReturnType<typeof useT>,
 ) {
-  const data = response.notification.request.content.data as { url?: string } | undefined
-  const url = data?.url
-  if (!url) return
-  if (url.startsWith('/chat')) router.push('/(app)/chats')
-  else if (url.startsWith('/tasks')) router.push('/(app)/tasks')
-  else router.push('/(app)/notifications')
+  const { url, workspaceId } = readPushNotificationData(response.notification.request.content.data)
+  const destination = routeFromPushUrl(url)
+  if (!destination) return
+  void followNotification(router, destination, {
+    ...(workspaceId ? { workspaceId } : {}),
+    t,
+    onUnavailable: (message) => Alert.alert(message),
+  })
 }
 
 export default function AppLayout() {
   const router = useRouter()
+  const t = useT()
+  // 言語が決まってからリスナーを張り直すと、起動時の通知で二重に遷移する。
+  const tRef = React.useRef(t)
+  tRef.current = t
 
   React.useEffect(() => {
-    void registerPushToken()
+    void requestAndRegisterPush()
   }, [])
 
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
   React.useEffect(() => {
     if (!supportsNotifications) return
+    const route = (response: Notifications.NotificationResponse) => {
+      routeFromNotificationResponse(response, router, tRef.current)
+    }
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) routeFromNotificationResponse(response, router)
+      if (response) route(response)
     })
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      routeFromNotificationResponse(response, router)
-    })
+    const sub = Notifications.addNotificationResponseReceivedListener(route)
     return () => sub.remove()
   }, [router])
 
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
-      <Tabs.Screen name="projects" />
-      <Tabs.Screen name="chats" />
-      <Tabs.Screen name="tasks" />
-      <Tabs.Screen name="notifications" />
-      <Tabs.Screen name="ai" />
-      <Tabs.Screen name="menu" />
-    </Tabs>
+    <RealtimeProvider>
+      <OfflineMessageQueueProvider>
+        <AppearanceProvider>
+          <NotificationPanelProvider>
+            <ProjectsViewProvider>
+              <Tabs
+                screenOptions={{ headerShown: false }}
+                tabBar={(props) => <MobileNav {...props} />}
+              >
+                <Tabs.Screen name="chats/index" />
+                <Tabs.Screen name="projects/index" />
+                <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
+                <Tabs.Screen name="chat-tools/index" options={{ href: null }} />
+                <Tabs.Screen name="tasks/index" />
+                <Tabs.Screen name="ai/index" />
+                <Tabs.Screen name="projects/[id]" options={{ href: null }} />
+                <Tabs.Screen name="notifications/index" options={{ href: null }} />
+                <Tabs.Screen name="files/index" options={{ href: null }} />
+                <Tabs.Screen name="gallery/index" options={{ href: null }} />
+                <Tabs.Screen name="members/index" options={{ href: null }} />
+                <Tabs.Screen name="settings/index" options={{ href: null }} />
+                <Tabs.Screen name="signout/index" options={{ href: null }} />
+                <Tabs.Screen name="menu/index" options={{ href: null }} />
+              </Tabs>
+              <AppModalHost />
+            </ProjectsViewProvider>
+          </NotificationPanelProvider>
+        </AppearanceProvider>
+      </OfflineMessageQueueProvider>
+    </RealtimeProvider>
   )
 }

@@ -3,6 +3,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { verifyAccessToken } from '@/lib/auth-jwt'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -14,7 +15,8 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-device', detectMobile(ua) ? 'mobile' : 'desktop')
 
   const isWebView = request.nextUrl.searchParams.get('webview') === '1'
-  if (isWebView) requestHeaders.set('x-webview', '1')
+  const persistedWebView = request.cookies.get('cairn-webview')?.value === '1'
+  if (isWebView || persistedWebView) requestHeaders.set('x-webview', '1')
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
@@ -36,9 +38,13 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // getClaims で JWT をローカル検証する（非対称署名鍵なら Auth API 往復なし）。
+  // getSession 経由で期限切れセッションのリフレッシュ副作用（Cookie 再発行）も維持される。
+  const userId = await verifyAccessToken(supabase.auth)
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
+  const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
+  const isMobileSignoutRoute = pathname === '/auth/mobile-signout'
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
   const isLandingAsset =
@@ -47,19 +53,47 @@ export async function middleware(request: NextRequest) {
     pathname === '/og-image.png' ||
     pathname === '/og-image.svg'
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
+  const isLegalRoute = pathname === '/privacy' || pathname === '/terms'
+  // アプリ開発者向けの公開ドキュメント
+  const isDevelopersRoute = pathname === '/developers' || pathname.startsWith('/developers/')
   // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
-  const isPublicRoute = pathname.startsWith('/invite') || isLandingRoute || isLandingAsset || isSeoRoute
+  const isPublicRoute =
+    pathname.startsWith('/invite') ||
+    pathname.startsWith('/.well-known/') ||
+    isLandingRoute ||
+    isLandingAsset ||
+    isLegalRoute ||
+    isDevelopersRoute ||
+    isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
-  if (!user && !isAuthRoute && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/auth/login', request.url))
+  if (!userId && !isAuthRoute && !isPublicRoute) {
+    const loginUrl = new URL('/auth/login', request.url)
+    if (pathname === '/oauth/authorize') {
+      loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
+    }
+    return NextResponse.redirect(loginUrl)
   }
-  if (user && isLandingRoute) {
-    return NextResponse.redirect(new URL('/projects', request.url))
+  if (userId && isLandingRoute) {
+    return NextResponse.redirect(new URL('/chats', request.url))
   }
-  if (user && isAuthRoute && !isOnboardingRoute) {
-    return NextResponse.redirect(new URL('/projects', request.url))
+  if (
+    userId &&
+    isAuthRoute &&
+    !isOnboardingRoute &&
+    !isMobileHandoffRoute &&
+    !isMobileSignoutRoute
+  ) {
+    return NextResponse.redirect(new URL('/chats', request.url))
+  }
+
+  if (isWebView) {
+    supabaseResponse.cookies.set('cairn-webview', '1', {
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      path: '/',
+    })
   }
 
   return supabaseResponse

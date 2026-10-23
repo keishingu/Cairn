@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Metadata } from 'next'
+import { translate } from '@cairn/shared'
+import { readRequestLocale } from '@/lib/i18n/request-locale'
 
-export const metadata: Metadata = { title: 'Cairn - 招待' }
+export async function generateMetadata(): Promise<Metadata> {
+  const { locale } = await readRequestLocale()
+  return { title: translate(locale, 'Cairn - Invite') }
+}
 
 export default function InviteLayout({ children }: { children: React.ReactNode }) {
   return (

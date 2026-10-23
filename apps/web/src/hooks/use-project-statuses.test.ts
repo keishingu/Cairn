@@ -33,6 +33,15 @@ describe('useProjectStatuses', () => {
     expect(mockFetch).toHaveBeenCalledWith('/api/projects/statuses')
   })
 
+  it('非 2xx のときは error にして不正な JSON を data に流さない', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'bad request' }), { status: 400 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useProjectStatuses(), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.data).toBeUndefined()
+  })
+
   it('staleTime=Infinity のとき、キャッシュに既にデータがある場合はフェッチしない', async () => {
     // staleTime=0（デフォルト）のままだとキャッシュ有りでも background refetch が走るため Infinity を指定
     const qc = new QueryClient({

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { createProjectStatusSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export interface ProjectStatusDto {
   id: string
@@ -23,16 +24,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { name, color = '#6B7280' } = body as {
-    name?: string
-    color?: string
+  const parsed = createProjectStatusSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  const { name, color = '#6B7280' } = parsed.data
 
-  if (!name?.trim()) {
-    return NextResponse.json({ error: 'name is required' }, { status: 422 })
-  }
-
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
@@ -52,7 +50,7 @@ export async function POST(req: Request) {
       .insert(projectStatuses)
       .values({
         workspaceId: ctx.workspaceId,
-        name: name.trim(),
+        name,
         color,
         sortOrder: nextOrder,
       })

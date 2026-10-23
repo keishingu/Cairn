@@ -1,33 +1,81 @@
 import React from 'react'
-import { Platform, View, Text, Pressable, StyleSheet, useColorScheme } from 'react-native'
+import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import type { WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
+import type { WebViewProps, WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
+import { mobileHandoffUrl, webPath } from '../lib/webview-path'
+import { isAccentId, isAppearanceTheme, isLocalePreference } from '@cairn/shared'
+import { useAppAppearance } from './appearance-provider'
+import { useAppLocale, useT} from './locale-provider'
+import {
+  NATIVE_HEADER_BACK_SCRIPT,
+  parseNativeHeaderDescriptor,
+  type NativeHeaderDescriptor,
+} from '../lib/native-header-bridge'
+import { decideWebViewNavigation, messageTargetChatPath, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
+import {
+  ACCOUNT_DELETED_LOGIN_ROUTE,
+  finishNativeAccountDeletion,
+} from '../lib/account-deletion-bridge'
+import {
+  LINK_APPLE_IDENTITY_MESSAGE_TYPE,
+  LINK_GOOGLE_IDENTITY_MESSAGE_TYPE,
+  buildAppleIdentityLinkedScript,
+  buildGoogleIdentityLinkedScript,
+  linkAppleIdentity,
+  linkGoogleIdentity,
+  type NativeOAuthIdentityLinkResult,
+} from '../lib/apple-identity-bridge'
 
-// Web 側の globals.css --bg と揃える
-const BG_DARK = '#0B0F14'
-const BG_LIGHT = '#F8FAFC'
+type ShouldStartLoadRequest = Parameters<
+  NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
+>[0]
 
-interface Props {
+export interface AppWebViewHandle {
+  injectJavaScript: (script: string) => void
+  triggerNativeHeaderBack: () => void
+}
+
+export interface AppWebViewProps {
   path: string
+  onLoadEnd?: () => void
+  onWebPathChange?: (path: string) => void
+  allowChatRoutes?: boolean
+  includeSafeAreaTop?: boolean
+  onNativeHeaderChange?: (header: NativeHeaderDescriptor) => void
 }
 
-function webUrl(path: string): string {
-  return `${WEB_BASE}${path}?webview=1`
+export function webUrl(path: string): string {
+  return `${WEB_BASE}${webPath(path)}`
 }
 
-export function AppWebView({ path }: Props) {
+export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(function AppWebView(
+  { path, onLoadEnd, onWebPathChange, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
+  ref,
+) {
+  const t = useT()
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
   const insets = useSafeAreaInsets()
-  const colorScheme = useColorScheme()
-  const bg = colorScheme === 'dark' ? BG_DARK : BG_LIGHT
+  const { palette, updateAppearance } = useAppAppearance()
+  const { updateLocale } = useAppLocale()
+  const bg = palette.bg
   const router = useRouter()
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      injectJavaScript: (script) => webViewRef.current?.injectJavaScript(script),
+      triggerNativeHeaderBack: () =>
+        webViewRef.current?.injectJavaScript(NATIVE_HEADER_BACK_SCRIPT),
+    }),
+    [],
+  )
 
   // 最新の path を参照するための ref（onLoadEnd など描画外コールバックから使う）
   const pathRef = React.useRef(path)
@@ -48,7 +96,9 @@ export function AppWebView({ path }: Props) {
     async (targetPath: string) => {
       setError(false)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) {
         // 通常は AuthGuard がセッションを保証するため到達しない
         router.replace('/(auth)/login')
@@ -59,18 +109,27 @@ export function AppWebView({ path }: Props) {
         // ネイティブの refresh_token を WebView に渡さず、使い捨ての hashed_token を発行する。
         // WebView 側は verifyOtp で独立したセッションを確立する
         // （docs/mobile-webview-auth-handoff.md）。
-        const res = await apiFetch('/api/auth/webview-handoff', { method: 'POST' })
-        if (!res.ok) throw new Error(`handoff failed: ${res.status}`)
-        const data = (await res.json()) as { tokenHash?: string }
-        if (!data.tokenHash) throw new Error('handoff response missing tokenHash')
+        const res = await apiFetch('/api/auth/webview-handoff', {
+          method: 'POST',
+        })
+        if (!res.ok) {
+          if (res.status === 401) {
+            await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+            router.replace('/(auth)/login')
+            return
+          }
+          throw new Error(`handoff failed: ${res.status}`)
+        }
+        const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
+        if (!data.tokenHash) {
+          throw new Error('handoff response missing tokenHash')
+        }
 
-        const redirect = encodeURIComponent(webUrl(targetPath))
-        const th = encodeURIComponent(data.tokenHash)
         initialPathRef.current = targetPath
         loadedRef.current = false
         // トークンは URL フラグメント（#th=...）で渡す。
         // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(`${WEB_BASE}/auth/mobile-handoff?redirect=${redirect}#th=${th}`)
+        setUri(mobileHandoffUrl(WEB_BASE, targetPath, data.tokenHash, data.workspaceId))
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)
@@ -99,6 +158,7 @@ export function AppWebView({ path }: Props) {
   }, [path, performHandoff, navigateTo])
 
   function handleLoadEnd() {
+    onLoadEnd?.()
     if (loadedRef.current) return
     loadedRef.current = true
     // ロード完了前に切り替えられていた場合は、最新の path へ追従する
@@ -130,14 +190,93 @@ export function AppWebView({ path }: Props) {
   }
 
   function handleMessage(event: WebViewMessageEvent) {
-    let msg: { type?: string } | null = null
+    let msg: {
+      type?: string
+      theme?: unknown
+      accentId?: unknown
+      locale?: unknown
+      title?: unknown
+      subtitle?: unknown
+      canGoBack?: unknown
+    } | null = null
     try {
-      msg = JSON.parse(event.nativeEvent.data) as { type?: string }
+      msg = JSON.parse(event.nativeEvent.data) as {
+        type?: string
+        theme?: unknown
+        accentId?: unknown
+        locale?: unknown
+        title?: unknown
+        subtitle?: unknown
+        canGoBack?: unknown
+      }
     } catch {
       return
     }
     if (msg?.type === 'HANDOFF_FAILED') {
       void recoverFromHandoffFailure()
+    }
+    if (msg?.type === 'account-deleted') {
+      // WebView側でAuthユーザーを削除したら、独立して保持しているネイティブの
+      // Supabaseセッションもローカルから消し、認証画面へ戻す。
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => data.session?.user.id ?? null)
+        .catch(() => null)
+        .then((userId) =>
+          finishNativeAccountDeletion(
+            userId,
+            () => supabase.auth.signOut({ scope: 'local' }),
+            () => router.replace(ACCOUNT_DELETED_LOGIN_ROUTE),
+          ),
+        )
+      return
+    }
+    if (msg?.type === LINK_APPLE_IDENTITY_MESSAGE_TYPE) {
+      // 設定 WebView からの Apple 連携。Web OAuth は WebView 外へ出るため、
+      // ネイティブセッションへ ID token で linkIdentity する。
+      void linkAppleIdentity(t)
+        .catch(
+          (): NativeOAuthIdentityLinkResult => ({
+            ok: false,
+            message: t('Could not link Apple. Please try again in a moment.'),
+          }),
+        )
+        .then((result) => {
+          webViewRef.current?.injectJavaScript(buildAppleIdentityLinkedScript(result))
+        })
+      return
+    }
+    if (msg?.type === LINK_GOOGLE_IDENTITY_MESSAGE_TYPE) {
+      // 設定 WebView からの Google 連携。ネイティブの WebBrowser + PKCE で
+      // 現在のネイティブセッションへ linkIdentity する。
+      void linkGoogleIdentity(t)
+        .catch(
+          (): NativeOAuthIdentityLinkResult => ({
+            ok: false,
+            message: t('Could not link Google. Please try again in a moment.'),
+          }),
+        )
+        .then((result) => {
+          webViewRef.current?.injectJavaScript(buildGoogleIdentityLinkedScript(result))
+        })
+      return
+    }
+    if (msg?.type === 'open-chats') {
+      router.push('/(app)/chats')
+    }
+    if (msg?.type === 'native-header') {
+      const descriptor = parseNativeHeaderDescriptor(msg)
+      if (descriptor) onNativeHeaderChange?.(descriptor)
+    }
+    if (
+      msg?.type === 'appearance-changed' &&
+      isAppearanceTheme(msg.theme) &&
+      isAccentId(msg.accentId)
+    ) {
+      updateAppearance({ theme: msg.theme, accentId: msg.accentId })
+    }
+    if (msg?.type === 'locale-changed' && isLocalePreference(msg.locale)) {
+      updateLocale(msg.locale)
     }
   }
 
@@ -149,24 +288,59 @@ export function AppWebView({ path }: Props) {
       supabase.auth.signOut().then(() => {
         router.replace('/(auth)/login')
       })
+      return
+    }
+    try {
+      const target = new URL(url)
+      if (target.origin === trustedOrigin) onWebPathChange?.(target.pathname)
+    } catch {
+      // WebViewが途中で返す非URL値は遷移イベントとして扱わない。
     }
   }
 
-  // 信頼済みオリジン以外へのナビゲーションをブロック（HTTPS のみ許可）
-  function handleShouldStartLoadWithRequest(request: WebViewNavigation) {
-    const url = request.url
-    // about:blank など内部リソースは通す
-    if (url === 'about:blank' || url.startsWith('about:')) return true
-    // 信頼済みオリジンの HTTPS のみ許可
-    return url.startsWith(`${trustedOrigin}/`) || url === trustedOrigin
+  // WebView 内のチャット導線は、Web ではなくネイティブのチャットタブへ委譲する。
+  function handleShouldStartLoadWithRequest(request: ShouldStartLoadRequest) {
+    const decision = decideWebViewNavigation({
+      url: request.url,
+      trustedOrigin,
+      allowChatRoutes,
+      isTopFrame: request.isTopFrame,
+      isAndroid: Platform.OS === 'android',
+    })
+    if (decision === 'open-native-chat') {
+      // タスクの出典メッセージなど特定メッセージへのリンクは、位置を保てるチャット補助画面（WebView）で開く
+      const messagePath = messageTargetChatPath(request.url, trustedOrigin)
+      if (messagePath) {
+        router.push({ pathname: '/(app)/chat-tools', params: { path: messagePath, title: t('Chats') } })
+        return false
+      }
+      router.push('/(app)/chats')
+      return false
+    }
+    if (decision === 'open-external') {
+      void Linking.openURL(request.url).catch((err) => {
+        console.error('[AppWebView] 外部URLを開けませんでした:', err)
+      })
+      return false
+    }
+    return decision === 'allow'
   }
 
   if (error) {
     return (
-      <View style={[styles.fill, styles.center, { backgroundColor: bg, paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>読み込みに失敗しました</Text>
-        <Pressable style={styles.retryButton} onPress={() => void performHandoff(pathRef.current)}>
-          <Text style={styles.retryLabel}>再試行</Text>
+      <View
+        style={[
+          styles.fill,
+          styles.center,
+          { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+        ]}
+      >
+        <Text style={[styles.errorText, { color: palette.text3 }]}>{t('Could not load this page')}</Text>
+        <Pressable
+          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          onPress={() => void performHandoff(pathRef.current)}
+        >
+          <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Retry')}</Text>
         </Pressable>
       </View>
     )
@@ -175,12 +349,19 @@ export function AppWebView({ path }: Props) {
   if (!uri) return <View style={[styles.fill, { backgroundColor: bg }]} />
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[
+        styles.fill,
+        { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
+      ]}
+    >
       <WebView
         ref={webViewRef}
         source={{ uri }}
         style={styles.webview}
-        originWhitelist={[trustedOrigin, `${trustedOrigin}/*`, 'about:*']}
+        // originWhitelist 外のURLはreact-native-webviewがOSへ直接渡すため、
+        // HTTP(S)はここで受け、上の信頼済みオリジン判定で許可・拒否する。
+        originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
         onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         setSupportMultipleWindows={false}
         javaScriptCanOpenWindowsAutomatically={false}
@@ -192,13 +373,17 @@ export function AppWebView({ path }: Props) {
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', gap: 16 },
   webview: { flex: 1 },
-  errorText: { fontSize: 15, color: '#94A3B8' },
-  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, backgroundColor: '#2563EB' },
-  retryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  errorText: { fontSize: 15 },
+  retryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryLabel: { fontSize: 15, fontWeight: '600' },
 })

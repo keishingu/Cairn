@@ -1,10 +1,15 @@
 import React from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
-import { Link } from 'expo-router'
+import { Link, useLocalSearchParams } from 'expo-router'
+import { useT } from '../../components/locale-provider'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
+import { AppleSignInButton } from '../../components/apple-sign-in-button'
+import * as AppleAuthentication from 'expo-apple-authentication'
 
 export default function LoginScreen() {
+  const t = useT()
+  const { accountDeleted } = useLocalSearchParams<{ accountDeleted?: string }>()
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -20,18 +25,23 @@ export default function LoginScreen() {
       setError(authError.message)
       setLoading(false)
     }
-    // 成功時は _layout.tsx の onAuthStateChange が /(app)/projects へリダイレクト
+    // 成功時は _layout.tsx の onAuthStateChange が /(app)/chats へリダイレクト
   }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Cairn</Text>
-      <Text style={styles.subtitle}>サインイン</Text>
+      <Text style={styles.subtitle}>{t('Sign in')}</Text>
 
       <View style={styles.form}>
+        {accountDeleted === '1' && (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>{t('Your account has been deleted.')}</Text>
+          </View>
+        )}
         <TextInput
           style={styles.input}
-          placeholder="メールアドレス"
+          placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -40,7 +50,7 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="パスワード"
+          placeholder={t('Password')}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -56,22 +66,24 @@ export default function LoginScreen() {
         <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
           {loading ? (
             <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>サインイン</Text>
-          )}
+          ) : <Text style={styles.buttonText}>{t('Sign in')}</Text>}
         </TouchableOpacity>
 
         <View style={styles.divider}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>または</Text>
+          <Text style={styles.dividerText}>{t('or')}</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        <GoogleSignInButton label="Google でサインイン" onError={(m) => setError(m || null)} />
+        <GoogleSignInButton label={t('Sign in with Google')} onError={(m) => setError(m || null)} />
+        <AppleSignInButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          onError={(m) => setError(m || null)}
+        />
       </View>
 
       <Link href="/(auth)/signup" style={styles.link}>
-        アカウントをお持ちでない方はこちら
+        {t("Don't have an account? Sign up")}
       </Link>
     </View>
   )
@@ -115,6 +127,17 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#b91c1c',
+    fontSize: 14,
+  },
+  successBox: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    padding: 12,
+  },
+  successText: {
+    color: '#047857',
     fontSize: 14,
   },
   button: {

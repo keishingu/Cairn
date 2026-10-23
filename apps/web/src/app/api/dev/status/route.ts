@@ -3,7 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceOwner } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
+import { NUDGE_COPY_MODEL } from '@/lib/ai/client'
 
 export type ServiceStatus = {
   status: 'ok' | 'error' | 'unconfigured'
@@ -16,6 +17,7 @@ export type DevStatusDto = {
   supabaseStorage: ServiceStatus
   inngest: ServiceStatus
   openai: ServiceStatus
+  anthropic: ServiceStatus
   tavily: ServiceStatus
   googleMaps: ServiceStatus
   env: {
@@ -74,9 +76,13 @@ async function checkOpenAI(): Promise<ServiceStatus> {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 1,
+        model: 'gpt-5-mini',
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
+        // GPT-5 系は max_tokens を受け付けないため、Chat Completions の後継パラメータを使う。
+        // 推論モデルは推論と本文が上限を共有し、回答を書き切れないと 400 になる。
+        // 16 でも開発環境で上限到達の 400 が出たため、推論を最小にしたうえで十分な余裕を取る。
+        reasoning_effort: 'minimal',
+        max_completion_tokens: 256,
       }),
     })
     const latencyMs = Date.now() - t
@@ -84,9 +90,11 @@ async function checkOpenAI(): Promise<ServiceStatus> {
     if (res.ok) return { status: 'ok', latencyMs, detail: 'クレジット有効・API 正常' }
 
     let code: string | undefined
+    let message: string | undefined
     try {
       const body = await res.json() as { error?: { code?: string; type?: string; message?: string } }
       code = body.error?.code ?? body.error?.type
+      message = body.error?.message
     } catch { /* ignore */ }
 
     const detail = (() => {
@@ -96,7 +104,59 @@ async function checkOpenAI(): Promise<ServiceStatus> {
         case 'invalid_api_key':       return 'APIキーが無効'
         case 'model_not_found':       return 'モデルが見つかりません'
         case 'billing_hard_limit_reached': return '請求上限に達しました'
-        default: return `HTTP ${res.status}${code ? ` (${code})` : ''}`
+        // 原因を画面で特定できるよう、OpenAI のエラーメッセージも添える。
+        default: return `HTTP ${res.status}${code ? ` (${code})` : ''}${message ? `: ${message.slice(0, 200)}` : ''}`
+      }
+    })()
+
+    return { status: 'error', latencyMs, detail }
+  } catch (err) {
+    return { status: 'error', latencyMs: Date.now() - t, detail: String(err instanceof Error ? err.message : err) }
+  }
+}
+
+async function checkAnthropic(): Promise<ServiceStatus> {
+  const key = process.env['ANTHROPIC_API_KEY']
+  if (!key) return { status: 'unconfigured', detail: 'ANTHROPIC_API_KEY 未設定' }
+
+  const t = Date.now()
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      // 通知文生成と同じモデルで 1 トークンだけ生成する。temperature などは送らない。
+      body: JSON.stringify({
+        model: NUDGE_COPY_MODEL,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    })
+    const latencyMs = Date.now() - t
+
+    if (res.ok) return { status: 'ok', latencyMs, detail: 'クレジット有効・API 正常' }
+
+    let type: string | undefined
+    let message: string | undefined
+    try {
+      const body = await res.json() as { error?: { type?: string; message?: string } }
+      type = body.error?.type
+      message = body.error?.message
+    } catch { /* ignore */ }
+
+    const detail = (() => {
+      // クレジット不足は invalid_request_error + メッセージで返ってくる。
+      if (message && /credit balance is too low/i.test(message)) return 'クレジット残高なし'
+      switch (type) {
+        case 'authentication_error': return 'APIキーが無効'
+        case 'permission_error':     return 'APIキーに権限がありません'
+        case 'not_found_error':      return 'モデルが見つかりません'
+        case 'rate_limit_error':     return 'レート制限中（クレジットは有効）'
+        case 'overloaded_error':     return 'Anthropic API が混雑しています'
+        default: return `HTTP ${res.status}${type ? ` (${type})` : ''}`
       }
     })()
 
@@ -137,6 +197,9 @@ function getStaticStatus(): DevStatusDto {
     openai: process.env['OPENAI_API_KEY']
       ? { status: 'ok', detail: 'OPENAI_API_KEY 設定済み' }
       : { status: 'unconfigured', detail: 'OPENAI_API_KEY 未設定' },
+    anthropic: process.env['ANTHROPIC_API_KEY']
+      ? { status: 'ok', detail: 'ANTHROPIC_API_KEY 設定済み' }
+      : { status: 'unconfigured', detail: 'ANTHROPIC_API_KEY 未設定' },
     tavily: process.env['TAVILY_API_KEY']
       ? { status: 'ok', detail: 'API キー設定済み' }
       : { status: 'unconfigured', detail: 'TAVILY_API_KEY 未設定（省略可）' },
@@ -157,7 +220,7 @@ function getStaticStatus(): DevStatusDto {
 async function authorizeOwner() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
-  return requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
+  return requireRole(ctx.role, 'owner')
 }
 
 export async function GET() {
@@ -171,17 +234,18 @@ export async function POST() {
   const authError = await authorizeOwner()
   if (authError) return authError
 
-  const [supabaseDb, supabaseStorage, inngest, openai, tavily, googleMaps] = await Promise.all([
+  const [supabaseDb, supabaseStorage, inngest, openai, anthropic, tavily, googleMaps] = await Promise.all([
     checkSupabaseDb(),
     checkSupabaseStorage(),
     checkInngest(),
     checkOpenAI(),
+    checkAnthropic(),
     checkTavily(),
     checkGoogleMaps(),
   ])
 
   const result: DevStatusDto = {
-    supabaseDb, supabaseStorage, inngest, openai, tavily, googleMaps,
+    supabaseDb, supabaseStorage, inngest, openai, anthropic, tavily, googleMaps,
     env: {
       nodeEnv: process.env['NODE_ENV'] ?? 'unknown',
       hasVapid: !!process.env['VAPID_PUBLIC_KEY'],

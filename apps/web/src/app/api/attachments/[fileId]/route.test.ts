@@ -7,10 +7,27 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const FILE_ID = '30000000-0000-0000-0000-000000000001'
 
-const { mockGetAuthContext, mockCanAccessFile, mockDownload, fileRow } = vi.hoisted(() => ({
+const {
+  mockGetAuthContext,
+  mockCanAccessFile,
+  mockDownload,
+  mockDeleteWhere,
+  mockUpdateSet,
+  mockUpdateWhere,
+  mockTransaction,
+  mockTransactionSelectLimit,
+  mockRecordStorageUsageDelta,
+  fileRow,
+} = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
+  mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
+  mockUpdateSet: vi.fn(),
+  mockUpdateWhere: vi.fn().mockResolvedValue(undefined),
+  mockTransaction: vi.fn(),
+  mockTransactionSelectLimit: vi.fn(),
+  mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
   fileRow: {
     id: '30000000-0000-0000-0000-000000000001',
     workspaceId: '10000000-0000-0000-0000-000000000001',
@@ -31,16 +48,31 @@ vi.mock('@/lib/supabase/service', () => ({
     storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
   }),
 }))
+vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
 
 // db は最初の1件取得だけ使う。チェーンの最後で [fileRow] を返す。
 vi.mock('@cairn/db', () => {
-  const builder = {
-    select: () => builder,
-    from: () => builder,
-    where: () => builder,
+  const selectBuilder = {
+    from: () => selectBuilder,
+    where: () => selectBuilder,
     limit: () => Promise.resolve([fileRow]),
   }
-  return { db: builder, files: {}, documentChunks: {} }
+  return {
+    db: {
+      select: () => selectBuilder,
+      update: () => ({
+        set: (values: unknown) => {
+          mockUpdateSet(values)
+          return { where: mockUpdateWhere }
+        },
+      }),
+      delete: () => ({ where: mockDeleteWhere }),
+      transaction: mockTransaction,
+    },
+    files: {},
+    documentChunks: {},
+  }
 })
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), sql: vi.fn() }))
 
@@ -57,7 +89,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       fileName: 'file.pdf',
     })
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
@@ -65,6 +97,21 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       data: 'file body',
       error: null,
     })
+    mockTransaction.mockImplementation(async (callback) => callback({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({ limit: mockTransactionSelectLimit }),
+          }),
+        }),
+      }),
+      delete: () => ({
+        where: () => ({
+          returning: () => Promise.resolve([{ id: FILE_ID }]),
+        }),
+      }),
+    }))
+    mockTransactionSelectLimit.mockResolvedValue([{ id: FILE_ID }])
   })
 
   afterEach(() => {
@@ -80,6 +127,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       DEV_WORKSPACE_ID,
       DEV_USER_ID,
       expect.objectContaining({ id: FILE_ID }),
+      'member',
     )
     expect(mockDownload).not.toHaveBeenCalled()
   })
@@ -96,11 +144,65 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.status).toBe(403)
   })
 
+  it('ファイル名を変更する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'renamed.pdf' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith({ fileName: 'renamed.pdf' })
+    await expect(res.json()).resolves.toEqual({ success: true, fileName: 'renamed.pdf' })
+  })
+
+  it('アップロード済みファイルの拡張子変更は拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: 'renamed.txt' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'ファイルの拡張子は変更できません' })
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
+  it('空のファイル名は拒否する', async () => {
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: '   ' }),
+    })
+
+    const res = await PATCH(req, routeParams())
+
+    expect(res.status).toBe(400)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
   it('閲覧権限が無いファイルは DELETE が 403 を返す', async () => {
     mockCanAccessFile.mockResolvedValue(false)
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
     expect(res.status).toBe(403)
+  })
+
+  it('同時削除で行ロック取得後にファイルが無い場合は使用量を減算しない', async () => {
+    mockTransactionSelectLimit.mockResolvedValue([])
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(404)
+    expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
   })
 
   it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {
@@ -139,5 +241,30 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
     expect(await res.text()).toBe('line 1\nline 2')
+  })
+
+  it('Officeファイルはスマホで真っ白にならないよう attachment で返し、日本語名を filename* で渡す', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'workspace-1/channel-1/file.xlsx',
+      fileName: '見積(案).xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `attachment; filename="__(_).xlsx"; filename*=UTF-8''%E8%A6%8B%E7%A9%8D%28%E6%A1%88%29.xlsx`,
+    )
+  })
+
+  it('PDFはブラウザで表示できるため inline で返す', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/attachments/file-1'), routeParams())
+
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `inline; filename="file.pdf"; filename*=UTF-8''file.pdf`,
+    )
   })
 })

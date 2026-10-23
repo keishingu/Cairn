@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, test, expect } from 'vitest'
-import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents } from './projects-calendar'
+import { buildGcalEvents, buildGcalWeekEvents, buildGcalTimedEvents, buildMilestoneEvents, buildMilestoneWeekEvents, computeRowVisibility, formatMilestoneLabel, mobileOverflowLane, packMobileMonthBars, packUnifiedAllDayRows, rowsFittingInWeek, trimTimeSeconds } from './projects-calendar'
 import type { GcalEventDto } from '@/app/api/calendar/google/events/route'
+import type { WorkspaceMilestoneDto } from '@/app/api/milestones/route'
+import type { ProjectDto } from '@/app/api/projects/route'
 
 function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
   return {
@@ -25,12 +27,231 @@ function makeEvent(overrides: Partial<GcalEventDto>): GcalEventDto {
 const YEAR = 2026
 const MONTH = 5 // 0始まりなので6月
 
+const PROJECT: ProjectDto = {
+  id: 'project-1',
+  title: '北アルプス',
+  description: null,
+  statusName: null,
+  statusColor: '#2563EB',
+  startDate: '2026-06-01',
+  endDate: '2026-06-20',
+  memberCount: 0,
+  memberNames: [],
+  memberAvatarUrls: [],
+  taskCount: 0,
+  completedTaskCount: 0,
+  isHosting: true,
+  isJoined: true,
+  archived: false,
+  coverPhotoIdx: 0,
+  coverPhotoUrl: null,
+  location: null,
+  placeId: null,
+}
+
+function makeMilestone(overrides: Partial<WorkspaceMilestoneDto>): WorkspaceMilestoneDto {
+  return {
+    id: 'milestone-1',
+    projectId: PROJECT.id,
+    projectTitle: PROJECT.title,
+    title: '訪問',
+    description: null,
+    startDate: '2026-06-10',
+    endDate: '2026-06-10',
+    startTime: null,
+    endTime: null,
+    completed: false,
+    channelId: 'channel-1',
+    ...overrides,
+  }
+}
+
+const PROJECT_MAP = new Map([[PROJECT.id, PROJECT]])
+
+describe('buildMilestoneEvents', () => {
+  test('日付のないマイルストーンは除外される', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: null })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(0)
+  })
+
+  test('終了日だけのマイルストーンは期日1日のバーになる', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: '2026-06-10' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 3, span: 1, row: 0 })
+  })
+
+  test('複数日にまたがるマイルストーンは開始日の1日だけに表示される', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: '2026-06-10', endDate: '2026-06-16' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 3, span: 1 })
+  })
+})
+
+describe('buildMilestoneEvents（10/9〜10/16 の期間マイルストーン）', () => {
+  test('開始日の 10/9 だけに表示され、10/10 以降には出ない', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: '2026-10-09', endDate: '2026-10-16' })], PROJECT_MAP, 2026, 9)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 5, span: 1 })
+  })
+})
+
+describe('buildMilestoneWeekEvents', () => {
+  const WEEK_START = new Date(2026, 5, 7)
+
+  test('週内のマイルストーンを期間全体の day/span に変換する', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-09', endDate: '2026-06-11' })], PROJECT_MAP, WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 2, span: 3, week: 0 })
+  })
+
+  test('開始日が週の前でも期間が週に掛かっていれば週の頭から表示する', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-06-05', endDate: '2026-06-09' })], PROJECT_MAP, WEEK_START)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 0, span: 3 })
+  })
+
+  test('10/9〜10/16 のマイルストーンは週表示では週内の期間全体にまたがる', () => {
+    const result = buildMilestoneWeekEvents([makeMilestone({ startDate: '2026-10-09', endDate: '2026-10-16' })], PROJECT_MAP, new Date(2026, 9, 4))
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ day: 5, span: 2 })
+  })
+
+  test('終了日だけのマイルストーンは月表示で終了日に1日だけ置かれる', () => {
+    const result = buildMilestoneEvents([makeMilestone({ startDate: null, endDate: '2026-06-12' })], PROJECT_MAP, YEAR, MONTH)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ week: 1, day: 5, span: 1 })
+  })
+})
+
+describe('formatMilestoneLabel', () => {
+  test('プロジェクト名とマイルストーン名をスラッシュ区切りで表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問' }))).toBe('日本フルハーフ株式会社様 / 訪問')
+  })
+
+  test('開始時刻と終了時刻がある場合でも開始時刻だけを表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: '日本フルハーフ株式会社様', title: '訪問', startTime: '12:00', endTime: '14:00' }))).toBe('日本フルハーフ株式会社様 / 訪問 12:00〜')
+  })
+
+  test('開始日があり開始時刻がなく終了時刻だけある場合は時刻を表示しない', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'A', title: 'B', startTime: null, endTime: '14:00' }))).toBe('A / B')
+  })
+
+  test('開始日がなく終了日だけある場合は終了時刻を表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'A', title: 'B', startDate: null, startTime: null, endTime: '21:30' }))).toBe('A / B 〜21:30')
+  })
+})
+
+describe('trimTimeSeconds', () => {
+  test('秒つきの時刻から秒を取り除く', () => {
+    expect(trimTimeSeconds('19:00:00')).toBe('19:00')
+  })
+
+  test('秒のない時刻はそのまま返す', () => {
+    expect(trimTimeSeconds('19:00')).toBe('19:00')
+  })
+})
+
+describe('formatMilestoneLabel の秒表記', () => {
+  test('Postgres の time 文字列の秒を落として表示する', () => {
+    expect(formatMilestoneLabel(makeMilestone({ projectTitle: 'Cairn公開', title: '説明会', startTime: '19:00:00', endTime: null }))).toBe('Cairn公開 / 説明会 19:00〜')
+  })
+})
+
+describe('packUnifiedAllDayRows', () => {
+  const projectEvent = (day: number, span: number) => ({ project: PROJECT, week: 1, day, span, row: 0 })
+  const gcalEvent = (day: number, span: number) => ({ id: 'g', title: 'G', color: '#4285F4', htmlLink: null, week: 1, day, span, row: 0 })
+  const milestoneEvent = (day: number, span = 1, startTime: string | null = null) => ({
+    milestone: makeMilestone({ startTime }), project: PROJECT, week: 1, day, span, row: 0,
+  })
+
+  test('プロジェクトのない日のマイルストーンは row 0 に置かれる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(0, 1)], [], [milestoneEvent(3)])
+
+    expect(result.milestones[0]!.row).toBe(0)
+  })
+
+  test('プロジェクトがある日のマイルストーンはその下の row 1 に置かれる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(2, 3)], [], [milestoneEvent(3)])
+
+    expect(result.milestones[0]!.row).toBe(1)
+  })
+
+  test('プロジェクトとGoogle終日が重なっても別の row になる', () => {
+    const result = packUnifiedAllDayRows([projectEvent(1, 3)], [gcalEvent(2, 2)], [])
+
+    expect(result.projects[0]!.row).not.toBe(result.gcal[0]!.row)
+  })
+
+  test('同じ日に複数のマイルストーンがあれば開始時刻順に積まれる', () => {
+    const result = packUnifiedAllDayRows([], [], [milestoneEvent(0, 1, '15:00:00'), milestoneEvent(0, 1, '09:00:00')])
+
+    expect(result.milestones.map(m => m.row)).toEqual([1, 0])
+  })
+
+  test('後の日のプロジェクトより前の日のマイルストーンを先に詰め、同時に重なる数より行を増やさない', () => {
+    const result = packUnifiedAllDayRows(
+      [projectEvent(3, 1)],
+      [],
+      [milestoneEvent(0, 2), milestoneEvent(1, 2), milestoneEvent(2, 2)],
+    )
+
+    const rows = [...result.projects, ...result.milestones].map(e => e.row)
+    expect(Math.max(...rows)).toBe(1)
+  })
+})
+
+describe('computeRowVisibility', () => {
+  const item = (day: number, row: number, name: string, span = 1) => ({ week: 0, day, span, row, name })
+
+  test('行数を超えない場合は何も隠さない', () => {
+    const result = computeRowVisibility([item(0, 0, 'a'), item(0, 1, 'b')], 3)
+
+    expect(result.visible).toEqual([true, true])
+    expect(result.hiddenByDay.size).toBe(0)
+  })
+
+  test('溢れる日は最終可視行を「+N」用に空け、隠れた名前を日ごとに集める', () => {
+    const result = computeRowVisibility([item(0, 0, 'a'), item(0, 1, 'b'), item(0, 2, 'c')], 2)
+
+    expect(result.visible).toEqual([true, false, false])
+    expect(result.hiddenByDay.get('0-0')).toEqual(['b', 'c'])
+  })
+
+  test('rowsFittingInWeek は週行の高さから収まる行数を返し、最低1行を保証する', () => {
+    expect(rowsFittingInWeek(10)).toBe(1)
+    expect(rowsFittingInWeek(28 + 4 + 24 * 3 - 2)).toBe(3)
+  })
+})
+
 describe('buildGcalEvents', () => {
   test('1日のみのイベントは1セルに span=1 で配置される', () => {
     const result = buildGcalEvents([makeEvent({ startDate: '2026-06-10', endDate: '2026-06-10' })], YEAR, MONTH)
 
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({ span: 1, row: 0 })
+  })
+
+  test('月曜始まりでは週の区切りが日曜になる', () => {
+    const result = buildGcalEvents(
+      [makeEvent({ startDate: '2026-06-10', endDate: '2026-06-16' })],
+      YEAR,
+      MONTH,
+      'monday',
+    )
+
+    expect(result).toHaveLength(2)
+    const [first, second] = result.sort((a, b) => a.week - b.week)
+    // 6/10(水)〜6/14(日) = 5日、6/15(月)〜6/16(火) = 2日
+    expect(first).toMatchObject({ day: 2, span: 5 })
+    expect(second).toMatchObject({ day: 0, span: 2 })
   })
 
   test('週をまたぐイベントは週ごとに分割され、各セグメントの span が正しく計算される', () => {
@@ -186,5 +407,45 @@ describe('buildGcalTimedEvents', () => {
     expect(ev1.col).not.toBe(ev2.col)
     expect(ev1.cols).toBe(2)
     expect(ev2.cols).toBe(2)
+  })
+})
+
+describe('mobileOverflowLane', () => {
+  test('空きレーンがある日は、見えている本数ではなく最下段の直下に +N を置く', () => {
+    // row 0 は別日の1日予定。この日は row 1,2 が見え、row 3 が溢れる
+    expect(mobileOverflowLane([1, 2, 3], 3)).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('レーンが詰まっている日は最終表示レーンの直下に置く', () => {
+    expect(mobileOverflowLane([0, 1, 2, 3], 3)).toEqual({ overflow: 1, lane: 3 })
+  })
+
+  test('溢れがなければ null を返す', () => {
+    expect(mobileOverflowLane([1, 2], 3)).toBeNull()
+  })
+})
+
+describe('packMobileMonthBars', () => {
+  test('同じ週の別日にプロジェクトが3行あっても、空いている日のマイルストーンは残す', () => {
+    const mondayProjects = [0, 1, 2].map(row => ({
+      project: { ...PROJECT, id: `p-${row}`, title: `予定${row}` },
+      week: 0,
+      day: 1,
+      span: 1,
+      row,
+    }))
+    const fridayMilestone = {
+      milestone: makeMilestone({ id: 'ms-friday', startDate: '2026-06-12', endDate: '2026-06-12' }),
+      project: PROJECT,
+      week: 0,
+      day: 5,
+      span: 1,
+      row: 0,
+    }
+
+    const packed = packMobileMonthBars(mondayProjects, [fridayMilestone], 0)
+    const milestoneBar = packed.find(e => e.kind === 'milestone')
+
+    expect(milestoneBar).toMatchObject({ kind: 'milestone', day: 5, row: 0 })
   })
 })

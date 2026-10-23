@@ -1,77 +1,40 @@
 # docs インデックス
 
-このディレクトリのドキュメント一覧と、各文書の信頼度（ステータス）。
+作業に関係する文書だけを読む。**ドキュメントと実装が矛盾する場合はコードと [`AGENTS.md`](../AGENTS.md) を正とする。**
 
-> **大原則: ドキュメントと実装が矛盾する場合、コードと [`CLAUDE.md`](../CLAUDE.md) を正とする。**
+種別: **現行** = 実装に追従する規約・仕様 / **設計** = 設計時の記録で、現状を保証しない / **構想** = 未実装 / **記録** = 日付時点の調査・合意
 
-## 種別の意味
+## 作業別
 
-- **現行リファレンス** — 実装に追従して更新される規約・仕様。信頼してよい
-- **設計時スナップショット** — 設計フェーズの記録。意図・経緯の理解には有用だが、実装の現状を保証しない
-- **記録** — 日付付きの議論・調査のスナップショット。作成日時点の事実
-- **アーカイブ** — 過去の一回性の作業資料。現状把握には使わない
-
-## 作業別の参照ガイド
-
-| 作業 | 最初に読む | 補助（設計意図・経緯） |
+| 作業 | 最初に読む | 補助 |
 |---|---|---|
-| API ルートの追加・変更 | `api-conventions.md` | — |
-| フロントエンド・UI 実装 | `frontend-guidelines.md` | `ui-consistency-checklist.md`（統一の進捗） |
-| 通知・未読・Push・Realtime | `notification-design.md`（現行仕様） | `notification-ux-redesign.md`（Phase 設計・Realtime 方針の根拠）、`07_notifications_and_unread.md` |
-| モバイル（Expo） | CLAUDE.md「決定済みの技術判断」 | `08_expo_roadmap.md`、`mobile-webview-auth-handoff.md`（WebView 認証） |
-| キーボードショートカット | `keyboard-shortcuts.md` | — |
-| デプロイ・リリース・本番設定 | `production-deployment.md` | — |
-| 課金（未実装・設計のみ） | `pricing-plan-design.md`（何を売るか） | `billing-implementation-design.md`（どう実装するか） |
-| AI メンバー・定期ジョブ（未実装・設計のみ） | `10_ai_member_design.md` / `scheduled-jobs-design.md` | `ai-self-improvement-loop.md` |
-| LP・マーケティング | `lp-content-redesign.md` | `landing-page-routing-design.md`、`lp-soul-page-copy.md` |
-
-## 現行リファレンス
-
-| ファイル | 内容 | 最終更新 |
-|---|---|---|
-| [`api-conventions.md`](./api-conventions.md) | API ルート実装規約・認証・サインアップフロー | 2026-07-03 |
-| [`frontend-guidelines.md`](./frontend-guidelines.md) | コンポーネント設計・Domain Hook パターン・UIディレクトリ構成 | 2026-06-10 |
-| [`notification-design.md`](./notification-design.md) | 通知・未読の現行仕様 | 2026-07-03 |
-| [`notification-ux-redesign.md`](./notification-ux-redesign.md) | 通知・未読・Push の再設計。**Phase 1〜3 実装済み**（現行 Realtime 方針 = Broadcast from Database はここの Phase 2）。Phase 4〜5 は構想 | 2026-07-03 |
-| [`mobile-webview-auth-handoff.md`](./mobile-webview-auth-handoff.md) | モバイル WebView 認証のワンタイムトークンハンドオフ（実装済み） | 2026-07-03 |
-| [`10_ai_member_design.md`](./10_ai_member_design.md) | AIメンバー設計（構想段階の現行合意。実装着手時に更新する） | 2026-06-11 |
-| [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 定期ジョブ（cron・自然言語で定義）+ アプリ内投票機能の設計（構想段階） | 2026-06-25 |
-| [`production-deployment.md`](./production-deployment.md) | 本番環境構成・残タスク・一般公開に向けた設定 | 2026-06-21 |
-| [`pricing-plan-design.md`](./pricing-plan-design.md) | 料金プラン設計（Free / Solo / Team / Expedition、ケルン消費モデル。実装未着手） | 2026-06-16 |
-| [`billing-implementation-design.md`](./billing-implementation-design.md) | 課金の実装設計（クレジット台帳・ストレージ家賃・風化・Stripe統合。実装未着手） | 2026-06-16 |
-| [`keyboard-shortcuts.md`](./keyboard-shortcuts.md) | キーボードショートカット設計（3層モデル・全画面マッピング。第2.5段まで実装済み、Vim モードは未実装） | 2026-06-17 |
-| [`landing-page-routing-design.md`](./landing-page-routing-design.md) | ランディングページ導入とルーティング再構成（`/` を公開 LP 化。実装済み） | 2026-07-03 |
-| [`lp-content-redesign.md`](./lp-content-redesign.md) | LP コンテンツの利用者ファースト化（ペルソナ切替 `?p=`、誠実化、CTA/UTM 規約） | 2026-07-03 |
-| [`ui-consistency-checklist.md`](./ui-consistency-checklist.md) | UI 一貫性統一の進捗管理チェックリスト（方針本文は `frontend-guidelines.md`） | 2026-06 |
-
-## 設計時スナップショット
-
-| ファイル | 内容 | 作成 |
-|---|---|---|
-| [`01_product_requirements.md`](./01_product_requirements.md) | プロダクト要件（初期構想。未実装機能を含む） | 2026-05-22 |
-| [`03_technical_architecture.md`](./03_technical_architecture.md) | 技術要件（確定判断は CLAUDE.md が正） | 2026-05-22 |
-| [`05_infrastructure.md`](./05_infrastructure.md) | インフラ要件 | 2026-05-22 |
-| [`06_integration_strategy.md`](./06_integration_strategy.md) | 外部連携方針（Slack / Teams / Outlook は未実装） | 2026-05-22 |
-| [`07_notifications_and_unread.md`](./07_notifications_and_unread.md) | 通知・未読の設計検討 → 現行仕様は `notification-design.md` | 2026-05-27 |
-| [`user-deactivation-design.md`](./user-deactivation-design.md) | ユーザー非活性化・退会設計（卒業生対応・GDPR 消去権の整理・匿名化）。スキーマのみ実装済み、遮断・API・UI は未着手 | 2026-06-22 |
-| [`08_expo_roadmap.md`](./08_expo_roadmap.md) | Expo ネイティブ化ロードマップ（WebView 化・Push まで実施済み） | 2026-05-27 |
-| [`pdf-image-compression-design.md`](./pdf-image-compression-design.md) | PDF添付ファイルの画像圧縮の設計判断記録（エンジン比較・AGPLライセンス論点） | 2026-07-03 |
-| [`ai-self-improvement-loop.md`](./ai-self-improvement-loop.md) | AI 自己改善ループ（提案 → issue → AI 実装 → SOUL 審査 → 人間 merge）の設計メモ（実装前） | 2026-07-03 |
-| [`lp-soul-page-copy.md`](./lp-soul-page-copy.md) | Soul ページ（Open Soul Software / SOUL.md）のコピー案ドラフト（ページ未実装） | 2026-07-03 |
-
-## 記録
-
-| ファイル | 内容 | 作成 |
-|---|---|---|
-| [`09_product_strategy_notes.md`](./09_product_strategy_notes.md) | 展開戦略・魅力向上の優先課題の議論記録 | 2026-06-11 |
+| API ルート | `api-conventions.md`（現行） | — |
+| フロントエンド・UI | `frontend-guidelines.md`（現行）、`../.interface-design/system.md` | — |
+| 通知・未読・Push・Realtime | `notification-design.md`（現行） | `archive/notification-ux-redesign.md`（再設計の経緯。Phase 4〜5 は構想） |
+| モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（ストア提出） |
+| デプロイ・リリース・本番設定 | `production-deployment.md`（現行） | `resend-email-provider.md`（認証メールの SMTP 配送） |
+| プロフィール属性・メンバー表示 | `profile-attributes-design.md`（現行） | `user-deactivation-design.md`（非活性メンバー。実装済み） |
+| マイルストーン | `milestone-design.md`（実装状況・設計判断・残課題） | — |
+| 課金 | `billing-implementation-design.md`（Phase 1/2 実装済み） | `pricing-plan-design.md`（プラン意図）、`billing-minigame-design.md`（Phase 3 構想）、`prototypes/stone-stacking-sandbox.html` |
+| `/ai`・AI メンバー | `10_ai_member_design.md`（3つの AI サーフェスの責務境界） | `scheduled-jobs-design.md`（ユーザー定義 cron・投票の構想） |
+| `/ai` のプロダクトヘルプ | `../apps/web/src/lib/ai/product-help.ts`（正本。方式と更新ルールは冒頭コメント） | — |
+| AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
+| MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
+| アプリ（プラグイン）基盤・Slack 互換 | `app-platform-design.md`（構想。Bot・Block Kit 互換カード・インタラクション、投票アプリ）。外部の開発者向けの公開仕様は `/developers`（`apps/web/src/app/developers/`） | `scheduled-jobs-design.md`（投票の元設計） |
+| キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
+| LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware）、`../marketing/ad-30s/README.md`（30 秒広告の素材と書き出し手順） |
+| パフォーマンス | `performance-improvement-plan.md`（残作業） | — |
+| Web Push 通知（VAPID） | `web-push.md`（現行） | — |
+| Electron デスクトップ | `desktop-app.md`（現行） | — |
+| DM の法令対応 | `telecom-business-filing-research.md`（記録） | — |
 
 ## アーカイブ
 
-[`archive/`](./archive/README.md) — 一回性の作業資料（UIデザインプロンプト、設計時スキーマSQL、Phase 2-B 作業指示書）。現状を反映しない。
+[`archive/`](./archive/README.md) — 初期の要件・技術/インフラ設計、実施済みのロードマップ・作業指示書・チェックリスト、未着手の構想メモなど。**現状把握には使わない。**
 
 ## 運用ルール
 
-- ファイル名に日付は入れない（リンク安定性のため）。作成日・ステータスは各文書冒頭のヘッダに書き、履歴は Git に任せる
-- 番号付きファイル（`01_`〜）は設計フェーズのスナップショットとして凍結する。今後の現行リファレンスは番号なし・説明的な名前で作成する（`04` は設計時スキーマSQLで、`archive/` に移動済み）
-- 設計時スナップショットは原則編集しない。仕様が変わったら現行リファレンス側を更新し、必要ならスナップショットのヘッダから誘導する
-- 新しいドキュメントを追加・移動したら、このインデックスを更新する
+- ファイル名に日付は入れない。ステータスは各文書冒頭に書き、履歴は Git に任せる
+- 実装が終わった計画・チェックリスト・経緯の説明は現行文書に残さず、要点を現行文書へ移してから `archive/` へ移す
+- 設計時の文書は原則編集しない。仕様が変わったら現行文書を更新する
+- 文書を追加・移動したらこのインデックスと `archive/README.md` を更新する

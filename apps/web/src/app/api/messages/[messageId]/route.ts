@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { editMessageSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { parseCheckboxes } from '@/lib/chat/checkboxes'
+import { requireChannelAccess } from '@/lib/permissions'
 import { canonicalizeMentions } from '@/lib/chat/mentions'
 
 type RouteContext = { params: Promise<{ messageId: string }> }
@@ -32,11 +32,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   try {
     const { db } = await import('@cairn/db')
     const { messages, channels } = await import('@cairn/db')
-    const { eq, and, isNull, inArray } = await import('drizzle-orm')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
     // 送信者・ワークスペース・削除済み除外をすべて確認してから更新
     const [target] = await db
-      .select({ id: messages.id, content: messages.content })
+      .select({
+        id: messages.id,
+        channelId: messages.channelId,
+      })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -51,75 +54,18 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つからないか編集権限がありません' }, { status: 404 })
     }
 
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
+    if (forbidden) return forbidden
+
     const [updated] = await db
       .update(messages)
       .set({ content, updatedAt: new Date() })
       .where(eq(messages.id, messageId))
       .returning({ id: messages.id, content: messages.content })
 
-    // チェックボックスの変化に応じてタスクを同期
-    const { tasks, channels: channelsTable } = await import('@cairn/db')
-    const oldBoxes = parseCheckboxes(target.content)
-    const newBoxes = parseCheckboxes(content)
+    if (!updated) throw new Error('Update returned no rows')
 
-    // 削除されたチェックボックスのタスクを一括削除
-    const newIndices = new Set(newBoxes.map(b => b.index))
-    const removedIndices = oldBoxes.filter(b => !newIndices.has(b.index)).map(b => b.index)
-    if (removedIndices.length > 0) {
-      await db.delete(tasks).where(and(
-        eq(tasks.sourceMessageId, messageId),
-        inArray(tasks.sourceCheckboxIndex, removedIndices),
-      ))
-    }
-
-    // 追加・変更されたチェックボックスをupsert
-    if (newBoxes.length > 0) {
-      const [ch] = await db
-        .select({ projectId: channelsTable.projectId })
-        .from(messages)
-        .innerJoin(channelsTable, eq(messages.channelId, channelsTable.id))
-        .where(eq(messages.id, messageId))
-        .limit(1)
-
-      if (ch?.projectId) {
-        const projectId = ch.projectId
-
-        // 新規チェックボックスを一括インサート
-        const newToInsert = newBoxes.filter(nb => !oldBoxes.some(ob => ob.index === nb.index))
-        if (newToInsert.length > 0) {
-          await db.insert(tasks).values(
-            newToInsert.map(nb => ({
-              projectId,
-              title: nb.text,
-              status: (nb.checked ? 'done' : 'todo') as 'done' | 'todo',
-              priority: 'medium' as const,
-              createdBy: ctx.userId,
-              sourceMessageId: messageId,
-              sourceCheckboxIndex: nb.index,
-            })),
-          )
-        }
-
-        // タイトルまたはチェック状態が変わった既存チェックボックスを更新
-        for (const nb of newBoxes) {
-          const existing = oldBoxes.find(ob => ob.index === nb.index)
-          if (existing && (existing.text !== nb.text || existing.checked !== nb.checked)) {
-            await db.update(tasks)
-              .set({
-                title: nb.text,
-                status: nb.checked ? 'done' : 'todo',
-                updatedAt: new Date(),
-              })
-              .where(and(
-                eq(tasks.sourceMessageId, messageId),
-                eq(tasks.sourceCheckboxIndex, nb.index),
-              ))
-          }
-        }
-      }
-    }
-
-    return NextResponse.json({ id: updated!.id, content: updated!.content })
+    return NextResponse.json({ id: updated.id, content: updated.content })
   } catch (err) {
     console.error('[/api/messages/[messageId] PATCH] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -133,12 +79,12 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, channels } = await import('@cairn/db')
+    const { messages, channels, tasks } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
     // 送信者・ワークスペーススコープを確認してからソフトデリート
     const [target] = await db
-      .select({ id: messages.id })
+      .select({ id: messages.id, channelId: messages.channelId })
       .from(messages)
       .innerJoin(channels, eq(messages.channelId, channels.id))
       .where(and(
@@ -153,10 +99,20 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'メッセージが見つからないか削除権限がありません' }, { status: 404 })
     }
 
-    await db
-      .update(messages)
-      .set({ deletedAt: new Date() })
-      .where(eq(messages.id, messageId))
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
+    if (forbidden) return forbidden
+
+    // メッセージのソフトデリートと、そのメッセージ由来タスクの削除を1トランザクションにする。
+    // 片方だけ成功すると、メッセージは非表示なのにタスクだけ残る不整合になるため、
+    // 両方まとめて成功/失敗させる。
+    await db.transaction(async (tx) => {
+      await tx
+        .update(messages)
+        .set({ deletedAt: new Date() })
+        .where(eq(messages.id, messageId))
+
+      await tx.delete(tasks).where(eq(tasks.sourceMessageId, messageId))
+    })
 
     return new NextResponse(null, { status: 204 })
   } catch (err) {

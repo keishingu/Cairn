@@ -6,59 +6,122 @@ import type { JSONValue, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
+import { MarkdownContent } from '../markdown-content'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
+import { buildAiRequestBody } from './ai-request-body'
 
 // ---- ソースチップ ----
 
-type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string; href?: string }
+type ToolEvidence = { type: string; id: string; label: string; href: string }
+
+function isSafeHref(value: unknown): value is string {
+  return typeof value === 'string' && (
+    value.startsWith('/') || value.startsWith('https://') || value.startsWith('http://')
+  )
+}
+
+function isToolEvidence(value: unknown): value is ToolEvidence {
+  if (typeof value !== 'object' || value === null) return false
+  const item = value as Record<string, unknown>
+  return (
+    typeof item['type'] === 'string' &&
+    typeof item['id'] === 'string' &&
+    typeof item['label'] === 'string' &&
+    isSafeHref(item['href'])
+  )
+}
+
+function evidenceFromTools(toolInvocations: ToolInvocation[]): ToolEvidence[] {
+  const evidence: ToolEvidence[] = []
+  for (const invocation of toolInvocations) {
+    if (invocation.state !== 'result' || typeof invocation.result !== 'object' || invocation.result === null) continue
+    const result = invocation.result as Record<string, unknown>
+    const records = [
+      ...(Array.isArray(result['items']) ? result['items'] : []),
+      ...(Array.isArray(result['risks']) ? result['risks'] : []),
+    ]
+    for (const record of records) {
+      if (typeof record !== 'object' || record === null) continue
+      const value = (record as Record<string, unknown>)['evidence']
+      const candidates = Array.isArray(value) ? value : [value]
+      for (const candidate of candidates) if (isToolEvidence(candidate)) evidence.push(candidate)
+    }
+  }
+  return evidence
+}
 
 function MessageSources({ annotations, toolInvocations }: {
   annotations?: unknown[] | undefined
   toolInvocations?: ToolInvocation[] | undefined
 }) {
+  const t = useT()
   const ragAnnotation = annotations?.find(
     (a): a is { type: string; sources: RagSource[] } =>
       typeof a === 'object' && a !== null && (a as { type?: unknown }).type === 'rag-sources',
   )
-  const sources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const ragSources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const toolSources = evidenceFromTools(toolInvocations ?? [])
+  const seen = new Set<string>()
+  const sources = [
+    ...ragSources.map(src => ({
+      type: src.sourceType,
+      id: src.sourceId,
+      label: src.name,
+      href: (isSafeHref(src.href) ? src.href : undefined) ?? (
+        src.sourceType === 'file'
+          ? (src.fileType === 'link' && isSafeHref(src.externalUrl) ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+          : src.sourceType === 'project'
+            ? `/projects?open=project-${src.sourceId}`
+            : `/members/${src.sourceId}`
+      ),
+    })),
+    ...toolSources,
+  ].filter(src => {
+    const key = `${src.type}:${src.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  const visibleSources = sources.slice(0, 24)
   const searches = (toolInvocations ?? []).filter(t => t.toolName === 'webSearch' && (t.state === 'call' || t.state === 'result'))
 
   if (sources.length === 0 && searches.length === 0) return null
 
   return (
     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-      {sources.map(src => {
-        const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
-        const href =
-          src.sourceType === 'file'
-            ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
-            : src.sourceType === 'project'
-            ? `/projects?open=${src.sourceId}`
-            : `/members/${src.sourceId}`
-        const isExternal = src.sourceType === 'file' && src.fileType === 'link'
+      {visibleSources.map(src => {
+        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' ? 'chat' : 'users'
+        const isExternal = src.href.startsWith('https://') || src.href.startsWith('http://')
         return (
-          <a key={`${src.sourceType}:${src.sourceId}`} href={href}
+          <a key={`${src.type}:${src.id}`} href={src.href}
             target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
-            <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
+            <Icon name={icon} size={10} strokeWidth={2}/>{src.label}
           </a>
         )
       })}
-      {searches.map(t => {
-        const query = String((t.args as { query?: string }).query ?? 'Web検索')
-        const firstUrl = t.state === 'result' ? ((t.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
+      {sources.length > visibleSources.length && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          {t('{count} more', { count: sources.length - visibleSources.length })}
+        </span>
+      )}
+      {searches.map(invocation => {
+        const query = String((invocation.args as { query?: string }).query ?? t('Web search'))
+        const firstUrl = invocation.state === 'result' ? ((invocation.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
         return firstUrl ? (
-          <a key={t.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
+          <a key={invocation.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </a>
         ) : (
-          <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          <span key={invocation.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </span>
         )
@@ -82,17 +145,18 @@ function ConversationSidebar({
   onNew: () => void
   isCreating: boolean
 }) {
+  const t = useT()
   const grouped: Record<string, ConversationDto[]> = {}
   const now = new Date()
 
   for (const c of conversations) {
     const d = new Date(c.createdAt)
     const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
-    const key = diffDays === 0 ? '今日' : diffDays <= 6 ? '今週' : '以前'
+    const key = diffDays === 0 ? 'Today' : diffDays <= 6 ? 'This week' : 'Earlier'
     ;(grouped[key] ??= []).push(c)
   }
 
-  const groups = ['今日', '今週', '以前'].filter(g => grouped[g]?.length)
+  const groups = ['Today', 'This week', 'Earlier'].filter(g => grouped[g]?.length)
 
   return (
     <aside style={{ width: 260, borderRight: '1px solid var(--border)', background: 'var(--card)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
@@ -103,18 +167,18 @@ function ConversationSidebar({
           disabled={isCreating}
           style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: isCreating ? 0.6 : 1 }}
         >
-          <Icon name="plus" size={13}/> 新しい会話
+          <Icon name="plus" size={13}/> {t('New conversation')}
         </button>
       </div>
       <div style={{ padding: '0 8px 12px', overflow: 'auto', flex: 1 }}>
         {groups.length === 0 && (
           <div style={{ padding: '16px 10px', fontSize: 12, color: 'var(--text-4)', textAlign: 'center' }}>
-            まだ会話がありません
+            {t('No conversations yet')}
           </div>
         )}
         {groups.map(group => (
           <React.Fragment key={group}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '8px 10px', textTransform: 'uppercase' }}>{group}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '8px 10px', textTransform: 'uppercase' }}>{t(group)}</div>
             {(grouped[group] ?? []).map(c => (
               <button
                 key={c.id}
@@ -128,7 +192,7 @@ function ConversationSidebar({
               >
                 <Icon name="chat" size={13} color="var(--text-3)"/>
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.title ?? '新しい会話'}
+                  {c.title ?? t('New conversation')}
                 </span>
               </button>
             ))}
@@ -142,6 +206,7 @@ function ConversationSidebar({
 // ---- ウェルカム画面 ----
 
 function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isCreating: boolean; isMobile?: boolean }) {
+  const t = useT()
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
       <div style={{ width: isMobile ? 48 : 52, height: isMobile ? 48 : 52, borderRadius: isMobile ? 14 : 16, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -149,13 +214,13 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
       </div>
       {isMobile ? (
         <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.6 }}>
-          プロジェクト・メンバー・ファイルの情報をもとに質問に答えます。
+          {t('It answers questions using projects, members, and files.')}
         </p>
       ) : (
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>AIアシスタント</h2>
+          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>{t('AI assistant')}</h2>
           <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.7 }}>
-            プロジェクト・メンバー・ファイルの情報をもとに<br/>質問に答えます。
+            {t('Based on projects, members, and files')}<br/>{t('It answers your questions.')}
           </p>
         </div>
       )}
@@ -165,7 +230,7 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
         disabled={isCreating}
         style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: isCreating ? 0.6 : 1 }}
       >
-        <Icon name="plus" size={13}/> 新しい会話を始める
+        <Icon name="plus" size={13}/> {t('Start a new conversation')}
       </button>
     </div>
   )
@@ -173,7 +238,12 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
 
 // ---- チャットビュー ----
 
-const SUGGESTIONS = ['プロジェクトの進捗を教えて', 'メンバーのスキルを確認したい', 'ファイルの内容を要約して', '計画のリスクを洗い出して']
+const SUGGESTIONS = [
+  'How is the project going?',
+  'I want to check member skills',
+  'Summarize the file contents',
+  'List the risks in the plan',
+]
 
 function ChatView({
   conversationId,
@@ -184,6 +254,7 @@ function ChatView({
   initialMessages: MessageDto[]
   isMobile?: boolean
 }) {
+  const t = useT()
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
@@ -198,6 +269,7 @@ function ChatView({
       ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
       ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
     })),
+    experimental_prepareRequestBody: ({ messages }) => buildAiRequestBody(messages),
     onFinish: () => {
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
@@ -214,13 +286,13 @@ function ChatView({
           <div style={{ width: 24, height: 24, borderRadius: 7, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="sparkles" size={12} color="#fff"/>
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>AIアシスタント</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{t('AI assistant')}</span>
         </div>
       )}
 
       {error && (
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
-          エラー: {error.message}
+          {t('Error: {message}', { message: error.message })}
         </div>
       )}
 
@@ -228,7 +300,7 @@ function ChatView({
         <div style={{ maxWidth: isMobile ? undefined : 760, margin: '0 auto', padding: isMobile ? '0 16px' : '0 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 13, paddingTop: 40 }}>
-              質問を入力して会話を始めましょう
+              {t('Type a question to start the conversation')}
             </div>
           )}
           {messages.map(m => m.role === 'user' ? (
@@ -243,7 +315,9 @@ function ChatView({
                 <Icon name="sparkles" size={14} color="#fff"/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
+                  <MarkdownContent content={m.content} lineHeight={1.7}/>
+                </div>
                 <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
@@ -251,7 +325,7 @@ function ChatView({
                     style={{ height: 26, fontSize: 11 }}
                     onClick={() => navigator.clipboard.writeText(m.content)}
                   >
-                    コピー
+                    {t('Copy')}
                   </button>
                 </div>
               </div>
@@ -263,7 +337,7 @@ function ChatView({
                 <Icon name="sparkles" size={14} color="#fff"/>
               </div>
               <div style={{ paddingTop: 6, color: 'var(--text-3)', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <TypingDots/> 考えています…
+                <TypingDots/> {t('Thinking…')}
               </div>
             </div>
           )}
@@ -284,7 +358,7 @@ function ChatView({
                   key={i}
                   type="button"
                   disabled={isLoading}
-                  onClick={() => void append({ role: 'user', content: s })}
+                  onClick={() => void append({ role: 'user', content: t(s) })}
                   style={{
                     padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 500,
                     background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)',
@@ -292,7 +366,7 @@ function ChatView({
                     ...(isMobile ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
                   }}
                 >
-                  {s}
+                  {t(s)}
                 </button>
               ))}
             </div>
@@ -305,7 +379,7 @@ function ChatView({
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
-                placeholder={isMobile ? 'AIに質問する…' : '質問を入力 (Shift+Enterで改行)'}
+                placeholder={isMobile ? t('Ask AI…') : t('Type a question (Shift+Enter for a new line)')}
                 rows={1}
                 disabled={isLoading}
                 style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 13.5, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '4px 0', minHeight: 22, maxHeight: 120 }}
@@ -327,7 +401,7 @@ function ChatView({
             </div>
           </form>
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
-            AIは間違えることもあります。重要な判断はリーダーに相談してください。
+            {t('AI can be wrong. Check important decisions with a lead.')}
           </div>
         </div>
       </div>
@@ -338,6 +412,7 @@ function ChatView({
 // ---- メインコンポーネント ----
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
+  const t = useT()
   const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
@@ -402,7 +477,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     )
 
     if (mobilePane === 'chat' && activeId && initialMessages) {
-      const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
+      const title = conversations.find(c => c.id === activeId)?.title ?? t('AI assistant')
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
@@ -414,7 +489,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (mobilePane === 'list') {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-          <MobileHeader title="過去の会話" onBack={() => setMobilePane('welcome')} right={newButton}/>
+          <MobileHeader title={t('Past conversations')} onBack={() => setMobilePane('welcome')} right={newButton}/>
           <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
             {conversations.map(c => (
               <button
@@ -430,7 +505,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
                   <Icon name="chat" size={16} color="var(--text-3)"/>
                 </div>
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 15 }}>
-                  {c.title ?? '新しい会話'}
+                  {c.title ?? t('New conversation')}
                 </span>
                 <Icon name="chevRight" size={16} color="var(--text-4)"/>
               </button>
@@ -451,7 +526,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     ) : undefined
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="AIアシスタント" right={historyButton}/>
+        <MobileHeader title={t('AI assistant')} right={historyButton} />
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
@@ -461,7 +536,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TopBar title="AIアシスタント"/>
+      <TopBar title={t('AI assistant')} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <ConversationSidebar
         conversations={conversations}

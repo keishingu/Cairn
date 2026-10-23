@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { patchProjectStatusSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export async function PATCH(
   req: Request,
@@ -20,7 +21,14 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const b = body as { name?: string; color?: string; sortOrder?: string }
+  const parsed = patchProjectStatusSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  const b = parsed.data
+
+  const forbidden = requireRole(ctx.role, 'admin')
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
@@ -31,13 +39,6 @@ export async function PATCH(
     if (b.name !== undefined) set.name = b.name.trim()
     if (b.color !== undefined) set.color = b.color
     if (b.sortOrder !== undefined) set.sortOrder = b.sortOrder
-
-    if (Object.keys(set).length === 0) {
-      return NextResponse.json({ error: 'At least one field is required' }, { status: 422 })
-    }
-
-    const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
-    if (forbidden) return forbidden
 
     const [updated] = await db
       .update(projectStatuses)
@@ -54,7 +55,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Status not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id, ...b })
+    return NextResponse.json({ id: updated.id })
   } catch (err) {
     console.error('[PATCH /api/projects/statuses/[id]]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -69,7 +70,7 @@ export async function DELETE(
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

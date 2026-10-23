@@ -100,7 +100,12 @@ enabled = true
 # in emails.
 site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000", "cairn://auth/callback"]
+additional_redirect_urls = [
+  "https://127.0.0.1:3000",
+  "cairn-dev://auth/callback",
+  "cairn-preview://auth/callback",
+  "cairn://auth/callback",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -112,8 +117,10 @@ jwt_expiry = 3600
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
-# Allow/disallow testing manual linking of accounts
-# enable_manual_linking = false
+# Allow/disallow testing manual linking of accounts.
+# 設定画面からの Apple identity 手動連携に必要。Preview / Production は
+# Supabase Dashboard の Auth → Providers で同等の Manual Linking を有効化する。
+enable_manual_linking = true
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.

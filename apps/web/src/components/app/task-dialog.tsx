@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Modal, ModalHeader } from './primitives'
+import { useT } from '@/components/locale-provider'
 
 interface TaskDialogAction {
   label: string
@@ -39,6 +40,7 @@ export const TaskDialog = ({
   leadingAction,
   disableClose = false,
 }: TaskDialogProps) => {
+  const t = useT()
   const handleClose = () => {
     if (disableClose) return
     onClose()
@@ -47,34 +49,67 @@ export const TaskDialog = ({
   const headerProps = subtitle ? { subtitle } : {}
 
   return (
-    <Modal onClose={handleClose}>
-      <div style={{
-        position: 'relative',
-        background: 'var(--card)',
-        borderRadius: 14,
-        width: '100%',
-        maxWidth: 480,
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        animation: 'fadeSlideIn .15s ease',
-      }}>
+    <Modal onClose={handleClose} label={title}>
+      <div
+        data-task-dialog
+        style={{
+          position: 'relative',
+          background: 'var(--card)',
+          borderRadius: 14,
+          width: '100%',
+          maxWidth: 480,
+          maxHeight: 'calc(100dvh - 48px)',
+          boxShadow: 'var(--shadow-lg)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          animation: 'fadeSlideIn .15s ease',
+        }}
+      >
         <ModalHeader title={title} onClose={handleClose} {...headerProps} />
-        <form onSubmit={onSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {children}
+        <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div
+            data-task-dialog-body
+            style={{
+              padding: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              minHeight: 0,
+              overflowY: 'auto',
+              overscrollBehavior: 'contain',
+            }}
+          >
+            {children}
+          </div>
           {errorMessage && (
-            <div style={{
-              fontSize: 12.5,
-              color: 'var(--red-text)',
-              background: 'var(--red-soft)',
-              padding: '8px 12px',
-              borderRadius: 6,
-            }}>
+            <div
+              role="alert"
+              style={{
+                fontSize: 12.5,
+                color: 'var(--red-text)',
+                background: 'var(--red-soft)',
+                padding: '8px 12px',
+                margin: '0 20px 12px',
+                borderRadius: 6,
+                flexShrink: 0,
+              }}
+            >
               {errorMessage}
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, paddingTop: 4 }}>
+          <div
+            data-task-dialog-actions
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              padding: '16px 20px 20px',
+              borderTop: '1px solid var(--divider)',
+              flexShrink: 0,
+              background: 'var(--card)',
+            }}
+          >
             <div>
               {leadingAction && (
                 <button
@@ -89,7 +124,7 @@ export const TaskDialog = ({
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={handleClose} className="btn" disabled={disableClose}>
-                キャンセル
+                {t('Cancel')}
               </button>
               <button
                 type="submit"

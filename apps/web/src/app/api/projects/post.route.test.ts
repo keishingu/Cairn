@@ -7,24 +7,25 @@ const PROJECT_ID = '00000000-0000-0000-0000-000000000099'
 const MEMBER_A = '00000000-0000-0000-0000-000000000010'
 const MEMBER_B = '00000000-0000-0000-0000-000000000011'
 
-const { mockGetAuthContext, mockRequireWorkspaceAdmin, mockDb } = vi.hoisted(() => {
+const { mockGetAuthContext, mockRequireRole, mockDb } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn().mockResolvedValue({
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: '00000000-0000-0000-0000-000000000010',
+      role: 'admin',
     },
     error: null,
   })
-  const mockRequireWorkspaceAdmin = vi.fn().mockResolvedValue(null)
+  const mockRequireRole = vi.fn().mockReturnValue(null)
   const mockDb = {
     insert: vi.fn(),
     select: vi.fn(),
   }
-  return { mockGetAuthContext, mockRequireWorkspaceAdmin, mockDb }
+  return { mockGetAuthContext, mockRequireRole, mockDb }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ requireWorkspaceAdmin: mockRequireWorkspaceAdmin }))
+vi.mock('@/lib/permissions', () => ({ requireRole: mockRequireRole }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
 vi.mock('@cairn/db', () => ({
   db: mockDb,
@@ -50,7 +51,13 @@ vi.mock('@cairn/db', () => ({
     projectId: 'pm.projectId',
     userId: 'pm.userId',
     role: 'pm.role',
+    roleId: 'pm.roleId',
     attendance: 'pm.attendance',
+  },
+  projectRoles: {
+    id: 'prr.id',
+    workspaceId: 'prr.workspaceId',
+    legacyRole: 'prr.legacyRole',
   },
   projectStatuses: {
     id: 'ps.id',
@@ -60,7 +67,12 @@ vi.mock('@cairn/db', () => ({
   workspaceMembers: {
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
+    displayName: 'wm.displayName',
     avatarUrl: 'wm.avatarUrl',
+  },
+  activeWorkspaceMembers: {
+    workspaceId: 'awm.workspaceId',
+    userId: 'awm.userId',
   },
   profiles: {
     id: 'pr.id',
@@ -123,9 +135,9 @@ describe('POST /api/projects', () => {
     }))
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { memberCount: number; isMember: boolean }
+    const body = await res.json() as { memberCount: number; isJoined: boolean }
     expect(body.memberCount).toBe(0)
-    expect(body.isMember).toBe(false)
+    expect(body.isJoined).toBe(false)
     expect(mockDb.insert).toHaveBeenCalledTimes(2)
   })
 
@@ -144,6 +156,7 @@ describe('POST /api/projects', () => {
     let insertCount = 0
     mockDb.select
       .mockReturnValueOnce(selectChain([{ userId: MEMBER_A }, { userId: MEMBER_B }]))
+      .mockReturnValueOnce(selectChain([{ id: 'role-member' }]))
       .mockReturnValueOnce(selectChain([
         { userId: MEMBER_A, displayName: 'Alice', avatarUrl: 'https://example.com/a.png' },
         { userId: MEMBER_B, displayName: 'Bob', avatarUrl: null },
@@ -184,10 +197,10 @@ describe('POST /api/projects', () => {
     }))
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { memberCount: number; memberNames: string[]; isMember: boolean }
+    const body = await res.json() as { memberCount: number; memberNames: string[]; isJoined: boolean }
     expect(body.memberCount).toBe(2)
     expect(body.memberNames).toEqual(['Alice', 'Bob'])
-    expect(body.isMember).toBe(false)
+    expect(body.isJoined).toBe(false)
     expect(mockDb.insert).toHaveBeenCalledTimes(3)
   })
 })

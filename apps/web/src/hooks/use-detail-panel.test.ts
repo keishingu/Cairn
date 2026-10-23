@@ -8,6 +8,7 @@ import React from 'react'
 import { useDetailPanel } from './use-detail-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
@@ -34,8 +35,8 @@ const STUB_PROJECT: ProjectDto = {
   memberAvatarUrls: [],
   taskCount: 0,
   completedTaskCount: 0,
-  isOwner: true,
-  isMember: true,
+  isHosting: true,
+  isJoined: true,
   archived: false,
   coverPhotoIdx: 0,
   coverPhotoUrl: null,
@@ -49,6 +50,8 @@ const STUB_MEMBER: WorkspaceMemberDto = {
   email: 'test@example.com',
   avatarUrl: null,
   role: 'member',
+  membershipStatus: 'active',
+  profileAttributes: [],
   joinedAt: '2026-01-01',
   projectCount: 0,
 }
@@ -65,6 +68,7 @@ function makeWrapper(projects: ProjectDto[] = [STUB_PROJECT], members: Workspace
 
 describe('useDetailPanel — panelState の導出', () => {
   beforeEach(() => {
+    localStorage.clear()
     mockPush.mockClear()
     mockBack.mockClear()
     mockPathname = '/projects'
@@ -103,6 +107,7 @@ describe('useDetailPanel — panelState の導出', () => {
 
 describe('useDetailPanel — 操作関数', () => {
   beforeEach(() => {
+    localStorage.clear()
     mockPush.mockClear()
     mockReplace.mockClear()
     mockBack.mockClear()
@@ -155,16 +160,31 @@ describe('useDetailPanel — 操作関数', () => {
     expect(mockPush).toHaveBeenCalledWith('/chat?open=member-user-1', { scroll: false })
   })
 
-  it('openMember は遷移元の ?tab を引き継がない（buildUrl が tab を削除する）', () => {
+  it('openMember は遷移元の ?tab を維持する', () => {
     mockSearchParams = new URLSearchParams('open=project-proj-1&tab=members')
     const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
     act(() => result.current.openMember('user-1'))
-    expect(mockPush).toHaveBeenCalledWith('/projects?open=member-user-1', { scroll: false })
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=member-user-1&tab=members', { scroll: false })
+  })
+
+  it('openProjectById は前回選択した ?tab を別プロジェクトにも引き継ぐ', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1&tab=members')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.openProjectById('proj-2'))
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=project-proj-2&tab=members', { scroll: false })
+  })
+
+  it('closePanel は前回選択した ?tab を維持する', () => {
+    mockSearchParams = new URLSearchParams('open=project-proj-1&tab=members')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.closePanel())
+    expect(mockPush).toHaveBeenCalledWith('/projects?tab=members', { scroll: false })
   })
 })
 
 describe('useDetailPanel — panelTab / setPanelTab', () => {
   beforeEach(() => {
+    localStorage.clear()
     mockPush.mockClear()
     mockReplace.mockClear()
     mockBack.mockClear()
@@ -184,11 +204,26 @@ describe('useDetailPanel — panelTab / setPanelTab', () => {
     expect(result.current.panelTab).toBe('members')
   })
 
+  it('?tab なしでは localStorage の前回値を復元する', () => {
+    localStorage.setItem(STORAGE_KEYS.project_detail_tab, 'members')
+    mockSearchParams = new URLSearchParams('open=project-proj-1')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    expect(result.current.panelTab).toBe('members')
+  })
+
   it('setPanelTab は router.replace で ?tab を更新する（履歴を汚さない）', () => {
     mockSearchParams = new URLSearchParams('open=project-proj-1')
     const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
     act(() => result.current.setPanelTab('members'))
     expect(mockReplace).toHaveBeenCalledWith('/projects?open=project-proj-1&tab=members', { scroll: false })
     expect(mockPush).not.toHaveBeenCalled()
+    expect(localStorage.getItem(STORAGE_KEYS.project_detail_tab)).toBe('members')
+  })
+
+  it('保存済みタブを新しく開くプロジェクトの URL に引き継ぐ', () => {
+    localStorage.setItem(STORAGE_KEYS.project_detail_tab, 'members')
+    const { result } = renderHook(() => useDetailPanel(), { wrapper: makeWrapper() })
+    act(() => result.current.openProjectById('proj-2'))
+    expect(mockPush).toHaveBeenCalledWith('/projects?open=project-proj-2&tab=members', { scroll: false })
   })
 })

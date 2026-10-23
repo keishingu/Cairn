@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { projectQueryKeys } from './use-projects'
 
 export function usePatchProject(projectId: string) {
   const queryClient = useQueryClient()
@@ -15,7 +16,7 @@ export function usePatchProject(projectId: string) {
         throw new Error(d.error ?? '更新に失敗しました')
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectQueryKeys.all }),
   })
 }
 
@@ -29,6 +30,6 @@ export function useDeleteProject(projectId: string) {
         throw new Error(data.error ?? '削除に失敗しました')
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectQueryKeys.all }),
   })
 }

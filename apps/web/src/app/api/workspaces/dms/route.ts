@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasBlockBetween } from '@/lib/safety/blocks'
 
 export interface DmChannelDto {
   id: string
@@ -16,13 +19,19 @@ export interface DmChannelDto {
 
 const createDmSchema = z.object({ targetUserId: z.string().uuid() })
 
+function dmDisabledResponse() {
+  return NextResponse.json({ error: 'DM機能は現在利用できません' }, { status: 404 })
+}
+
 export async function GET() {
+  if (!FEATURE_FLAGS.dm) return dmDisabledResponse()
+
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, profiles, workspaceMembers } = await import('@cairn/db')
+    const { channels, channelMembers, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, ne } = await import('drizzle-orm')
 
     // 自分が参加している DM チャンネル ID を取得
@@ -36,11 +45,15 @@ export async function GET() {
       .select({
         id: channels.id,
         participantId: profiles.id,
-        participantName: profiles.displayName,
+        participantName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         participantAvatarUrl: workspaceMembers.avatarUrl,
       })
       .from(channels)
       .innerJoin(channelMembers, eq(channelMembers.channelId, channels.id))
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
       .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
       .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
       .where(
@@ -51,10 +64,13 @@ export async function GET() {
           inArray(channels.id, myChannelIds),
         ),
       )
-      .orderBy(profiles.displayName)
+      .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const channelIds = rows.map(r => r.id)
-    if (channelIds.length > 0) {
+    const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+    const visibleParticipantIds = new Set(await filterUnblockedRecipients(ctx.userId, rows.map(row => row.participantId)))
+    const visibleRows = rows.filter(row => visibleParticipantIds.has(row.participantId))
+    const visibleChannelIds = visibleRows.map(row => row.id)
+    if (visibleChannelIds.length > 0) {
       const { channelReadStates, messages } = await import('@cairn/db')
       const { isNull, gt, count, sql: sql2, inArray, ne } = await import('drizzle-orm')
 
@@ -63,18 +79,18 @@ export async function GET() {
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
           .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-          .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .where(and(inArray(messages.channelId, visibleChannelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
           .groupBy(messages.channelId),
         db
           .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
           .from(channelReadStates)
-          .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds))),
+          .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, visibleChannelIds))),
       ])
 
       const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
       const mentionMap = new Map(mentionRows.map(r => [r.channelId, r.cnt]))
 
-      return NextResponse.json(rows.map(r => ({
+      return NextResponse.json(visibleRows.map(r => ({
         ...r,
         participantAvatarUrl: r.participantAvatarUrl ?? null,
         unreadCount: unreadMap.get(r.id) ?? 0,
@@ -82,7 +98,7 @@ export async function GET() {
       })) satisfies DmChannelDto[])
     }
 
-    return NextResponse.json(rows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
+    return NextResponse.json(visibleRows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])
@@ -90,6 +106,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!FEATURE_FLAGS.dm) return dmDisabledResponse()
+
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
@@ -102,11 +120,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
   const { targetUserId } = parsed.data
+  if (targetUserId === ctx.userId) return NextResponse.json({ error: '自分自身とはDMを作成できません' }, { status: 422 })
 
   try {
     const { db } = await import('@cairn/db')
-    const { channels, channelMembers, channelReadStates } = await import('@cairn/db')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
     const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+    const [targetMember] = await db
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, targetUserId),
+      ))
+      .limit(1)
+
+    if (!targetMember) {
+      return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
+    }
+    if (await hasBlockBetween(ctx.userId, targetUserId)) {
+      return NextResponse.json({ error: 'このユーザーとのDMは利用できません' }, { status: 403 })
+    }
 
     // 既存の DM チャンネルを探す（両者が参加している）
     const myChannelIds = db

@@ -1,0 +1,300 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { LocaleProvider } from '@/components/locale-provider'
+import { ChatDetailSidebar } from './chat-detail-sidebar'
+import { useChannelFiles } from '@/hooks/use-channel-files'
+import { useTasksByScope } from '@/hooks/use-project-tasks'
+import type { ProjectDto } from '@/app/api/projects/route'
+
+const { renameMutateAsyncMock, fetchWithAuthMock } = vi.hoisted(() => ({
+  renameMutateAsyncMock: vi.fn(),
+  fetchWithAuthMock: vi.fn(),
+}))
+
+vi.mock('@/hooks/use-channel-files')
+vi.mock('@/hooks/use-rename-file', () => ({
+  useRenameFile: vi.fn(() => ({ mutateAsync: renameMutateAsyncMock })),
+}))
+vi.mock('@/lib/fetch-with-auth', () => ({
+  fetchWithAuth: fetchWithAuthMock,
+}))
+vi.mock('@/hooks/use-current-user', () => ({
+  useWorkspacePermissions: () => ({ isGuest: false }),
+}))
+vi.mock('@/hooks/use-project-members', () => ({
+  useWorkspaceMembers: () => ({ data: [] }),
+  useProjectMembers: () => ({ data: [], isFetching: false }),
+}))
+vi.mock('@/lib/chat/client', () => ({
+  useChannelMembers: () => ({ data: [], isFetching: false }),
+}))
+vi.mock('../task-detail-panel', () => ({
+  TaskDetailPanel: ({ taskId }: { taskId: string }) => <div data-testid="task-detail-panel" data-task-id={taskId} />,
+}))
+vi.mock('@/hooks/use-project-tasks', () => ({
+  useTasksByScope: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    toggleMutation: { mutate: vi.fn() },
+  })),
+}))
+
+const mockUseChannelFiles = vi.mocked(useChannelFiles)
+const mockUseTasksByScope = vi.mocked(useTasksByScope)
+
+const project: ProjectDto = {
+  id: 'project-1', title: 'プロジェクト', description: null, statusName: null, statusColor: null,
+  startDate: null, endDate: null, memberCount: 0, memberNames: [], memberAvatarUrls: [],
+  taskCount: 2, completedTaskCount: 0, isHosting: true, isJoined: true, archived: false,
+  coverPhotoIdx: 0, coverPhotoUrl: null, location: null, placeId: null,
+}
+
+function renderSidebar(onJumpToMessage = vi.fn(), locale: 'ja' | 'en' = 'ja') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const sidebar = (
+    <QueryClientProvider client={queryClient}><ChatDetailSidebar
+      isProject={false}
+      isDm={false}
+      isPrivate={false}
+      channelName="全体"
+      currentDmAvatarUrl={null}
+      dmParticipantId={null}
+      project={null}
+      channelMembers={[]}
+      memberLabel={null}
+      channelId="channel-1"
+      showMemberInvite={false}
+      onInviteMember={vi.fn()}
+      onCloseMemberInvite={vi.fn()}
+      onOpenProject={vi.fn()}
+      onOpenMember={vi.fn()}
+      onJumpToMessage={onJumpToMessage}
+    /></QueryClientProvider>
+  )
+  render(locale === 'en' ? (
+    <LocaleProvider initialLocale="en" initialPreference="en">{sidebar}</LocaleProvider>
+  ) : sidebar)
+  return onJumpToMessage
+}
+
+function renderProjectSidebar(onJumpToMessage = vi.fn()) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}><ChatDetailSidebar
+      isProject
+      isDm={false}
+      isPrivate={false}
+      channelName="プロジェクト"
+      currentDmAvatarUrl={null}
+      dmParticipantId={null}
+      project={project}
+      channelMembers={[]}
+      memberLabel={null}
+      channelId="channel-1"
+      showMemberInvite={false}
+      onInviteMember={vi.fn()}
+      onCloseMemberInvite={vi.fn()}
+      onOpenProject={vi.fn()}
+      onOpenMember={vi.fn()}
+      onJumpToMessage={onJumpToMessage}
+    /></QueryClientProvider>,
+  )
+  return onJumpToMessage
+}
+
+describe('チャット詳細サイドバーのファイル一覧', () => {
+  beforeEach(() => {
+    renameMutateAsyncMock.mockReset()
+    renameMutateAsyncMock.mockResolvedValue({ success: true, fileName: 'renamed.pdf' })
+    fetchWithAuthMock.mockReset()
+    fetchWithAuthMock.mockResolvedValue(new Response('# 見出し\n\nMarkdownです'))
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    mockUseTasksByScope.mockReturnValue({
+      data: [],
+      isLoading: false,
+      toggleMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useTasksByScope>)
+    mockUseChannelFiles.mockReturnValue({
+      data: [
+        {
+          id: 'file-1',
+          sourceMessageId: 'message-1',
+          fileName: 'guide.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          fileType: 'document',
+          uploaderName: '山田 太郎',
+          createdAt: '2026-08-07T03:45:00.000Z',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+  })
+
+  it('ファイルを開かず、共有されたメッセージへジャンプする', async () => {
+    const onJumpToMessage = renderSidebar()
+
+    expect(screen.queryByRole('link', { name: /guide\.pdf/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /guide\.pdf/ }))
+
+    expect(onJumpToMessage).toHaveBeenCalledWith('message-1')
+  })
+
+  it('操作メニューからファイルを開く', async () => {
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ファイルを開く' }))
+
+    expect(window.open).toHaveBeenCalledWith(
+      '/api/attachments/file-1',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  })
+
+  it('外部リンクは中継せず直接開く', async () => {
+    const externalUrl = 'https://docs.google.com/document/d/doc-1/edit'
+    mockUseChannelFiles.mockReturnValue({
+      data: [{
+        id: 'link-1', sourceMessageId: 'message-1', fileName: 'Google ドキュメント',
+        mimeType: null, fileSize: null, fileType: 'link', uploaderName: '山田 太郎',
+        createdAt: '2026-08-07T03:45:00.000Z', externalUrl,
+      }],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: 'ファイルを開く' }))
+
+    expect(window.open).toHaveBeenCalledWith(externalUrl, '_blank', 'noopener,noreferrer')
+  })
+
+  it('操作メニューからファイル名をインライン変更する', async () => {
+    renderSidebar()
+
+    await userEvent.click(screen.getByTitle('操作'))
+    await userEvent.click(screen.getByRole('button', { name: '名前を変更' }))
+    const input = screen.getByRole('textbox', { name: 'ファイル名を変更' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'renamed.pdf{enter}')
+
+    await waitFor(() => expect(renameMutateAsyncMock).toHaveBeenCalledWith({
+      fileId: 'file-1',
+      fileName: 'renamed.pdf',
+    }))
+  })
+
+  it('ファイルアイコンで Markdown プレビューを開き、ファイル名で共有元へ移動する', async () => {
+    mockUseChannelFiles.mockReturnValue({
+      data: [{
+        id: 'markdown-1', sourceMessageId: 'message-1', fileName: 'guide.md',
+        mimeType: 'text/markdown', fileSize: 120, fileType: 'document',
+        uploaderName: '山田 太郎', createdAt: '2026-08-07T03:45:00.000Z',
+      }],
+      isLoading: false, isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    const onJumpToMessage = renderSidebar()
+
+    await userEvent.click(screen.getByTitle('ファイルを開く'))
+    expect(await screen.findByRole('dialog', { name: 'guide.md のプレビュー' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '見出し' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByLabelText('プレビューを閉じる'))
+    await userEvent.click(screen.getByRole('button', { name: /guide\.md/ }))
+    expect(onJumpToMessage).toHaveBeenCalledWith('message-1')
+  })
+})
+
+describe('チャット詳細サイドバーのタスク一覧', () => {
+  beforeEach(() => {
+    mockUseTasksByScope.mockReturnValue({
+      data: [
+        {
+          id: 'linked-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: 'メッセージ由来のタスク',
+          status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null,
+          sourceMessageId: 'message-1', isLinkedToMessage: true,
+        },
+        {
+          id: 'standalone-task', projectId: 'project-1', projectTitle: 'プロジェクト', title: '通常のタスク',
+          status: 'todo', priority: 'medium', dueDate: null, assigneeId: null, assigneeName: null, assigneeAvatarUrl: null,
+          sourceMessageId: null, isLinkedToMessage: false,
+        },
+      ],
+      isLoading: false,
+      toggleMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useTasksByScope>)
+  })
+
+  it('見出しと残件の展開は表示言語に従う', () => {
+    mockUseChannelFiles.mockReturnValue({
+      data: ['a', 'b', 'c', 'd'].map((id) => ({
+        id,
+        sourceMessageId: 'message-1',
+        fileName: `${id}.pdf`,
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        fileType: 'document',
+        uploaderName: '山田 太郎',
+        createdAt: '2026-08-07T03:45:00.000Z',
+      })),
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+
+    renderProjectSidebar()
+    expect(screen.getByRole('heading', { name: 'このプロジェクトについて' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'すべて表示' })).toBeInTheDocument()
+    expect(screen.queryByText('d.pdf')).not.toBeInTheDocument()
+
+    cleanup()
+    renderSidebar(vi.fn(), 'en')
+    expect(screen.getByRole('heading', { name: 'About this channel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show all' })).toBeInTheDocument()
+  })
+
+  it('メッセージに紐付くタスクだけに吹き出しアイコンを表示する', () => {
+    renderProjectSidebar()
+
+    expect(screen.getAllByLabelText('メッセージに紐付いています')).toHaveLength(1)
+  })
+
+  it('行メニューの「詳細を開く」でタスク詳細パネルを開く', async () => {
+    renderProjectSidebar()
+
+    await userEvent.click(screen.getAllByRole('button', { name: '操作' })[0]!)
+    expect(screen.queryByRole('button', { name: '編集' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '詳細を開く' }))
+
+    expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'linked-task')
+  })
+
+  it('通常チャンネルにもタスク一覧を表示し、チャンネルタスクを追加できる', async () => {
+    fetchWithAuthMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'new-task' }), {
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    renderSidebar()
+
+    expect(screen.getByText('タスク')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'タスクを追加' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('全体')).toBeInTheDocument()
+    expect(within(dialog).queryByText('プロジェクト')).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByPlaceholderText('タスク名を入力...'), 'チャンネルタスク')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/tasks', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ title: 'チャンネルタスク', channelId: 'channel-1', priority: 'medium' }),
+    })))
+  })
+})

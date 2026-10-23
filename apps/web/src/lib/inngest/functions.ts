@@ -2,85 +2,157 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { inngest } from './client'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import { hasReadMessage } from '@/lib/push/suppress'
-import { extractMentionIds, stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  extractAttributeMentionIds,
+  extractMentionIds,
+  hasAllMention,
+  hasGroupMention,
+  hasProjectMembersMention,
+  stripMentionsToText,
+} from '@/lib/chat/mentions'
+import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
+import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
-// 「読んでいるのに鳴る」Push を送らずに済む（アプリ内通知・バッジは即時のまま）
+// DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
 const PUSH_GRACE_PERIOD = '10s'
 
 // メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
-function nameResolver(members: { userId: string; displayName: string }[]): (id: string) => string | undefined {
-  const map = new Map(members.map(m => [m.userId, m.displayName]))
-  return id => map.get(id)
+function nameResolver(
+  members: { userId: string; displayName: string }[],
+): (id: string) => string | undefined {
+  const map = new Map(members.map((m) => [m.userId, m.displayName]))
+  return (id) => map.get(id)
 }
 
-// 猶予期間中に対象メッセージを既読にした受信者を Push 対象から除外する
-async function filterUnreadRecipients<T extends { userId: string }>(
+// 猶予期間中に対象メッセージを既読にした受信者と未読の受信者を分ける。
+// 猶予中にメッセージが削除された場合は、どちらにも含めない。
+async function classifyPushRecipients<T extends { userId: string }>(
   messageId: string,
   channelId: string,
   recipients: T[],
-): Promise<T[]> {
-  if (recipients.length === 0) return []
+): Promise<{ readRecipients: T[]; unreadRecipients: T[] }> {
+  if (recipients.length === 0) return { readRecipients: [], unreadRecipients: [] }
 
   const { db, messages, channelReadStates } = await import('@cairn/db')
-  const { eq, and, inArray } = await import('drizzle-orm')
+  const { eq, and, inArray, or, sql } = await import('drizzle-orm')
 
   const [msg] = await db
-    .select({ createdAt: messages.createdAt, deletedAt: messages.deletedAt })
+    .select({ deletedAt: messages.deletedAt })
     .from(messages)
     .where(eq(messages.id, messageId))
     .limit(1)
 
   // 猶予中に削除されたメッセージの Push は送らない
-  if (!msg || msg.deletedAt) return []
+  if (!msg || msg.deletedAt) return { readRecipients: [], unreadRecipients: [] }
 
-  const states = await db
-    .select({
-      userId: channelReadStates.userId,
-      lastReadAt: channelReadStates.lastReadAt,
-      lastReadMessageId: channelReadStates.lastReadMessageId,
-    })
+  const readStates = await db
+    .select({ userId: channelReadStates.userId })
     .from(channelReadStates)
-    .where(and(
-      eq(channelReadStates.channelId, channelId),
-      inArray(channelReadStates.userId, recipients.map(r => r.userId)),
-    ))
+    .where(
+      and(
+        eq(channelReadStates.channelId, channelId),
+        inArray(
+          channelReadStates.userId,
+          recipients.map((r) => r.userId),
+        ),
+        or(
+          eq(channelReadStates.lastReadMessageId, messageId),
+          sql`${channelReadStates.lastReadAt} >= (
+            select ${messages.createdAt}
+            from ${messages}
+            where ${messages.id} = ${messageId}
+          )`,
+        ),
+      ),
+    )
 
-  const stateMap = new Map(states.map(s => [s.userId, s]))
-  return recipients.filter(
-    r => !hasReadMessage(stateMap.get(r.userId), { id: messageId, createdAt: msg.createdAt }),
-  )
+  const readUserIds = new Set(readStates.map((state) => state.userId))
+  return {
+    readRecipients: recipients.filter((recipient) => readUserIds.has(recipient.userId)),
+    unreadRecipients: recipients.filter((recipient) => !readUserIds.has(recipient.userId)),
+  }
+}
+
+type NotificationTx = Parameters<Parameters<typeof import('@cairn/db').db.transaction>[0]>[0]
+
+// 通知を書き込むトランザクションの中で、メッセージの今のチャンネルを行ロック付きで読む。
+// スレッドへの切り出し（messages の UPDATE）はこのロックの解放を待ってから通知を付け替えるため、
+// 書き込み中に移動されても、移動後に作られた通知が親チャンネルに取り残されない。
+async function lockMessageChannel(tx: NotificationTx, messageId: string): Promise<string> {
+  const { messages } = await import('@cairn/db')
+  const { eq } = await import('drizzle-orm')
+  const [row] = await tx
+    .select({ channelId: messages.channelId })
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .for('share')
+    .limit(1)
+  if (!row) throw new Error(`Message not found: ${messageId}`)
+  return row.channelId
 }
 
 export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
   async ({ event, step }) => {
-    const { messageId, channelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
+    const { messageId, channelId: postedChannelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
       event.data as MessageCreatedEvent['data']
 
-    // チャンネルメンバー（送信者を除く）を取得
-    const members = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles } = await import('@cairn/db')
+    // スレッドへの切り出しで、このジョブが走る前にメッセージが移動していることがある。
+    // 投稿時のチャンネルのまま通知を作ると遷移先とメンション未読数が親に残るため、今のチャンネルを読み直す。
+    const readCurrentChannel = async () => {
+      const { db, messages } = await import('@cairn/db')
       const { eq } = await import('drizzle-orm')
+      const [row] = await db
+        .select({ channelId: messages.channelId })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1)
+      return row?.channelId ?? postedChannelId
+    }
+    const channelId = await step.run('resolve-current-channel', readCurrentChannel)
+
+    // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
+    // しないよう active_workspace_members に inner join して active のみに絞る
+    // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
+    const rawMembers = await step.run('fetch-members', async () => {
+      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
+      const { eq, and } = await import('drizzle-orm')
       return db
         .select({ userId: channelMembers.userId, displayName: profiles.displayName })
         .from(channelMembers)
         .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
+        .innerJoin(
+          activeWorkspaceMembers,
+          and(
+            eq(activeWorkspaceMembers.userId, channelMembers.userId),
+            eq(activeWorkspaceMembers.workspaceId, workspaceId),
+          ),
+        )
         .where(eq(channelMembers.channelId, channelId))
-        .then(rows => rows.filter(r => r.userId !== senderId))
+        .then((rows) => rows.filter((r) => r.userId !== senderId))
+    })
+    const members = await step.run('filter-blocked-members', async () => {
+      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+      const ids = await filterUnblockedRecipients(senderId, rawMembers.map(member => member.userId))
+      return rawMembers.filter(member => ids.includes(member.userId))
     })
 
     // DM チャンネルの場合は相手に Push を送って終了
     const isDm = await step.run('check-dm', async () => {
       const { db, channels } = await import('@cairn/db')
       const { eq } = await import('drizzle-orm')
-      const [ch] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1)
+      const [ch] = await db
+        .select({ type: channels.type })
+        .from(channels)
+        .where(eq(channels.id, channelId))
+        .limit(1)
       return ch?.type === 'dm'
     })
 
@@ -92,7 +164,7 @@ export const onMessageCreated = inngest.createFunction(
         if (members.length === 0) return
         const { db, notifications } = await import('@cairn/db')
         await db.insert(notifications).values(
-          members.map(m => ({
+          members.map((m) => ({
             userId: m.userId,
             workspaceId,
             type: 'dm' as const,
@@ -106,150 +178,281 @@ export const onMessageCreated = inngest.createFunction(
       if (members.length > 0) {
         // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
         await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-        const unreadMembers = await step.run('filter-dm-push-targets', () =>
-          filterUnreadRecipients(messageId, channelId, members))
+        const { unreadRecipients } = await step.run('filter-dm-push-targets', () =>
+          classifyPushRecipients(messageId, channelId, members),
+        )
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadMembers.map(m => sendPushToUser(m.userId, {
-              title: senderName,
-              body: dmBody.slice(0, 100),
-              url: `/chats/${channelId}`,
-            })),
+            unreadRecipients.map((m) =>
+              sendPushToUser(m.userId, {
+                title: senderName,
+                body: dmBody.slice(0, 100),
+                url: `/chats/${channelId}`,
+                workspaceId,
+              }),
+            ),
           )
         })
       }
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
     }
 
-    // @メンション通知（チャンネル未参加でもワークスペースメンバーなら通知）
+    // @メンション通知（個別・@all・@project_members・属性）。チャンネル未参加でも到達可能な人へ通知。
     const mentionedIds = extractMentionIds(content)
+    const attributeMentionIds = extractAttributeMentionIds(content)
+    const wantsAll = hasAllMention(content)
+    const wantsProjectMembers = hasProjectMembersMention(content)
+    const hasAnyMentionTarget =
+      mentionedIds.length > 0 || hasGroupMention(content)
 
-    if (members.length === 0 && mentionedIds.length === 0) return { mentionNotifications: 0, fileNotifications: 0 }
-    const mentionedMembers = mentionedIds.length > 0
-      ? await step.run('fetch-mentioned-members', async () => {
-          const { db, workspaceMembers, profiles } = await import('@cairn/db')
-          const { eq, inArray, and, ne } = await import('drizzle-orm')
-          return db
-            .select({ userId: workspaceMembers.userId, displayName: profiles.displayName })
-            .from(workspaceMembers)
-            .innerJoin(profiles, eq(workspaceMembers.userId, profiles.id))
-            .where(and(
-              eq(workspaceMembers.workspaceId, workspaceId),
-              inArray(workspaceMembers.userId, mentionedIds),
-              ne(workspaceMembers.userId, senderId),
-            ))
+    if (members.length === 0 && !hasAnyMentionTarget)
+      return { mentionNotifications: 0, fileNotifications: 0 }
+
+    const mentionedMembers =
+      mentionedIds.length > 0
+        ? await step.run('fetch-mentioned-members', async () => {
+            const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+            const { eq, inArray, and, ne } = await import('drizzle-orm')
+            // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
+            return db
+              .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+              .from(activeWorkspaceMembers)
+              .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+              .where(
+                and(
+                  eq(activeWorkspaceMembers.workspaceId, workspaceId),
+                  inArray(activeWorkspaceMembers.userId, mentionedIds),
+                  ne(activeWorkspaceMembers.userId, senderId),
+                ),
+              )
+          })
+        : []
+
+    const allMentionMembers = wantsAll
+      ? await step.run('expand-all-mention', async () => {
+          const { listActiveWorkspaceMembersExcept } = await import('@/lib/chat/mention-expand')
+          return listActiveWorkspaceMembersExcept(workspaceId, senderId)
         })
       : []
 
-    // 本文プレビューのメンションは送信時点の最新名で解決する（メンバー名 + メンション対象名）
-    const mentionBody = stripMentionsToText(content, nameResolver([...members, ...mentionedMembers]))
-
-    // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
-    // - プライベートチャンネル: チャンネルメンバーのみ
-    // - プロジェクトチャンネル: 参加外プロジェクトのゲストを除外（メンバー以上は全員可）
-    // 通知を飛ばしても遷移先で 403 になり「通知は来るのに開けない」状態になるため、
-    // requireChannelAccess と同じスコープ感でここで対象を絞る。
-    const notifyMentioned = mentionedMembers.length > 0
-      ? await step.run('filter-mention-access', async () => {
-          const { db, channels, channelMembers, projectMembers, workspaceMembers } = await import('@cairn/db')
-          const { eq, and, inArray } = await import('drizzle-orm')
-          const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
-          const ids = mentionedMembers.map(m => m.userId)
-
+    const projectMentionMembers = wantsProjectMembers
+      ? await step.run('expand-project-members-mention', async () => {
+          const { db, channels } = await import('@cairn/db')
+          const { eq } = await import('drizzle-orm')
+          const { listActiveProjectMembersExcept } = await import('@/lib/chat/mention-expand')
           const [ch] = await db
-            .select({ type: channels.type, projectId: channels.projectId, isPrivate: channels.isPrivate })
+            .select({ projectId: channels.projectId })
             .from(channels)
             .where(eq(channels.id, channelId))
             .limit(1)
-          if (!ch) return []
-
-          // プライベートチャンネルはメンバーのみ、プロジェクトチャンネルは guest の参加判定に使う集合を引く
-          const channelMemberIds = ch.isPrivate
-            ? new Set(
-                (await db
-                  .select({ userId: channelMembers.userId })
-                  .from(channelMembers)
-                  .where(and(eq(channelMembers.channelId, channelId), inArray(channelMembers.userId, ids)))
-                ).map(r => r.userId),
-              )
-            : new Set<string>()
-
-          const guestIds = ch.type === 'project' && ch.projectId
-            ? new Set(
-                (await db
-                  .select({ userId: workspaceMembers.userId })
-                  .from(workspaceMembers)
-                  .where(and(
-                    eq(workspaceMembers.workspaceId, workspaceId),
-                    inArray(workspaceMembers.userId, ids),
-                    eq(workspaceMembers.role, 'guest'),
-                  ))
-                ).map(r => r.userId),
-              )
-            : new Set<string>()
-
-          const projectMemberIds = guestIds.size > 0 && ch.projectId
-            ? new Set(
-                (await db
-                  .select({ userId: projectMembers.userId })
-                  .from(projectMembers)
-                  .where(and(
-                    eq(projectMembers.projectId, ch.projectId),
-                    inArray(projectMembers.userId, [...guestIds]),
-                  ))
-                ).map(r => r.userId),
-              )
-            : new Set<string>()
-
-          return filterMentionRecipients({
-            channel: ch,
-            recipients: mentionedMembers,
-            channelMemberIds,
-            guestIds,
-            projectMemberIds,
-          })
+          return listActiveProjectMembersExcept(workspaceId, ch?.projectId, senderId)
         })
       : []
 
-    let mentionNotifications = 0
-    if (notifyMentioned.length > 0) {
-      await step.run('create-mention-notifications', async () => {
-        const { db, notifications, channelReadStates } = await import('@cairn/db')
-        const { sql } = await import('drizzle-orm')
+    const attributeMentionMembers = attributeMentionIds.length > 0
+      ? await step.run('expand-attr-mentions', async () => {
+          const { listActiveMembersByAttributeIds } = await import('@/lib/chat/mention-expand')
+          return listActiveMembersByAttributeIds(workspaceId, attributeMentionIds, senderId)
+        })
+      : []
 
-        await db.insert(notifications).values(
-          notifyMentioned.map(m => ({
-            userId: m.userId,
+    const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
+    const candidateMentioned = mergeMentionMembers(
+      mentionedMembers,
+      allMentionMembers,
+      projectMentionMembers,
+      attributeMentionMembers,
+    )
+
+    // 本文プレビューのメンションは送信時点の最新名で解決する
+    const mentionNameMap = await step.run('resolve-mention-preview-names', async () => {
+      const { buildMentionNameMap } = await import('@/lib/chat/mention-name-map')
+      const map = await buildMentionNameMap(workspaceId, [content])
+      for (const member of [...members, ...candidateMentioned]) {
+        if (!map.has(member.userId)) map.set(member.userId, member.displayName)
+      }
+      return Object.fromEntries(map)
+    })
+    const mentionBody = stripMentionsToText(content, (id) => mentionNameMap[id])
+
+    // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
+    // requireChannelAccess と同じスコープ感で対象を絞る（guest / private 含む）。
+    const notifyMentioned =
+      candidateMentioned.length > 0
+        ? await step.run('filter-mention-access', async () => {
+            const { db, channels, channelMembers, projectMembers, activeWorkspaceMembers } =
+              await import('@cairn/db')
+            const { eq, and, inArray } = await import('drizzle-orm')
+            const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
+            const ids = candidateMentioned.map((m) => m.userId)
+
+            const [ch] = await db
+              .select({
+                type: channels.type,
+                projectId: channels.projectId,
+                isPrivate: channels.isPrivate,
+              })
+              .from(channels)
+              .where(eq(channels.id, channelId))
+              .limit(1)
+            if (!ch) return []
+
+            const needsChannelMembers =
+              ch.isPrivate || ch.type === 'dm' || ch.type === 'workspace'
+            const channelMemberIds = needsChannelMembers
+              ? new Set(
+                  (
+                    await db
+                      .select({ userId: channelMembers.userId })
+                      .from(channelMembers)
+                      .where(
+                        and(
+                          eq(channelMembers.channelId, channelId),
+                          inArray(channelMembers.userId, ids),
+                        ),
+                      )
+                  ).map((r) => r.userId),
+                )
+              : new Set<string>()
+
+            const guestIds = new Set(
+              (
+                await db
+                  .select({ userId: activeWorkspaceMembers.userId })
+                  .from(activeWorkspaceMembers)
+                  .where(
+                    and(
+                      eq(activeWorkspaceMembers.workspaceId, workspaceId),
+                      inArray(activeWorkspaceMembers.userId, ids),
+                      eq(activeWorkspaceMembers.role, 'guest'),
+                    ),
+                  )
+              ).map((r) => r.userId),
+            )
+
+            const projectMemberIds =
+              guestIds.size > 0 && ch.type === 'project' && ch.projectId
+                ? new Set(
+                    (
+                      await db
+                        .select({ userId: projectMembers.userId })
+                        .from(projectMembers)
+                        .where(
+                          and(
+                            eq(projectMembers.projectId, ch.projectId),
+                            inArray(projectMembers.userId, [...guestIds]),
+                          ),
+                        )
+                    ).map((r) => r.userId),
+                  )
+                : new Set<string>()
+
+            return filterMentionRecipients({
+              channel: ch,
+              recipients: candidateMentioned,
+              channelMemberIds,
+              guestIds,
+              projectMemberIds,
+            })
+          })
+        : []
+
+    const unblockedMentioned = await step.run('filter-blocked-mentions', async () => {
+      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+      const ids = await filterUnblockedRecipients(senderId, notifyMentioned.map(member => member.userId))
+      return notifyMentioned.filter(member => ids.includes(member.userId))
+    })
+
+    let mentionNotifications = 0
+    if (unblockedMentioned.length > 0) {
+      await step.run('create-mention-notifications', async () => {
+        const { db, notifications, channelReadStates, messages } = await import('@cairn/db')
+        const { and, eq, inArray, sql } = await import('drizzle-orm')
+
+        const recipients = [...unblockedMentioned].sort((a, b) => a.userId.localeCompare(b.userId))
+        await db.transaction(async (tx) => {
+          const channelId = await lockMessageChannel(tx, messageId)
+
+          // 未参加者はジョブの実行順にかかわらず、すべてのメンションを未読から始める。
+          await tx
+            .insert(channelReadStates)
+            .values(recipients.map((recipient) => ({
+              userId: recipient.userId,
+              channelId,
+              lastReadAt: sql`'epoch'::timestamptz`,
+            })))
+            .onConflictDoNothing()
+
+          // 既読APIも同じ行を更新するため、通知行とカウンターの確定まで直列化する。
+          const states = await tx
+            .select({ userId: channelReadStates.userId })
+            .from(channelReadStates)
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+            ))
+            .orderBy(channelReadStates.userId)
+            .for('update')
+
+          if (states.length !== recipients.length) {
+            throw new Error('Channel read states were not created')
+          }
+
+          const readStates = await tx
+            .select({ userId: channelReadStates.userId })
+            .from(channelReadStates)
+            .where(and(
+              eq(channelReadStates.channelId, channelId),
+              inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+              sql`(
+                ${channelReadStates.lastReadMessageId} = ${messageId}::uuid
+                or ${channelReadStates.lastReadAt} >= (
+                  select ${messages.createdAt}
+                  from ${messages}
+                  where ${messages.id} = ${messageId}
+                )
+              )`,
+            ))
+          const readUserIds = new Set(readStates.map((state) => state.userId))
+          const unreadRecipients = recipients.filter(
+            (recipient) => !readUserIds.has(recipient.userId),
+          )
+          const now = new Date()
+
+          await tx.insert(notifications).values(recipients.map((recipient) => ({
+            userId: recipient.userId,
             workspaceId,
             type: 'mention' as const,
             title: `${senderName} があなたをメンションしました`,
             body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
-          })),
-        )
+            readAt: readUserIds.has(recipient.userId) ? now : null,
+          })))
 
-        // unread_mention_count をインクリメント（行が無ければ作成）
-        await db
-          .insert(channelReadStates)
-          .values(
-            notifyMentioned.map(m => ({
-              userId: m.userId,
-              channelId,
-              unreadMentionCount: 1,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [channelReadStates.userId, channelReadStates.channelId],
-            set: { unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1` },
-          })
+          if (unreadRecipients.length > 0) {
+            await tx
+              .update(channelReadStates)
+              .set({
+                unreadMentionCount: sql`${channelReadStates.unreadMentionCount} + 1`,
+                updatedAt: now,
+              })
+              .where(and(
+                eq(channelReadStates.channelId, channelId),
+                inArray(
+                  channelReadStates.userId,
+                  unreadRecipients.map((recipient) => recipient.userId),
+                ),
+              ))
+          }
+        })
       })
-      mentionNotifications = notifyMentioned.length
+      mentionNotifications = unblockedMentioned.length
     }
 
     // ファイル添付通知（送信者以外の全メンバーへ）
     let fileNotifications = 0
-    if (attachmentFileIds.length > 0) {
+    if (attachmentFileIds.length > 0 && members.length > 0) {
       await step.run('create-file-notifications', async () => {
         const { db, notifications, files } = await import('@cairn/db')
         const { eq } = await import('drizzle-orm')
@@ -262,38 +465,53 @@ export const onMessageCreated = inngest.createFunction(
 
         const fileName = file?.fileName ?? 'ファイル'
         const extraCount = attachmentFileIds.length - 1
-        const body = extraCount > 0
-          ? `${fileName} ほか ${extraCount} 件`
-          : fileName
+        const body = extraCount > 0 ? `${fileName} ほか ${extraCount} 件` : fileName
 
-        await db.insert(notifications).values(
-          members.map(m => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'file' as const,
-            title: `${senderName} がファイルを共有しました`,
-            body,
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        await db.transaction(async (tx) => {
+          const channelId = await lockMessageChannel(tx, messageId)
+          await tx.insert(notifications).values(
+            members.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'file' as const,
+              title: `${senderName} がファイルを共有しました`,
+              body,
+              data: { messageId, channelId, senderName },
+            })),
+          )
+        })
       })
       fileNotifications = members.length
     }
 
-    // メンション Push は猶予後に既読を再確認してから送る（アプリ内通知・バッジは上で記録済み）
-    if (notifyMentioned.length > 0) {
+    // メンション Push は閲覧中でも送る。猶予中に既読になった受信者には、
+    // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
+    if (unblockedMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-      const unreadMembers = await step.run('filter-mention-push-targets', () =>
-        filterUnreadRecipients(messageId, channelId, notifyMentioned))
+      // 猶予中にスレッドへ切り出されることがあるため、既読判定と遷移先は送る直前のチャンネルで決める。
+      const pushChannelId = await step.run('resolve-push-channel', readCurrentChannel)
+      const { readRecipients, unreadRecipients } = await step.run(
+        'filter-mention-push-targets',
+        () => classifyPushRecipients(messageId, pushChannelId, unblockedMentioned),
+      )
 
       await step.run('send-mention-push', async () => {
         await Promise.allSettled(
-          unreadMembers.map(m =>
-            sendPushToUser(m.userId, {
-              title: `${senderName} があなたをメンションしました`,
-              body: mentionBody.slice(0, 100),
-              url: `/chats/${channelId}`,
-            }),
+          [
+            ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
+            ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
+          ].map(({ recipient, updateAppBadge }) =>
+            sendPushToUser(
+              recipient.userId,
+              {
+                title: `${senderName} があなたをメンションしました`,
+                body: mentionBody.slice(0, 100),
+                // 送信後に移動されても、パーマリンクの転送で移動先へ辿れるようメッセージIDを付ける。
+                url: `/chats/${pushChannelId}?m=${encodeURIComponent(messageId)}`,
+                workspaceId,
+              },
+              { updateAppBadge },
+            ),
           ),
         )
       })
@@ -327,6 +545,7 @@ export const onTaskAssigned = inngest.createFunction(
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,
         url: '/tasks',
+        workspaceId,
       })
     })
 
@@ -340,22 +559,74 @@ export const deleteStorageObjects = inngest.createFunction(
   { id: 'delete-storage-objects' },
   { event: 'storage/objects.delete' },
   async ({ event, step }) => {
-    const { bucket, paths } = event.data as { bucket: string; paths: string[] }
-
-    if (paths.length === 0) return { deleted: 0 }
+    const data = event.data as
+      | { bucket: string; paths: string[] }
+      | { targets: Array<{ bucket: string; paths: string[] }> }
+    const targets = 'targets' in data ? data.targets : [{ bucket: data.bucket, paths: data.paths }]
 
     let deleted = 0
-    for (let i = 0; i < paths.length; i += BATCH_SIZE) {
-      const batch = paths.slice(i, i + BATCH_SIZE)
-      await step.run(`delete-batch-${i}`, async () => {
-        const supabase = createServiceRoleClient()
-        const { data, error } = await supabase.storage.from(bucket).remove(batch)
-        if (error) throw error
-        deleted += data?.length ?? 0
-      })
+    for (const { bucket, paths } of targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
     }
 
     return { deleted }
+  },
+)
+
+export const runStorageDeletionJob = inngest.createFunction(
+  { id: 'run-storage-deletion-job' },
+  { event: 'storage/deletion.requested' },
+  async ({ event, step }) => {
+    const { jobId } = event.data as { jobId: string }
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+    const [job] = await db
+      .select({ targets: storageDeletionJobs.targets })
+      .from(storageDeletionJobs)
+      .where(eq(storageDeletionJobs.id, jobId))
+      .limit(1)
+    if (!job) return { deleted: 0 }
+
+    let deleted = 0
+    for (const { bucket, paths } of job.targets) {
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE)
+        await step.run(`delete-${bucket}-batch-${i}`, async () => {
+          const supabase = createServiceRoleClient()
+          const { data, error } = await supabase.storage.from(bucket).remove(batch)
+          if (error) throw error
+          deleted += data?.length ?? 0
+        })
+      }
+    }
+    await db.delete(storageDeletionJobs).where(eq(storageDeletionJobs.id, jobId))
+    return { deleted }
+  },
+)
+
+export const requeueStorageDeletionJobs = inngest.createFunction(
+  { id: 'requeue-storage-deletion-jobs' },
+  { cron: 'TZ=Asia/Tokyo */15 * * * *' },
+  async () => {
+    const { db, storageDeletionJobs } = await import('@cairn/db')
+    const rows = await db
+      .select({ id: storageDeletionJobs.id })
+      .from(storageDeletionJobs)
+      .limit(100)
+    if (rows.length > 0) {
+      await inngest.send(
+        rows.map((row) => ({ name: 'storage/deletion.requested', data: { jobId: row.id } })),
+      )
+    }
+    return { enqueued: rows.length }
   },
 )
 
@@ -367,7 +638,10 @@ export const backfillThumbnails = inngest.createFunction(
   { id: 'backfill-thumbnails' },
   { event: 'attachments/backfill-thumbnails' },
   async ({ event, step }) => {
-    const { workspaceId, afterId } = (event.data ?? {}) as { workspaceId?: string; afterId?: string }
+    const { workspaceId, afterId } = (event.data ?? {}) as {
+      workspaceId?: string
+      afterId?: string
+    }
 
     const targets = await step.run('fetch-targets', async () => {
       const { db, files, galleryItems } = await import('@cairn/db')
@@ -376,19 +650,26 @@ export const backfillThumbnails = inngest.createFunction(
       return db
         .select({ id: files.id, storagePath: files.storagePath })
         .from(files)
-        .where(and(
-          eq(files.fileType, 'image'),
-          isNotNull(files.storagePath),
-          // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
-          sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
-          // ギャラリー画像は別バケット(gallery)に保存されており createThumbnailFromStorage
-          // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
-          notExists(db.select({ one: sql`1` }).from(galleryItems).where(eq(galleryItems.fileId, files.id))),
-          ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
-          // id キーセットで前進する。失敗行は thumbnailPath が NULL のまま残るが、
-          // ここで id > afterId に進めることで同じバッチを永久再取得して詰まるのを防ぐ
-          ...(afterId ? [gt(files.id, afterId)] : []),
-        ))
+        .where(
+          and(
+            eq(files.fileType, 'image'),
+            isNotNull(files.storagePath),
+            // metadata にサムネパスが未設定のものだけを対象にする（再実行で重複処理しない）
+            sql`${files.metadata} ->> 'thumbnailPath' IS NULL`,
+            // ギャラリー画像は別バケット(gallery)に保存されており createThumbnailFromStorage
+            // (chat-attachments 固定) では取得できず永久に失敗し続けるため除外する
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(galleryItems)
+                .where(eq(galleryItems.fileId, files.id)),
+            ),
+            ...(workspaceId ? [eq(files.workspaceId, workspaceId)] : []),
+            // id キーセットで前進する。失敗行は thumbnailPath が NULL のまま残るが、
+            // ここで id > afterId に進めることで同じバッチを永久再取得して詰まるのを防ぐ
+            ...(afterId ? [gt(files.id, afterId)] : []),
+          ),
+        )
         .orderBy(asc(files.id))
         .limit(BACKFILL_BATCH)
     })
@@ -406,7 +687,10 @@ export const backfillThumbnails = inngest.createFunction(
       for (const t of targets) {
         if (!t.storagePath) continue
         const thumbnailPath = await createThumbnailFromStorage(supabase, t.storagePath)
-        if (!thumbnailPath) { failed++; continue }
+        if (!thumbnailPath) {
+          failed++
+          continue
+        }
         // 既存 metadata を保持したまま thumbnailPath だけマージする
         await db
           .update(files)
@@ -426,7 +710,12 @@ export const backfillThumbnails = inngest.createFunction(
       })
     }
 
-    return { processed: targets.length, generated: result.generated, failed: result.failed, done: targets.length < BACKFILL_BATCH }
+    return {
+      processed: targets.length,
+      generated: result.generated,
+      failed: result.failed,
+      done: targets.length < BACKFILL_BATCH,
+    }
   },
 )
 
@@ -544,7 +833,8 @@ export const indexProjectChunks = inngest.createFunction(
     const { projectId, workspaceId } = event.data as { projectId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks } = await import('@cairn/db')
+      const { db, projects, projectStatuses, projectMembers, profiles, documentChunks } =
+        await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
 
       const [row] = await db
@@ -574,7 +864,9 @@ export const indexProjectChunks = inngest.createFunction(
         ...(row.statusName ? [`ステータス: ${row.statusName}`] : []),
         ...(row.startDate ? [`開始日: ${row.startDate}`] : []),
         ...(row.endDate ? [`終了日: ${row.endDate}`] : []),
-        ...(memberRows.length > 0 ? [`メンバー: ${memberRows.map(m => m.displayName).join('、')}`] : []),
+        ...(memberRows.length > 0
+          ? [`メンバー: ${memberRows.map((m) => m.displayName).join('、')}`]
+          : []),
       ]
 
       const content = lines.join('\n')
@@ -589,7 +881,9 @@ export const indexProjectChunks = inngest.createFunction(
 
       await db
         .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'project'), eq(documentChunks.sourceId, projectId)))
+        .where(
+          and(eq(documentChunks.sourceType, 'project'), eq(documentChunks.sourceId, projectId)),
+        )
 
       await db.insert(documentChunks).values({
         workspaceId,
@@ -631,9 +925,7 @@ export const indexExternalLink = inngest.createFunction(
       // 1st try: Content-Disposition ヘッダーからタイトルを取得
       const cd = res.headers.get('content-disposition') ?? ''
       const cdMatch = /filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i.exec(cd)
-      let title = cdMatch
-        ? decodeURIComponent(cdMatch[1]!.trim()).replace(/\.txt$/i, '')
-        : null
+      let title = cdMatch ? decodeURIComponent(cdMatch[1]!.trim()).replace(/\.txt$/i, '') : null
 
       // 2nd try: HTML export の <title> タグからタイトルを取得
       if (!title) {
@@ -661,10 +953,17 @@ export const indexExternalLink = inngest.createFunction(
       await step.run('mark-private', async () => {
         const { db, files } = await import('@cairn/db')
         const { eq } = await import('drizzle-orm')
-        const [row] = await db.select({ metadata: files.metadata }).from(files).where(eq(files.id, fileId)).limit(1)
+        const [row] = await db
+          .select({ metadata: files.metadata })
+          .from(files)
+          .where(eq(files.id, fileId))
+          .limit(1)
         if (!row) return
         const meta = Object.assign({}, row.metadata as Record<string, unknown>)
-        await db.update(files).set({ metadata: { ...meta, indexingStatus: 'failed' } }).where(eq(files.id, fileId))
+        await db
+          .update(files)
+          .set({ metadata: { ...meta, indexingStatus: 'failed' } })
+          .where(eq(files.id, fileId))
       })
       return { indexed: 0, reason: 'private' }
     }
@@ -677,7 +976,11 @@ export const indexExternalLink = inngest.createFunction(
     await step.run('save-embeddings', async () => {
       const { db, documentChunks, files } = await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
-      const [row] = await db.select({ metadata: files.metadata }).from(files).where(eq(files.id, fileId)).limit(1)
+      const [row] = await db
+        .select({ metadata: files.metadata })
+        .from(files)
+        .where(eq(files.id, fileId))
+        .limit(1)
       if (!row) return
 
       const meta = Object.assign({}, row.metadata as Record<string, unknown>)
@@ -709,7 +1012,10 @@ export const indexExternalLink = inngest.createFunction(
       }
 
       if (fetchResult.title) {
-        await db.update(files).set({ fileName: fetchResult.title, metadata: newMeta }).where(eq(files.id, fileId))
+        await db
+          .update(files)
+          .set({ fileName: fetchResult.title, metadata: newMeta })
+          .where(eq(files.id, fileId))
       } else {
         await db.update(files).set({ metadata: newMeta }).where(eq(files.id, fileId))
       }
@@ -726,8 +1032,36 @@ export const indexMemberChunks = inngest.createFunction(
     const { userId, workspaceId } = event.data as { userId: string; workspaceId: string }
 
     await step.run('embed-and-save', async () => {
-      const { db, profiles, memberExperiences, documentChunks } = await import('@cairn/db')
+      const { db, profiles, memberExperiences, documentChunks, activeWorkspaceMembers } =
+        await import('@cairn/db')
       const { eq, and } = await import('drizzle-orm')
+
+      const deleteMemberChunks = () =>
+        db
+          .delete(documentChunks)
+          .where(
+            and(
+              eq(documentChunks.sourceType, 'member'),
+              eq(documentChunks.sourceId, userId),
+              eq(documentChunks.workspaceId, workspaceId),
+            ),
+          )
+
+      const [activeMembership] = await db
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(
+          and(
+            eq(activeWorkspaceMembers.workspaceId, workspaceId),
+            eq(activeWorkspaceMembers.userId, userId),
+          ),
+        )
+        .limit(1)
+
+      if (!activeMembership) {
+        await deleteMemberChunks()
+        return
+      }
 
       const [profile] = await db
         .select({ displayName: profiles.displayName, bio: profiles.bio })
@@ -754,7 +1088,7 @@ export const indexMemberChunks = inngest.createFunction(
           ? [
               '\nスキル・経験:',
               ...experiences.map(
-                e =>
+                (e) =>
                   `- ${e.category} (${e.title})${e.level ? `: ${e.level}` : ''}${e.notes ? `\n  ${e.notes}` : ''}`,
               ),
             ]
@@ -771,9 +1105,7 @@ export const indexMemberChunks = inngest.createFunction(
         value: content,
       })
 
-      await db
-        .delete(documentChunks)
-        .where(and(eq(documentChunks.sourceType, 'member'), eq(documentChunks.sourceId, userId), eq(documentChunks.workspaceId, workspaceId)))
+      await deleteMemberChunks()
 
       await db.insert(documentChunks).values({
         workspaceId,
@@ -786,5 +1118,264 @@ export const indexMemberChunks = inngest.createFunction(
     })
 
     return { indexed: 1 }
+  },
+)
+
+// Phase 1 の AI PMO ハートビート。JST 09:00 に構造化タスクだけを再評価し、
+// LLM・メッセージ巡回・埋め込みは一切行わない。
+export const reconcileAiNudgesHeartbeat = inngest.createFunction(
+  { id: 'reconcile-ai-nudges-heartbeat-phase1' },
+  { cron: 'TZ=Asia/Tokyo 0 9 * * *' },
+  async ({ step }) => {
+    if (!FEATURE_FLAGS.aiPmo) return { skipped: true }
+    return step.run('reconcile-task-nudges', async () => {
+      const { reconcilePhaseOneAiNudges } = await import('@/lib/ai-nudges/reconcile')
+      return reconcilePhaseOneAiNudges()
+    })
+  },
+)
+
+// Phase 2 の差分巡回。6時間ごとにDM以外の新着チャンネルだけをJev中心の二段階判定で評価する。
+// 02:00 JST の実行は候補を生成した後、08:00までdurable sleepしてからコード側の
+// 発話ゲートを再評価する。concurrency=1 + 同一関数内FIFOにより、古い遅延runを先に配信する。
+export const scanAiNudgesPhaseTwo = inngest.createFunction(
+  { id: 'scan-ai-nudges-phase2', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 0 2,8,14,20 * * *' },
+  async ({ step }) => {
+    if (!FEATURE_FLAGS.aiPmo) return { skipped: true }
+    const channels = await step.run('list-channels-with-new-messages', async () => {
+      const { listPhaseTwoChannelsToScan } = await import('@/lib/ai-nudges/llm-nudge-scan')
+      return listPhaseTwoChannelsToScan()
+    })
+
+    const results: PhaseTwoScanResult[] = []
+    const remainingCandidateBudget = new Map<string, number>()
+    const acceptedCandidatesByWorkspace = new Map<string, number>()
+    for (const channel of channels) {
+      const deltaInput = await step.run(`load-channel-delta-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
+        return loadPhaseTwoChannelInput(channel, 'delta')
+      })
+      const recheckInput = await step.run(`load-channel-recheck-${channel.channelId}`, async () => {
+        const { loadPhaseTwoChannelInput } = await import('@/lib/ai-nudges/llm-nudge-scan')
+        return loadPhaseTwoChannelInput(channel, 'unanswered_ask_recheck')
+      })
+      for (const input of [deltaInput, recheckInput]) {
+        if (!input) continue
+
+        let budget = remainingCandidateBudget.get(input.workspaceId)
+        if (budget === undefined) {
+          budget = await step.run(`load-phase2-budget-${input.workspaceId}`, async () => {
+            const { getPhaseTwoScanCandidateBudget } = await import('@/lib/ai-nudges/llm-nudge-scan')
+            return getPhaseTwoScanCandidateBudget(input.workspaceId)
+          })
+          remainingCandidateBudget.set(input.workspaceId, budget)
+        }
+        // 配信可能な候補枠が残っていないワークスペースはLLMを呼ばず、カーソルも進めない。
+        if (budget <= 0) continue
+
+        const scanKind = input.isUnansweredAskRecheck ? 'recheck' : 'delta'
+        const primaryCandidates = await step.run(
+          `screen-channel-${channel.channelId}-${scanKind}`,
+          async () => {
+            const { screenPhaseTwoCandidates } = await import('@/lib/ai-nudges/llm-nudge-scan')
+            return screenPhaseTwoCandidates(input)
+          },
+        )
+        if (primaryCandidates.fundingBlocked) {
+          // 予算読込後に家賃・別配信で残高が尽きた場合は、未評価差分を飛ばさない。
+          results.push({
+            input: { ...input, advancesCursor: false },
+            candidates: [],
+            fundingBlocked: true,
+          })
+          continue
+        }
+        const primaryCandidateFilter = await step.run(
+          `exclude-delivered-candidates-${channel.channelId}-${scanKind}`,
+          async () => {
+            const { excludeIneligiblePhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
+            const { excludeDeliveredPhaseTwoPrimaryCandidates } = await import(
+              '@/lib/ai-nudges/llm-nudge-scan'
+            )
+            const eligibleCandidates = await excludeIneligiblePhaseTwoPrimaryCandidates(
+              input,
+              primaryCandidates.candidates,
+            )
+            return excludeDeliveredPhaseTwoPrimaryCandidates(input, eligibleCandidates)
+          },
+        )
+        const refinedCandidates: PhaseTwoNudgeCandidate[] = []
+        const acceptedBeforeCurrentInput = acceptedCandidatesByWorkspace.get(input.workspaceId) ?? 0
+        let attemptedPrimaryCandidates = 0
+        let fundingBlocked = false
+        const refinementInput =
+          primaryCandidateFilter.candidates.length > 0
+            ? await step.run(
+                `load-channel-continuation-${channel.channelId}-${scanKind}`,
+                async () => {
+                  const { loadPhaseTwoContinuationContext } = await import(
+                    '@/lib/ai-nudges/llm-nudge-scan'
+                  )
+                  return loadPhaseTwoContinuationContext(input)
+                },
+              )
+            : input
+        // false positiveを飛ばしつつ、残りの配信枠が埋まった時点で精査を止める。
+        // 未試行候補が残る場合だけカーソルを保持して次回へ回す。
+        for (const [index, candidate] of primaryCandidateFilter.candidates.entries()) {
+          if (refinedCandidates.length >= budget) break
+          // 最初の予算読込後にも家賃・別の配信で残高が動く。未記帳の精査済み候補数を
+          // 差し引いた現在予算を毎回確認し、配信できない候補のLLM精査を避ける。
+          const currentBudget = await step.run(
+            `recheck-phase2-budget-${channel.channelId}-${scanKind}-${index}`,
+            async () => {
+              const { getPhaseTwoScanCandidateBudget } = await import(
+                '@/lib/ai-nudges/llm-nudge-scan'
+              )
+              return getPhaseTwoScanCandidateBudget(input.workspaceId)
+            },
+          )
+          if (currentBudget <= acceptedBeforeCurrentInput + refinedCandidates.length) {
+            fundingBlocked = true
+            break
+          }
+          attemptedPrimaryCandidates += 1
+          const refinement = await step.run(
+            `refine-channel-${channel.channelId}-${scanKind}-${index}`,
+            async () => {
+              const { refinePhaseTwoCandidate } = await import('@/lib/ai-nudges/llm-nudge-scan')
+              return refinePhaseTwoCandidate(refinementInput, candidate)
+            },
+          )
+          if (refinement.fundingBlocked) {
+            fundingBlocked = true
+            break
+          }
+          // 二次判定が返した候補を採用する。confidenceは監査値であり、一次0.70を
+          // 別の共通閾値で再び落とさない。
+          if (refinement.candidate) refinedCandidates.push(refinement.candidate)
+        }
+        const acceptedCandidates = refinedCandidates
+        remainingCandidateBudget.set(input.workspaceId, budget - acceptedCandidates.length)
+        acceptedCandidatesByWorkspace.set(
+          input.workspaceId,
+          acceptedBeforeCurrentInput + acceptedCandidates.length,
+        )
+        const hasDeferredCandidates =
+          fundingBlocked || attemptedPrimaryCandidates < primaryCandidateFilter.candidates.length
+        // 残高枠で未試行候補が残った入力は、買い増し後に同じ差分を再評価する。
+        results.push({
+          input:
+            hasDeferredCandidates
+              ? { ...input, advancesCursor: false }
+              : input,
+          candidates: acceptedCandidates,
+          preservedActiveRiskTargets: primaryCandidateFilter.preservedActiveRiskTargets,
+        })
+      }
+    }
+    // 配信stepの再試行が22時以降へずれた場合も、DB書き込み直前の判定で翌08時まで待つ。
+    for (let attempt = 0; ; attempt += 1) {
+      const delivery = await step.run(`apply-phase2-speech-gate-${attempt}`, async () => {
+        const { deliverPhaseTwoScanResults } = await import('@/lib/ai-nudges/llm-nudge-delivery')
+        return deliverPhaseTwoScanResults(results)
+      })
+      if (!('deferredUntil' in delivery)) return delivery
+      await step.sleepUntil(`wait-for-quiet-hours-to-end-${attempt}`, delivery.deferredUntil)
+    }
+  },
+)
+
+// files の通常削除はカウンタを増減させるが、プロジェクト削除の CASCADE はDB内で完結する。
+// そのため日次で files を正として再集計し、乖離を検出・修正する。
+export const reconcileWorkspaceStorageUsageDaily = inngest.createFunction(
+  { id: 'reconcile-workspace-storage-usage', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 15 3 * * *' },
+  async ({ step }) => {
+    const results = await step.run('reconcile-storage-usage', async () => {
+      const { reconcileAllWorkspaceStorageUsage } = await import('@/lib/billing/storage-usage')
+      return reconcileAllWorkspaceStorageUsage()
+    })
+
+    const drifted = results.filter(
+      (result) => result.originalBytesDrift !== 0 || result.derivedBytesDrift !== 0,
+    )
+    if (drifted.length > 0) {
+      console.warn('[billing] Storage usage drift reconciled:', {
+        workspaces: drifted.length,
+        drifted,
+      })
+    }
+
+    return { reconciled: results.length, drifted: drifted.length }
+  },
+)
+
+// JST の日次家賃。使用量 reconciliation の直後に同じカウンタを入力として記帳する。
+export const chargeStorageRentDaily = inngest.createFunction(
+  { id: 'charge-storage-rent', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 20 3 * * *' },
+  async ({ step }) => {
+    return step.run('charge-storage-rent', async () => {
+      const { isBillingEnabled } = await import('@/lib/billing/is-billing-enabled')
+      if (!isBillingEnabled()) {
+        const { advanceAllWorkspaceStorageRentCursors } = await import('@/lib/billing/storage-rent')
+        return { skipped: true, advanced: await advanceAllWorkspaceStorageRentCursors() }
+      }
+
+      const { chargeAllWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
+      const results = await chargeAllWorkspaceStorageRent()
+      return { skipped: false, charged: results.length, advanced: 0 }
+    })
+  },
+)
+
+// 署名付きURLだけが発行されて確定されなかった画像を定期回収する。
+export const cleanupExpiredUploadRequests = inngest.createFunction(
+  { id: 'cleanup-expired-upload-requests', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 15 * * * *' },
+  async ({ step }) => {
+    return step.run('remove-expired-upload-objects', async () => {
+      const { cleanupExpiredUploadRequests: cleanup } = await import('@/lib/uploads/cleanup')
+      return cleanup()
+    })
+  },
+)
+
+// アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）。
+// trigger_id は3秒で失効するので、1日たったものは消す
+export const cleanupAppInteractionDeliveries = inngest.createFunction(
+  { id: 'cleanup-app-interaction-deliveries', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 40 3 * * *' },
+  async ({ step }) => {
+    const deliveries = await step.run('delete-old-deliveries', async () => {
+      const { db, appInteractionDeliveries } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appInteractionDeliveries)
+        .where(lt(appInteractionDeliveries.createdAt, sql`now() - interval '30 days'`))
+        .returning({ id: appInteractionDeliveries.id })
+      return deleted.length
+    })
+    const triggers = await step.run('delete-expired-triggers', async () => {
+      const { db, appTriggers } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db.delete(appTriggers).where(lt(appTriggers.expiresAt, sql`now() - interval '1 day'`)).returning({ id: appTriggers.id })
+      return deleted.length
+    })
+    // 送信済み・閉じたモーダルは view（private_metadata を含む）を残し続けない
+    const views = await step.run('delete-finished-views', async () => {
+      const { db, appViews } = await import('@cairn/db')
+      const { and, inArray, lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appViews)
+        .where(and(inArray(appViews.status, ['submitted', 'closed']), lt(appViews.updatedAt, sql`now() - interval '30 days'`)))
+        .returning({ id: appViews.id })
+      return deleted.length
+    })
+    return { deliveries, triggers, views }
   },
 )

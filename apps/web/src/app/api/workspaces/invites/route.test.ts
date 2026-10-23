@@ -12,6 +12,7 @@ const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
     ctx: {
       userId: '00000000-0000-0000-0000-000000000001',
       workspaceId: '10000000-0000-0000-0000-000000000001',
+      role: 'admin',
     },
     error: null,
   })
@@ -40,6 +41,7 @@ vi.mock('@cairn/db', () => ({
     createdAt: 'wi.createdAt',
   },
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
   profiles: { id: 'profiles.id', displayName: 'profiles.displayName' },
 }))
 
@@ -78,7 +80,7 @@ describe('POST /api/workspaces/invites', () => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID }, error: null,
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null,
     })
   })
 
@@ -101,8 +103,10 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('owner でないユーザーには 403 を返す', async () => {
-    // requireWorkspaceAdmin の DB クエリ: role が 'member' → false
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    // 権限判定は ctx.role で行う（DB 往復なし）。member は admin 未満 → 403
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' }, error: null,
+    })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -119,7 +123,10 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('メンバーシップなし（ゲストも含む）は 403', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([]))  // no membership found
+    // guest は admin 未満 → 403（非所属は getAuthContext 側で 403 になる）
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'guest' }, error: null,
+    })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -134,8 +141,9 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('owner は招待トークンを作成できる', async () => {
-    // requireWorkspaceAdmin: owner
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner' }]))
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'owner' }, error: null,
+    })
 
     const fakeToken = 'aaaabbbb-cccc-dddd-eeee-ffffgggghhh'
     mockDb.insert.mockReturnValueOnce({
@@ -165,8 +173,7 @@ describe('POST /api/workspaces/invites', () => {
   })
 
   it('admin も招待トークンを作成できる', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
-
+    // 既定 ctx.role = 'admin'
     mockDb.insert.mockReturnValueOnce({
       values: vi.fn().mockReturnValue({
         returning: vi.fn().mockResolvedValue([{
@@ -199,15 +206,13 @@ describe('GET /api/workspaces/invites', () => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
     mockGetAuthContext.mockResolvedValue({
-      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' },
       error: null,
     })
   })
 
   it('admin は招待一覧を取得できる', async () => {
-    // requireWorkspaceAdmin: admin ロールを持つ
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin' }]))
-    // 招待一覧は空
+    // 既定 ctx.role = 'admin'。招待一覧は空
     mockDb.select.mockReturnValueOnce(selectChain([]))
     const { GET } = await import('./route')
 
@@ -219,7 +224,9 @@ describe('GET /api/workspaces/invites', () => {
   })
 
   it('member は招待一覧を取得できない', async () => {
-    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' }, error: null,
+    })
     const { GET } = await import('./route')
 
     const res = await GET(

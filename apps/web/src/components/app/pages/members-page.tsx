@@ -1,25 +1,38 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { Icon, Avatar, Fab } from '../primitives'
+import { formatAppDate } from '@cairn/shared'
+import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { InlineError } from '../inline-error'
+import { CopyButton } from '../copy-button'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { MemberDetailPanel } from '../detail-panel/member-panel'
 import { ProjectPanel } from '../detail-panel/project-panel'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
+import { ConfirmDialog } from '../confirm-dialog'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { useWorkspacePermissions } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
+import {
+  useWorkspaceInvites,
+  useCreateWorkspaceInvite,
+  useRevokeWorkspaceInvite,
+  type WorkspaceInviteDto,
+} from '@/hooks/use-project-members'
 import { useCommand } from '@/lib/command-registry'
+import { toast } from '@/lib/toast'
+import { ProfileAttributeBadges } from '../profile-attribute-badges'
+import { useLocale, useT } from '@/components/locale-provider'
 
 const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
-  owner:  'オーナー',
-  admin:  '管理者',
-  member: 'メンバー',
-  guest:  'ゲスト',
+  owner:  'Owner',
+  admin:  'Admin',
+  member: 'Member',
+  guest:  'Guest',
 }
 
 const ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> = {
@@ -29,9 +42,19 @@ const ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> 
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
-function formatJoinedAt(dateStr: string): string {
+function formatJoinedAt(
+  dateStr: string,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): string {
   const d = new Date(dateStr + 'T00:00:00')
-  return `${d.getFullYear()}年${d.getMonth() + 1}月参加`
+  return t('Joined {year}/{month}', { year: d.getFullYear(), month: d.getMonth() + 1 })
+}
+
+function emphasizeName(text: string, name: string): React.ReactNode {
+  if (!name) return text
+  const index = text.indexOf(name)
+  if (index < 0) return text
+  return <>{text.slice(0, index)}<b>{name}</b>{text.slice(index + name.length)}</>
 }
 
 const MemberCardSkeleton = () => (
@@ -51,15 +74,30 @@ interface MemberCardProps {
   projectCount: number
   selected: boolean
   onClick: () => void
+  canManage?: boolean
+  onArchiveToggle?: () => void
 }
 
-const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps) => {
+const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArchiveToggle }: MemberCardProps) => {
+  const t = useT()
   const role = ROLE_STYLE[member.role]
+  const isArchived = member.membershipStatus === 'inactive'
+  const [menuOpen, setMenuOpen] = React.useState(false)
+
+  // カード外クリックでメニューを閉じる
+  React.useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menuOpen])
+
   return (
     <div
       className="card"
       onClick={onClick}
       style={{
+        position: 'relative',
         padding: '16px 18px', cursor: 'pointer', transition: 'box-shadow .12s, transform .12s',
         border: selected ? '1.5px solid var(--accent)' : undefined,
         background: selected ? 'var(--accent-soft)' : undefined,
@@ -75,36 +113,81 @@ const MemberCard = ({ member, projectCount, selected, onClick }: MemberCardProps
         ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
       }}
     >
-      <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
-          {member.email && (
+      {/* 操作メニュー（admin のみ）。減光の影響を受けないようカード直下に置く */}
+      {canManage && (
+        <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
+          <button
+            aria-label={t('Member actions')}
+            onClick={e => { e.stopPropagation(); setMenuOpen(o => !o) }}
+            style={{
+              width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent',
+              color: 'var(--text-4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          {menuOpen && (
             <div
+              onClick={e => e.stopPropagation()}
               style={{
-                fontSize: 11.5,
-                color: 'var(--text-4)',
-                marginBottom: 6,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                position: 'absolute', top: 30, right: 0, minWidth: 160, padding: 4,
+                background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
+                boxShadow: 'var(--shadow-lg)', zIndex: 10,
               }}
             >
-              {member.email}
+              <button
+                onClick={() => { setMenuOpen(false); onArchiveToggle?.() }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: 'none',
+                  background: 'transparent', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer',
+                  fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
+                }}
+                className="hover-bg"
+              >
+                <Icon name={isArchived ? 'refresh' : 'archive'} size={13} />
+                {isArchived ? t('Remove from archive') : t('Move to archive')}
+              </button>
             </div>
           )}
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
-            {ROLE_LABEL[member.role]}
+        </div>
+      )}
+
+      <div style={{ opacity: isArchived ? ARCHIVED_OPACITY : 1 }}>
+        <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
+            {member.email && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: 'var(--text-4)',
+                  marginBottom: 6,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {member.email}
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
+                {t(ROLE_LABEL[member.role])}
+              </span>
+              <ProfileAttributeBadges attributes={member.profileAttributes} compact />
+              {isArchived && <ArchivedBadge />}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, fontSize: 11.5, color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="folder" size={11} /> {t('{count} projects', { count: projectCount })}
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="clock" size={11} /> {formatJoinedAt(member.joinedAt, t)}
           </span>
         </div>
-      </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 11.5, color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="folder" size={11} /> {projectCount} プロジェクト
-        </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Icon name="clock" size={11} /> {formatJoinedAt(member.joinedAt)}
-        </span>
       </div>
     </div>
   )
@@ -117,16 +200,21 @@ interface PageMembersProps {
 }
 
 export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMembersProps) => {
+  const t = useT()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { isAdmin: canInvite } = useWorkspacePermissions()
+  const { isAdmin, isOwner } = useWorkspacePermissions()
+  const canInvite = isAdmin
+  const { data: currentUser } = useCurrentUser()
   const [search, setSearch] = React.useState('')
   const effectiveSearch = isMobile ? search : (externalSearch ?? search)
   const [roleFilter, setRoleFilter] = React.useState<WorkspaceMemberDto['role'] | 'all'>('all')
+  const [showArchived, setShowArchived] = React.useState(false)
+  const [archiveTarget, setArchiveTarget] = React.useState<WorkspaceMemberDto | null>(null)
   // ナビゲーション時の remount でパネルが一瞬消えないよう、キャッシュから初期値を復元する
   const [selectedMember, setSelectedMember] = React.useState<WorkspaceMemberDto | null>(() => {
     if (!initialUserId || isMobile) return null
-    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members'])
+    const cached = queryClient.getQueryData<WorkspaceMemberDto[]>(['workspace-members', 'all'])
     return cached?.find(m => m.userId === initialUserId) ?? null
   })
   const [selectedProject, setSelectedProject] = React.useState<ProjectDto | null>(null)
@@ -134,6 +222,9 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   const [showInviteModal, setShowInviteModal] = React.useState(false)
 
   const handleProjectClick = (p: MemberProjectDto) => {
+    // isJoined / isHosting は閲覧者自身の参加状態。MemberProjectDto.role は対象メンバーの役割なので使わない
+    const viewerEntry = queryClient.getQueryData<ProjectDto[]>(['projects'])
+      ?.find(proj => proj.id === p.projectId)
     setSelectedProject({
       id:                 p.projectId,
       title:              p.title,
@@ -147,8 +238,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
       memberAvatarUrls:   [],
       taskCount:          0,
       completedTaskCount: 0,
-      isOwner:            p.role === 'leader',
-      isMember:           true,
+      isJoined:           viewerEntry?.isJoined ?? false,
+      isHosting:          viewerEntry?.isHosting ?? false,
       archived:           p.archived,
       coverPhotoIdx:      p.coverPhotoIdx,
       coverPhotoUrl:      null,
@@ -158,8 +249,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }
 
   const { data: members = [], isLoading } = useQuery<WorkspaceMemberDto[]>({
-    queryKey: ['workspace-members'],
-    queryFn: () => fetchWithAuth('/api/workspaces/members').then(r => r.json()),
+    queryKey: ['workspace-members', 'all'],
+    queryFn: () => fetchWithAuth('/api/workspaces/members?status=all').then(r => r.json()),
   })
 
   // ⌥S（検索フォーカス）は TopBarSearch（route ラッパー）が担当
@@ -179,32 +270,59 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }, [initialUserId, isMobile, members])
 
 
+  // アーカイブ（非活性化）/ 解除。成功時にメンバー一覧を再取得する。
+  const archiveMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: string; status: 'active' | 'inactive' }) => {
+      const res = await fetchWithAuth(`/api/workspaces/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? t('Could not complete the action'))
+      }
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
+      toast.success(variables.status === 'inactive' ? t('Member archived') : t('Member unarchived'))
+    },
+  })
+
+  // admin 以上のみ操作可。自分自身・owner（owner 以外の操作者）は対象外。
+  const canManageMember = (m: WorkspaceMemberDto): boolean =>
+    isAdmin && m.userId !== currentUser?.id && (m.role !== 'owner' || isOwner)
+
   const filtered = React.useMemo(() => {
     return members.filter(m => {
+      const matchStatus = showArchived ? m.membershipStatus === 'inactive' : m.membershipStatus === 'active'
       const normalizedSearch = effectiveSearch.toLowerCase()
       const matchSearch =
         effectiveSearch === ''
         || m.displayName.toLowerCase().includes(normalizedSearch)
         || m.email?.toLowerCase().includes(normalizedSearch)
       const matchRole = roleFilter === 'all' || m.role === roleFilter
-      return matchSearch && matchRole
+      return matchStatus && matchSearch && matchRole
     })
-  }, [members, effectiveSearch, roleFilter])
+  }, [members, effectiveSearch, roleFilter, showArchived])
+
+  const activeMembers = React.useMemo(() => members.filter(m => m.membershipStatus === 'active'), [members])
+  const archivedCount = members.length - activeMembers.length
 
   const counts = React.useMemo(() => {
-    const c = new Map<string, number>([['all', members.length]])
-    for (const m of members) {
+    const c = new Map<string, number>([['all', activeMembers.length]])
+    for (const m of activeMembers) {
       c.set(m.role, (c.get(m.role) ?? 0) + 1)
     }
     return c
-  }, [members])
+  }, [activeMembers])
 
   const roleFilters: { id: WorkspaceMemberDto['role'] | 'all'; label: string }[] = [
-    { id: 'all',    label: `すべて (${counts.get('all') ?? 0})` },
-    { id: 'owner',  label: 'オーナー' },
-    { id: 'admin',  label: '管理者' },
-    { id: 'member', label: `メンバー (${counts.get('member') ?? 0})` },
-    { id: 'guest',  label: 'ゲスト' },
+    { id: 'all',    label: t('All ({count})', { count: counts.get('all') ?? 0 }) },
+    { id: 'owner',  label: t('Owner') },
+    { id: 'admin',  label: t('Admin') },
+    { id: 'member', label: t('Members ({count})', { count: counts.get('member') ?? 0 }) },
+    { id: 'guest',  label: t('Guest') },
   ]
 
   // ⌥[ / ⌥]: ロールフィルタタブ切替
@@ -215,6 +333,30 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
   }
   useCommand('ctx.filterTabPrev', () => cycleRoleFilter('prev'))
   useCommand('ctx.filterTabNext', () => cycleRoleFilter('next'))
+
+  const willUnarchive = archiveTarget?.membershipStatus === 'inactive'
+  const archiveDialog = (
+    <ConfirmDialog
+      open={archiveTarget !== null}
+      title={willUnarchive ? t('Remove from archive') : t('Archive member')}
+      message={emphasizeName(
+        willUnarchive
+          ? t('{name} will be unarchived. Access to this workspace returns, and they show up in lists and suggestions again.', { name: archiveTarget?.displayName ?? '' })
+          : t('{name} will be archived. They lose access to this workspace and drop out of member lists and mention or assignee suggestions. Messages, photos, and history stay under their name, and you can undo this anytime.', { name: archiveTarget?.displayName ?? '' }),
+        archiveTarget?.displayName ?? '',
+      )}
+      confirmLabel={willUnarchive ? t('Remove from archive') : t('Move to archive')}
+      busyLabel={t('Processing…')}
+      onConfirm={async () => {
+        if (!archiveTarget) return
+        await archiveMutation.mutateAsync({
+          userId: archiveTarget.userId,
+          status: willUnarchive ? 'active' : 'inactive',
+        })
+      }}
+      onClose={() => setArchiveTarget(null)}
+    />
+  )
 
   if (isMobile) {
     return (
@@ -230,9 +372,10 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
             isMobile
           />
         )}
-        <MobileHeader title="メンバー" />
+        <MobileHeader title={t('Members')} />
         {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile />}
-        {canInvite && <Fab onClick={() => setShowInviteModal(true)} label="メンバーを招待"/>}
+        {archiveDialog}
+        {canInvite && <Fab onClick={() => setShowInviteModal(true)} label={t('Invite members')}/>}
 
         {/* Search */}
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -244,7 +387,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               data-member-search
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="メンバーを検索…"
+              placeholder={t('Search members…')}
               style={{
                 width: '100%', height: 36, padding: '0 12px 0 32px',
                 border: '1px solid var(--border)', borderRadius: 8,
@@ -270,6 +413,19 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               }}
             >{f.label}</button>
           ))}
+          {archivedCount > 0 && (
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              style={{
+                padding: '5px 12px', borderRadius: 999, whiteSpace: 'nowrap',
+                border: showArchived ? 'none' : '1px solid var(--border-2)',
+                background: showArchived ? 'var(--text-3)' : 'transparent',
+                color: showArchived ? 'var(--on-accent)' : 'var(--text-4)',
+                fontSize: 12.5, fontWeight: showArchived ? 700 : 500,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >{t('Archived ({count})', { count: archivedCount })}</button>
+          )}
         </div>
 
         {/* 2-column card grid */}
@@ -281,7 +437,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           ) : filtered.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 16px', color: 'var(--text-4)' }}>
               <Icon name="users" size={32} />
-              <span style={{ fontSize: 14 }}>メンバーが見つかりません</span>
+              <span style={{ fontSize: 14 }}>{t('No members found')}</span>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
@@ -291,6 +447,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   member={m}
                   projectCount={m.projectCount}
                   selected={false}
+                  canManage={canManageMember(m)}
+                  onArchiveToggle={() => setArchiveTarget(m)}
                   onClick={() => {
                     setMobileDetailMember(m)
                     router.push(`/members/${m.userId}`, { scroll: false })
@@ -324,15 +482,29 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 }}
               >{f.label}</button>
             ))}
+            {archivedCount > 0 && (
+              <button
+                onClick={() => setShowArchived(v => !v)}
+                title={t('Archived members (access revoked)')}
+                style={{
+                  marginLeft: 4, padding: '6px 12px', borderRadius: 6, border: 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: showArchived ? 'var(--card-hover)' : 'transparent',
+                  color: showArchived ? 'var(--text)' : 'var(--text-4)',
+                  fontSize: 12.5, fontWeight: showArchived ? 600 : 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              ><Icon name="archive" size={12} /> {t('Archived ({count})', { count: archivedCount })}</button>
+            )}
           </div>
           <button
             className="btn btn-primary"
             onClick={() => setShowInviteModal(true)}
             disabled={!canInvite}
-            title={canInvite ? undefined : 'メンバーの招待には管理者以上の権限が必要です'}
+            title={canInvite ? undefined : t('Inviting members requires an admin or owner')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto', ...(canInvite ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
           >
-            <Icon name="plus" size={13} strokeWidth={2.4} /> メンバーを招待
+            <Icon name="plus" size={13} strokeWidth={2.4} /> {t('Invite members')}
           </button>
           {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} isMobile={false} />}
         </div>
@@ -348,7 +520,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
                 <Icon name="users" size={22} />
               </div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>メンバーが見つかりません</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No members found')}</div>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
@@ -358,6 +530,8 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   member={m}
                   projectCount={m.projectCount}
                   selected={selectedMember?.userId === m.userId}
+                  canManage={canManageMember(m)}
+                  onArchiveToggle={() => setArchiveTarget(m)}
                   onClick={() => {
                     if (selectedMember?.userId === m.userId) {
                       setSelectedMember(null)
@@ -387,88 +561,52 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           onClose={() => { setSelectedMember(null); router.push('/members') }}
         />
       ) : null}
+      {archiveDialog}
     </div>
   )
 }
 
 type ExpiresIn = '1h' | '30d' | 'never'
 const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
-  { value: '1h', label: '1時間' },
-  { value: '30d', label: '30日間' },
-  { value: 'never', label: '無期限' },
+  { value: '1h', label: '1 hour' },
+  { value: '30d', label: '30 days' },
+  { value: 'never', label: 'No expiry' },
 ]
 
-interface InviteRecord {
-  id: string
-  token: string
-  url: string
-  expiresAt: string | null
-  maxUses: number | null
-  useCount: number
-  role: string
-  createdAt: string
-  createdByName: string
-}
-
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
+  const t = useT()
+  const { locale } = useLocale()
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
-  const [generating, setGenerating] = React.useState(false)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
-  const [copied, setCopied] = React.useState(false)
-  const [existingInvites, setExistingInvites] = React.useState<InviteRecord[]>([])
-  const [revoking, setRevoking] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    void fetchExistingInvites()
-  }, [])
-
-  async function fetchExistingInvites() {
-    const res = await fetch('/api/workspaces/invites')
-    if (!res.ok) return
-    const data = await res.json().catch(() => ({})) as { invites?: InviteRecord[] }
-    setExistingInvites(data.invites ?? [])
-  }
+  const { data: existingInvites = [] } = useWorkspaceInvites()
+  const createInviteMutation = useCreateWorkspaceInvite()
+  const revokeInviteMutation = useRevokeWorkspaceInvite()
 
   async function generateLink() {
-    setGenerating(true)
-    setCopied(false)
     setGenerateError(null)
-    const res = await fetch('/api/workspaces/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn }),
-    })
-    const data = await res.json().catch(() => ({})) as { url?: string; error?: string }
-    if (res.ok && data.url) {
+    try {
+      const data = await createInviteMutation.mutateAsync({ expiresIn })
       setInviteUrl(data.url)
-      void fetchExistingInvites()
-    } else {
-      setGenerateError(data.error ?? '招待リンクの生成に失敗しました')
+    } catch (error) {
+      setGenerateError(error instanceof Error ? error.message : t('Could not generate the invite link'))
     }
-    setGenerating(false)
   }
 
   async function revokeInvite(token: string) {
-    setRevoking(token)
-    await fetch(`/api/workspaces/invites/${token}`, { method: 'DELETE' })
-    setExistingInvites(prev => prev.filter(inv => inv.token !== token))
-    if (inviteUrl?.includes(token)) setInviteUrl(null)
-    setRevoking(null)
-  }
-
-  async function copyLink() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await revokeInviteMutation.mutateAsync(token)
+      if (inviteUrl?.includes(token)) setInviteUrl(null)
+    } catch (error) {
+      setGenerateError(error instanceof Error ? error.message : t('Could not revoke the invite link'))
+    }
   }
 
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0,0,0,0.4)',
+        position: 'fixed', inset: 0, zIndex: 'var(--z-modal)',
+        background: 'var(--overlay)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px 16px',
       }}
@@ -484,7 +622,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
         boxShadow: 'var(--shadow-lg, 0 20px 60px rgba(0,0,0,0.2))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>メンバーを招待</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('Invite members')}</div>
           <button
             onClick={onClose}
             style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 18 }}
@@ -493,7 +631,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>リンクの有効期限</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {EXPIRES_OPTIONS.map(opt => (
                 <button
@@ -514,7 +652,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     transition: 'all 0.15s',
                   }}
                 >
-                  {opt.label}
+                  {t(opt.label)}
                 </button>
               ))}
             </div>
@@ -523,27 +661,15 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
           {!inviteUrl ? (
             <>
               {generateError && (
-                <div style={{
-                  padding: '8px 12px', borderRadius: 8, fontSize: 12.5,
-                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)',
-                }}>
-                  {generateError}
-                </div>
+                <InlineError variant="box" style={{ fontSize: 12.5 }}>{generateError}</InlineError>
               )}
               <button
                 type="button"
                 onClick={generateLink}
-                disabled={generating}
-                style={{
-                  padding: '10px 16px', borderRadius: 8, border: 'none',
-                  background: generating ? 'var(--border-2)' : 'var(--accent)',
-                  color: generating ? 'var(--text-4)' : 'var(--on-accent)',
-                  fontSize: 14, fontWeight: 600,
-                  cursor: generating ? 'default' : 'pointer',
-                  fontFamily: 'inherit',
-              }}
+                disabled={createInviteMutation.isPending}
+                className="btn btn-primary btn-lg"
             >
-              {generating ? '生成中...' : '招待リンクを生成'}
+              {createInviteMutation.isPending ? t('Generating...') : t('Generate invite link')}
             </button>
             </>
           ) : (
@@ -555,24 +681,12 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {inviteUrl}
                 </div>
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  style={{
-                    flexShrink: 0, padding: '5px 12px', borderRadius: 6, border: 'none',
-                    background: copied ? '#e6f7ee' : 'var(--accent)',
-                    color: copied ? '#1a7a3c' : 'var(--on-accent)',
-                    fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? 'コピー済み ✓' : 'コピー'}
-                </button>
+                <CopyButton text={inviteUrl} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
               </div>
 
               {isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>QRコードでも共有できます</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('Share with a QR code too')}</div>
                   <div style={{ padding: 10, background: '#fff', borderRadius: 10, border: '1px solid var(--border)' }}>
                     <QRCodeSVG value={inviteUrl} size={140} />
                   </div>
@@ -582,24 +696,21 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
               <button
                 type="button"
                 onClick={generateLink}
-                style={{
-                  padding: '6px 0', borderRadius: 8, border: '1px solid var(--border-2)',
-                  background: 'transparent', color: 'var(--text-3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-                }}
+                className="btn btn-sm"
               >
-                別のリンクを生成
+                {t('Generate another link')}
               </button>
             </div>
           )}
 
           {existingInvites.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>有効なリンク</div>
-              {existingInvites.map(inv => {
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Active links')}</div>
+              {existingInvites.map((inv: WorkspaceInviteDto) => {
                 const expiresLabel = inv.expiresAt
-                  ? `${new Date(inv.expiresAt).toLocaleDateString('ja-JP')} まで`
-                  : '無期限'
-                const roleLabel = inv.role === 'guest' ? 'ゲスト' : 'メンバー'
+                  ? t('Until {date}', { date: formatAppDate(locale, inv.expiresAt) })
+                  : t('No expiry')
+                const roleLabel = t(inv.role === 'guest' ? 'Guest' : 'Member')
                 return (
                   <div
                     key={inv.token}
@@ -614,22 +725,22 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                         {inv.url}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
-                        {roleLabel} · {expiresLabel}{inv.maxUses != null ? ` · ${inv.useCount}/${inv.maxUses}回使用` : ''}
+                        {roleLabel} · {expiresLabel}{inv.maxUses != null ? ` · ${t('{count}/{max} uses', { count: inv.useCount, max: inv.maxUses })}` : ''}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => revokeInvite(inv.token)}
-                      disabled={revoking === inv.token}
+                      disabled={revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token}
                       style={{
                         flexShrink: 0, padding: '4px 10px', borderRadius: 6,
                         border: '1px solid var(--red)', background: 'transparent',
-                        color: revoking === inv.token ? 'var(--text-4)' : 'var(--red-text)',
-                        fontSize: 11.5, fontWeight: 600, cursor: revoking === inv.token ? 'default' : 'pointer',
+                        color: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'var(--text-4)' : 'var(--red-text)',
+                        fontSize: 11.5, fontWeight: 600, cursor: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'default' : 'pointer',
                         fontFamily: 'inherit', whiteSpace: 'nowrap',
                       }}
                     >
-                      {revoking === inv.token ? '処理中...' : '無効化'}
+                      {revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? t('Processing...') : t('Revoke')}
                     </button>
                   </div>
                 )

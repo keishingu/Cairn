@@ -35,7 +35,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { messages, tasks } = await import('@cairn/db')
+    const { messages } = await import('@cairn/db')
     const { eq, and, isNull } = await import('drizzle-orm')
 
     const [target] = await db
@@ -49,7 +49,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     }
 
     // チャンネルへのアクセス権を検証（越境アクセス防止・プライベート/DM/ゲストのプロジェクト所属）
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId)
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, target.channelId, ctx.role)
     if (forbidden) return forbidden
 
     const newContent = toggleCheckboxAt(target.content, index, checked)
@@ -62,20 +62,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       .update(messages)
       .set({ content: newContent })
       .where(eq(messages.id, messageId))
-
-    // 紐付きタスクのステータスを同期
-    await db
-      .update(tasks)
-      .set({
-        status: checked ? 'done' : 'todo',
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(tasks.sourceMessageId, messageId),
-          eq(tasks.sourceCheckboxIndex, index),
-        ),
-      )
 
     return NextResponse.json({ ok: true })
   } catch (err) {

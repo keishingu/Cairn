@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { apiFetch } from '../lib/api-fetch'
+import { fetchProjectChannels, projectChannelsQueryKey } from '../lib/channel-list-queries'
+import { fetchApiJson } from '../lib/fetch-api-json'
+import { useT } from '../components/locale-provider'
 
 export interface ProjectDto {
   id: string
@@ -12,8 +14,8 @@ export interface ProjectDto {
   memberNames: string[]
   taskCount: number
   completedTaskCount: number
-  isOwner: boolean
-  isMember: boolean
+  isJoined: boolean
+  isHosting: boolean
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null
@@ -24,29 +26,29 @@ export interface ProjectChannelDto {
   channelName: string
   projectId: string
   projectTitle: string
+  startDate: string | null
+  endDate: string | null
+  startTime: string | null
+  endTime: string | null
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
+  milestoneId: string | null
+  milestoneCompleted: boolean | null
 }
 
 export function useProjects() {
+  const t = useT()
   return useQuery<ProjectDto[]>({
     queryKey: ['projects'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/projects')
-      if (!res.ok) throw new Error(`プロジェクトの取得に失敗しました (${res.status})`)
-      return res.json() as Promise<ProjectDto[]>
-    },
+    queryFn: () => fetchApiJson<ProjectDto[]>('/api/projects', t('Could not load projects ({status})')),
   })
 }
 
 export function useProjectChannels() {
+  const t = useT()
   return useQuery<ProjectChannelDto[]>({
-    queryKey: ['project-channels'],
-    queryFn: async () => {
-      const res = await apiFetch('/api/projects/channels')
-      if (!res.ok) throw new Error(`チャンネルの取得に失敗しました (${res.status})`)
-      return res.json() as Promise<ProjectChannelDto[]>
-    },
+    queryKey: projectChannelsQueryKey,
+    queryFn: () => fetchProjectChannels<ProjectChannelDto[]>(t),
   })
 }

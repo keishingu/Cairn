@@ -1,22 +1,24 @@
 'use client'
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { ProjectStatusDto } from '@/app/api/projects/statuses/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { PageToolbar, SegmentedControl } from './page-toolbar'
+import { PageToolbar, SegmentedControl, ScopeToggle } from './page-toolbar'
+import { useProjectsScope, filterProjectsByScope } from '@/hooks/use-projects-scope'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { CreateProjectModal } from './create-project-modal'
 import { FilterPopover } from './filter-popover'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useListSelection } from '@/hooks/use-list-selection'
+import { useProjects } from '@/hooks/use-projects'
+import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useCommand } from '@/lib/command-registry'
+import { useT } from '@/components/locale-provider'
 
 // ─── Main component ───────────────────────────────────────────────
 interface ProjectListViewProps {
@@ -34,23 +36,23 @@ function formatDates(start: string | null, end: string | null): string {
   return end && end !== start ? `${fmt(start)}–${fmt(end)}` : fmt(start)
 }
 
-async function fetchProjects(): Promise<ProjectDto[]> {
-  const res = await fetchWithAuth('/api/projects')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectDto[]>
-}
-
-async function fetchStatuses(): Promise<ProjectStatusDto[]> {
-  const res = await fetchWithAuth('/api/projects/statuses')
-  if (!res.ok) throw new Error('fetch failed')
-  return res.json() as Promise<ProjectStatusDto[]>
+function LatestMessagePreview({ message }: { message: ProjectDto['latestMessage'] }) {
+  const t = useT()
+  const content = message?.content || t('(Attachment)')
+  const text = message ? `${message.senderName}: ${content}` : t('No messages yet')
+  return (
+    <div title={text} style={{ fontSize: 12, lineHeight: '18px', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {message ? <><span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{message.senderName}: </span>{content}</> : text}
+    </div>
+  )
 }
 
 export const ProjectListView = ({ openPanel, isMobile, externalSearch }: ProjectListViewProps) => {
+  const t = useT()
   const queryClient = useQueryClient()
   const projectLabel = useProjectLabel()
   const { isAdmin: canCreateProject } = useWorkspacePermissions()
-  const { data: projects = [], isLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const { data: projects = [], isLoading, isError } = useProjects()
   const [view, setView] = React.useState<'grid' | 'table'>(() => {
     if (typeof window === 'undefined') return 'grid'
     const saved = localStorage.getItem(STORAGE_KEYS.projects_list_view)
@@ -77,9 +79,14 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       return next
     })
   }
+  // 範囲（参加中 / 全体）は一覧・カレンダー・カンバンで共有する。旧「参加中」タブの移行はフック側で先に行う
+  const [scope, setScope] = useProjectsScope()
   const [filter, setFilterState] = React.useState<string>(() => {
     if (typeof window === 'undefined') return 'all'
-    return localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
+    const saved = localStorage.getItem(STORAGE_KEYS.projects_filter) ?? 'all'
+    // 旧 ID（owned）を主催の意味に合わせて移行。参加中タブは範囲トグルに統合済み
+    if (saved === 'owned') return 'hosting'
+    return ['all', 'hosting', 'active', 'archived'].includes(saved) ? saved : 'all'
   })
   const setFilter = (f: string) => {
     setFilterState(f)
@@ -87,7 +94,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   }
   const [showCreate, setShowCreate] = React.useState(false)
   const [filterOpen, setFilterOpen] = React.useState(false)
-  const { data: allStatuses = [] } = useQuery({ queryKey: ['statuses'], queryFn: fetchStatuses })
+  const { data: allStatuses = [] } = useProjectStatuses()
   const [statusFilter, setStatusFilter] = React.useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.projects_status_filter) ?? '[]') } catch { return [] }
@@ -120,20 +127,20 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
   }
 
+  const scopedProjects = React.useMemo(() => filterProjectsByScope(projects, scope), [projects, scope])
+
   const counts = {
-    all:      projects.filter(p => !p.archived).length,
-    mine:     projects.filter(p => p.isMember && !p.archived).length,
-    owned:    projects.filter(p => p.isOwner && !p.archived).length,
-    active:   projects.filter(p => !p.archived).length,
-    archived: projects.filter(p => p.archived).length,
+    all:      scopedProjects.filter(p => !p.archived).length,
+    hosting:  scopedProjects.filter(p => p.isHosting && !p.archived).length,
+    active:   scopedProjects.filter(p => !p.archived).length,
+    archived: scopedProjects.filter(p => p.archived).length,
   }
 
   const filterTabs = [
-    { id: 'all',      label: 'すべて',     n: counts.all },
-    { id: 'mine',     label: '参加中',     n: counts.mine },
-    { id: 'owned',    label: '主催',       n: counts.owned },
-    { id: 'active',   label: '進行中',     n: counts.active },
-    { id: 'archived', label: 'アーカイブ', n: counts.archived },
+    { id: 'all',      label: t('All'),         n: counts.all },
+    { id: 'hosting',  label: t('Hosting'),     n: counts.hosting },
+    { id: 'active',   label: t('In progress'), n: counts.active },
+    { id: 'archived', label: t('Archive'),     n: counts.archived },
   ]
 
   // ⌥[ / ⌥]: フィルタタブ切替
@@ -149,13 +156,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const tabFiltered = React.useMemo(() => {
     switch (filter) {
-      case 'mine':     return projects.filter(p => p.isMember && !p.archived)
-      case 'owned':    return projects.filter(p => p.isOwner && !p.archived)
-      case 'active':   return projects.filter(p => !p.archived)
-      case 'archived': return projects.filter(p => p.archived)
-      default:         return projects.filter(p => !p.archived)
+      case 'hosting':  return scopedProjects.filter(p => p.isHosting && !p.archived)
+      case 'active':   return scopedProjects.filter(p => !p.archived)
+      case 'archived': return scopedProjects.filter(p => p.archived)
+      default:         return scopedProjects.filter(p => !p.archived)
     }
-  }, [projects, filter])
+  }, [scopedProjects, filter])
 
   const allMembers = React.useMemo(
     () => [...new Set(projects.flatMap(p => p.memberNames))].sort(),
@@ -167,12 +173,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
 
   const filteredProjects = React.useMemo(() => {
     const q = effectiveSearch.trim().toLowerCase()
-    if (q) return projects.filter(p => p.title.toLowerCase().includes(q))
+    // 検索はタブ・フィルターを無視するが、画面に出ている「参加中／全体」の範囲には従う
+    if (q) return scopedProjects.filter(p => p.title.toLowerCase().includes(q))
     let result = tabFiltered
     if (statusFilter.length > 0) result = result.filter(p => p.statusName !== null && statusFilter.includes(p.statusName))
     if (memberFilter.length > 0) result = result.filter(p => memberFilter.some(m => p.memberNames.includes(m)))
     return result
-  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, projects])
+  }, [tabFiltered, statusFilter, memberFilter, effectiveSearch, scopedProjects])
 
   const sortedProjects = React.useMemo(() => {
     if (view !== 'table') return filteredProjects
@@ -201,7 +208,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
   })
 
   // フィルタ変更で選択をリセット
-  React.useEffect(() => { setNavIdx(-1) }, [filter, statusFilter, memberFilter, effectiveSearch, setNavIdx])
+  React.useEffect(() => { setNavIdx(-1) }, [filter, scope, statusFilter, memberFilter, effectiveSearch, setNavIdx])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -216,7 +223,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       {isMobile && (
         <>
           <MobileHeader
-            title="プロジェクト一覧"
+            title={t('Project list')}
             right={
               <div style={{ display: 'flex', gap: 4 }}>
                 <button
@@ -235,7 +242,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 ref={searchInputRef}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="アーカイブを含むすべてのプロジェクトを検索…"
+                placeholder={t('Search all projects, including archived…')}
                 style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
                 onKeyDown={e => { if (e.key === 'Escape') { setMobileSearchOpen(false); setSearch('') } }}
               />
@@ -254,7 +261,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         style={{
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
-          padding: isMobile ? '10px 16px' : '0 16px 0 0',
+          ...(isMobile ? { padding: '10px 16px' } : {}),
         }}
         left={
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 0, opacity: isSearching ? 0.4 : 1, pointerEvents: isSearching ? 'none' : undefined, transition: 'opacity .15s' }}>
@@ -266,7 +273,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               } : {
-                padding: '10px 14px', border: 'none', background: 'transparent',
+                height: 34, padding: '0 14px', border: 'none', background: 'transparent',
                 color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
                 fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
@@ -281,15 +288,30 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             ))}
           </div>
         }
-        right={!isMobile ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}>
+        right={isMobile ? (
+          <ScopeToggle
+            ariaLabel={t('Project scope')}
+            mineLabel={t('Joined')}
+            allLabel={t('All projects')}
+            value={scope}
+            onChange={setScope}
+          />
+        ) : (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <SegmentedControl
               options={[
-                { id: 'grid',  label: 'カード',   icon: <Icon name="kanban" size={12}/> },
-                { id: 'table', label: 'テーブル', icon: <Icon name="list"   size={12}/> },
+                { id: 'grid',  label: t('Cards'),   icon: <Icon name="kanban" size={12}/> },
+                { id: 'table', label: t('Table'), icon: <Icon name="list"   size={12}/> },
               ]}
               value={view}
               onChange={(v) => setViewPersisted(v as 'grid' | 'table')}
+            />
+            <ScopeToggle
+              ariaLabel={t('Project scope')}
+              mineLabel={t('Joined')}
+              allLabel={t('All projects')}
+              value={scope}
+              onChange={setScope}
             />
             <div ref={filterBtnRef} style={{ position: 'relative' }}>
               <button
@@ -297,7 +319,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 onClick={() => setFilterOpen(o => !o)}
                 style={(statusFilter.length + memberFilter.length) > 0 ? { borderColor: 'var(--accent)', color: 'var(--accent-text)', background: 'var(--accent-soft)' } : {}}
               >
-                <Icon name="filter" size={13}/> フィルター
+                <Icon name="filter" size={13}/> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
                   <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
@@ -317,13 +339,13 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               className="btn btn-primary"
               onClick={() => setShowCreate(true)}
               disabled={!canCreateProject}
-              title={canCreateProject ? undefined : `${projectLabel}の作成には管理者以上の権限が必要です`}
+              title={canCreateProject ? undefined : t('Creating a {label} requires an admin or owner', { label: projectLabel })}
               style={canCreateProject ? {} : { opacity: 0.5, cursor: 'not-allowed' }}
             >
-              <Icon name="plus" size={13}/> 新規{projectLabel}
+              <Icon name="plus" size={13}/> {t('New {label}', { label: projectLabel })}
             </button>
           </div>
-        ) : undefined}
+        )}
       />
 
       {/* Content */}
@@ -333,9 +355,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
       }}>
         {isLoading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>読み込み中…</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>
+        ) : isError ? (
+          <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Could not load projects. Please reload.')}</div>
         ) : filteredProjects.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>プロジェクトが見つかりません</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No projects found')}</div>
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -343,7 +367,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
-                const labels: Record<SortKey, string> = { title: 'プロジェクト', status: 'ステータス', date: '日程', progress: '進捗' }
+                const labels: Record<SortKey, string> = { title: t('Projects'), status: t('Status'), date: t('Schedule'), progress: t('Progress') }
                 const active = tableSort.key === col
                 return (
                   <button key={col} onClick={() => setTableSortPersisted(col)} style={{
@@ -357,7 +381,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   </button>
                 )
               })}
-              <span>メンバー</span>
+              <span>{t('Members')}</span>
               {(() => {
                 const col: SortKey = 'progress'
                 const active = tableSort.key === col
@@ -368,7 +392,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     color: active ? 'var(--text)' : 'var(--text-3)',
                     display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
                   }}>
-                    進捗
+                    {t('Progress')}
                     <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
                   </button>
                 )
@@ -414,9 +438,6 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
             gap: isMobile ? 10 : 16,
           }}>
             {filteredProjects.map((p, i) => {
-              const accent = p.statusColor ?? 'var(--text-3)'
-              const progress = p.taskCount > 0 ? Math.round((p.completedTaskCount / p.taskCount) * 100) : 0
-
               if (isMobile) {
                 return (
                   <div key={p.id} onClick={() => openPanel?.(p)} style={{
@@ -427,10 +448,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   }}>
                     {/* Cover photo thumbnail */}
                     <div style={{ width: 88, flexShrink: 0, position: 'relative' }}>
-                      {p.coverPhotoUrl
-                        ? <img src={p.coverPhotoUrl} alt="" style={{ width: 88, height: 88, objectFit: 'cover', display: 'block' }}/>
-                        : <MountainPhoto idx={p.coverPhotoIdx} height={88} flat radius={0}/>
-                      }
+                      <div style={{ position: 'absolute', inset: 0 }}>
+                        {p.coverPhotoUrl
+                          ? <img src={p.coverPhotoUrl} alt="" width={88} height={88} style={{ width: 88, height: '100%', objectFit: 'cover', display: 'block' }}/>
+                          : <MountainPhoto idx={p.coverPhotoIdx} height="100%" imageWidth={88} flat radius={0}/>
+                        }
+                      </div>
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
@@ -444,8 +467,9 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                         {isSearching && p.archived && <ArchivedBadge/>}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
-                        <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{p.memberCount}人</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{t('{count} people', { count: p.memberCount })}</span>
                       </div>
+                      <div style={{ marginTop: 8 }}><LatestMessagePreview message={p.latestMessage}/></div>
                     </div>
                   </div>
                 )
@@ -474,7 +498,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {p.memberCount}人</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {t('{count} people', { count: p.memberCount })}</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                       {p.taskCount > 0 && (
@@ -483,11 +507,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                         </span>
                       )}
                     </div>
-                    {p.taskCount > 0 && (
-                      <div style={{ marginTop: 10, height: 5, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
-                      </div>
-                    )}
+                    <div style={{ marginTop: 8 }}><LatestMessagePreview message={p.latestMessage}/></div>
                   </div>
                 </div>
               )
@@ -497,7 +517,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       </div>
 
       {/* Mobile FAB */}
-      {isMobile && canCreateProject && <Fab onClick={() => setShowCreate(true)} label={`新規${projectLabel}`}/>}
+      {isMobile && canCreateProject && <Fab onClick={() => setShowCreate(true)} label={t('New {label}', { label: projectLabel })}/>}
     </div>
   )
 }

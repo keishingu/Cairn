@@ -15,6 +15,8 @@ declare global {
       onNavigate?: (cb: (action: string) => void) => (() => void) | void
       onSeq?: (cb: (dir: 'prev' | 'next') => void) => (() => void) | void
       onToggleSidebar?: (cb: () => void) => (() => void) | void
+      /** 未読バッジ数を Electron main へ通知（Windows タスクバーのオーバーレイ用） */
+      setBadgeCount?: (count: number) => void
     }
   }
 }

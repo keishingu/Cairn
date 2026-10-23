@@ -9,12 +9,14 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import {
   chatQueryKeys,
-  useCurrentUser,
   useProjectChannels,
   useWorkspaceChannels,
   useWorkspaceDms,
 } from '@/lib/chat/client'
+import { useCurrentUser } from '@/hooks/use-current-user'
+import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
+import { projectQueryKeys } from '@/hooks/use-projects'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -40,6 +42,7 @@ const CHANNEL_LIST_KEYS = [
   chatQueryKeys.projectChannels,
   chatQueryKeys.workspaceChannels,
   chatQueryKeys.dms,
+  projectQueryKeys.all,
 ] as const
 
 function invalidateChannelLists(queryClient: QueryClient) {
@@ -78,6 +81,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
+    if (status === 'connecting') {
+      setDegraded(false)
+      return
+    }
     if (status === 'connected') {
       setDegraded(false)
       return
@@ -92,41 +99,103 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states）────
+  // ─── ユーザートピック（notifications / channel_read_states / channel_members）────
   React.useEffect(() => {
     if (!userId) return
 
     const supabase = createClient()
     let cancelled = false
+    let userChannel: RealtimeChannel | null = null
 
-    const userChannel = supabase
-      .channel(`user:${userId}`, { config: { private: true } })
-      .on('broadcast', { event: '*' }, (message) => {
-        const table = tableOf((message as { payload?: unknown }).payload)
-        if (table === 'notifications') {
-          void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-          // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
-          scheduleListInvalidate()
-        } else if (table === 'channel_read_states') {
-          // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
-          scheduleListInvalidate()
-          void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-        }
-      })
+    const removeUserChannel = async (channel: RealtimeChannel) => {
+      if (userChannel === channel) {
+        userChannel = null
+      }
+      await supabase.removeChannel(channel)
+    }
 
-    const subscribe = () => {
-      userChannel.subscribe((subStatus, err) => {
-        if (cancelled) return
+    const connectUserChannel = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (cancelled) return
+
+      const token = data.session?.access_token
+      if (token) await supabase.realtime.setAuth(token)
+      if (cancelled) return
+
+      const currentChannel = supabase
+        .channel(`user:${userId}`, { config: { private: true } })
+        .on('broadcast', { event: '*' }, (message) => {
+          const table = tableOf((message as { payload?: unknown }).payload)
+          if (table === 'notifications') {
+            void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
+            scheduleListInvalidate()
+          } else if (table === 'app_views') {
+            // アプリが本人にモーダルを開いた・差し替えた・閉じた
+            void queryClient.invalidateQueries({ queryKey: ['app-views'] })
+          } else if (table === 'ai_nudges') {
+            // INSERT（新規）と UPDATE（resolve / feedback / 再 active 化）の双方を反映する。
+            void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+          } else if (table === 'channel_read_states') {
+            // 他デバイスでの既読を即時反映（バッジ消去 + ベルの既読同期）
+            scheduleListInvalidate()
+            void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          } else if (table === 'channel_members') {
+            // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
+            scheduleListInvalidate()
+          } else if (table === 'channels') {
+            // 名称変更と削除。削除後は channel トピックの認可が消えるため、ここへ届ける。
+            scheduleListInvalidate()
+            const operation = (message as { payload?: { operation?: unknown } }).payload?.operation
+            if (operation === 'DELETE') {
+              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+              void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+            }
+          }
+        })
+      userChannel = currentChannel
+
+      currentChannel.subscribe((subStatus, err) => {
+        if (cancelled || currentChannel !== userChannel) return
         if (subStatus === 'SUBSCRIBED') {
           // デプロイにRealtimeコードが入っているか・接続できているかを判別できるよう成功も1行出す
           console.info('[Realtime] connected')
           setStatus('connected')
           // (再)接続直後に一括 invalidate して切断中の取りこぼしを回収する
           void queryClient.invalidateQueries({ queryKey: ['messages'] })
+          void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+          // アプリのモーダルも Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
+          void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           invalidateChannelLists(queryClient)
-        } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
-          // 購読失敗の原因（認可ポリシー・トークン等）を隠さない
+          return
+        }
+
+        // CHANNEL_ERROR はソケット切断後の通常ライフサイクル。removeChannel すると
+        // supabase-js の自動再 JOIN を潰すので再接続はライブラリに任せる。
+        // ただし status を connected のままにすると、JOIN が TIMED_OUT しない長時間切断で
+        // バナーが出ない。disconnected にして 10 秒後に表示し、SUBSCRIBED で消す。
+        if (subStatus === 'CHANNEL_ERROR') {
+          console.warn('[Realtime] subscription interrupted:', subStatus, err?.message ?? err)
+          setStatus('disconnected')
+          return
+        }
+
+        // CLOSED は Phoenix がチャンネルを外した終端状態。同じインスタンスは再 JOIN されない。
+        // バナーは出さず、新しい購読だけ作り直す。
+        if (subStatus === 'CLOSED') {
+          console.warn('[Realtime] subscription closed, recreating:', err?.message ?? err)
+          void (async () => {
+            if (cancelled || currentChannel !== userChannel) return
+            await removeUserChannel(currentChannel)
+            if (cancelled) return
+            await connectUserChannel()
+          })()
+          return
+        }
+
+        if (subStatus === 'TIMED_OUT') {
           console.error('[Realtime] subscription failed:', subStatus, err?.message ?? err)
           setStatus('disconnected')
         }
@@ -136,13 +205,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     // private channel の認可（realtime.messages の RLS）のため、購読前に JWT を Realtime に渡す。
     // setAuth は非同期。await せずに subscribe すると JOIN が認証前トークンで送られ、
     // 「Unauthorized: ... Channel topic」で CHANNEL_ERROR になるため必ず待つ
-    void supabase.auth.getSession().then(async ({ data }) => {
-      if (cancelled) return
-      const token = data.session?.access_token
-      if (token) await supabase.realtime.setAuth(token)
-      if (cancelled) return
-      subscribe()
-    })
+    void connectUserChannel()
 
     // トークンリフレッシュ時に Realtime の認証も更新（長時間セッションでの失効対策）
     const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -152,11 +215,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
       authSub.subscription.unsubscribe()
-      void supabase.removeChannel(userChannel)
+      if (userChannel) void removeUserChannel(userChannel)
     }
   }, [queryClient, userId, scheduleListInvalidate])
 
-  // ─── チャンネルトピック（messages / message_reactions）─────────
+  // ─── チャンネルトピック（messages / message_reactions / message_blocks）─────────
   // 一覧の変化に追従して join/leave を差分反映する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
@@ -187,13 +250,23 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
-          } else if (table === 'message_reactions') {
+          } else if (table === 'message_reactions' || table === 'message_blocks') {
+            // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
+            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+          } else if (table === 'tasks') {
+            void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            // タスク化済みの印（メッセージの linkedTasks）も完了・削除で更新する
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           }
         })
       ch.subscribe((subStatus, err) => {
         if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
           console.error(`[Realtime] channel:${id} subscription failed:`, subStatus, err?.message ?? err)
+          // 未参加の非公開チャンネルは何回 JOIN しても直らない。ライブラリの再 JOIN を止める。
+          if (isRealtimeUnauthorized(err)) {
+            void supabase.removeChannel(ch)
+            current.delete(id)
+          }
         }
       })
       current.set(id, ch)

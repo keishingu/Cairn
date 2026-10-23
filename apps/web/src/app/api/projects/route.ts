@@ -4,7 +4,12 @@
 import { NextResponse } from 'next/server'
 import { createProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
+import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
+import { stripMentionsToText } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 
 export interface ProjectDto {
   id: string
@@ -19,13 +24,16 @@ export interface ProjectDto {
   memberAvatarUrls: (string | null)[]
   taskCount: number
   completedTaskCount: number
-  isOwner: boolean
-  isMember: boolean
+  /** 自分がプロジェクトメンバーのとき true（一覧の「参加中」フィルタ用） */
+  isJoined: boolean
+  /** 自分がリーダーまたはサブリーダーのとき true（一覧の「主催」フィルタ用） */
+  isHosting: boolean
   archived: boolean
   coverPhotoIdx: number
   coverPhotoUrl: string | null
   location: string | null
   placeId: string | null
+  latestMessage?: { senderName: string; content: string } | null
 }
 
 function coverPhotoIdxFromId(id: string): number {
@@ -35,23 +43,21 @@ function coverPhotoIdxFromId(id: string): number {
 }
 
 export async function GET() {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (authError) return authError
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, tasks, profiles, workspaceMembers } = await import('@cairn/db')
-    const { eq, count, and, inArray } = await import('drizzle-orm')
+    const { projects, projectStatuses, projectMembers, tasks, channels, channelMembers, messages, userBlocks, profiles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, count, and, inArray, isNull, desc } = await import('drizzle-orm')
     const { sql } = await import('drizzle-orm')
+    const channelSchemaReady = await hasTaskChannelSchema(db)
 
-    // ゲストは参加中のプロジェクトのみ参照可能
-    const [wsMember] = await db
-      .select({ role: workspaceMembers.role })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
-      .limit(1)
-
-    const isGuest = wsMember?.role === 'guest'
+    // ゲストは参加中のプロジェクトのみ参照可能（getAuthContext が再照合した ctx.role で判定）
+    const isGuest = ctx.role === 'guest'
     let visibleProjectIds: string[] | null = null
     if (isGuest) {
       const memberRows = await db
@@ -73,7 +79,6 @@ export async function GET() {
         startDate: projects.startDate,
         endDate: projects.endDate,
         archived: projects.archived,
-        createdBy: projects.createdBy,
         coverPhotoUrl: projects.coverPhotoUrl,
         location: projects.location,
         placeId: projects.placeId,
@@ -89,24 +94,84 @@ export async function GET() {
     visibleProjectIds = rows.map(r => r.id)
     if (visibleProjectIds.length === 0) return NextResponse.json([])
 
-    const counts = await db
-      .select({ projectId: projectMembers.projectId, n: count() })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .groupBy(projectMembers.projectId)
+    const [counts, memberRows, userMemberRows, taskRows, latestMessageRows] = await Promise.all([
+      db
+        .select({ projectId: projectMembers.projectId, n: count() })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .groupBy(projectMembers.projectId),
+      db
+        .select({
+          projectId: projectMembers.projectId,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          avatarUrl: workspaceMembers.avatarUrl,
+        })
+        .from(projectMembers)
+        .innerJoin(activeWorkspaceMembers, and(
+          eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+          eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        ))
+        .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(inArray(projectMembers.projectId, visibleProjectIds))
+        .orderBy(projectMembers.createdAt),
+      db
+        .select({ projectId: projectMembers.projectId, role: projectMembers.role })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, ctx.userId)),
+      db
+        .select({
+          projectId: tasks.projectId,
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+        })
+        .from(tasks)
+        .leftJoin(channels, channelSchemaReady ? eq(tasks.channelId, channels.id) : sql`false`)
+        .where(channelSchemaReady
+          ? and(inArray(tasks.projectId, visibleProjectIds), taskChannelVisibilityCondition(ctx.userId))
+          : inArray(tasks.projectId, visibleProjectIds))
+        .groupBy(tasks.projectId),
+      db
+        .selectDistinctOn([channels.projectId], {
+          projectId: channels.projectId,
+          senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
+          content: messages.content,
+        })
+        .from(messages)
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        // 履歴上の発言者は非活性メンバーでも本人名義を維持する。
+        .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
+        .where(and(
+          inArray(channels.projectId, visibleProjectIds),
+          eq(channels.type, 'project'),
+          sql`coalesce(${channels.workspaceId}, ${ctx.workspaceId}) = ${ctx.workspaceId}`,
+          isNull(messages.deletedAt),
+          sql`(${channels.isPrivate} = false or exists (
+            select 1 from ${channelMembers}
+            where ${channelMembers.channelId} = ${channels.id} and ${channelMembers.userId} = ${ctx.userId}
+          ))`,
+          sql`not exists (
+            select 1 from ${userBlocks}
+            where (${userBlocks.blockerId} = ${ctx.userId} and ${userBlocks.blockedId} = ${messages.senderId})
+               or (${userBlocks.blockedId} = ${ctx.userId} and ${userBlocks.blockerId} = ${messages.senderId})
+          )`,
+        ))
+        .orderBy(channels.projectId, desc(messages.createdAt), desc(messages.id)),
+    ])
+
+    const mentionNameMap = await buildMentionNameMap(ctx.workspaceId, latestMessageRows.map(row => row.content))
+    const latestMessageMap = new Map(latestMessageRows.map(row => [row.projectId, {
+      senderName: row.senderName,
+      content: stripMentionsToText(row.content, id => mentionNameMap.get(id)).replace(/\s+/g, ' ').trim(),
+    }]))
+
     const countMap = new Map(counts.map(r => [r.projectId, Number(r.n)]))
 
-    const memberRows = await db
-      .select({
-        projectId: projectMembers.projectId,
-        displayName: profiles.displayName,
-        avatarUrl: workspaceMembers.avatarUrl,
-      })
-      .from(projectMembers)
-      .innerJoin(profiles, eq(projectMembers.userId, profiles.id))
-      .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, profiles.id), eq(workspaceMembers.workspaceId, ctx.workspaceId)))
-      .where(inArray(projectMembers.projectId, visibleProjectIds))
-      .orderBy(projectMembers.createdAt)
     const memberNamesMap = new Map<string, string[]>()
     const memberAvatarUrlsMap = new Map<string, (string | null)[]>()
     for (const row of memberRows) {
@@ -120,44 +185,34 @@ export async function GET() {
       memberAvatarUrlsMap.set(row.projectId, avatarUrls)
     }
 
-    const userMemberRows = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, ctx.userId))
-    const userProjectIds = new Set(userMemberRows.map(r => r.projectId))
-
-    const taskRows = await db
-      .select({
-        projectId: tasks.projectId,
-        total: count(),
-        completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
-      })
-      .from(tasks)
-      .where(inArray(tasks.projectId, visibleProjectIds))
-      .groupBy(tasks.projectId)
+    const userProjectRoleMap = new Map(userMemberRows.map(r => [r.projectId, r.role]))
     const taskMap = new Map(taskRows.map(r => [r.projectId, { total: Number(r.total), completed: Number(r.completed) }]))
 
-    const result: ProjectDto[] = rows.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      statusName: r.statusName ?? null,
-      statusColor: r.statusColor ?? null,
-      startDate: r.startDate,
-      endDate: r.endDate,
-      archived: r.archived,
-      memberCount: countMap.get(r.id) ?? 0,
-      memberNames: memberNamesMap.get(r.id) ?? [],
-      memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
-      taskCount: taskMap.get(r.id)?.total ?? 0,
-      completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
-      isOwner: r.createdBy === ctx.userId,
-      isMember: userProjectIds.has(r.id),
-      coverPhotoIdx: coverPhotoIdxFromId(r.id),
-      coverPhotoUrl: r.coverPhotoUrl ?? null,
-      location: r.location ?? null,
-      placeId: r.placeId ?? null,
-    }))
+    const result: ProjectDto[] = rows.map(r => {
+      const myRole = userProjectRoleMap.get(r.id)
+      return {
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        statusName: r.statusName ?? null,
+        statusColor: r.statusColor ?? null,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        archived: r.archived,
+        memberCount: countMap.get(r.id) ?? 0,
+        memberNames: memberNamesMap.get(r.id) ?? [],
+        memberAvatarUrls: memberAvatarUrlsMap.get(r.id) ?? [],
+        taskCount: taskMap.get(r.id)?.total ?? 0,
+        completedTaskCount: taskMap.get(r.id)?.completed ?? 0,
+        isJoined: myRole !== undefined,
+        isHosting: myRole === 'leader' || myRole === 'subleader',
+        coverPhotoIdx: coverPhotoIdxFromId(r.id),
+        coverPhotoUrl: r.coverPhotoUrl ?? null,
+        location: r.location ?? null,
+        placeId: r.placeId ?? null,
+        latestMessage: latestMessageMap.get(r.id) ?? null,
+      }
+    })
 
     return NextResponse.json(result)
   } catch (err) {
@@ -181,21 +236,26 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
+  const { DATE_ORDER_ERROR, isEndBeforeStart } = await import('@/lib/date-range')
+  if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
+    return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+  }
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, channels, projectStatuses, projectMembers, workspaceMembers, profiles } = await import('@cairn/db')
+    const { projects, channels, projectRoles, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
     if (selectedMemberIds.length > 0) {
+      // 新規プロジェクトに追加できるのは active メンバーのみ
       const wsRows = await db
-        .select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, selectedMemberIds)))
+        .select({ userId: activeWorkspaceMembers.userId })
+        .from(activeWorkspaceMembers)
+        .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), inArray(activeWorkspaceMembers.userId, selectedMemberIds)))
 
       if (wsRows.length !== selectedMemberIds.length) {
         return NextResponse.json({ error: 'User is not a workspace member' }, { status: 422 })
@@ -205,38 +265,8 @@ export async function POST(req: Request) {
     let coverPhotoUrl = parsed.data.coverPhotoUrl ?? null
 
     if (parsed.data.placePhotoName && !coverPhotoUrl) {
-      const apiKey = process.env['GOOGLE_MAPS_API_KEY']
-      if (apiKey) {
-        try {
-          const mediaRes = await fetch(
-            `https://places.googleapis.com/v1/${parsed.data.placePhotoName}/media?maxWidthPx=1200&skipHttpRedirect=true&key=${apiKey}`,
-          )
-          if (mediaRes.ok) {
-            const media = await mediaRes.json() as { photoUri?: string }
-            if (media.photoUri) {
-              const imgRes = await fetch(media.photoUri)
-              if (imgRes.ok) {
-                const buffer = await imgRes.arrayBuffer()
-                const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-                const ext = contentType.includes('png') ? 'png' : 'jpg'
-                const slug = parsed.data.placePhotoName.split('/').join('_')
-                const storagePath = `place-photos/${slug}.${ext}`
-                const { createServiceRoleClient } = await import('@/lib/supabase/service')
-                const supabase = createServiceRoleClient()
-                const { error: uploadError } = await supabase.storage
-                  .from('covers')
-                  .upload(storagePath, buffer, { contentType, upsert: false })
-                if (!uploadError || uploadError.message.toLowerCase().includes('already exist')) {
-                  const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(storagePath)
-                  coverPhotoUrl = publicUrl
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[/api/projects POST] place photo upload failed (skipped):', e)
-        }
-      }
+      const { fetchAndStoreCoverFromPlace } = await import('@/lib/cover-photo')
+      coverPhotoUrl = await fetchAndStoreCoverFromPlace(parsed.data.placePhotoName)
     }
 
     const [inserted] = await db
@@ -278,11 +308,17 @@ export async function POST(req: Request) {
     let memberNames: string[] = []
     let memberAvatarUrls: (string | null)[] = []
     if (selectedMemberIds.length > 0) {
+      const [defaultRole] = await db
+        .select({ id: projectRoles.id })
+        .from(projectRoles)
+        .where(and(eq(projectRoles.workspaceId, ctx.workspaceId), eq(projectRoles.legacyRole, 'member')))
+
       await db.insert(projectMembers).values(
         selectedMemberIds.map(userId => ({
           projectId: inserted.id,
           userId,
           role: 'member' as const,
+          roleId: defaultRole?.id ?? null,
           attendance: 'attending' as const,
         })),
       )
@@ -290,7 +326,7 @@ export async function POST(req: Request) {
       const memberRows = await db
         .select({
           userId: profiles.id,
-          displayName: profiles.displayName,
+          displayName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
           avatarUrl: workspaceMembers.avatarUrl,
         })
         .from(profiles)
@@ -329,13 +365,15 @@ export async function POST(req: Request) {
       memberAvatarUrls,
       taskCount: 0,
       completedTaskCount: 0,
-      isOwner: true,
-      isMember: selectedMemberIds.includes(ctx.userId),
+      // 作成時のメンバーは常に member ロールで追加するため、主催（leader/subleader）にはならない
+      isJoined: selectedMemberIds.includes(ctx.userId),
+      isHosting: false,
       archived: false,
       coverPhotoIdx: coverPhotoIdxFromId(inserted.id),
       coverPhotoUrl: inserted.coverPhotoUrl ?? null,
       location: inserted.location ?? null,
       placeId: parsed.data.placeId ?? null,
+      latestMessage: null,
     } satisfies ProjectDto, { status: 201 })
   } catch (err) {
     console.error('[/api/projects POST] DB query failed:', err)

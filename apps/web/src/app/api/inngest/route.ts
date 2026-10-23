@@ -5,6 +5,9 @@ import { serve } from 'inngest/next'
 import { inngest } from '@/lib/inngest/client'
 import {
   backfillThumbnails,
+  cleanupAppInteractionDeliveries,
+  cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   compressUploadedPdf,
@@ -13,7 +16,13 @@ import {
   indexExternalLink,
   onMessageCreated,
   onTaskAssigned,
+  reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
+  scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
+import { pollsCardRender, pollsCardSweep } from '@/first-party-apps/polls'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
 // VERCEL_URL は Vercel が自動セット。それ以外は APP_URL を環境変数で指定する。
@@ -25,6 +34,9 @@ function resolveServeHost(): string | undefined {
 
 const fns = [
   backfillThumbnails,
+  cleanupAppInteractionDeliveries,
+  cleanupExpiredUploadRequests,
+  chargeStorageRentDaily,
   deleteStorageObjects,
   indexFileChunks,
   compressUploadedPdf,
@@ -33,6 +45,13 @@ const fns = [
   indexExternalLink,
   onMessageCreated,
   onTaskAssigned,
+  pollsCardRender,
+  pollsCardSweep,
+  reconcileAiNudgesHeartbeat,
+  reconcileWorkspaceStorageUsageDaily,
+  requeueStorageDeletionJobs,
+  runStorageDeletionJob,
+  scanAiNudgesPhaseTwo,
 ]
 const host = resolveServeHost()
 

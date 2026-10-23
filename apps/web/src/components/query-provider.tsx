@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isPostHogConfigured, posthog } from '@/lib/posthog'
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -28,7 +29,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
     const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') queryClient.clear()
+      if (event === 'SIGNED_OUT') {
+        queryClient.clear()
+        if (isPostHogConfigured) posthog.reset()
+      }
     })
     return () => data.subscription.unsubscribe()
   }, [queryClient])

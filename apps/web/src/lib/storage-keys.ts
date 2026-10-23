@@ -13,23 +13,42 @@ export const STORAGE_KEYS = {
   projects_view_pc:          'cairn:projects_view_pc',
   projects_view_mob:         'cairn:projects_view_mobile',
   projects_filter:           'cairn:projects_filter',
+  projects_scope:            'cairn:projects_scope',
   projects_status_filter:    'cairn:projects_status_filter',
   projects_member_filter:    'cairn:projects_member_filter',
   calendar_view:             'cairn:calendar_view',
+  calendar_week_start:       'cairn:calendar_week_start',
   calendar_status_filter:    'cairn:calendar_status_filter',
   calendar_member_filter:    'cairn:calendar_member_filter',
   calendar_gcal_hidden:      'cairn:calendar_gcal_hidden',
   kanban_status_filter:      'cairn:kanban_status_filter',
   kanban_member_filter:      'cairn:kanban_member_filter',
-  kanban_scope:              'cairn:kanban_scope',
   sidebar_collapsed:         'cairn:sidebar_collapsed',
+  project_detail_tab:        'cairn:project_detail_tab',
   projects_list_view:        'cairn:projects_list_view',
   projects_table_sort:       'cairn:projects_table_sort',
+  webview_mode:              'cairn:webview_mode',
   chat_archived_collapsed:   'cairn:chat_archived_collapsed',
+  chat_archived_channels_collapsed: 'cairn:chat_archived_channels_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
+  chat_sidebar_width:        'cairn:chat_sidebar_width',
+  chat_send_key:             'cairn:chat_send_key',
+  tasks_status_filter:       'cairn:tasks_status_filter',
+  tasks_scope:               'cairn:tasks_scope',
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
 
 /** チャンネル別の未送信ドラフトキー (cairn:chat_draft_<channelId>) */
 export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId}` as const
+
+/** プロジェクト別の完了済みマイルストーン折りたたみ状態 */
+export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
+  `cairn:chat_completed_milestones_collapsed_${projectId}` as const
+
+/** チャンネル別のアーカイブ済みスレッド折りたたみ状態 */
+export const chatArchivedThreadsCollapsedKey = (channelId: string) =>
+  `cairn:chat_archived_threads_collapsed_${channelId}` as const
+
+/** ユーザー別の最近使ったリアクション（新しい順の絵文字の JSON 配列） */
+export const reactionHistoryKey = (userId: string) => `cairn:reaction_history_${userId}` as const

@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireChannelAccess, requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { requireChannelAccess, requireProjectAccess, requireRole } from '@/lib/permissions'
 
 const GOOGLE_DOC_RE = /https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/
 const GOOGLE_SHEET_RE = /https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     let projectId: string | null = bodyProjectId ?? null
     let metadataChannelId: string | null = null
     if (channelId) {
-      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+      const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
       if (forbidden) return forbidden
 
       const [ch] = await db
@@ -107,8 +107,8 @@ export async function POST(req: Request) {
 
     // ゲストは参加プロジェクトにのみリンクを登録できる。プロジェクト未指定（WSレベル）はゲスト不可。
     const forbidden = projectId
-      ? await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
-      : await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+      ? await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+      : requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     // 同一プロジェクト内の重複チェック

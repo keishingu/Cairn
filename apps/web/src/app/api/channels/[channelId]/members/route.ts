@@ -4,10 +4,14 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
+import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface ChannelMemberDto {
   userId: string
   channelId: string
+  displayName: string
+  avatarUrl: string | null
+  role: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export async function GET(
@@ -19,17 +23,28 @@ export async function GET(
 
   const { channelId } = await params
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers } = await import('@cairn/db')
-    const { eq } = await import('drizzle-orm')
+    const { channelMembers, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+    const { eq, and } = await import('drizzle-orm')
 
     const rows = await db
-      .select({ userId: channelMembers.userId, channelId: channelMembers.channelId })
+      .select({
+        userId: channelMembers.userId,
+        channelId: channelMembers.channelId,
+        displayName: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName),
+        avatarUrl: activeWorkspaceMembers.avatarUrl,
+        role: activeWorkspaceMembers.role,
+      })
       .from(channelMembers)
+      .innerJoin(activeWorkspaceMembers, and(
+        eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId),
+        eq(activeWorkspaceMembers.userId, channelMembers.userId),
+      ))
+      .innerJoin(profiles, eq(profiles.id, channelMembers.userId))
       .where(eq(channelMembers.channelId, channelId))
 
     return NextResponse.json(rows satisfies ChannelMemberDto[])
@@ -62,37 +77,73 @@ export async function POST(
     return NextResponse.json({ error: 'userIdが必要です' }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelMembers, channelReadStates, workspaceMembers } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { channels, channelMembers, channelReadStates, activeWorkspaceMembers } = await import('@cairn/db')
+    const { eq, and, or, sql } = await import('drizzle-orm')
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
 
-    // 自ワークスペースに属さない userId を追加できないようにする（不正な channel_members 行の作成防止）
+    // 自ワークスペースの active メンバー以外を追加できないようにする（不正な channel_members 行や
+    // 非活性メンバーの追加を防ぐ）
     const [member] = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)))
+      .select({ userId: activeWorkspaceMembers.userId })
+      .from(activeWorkspaceMembers)
+      .where(and(eq(activeWorkspaceMembers.workspaceId, ctx.workspaceId), eq(activeWorkspaceMembers.userId, userId)))
       .limit(1)
 
     if (!member) {
       return NextResponse.json({ error: '指定されたユーザーはワークスペースのメンバーではありません' }, { status: 422 })
     }
 
-    await db
-      .insert(channelMembers)
-      .values({ channelId, userId })
-      .onConflictDoNothing()
+    const [targetChannel] = await db
+      .select({ id: channels.id, parentChannelId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
 
-    // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
-    await db
-      .insert(channelReadStates)
-      .values({ userId, channelId, lastReadAt: new Date() })
-      .onConflictDoNothing()
+    if (!targetChannel) {
+      return NextResponse.json({ error: 'チャンネルが見つかりません' }, { status: 404 })
+    }
 
-    return NextResponse.json({ userId, channelId } satisfies ChannelMemberDto, { status: 201 })
+    const rootChannelId = targetChannel.parentChannelId ?? targetChannel.id
+    await db.transaction(async tx => {
+      // 子スレッド作成とメンバー追加を同じ親行で直列化し、参加者の取りこぼしを防ぐ。
+      await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, rootChannelId))
+        .for('update')
+        .limit(1)
+
+      const relatedChannels = await tx
+        .select({ id: channels.id })
+        .from(channels)
+        .where(or(eq(channels.id, rootChannelId), eq(parentChannelId, rootChannelId)))
+      const relatedChannelIds = relatedChannels.map(channel => channel.id)
+
+      await tx
+        .insert(channelMembers)
+        .values(relatedChannelIds.map(id => ({ channelId: id, userId })))
+        .onConflictDoNothing()
+
+      // 参加時点を既読の起点にする。これがないと参加直後に過去メッセージ全件が未読として表示される
+      const joinedAt = new Date()
+      await tx
+        .insert(channelReadStates)
+        .values(relatedChannelIds.map(id => ({ userId, channelId: id, lastReadAt: joinedAt })))
+        .onConflictDoUpdate({
+          target: [channelReadStates.userId, channelReadStates.channelId],
+          set: { lastReadAt: joinedAt, updatedAt: joinedAt },
+          // メンション配信が作った合成状態だけを進め、実際の既読履歴は保持する。
+          setWhere: sql`${channelReadStates.lastReadAt} = 'epoch'::timestamptz
+            and ${channelReadStates.lastReadMessageId} is null`,
+        })
+    })
+
+    return NextResponse.json({ userId, channelId }, { status: 201 })
   } catch (err) {
     console.error('[/api/channels/[channelId]/members POST] DB error:', err)
     return NextResponse.json({ error: 'メンバーの追加に失敗しました' }, { status: 500 })

@@ -5,6 +5,7 @@ import React from 'react'
 interface PageToolbarProps {
   left?: React.ReactNode
   right?: React.ReactNode
+  inset?: boolean
   style?: React.CSSProperties
 }
 
@@ -13,8 +14,8 @@ interface PageToolbarProps {
  * 左ゾーム: コンテキスト操作（タブ・ナビ・グループ指定など）。コンテンツ超過時は横スクロール。
  * 右ゾーン: ビュー操作（フィルター・ビュー切替・主要アクション）。常に表示を維持。
  */
-export const PageToolbar = ({ left, right, style }: PageToolbarProps) => (
-  <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, ...style }}>
+export const PageToolbar = ({ left, right, inset = false, style }: PageToolbarProps) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, minHeight: 34, flexShrink: 0, padding: inset ? 0 : '12px 24px', borderBottom: inset ? undefined : '1px solid var(--border)', ...style }}>
     <div style={{
       flex: 1,
       minWidth: 0,
@@ -57,10 +58,14 @@ export const SegmentedControl = ({ options, value, onChange }: SegmentedControlP
     border: '1px solid var(--border)',
     borderRadius: 8,
     padding: 2,
+    height: 34,
+    boxSizing: 'border-box',
   }}>
     {options.map(opt => (
       <button
         key={opt.id}
+        type="button"
+        aria-pressed={value === opt.id}
         onClick={() => onChange(opt.id)}
         style={{
           padding: '5px 10px',
@@ -83,5 +88,28 @@ export const SegmentedControl = ({ options, value, onChange }: SegmentedControlP
         {opt.label}
       </button>
     ))}
+  </div>
+)
+
+interface ScopeToggleProps {
+  /** role=group に付ける aria-label（例: タスク範囲・プロジェクト範囲） */
+  ariaLabel: string
+  mineLabel: string
+  allLabel: string
+  value: 'mine' | 'all'
+  onChange: (value: 'mine' | 'all') => void
+}
+
+/** 「自分に関するもの / 全体」を切り替える共通トグル（/tasks と /projects の各ビューで共有）。 */
+export const ScopeToggle = ({ ariaLabel, mineLabel, allLabel, value, onChange }: ScopeToggleProps) => (
+  <div role="group" aria-label={ariaLabel} style={{ flexShrink: 0 }}>
+    <SegmentedControl
+      options={[
+        { id: 'mine', label: mineLabel },
+        { id: 'all', label: allLabel },
+      ]}
+      value={value}
+      onChange={next => onChange(next as 'mine' | 'all')}
+    />
   </div>
 )

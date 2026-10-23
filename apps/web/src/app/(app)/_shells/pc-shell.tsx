@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sidebar, type PageId } from '@/components/app/sidebar'
 import { ProjectPanel } from '@/components/app/detail-panel/project-panel'
 import { MemberDetailPanel } from '@/components/app/detail-panel/member-panel'
@@ -28,14 +28,24 @@ function isValidView(v: string | null | undefined): v is ProjectsView {
   return v === 'list' || v === 'calendar' || v === 'kanban'
 }
 
+// PageId から遷移先パスへの対応。calendar / kanban は一覧と同じ /projects で、
+// ビューの出し分けは localStorage で行う（apps/web/AGENTS.md「プロジェクトビューは localStorage のみで永続化」）。
+// navigate と prefetch で同じ対応表を使うために切り出す。
+function pagePath(p: PageId): string {
+  if (p === 'calendar' || p === 'kanban' || p === 'projects') return '/projects'
+  if (p === 'chats') return '/chats'
+  return `/${p}`
+}
+
 function loadStoredView(): ProjectsView {
   if (typeof window === 'undefined') return 'list'
   const saved = localStorage.getItem(PC_STORAGE_KEY)
   return isValidView(saved) ? saved : 'list'
 }
 
-function PCShellInner({ children }: { children: React.ReactNode }) {
+function PCShellInner({ children, overlay }: { children: React.ReactNode; overlay?: React.ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
@@ -90,11 +100,18 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
   }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
-    if (p === 'calendar') { setProjectsView('calendar'); router.push('/projects') }
-    else if (p === 'kanban') { setProjectsView('kanban'); router.push('/projects') }
-    else if (p === 'projects') { setProjectsView('list'); router.push('/projects') }
-    else router.push(`/${p}`)
+    if (p === 'calendar') setProjectsView('calendar')
+    else if (p === 'kanban') setProjectsView('kanban')
+    else if (p === 'projects') setProjectsView('list')
+    router.push(pagePath(p))
   }, [router, setProjectsView])
+
+  // コールドスタート対策 A-1: サイドバー hover 時に遷移先ルートを先読みし、
+  // RSC ペイロードとサーバーレス関数を温めてクリック時の初回遷移を速くする。
+  // router.prefetch は同一ルートの重複呼び出しを内部でデデュープするため hover 連打は無害。
+  const prefetchPage = React.useCallback((p: PageId) => {
+    router.prefetch(pagePath(p))
+  }, [router])
 
   // Esc=閉じる: 最前面のオーバーレイ（通知 → 詳細パネル）を1つ閉じる。
   // Modal（ConfirmDialog や各種作成モーダル）が前面にある時は介入しない。
@@ -121,8 +138,13 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
     'app.toggleSidebar': toggleSidebar,
     'global.commandPalette': () => setPaletteOpen(true),
     'global.help': () => setHelpOpen(true),
-    // 横断検索: chats へ遷移し、nonce を増やして chats 画面に検索を開かせる
-    'global.crossSearch': () => { navigate('chats'); setCrossSearchNonce(n => n + 1) },
+    // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
+    'global.crossSearch': () => {
+      const params = new URLSearchParams(page === 'chats' ? searchParams.toString() : '')
+      params.set('panel', 'global-search')
+      router.push(`${page === 'chats' ? pathname : '/chats'}?${params.toString()}`)
+      setCrossSearchNonce(n => n + 1)
+    },
   })
 
   useCommandDispatcher({ page, onEscape: closeTopOverlay })
@@ -132,15 +154,18 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
       openPanel,
       openMember,
       openNotif: () => setNotifOpen(true),
+      isWebView: false,
       projectsView,
       setProjectsView,
       crossSearchNonce,
       consumeCrossSearch: () => setCrossSearchNonce(0),
     }}>
-      <div className="app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      {/* .app の部品スタイルが portal 先（.app-root）にも当たるよう、ルート自体を .app にする */}
+      <div className="app app-root" style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
         <NavigationProgress />
-        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
-          <Sidebar page={page} setPage={navigate} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
+        {overlay}
+        <div style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg)', overflow: 'hidden' }}>
+          <Sidebar page={page} setPage={navigate} prefetchPage={prefetchPage} openPanel={openPanel} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar}/>
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div style={{ flex: 1, display: 'flex', minHeight: 0, minWidth: 0, position: 'relative' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
@@ -173,10 +198,11 @@ function PCShellInner({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function PCShell({ children }: { children: React.ReactNode }) {
+/** overlay は .app-root の中に出す全画面の要素（アプリのモーダルなど）。外に出すとテーマ変数と .app の部品スタイルが当たらない */
+export function PCShell({ children, overlay }: { children: React.ReactNode; overlay?: React.ReactNode }) {
   return (
     <CommandProvider>
-      <PCShellInner>{children}</PCShellInner>
+      <PCShellInner overlay={overlay}>{children}</PCShellInner>
     </CommandProvider>
   )
 }

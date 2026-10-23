@@ -1,11 +1,13 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
 import type { MessageSearchResultDto } from '@/app/api/search/messages/route'
@@ -17,22 +19,39 @@ import {
   useWorkspaceDms,
   useChannelMembers,
   useCreateDm,
-  useMarkChannelRead,
-  useCurrentUser,
   useBookmarks,
+  useDeleteWorkspaceChannel,
+  useSetWorkspaceChannelArchived,
+  fetchMessageChannelId,
+  chatQueryKeys,
 } from '@/lib/chat/client'
 import { CreateChannelSheet } from '../mobile/create-channel-sheet'
+import { CreateProjectSheet } from '../mobile/create-project-sheet'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { CreateChannelModal } from './create-channel-modal'
+import { CreateProjectModal } from './create-project-modal'
+import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
+import { CreateChannelThreadModal } from './create-channel-thread-modal'
+import { MoveToThreadDialog } from '../move-to-thread-dialog'
+import { RenameWorkspaceChannelModal } from './rename-workspace-channel-modal'
+import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
+import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
+import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import type { ProjectMemberDto } from '@/app/api/projects/[id]/members/route'
+import { usePatchProjectMilestone } from '@/hooks/use-project-milestones'
+import { toast } from '@/lib/toast'
+import { canMoveMessageToThread, type MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import { useCommand } from '@/lib/command-registry'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
   getLastVisitedChatChannelId,
   resolveInitialChatChannelId,
@@ -57,7 +76,6 @@ function highlightMatch(rawText: string, query: string) {
     </>
   )
 }
-
 function formatSearchDate(iso: string) {
   const d = new Date(iso)
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -71,6 +89,7 @@ interface ChatMessageSearchProps {
 }
 
 const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: ChatMessageSearchProps) => {
+  const t = useT()
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebounce(query, 400)
@@ -78,7 +97,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
   const { data: results = [], isFetching } = useQuery<MessageDto[]>({
-    queryKey: ['message-search', channelId, debouncedQuery],
+    queryKey: chatQueryKeys.messageSearch(channelId, debouncedQuery),
     queryFn: () => fetchWithAuth(`/api/channels/${channelId}/messages/search?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
     enabled: debouncedQuery.length >= 1,
   })
@@ -92,7 +111,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="メッセージを検索…"
+          placeholder={t('Search messages…')}
           style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />
@@ -105,20 +124,22 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
       <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 0' : '8px 0' }}>
         {!debouncedQuery ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            キーワードを入力してください
+            {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            検索中…
+            {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            「{debouncedQuery}」に一致するメッセージはありません
+            {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
             <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
-              {results.length} 件{results.length === 50 ? '以上' : ''}
+              {results.length === 50
+                ? t('{count} or more results', { count: results.length })
+                : t('{count} results', { count: results.length })}
             </div>
             {results.map(msg => (
               <div
@@ -132,8 +153,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
                   borderBottom: '1px solid var(--divider)',
                   cursor: 'pointer',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
@@ -160,6 +180,7 @@ interface CrossChannelSearchProps {
 }
 
 const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelSearchProps) => {
+  const t = useT()
   const [query, setQuery] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebounce(query, 400)
@@ -167,7 +188,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
   React.useEffect(() => { inputRef.current?.focus() }, [])
 
   const { data: results = [], isFetching } = useQuery<MessageSearchResultDto[]>({
-    queryKey: ['global-message-search', debouncedQuery],
+    queryKey: chatQueryKeys.globalMessageSearch(debouncedQuery),
     queryFn: () => fetchWithAuth(`/api/search/messages?q=${encodeURIComponent(debouncedQuery)}`).then(r => r.json()),
     enabled: debouncedQuery.length >= 1,
   })
@@ -181,7 +202,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
           ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="全チャンネルを横断検索…"
+          placeholder={t('Search all channels…')}
           style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />
@@ -194,20 +215,22 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {!debouncedQuery ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            キーワードを入力してください
+            {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            検索中…
+            {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            「{debouncedQuery}」に一致するメッセージはありません
+            {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
             <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
-              {results.length} 件{results.length === 50 ? '以上' : ''}
+              {results.length === 50
+                ? t('{count} or more results', { count: results.length })
+                : t('{count} results', { count: results.length })}
             </div>
             {results.map(msg => (
               <div
@@ -217,8 +240,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
                 onClick={() => onJump(msg.channelId, msg.id)}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.channelId, msg.id) }}
                 style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
@@ -248,23 +270,24 @@ interface BookmarksPanelProps {
 }
 
 const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelProps) => {
+  const t = useT()
   const { data: bookmarks = [], isFetching } = useBookmarks(true)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
         <Icon name="bookmark" size={14} color="var(--accent)"/>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>ブックマーク</span>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Bookmarks')}</span>
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
           <Icon name="close" size={14}/>
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {isFetching && bookmarks.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>読み込み中…</div>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
         ) : bookmarks.length === 0 ? (
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
-            ブックマークしたメッセージはまだありません
+            {t('No bookmarked messages yet')}
           </div>
         ) : (
           bookmarks.map((msg: BookmarkDto) => (
@@ -275,8 +298,7 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
               onClick={() => onJump(msg.channelId, msg.id)}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onJump(msg.channelId, msg.id) }}
               style={{ padding: '10px 16px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
@@ -296,14 +318,22 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
   )
 }
 
-// ─── Pending cross-channel jump (survives component remount) ─────
-let _pendingJump: { channelId: string; messageId: string } | null = null
-
 // ─── PageChat ─────────────────────────────────────────────────────
 
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const router = useRouter()
   const pathname = usePathname()
+  const search = useSearchParams().toString()
+  const params = React.useMemo(() => new URLSearchParams(search), [search])
+  const messageId = params.get('m')
+  const panel = params.get('panel')
+  const projectId = params.get('projectId')
+  const projectTitle = params.get('projectTitle')
+  const requestedEditingMilestoneId = panel === 'edit-milestone' ? params.get('milestoneId') : null
+  const queryClient = useQueryClient()
+  // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
+  const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -315,41 +345,97 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const [channelId, setChannelId] = React.useState<string | null>(urlChannelId)
   const [showCreateChannel, setShowCreateChannel] = React.useState(false)
+  const [showCreateProject, setShowCreateProject] = React.useState(false)
   const [showMemberInvite, setShowMemberInvite] = React.useState(false)
   const [showInfo, setShowInfo] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
   const [bookmarksOpen, setBookmarksOpen] = React.useState(false)
-  const [targetMessageId, setTargetMessageId] = React.useState<string | null>(null)
+  const [targetMessage, setTargetMessage] = React.useState<{ id: string } | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(true)
+  const [milestoneProject, setMilestoneProject] = React.useState<{ id: string; title: string } | null>(null)
+  const [editingMilestone, setEditingMilestone] = React.useState<ProjectChannelDto | null>(null)
+  const [threadChannel, setThreadChannel] = React.useState<{ id: string; name: string } | null>(null)
+  // 「スレッドに切り出す」: moveDialog が確認ダイアログ、moveSelection が複数選択モード（起点メッセージ＋選択中の一覧）
+  const [moveDialog, setMoveDialog] = React.useState<{ anchor: MoveSourceMessage; selected: MoveSourceMessage[] | null } | null>(null)
+  const [moveSelection, setMoveSelection] = React.useState<{ anchor: MoveSourceMessage; items: Map<string, MoveSourceMessage> } | null>(null)
+  const [renamingWorkspaceChannel, setRenamingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
+  const [deletingWorkspaceChannel, setDeletingWorkspaceChannel] = React.useState<WorkspaceChannelDto | null>(null)
+  const patchMilestone = usePatchProjectMilestone()
+  const deleteWorkspaceChannel = useDeleteWorkspaceChannel()
+  const setWorkspaceChannelArchived = useSetWorkspaceChannelArchived()
 
-  // パーマリンク (/chats/<channelId>?m=<messageId>) で開いたとき、該当メッセージへジャンプする。
-  // useSearchParams は Suspense 境界を要求するため、クライアント側で location から読む
+  // パーマリンクの対象が同じなら参照を保ち、別パネルの操作で再スクロールさせない。
   React.useEffect(() => {
-    if (typeof window === 'undefined') return
-    const m = new URLSearchParams(window.location.search).get('m')
-    if (m) setTargetMessageId(m)
-  }, [pathname])
+    setTargetMessage(current => current?.id === messageId ? current : messageId ? { id: messageId } : null)
+  }, [urlChannelId, messageId])
+
+  // チャットの移動・パネル指定・メッセージリンクに同期し、シェルの open/tab 変更では表示を保つ。
+  React.useEffect(() => {
+    setSearchOpen(panel === 'search')
+    setShowInfo(panel === 'info')
+    setShowMemberInvite(false)
+    setGlobalSearchOpen(panel === 'global-search')
+    setBookmarksOpen(panel === 'bookmarks')
+    setShowCreateProject(panel === 'create-project')
+    setMilestoneProject(panel === 'create-milestone' && projectId && projectTitle ? { id: projectId, title: projectTitle } : null)
+    setEditingMilestone(null)
+  }, [urlChannelId, messageId, panel, projectId, projectTitle, requestedEditingMilestoneId])
+
+  const updateUrlPanel = (panel: string | null) => {
+    // URL から開いた表示は閉じる・切り替える操作も同期し、他のクエリは保つ。
+    if (!params.has('panel')) return
+    const next = new URLSearchParams(params)
+    if (panel) next.set('panel', panel)
+    else next.delete('panel')
+    const query = next.toString()
+    router.replace(pathname + (query ? '?' + query : ''), { scroll: false })
+  }
+
+  const clearUrlPanel = (panel: string) => {
+    if (params.get('panel') === panel) updateUrlPanel(null)
+  }
+
+  const closeGlobalSearch = () => {
+    setGlobalSearchOpen(false)
+    clearUrlPanel('global-search')
+  }
 
   // ブラウザの戻る/進むでURLが変わったとき状態を同期
   React.useEffect(() => {
     setChannelId(urlChannelId)
   }, [urlChannelId])
 
-  // 全チャンネル横断ジャンプで設定されたpendingJumpを消費
+  // 別のチャンネルを開いたら、切り出しの操作は破棄する（選択したメッセージは元のチャンネルのもの）
   React.useEffect(() => {
-    if (_pendingJump && _pendingJump.channelId === channelId) {
-      setTargetMessageId(_pendingJump.messageId)
-      _pendingJump = null
-    }
+    setMoveDialog(null)
+    setMoveSelection(null)
   }, [channelId])
 
-  const { data: projectChannels = [], isFetched: isProjectChannelsFetched } = useProjectChannels()
-  const { data: workspaceChannels = [], isFetched: isWorkspaceChannelsFetched } = useWorkspaceChannels()
+  const {
+    data: projectChannels = [],
+    isFetched: isProjectChannelsFetched,
+    isSuccess: projectChannelsLoaded,
+    isFetching: projectChannelsFetching,
+  } = useProjectChannels()
+  const {
+    data: workspaceChannels = [],
+    isFetched: isWorkspaceChannelsFetched,
+    isSuccess: workspaceChannelsLoaded,
+    isFetching: workspaceChannelsFetching,
+  } = useWorkspaceChannels()
   const { data: members = [] } = useWorkspaceMembers()
-  const { data: dms = [], isFetched: isDmsFetched } = useWorkspaceDms()
-  const markChannelRead = useMarkChannelRead()
+  const {
+    data: dms = [],
+    isFetched: isDmsFetched,
+    isSuccess: dmsLoaded,
+    isFetching: dmsFetching,
+  } = useWorkspaceDms()
   const createDmMutation = useCreateDm()
+
+  const activeEditingMilestone = editingMilestone ?? (requestedEditingMilestoneId
+    ? projectChannels.find(channel => channel.milestoneId === requestedEditingMilestoneId)
+    : null)
 
   const fallbackChannelId = React.useMemo(
     () => (projectChannels.find(c => !c.archived) ?? projectChannels[0] ?? null)?.channelId ?? null,
@@ -364,11 +450,40 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     ],
     [projectChannels, workspaceChannels, dms],
   )
-  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && isDmsFetched
+  const hasResolvedInitialChannelLists = isProjectChannelsFetched && isWorkspaceChannelsFetched && (isDmsFetched || !FEATURE_FLAGS.dm)
+  const channelListsSettled = projectChannelsLoaded && !projectChannelsFetching
+    && workspaceChannelsLoaded && !workspaceChannelsFetching
+    && (!FEATURE_FLAGS.dm || (dmsLoaded && !dmsFetching))
+  const previousVisibleChannelIdsRef = React.useRef<string[] | null>(null)
 
   React.useEffect(() => {
     if (channelId) setLastVisitedChatChannelId(channelId)
   }, [channelId])
+
+  // 他クライアントの削除は一覧の再取得で ID が消える。作成直後の未反映と区別し、見えていた会話が消えたときだけ移す。
+  React.useEffect(() => {
+    if (!channelListsSettled) return
+    const visibleIds = availableChannelIds
+    const disappeared = openChannelDisappeared(channelId, previousVisibleChannelIdsRef.current, visibleIds)
+    previousVisibleChannelIdsRef.current = visibleIds
+    if (!disappeared || !channelId) return
+    const nextId = nextChatChannelAfterRemoval({
+      projectChannels: projectChannels.map(channel => ({ id: channel.channelId, archived: channel.archived })),
+      workspaceChannelIds: workspaceChannels.map(channel => channel.id),
+      dmIds: dms.map(channel => channel.id),
+    })
+    if (nextId) {
+      setChannelId(nextId)
+      setSearchOpen(false)
+      setGlobalSearchOpen(false)
+      setBookmarksOpen(false)
+      setTargetMessage(null)
+      router.replace('/chats/' + nextId)
+      return
+    }
+    setChannelId(null)
+    router.replace('/chats')
+  }, [availableChannelIds, channelId, channelListsSettled, dms, projectChannels, router, workspaceChannels])
 
   // PC: /chats を開いた時は前回のチャットを優先し、なければ先頭のプロジェクトチャンネルへ遷移
   React.useEffect(() => {
@@ -381,28 +496,39 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       })
       if (nextChannelId) {
         setChannelId(nextChannelId)
-        router.replace('/chats/' + nextChannelId)
+        router.replace('/chats/' + nextChannelId + (search ? '?' + search : ''))
       }
     }
-  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router])
+  }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router, search])
 
   const selectChannel = (id: string) => {
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    setTargetMessageId(null)
+    setTargetMessage(null)
     router.push('/chats/' + id)
-    markChannelRead.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
     setSearchOpen(false)
-    setTargetMessageId(messageId)
+    setGlobalSearchOpen(false)
+    setBookmarksOpen(false)
+    // 同じメッセージへの再ジャンプでも新しいオブジェクトにして、ChatThread の effect を再実行する。
+    setTargetMessage({ id: messageId })
+    const next = new URLSearchParams(params)
+    next.delete('panel')
+    next.set('m', messageId)
+    router.replace(pathname + '?' + next.toString(), { scroll: false })
   }
 
+  // プロジェクト・ワークスペースチャンネルの作成は API 側で管理者以上に限定しているため、UI 導線も同じ条件で絞る
+  const { isAdmin } = useWorkspacePermissions()
+  const canCreateProject = isAdmin
+  const canCreateWorkspaceChannel = isAdmin
+
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
-  useCommand('ctx.create', () => setShowCreateChannel(true))
+  useCommand('ctx.create', () => { if (canCreateWorkspaceChannel) setShowCreateChannel(true) })
   useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
   useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
 
@@ -436,22 +562,62 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
-    // 既に開いているチャンネルへのジャンプは channelId が変化しないため、
-    // _pendingJump 消費用 effect（[channelId] 依存）が発火しない。その場合は直接 targetMessageId を設定する
-    if (chanId === channelId) {
-      setTargetMessageId(messageId)
-    } else {
-      _pendingJump = { channelId: chanId, messageId }
-      setChannelId(chanId)
-    }
-    router.push('/chats/' + chanId)
-    markChannelRead.mutate(chanId)
+    setTargetMessage({ id: messageId })
+    setChannelId(chanId)
+    router.push('/chats/' + chanId + '?m=' + encodeURIComponent(messageId))
   }
+
+  // 切り出されたメッセージの古いリンクを開いたとき、移動先のチャンネルを解決して辿り直す。
+  // 権限の確認は API 側で行い、閲覧できないチャンネルは「見つからない」と同じ扱いにする
+  const jumpToChannelMessageRef = React.useRef(jumpToChannelMessage)
+  jumpToChannelMessageRef.current = jumpToChannelMessage
+  const currentChannelIdRef = React.useRef(channelId)
+  currentChannelIdRef.current = channelId
+  const handleMessageNotInChannel = React.useCallback(async (messageId: string) => {
+    try {
+      const targetChannelId = await fetchMessageChannelId(messageId)
+      // 削除済みか閲覧できない移動先かは区別せず伝え、存在の有無を漏らさない。
+      if (!targetChannelId) {
+        toast.error(t('The message could not be found. It may have been deleted, or you may not have access.'))
+        return
+      }
+      if (targetChannelId !== currentChannelIdRef.current) {
+        jumpToChannelMessageRef.current(targetChannelId, messageId)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'メッセージの場所の取得に失敗しました')
+    }
+  }, [t])
 
   const handleStartDm = (targetUserId: string) => {
     createDmMutation.mutate(targetUserId, {
       onSuccess: (data) => selectChannel(data.id),
     })
+  }
+
+  const handleSetMilestoneCompleted = (milestone: ProjectChannelDto, completed: boolean) => {
+    if (!milestone.milestoneId || patchMilestone.isPending) return
+    patchMilestone.mutate(
+      { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed } },
+      {
+        onSuccess: () => toast.success(completed ? t('Marked the milestone complete') : t('Marked the milestone incomplete')),
+        onError: error => toast.error(error.message),
+      },
+    )
+  }
+
+  const handleSetWorkspaceChannelArchived = (target: WorkspaceChannelDto, archived: boolean) => {
+    if (setWorkspaceChannelArchived.isPending) return
+    const isThread = target.parentChannelId !== null
+    setWorkspaceChannelArchived.mutate(
+      { channelId: target.id, archived },
+      {
+        onSuccess: () => toast.success(isThread
+          ? (archived ? t('Archived the thread') : t('Unarchived the thread'))
+          : (archived ? t('Archived the channel') : t('Unarchived the channel'))),
+        onError: error => toast.error(error.message),
+      },
+    )
   }
 
   const currentChannel = projectChannels.find(c => c.channelId === channelId)
@@ -460,10 +626,23 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const isProject = !!currentChannel
   const isPrivate = !!(currentGeneral?.isPrivate)
   const isDm = !!currentDm
-  const channelName = currentChannel?.projectTitle ?? currentGeneral?.name ?? currentDm?.participantName ?? ''
-  const currentChannelMemberCount = currentGeneral?.memberCount
+  const channelName = currentChannel
+    ? currentChannel.milestoneId
+      ? `${currentChannel.projectTitle} / ${currentChannel.channelName}`
+      : currentChannel.projectTitle
+    : currentGeneral?.name ?? currentDm?.participantName ?? ''
+  const channelSubtitle = isProject
+    ? t('Participating members')
+    : isDm
+      ? t('Direct messages')
+      : currentGeneral?.isPrivate
+        ? t('{count} participating', { count: currentGeneral.memberCount })
+        : currentGeneral
+          ? t('Open to everyone')
+          : undefined
 
   const { data: currentUser } = useCurrentUser()
+  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
@@ -513,7 +692,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
 
   // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
-  const memberLabel = isProject ? 'プロジェクトメンバー' : isPrivate ? 'チャンネル参加者' : isDm ? '参加者' : null
+  const memberLabel = isProject ? t('Project members') : isPrivate ? t('Channel members') : isDm ? t('Participants') : null
 
   const handleOpenProject = () => {
     if (currentChannel) {
@@ -539,15 +718,156 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       dms={dms}
       members={members}
       isMobile={isMobile}
-      onAddChannel={() => setShowCreateChannel(true)}
+      {...(canCreateProject ? { onAddProject: () => setShowCreateProject(true) } : {})}
+      {...(canCreateWorkspaceChannel ? { onAddChannel: () => setShowCreateChannel(true) } : {})}
       onStartDm={handleStartDm}
+      {...(canCreateChildChannel ? { onCreateMilestone: setMilestoneProject } : {})}
+      {...(canCreateChildChannel ? { onEditMilestone: setEditingMilestone } : {})}
+      {...(canCreateChildChannel ? { onSetMilestoneCompleted: handleSetMilestoneCompleted } : {})}
+      {...(canCreateChildChannel ? { onCreateThread: setThreadChannel } : {})}
+      {...(canCreateChildChannel ? { onRenameWorkspaceChannel: setRenamingWorkspaceChannel } : {})}
+      {...(canCreateChildChannel ? { onSetWorkspaceChannelArchived: handleSetWorkspaceChannelArchived } : {})}
+      {...(canCreateChildChannel ? { onDeleteWorkspaceChannel: setDeletingWorkspaceChannel } : {})}
+      canManageWorkspaceChannel={canCreateWorkspaceChannel}
     />
   )
 
-  const createChannelUI = showCreateChannel && (
+  const createChannelUI = showCreateChannel && canCreateWorkspaceChannel && (
     isMobile
       ? <CreateChannelSheet onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
       : <CreateChannelModal onClose={() => setShowCreateChannel(false)} onCreated={(channel) => selectChannel(channel.id)}/>
+  )
+
+  const handleProjectCreated = () => {
+    void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels })
+  }
+
+  const createProjectUI = showCreateProject && (
+    isMobile
+      ? <CreateProjectSheet onClose={() => { setShowCreateProject(false); clearUrlPanel('create-project') }} onCreated={handleProjectCreated}/>
+      : <CreateProjectModal onClose={() => { setShowCreateProject(false); clearUrlPanel('create-project') }} onCreated={handleProjectCreated}/>
+  )
+
+  const createMilestoneUI = milestoneProject && (
+    <CreateMilestoneModal
+      projectId={milestoneProject.id}
+      projectTitle={milestoneProject.title}
+      onClose={() => { setMilestoneProject(null); clearUrlPanel('create-milestone') }}
+      onCreated={milestone => selectChannel(milestone.channelId)}
+    />
+  )
+
+  // 親ワークスペースチャンネル（スレッドではない）で member 以上のときだけ、メッセージのメニューに出す。
+  // アーカイブ済みチャンネルのスレッドには移せない（API も 400 を返す）ため出さない
+  const canMoveToThread = !!currentGeneral && currentGeneral.parentChannelId === null && !currentGeneral.archived
+    && canMoveMessageToThread({ isParentWorkspaceChannel: true, role: currentUser?.wsRole, messageType: 'text' })
+  const moveToThreadProps = {
+    onMessageNotInChannel: handleMessageNotInChannel,
+    ...(canMoveToThread ? {
+      onMoveToThread: (message: MoveSourceMessage) => {
+        setMoveSelection(null)
+        setMoveDialog({ anchor: message, selected: null })
+      },
+    } : {}),
+    ...(canMoveToThread && moveSelection ? {
+      moveSelection: {
+        selectedIds: new Set(moveSelection.items.keys()),
+        onToggle: (message: MoveSourceMessage) => setMoveSelection(current => {
+          if (!current) return current
+          const items = new Map(current.items)
+          if (items.has(message.id)) items.delete(message.id)
+          else items.set(message.id, message)
+          return { ...current, items }
+        }),
+        onConfirm: () => setMoveDialog({ anchor: moveSelection.anchor, selected: [...moveSelection.items.values()] }),
+        onCancel: () => setMoveSelection(null),
+      },
+    } : {}),
+  }
+
+  const moveToThreadUI = moveDialog && channelId && currentGeneral && (
+    <MoveToThreadDialog
+      parentChannelId={channelId}
+      parentChannelName={currentGeneral.name ?? ''}
+      anchor={moveDialog.anchor}
+      selected={moveDialog.selected}
+      threads={workspaceChannels.filter(candidate => candidate.parentChannelId === channelId && !candidate.archived)}
+      onClose={() => setMoveDialog(null)}
+      onStartSelection={() => {
+        setMoveSelection({ anchor: moveDialog.anchor, items: new Map([[moveDialog.anchor.id, moveDialog.anchor]]) })
+        setMoveDialog(null)
+      }}
+      onMoved={({ threadId, movedCount }) => {
+        setMoveDialog(null)
+        setMoveSelection(null)
+        toast.success(t('Moved {count} messages to the thread', { count: movedCount }))
+        selectChannel(threadId)
+      }}
+    />
+  )
+
+  const createThreadUI = threadChannel && (
+    <CreateChannelThreadModal
+      channelId={threadChannel.id}
+      channelName={threadChannel.name}
+      onClose={() => setThreadChannel(null)}
+      onCreated={selectChannel}
+    />
+  )
+
+  const renameWorkspaceChannelUI = renamingWorkspaceChannel && (
+    <RenameWorkspaceChannelModal
+      channelId={renamingWorkspaceChannel.id}
+      currentName={renamingWorkspaceChannel.name ?? ''}
+      isThread={renamingWorkspaceChannel.parentChannelId !== null}
+      onClose={() => setRenamingWorkspaceChannel(null)}
+    />
+  )
+
+  const deletingWorkspaceChannelCopy = deletingWorkspaceChannel
+    ? (() => {
+        const isThread = deletingWorkspaceChannel.parentChannelId !== null
+        const trimmed = deletingWorkspaceChannel.name?.trim() ?? ''
+        const name = trimmed || (isThread ? t('Untitled thread') : t('Untitled channel'))
+        const childThreadCount = workspaceChannels.filter(channel => channel.parentChannelId === deletingWorkspaceChannel.id).length
+        if (isThread) {
+          return {
+            title: t('Delete thread'),
+            message: t('Delete the thread "{name}". Messages and tasks will also be deleted. This cannot be undone.', { name }),
+          }
+        }
+        return {
+          title: t('Delete channel'),
+          message: childThreadCount > 0
+            ? t('Delete "{name}". Messages, tasks, and threads under it will also be deleted. This cannot be undone.', { name })
+            : t('Delete "{name}". Messages and tasks will also be deleted. This cannot be undone.', { name }),
+        }
+      })()
+    : null
+
+  const deleteWorkspaceChannelUI = (
+    <ConfirmDialog
+      open={deletingWorkspaceChannel !== null}
+      title={deletingWorkspaceChannelCopy?.title ?? t('Delete channel')}
+      message={deletingWorkspaceChannelCopy?.message ?? ''}
+      onConfirm={async () => {
+        if (!deletingWorkspaceChannel) return
+        const target = deletingWorkspaceChannel
+        await deleteWorkspaceChannel.mutateAsync(target.id)
+        toast.success(target.parentChannelId ? t('Deleted the thread') : t('Deleted the channel'))
+      }}
+      onClose={() => setDeletingWorkspaceChannel(null)}
+    />
+  )
+
+  const editMilestoneUI = activeEditingMilestone?.milestoneId && (
+    <EditMilestoneModal
+      projectId={activeEditingMilestone.projectId}
+      projectTitle={activeEditingMilestone.projectTitle}
+      milestoneId={activeEditingMilestone.milestoneId}
+      onClose={() => { setEditingMilestone(null); clearUrlPanel('edit-milestone') }}
+    />
   )
 
   // ─── モバイル ─────────────────────────────────────────────────
@@ -557,25 +877,32 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader
-            title="チャット"
+            title={t('Chats')}
             right={
               <div style={{ display: 'flex', gap: 4 }}>
-                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
+                <button className="btn" onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false); updateUrlPanel(bookmarksOpen ? null : 'bookmarks') }} style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}>
                   <Icon name="bookmark" size={16}/>
                 </button>
-                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
+                <button className="btn" onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false); updateUrlPanel(globalSearchOpen ? null : 'global-search') }} style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}>
                   <Icon name="search" size={16}/>
                 </button>
               </div>
             }
           />
           {bookmarksOpen
-            ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+            ? <BookmarksPanel onClose={() => { setBookmarksOpen(false); clearUrlPanel('bookmarks') }} onJump={jumpToChannelMessage} isMobile/>
             : globalSearchOpen
-              ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage} isMobile/>
+              ? <CrossChannelSearch onClose={closeGlobalSearch} onJump={jumpToChannelMessage} isMobile/>
               : channelListNode
           }
           {createChannelUI}
+          {createProjectUI}
+          {createMilestoneUI}
+          {editMilestoneUI}
+          {createThreadUI}
+          {moveToThreadUI}
+          {renameWorkspaceChannelUI}
+          {deleteWorkspaceChannelUI}
         </div>
       )
     }
@@ -583,32 +910,32 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         <MobileHeader
           title={channelName}
-          subtitle={currentChannelMemberCount != null ? `${currentChannelMemberCount}名が参加中` : undefined}
+          subtitle={channelSubtitle}
           onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
+              <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
               {isPrivate && (
                 <button className="btn" onClick={() => setShowMemberInvite(true)}>
                   <Icon name="userPlus" size={16}/>
                 </button>
               )}
-              <button className="btn" onClick={() => setShowInfo(true)} aria-label="チャンネル情報">
+              <button className="btn" onClick={() => setShowInfo(true)} aria-label={t('Channel info')}>
                 <Icon name="info" size={18}/>
               </button>
             </div>
           }
         />
         {searchOpen && channelId
-          ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+          ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
+          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
         )}
         {showInfo && (
           <ChatInfoDrawer
-            onClose={() => setShowInfo(false)}
+            onClose={() => { setShowInfo(false); clearUrlPanel('info') }}
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}
@@ -625,6 +952,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={(messageId) => { setShowInfo(false); jumpToMessage(messageId) }}
           />
         )}
       </div>
@@ -635,29 +963,47 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
-      <aside style={{ width: 240, background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {createProjectUI}
+      {createMilestoneUI}
+      {editMilestoneUI}
+      {createThreadUI}
+      {moveToThreadUI}
+      {renameWorkspaceChannelUI}
+      {deleteWorkspaceChannelUI}
+      <aside style={{ width: sidebarResize.width, flexShrink: 0, position: 'relative', background: 'var(--card-2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        {/* 幅変更のつまみ。境界線をまたぐ位置に置き、掴める幅だけ線より広くする */}
+        <div
+          {...sidebarResize.handleProps}
+          aria-label={t('Resize the chat list')}
+          title={t('Drag to resize, double-click to reset')}
+          className="resize-handle"
+          data-dragging={sidebarResize.dragging || undefined}
+          style={{ position: 'absolute', top: 0, bottom: 0, right: -4, width: 7, cursor: 'col-resize', zIndex: 1, touchAction: 'none' }}
+        />
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>チャット</h2>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Chats')}</h2>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="btn"
-              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false) }}
+              onClick={() => { setBookmarksOpen(b => !b); setGlobalSearchOpen(false); updateUrlPanel(bookmarksOpen ? null : 'bookmarks') }}
               style={{ background: bookmarksOpen ? 'var(--card-hover)' : undefined }}
-              title="ブックマーク"
+              title={t('Bookmarks')}
             >
               <Icon name="bookmark" size={13}/>
             </button>
             <button
               className="btn"
-              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false) }}
+              onClick={() => { setGlobalSearchOpen(s => !s); setBookmarksOpen(false); updateUrlPanel(globalSearchOpen ? null : 'global-search') }}
               style={{ background: globalSearchOpen ? 'var(--card-hover)' : undefined }}
-              title="全チャンネル検索"
+              title={t('Search all channels')}
             >
               <Icon name="search" size={13}/>
             </button>
           </div>
         </div>
-        {channelListNode}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {channelListNode}
+        </div>
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -669,16 +1015,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
-                {isProject && <StatusChip name="計画中" color="#3B82F6"/>}
-                {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> プライベート</span>}
+                {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
+                {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
-                {isProject ? '参加メンバー' : isDm ? 'ダイレクトメッセージ' : isPrivate ? '招待制' : '全体チャンネル'}
+                {channelSubtitle}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
-              <button className="btn" onClick={() => setSearchOpen(s => !s)} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+              <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
               <BellButton/>
             </div>
           </div>
@@ -687,12 +1033,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
             {bookmarksOpen
-              ? <BookmarksPanel onClose={() => setBookmarksOpen(false)} onJump={jumpToChannelMessage}/>
+              ? <BookmarksPanel onClose={() => { setBookmarksOpen(false); clearUrlPanel('bookmarks') }} onJump={jumpToChannelMessage}/>
               : globalSearchOpen
-                ? <CrossChannelSearch onClose={() => setGlobalSearchOpen(false)} onJump={jumpToChannelMessage}/>
+                ? <CrossChannelSearch onClose={closeGlobalSearch} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
-                  ? <ChatMessageSearch channelId={channelId} onClose={() => setSearchOpen(false)} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread channelId={channelId} channelName={channelName} isPrivate={isPrivate} isMobile={isMobile} targetMessageId={targetMessageId}/>
+                  ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
+                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
             }
           </main>
 
@@ -712,6 +1058,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             onCloseMemberInvite={() => setShowMemberInvite(false)}
             onOpenProject={handleOpenProject}
             onOpenMember={handleOpenMember}
+            onJumpToMessage={jumpToMessage}
           />}
         </div>
       </div>

@@ -1,8 +1,22 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { memberStatusEnum, userStatusEnum, workspaceRoleEnum } from './enums'
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  pgView,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
+import { eq, sql } from 'drizzle-orm'
+import { memberStatusEnum, projectMemberRoleEnum, userStatusEnum, workspaceRoleEnum } from './enums'
 
 export interface WorkspaceCoverPhoto {
   id: string
@@ -16,14 +30,37 @@ export interface WorkspaceSettings {
   coverPhotos?: WorkspaceCoverPhoto[]
 }
 
-export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey(),
-  displayName: text('display_name').notNull(),
-  bio: text('bio'),
-  icalToken: text('ical_token').unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const profiles = pgTable(
+  'profiles',
+  {
+    id: uuid('id').primaryKey(),
+    displayName: text('display_name').notNull(),
+    // bot はアプリのインストールごとの送信者。auth.users を持たず、workspace_members にも入らない
+    kind: text('kind').notNull().default('human'),
+    bio: text('bio'),
+    icalToken: text('ical_token').unique(),
+    aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
+    theme: text('theme').notNull().default('system'),
+    accentId: text('accent_id').notNull().default('emerald'),
+    locale: text('locale').notNull().default('system'),
+    calendarWeekStart: text('calendar_week_start').notNull().default('sunday'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('profiles_kind_check', sql`${t.kind} in ('human', 'bot')`),
+    check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
+    check(
+      'profiles_accent_id_check',
+      sql`${t.accentId} in ('emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan')`,
+    ),
+    check('profiles_locale_check', sql`${t.locale} in ('ja', 'en', 'ko', 'system')`),
+    check(
+      'profiles_calendar_week_start_check',
+      sql`${t.calendarWeekStart} in ('sunday', 'monday')`,
+    ),
+  ],
+)
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -32,12 +69,43 @@ export const workspaces = pgTable('workspaces', {
   description: text('description'),
   logoUrl: text('logo_url'),
   settings: jsonb('settings').$type<WorkspaceSettings>(),
+  // Phase 1 は構造化タスクを使う決定論的なリマインダー、Phase 2 は LLM 巡回である。
+  // workspace 単位で明示的に分けることで、LLM の利用開始は owner の opt-in にする。
+  aiNudgesPhaseOneEnabled: boolean('ai_nudges_phase_one_enabled').notNull().default(true),
+  aiNudgesPhaseTwoEnabled: boolean('ai_nudges_phase_two_enabled').notNull().default(false),
+  // Phase 2 の実際の利用量。月次請求額の推定ではなく、各AIプロバイダーが返したトークン数の累計を保持する。
+  aiNudgesPhaseTwoInputTokens: bigint('ai_nudges_phase_two_input_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoOutputTokens: bigint('ai_nudges_phase_two_output_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoTotalTokens: bigint('ai_nudges_phase_two_total_tokens', { mode: 'number' })
+    .notNull()
+    .default(0),
+  aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' })
+    .notNull()
+    .default(0),
+  // AI チャット（/ai）が使うモデル。値の集合は @cairn/shared の AI_CHAT_MODELS と同じ。
+  aiChatModel: text('ai_chat_model').notNull().default('gpt-5'),
+  // AI チャットへ毎回渡す、owner が書くワークスペース固有の追加指示（AGENTS.md 相当）。null は未設定。
+  // 上限は @cairn/shared の AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH と同じ。
+  aiChatSystemPrompt: text('ai_chat_system_prompt'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [
+  check(
+    'workspaces_ai_chat_model_check',
+    sql`${t.aiChatModel} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`,
+  ),
+  check(
+    'workspaces_ai_chat_system_prompt_length_check',
+    sql`char_length(${t.aiChatSystemPrompt}) <= 10000`,
+  ),
+])
 
 export const workspaceMembers = pgTable(
   'workspace_members',
@@ -54,11 +122,63 @@ export const workspaceMembers = pgTable(
     deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
     deactivatedBy: uuid('deactivated_by').references(() => profiles.id),
     avatarUrl: text('avatar_url'),
+    displayName: text('display_name'),
+    profileAttributes: jsonb('profile_attributes').$type<string[]>().notNull().default([]),
     status: userStatusEnum('status').notNull().default('online'),
     statusMessage: text('status_message'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],
+)
+
+// active membership の唯一の定義。「非活性化されたメンバーは所属していない」という
+// 不変条件をここ 1 箇所に閉じ込め、認可・一覧・通知などの読み取りはこのビューを経由する。
+// 各クエリで `membership_status = 'active'` を手で足す必要（＝足し忘れ）が構造的に消える。
+// active の定義を変える場合（例: deactivated_at IS NULL も条件に足す）もこのビューだけを直せばよい。
+export const activeWorkspaceMembers = pgView('active_workspace_members').as((qb) =>
+  qb.select().from(workspaceMembers).where(eq(workspaceMembers.membershipStatus, 'active')),
+)
+
+export const workspaceProfileAttributes = pgTable(
+  'workspace_profile_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('slate'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('workspace_profile_attributes_workspace_id_name_unique').on(t.workspaceId, t.name),
+    check(
+      'workspace_profile_attributes_color_check',
+      sql`${t.color} in ('slate', 'blue', 'emerald', 'amber', 'violet', 'rose')`,
+    ),
+  ],
+)
+
+export const workspaceMemberProfileAttributes = pgTable(
+  'workspace_member_profile_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceMemberId: uuid('workspace_member_id')
+      .notNull()
+      .references(() => workspaceMembers.id, { onDelete: 'cascade' }),
+    profileAttributeId: uuid('profile_attribute_id')
+      .notNull()
+      .references(() => workspaceProfileAttributes.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('workspace_member_profile_attributes_member_attribute_unique').on(
+      t.workspaceMemberId,
+      t.profileAttributeId,
+    ),
+    index('workspace_member_profile_attributes_attribute_idx').on(t.profileAttributeId),
+  ],
 )
 
 export const tags = pgTable(
@@ -105,4 +225,26 @@ export const projectStatuses = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],
+)
+
+// プロジェクト内の業務上の役割。legacyRole は段階移行中の旧 enum との互換用で、
+// 表示名や色の共有元はこのテーブルとする。
+export const projectRoles = pgTable(
+  'project_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('#6B7280'),
+    sortOrder: integer('sort_order').notNull(),
+    legacyRole: projectMemberRoleEnum('legacy_role'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('project_roles_workspace_id_name_unique').on(t.workspaceId, t.name),
+    unique('project_roles_workspace_id_legacy_role_unique').on(t.workspaceId, t.legacyRole),
+  ],
 )

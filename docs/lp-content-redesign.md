@@ -1,67 +1,99 @@
-# LP コンテンツ再構築（利用者ファースト化）
+# LP コンテンツ再構築（無料のチャット＋プロジェクト管理）
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
+- **更新**: 2026-09-23
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
-> 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
+> 実装と矛盾する場合はコードと [`AGENTS.md`](../AGENTS.md) を正とする。
 > ルーティング（`/` への公開化）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
 
 
 ## 1. 背景
 
-旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者（部活・サークル・小さなチーム）に刺さらなかった。また `docker compose up` や Bring Your Own AI など**実装と乖離した記述**があり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) と [PR #282](https://github.com/keishingu/Cairn/pull/282)（マーケ自己改善ループ設計）が指摘する「嘘広告リスク」の解消が集客の前提だった。
+2026-08 の「三人称順」版（Hero「コメントが、チャットになる。」→ まとめ役 → アーリーアダプター）は、仕組みの説明が中心で困りごとに接続せず、競合名を避けた結果「何と比べて良いのか」も伝わらなかった。
 
-マージ済み PR の機能群から「利用者に刺さる体験」を選び、LP を利用者ファーストに再構築した。
-
-
-## 2. ターゲット（二段構え）
-
-- **主役**: 汎用の小さなチーム（イベント運営・制作進行）
-- **サブ**: 現場のあるチーム（山岳部・サークル・地域団体）。Cairn の出自（山岳部の山行計画）を必要に応じて見せる
-
-### ペルソナ切替パラメータ
-
-言語切替（`data-lang` / `data-i`）と同じ CSS 方式で、**`?p=team|alpineclub`** による文言切替を実装した。
-
-- ルート要素に `data-persona` 属性（デフォルト `team`）、可変文言に `data-p="team|alpineclub"` を付与
-- 切替箇所: ヒーローのリード文・ヒーロー内の製品サンプル・Problem 導入文・Gallery カード・Everywhere / Guests セクションの説明文
-- PR #282 の LP コピー PDCA で、ペルソナ別 CVR を比較する A/B の受け皿になる。山岳部向けは `?p=alpineclub` で表示する（旧 `?p=club` も後方互換として受け付ける）
+小規模チーム・団体は、Slack / 国産チャット / Backlog などの **無料プランを組み合わせて** 使っていることが多く、判断軸は主に料金である。そこで 2026-09 に主物語を **「無料でチャットも、プロジェクト管理も。」** に置き換えた。
 
 
-## 3. 機能訴求の根拠（マージ済み PR → LP コピー）
+## 2. ターゲット
 
-| LP の訴求 | 根拠 PR |
+| 優先 | 読み手 | 入口のプラン |
+|---|---|---|
+| 1 | 学生団体・コミュニティ | Free → 必要な人だけ Solo |
+| 2 | 個人事業主の延長のような小規模チーム | Free / Solo → Team（準備中） |
+| 3 | 企業内の小規模チーム（試験導入） | Free → Expedition（導入支援つき） |
+
+企業向けは Expedition で FDE 的な導入支援（業務整理・運用設計・既存ツール連携）へつなぐ。
+
+
+## 3. 構成
+
+| 順 | セクション | 伝えること |
+|---|---|---|
+| 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は必要な人だけ月 ¥300。CTA「無料で始める」＋「料金を見る」 |
+| 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 10GB（1ファイル 5MB） |
+| 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
+| 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
+| 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone アプリとブラウザ（App Store リンク）、キーボード、電気通信事業届出 |
+| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談 |
+| 7 | AI `#ai` | 出典つき回答（Solo）と MCP（任意）を短く |
+| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる。GitHub と要望受付ワークスペースへの導線 |
+| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、ゲスト、企業導入 |
+| 10 | 最終 CTA `#demo` | Hero と同じ見出し。クレジットカード不要 |
+
+
+## 4. コピーの規則
+
+### トーン
+
+- 事実を短く書く。**AI っぽい甘い口調を使わない**（呼びかけ・「〜しませんか」・詩的な改行・「もう〜しない」・情緒的な言い換えを避ける）
+- 見出しは機能か数字で言い切る。本文は常体（FAQ の回答のみ敬体）
+
+### 競合名
+
+- **Chatwork は名前を出さず「国産チャット」とぼかす**（title・meta・本文・FAQ すべて）
+- **比較表では製品名を出さない**。列見出しは「海外製チャット」（Slack）/「国産チャット」（Chatwork）/「国産プロジェクト管理」（Backlog）とする
+- Slack / Backlog の名前は FAQ・meta（検索対策）に限って出してよい。Hero・比較表には出さない
+- 比較表の競合情報は **各社が公開している無料プランの条件** に限り、表の下に「2026年◯月時点」の注記を必ず付ける。条件が変わったら表と注記を更新する
+- 競合の料金の具体額は載せない（「人数課金」「プラン別の月額」の形で書く）
+
+### 書いてよい（コードで確認済み）
+
+| コピー | 根拠 |
 |---|---|
-| Chat: 返信・ブックマーク・下書き自動保存 | #225, #106, #76 |
-| Tasks: チャットの ☑ がタスクに同期 | #112 |
-| Calendar: Google カレンダー読込・タイムライン・ドラッグ作成 | #121, #146 |
-| Files & Search: 最新版フラグ・全チャンネル横断検索 | #155, #89, #237 |
-| Gallery: プロジェクトごとのアルバム | 既存 + #92 |
-| AI: ファイル・Google Docs を読み出典つきで回答 | #59, #263 |
-| Everywhere: Web / iOS / Android / Desktop・閲覧中は鳴らない Push | Expo, #115, #130 |
-| Guests & Roles: 招待リンク・ゲスト制限・ロール権限・リンク無効化 | #120, #140, #93, #102 |
+| メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
+| ファイル 10GB・1ファイル 5MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `FREE_ATTACHMENT_MAX_FILE_SIZE` |
+| Solo ¥300/月、1ファイル 10MB、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
+| AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
+| ☑ がタスクになり双方向同期 | `parseCheckboxes` / Todo→Task 同期 |
+| 圏外送信（スマホアプリ） | Expo の送信オフラインキュー |
+| 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
+| 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
+| セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
+| iPhone アプリ（App Store 公開済み） | https://apps.apple.com/jp/app/cairn/id6800673777 |
+| 電気通信事業届出（A-08-24291） | [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) |
+
+### 書いてはいけない
+
+- **未公開のアプリ**: Android（社内配布のみ）とデスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
+- **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
+- **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない
+- **石・ケルン・風化の用語**: LP では「クレジット」で説明する
+- **Team の確定価格**: 「目安」「準備中」と必ず併記する
+- **Solo の AI 回数**: 「最大」と書く。保存と AI の自動通知が同じクレジットを消費するため
+- **非公開の顧客名**
 
 
-## 4. 誠実化（Soul ゲート対応）
+## 5. CTA とパラメータ規約
 
-PR #282 の原則「実装と乖離した約束の禁止」に基づく修正:
-
-- **Bring Your Own AI を LP から削除**（実装は OpenAI のみ）。ただし **BYO AI は引き続きロードマップ目標**であり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) §3 の展開課題 2（AI のプロバイダ非依存化）として維持する。実装され次第 LP に復帰させる
-- **Self-Hosted は事実ベースに軟化して存続**（FDE 戦略・カスタマイズ訴求として重要なため削除しない）: `docker compose up` の偽ターミナルを実際に動く `git clone` + `supabase start && pnpm dev` に差し替え、Docker / On-Premise は `roadmap` 表記に変更
-- フッターの Documentation / Release Notes / Issues は実在する GitHub リンクへ接続（旧: ページ内アンカーの空リンク）
-- GitHub リンク（`href="#"` だった箇所含む）を実リポジトリ URL に接続
-
-## 5. CTA とパラメータ規約（#282 の PDCA 下地）
-
-- 主要 CTA ラベルは「クラウド版を試す」→「**無料で始める / Start for free**」に変更（[`landing-page-routing-design.md`](./landing-page-routing-design.md) §3.4 の決定を上書き。Free プランの存在を訴求する方が非技術者に刺さるため）
-- `/auth/login` CTA に `data-cta` 属性と `?utm_source=lp&utm_content=<cta-id>` を付与: `nav` / `hero` / `final` / `footer-product`
-- フッターの Cairn アイコンと Community の `Cairn Cloud` は、要望受付ワークスペースの招待リンクへ接続する
-- 計測（PostHog 集約イベント）は**後回し**と決定。導入時はこの `data-cta` / UTM をそのままイベントプロパティに使う
+- 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-hero` / `appstore-details` / `appstore-final` / `appstore-footer`（App Store は外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- Expedition の問い合わせは既存の相談窓口へ
 
 
 ## 6. 今後
 
-- LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ
-- OGP 画像・canonical・robots・sitemap は整備済み。ペルソナ別 OGP が必要になった場合は、静的 HTML ではなくリクエストパラメータに応じて `<head>` を出し分ける構成を検討する
-- BYO AI・Docker セルフホストが実装されたら LP の該当記述を復帰・昇格させる
+- OGP 画像（`og-image.png` / `.svg`）は旧コピー「One Project. One Place.」のまま。作り直すまで `og:image:alt` は画像の実際の内容に合わせる
+- Team の提供開始時に価格と内容を確定し、「準備中」を外す
+- 比較表の競合条件は四半期ごとに見直す

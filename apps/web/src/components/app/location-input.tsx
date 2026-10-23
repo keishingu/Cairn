@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { Icon } from './primitives'
+import { useT } from '@/components/locale-provider'
 
 export interface PlaceSuggestion {
   placeId: string
@@ -26,8 +27,10 @@ export function LocationInput({
   onSelect,
   onClear,
   inputStyle,
-  placeholder = '例: 穂高連峰、北アルプス',
+  placeholder,
 }: LocationInputProps) {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('e.g. Hotaka range, Northern Alps')
   const [inputValue, setInputValue] = React.useState(value)
   const [suggestions, setSuggestions] = React.useState<PlaceSuggestion[]>([])
   const [isOpen, setIsOpen] = React.useState(false)
@@ -86,7 +89,7 @@ export function LocationInput({
           value={inputValue}
           onChange={handleChange}
           onFocus={() => { if (suggestions.length > 0) setIsOpen(true) }}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           style={{ ...inputStyle, paddingLeft: 34, paddingRight: inputValue ? 30 : 12 }}
           autoComplete="off"
         />
@@ -112,10 +115,10 @@ export function LocationInput({
 
       {isOpen && suggestions.length > 0 && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 'var(--z-dropdown)',
           marginTop: 4, borderRadius: 10,
           background: 'var(--card)', border: '1px solid var(--border)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+          boxShadow: 'var(--shadow-lg)',
           overflow: 'hidden',
         }}>
           {suggestions.map((s, i) => (
@@ -131,8 +134,7 @@ export function LocationInput({
                 background: 'transparent', cursor: 'pointer', textAlign: 'left',
                 fontFamily: 'inherit',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-2)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              className="hover-bg"
             >
               <span style={{ color: 'var(--text-4)', flexShrink: 0, display: 'flex' }}>
                 <Icon name="map-pin" size={13}/>

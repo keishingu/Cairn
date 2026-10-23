@@ -1,0 +1,1 @@
+ALTER TABLE "files" ADD COLUMN "derived_mime_type" text;

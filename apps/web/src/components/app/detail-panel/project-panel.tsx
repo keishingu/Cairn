@@ -2,19 +2,18 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
-import type { PlacePhoto } from '@/app/api/places/photos/route'
 import { ChatTab } from './tabs/chat-tab'
 import { OverviewTab, formatDateRange } from './tabs/overview-tab'
 import { FilesTab } from './tabs/files-tab'
 import { TasksTab } from './tabs/tasks-tab'
 import { MembersTab } from './tabs/members-tab'
 import { GalleryTab } from './tabs/gallery-tab'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { useProjectChannels } from '@/lib/chat/client'
+import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
+import { useT } from '@/components/locale-provider'
 
 
 
@@ -28,53 +27,11 @@ interface CoverPickerPanelProps {
 }
 
 const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onClose }: CoverPickerPanelProps) => {
-  const queryClient = useQueryClient()
-  const [saving, setSaving] = React.useState(false)
-
-  const { data: placePhotos = [], isLoading: photosLoading } = useQuery<PlacePhoto[]>({
-    queryKey: ['place-photos', placeId],
-    queryFn: () => fetchWithAuth(`/api/places/photos?placeId=${encodeURIComponent(placeId!)}`).then(r => r.json()),
-    enabled: !!placeId,
-  })
-
-  const applyUrl = async (url: string | null) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coverPhotoUrl: url }),
-      })
-      if (!res.ok) return
-      queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-        (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: url } : p),
-      )
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const applyPlacePhoto = async (photoName: string) => {
-    setSaving(true)
-    try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ placePhotoName: photoName }),
-      })
-      if (!res.ok) return
-      const data = await res.json() as { coverPhotoUrl?: string | null }
-      if (data.coverPhotoUrl) {
-        queryClient.setQueryData<ProjectDto[]>(['projects'], old =>
-          (old ?? []).map(p => p.id === projectId ? { ...p, coverPhotoUrl: data.coverPhotoUrl! } : p),
-        )
-      }
-      onClose()
-    } finally {
-      setSaving(false)
-    }
-  }
+  const t = useT()
+  const { data: placePhotos = [], isLoading: photosLoading } = usePlacePhotos(placeId)
+  const clearCoverPhoto = useClearProjectCoverPhoto(projectId)
+  const applyPlacePhoto = useApplyPlacePhoto(projectId)
+  const saving = clearCoverPhoto.isPending || applyPlacePhoto.isPending
 
   const thumbStyle = (selected: boolean): React.CSSProperties => ({
     flexShrink: 0, width: 80, height: 54, padding: 0,
@@ -88,7 +45,7 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
   return (
     <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--divider)', background: 'var(--card-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>カバー写真を変更</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>{t('Change cover photo')}</span>
         <button onClick={onClose} style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
           <Icon name="close" size={12}/>
         </button>
@@ -96,29 +53,40 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       {placeId && (
         <>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>場所の写真</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Place photos')}</div>
           {photosLoading ? (
             <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="loader" size={12}/> 取得中…
+              <Icon name="loader" size={12}/> {t('Fetching...')}
             </div>
           ) : placePhotos.length > 0 ? (
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 6, scrollbarWidth: 'thin' }}>
               {placePhotos.map(photo => (
-                <button key={photo.photoName} type="button" style={thumbStyle(false)} onClick={() => { void applyPlacePhoto(photo.photoName) }} disabled={saving}>
+                <button
+                  key={photo.photoName}
+                  type="button"
+                  style={thumbStyle(false)}
+                  onClick={() => applyPlacePhoto.mutate(photo.photoName, { onSuccess: onClose })}
+                  disabled={saving}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo.thumbnailUri} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
                 </button>
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>写真が見つかりませんでした</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>{t('No photos found')}</div>
           )}
         </>
       )}
 
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>デフォルト</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Default')}</div>
       <div>
-        <button type="button" style={thumbStyle(currentCoverUrl === null)} onClick={() => { void applyUrl(null) }} disabled={saving}>
+        <button
+          type="button"
+          style={thumbStyle(currentCoverUrl === null)}
+          onClick={() => clearCoverPhoto.mutate(undefined, { onSuccess: onClose })}
+          disabled={saving}
+        >
           <MountainPhoto idx={defaultIdx} height={50} flat radius={5}/>
           {currentCoverUrl === null && (
             <div style={{ position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: '50%', background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -143,6 +111,7 @@ interface ProjectPanelProps {
 }
 
 export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: tabProp, onTabChange }: ProjectPanelProps) => {
+  const t = useT()
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
@@ -165,7 +134,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
       case 'chat':     return <ChatTab project={project} {...(isMobile ? { isMobile: true } : {})}/>
       case 'overview': return <OverviewTab project={project} onDeleted={onClose}/>
       case 'files':    return <FilesTab projectId={project.id} channelId={projectChannelId ?? null}/>
-      case 'tasks':    return <TasksTab project={project}/>
+      case 'tasks':    return <TasksTab project={project} isMobile={!!isMobile}/>
       case 'members':  return <MembersTab projectId={project.id} onMemberClick={onMemberClick}/>
       case 'gallery':  return <GalleryTab projectId={project.id}/>
       default:         return null
@@ -197,28 +166,28 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   }, [moreOpen])
 
   const pcTabs = [
-    { id: 'overview',  label: '概要',       icon: 'book' },
-    { id: 'chat',      label: 'チャット',   icon: 'chat' },
-    { id: 'files',     label: 'ファイル',   icon: 'file' },
-    { id: 'tasks',     label: 'タスク',     icon: 'check' },
-    { id: 'members',   label: 'メンバー',   icon: 'users' },
-    { id: 'gallery',   label: 'ギャラリー', icon: 'image' },
+    { id: 'overview',  label: t('Overview'), icon: 'book' },
+    { id: 'chat',      label: t('Chats'),    icon: 'chat' },
+    { id: 'files',     label: t('Files'),    icon: 'file' },
+    { id: 'tasks',     label: t('Tasks'),    icon: 'check' },
+    { id: 'members',   label: t('Members'),  icon: 'users' },
+    { id: 'gallery',   label: t('Gallery'),  icon: 'image' },
   ]
 
   const mobileTabs = [
-    { id: 'overview', label: '概要',       icon: 'book' },
-    { id: 'chat',     label: 'チャット',   icon: 'chat' },
-    { id: 'tasks',    label: 'タスク',     icon: 'check' },
-    { id: 'files',    label: 'ファイル',   icon: 'file' },
-    { id: 'gallery',  label: 'ギャラリー', icon: 'image' },
-    { id: 'members',  label: 'メンバー',   icon: 'users' },
+    { id: 'overview', label: t('Overview'), icon: 'book' },
+    { id: 'chat',     label: t('Chats'),    icon: 'chat' },
+    { id: 'tasks',    label: t('Tasks'),    icon: 'check' },
+    { id: 'files',    label: t('Files'),    icon: 'file' },
+    { id: 'gallery',  label: t('Gallery'),  icon: 'image' },
+    { id: 'members',  label: t('Members'),  icon: 'users' },
   ]
 
   const tabs = isMobile ? mobileTabs : pcTabs
 
   const containerStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 100,
+        position: 'fixed', inset: 0, zIndex: 'var(--z-dropdown-backdrop)',
         background: 'var(--bg)',
         display: 'flex', flexDirection: 'column',
         animation: 'slideInRight .22s cubic-bezier(.2,.7,.3,1)',
@@ -268,26 +237,24 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                   <Icon name="more" size={14}/>
                 </button>
                 {moreOpen && (
-                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 50, minWidth: 168, padding: 4 }}>
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', minWidth: 168, padding: 4 }}>
                     <button
                       onClick={() => {
                         setMoreOpen(false)
                         isPinned ? unpinProject.mutate(project.id) : pinProject.mutate(project.id)
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
                       <Icon name="pin" size={13}/>
-                      {isPinned ? 'ピン留めを解除' : 'ピン留め'}
+                      {isPinned ? t('Unpin') : t('Pin')}
                     </button>
                     <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--card-hover)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      className="hover-bg"
                     >
-                      <Icon name="image" size={13}/> カバー写真を変更
+                      <Icon name="image" size={13}/> {t('Change cover photo')}
                     </button>
                   </div>
                 )}
@@ -311,7 +278,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                 {project.archived && <ArchivedBadge onDark/>}
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                  <Icon name="users" size={11}/> {project.memberCount}人参加
+                  <Icon name="users" size={11}/> {t('{count} joined', { count: project.memberCount })}
                 </span>
               </div>
             </>
@@ -322,7 +289,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Icon name="users" size={12}/> {project.memberCount}人参加
+                  <Icon name="users" size={12}/> {t('{count} joined', { count: project.memberCount })}
                 </span>
               </div>
             </>
@@ -353,36 +320,36 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             disabled={!projectChannelId}
             onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
           >
-            <Icon name="chat" size={11}/> チャットを開く
+            <Icon name="chat" size={11}/> {t('Open chat')}
           </button>
         </div>
       )}
 
       {/* Tabs */}
       <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: 2, overflowX: 'auto', flexShrink: 0 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+        {tabs.map(item => (
+          <button key={item.id} onClick={() => setTab(item.id)} style={{
             padding: isMobile ? '10px 12px' : '7px 10px',
             borderRadius: 6, border: 'none',
-            background: tab === t.id ? 'var(--card-hover)' : 'transparent',
-            color: tab === t.id ? 'var(--text)' : 'var(--text-3)',
+            background: tab === item.id ? 'var(--card-hover)' : 'transparent',
+            color: tab === item.id ? 'var(--text)' : 'var(--text-3)',
             fontSize: isMobile ? 13 : 12,
-            fontWeight: tab === t.id ? 600 : 500,
+            fontWeight: tab === item.id ? 600 : 500,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 5,
             whiteSpace: 'nowrap', flexShrink: 0,
-          }}><Icon name={t.icon} size={isMobile ? 14 : 13}/> {t.label}</button>
+          }}><Icon name={item.icon} size={isMobile ? 14 : 13}/> {item.label}</button>
         ))}
       </div>
 
       {/* Tab content — 訪問済みタブはマウントしたまま表示だけ切り替える（keep-alive） */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
-        {tabs.map(t => visitedTabs.has(t.id) ? (
+        {tabs.map(item => visitedTabs.has(item.id) ? (
           <div
-            key={t.id}
-            style={{ flex: 1, minHeight: 0, display: tab === t.id ? 'flex' : 'none', flexDirection: 'column' }}
+            key={item.id}
+            style={{ flex: 1, minHeight: 0, display: tab === item.id ? 'flex' : 'none', flexDirection: 'column' }}
           >
-            {renderTabContent(t.id)}
+            {renderTabContent(item.id)}
           </div>
         ) : null)}
       </div>

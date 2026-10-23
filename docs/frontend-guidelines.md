@@ -10,33 +10,36 @@ page → organism/container（省略可）→ molecule/atom の3層を原則と�
 
 | 層 | ディレクトリ例 | 役割 |
 |---|---|---|
-| page | `components/app/pages/*.tsx` | データ取得・イベント定義のみ。UIマークアップを書かない |
-| organism | `components/app/detail-panel/tabs/*.tsx` など | データ取得可。子コンポーネントへ受け渡す |
-| molecule/atom | `components/app/primitives/` など | props のみで動く純粋な表示コンポーネント |
+| page | `components/app/pages/*.tsx` | 画面の構成、Domain Hook の呼び出し、イベントとデータの受け渡し |
+| organism/container | `components/app/detail-panel/tabs/*.tsx` など | 必要な場合に機能単位をまとめ、Domain Hook 経由のデータとイベントを表示コンポーネントへ渡す |
+| molecule/atom（表示） | `components/app/primitives.tsx` など | props を受けて表示する。入力・開閉などの UI 状態は持てるが、API 通信や query を持たない |
+
+層はファイルの配置だけでなく責務で判断する。同じ `components/` 配下でも、container と表示コンポーネントには異なるルールが適用される。
 
 ### ページ層の責務
 
-- 子コンポーネントの呼び出しとデータ・イベントの受け渡しのみ
-- UIマークアップはファイル内にインラインで定義しない
-- ページ固有のロジックも Domain Hook として `src/hooks/` に切り出す
+- 子コンポーネントを組み合わせ、画面のレイアウトとデータ・イベントの受け渡しを担う
+- 子を配置する JSX やレイアウト用のラッパーは書ける。フォーム・一覧行など機能固有の表示をページ内に抱え込まず、表示コンポーネントへ分ける
+- API 通信・キャッシュ操作はページ固有でも Domain Hook に切り出す。日付計算など React に依存しない処理は純粋関数にし、Hook 化だけを目的としたラッパーは作らない
 
-### コンポーネント層のルール
+### 表示コンポーネントのルール
 
-- `useQuery` / `useMutation` などの副作用は持たせない。必要なデータは props 経由
-- `margin` / `width` を固定値で設定しない（「どこに置いても動くべき」）
-  - どうしても必要な場合は props で切り替えできるようにする
-- コンポーネントがコンポーネントを呼び出すのは極力避ける
+- API 通信・query・mutation は持たせず、データと操作コールバックを props で受ける。入力・開閉状態やフォーカス制御など表示に閉じた処理は持てる
+- 外側の余白や画面内での配置・幅は親が決める。ボタン高・アイコンサイズ・内側の余白など部品固有の寸法は [UI 統一ルール](../.interface-design/system.md) に従う。固定値を避けるためだけに寸法ごとの props を増やさない
+- 共通の表示部品を組み合わせてよい。表示部品から page やデータ取得用 container に依存させない
 
 ---
 
 ## Domain Hook パターン
 
-コンポーネント内で直接 `useQuery` / `useMutation` / `fetchWithAuth` を呼び出さず、必ず Domain Hook にカプセル化する。
+page・container を含め、コンポーネント内で直接 `useQuery` / `useMutation` / `fetchWithAuth` 等による API 通信を記述せず、必ず Domain Hook にカプセル化する。単一画面専用でもこの方針を適用する。
 
 ### 配置と命名
 
 - 場所: `apps/web/src/hooks/`
 - 命名: `use-{resource}-{action}.ts`
+
+以下のパス例は Web 向け。Expo でも通信・購読と表示を分ける責務は共通とし、ネイティブ固有の状態管理は `apps/mobile/hooks/` などアプリ側に置く。
 
 ```
 hooks/
@@ -45,6 +48,7 @@ hooks/
   use-project-tasks.ts       # タスク一覧・トグル・作成
   use-project-files.ts       # ファイル一覧・削除
   use-project-members.ts     # メンバー一覧・追加・削除
+  use-project-milestones.ts  # マイルストーン一覧・作成・更新・削除
 ```
 
 ### フックが担うこと
@@ -53,11 +57,13 @@ hooks/
 - ローディング・エラー状態の管理
 - キャッシュ操作（楽観的更新・invalidation）
 
-### コンポーネントが担うこと
+### page / container が担うこと
 
 - フックの呼び出し
 - UIステート（モーダルの開閉・選択状態など）
 - `mutate()` の第2引数を使ったUI側コールバック
+
+例えば [`overview-tab.tsx`](../apps/web/src/components/app/detail-panel/tabs/overview-tab.tsx) の `MilestoneSection` は `useProjectMilestones` を呼び、`MilestoneRow` に値と操作を渡す。表示側の行は API を知らなくてよい。既存 Hook・表示部品を先に探し、単に props を中継するだけの container は追加しない。
 
 ```ts
 // ✅ Good
@@ -73,6 +79,14 @@ const { data } = useQuery({
   queryFn: () => fetchWithAuth(`/api/tasks?projectId=${id}`).then(r => r.json()),
 })
 ```
+
+---
+
+## 既存実装への適用
+
+本書は新規実装・改修時の規約で、全画面の適合は保証しない。既存ページに直接 query が残っていても規約の例外とはしない（移行は GitHub Issue で追う）。
+
+改修では既存の Hook や [`TaskFormFields`](../apps/web/src/components/app/task-form-fields.tsx) などを再利用する。3層すべてを必須にするための中継コンポーネントや、個別フォームの共通化だけを目的とした汎用フォーム基盤は追加しない。
 
 ---
 
@@ -106,12 +120,35 @@ const { data } = useQuery({
 
 - API: `import { toast } from '@/lib/toast'` → `toast.success(...)` / `toast.error(...)` / `toast.info(...)`
   - mutation の `onSuccess` / `onError` から呼ぶ。コンポーネント外でも呼べる（モジュールレベルの pub/sub）
-  - 既定で 4 秒後に自動で消える。消したくない場合は `{ duration: 0 }`
-- 表示は `components/app/toaster.tsx` の `<Toaster/>`（ルートレイアウトに1つだけマウント済み）が担う
+  - 既定で成功・情報は 4 秒、エラーは 6 秒で自動で消える（ホバー・フォーカス中は止まる）。消したくない場合は `{ duration: 0 }`
+  - 表示中と同じ文言・種別は積まずに表示時間を延ばす。同時表示は 3 件までで古いものから消える
+- 表示は `components/app/toaster.tsx` の `<Toaster/>`（ルートレイアウトに1つだけマウント済み）が担う。PC は右下、モバイルはボトムナビ・入力欄と重ならないよう上部に出す
+- OAuth コールバック後の結果（`?gcal=` / `?loginLinked=` 等）も画面内に独自のバナーを作らずトーストで知らせる
 - 使い分け
   - **離散的なアクション**（ボタン操作での削除・アーカイブ・コピー等）の結果はトーストで知らせる
   - **インライン編集の保存成功はトーストしない**（blur のたびに鳴ると煩い）。失敗時のみトーストで知らせる
-  - フォームのバリデーションエラーなど「その場に留めて直す」性質のものは従来どおり入力近傍にインライン表示する
+  - **コピー**: ボタンが画面に残るなら `components/app/copy-button.tsx` の `CopyButton` を使い、成功はボタン自身の「コピー済み」表示で返す（トーストは重ねない）。メニューから実行してボタンが消えるコピーは `toast.success`。失敗はどちらもトースト
+  - **アップロード**: 進行中はボタンの文言で件数を示し、完了したら成功件数をトーストする。失敗はどのファイルかを `InlineError`（閉じるまで残す）で一覧する
+  - フォームのバリデーションエラーや読み込み失敗など「その場に留めて直す」性質のものは入力近傍に `components/app/inline-error.tsx` の `InlineError` で出す（赤文字は `variant="text"`、送信失敗など目立たせたいものは `variant="box"`）。「⚠」などの絵文字や独自の赤帯は作らない
+
+### モーダル
+
+モーダルは `primitives.tsx` の `Modal`（中身は `@radix-ui/react-dialog`）を使い、`position: fixed` の独自オーバーレイを作らない。フォーカスの閉じ込めと復元・背後の `aria-hidden`・スクロール固定・重なったときの Escape は Radix が受け持つので、`onKeyDown` などで自前のフォーカストラップを足さない。
+
+- `label` は必須（スクリーンリーダーが読み上げるダイアログ名。通常は見出しと同じ文言）。確認ダイアログは `role="alertdialog"`
+- 中身の要素に `role="dialog"` / `aria-modal` / `aria-label` を重ねて付けない（`Modal` 側が持つ）
+- モーダル内の部品が `createPortal` でメニューを出すときは、出し先を `portalHostFor(要素)` にする。`body` や `.app-root` に出すとモーダルの外になり、フォーカスできず操作できない
+
+### 重なり順（z-index）
+
+画面をまたいで重なる要素（ナビ・メニュー・モーダル・トースト等）は `globals.css` の `--z-*` を使い、数値を直書きしない（`zIndex: 'var(--z-modal)'`）。コンポーネント内だけの前後関係（1〜10）は直書きでよい。
+
+- 画面内のメニュー・ポップオーバーは `--z-dropdown`、`position: fixed` でモーダルの上にも出るメニュー・ピッカーは `--z-popover`
+- モーダル・ボトムシートは `--z-modal`、画像ビューアは `--z-lightbox`、トーストは `--z-toast`
+
+### 影・背景幕の色
+
+影は `--shadow-*`（メニュー・ダイアログは `--shadow-pop`、ボトムシートは `--shadow-sheet`、FAB は `--shadow-fab`）、モーダルの背景幕は `--overlay` を使う。`rgba(0,0,0,…)` の直書きはダークモードで影が消えたり、ライトで濁ったりする。写真の上に重ねる白文字・QR コードの白地など、テーマに依らず固定の色だけは直書きでよい。
 
 ### 未読件数バッジ
 
@@ -120,6 +157,19 @@ const { data } = useQuery({
 - ヘッダーのベル・サイドバー項目・チャンネル一覧・通知パネルのいずれも同じ見た目に揃える。ベルもドットではなく件数を出す
 - アイコンに重ねる場合は `size="sm"` ＋ `style={{ position: 'absolute', ... , border: '2px solid var(--card)' }}` で配置する
 - 通知1件ごとの「未読マーカー」のような件数を持たない印は、従来どおり小さなドットでよい（件数バッジとは用途が異なる）
+
+### ボタンとホバー
+
+- テキストの操作ボタンは `btn`（副）/ `btn-primary`（主）/ `btn-ghost` / `btn-danger` に、サイズ `btn-sm`（28px）/ `btn-lg`（40px）と `btn-block`（幅いっぱい）を組み合わせる。無効化・フォーカスリングはクラス側で揃うので、`disabled` 時の色をインラインで作らない
+- アイコンだけのボタンは `icon-btn`（小さいものは `icon-btn-sm` を追加）
+- 行・メニュー項目のホバーは `onMouseEnter` で `style.background` を書き換えず、`hover-bg`（危険操作は `hover-bg-danger`、文字色は `hover-text`）を付ける。JS で塗り替えると再描画やキーボード操作で色が残る
+
+### 未統一の UI（残課題）
+
+- **ボタン**: 保存・キャンセル・作成などのテキストの操作ボタンは共通クラスに寄せ済み。送信ボタン・チェック丸・フィルターのピル・FAB など専用の見た目を持つものはインライン `style` のまま残っている
+- **空状態**: 文言（「まだ〜がありません / はありません / 〜がいません」）とレイアウト（アイコン有無・padding）が揺れている
+- **ローディング**: Skeleton / loader アイコン+「取得中…」/ テキスト「読み込み中…」の3様式と、「…」「...」が混在
+- **チャンネル削除**: 未実装。設けるかどうか、設けるなら共通 `ConfirmDialog` に乗せるかは未決
 
 ---
 
@@ -133,13 +183,11 @@ components/app/
 
   detail-panel/      PC 右側 Detail Panel（Inspector）の中身
                      モバイルのプロジェクト詳細画面でも同じコンポーネントを再利用する
-                     panel.tsx        … PC Detail Panel のシェル（420px 固定パネル）
+                     project-panel.tsx … プロジェクト詳細パネル
                      tabs/            … プロジェクト詳細のタブ内容（chat / tasks / files など）
-                     pages/           … モバイルナビバーの行き先ページ（暫定置き場）
 
   mobile/            モバイルブラウザ専用 UI（PC とナビゲーション構造が根本的に違う場合のみ）
-                     project-screen.tsx … モバイル用プロジェクト詳細シェル
-                                          （中身は detail-panel/tabs/* を使用）
+                     nav.tsx / settings.tsx … モバイル用ナビゲーション・設定画面
 ```
 
 ### 「共用」「個別」の判断基準
@@ -155,14 +203,34 @@ components/app/
 
 - Detail Panel コンポーネントは PC シェルへの依存（`AppShellContext` の `openPanel` 等）を持たないよう設計する
 - PC 固有の機能が必要な場合は props や Context 経由で注入する
-- `MobileShell` / `MobileNav` はモバイルブラウザ専用のラッパーのため `_shells/` 配下に残す
+- モバイルブラウザ専用の `MobileShell` は `src/app/(app)/_shells/mobile-shell.tsx`、ナビゲーションは `src/components/app/mobile/nav.tsx` に置く
+- プロジェクト詳細は PC・モバイル双方のシェルが `?open=project-{id}` を読み、共通の `ProjectPanel` を表示する
 
 ### チャットとタスクのスコープ
 
 - プロジェクト紐付けのチャット / タスクは `detail-panel/tabs/chat-tab.tsx` / `detail-panel/tabs/tasks-tab.tsx` で扱う（単一プロジェクトスコープ）
 - 野良も含めた全体一覧は `pages/chat.tsx` / `pages/tasks.tsx`（PC・モバイル共通、`isMobile` prop で切り替え）
+- PC の `/chats` は `app/(app)/chats/layout.tsx` が `PageChat` を保持し、各 `page.tsx` は表示を持たない。会話間の移動ではサイドバーを再マウントせず、幅・スクロール位置・折りたたみ状態を維持する。選択中の会話は URL と同期し、`ChatThread` のみ `channelId` をキーに切り替える。モバイルブラウザは従来どおり `MobileShell` が `PageChat` を保持し、Expo のネイティブ画面はこのルート構成の対象外とする。
+- メッセージの `?m=` とパネルの `?panel=` は `useSearchParams` で購読し、同じ会話内のクエリだけの移動や履歴操作でも反映する。横断検索のショートカットは遷移先に `?panel=global-search` を付け、`/chats` から前回の会話への自動遷移でもクエリを引き継ぐ。URL から開いたパネル・モーダルは遷移先に指定がなければ閉じ、閉じる・切り替える操作も `panel` に反映する。他のクエリは保持し、編集対象は現在の URL と取得済み一覧から選ぶ。チャットの同期は会話 ID・メッセージ ID・パネル指定とその対象だけを購読し、シェルの `open`・`tab` の変更ではローカル表示とジャンプ先の参照を保つ。
 
 ---
+
+## 画面ごとの確定仕様
+
+- **ファイル一覧**（`/files`）: `files.project_id` を第一階層に折りたたみ表示し、未所属ファイルは「プロジェクトなし」にまとめる。ストレージ実体の `storage_path` は表示上の分類に使わない。名前付きフィルター `saved_file_filters` は `workspace_id` / `user_id` を必須で保存し、別ワークスペース・別ユーザーへ共有しない
+- **設定**: `/settings` 単体は PC で `account`、モバイルで設定一覧（`MobileSettings`）を表示する。モバイルはタップで `/settings/[section]` へ遷移し、PC と同じ `SettingsSectionContent` を全画面表示する（`MobileSettingsDetail`）。`?tab=` 形式は廃止
+- **既定画面**: 通常ログイン、認証済みでの `/` / `/auth/*`、オンボーディング完了、ワークスペース作成・切替、PWA / Electron / Expo の起動先はすべて `/chats`。個別会話は `/chats/[channelId]`
+- 旧 `/calendar` `/kanban` は Server Component で `/projects` にリダイレクトする。`/projects/[id]` は `/projects?open=project-{id}` にリダイレクトする（`use-detail-panel.ts` は `project-` 接頭辞付きの値しか認識しないため、リンクも必ず接頭辞を付ける）
+
+## PWA アイコンとアクセントカラー
+
+アクセントカラー（7色）× テーマ（ライト / ダーク）ごとに PWA アイコンを事前生成しており、設定でカラーやテーマを変えるとホーム画面アイコンに反映される。`node scripts/generate-icons.mjs` が `apps/web/public/` に `icon-{color}-{theme}-192.png` / `-512.png`、`apple-touch-icon-{color}-{theme}.png` と、cookie 未設定時のフォールバック（`icon-192.png` / `icon-512.png` / `apple-touch-icon.png`）を生成する。
+
+アクセントカラーを追加するときは次の順で行う。
+
+1. `apps/web/src/lib/accent-presets.ts` の `ACCENT_PRESETS` に追加する
+2. `scripts/generate-icons.mjs` の `ACCENT_PRESETS` にも同じ `id` と `swatch` 色を追加する
+3. `node scripts/generate-icons.mjs` を実行し、生成された PNG をコミットする
 
 ## localStorage キー命名規則
 
