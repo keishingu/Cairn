@@ -6,6 +6,7 @@ import {
   PDFContext,
   PDFDict,
   PDFDocument,
+  EncryptedPDFError,
   PDFName,
   PDFNumber,
   PDFRawStream,
@@ -28,7 +29,20 @@ const MAX_PIXELS = 40_000_000
 // 実装の詳細（pdf-lib + sharp）は呼び出し側から一切見えない。
 // 対象画像が無い場合や、再圧縮しても縮まらない場合は元の buffer をそのまま返す。
 export async function compressPdfImages(buffer: Buffer): Promise<Buffer> {
-  const pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false })
+  let pdfDoc: PDFDocument
+  try {
+    pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false })
+  } catch (error) {
+    // pdf-lib cannot safely rewrite an encrypted document. Preserve its original
+    // bytes so permission-only encrypted PDFs remain downloadable unchanged.
+    // pdf-lib's EncryptedPDFError inherits Error without setting its name, so
+    // its message is the stable discriminator when ESM/CJS copies differ.
+    if (
+      error instanceof EncryptedPDFError ||
+      (error instanceof Error && error.message.startsWith('Input document to `PDFDocument.load` is encrypted.'))
+    ) return buffer
+    throw error
+  }
 
   // 参照(ref)ごとに一度だけ処理する。元ref自体を差し替えることで、ページ外や
   // Form XObject 内など、列挙できない共有参照も維持する。

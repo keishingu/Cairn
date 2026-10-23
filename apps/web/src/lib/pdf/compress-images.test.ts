@@ -6,6 +6,8 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFStream } from 'pdf-lib'
 import sharp from 'sharp'
 import { compressPdfImages } from './compress-images'
@@ -50,6 +52,20 @@ async function firstImageXObjectDict(buffer: Buffer): Promise<PDFDict> {
 }
 
 describe('compressPdfImages', () => {
+  it('ユーザーパスワードなしで閲覧できる権限制限PDFは元データのまま返す', async () => {
+    // 自作の1ページPDFをGhostscriptで暗号化したテスト用fixture。
+    // `gs -dCompatibilityLevel=1.4 -sDEVICE=pdfwrite -sOwnerPassword=owner -sUserPassword= -dPermissions=-4`
+    // で生成し、ユーザーパスワードは空（閲覧可能）、所有者パスワードで権限を制限している。
+    const pdf = readFileSync(join(__dirname, '__fixtures__/permission-encrypted.pdf'))
+
+    await expect(PDFDocument.load(pdf)).rejects.toThrow('Input document to `PDFDocument.load` is encrypted.')
+    expect(await compressPdfImages(pdf)).toBe(pdf)
+  })
+
+  it('不正なPDFの読み込みエラーは呼び出し元へ返す', async () => {
+    await expect(compressPdfImages(Buffer.from('not a PDF'))).rejects.toThrow()
+  })
+
   it('十分大きい写真らしきPNG画像をJPEGへ再圧縮し、ファイルサイズを縮める', async () => {
     const png = await buildPhotoLikePng(400, 400)
     const pdf = await buildPdfWithImage(png)
