@@ -95,6 +95,9 @@ const ACCEPT_FILE_TYPES = [
 ].join(',')
 
 const EMPTY_MESSAGES: MessageDto[] = []
+// クエリ未取得時の既定値。`data: x = []` だとレンダーごとに新しい配列になり、依存する useMemo
+// （mentionNames 等）が作り直されて React.memo(ChatMessage) が効かず全メッセージを再パースする
+const EMPTY_LIST: never[] = []
 
 function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
@@ -1624,7 +1627,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     || (initialUnreadPosition && !targetMessage && initialMessageQuery.isError)
     || historyMessagesQuery.isError
   const messagesError = latestMessagesQuery.error
-  const { data: nudges = [], isError: nudgesError } = useAiNudges(channelId)
+  const { data: nudges = EMPTY_LIST, isError: nudgesError } = useAiNudges(channelId)
   const nudgeFeedback = useAiNudgeFeedback(channelId)
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
@@ -1632,16 +1635,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const wsMembersQuery = useWorkspaceMembers()
   const chMembersQuery = useChannelMembers(channelId)
   const projectChannelsQuery = useProjectChannels()
-  const { data: wsMembers = [] } = wsMembersQuery
-  const { data: chMemberIds = [] } = chMembersQuery
-  const { data: projectChannels = [], isSuccess: projectChannelsResolved } = projectChannelsQuery
+  const { data: wsMembers = EMPTY_LIST } = wsMembersQuery
+  const { data: chMemberIds = EMPTY_LIST } = chMembersQuery
+  const { data: projectChannels = EMPTY_LIST, isSuccess: projectChannelsResolved } = projectChannelsQuery
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
     [projectChannels, channelId],
   )
   const projectMembersQuery = useProjectMembers(projectId)
-  const { data: projectMembers = [] } = projectMembersQuery
+  const { data: projectMembers = EMPTY_LIST } = projectMembersQuery
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -1866,7 +1869,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     for (const query of mentionScopeQueries) if (query.error) void query.refetch()
   }
 
-  const { data: profileAttributes = [] } = useProfileAttributes()
+  const { data: profileAttributes = EMPTY_LIST } = useProfileAttributes()
 
   // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）
