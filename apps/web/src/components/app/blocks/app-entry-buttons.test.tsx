@@ -32,7 +32,8 @@ describe('アプリの起動口', () => {
   it('Bot がいるチャンネルでは、選ぶとそのまま起動口をアプリへ送る', async () => {
     mockFetch.mockImplementation(async (url: string) => (url.endsWith('/app-entry-points') ? json(app(true)) : json({ ok: true })))
     renderButtons()
-    fireEvent.click(await screen.findByRole('button', { name: '投票を作成' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'アプリ' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /投票を作成/ }))
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/app-commands', expect.objectContaining({ method: 'POST' })))
     const body = JSON.parse(String(mockFetch.mock.calls.find(([url]) => url === '/api/app-commands')![1].body))
     expect(body).toEqual({ installationId: 'i1', channelId: 'c1', command: '/poll', locale: 'ja' })
@@ -41,7 +42,8 @@ describe('アプリの起動口', () => {
   it('Bot がいなければ追加を確かめ、追加してから起動する', async () => {
     mockFetch.mockImplementation(async (url: string) => (url.endsWith('/app-entry-points') ? json(app(false)) : json({ ok: true })))
     renderButtons()
-    fireEvent.click(await screen.findByRole('button', { name: '投票を作成' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'アプリ' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /投票を作成/ }))
     expect(screen.getByRole('alertdialog')).toHaveTextContent('このチャンネルに投票を追加しますか？')
     fireEvent.click(screen.getByRole('button', { name: '追加' }))
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('/api/app-commands', expect.anything()))
@@ -52,7 +54,8 @@ describe('アプリの起動口', () => {
   it('アプリが応答しなければ、その旨を入力欄のエラーに出す', async () => {
     mockFetch.mockImplementation(async (url: string) => (url.endsWith('/app-entry-points') ? json(app(true)) : json({ error: 'app_timeout' }, 502)))
     const onError = renderButtons()
-    fireEvent.click(await screen.findByRole('button', { name: '投票を作成' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'アプリ' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /投票を作成/ }))
     await waitFor(() => expect(onError).toHaveBeenLastCalledWith('アプリが応答しませんでした。もう一度お試しください。'))
   })
 

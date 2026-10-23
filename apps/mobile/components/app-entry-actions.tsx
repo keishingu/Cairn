@@ -1,8 +1,10 @@
-// 入力欄に並べるアプリの起動口（投票など）。Web の AppEntryButtons と同じ流れで、選ぶとスラッシュコマンドと同じ形で
-// アプリへ届き、アプリはモーダルを開くなどして応える。Bot がまだチャンネルにいなければ、起動の前に追加を確かめる
+// 入力欄の「アプリ」から選ぶアプリの起動口（投票など）。Web の AppEntryButtons と同じく、アプリが増えても入力欄の幅を
+// 取らないようボタン1つのシートにまとめる。選ぶとスラッシュコマンドと同じ形でアプリへ届き、アプリはモーダルを開くなどして応える。
+// Bot がまだチャンネルにいなければ、起動の前に追加を確かめる
 
 import React from 'react'
-import { Alert, Pressable, StyleSheet, Text } from 'react-native'
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { displayAppName, appAddErrorMessage, cardActionErrorMessage } from '@cairn/shared'
 import { useAppEntryPoints, type AppEntryPointDto } from '../hooks/use-app-entry-points'
@@ -12,6 +14,11 @@ import { useT } from './locale-provider'
 export function AppEntryActions({ channelId, palette, onError }: { channelId: string; palette: ThemePalette; onError: (message: string | null) => void }) {
   const t = useT()
   const { query, invoke: invokeEntry, busy } = useAppEntryPoints(channelId)
+  const [sheetOpen, setSheetOpen] = React.useState(false)
+  // iOS はシートを閉じ終える前に Alert を出すと表示が重なって捨てられるため、閉じ終えてから（onDismiss で）選んだ起動口を処理する
+  const pendingChoiceRef = React.useRef<{ app: AppEntryPointDto; command: string } | null>(null)
+  const insets = useSafeAreaInsets()
+  const { height: windowHeight } = useWindowDimensions()
 
   const invoke = async (app: AppEntryPointDto, command: string) => {
     onError(null)
@@ -38,23 +45,59 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
     )
   }
 
+  const entries = (query.data ?? []).flatMap((app) => app.entryPoints.map((entry) => ({ app, entry })))
+  if (entries.length === 0) return null
+
   return (
     <>
-      {(query.data ?? []).flatMap((app) =>
-        app.entryPoints.map((entry) => (
-          <Pressable
-            key={`${app.installationId}:${entry.command}`}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            style={[styles.action, busy && { opacity: 0.5 }]}
-            onPress={() => choose(app, entry.command)}
-          >
-            <Ionicons name="list-outline" size={15} color={palette.text3} />
-            <Text style={[styles.text, { color: palette.text3 }]}>{t(entry.label)}</Text>
-          </Pressable>
-        )),
-      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('Apps')}
+        accessibilityState={{ disabled: busy }}
+        disabled={busy}
+        hitSlop={6}
+        style={[styles.action, busy && { opacity: 0.5 }]}
+        onPress={() => setSheetOpen(true)}
+      >
+        <Ionicons name="grid-outline" size={17} color={palette.text3} />
+      </Pressable>
+      <Modal
+        transparent
+        visible={sheetOpen}
+        animationType="fade"
+        onRequestClose={() => setSheetOpen(false)}
+        onDismiss={() => {
+          const pending = pendingChoiceRef.current
+          pendingChoiceRef.current = null
+          if (pending) choose(pending.app, pending.command)
+        }}
+      >
+        <Pressable style={styles.backdrop} accessibilityLabel={t('Close')} onPress={() => setSheetOpen(false)} />
+        <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border, paddingBottom: insets.bottom + 12 }]}>
+          <View style={[styles.grip, { backgroundColor: palette.border }]} />
+          <Text style={[styles.sheetTitle, { color: palette.text3 }]}>{t('Apps')}</Text>
+          {/* 項目が多くても上の項目を選べるよう、画面の6割までにして中をスクロールさせる */}
+          <ScrollView style={{ maxHeight: windowHeight * 0.6 }} bounces={false}>
+            {entries.map(({ app, entry }) => (
+              <Pressable
+                key={`${app.installationId}:${entry.command}`}
+                accessibilityRole="button"
+                style={[styles.sheetItem, { borderTopColor: palette.divider }]}
+                onPress={() => {
+                  setSheetOpen(false)
+                  // onDismiss は iOS でしか呼ばれない。Android は閉じかけのシートの上でも Alert を出せるので、そのまま処理する
+                  if (Platform.OS === 'ios') pendingChoiceRef.current = { app, command: entry.command }
+                  else choose(app, entry.command)
+                }}
+              >
+                <Ionicons name="list-outline" size={19} color={palette.text2} />
+                <Text style={[styles.sheetLabel, { color: palette.text }]} numberOfLines={1}>{t(entry.label)}</Text>
+                <Text style={[styles.sheetApp, { color: palette.text4 }]} numberOfLines={1}>{displayAppName({ name: app.appName, firstParty: app.firstParty }, t)}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </>
   )
 }
@@ -62,4 +105,11 @@ export function AppEntryActions({ channelId, palette, onError }: { channelId: st
 const styles = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 28 },
   text: { fontSize: 12, fontWeight: '600' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.42)' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: 1, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 8, paddingHorizontal: 12 },
+  grip: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 7 },
+  sheetTitle: { fontSize: 12, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 6 },
+  sheetItem: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8 },
+  sheetLabel: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  sheetApp: { marginLeft: 'auto', fontSize: 12.5 },
 })

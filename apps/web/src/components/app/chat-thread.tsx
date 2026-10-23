@@ -1221,16 +1221,16 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        {/* アプリの起動口が並ぶとスマホ幅では1行に収まらないため、折り返して右端のスイッチを切らない */}
+        {/* スマホ幅ではラベル付きのボタンが1行に収まらないため、アイコンだけにする（折り返しは念のため残す） */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="image" size={13}/> {t('Image')}
+          <button onClick={() => imageInputRef.current?.click()} aria-label={t('Image')} title={t('Image')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="image" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Image')}</>}
           </button>
-          <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="paperclip" size={13}/> {t('Files')}
+          <button onClick={() => docInputRef.current?.click()} aria-label={t('Files')} title={t('Files')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="paperclip" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Files')}</>}
           </button>
-          <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="file-text" size={13}/> {t('Text file')}
+          <button onClick={onCreateTextFile} aria-label={t('Text file')} title={t('Text file')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="file-text" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Text file')}</>}
           </button>
           {appEntryButtons}
           <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
@@ -2435,7 +2435,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
-        {...(!isDm && channelId ? { appEntryButtons: <AppEntryButtons channelId={channelId} onError={setSendError} {...(compact ? { compact: true } : {})} /> } : {})}
+        {...(!isDm && channelId ? { appEntryButtons: <AppEntryButtons channelId={channelId} onError={setSendError} {...(compact ? { compact: true } : {})} {...(isMobile ? { iconOnly: true } : {})} /> } : {})}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}

@@ -1550,16 +1550,18 @@ export default function ChatThreadScreen() {
             )}
             {!editingMessage && (
               <View style={styles.attachmentActions}>
-                <Pressable style={styles.attachmentAction} onPress={() => void upload.pickImage()}>
-                  <Ionicons name="image-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Photo')}</Text>
+                {/* 画面幅が狭いので、ラベルは付けずアイコンだけにする（読み上げは accessibilityLabel） */}
+                <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Photo')} hitSlop={6} onPress={() => void upload.pickImage()}>
+                  <Ionicons name="image-outline" size={17} color={palette.text3} />
                 </Pressable>
                 <Pressable
                   style={styles.attachmentAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Files')}
+                  hitSlop={6}
                   onPress={() => void upload.pickDocument()}
                 >
-                  <Ionicons name="attach-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
+                  <Ionicons name="attach-outline" size={17} color={palette.text3} />
                 </Pressable>
                 {channelType !== 'dm' && channelId && <AppEntryActions channelId={channelId} palette={palette} onError={setSendError} />}
                 <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
