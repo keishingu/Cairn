@@ -63,6 +63,18 @@ describe('Markdownコンテンツ', () => {
     expect(screen.queryByRole('img', { name: 'Mermaid図' })).not.toBeInTheDocument()
   })
 
+  it('言語名の無いコードブロックも、インラインコードの枠を重ねずに表示する', () => {
+    const { container } = render(<MarkdownContent content={'```\nnpm run check\n```\n\n本文の `inline` コード'} />)
+
+    const blockCode = container.querySelector('pre code') as HTMLElement
+    expect(blockCode).toHaveTextContent('npm run check')
+    expect(blockCode.style.border).toBe('')
+    expect(blockCode.style.background).toBe('')
+    const inlineCode = screen.getByText('inline')
+    expect(inlineCode.tagName).toBe('CODE')
+    expect(inlineCode.style.border).not.toBe('')
+  })
+
   it('表を罫線とセル余白つきで表示する', () => {
     render(<MarkdownContent content={'| ロール | 作成 |\n|:---|---:|\n| owner | ○ |'} />)
 

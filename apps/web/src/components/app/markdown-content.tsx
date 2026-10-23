@@ -267,12 +267,16 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
         pre: ({ children }) => {
           const mermaidDefinition = mermaidDefinitionFromCodeBlock(children)
           if (mermaidDefinition !== null) return <MermaidDiagram definition={mermaidDefinition} />
+          // 言語名の無いコードブロック（```だけ）は code に language- のクラスが付かず、インラインコードの枠が
+          // ブロックの枠の内側に重なる。pre の中身は常にブロックのコードとして、枠を付けずに描く
+          const block = React.isValidElement<{ className?: string; children?: React.ReactNode }>(children) ? children.props : null
+          const code = block ? (typeof block.children === 'string' ? removeLineTaskMarkers(block.children) : block.children) : children
           return (
             <pre style={{
               background: 'var(--card-2)', border: '1px solid var(--border)',
               borderRadius: 8, padding: '8px 12px', overflowX: 'auto',
               margin: '4px 0', fontSize: fontSize * 0.9, fontFamily: 'monospace', lineHeight: 1.5,
-            }}>{children}</pre>
+            }}><code className={block?.className} style={{ fontFamily: 'monospace' }}>{code}</code></pre>
           )
         },
         blockquote: ({ children }) => (
