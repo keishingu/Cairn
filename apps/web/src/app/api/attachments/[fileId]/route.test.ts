@@ -11,6 +11,8 @@ const {
   mockGetAuthContext,
   mockCanAccessFile,
   mockDownload,
+  mockCreateSignedUrl,
+  mockResolveUploadEntitlements,
   mockDeleteWhere,
   mockUpdateSet,
   mockUpdateWhere,
@@ -22,6 +24,8 @@ const {
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
+  mockCreateSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: 'https://storage.test/signed' }, error: null }),
+  mockResolveUploadEntitlements: vi.fn(),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
   mockUpdateSet: vi.fn(),
   mockUpdateWhere: vi.fn().mockResolvedValue(undefined),
@@ -38,6 +42,8 @@ const {
     mimeType: 'application/pdf',
     fileName: 'file.pdf',
     metadata: {},
+    derivedStoragePath: null as string | null,
+    derivedFileSize: null as number | null,
   },
 }))
 
@@ -45,10 +51,11 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
+    storage: { from: () => ({ download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }) },
   }),
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
+vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
 
 // db は最初の1件取得だけ使う。チェーンの最後で [fileRow] を返す。
@@ -87,12 +94,16 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       fileType: 'document',
       mimeType: 'application/pdf',
       fileName: 'file.pdf',
+      derivedStoragePath: null,
+      derivedFileSize: null,
+      metadata: {},
     })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
     mockDownload.mockResolvedValue({
       data: 'file body',
       error: null,
@@ -130,6 +141,59 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       'member',
     )
     expect(mockDownload).not.toHaveBeenCalled()
+  })
+
+  it('Freeは新しいPDFの原本を取得できない', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(res.status).toBe(403)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('支援者は新しいPDFの原本を短期署名URLで取得する', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(res.status).toBe(302)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.storagePath, 60, { download: 'file.pdf' })
+  })
+
+  it.each([
+    ['pending', null, { pdfCompressionStatus: 'pending' }],
+    ['failed', null, { pdfCompressionStatus: 'failed' }],
+    ['missing derivative', null, { pdfCompressionStatus: 'ready' }],
+  ])('最適化版が利用できない状態（%s）では原本にフォールバックしない', async (_label, derivative, metadata) => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.derivedStoragePath = derivative
+    fileRow.metadata = metadata
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), routeParams())
+    expect(res.status).toBe(409)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+    expect(mockDownload).not.toHaveBeenCalled()
+  })
+
+  it('最適化済みPDFは派生物を短期署名URLで返す', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.derivedStoragePath = 'ws/ch/user/pdf-derivatives/file.pdf'
+    fileRow.metadata = { pdfCompressionStatus: 'ready' }
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), routeParams())
+    expect(res.status).toBe(302)
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.derivedStoragePath, 60, undefined)
+  })
+
+  it('thumb取得時に新しいPDFの原本へフォールバックしない', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.metadata = { pdfCompressionStatus: 'pending' }
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?thumb=1'), routeParams())
+    expect(res.status).toBe(404)
+    expect(mockDownload).not.toHaveBeenCalled()
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
   })
 
   it('閲覧権限が無いファイルは PATCH が 403 を返す', async () => {

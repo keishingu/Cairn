@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  PDFArray,
   PDFBool,
   PDFContext,
   PDFDict,
@@ -12,8 +11,8 @@ import {
   PDFRawStream,
   PDFRef,
   PDFStream,
-  decodePDFRawStream,
 } from 'pdf-lib'
+import { inflateSync } from 'node:zlib'
 import sharp from 'sharp'
 
 const JPEG_QUALITY = 80
@@ -31,41 +30,40 @@ const MAX_PIXELS = 40_000_000
 export async function compressPdfImages(buffer: Buffer): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false })
 
-  // 同じ画像オブジェクトが複数ページ・複数リソース名から参照されることがあるため、
-  // 差し替え要否は参照(ref)ごとに一度だけ判定し、参照している箇所を全て書き換えてから
-  // 元のオブジェクトを削除する。参照箇所を一部だけ書き換えて即座に削除すると、
-  // 残りの箇所が存在しないオブジェクトを指したまま（参照切れ）になってしまう
-  const locationsByRef = new Map<PDFRef, { dict: PDFDict; name: PDFName }[]>()
+  // 参照(ref)ごとに一度だけ処理する。元ref自体を差し替えることで、ページ外や
+  // Form XObject 内など、列挙できない共有参照も維持する。
+  const imageRefs = new Set<PDFRef>()
 
   for (const page of pdfDoc.getPages()) {
     const xobjects = page.node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict)
     if (!xobjects) continue
 
-    for (const [name, ref] of xobjects.entries()) {
+    for (const [, ref] of xobjects.entries()) {
       if (!(ref instanceof PDFRef)) continue
-      const locations = locationsByRef.get(ref) ?? []
-      locations.push({ dict: xobjects, name })
-      locationsByRef.set(ref, locations)
+      imageRefs.add(ref)
     }
   }
 
   let modified = false
-  for (const [ref, locations] of locationsByRef) {
+  for (const ref of imageRefs) {
     const stream = pdfDoc.context.lookupMaybe(ref, PDFStream)
     if (!(stream instanceof PDFRawStream)) continue
 
     const replaced = await recompressIfPhoto(pdfDoc, stream)
     if (!replaced) continue
 
-    for (const { dict, name } of locations) dict.set(name, replaced)
-    pdfDoc.context.delete(ref)
+    // embedJpg は別refに画像ストリームを登録する。既存refへ内容を割り当ててから
+    // 新refを消し、ネストされた参照を含む全ての利用箇所を保つ。
+    const replacement = pdfDoc.context.lookup(replaced, PDFStream)
+    pdfDoc.context.assign(ref, replacement)
+    pdfDoc.context.delete(replaced)
     modified = true
   }
 
   if (!modified) return buffer
 
   const bytes = await pdfDoc.save({ useObjectStreams: false })
-  return Buffer.from(bytes)
+  return bytes.byteLength < buffer.byteLength ? Buffer.from(bytes) : buffer
 }
 
 // 写真スクショの貼り付けに合致する画像だけを対象にし、それ以外（アイコン・図形・
@@ -102,7 +100,10 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
 
   const width = dict.lookupMaybe(PDFName.of('Width'), PDFNumber)?.asNumber()
   const height = dict.lookupMaybe(PDFName.of('Height'), PDFNumber)?.asNumber()
-  if (!width || !height) return null
+  if (
+    typeof width !== 'number' || typeof height !== 'number' ||
+    !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
+  ) return null
 
   const pixels = width * height
   if (pixels < MIN_PIXELS || pixels > MAX_PIXELS) return null
@@ -111,11 +112,19 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   if (!channels) return null
 
   // ここまでの時点で申告サイズは上限内と確認済みなので、ここで初めてインフレートする
-  const decoded = decodePDFRawStream(stream).decode()
   const pixelBytes = width * height * channels
-  if (decoded.byteLength < pixelBytes) return null
+  if (!Number.isSafeInteger(pixelBytes)) return null
+  let decoded: Buffer
+  try {
+    decoded = filter
+      ? inflateSync(stream.contents, { maxOutputLength: pixelBytes })
+      : Buffer.from(stream.contents)
+  } catch {
+    return null
+  }
+  if (decoded.byteLength !== pixelBytes) return null
 
-  const raw = Buffer.from(decoded.buffer, decoded.byteOffset, pixelBytes)
+  const raw = decoded
   const jpeg = await sharp(raw, { raw: { width, height, channels: channels as 1 | 3 } })
     .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
     .toBuffer()
@@ -124,12 +133,13 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   if (jpeg.byteLength >= stream.getContentsSize()) return null
 
   const embedded = await doc.embedJpg(jpeg)
+  // PDFDocument.flush() が通常行う埋め込みをここで先に完了させ、既存refへ
+  // 割り当てるストリームが context に登録済みであることを保証する。
+  await embedded.embed()
   return embedded.ref
 }
 
-// DeviceGray/DeviceRGBに加え、PNG書き出しでよく使われるICCBasedカラースペース
-// （実体はICCプロファイル付きの1〜4成分）まで見る。それ以外（Indexed/CMYK/Lab等）は
-// 変換ロジックが複雑になるため今回のスコープ外として諦める
+// DeviceGray/DeviceRGBだけを扱う。ICCBasedをsRGB相当として解釈すると色が変わるため除外。
 function resolveChannels(dict: PDFDict, context: PDFContext): 1 | 3 | null {
   const csRef = dict.get(PDFName.of('ColorSpace'))
   if (!csRef) return null
@@ -137,12 +147,6 @@ function resolveChannels(dict: PDFDict, context: PDFContext): 1 | 3 | null {
   const cs = context.lookup(csRef)
   if (cs === PDFName.of('DeviceGray')) return 1
   if (cs === PDFName.of('DeviceRGB')) return 3
-
-  if (cs instanceof PDFArray && cs.size() >= 2 && cs.lookupMaybe(0, PDFName) === PDFName.of('ICCBased')) {
-    const iccStream = cs.lookupMaybe(1, PDFRawStream)
-    const n = iccStream?.dict.lookupMaybe(PDFName.of('N'), PDFNumber)?.asNumber()
-    if (n === 1 || n === 3) return n
-  }
 
   return null
 }

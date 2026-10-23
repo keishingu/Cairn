@@ -7,6 +7,7 @@ import {
   ensureCachedAttachment,
   removeCachedAttachment,
   shareCachedAttachment,
+  shareOriginalPdf,
 } from '../lib/attachment-cache'
 import { ViewerAction } from './chat-image-viewer'
 import { useT } from './locale-provider'
@@ -41,7 +42,7 @@ export function ChatPdfViewer({
   const [loadState, setLoadState] = React.useState<LoadState>({ kind: 'downloading' })
   const [rendered, setRendered] = React.useState(false)
   const [page, setPage] = React.useState<{ current: number; total: number } | null>(null)
-  const [busyAction, setBusyAction] = React.useState<'save' | 'share' | null>(null)
+  const [busyAction, setBusyAction] = React.useState<'save' | 'share' | 'original' | null>(null)
 
   // トークンはおよそ1時間ごとや前面復帰時に更新される。依存に含めると読んでいる途中の PDF が
   // 1ページ目から読み込み直されるため、取得時点の最新値を参照するだけにする
@@ -114,6 +115,27 @@ export function ChatPdfViewer({
     }
   }
 
+  const runOriginalAction = async () => {
+    if (busyAction) return
+    setBusyAction('original')
+    try {
+      await shareOriginalPdf({
+        fileUrl: `${fileUrl}?original=1`,
+        fileId,
+        fileName,
+        accessToken,
+        t,
+      })
+    } catch (error) {
+      Alert.alert(
+        t('Could not download the original PDF'),
+        error instanceof Error ? error.message : t('Please try again in a moment.'),
+      )
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.root}>
@@ -174,6 +196,13 @@ export function ChatPdfViewer({
         </View>
 
         <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
+          <ViewerAction
+            icon="cloud-download-outline"
+            label={t('Original PDF (new PDFs are supporter only)')}
+            busy={busyAction === 'original'}
+            disabled={busyAction !== null}
+            onPress={() => void runOriginalAction()}
+          />
           <ViewerAction
             icon="download-outline"
             label={t('Save entry')}

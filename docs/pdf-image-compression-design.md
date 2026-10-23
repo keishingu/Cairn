@@ -1,6 +1,6 @@
 # PDF添付ファイルの画像圧縮 — 設計判断記録
 
-- **ステータス**: 決定（実装はこれから。実装が進んだら別途「現行リファレンス」として仕様を書き起こす）
+- **ステータス**: 実装済み。PDF原本を保持し、全員向けの最適化版を非同期生成する
 - **作成**: 2026-07-03
 - **背景**: チャットに添付されたPDFの多くは、写真のスクリーンショットをPNGでそのまま貼り付けたものが大半で、ファイルサイズが不必要に大きい。PDF内の画像だけを検出して再圧縮し、テキスト・ベクター図形・レイアウトは変えずにファイルサイズを縮小したい。
 
@@ -8,7 +8,7 @@
 
 ## 前提となる制約
 
-- 圧縮処理は Inngest ジョブとして実行する（`file/uploaded` イベント、`apps/web/src/lib/inngest/functions.ts`）。この Inngest ジョブは Next.js の API Route 経由で **Vercel のサーバーレス関数上** で実行される
+- 圧縮処理は Inngest の専用 `file/pdf-compression-requested` イベントで実行する（`apps/web/src/lib/inngest/functions.ts`）。この Inngest ジョブは Next.js の API Route 経由で **Vercel のサーバーレス関数上** で実行される
 - Vercel のサーバーレス環境には任意の OS バイナリ（apt でインストールするようなネイティブ実行ファイル）を同梱するのが困難。**Node.js プロセス内で完結する実装（純JS/WASM、または Vercel 対応済みのネイティブアドオン）が前提**になる
 
 ## 検討した選択肢
@@ -62,9 +62,11 @@ export async function compressPdfImages(buffer: Buffer): Promise<Buffer>
 
 ### 処理フロー
 
-1. PR #284 で導入された3段階アップロードフロー（`upload-url` → 直接アップロード → `finalize`）により、PDFファイルは既に Supabase Storage 上にある
-2. `finalize` は `isIndexable(mimeType)` が true の場合に `file/uploaded` イベントを発火する（`application/pdf` は該当）。既存のテキスト抽出インデックスジョブ（`indexFileChunks`）と同じイベントを、圧縮用の別 Inngest function が独立して購読する
-3. 圧縮ジョブ: Storageから storagePath をダウンロード → `compressPdfImages(buffer)` → 同じ storagePath に上書き保存 → `files.fileSize` を圧縮後サイズに更新
+1. `upload-url` → Storage 直接アップロード → `finalize` の完了後、PDF原本を `pdf-originals/` に保存する。Freeも圧縮前50MiBまでアップロードできる
+2. `finalize` は検索インデックス用の `file/uploaded` と、圧縮専用の `file/pdf-compression-requested` を別々に送る
+3. 圧縮ジョブは原本から `compressPdfImages(buffer)` を実行し、縮小できた場合は `pdf-derivatives/` に派生物を保存して `derivedStoragePath` / `derivedFileSize` に記録する。原本の `storagePath` / `fileSize` は変更しない。縮小できないPDFは同じ原本を最適化版として使う
+4. 通常表示は最適化版を短期署名URLで配信し、原本取得は支援者本人かつ残高のあるワークスペース（または課金無効環境）に限定する。`pdf-originals/` は Storage RLS でもバイト取得を拒否する
+5. この認可は新しいPDFに限る。既存PDFの取得動作は変えない。最適化中・失敗時は明示的なエラーを返し、Freeへ原本をフォールバックしない。finalize再試行で圧縮イベントを再送できる
 
 ### 圧縮対象の判定（写真スクショの狙い撃ち）
 

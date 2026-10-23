@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -90,6 +91,50 @@ export async function GET(req: Request, { params }: RouteContext) {
     }
 
     const supabase = createServiceRoleClient()
+
+    if (file.mimeType === 'application/pdf' && file.storagePath.includes('/pdf-originals/')) {
+      const search = new URL(req.url).searchParams
+      const wantOriginal = search.get('original') === '1'
+      const meta = (file.metadata ?? {}) as Record<string, unknown>
+      const status = meta['pdfCompressionStatus']
+
+      if (wantThumb) {
+        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+        if (!thumbnailPath) return new NextResponse(null, { status: 404 })
+        const { data: thumb, error: thumbError } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(thumbnailPath, 60)
+        if (thumbError || !thumb) return new NextResponse(null, { status: 502 })
+        return NextResponse.redirect(thumb.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+      }
+
+      if (wantOriginal) {
+        const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+        if (!entitlements.rights.canUploadOriginal) {
+          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の有効な支援とワークスペースの残高が必要です' }, { status: 403 })
+        }
+      } else if (status === 'pending' || status === 'processing') {
+        return NextResponse.json({ error: 'PDFを最適化中です。しばらくしてから再試行してください' }, { status: 409 })
+      } else if (status === 'failed') {
+        return NextResponse.json({ error: 'PDFの最適化に失敗しました。元ファイルは支援者向けダウンロードから取得できます' }, { status: 409 })
+      } else if (status !== 'ready') {
+        return NextResponse.json({ error: 'PDFの最適化状態を確認できません。再試行してください' }, { status: 409 })
+      }
+
+      const optimizedPath = file.derivedStoragePath ?? (meta['pdfCompressionUnchanged'] === true ? file.storagePath : null)
+      if (!wantOriginal && !optimizedPath) {
+        return NextResponse.json({ error: '最適化済みPDFを取得できません。再試行してください' }, { status: 409 })
+      }
+      const storagePath = wantOriginal ? file.storagePath : optimizedPath!
+      const { data: signed, error: signedError } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(storagePath, 60, wantOriginal ? { download: file.fileName } : undefined)
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
+        return new NextResponse(null, { status: 502 })
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
 
     // サムネが要求され、かつ生成済みならそちらを返す（無ければオリジナルにフォールバック）
     const meta = (file.metadata ?? {}) as Record<string, unknown>
@@ -228,6 +273,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         storagePath: files.storagePath,
+        derivedStoragePath: files.derivedStoragePath,
         fileSize: files.fileSize,
         derivedFileSize: files.derivedFileSize,
         uploadedBy: files.uploadedBy,
@@ -288,7 +334,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         name: 'storage/objects.delete',
         data: {
           bucket: 'chat-attachments',
-          paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath],
+          paths: [...new Set([file.storagePath, file.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
         },
       })
     }

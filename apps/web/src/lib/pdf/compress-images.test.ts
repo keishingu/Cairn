@@ -118,6 +118,59 @@ describe('compressPdfImages', () => {
     }
   })
 
+  it('ICCBased画像は色空間を変換せず対象外にする', async () => {
+    const width = 400
+    const height = 400
+    const doc = await PDFDocument.create()
+    const profileRef = doc.context.register(doc.context.flateStream(Buffer.from([1, 2, 3]), { N: 3 }))
+    const colorSpace = doc.context.obj([PDFName.of('ICCBased'), profileRef])
+    const imageRef = doc.context.register(
+      doc.context.flateStream(buildPhotoLikePixels(width, height), {
+        Type: 'XObject', Subtype: 'Image', Width: width, Height: height,
+        BitsPerComponent: 8, ColorSpace: colorSpace,
+      }),
+    )
+    const page = doc.addPage([width, height])
+    page.node.newXObject('Im1', imageRef)
+    const pdf = Buffer.from(await doc.save())
+
+    expect(await compressPdfImages(pdf)).toBe(pdf)
+  })
+
+  it('画像refがForm XObject内でも共有される場合に参照先を維持する', async () => {
+    const width = 400
+    const height = 400
+    const doc = await PDFDocument.create()
+    const imageRef = doc.context.register(doc.context.flateStream(buildPhotoLikePixels(width, height), {
+      Type: 'XObject', Subtype: 'Image', Width: width, Height: height,
+      BitsPerComponent: 8, ColorSpace: 'DeviceRGB',
+    }))
+    const nestedXObjects = doc.context.obj({ Im1: imageRef })
+    const nestedResources = doc.context.obj({ XObject: nestedXObjects })
+    const formRef = doc.context.register(doc.context.stream('', {
+      Type: 'XObject', Subtype: 'Form', BBox: [0, 0, width, height], Resources: nestedResources,
+    }))
+    const page = doc.addPage([width, height])
+    page.node.newXObject('Im1', imageRef)
+    page.node.newXObject('Fm1', formRef)
+    const pdf = Buffer.from(await doc.save())
+
+    const compressed = await compressPdfImages(pdf)
+    const loaded = await PDFDocument.load(compressed)
+    const xobjects = loaded.getPages()[0]!.node.Resources()!.lookupMaybe(PDFName.of('XObject'), PDFDict)!
+    const loadedFormRef = xobjects.entries().find(([, ref]) => {
+      const candidate = loaded.context.lookupMaybe(ref, PDFStream)
+      return candidate instanceof PDFRawStream && candidate.dict.get(PDFName.of('Subtype')) === PDFName.of('Form')
+    })?.[1]
+    expect(loadedFormRef).toBeDefined()
+    const form = loaded.context.lookup(loadedFormRef!, PDFStream)
+    const resources = form.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)!
+    const formXObjects = resources.lookupMaybe(PDFName.of('XObject'), PDFDict)!
+    const nestedImage = loaded.context.lookup(formXObjects.get(PDFName.of('Im1'))!, PDFStream)
+    expect(nestedImage).toBeInstanceOf(PDFRawStream)
+    expect((nestedImage as PDFRawStream).dict.get(PDFName.of('Filter'))).toBe(PDFName.of('DCTDecode'))
+  })
+
   it('DecodeParmsにPredictorが指定された画像（PNG/TIFF予測符号化）は対象外のまま変更しない', async () => {
     const width = 400
     const height = 400
@@ -194,5 +247,18 @@ describe('compressPdfImages', () => {
     const compressed = await compressPdfImages(pdf)
 
     expect(compressed).toBe(pdf)
+  })
+
+  it('画素数の上限を超えるFlateデータは対象外にする', async () => {
+    const doc = await PDFDocument.create()
+    const imageRef = doc.context.register(doc.context.flateStream(Buffer.alloc(400 * 400 * 3 + 1), {
+      Type: 'XObject', Subtype: 'Image', Width: 400, Height: 400,
+      BitsPerComponent: 8, ColorSpace: 'DeviceRGB',
+    }))
+    const page = doc.addPage([400, 400])
+    page.node.newXObject('Im1', imageRef)
+    const pdf = Buffer.from(await doc.save())
+
+    expect(await compressPdfImages(pdf)).toBe(pdf)
   })
 })

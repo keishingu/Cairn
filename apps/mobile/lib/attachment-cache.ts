@@ -8,6 +8,17 @@ import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './a
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
+async function downloadErrorMessage(uri: string, status: number, t: Translate): Promise<string> {
+  try {
+    const body = await FileSystem.readAsStringAsync(uri)
+    const parsed = JSON.parse(body) as { error?: unknown }
+    if (typeof parsed.error === 'string') return parsed.error
+  } catch {
+    // Non-JSON errors use the generic status message below.
+  }
+  return t('Download failed ({status})', { status })
+}
+
 const translateJa: Translate = (message, values) => translate('ja', message, values)
 
 // 同じファイルの取得中に別の画面（共有ボタン、ビューアの開き直しなど）から呼ばれても、
@@ -55,8 +66,9 @@ export function ensureCachedAttachment(
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (result.status !== 200) {
+      const message = await downloadErrorMessage(partial, result.status, t)
       await FileSystem.deleteAsync(partial, { idempotent: true }).catch(() => undefined)
-      throw new Error(t('Download failed ({status})', { status: result.status }))
+      throw new Error(message)
     }
     await FileSystem.deleteAsync(target, { idempotent: true })
     await FileSystem.moveAsync({ from: partial, to: target })
@@ -101,4 +113,28 @@ export async function shareCachedAttachment(input: {
   if (input.mimeType) options.mimeType = input.mimeType
   if (isImageMime(input.mimeType)) options.UTI = 'public.image'
   await Sharing.shareAsync(uri, options)
+}
+
+// 原本は権限が失効し得るため共有キャッシュへ保存せず、毎回APIで認可した後に一時取得する。
+export async function shareOriginalPdf(input: {
+  fileUrl: string
+  fileId: string
+  fileName: string
+  accessToken: string
+  t?: Translate
+}): Promise<void> {
+  const t = input.t ?? translateJa
+  const cacheDirectory = FileSystem.cacheDirectory
+  if (!cacheDirectory) throw new Error(t('This device cannot save files'))
+  const tempUri = `${cacheDirectory}original-${input.fileId}-${Date.now()}.pdf`
+  try {
+    const result = await FileSystem.downloadAsync(input.fileUrl, tempUri, {
+      headers: { Authorization: `Bearer ${input.accessToken}` },
+    })
+    if (result.status !== 200) throw new Error(await downloadErrorMessage(tempUri, result.status, t))
+    if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))
+    await Sharing.shareAsync(result.uri, { dialogTitle: input.fileName, mimeType: 'application/pdf' })
+  } finally {
+    await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => undefined)
+  }
 }

@@ -570,8 +570,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 }}
               />
             ) : (
+              <div key={a.fileId} style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
               <a
-                key={a.fileId}
                 href={`/api/attachments/${a.fileId}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -588,6 +588,17 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   {a.fileName}
                 </span>
               </a>
+              {a.mimeType === 'application/pdf' && (
+                <a
+                  href={`/api/attachments/${a.fileId}?original=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--text-3)', fontSize: 11, textDecoration: 'underline' }}
+                >
+                  {t('Download original PDF (new PDFs are supporter only)')}
+                </a>
+              )}
+              </div>
             ))}
           </div>
         )}
