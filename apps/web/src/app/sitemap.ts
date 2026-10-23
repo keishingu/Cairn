@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { MetadataRoute } from 'next'
+import { DOC_PAGES, DOCS_LOCALES, docPath } from './developers/_content/pages'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
@@ -23,5 +24,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.4,
     },
+    ...DOCS_LOCALES.flatMap((locale) =>
+      DOC_PAGES.map((page) => ({
+        url: `https://oss-cairn.com${docPath(locale, page.slug)}`,
+        lastModified: new Date('2026-10-23'),
+        changeFrequency: 'weekly' as const,
+        priority: 0.5,
+      })),
+    ),
   ]
 }
