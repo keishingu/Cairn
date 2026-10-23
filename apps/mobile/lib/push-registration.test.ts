@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     mocks.calls.push('token')
     return { data: 'ExponentPushToken[x]' }
   }),
-  apiFetch: vi.fn(async (_path: string, _init?: { method?: string }) => ({ ok: true, status: 200 })),
+  apiFetch: vi.fn(async (_path: string, _init?: { method?: string; signal?: AbortSignal }) => ({ ok: true, status: 200 })),
   channelImportance: 3 as number | null,
   getNotificationChannelAsync: vi.fn(async () => (mocks.channelImportance === null ? null : { importance: mocks.channelImportance })),
 }))
@@ -84,6 +84,7 @@ describe('この端末の登録と解除', () => {
     expect(mocks.apiFetch).toHaveBeenCalledWith('/api/push/subscribe', {
       method: 'DELETE',
       body: JSON.stringify({ deviceType: 'expo', expoToken: 'ExponentPushToken[x]' }),
+      signal: expect.any(AbortSignal),
     })
   })
 
@@ -148,6 +149,45 @@ describe('登録と解除の順序', () => {
     expect(mocks.apiFetch).toHaveBeenLastCalledWith('/api/push/subscribe', {
       method: 'POST',
       body: JSON.stringify({ deviceType: 'expo', expoToken: 'ExponentPushToken[x]' }),
+      signal: expect.any(AbortSignal),
     })
+  })
+})
+
+describe('サーバーへの送信の時間切れ', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.platformOS = 'ios'
+  })
+
+  test('時間切れではリクエストを中断し、中断で決着してから次の処理へ進む', async () => {
+    vi.useFakeTimers()
+    try {
+      const events: string[] = []
+      mocks.apiFetch.mockImplementationOnce(
+        (_path, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              events.push('POST:aborted')
+              reject(new Error('aborted'))
+            })
+          }),
+      )
+      mocks.apiFetch.mockImplementationOnce(async (_path, init) => {
+        events.push(`${init?.method}:sent`)
+        return { ok: true, status: 200 }
+      })
+
+      const register = registerPushToken(async () => true)
+      const registerResult = expect(register).rejects.toThrow('Timed out updating push subscription')
+      const unregister = unregisterPushToken()
+      await vi.advanceTimersByTimeAsync(20_000)
+      await registerResult
+      await unregister
+
+      expect(events).toEqual(['POST:aborted', 'DELETE:sent'])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

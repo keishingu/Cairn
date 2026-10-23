@@ -51,15 +51,25 @@ async function getPushToken(): Promise<string> {
   return token.data
 }
 
+// 時間切れは Promise.race で見切らず、リクエスト自体を中断する。見切るだけだと通信が裏で続き、
+// 列が次へ進んだ後に遅れて届いた POST / DELETE が順序を逆転させる
 async function sendSubscription(method: 'POST' | 'DELETE', expoToken: string): Promise<void> {
-  const response = await withTimeout(
-    apiFetch('/api/push/subscribe', {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await apiFetch('/api/push/subscribe', {
       method,
       body: JSON.stringify({ deviceType: 'expo', expoToken }),
-    }),
-    REGISTER_TIMEOUT_MS,
-    'Timed out updating push subscription',
-  )
+      // React Native の AbortSignal 型と DOM の RequestInit の型が食い違うため、実体は同じものとして渡す
+      signal: controller.signal as RequestInit['signal'],
+    })
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Timed out updating push subscription')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
   if (!response.ok) throw new Error(`Push subscription ${method} failed: ${response.status}`)
 }
 
