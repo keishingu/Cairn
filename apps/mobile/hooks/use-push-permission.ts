@@ -51,7 +51,7 @@ export function usePushPermission() {
       if (view !== 'granted' || !enabled || !userId) return
       try {
         // 登録の順番が来るまでにオフにされたら登録しない
-        await registerPushToken(() => loadPushEnabled(userId, AsyncStorage))
+        await registerPushToken(userId, () => loadPushEnabled(userId, AsyncStorage))
       } catch {
         if (id === seq.current) setState({ status: view, enabled, syncFailed: 'register' })
       }
@@ -62,7 +62,7 @@ export function usePushPermission() {
   // オフにしたのにサーバーの登録を外せていなければ、外せるまで送り直す（アプリの終了や通信失敗で残らないように）
   const retryPendingRemoval = React.useCallback(async (uid: string, id: number) => {
     try {
-      await completePendingRemoval(uid, AsyncStorage, unregisterPushToken)
+      await completePendingRemoval(uid, AsyncStorage, () => unregisterPushToken(uid))
     } catch {
       if (id === seq.current) {
         setState((current) => ('syncFailed' in current ? { ...current, syncFailed: 'unregister' } : current))
@@ -139,7 +139,7 @@ export function usePushPermission() {
       // 先に「解除待ち」として保存する。解除前にアプリが終了したり失敗したりしても、次の起動や表示更新で解除を送り直す
       await savePushEnabled(userId, false, AsyncStorage, source.current)
       if (id === seq.current) setState({ status: view, enabled: false, syncFailed: null })
-      await completePendingRemoval(userId, AsyncStorage, unregisterPushToken)
+      await completePendingRemoval(userId, AsyncStorage, () => unregisterPushToken(userId))
     } catch {
       if (id === seq.current) setState({ status: view, enabled: false, syncFailed: 'unregister' })
     } finally {

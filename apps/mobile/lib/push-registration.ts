@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from './api-fetch'
+import { supabase } from './supabase'
 import { withTimeout } from './with-timeout'
 
 // Expo Go の Android は SDK 53 以降プッシュ通知非対応のためスキップ
@@ -53,17 +54,25 @@ async function getPushToken(): Promise<string> {
 
 // 時間切れは Promise.race で見切らず、リクエスト自体を中断する。見切るだけだと通信が裏で続き、
 // 列が次へ進んだ後に遅れて届いた POST / DELETE が順序を逆転させる
-async function sendSubscription(method: 'POST' | 'DELETE', expoToken: string): Promise<void> {
+// 送る直前に、始めたときのユーザーのセッションのまま送る。トークン取得などを待つ間に別アカウントへ切り替わると、
+// 切り替え後のアカウントで登録してそのユーザーのオフを無視したり、そのユーザーの登録を外したりしてしまう
+async function sendSubscription(method: 'POST' | 'DELETE', expoToken: string, userId: string): Promise<void> {
+  const session = (await supabase.auth.getSession()).data.session
+  if (session?.user.id !== userId) throw new Error('Signed-in account changed before updating push subscription')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS)
   let response: Response
   try {
-    response = await apiFetch('/api/push/subscribe', {
-      method,
-      body: JSON.stringify({ deviceType: 'expo', expoToken }),
-      // React Native の AbortSignal 型と DOM の RequestInit の型が食い違うため、実体は同じものとして渡す
-      signal: controller.signal as RequestInit['signal'],
-    })
+    response = await apiFetch(
+      '/api/push/subscribe',
+      {
+        method,
+        body: JSON.stringify({ deviceType: 'expo', expoToken }),
+        // React Native の AbortSignal 型と DOM の RequestInit の型が食い違うため、実体は同じものとして渡す
+        signal: controller.signal as RequestInit['signal'],
+      },
+      session,
+    )
   } catch (error) {
     if (controller.signal.aborted) throw new Error('Timed out updating push subscription')
     throw error
@@ -85,18 +94,19 @@ function enqueueSubscriptionChange<T>(task: () => Promise<T>): Promise<T> {
 
 /**
  * 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。
- * 列の順番が来た時点で shouldRegister を確かめ直し、その間にオフにされていれば登録しない
+ * 列の順番が来た時点で shouldRegister を確かめ直し、その間にオフにされていれば登録しない。
+ * userId のユーザーがサインインしたままのときだけ送る
  */
-export function registerPushToken(shouldRegister: () => Promise<boolean>): Promise<void> {
+export function registerPushToken(userId: string, shouldRegister: () => Promise<boolean>): Promise<void> {
   return enqueueSubscriptionChange(async () => {
     if (!(await shouldRegister())) return
-    await sendSubscription('POST', await getPushToken())
+    await sendSubscription('POST', await getPushToken(), userId)
   })
 }
 
 /** この端末の Expo push token をサーバーから外す。先に始まった登録が終わってから実行する。失敗は呼び出し側で扱う。 */
-export function unregisterPushToken(): Promise<void> {
+export function unregisterPushToken(userId: string): Promise<void> {
   return enqueueSubscriptionChange(async () => {
-    await sendSubscription('DELETE', await getPushToken())
+    await sendSubscription('DELETE', await getPushToken(), userId)
   })
 }

@@ -42,7 +42,7 @@ async function requestAndRegisterPush(userId: string) {
     const setting = await loadPushSetting(userId, AsyncStorage)
     if (!setting.enabled) {
       // オフにしたのにサーバーの登録を外せていなければ送り直す。失敗は通知一覧で再試行できる
-      if (setting.removalPending) await completePendingRemoval(userId, AsyncStorage, unregisterPushToken)
+      if (setting.removalPending) await completePendingRemoval(userId, AsyncStorage, () => unregisterPushToken(userId))
       return
     }
   } catch {
@@ -67,7 +67,7 @@ async function requestAndRegisterPush(userId: string) {
   if (status !== 'granted') return
 
   try {
-    await registerPushToken(() => loadPushEnabled(userId, AsyncStorage))
+    await registerPushToken(userId, () => loadPushEnabled(userId, AsyncStorage))
   } catch {
     console.warn('[Push] Failed to register Expo push token')
   }
