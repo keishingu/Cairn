@@ -63,14 +63,19 @@ export async function POST(req: Request) {
   }
 
   if (fileSize > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
+    return NextResponse.json({ error: 'ファイルサイズは 50MiB 以下にしてください' }, { status: 400 })
   }
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-  if (fileSize > FREE_ATTACHMENT_MAX_FILE_SIZE && !entitlements.rights.canUploadLargeFile) {
+  const isPdf = normalizedMime === 'application/pdf'
+  if (
+    fileSize > FREE_ATTACHMENT_MAX_FILE_SIZE &&
+    !(isPdf && fileSize <= MAX_FILE_SIZE) &&
+    !entitlements.rights.canUploadLargeFile
+  ) {
     return NextResponse.json(
       { error: '5MBを超えるファイルをアップロードするには、残高のある有効な支援が必要です' },
       { status: 403 },
@@ -79,7 +84,7 @@ export async function POST(req: Request) {
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
-  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${crypto.randomUUID()}.${ext}`
+  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${isPdf ? 'pdf-originals/' : ''}${crypto.randomUUID()}.${ext}`
 
   const { db, uploadRequests } = await import('@cairn/db')
   if (!(await hasAttachmentUploadRequestSchema(db))) {
