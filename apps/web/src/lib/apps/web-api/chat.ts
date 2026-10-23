@@ -82,7 +82,11 @@ export function fallbackTextFromBlocks(blocks: MessageBlock[]): string {
       for (const field of block.fields ?? []) lines.push(field.text)
     }
     if (block.type === 'context') {
-      for (const element of block.elements) if (element.type === 'plain_text' || element.type === 'mrkdwn') lines.push(element.text)
+      for (const element of block.elements) {
+        if (element.type === 'plain_text' || element.type === 'mrkdwn') lines.push(element.text)
+        // バーは見た目だけなので、読み上げ用の説明があればそれを代わりの文字にする
+        if (element.type === 'meter' && element.label) lines.push(element.label)
+      }
     }
     if (block.type === 'markdown') lines.push(block.text)
     // 単独の画像はカードの中身なので代替テキストを使う（補足やアクセサリの画像はアイコン等の飾りなので含めない）

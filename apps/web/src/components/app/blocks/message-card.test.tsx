@@ -52,6 +52,12 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getByRole('link', { name: '山の写真' })).toHaveAttribute('href', 'https://example.com/m.png')
   })
 
+  it('markdown ブロックの本文に書かれた Cairn の内部パスはリンクにしない', () => {
+    render(<MessageCard blocks={[{ type: 'markdown', text: '詳しくは /chats/00000000-0000-0000-0000-000000000009 を見てください' }]} fallbackText="" />)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getByText(/\/chats\/00000000-0000-0000-0000-000000000009/)).toBeInTheDocument()
+  })
+
   it('meter を値と範囲つきのバーとして描く', () => {
     render(<MessageCard blocks={[{ type: 'context', elements: [{ type: 'meter', value: 3, max: 4, label: '4人中3人' }] }]} fallbackText="" />)
     const meter = screen.getByRole('meter', { name: '4人中3人' })

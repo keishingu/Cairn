@@ -59,6 +59,14 @@ describe('メッセージの blocks の受理', () => {
     ])
   })
 
+  it('モーダルの meter も、受理を有効にするまで未対応として断る', () => {
+    const view = { ...clone(pollModalFixture), blocks: [...clone(pollModalFixture).blocks, { type: 'context', elements: [{ type: 'meter', value: 1, max: 2 }] }] }
+    const index = view.blocks.length - 1
+    const result = prepareModalView(clone(view))
+    expect(result.ok ? [] : result.errors).toEqual([`[ERROR] 未対応の要素です: meter [json-pointer:/view/blocks/${index}/elements/0/type]`])
+    expect(prepareModalView(clone(view), { acceptMarkdownAndMeter: true }).ok).toBe(true)
+  })
+
   it('markdown ブロックはモーダルでは拒否する（Slack と同じくメッセージだけ）', () => {
     const view = { ...clone(pollModalFixture), blocks: [...clone(pollModalFixture).blocks, { type: 'markdown', text: '**太字**' }] }
     expect(prepareModalView(view).ok).toBe(false)

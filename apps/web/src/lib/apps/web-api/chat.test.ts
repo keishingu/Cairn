@@ -134,7 +134,7 @@ describe('カードに見える文字', () => {
     const text = visibleTextOfBlocks(prepared.value)
     expect(text).toContain('**markdown の本文**')
     expect(text).toContain('メーターの説明')
-    expect(fallbackTextFromBlocks(prepared.value)).toBe('**markdown の本文**')
+    expect(fallbackTextFromBlocks(prepared.value)).toBe('**markdown の本文**\nメーターの説明')
   })
 })
 

@@ -467,7 +467,7 @@ export function prepareMessageBlocks(
 ): BlocksValidationResult<MessageBlock[]> {
   const result = prepare(messageBlocksSchema, input, '/blocks')
   if (!result.ok || (options.acceptMarkdownAndMeter ?? FEATURE_FLAGS.cardMarkdownAndMeter)) return result
-  const unreleased = unreleasedErrors(result.value)
+  const unreleased = unreleasedErrors(result.value, '/blocks')
   return unreleased.length > 0 ? { ok: false, errors: unreleased } : result
 }
 
@@ -475,21 +475,25 @@ export function prepareMessageBlocks(
  * 描画を配信したが、まだ受理を有効にしていないブロック・要素（§4.4「描画を先に、受理を後に」）。
  * 古いネイティブでは描けないので、OTA が行き渡って FEATURE_FLAGS.cardMarkdownAndMeter を有効にするまでは断る
  */
-function unreleasedErrors(blocks: MessageBlock[]): string[] {
+function unreleasedErrors(blocks: Array<{ type: string; elements?: ReadonlyArray<{ type: string }> }>, pointer: string): string[] {
   const errors: string[] = []
   blocks.forEach((block, blockIndex) => {
-    if (block.type === 'markdown') errors.push(`[ERROR] 未対応のブロック種別です: markdown [json-pointer:/blocks/${blockIndex}/type]`)
+    if (block.type === 'markdown') errors.push(`[ERROR] 未対応のブロック種別です: markdown [json-pointer:${pointer}/${blockIndex}/type]`)
     if (block.type === 'context') {
-      block.elements.forEach((element, elementIndex) => {
-        if (element.type === 'meter') errors.push(`[ERROR] 未対応の要素です: meter [json-pointer:/blocks/${blockIndex}/elements/${elementIndex}/type]`)
+      block.elements?.forEach((element, elementIndex) => {
+        if (element.type === 'meter') errors.push(`[ERROR] 未対応の要素です: meter [json-pointer:${pointer}/${blockIndex}/elements/${elementIndex}/type]`)
       })
     }
   })
   return errors
 }
 
-export function prepareModalView(input: unknown): BlocksValidationResult<ModalView> {
-  return prepare(modalViewSchema, input, '/view')
+export function prepareModalView(input: unknown, options: { acceptMarkdownAndMeter?: boolean } = {}): BlocksValidationResult<ModalView> {
+  const result = prepare(modalViewSchema, input, '/view')
+  if (!result.ok || (options.acceptMarkdownAndMeter ?? FEATURE_FLAGS.cardMarkdownAndMeter)) return result
+  // モーダルも context ブロックを使うので、meter をメッセージと同じく受理の有効化まで断る（古いネイティブでは描けず、送信も止まる）
+  const unreleased = unreleasedErrors(result.value.blocks, '/view/blocks')
+  return unreleased.length > 0 ? { ok: false, errors: unreleased } : result
 }
 
 function prepare<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, input: unknown, pointerRoot: string): BlocksValidationResult<T> {
