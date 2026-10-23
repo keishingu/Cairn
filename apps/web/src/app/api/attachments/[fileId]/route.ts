@@ -296,45 +296,54 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     // DB削除と使用量カウンタの更新を同一トランザクションにする。
     // 先に行ロックを取り、同時 DELETE の後続リクエストが二重に減算しないようにする。
     // （プロジェクト削除のCASCADE経路は日次reconciliationで回収する。）
-    const deleted = await db.transaction(async (tx) => {
+    const deletedFile = await db.transaction(async (tx) => {
       const [lockedFile] = await tx
         .select({ id: files.id })
         .from(files)
         .where(eq(files.id, fileId))
         .for('update')
         .limit(1)
-      if (!lockedFile) return false
+      if (!lockedFile) return null
 
       const [deletedFile] = await tx
         .delete(files)
         .where(eq(files.id, fileId))
-        .returning({ id: files.id })
-      if (!deletedFile) return false
+        .returning({
+          id: files.id,
+          workspaceId: files.workspaceId,
+          storagePath: files.storagePath,
+          derivedStoragePath: files.derivedStoragePath,
+          fileSize: files.fileSize,
+          derivedFileSize: files.derivedFileSize,
+          fileType: files.fileType,
+          metadata: files.metadata,
+        })
+      if (!deletedFile) return null
 
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
       await recordStorageUsageDelta(
-        file.workspaceId,
+        deletedFile.workspaceId,
         {
-          originalBytes: -(file.fileSize ?? 0),
-          derivedBytes: -(file.derivedFileSize ?? 0),
+          originalBytes: -(deletedFile.fileSize ?? 0),
+          derivedBytes: -(deletedFile.derivedFileSize ?? 0),
         },
         tx,
       )
-      return true
+      return deletedFile
     })
 
-    if (!deleted) return new NextResponse(null, { status: 404 })
+    if (!deletedFile) return new NextResponse(null, { status: 404 })
 
     // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
-    if (file.fileType !== 'link' && file.storagePath) {
-      const meta = (file.metadata ?? {}) as Record<string, unknown>
+    if (deletedFile.fileType !== 'link' && deletedFile.storagePath) {
+      const meta = (deletedFile.metadata ?? {}) as Record<string, unknown>
       const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
         data: {
           bucket: 'chat-attachments',
-          paths: [...new Set([file.storagePath, file.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
+          paths: [...new Set([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
         },
       })
     }

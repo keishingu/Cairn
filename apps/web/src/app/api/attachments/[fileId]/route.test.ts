@@ -19,6 +19,8 @@ const {
   mockTransaction,
   mockTransactionSelectLimit,
   mockRecordStorageUsageDelta,
+  mockInngestSend,
+  transactionDeletedFile,
   fileRow,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
@@ -32,6 +34,8 @@ const {
   mockTransaction: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
+  mockInngestSend: vi.fn().mockResolvedValue(undefined),
+  transactionDeletedFile: {} as Record<string, unknown>,
   fileRow: {
     id: '30000000-0000-0000-0000-000000000001',
     workspaceId: '10000000-0000-0000-0000-000000000001',
@@ -56,7 +60,7 @@ vi.mock('@/lib/supabase/service', () => ({
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
 vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
-vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 
 // db は最初の1件取得だけ使う。チェーンの最後で [fileRow] を返す。
 vi.mock('@cairn/db', () => {
@@ -98,6 +102,16 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       derivedFileSize: null,
       metadata: {},
     })
+    Object.assign(transactionDeletedFile, {
+      id: FILE_ID,
+      workspaceId: DEV_WORKSPACE_ID,
+      storagePath: fileRow.storagePath,
+      derivedStoragePath: null,
+      fileSize: 0,
+      derivedFileSize: null,
+      fileType: 'document',
+      metadata: {},
+    })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
@@ -118,7 +132,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       }),
       delete: () => ({
         where: () => ({
-          returning: () => Promise.resolve([{ id: FILE_ID }]),
+          returning: () => Promise.resolve([transactionDeletedFile]),
         }),
       }),
     }))
@@ -267,6 +281,38 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
 
     expect(res.status).toBe(404)
     expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
+  })
+
+  it('DELETE はロック後に確定した派生物と使用量を使う', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/old.pdf'
+    Object.assign(transactionDeletedFile, {
+      storagePath: 'ws/ch/user/pdf-originals/current.pdf',
+      derivedStoragePath: 'ws/ch/user/pdf-derivatives/current.pdf',
+      fileSize: 120,
+      derivedFileSize: 80,
+      metadata: { thumbnailPath: 'ws/ch/user/thumbnails/current.jpg' },
+    })
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockRecordStorageUsageDelta).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      { originalBytes: -120, derivedBytes: -80 },
+      expect.anything(),
+    )
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'storage/objects.delete',
+      data: {
+        bucket: 'chat-attachments',
+        paths: [
+          'ws/ch/user/pdf-originals/current.pdf',
+          'ws/ch/user/pdf-derivatives/current.pdf',
+          'ws/ch/user/thumbnails/current.jpg',
+        ],
+      },
+    })
   })
 
   it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {
