@@ -86,9 +86,9 @@ function query(result: unknown[]) {
   }
   for (const method of ['from', 'where', 'leftJoin', 'innerJoin', 'for'])
     chain[method] = vi.fn().mockReturnValue(chain)
-  chain.limit = vi.fn().mockResolvedValue(result)
-  chain.returning = vi.fn().mockResolvedValue(result)
-  chain.values = vi.fn().mockReturnValue(chain)
+  chain['limit'] = vi.fn().mockResolvedValue(result)
+  chain['returning'] = vi.fn().mockResolvedValue(result)
+  chain['values'] = vi.fn().mockReturnValue(chain)
   return chain
 }
 
