@@ -167,9 +167,11 @@ message_blocks {
 |---|---|---|
 | `section` | ○ | `text`（mrkdwn / plain_text）、`fields`（最大10）、`accessory`（button / static_select / image） |
 | `actions` | ○ | 要素は `button`、`static_select`。最大25要素 |
-| `context` | ○ | 要素は text / image。最大10要素。投票者の表示に使う |
+| `context` | ○ | 要素は text / image / `meter`。最大10要素。投票者の表示に使う |
 | `image` | ○ | `image_url`（https のみ）、`alt_text` 必須、`title` 任意 |
 | `divider` / `header` | ○ | 描画が単純で、投票カードの見出しに使うため含める |
+| `markdown` | △ | Slack と同じ形（`text` に標準の Markdown。メッセージ内の合計 12,000 文字、メッセージだけ）。普段のメッセージと同じ部品で描き、Mermaid のコードブロックも図にする。外部から届く本文なので、生の HTML は描かず、画像は読み込まずリンクにし、リンクは http(s)・mailto だけにする。`FEATURE_FLAGS.cardMarkdownAndMeter` で受理を有効にするまでは描画だけ |
+| `meter`（context の要素） | △ | **Cairn 独自**（Slack にはない）。HTML の `<meter>` と同じく量をバーで表す。`value` / `min`（省略時 0）/ `max` / `label`（読み上げ用）。投票の得票率に使う。受理は `markdown` と同じフラグで有効にする |
 | `input`（モーダル内のみ） | ○ | 要素は `plain_text_input`（単行・複数行）、`static_select` |
 | `button` | ○ | `text` / `action_id` / `value` / `style`(primary・danger) / `url` / `confirm`（確認ダイアログ） |
 | `static_select` | ○ | `options`（最大100）、`initial_option`、`placeholder`。`option_groups` は後続 |
@@ -358,9 +360,10 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
 ```
 [header]   11月の登山本部 担当決め
 [section]  下山連絡の電話当番です。担当できる週に投票してください。 <@山田> <@田中>
-[section]  第1週 (11/2〜) ▓▓▓░░ 2票      [accessory: button「投票」 value=option:<id>]
-[context]  👤山田 👤佐藤
-[section]  第2週 (11/9〜) ░░░░░ 0票      [button「投票」]
+[section]  第1週 (11/2〜)                [accessory: button「投票」 value=option:<id>]
+[context]  [meter 2/2] 2票 ・ @山田 @佐藤
+[section]  第2週 (11/9〜)                [button「投票」]
+[context]  [meter 0/2] 0票
  ...
 [context]  単一選択 ・ 締切 11/20 23:59 ・ 作成: 定期ジョブ
 [actions]  [自分の票を取り消す] [締め切る]（作成者のみ有効）

@@ -1352,4 +1352,5 @@ export const JA_MESSAGES: Record<string, string> = {
   "Can't create the poll because the channel is unknown": 'チャンネルが分からないため作成できません',
   'A poll was already created from this form (it will be posted with the previous content). Cancel to close.': 'このフォームからはすでに投票を作成しました（前回の内容で投稿されます）。キャンセルして閉じてください',
   'Closes {date}': '{date}に締め切り',
+  '{count} of {total} voted for this option': '{total}人中{count}人がこの選択肢に投票',
 }

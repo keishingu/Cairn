@@ -6,7 +6,7 @@
 // 決まった文言は英語をキーにして translate で表示言語にする。カードはチャンネルの全員に同じものが出るので作成した人の言語、
 // モーダルと入力の誤りは操作した人の言語（cairn.locale）で出す
 
-import { translate, type AppLocale } from '@cairn/shared'
+import { FEATURE_FLAGS, translate, type AppLocale } from '@cairn/shared'
 
 export type PollForRender = {
   id: string
@@ -21,11 +21,13 @@ export type PollForRender = {
   votes: Array<{ optionId: string; userId: string }>
 }
 
-const BAR_CELLS = 10
 // context の文字数上限（3000）に収める。多いときは「ほか N 人」にする
 const MAX_VOTERS_SHOWN = 30
 
-function bar(count: number, total: number): string {
+// meter 要素の受理を有効にするまで（FEATURE_FLAGS.cardMarkdownAndMeter）の、文字で描くバー
+const BAR_CELLS = 10
+
+function textBar(count: number, total: number): string {
   const filled = total === 0 ? 0 : Math.round((count / total) * BAR_CELLS)
   return '▓'.repeat(filled) + '░'.repeat(BAR_CELLS - filled)
 }
@@ -41,7 +43,8 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
-export function renderPollCard(poll: PollForRender): { text: string; blocks: unknown[] } {
+export function renderPollCard(poll: PollForRender, renderOptions: { meter?: boolean } = {}): { text: string; blocks: unknown[] } {
+  const useMeter = renderOptions.meter ?? FEATURE_FLAGS.cardMarkdownAndMeter
   const t = (message: string, values?: Record<string, string | number>) => translate(poll.locale, message, values)
   const closed = poll.status === 'closed'
   const voters = new Set(poll.votes.map((vote) => vote.userId))
@@ -72,7 +75,13 @@ export function renderPollCard(poll: PollForRender): { text: string; blocks: unk
     blocks.push({
       type: 'context',
       block_id: `votes-${option.position}`,
-      elements: [{ type: 'mrkdwn', text: `\`${bar(voterIds.length, voters.size)}\` ${t('{count} votes', { count: voterIds.length })}${shown ? ` ・ ${shown}${rest}` : ''}` }],
+      elements: [
+        // 得票率のバー。まだ誰も投票していなければ空のバーにする（max は min より大きくする必要がある）
+        ...(useMeter
+          ? [{ type: 'meter', value: voterIds.length, max: Math.max(voters.size, 1), label: t('{count} of {total} voted for this option', { count: voterIds.length, total: voters.size }) }]
+          : []),
+        { type: 'mrkdwn', text: `${useMeter ? '' : `\`${textBar(voterIds.length, voters.size)}\` `}${t('{count} votes', { count: voterIds.length })}${shown ? ` ・ ${shown}${rest}` : ''}` },
+      ],
     })
   }
   if (!closed) {

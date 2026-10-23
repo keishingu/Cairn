@@ -17,6 +17,8 @@ import {
   imageBlockSchema,
   imageElementSchema,
   inputBlockSchema,
+  markdownBlockSchema,
+  meterElementSchema,
   sectionBlockSchema,
   staticSelectElementSchema,
   type ButtonElement,
@@ -50,7 +52,11 @@ export type RenderElement =
   | { type: 'image'; url: string; alt: string }
   | RenderUnsupported
 
-export type RenderContextElement = { type: 'image'; url: string; alt: string } | { type: 'text'; text: RenderText } | RenderUnsupported
+export type RenderContextElement =
+  | { type: 'image'; url: string; alt: string }
+  | { type: 'text'; text: RenderText }
+  | { type: 'meter'; value: number; min: number; max: number; label?: string }
+  | RenderUnsupported
 
 export type RenderUnsupported = { type: 'unsupported'; original: string }
 
@@ -61,6 +67,8 @@ export type RenderBlock =
   | { type: 'image'; blockId: string; url: string; alt: string; title?: string }
   | { type: 'divider'; blockId: string }
   | { type: 'header'; blockId: string; text: string }
+  /** 標準の Markdown。描画側は普段のメッセージと同じ部品で描く（生の HTML は描かない） */
+  | { type: 'markdown'; blockId: string; text: string }
   | (RenderUnsupported & { blockId: string })
 
 export type RenderCard = {
@@ -160,6 +168,10 @@ function normalizeBlock(raw: unknown, index: number): RenderBlock {
       const header = parse(headerBlockSchema, raw)
       return header ? { type: 'header', blockId, text: header.text.text } : unsupported(type, blockId)
     }
+    case 'markdown': {
+      const markdown = parse(markdownBlockSchema, raw)
+      return markdown ? { type: 'markdown', blockId, text: markdown.text } : unsupported(type, blockId)
+    }
     default:
       return unsupported(type, blockId)
   }
@@ -194,11 +206,15 @@ function normalizeContextElement(raw: unknown): RenderContextElement {
     const image = parse(imageElementSchema, raw)
     return image ? imageElement(image) : unsupportedElement(raw)
   }
+  if (type === 'meter') {
+    const meter = parse(meterElementSchema, raw)
+    return meter ? { type: 'meter', value: meter.value, min: meter.min ?? 0, max: meter.max, ...(meter.label ? { label: meter.label } : {}) } : unsupportedElement(raw)
+  }
   if (type === 'plain_text' || type === 'mrkdwn') {
     // context の text 要素は section と同じ text object。section のスキーマを借りて検証する
     const parsed = parse(contextBlockSchema, { type: 'context', elements: [raw] })
     const element = parsed?.elements[0]
-    if (element && element.type !== 'image') return { type: 'text', text: renderText(element) }
+    if (element && (element.type === 'plain_text' || element.type === 'mrkdwn')) return { type: 'text', text: renderText(element) }
   }
   return unsupportedElement(raw)
 }

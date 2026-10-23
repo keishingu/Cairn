@@ -7,6 +7,7 @@ import React from 'react'
 import { cardActionErrorMessage, normalizeMessageBlocks, parseMrkdwn, type RenderBlock, type RenderConfirm, type RenderContextElement, type RenderElement } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Modal } from '@/components/app/primitives'
+import { MarkdownContent } from '@/components/app/markdown-content'
 import { MrkdwnView, RenderTextView } from './mrkdwn-view'
 
 // アプリが投稿したカード（Block Kit サブセット）を描く。中間表現への変換は packages/shared の normalizeMessageBlocks が持ち、
@@ -148,7 +149,8 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { blo
     case 'context':
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
-          {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} />)}
+          {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
+          {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} fill={block.elements.some((item) => item.type === 'meter')} />)}
         </div>
       )
     case 'image':
@@ -160,6 +162,9 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { blo
       )
     case 'divider':
       return <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '2px 0', width: '100%' }} />
+    case 'markdown':
+      // 普段のメッセージと同じ部品で描く（Mermaid も図になる）。外部から届いた本文なので画像とリンクは制限する
+      return <div style={{ fontSize: 13.5, color: 'var(--text)', minWidth: 0 }}><MarkdownContent content={block.text} mentionNames={mentionNames} external /></div>
     case 'unsupported':
       return <UnsupportedPart />
   }
@@ -259,15 +264,37 @@ function CardConfirmDialog({ confirm, mentionNames, onConfirm, onClose }: { conf
   )
 }
 
-function ContextElement({ element, mentionNames }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined }) {
+function ContextElement({ element, mentionNames, fill }: { element: RenderContextElement; mentionNames?: Map<string, string> | undefined; fill?: boolean }) {
   switch (element.type) {
     case 'image':
       return <ExternalImage url={element.url} alt={element.alt} style={{ width: 16, height: 16, borderRadius: 4, objectFit: 'cover' }} />
     case 'text':
-      return <span><RenderTextView text={element.text} mentionNames={mentionNames} /></span>
+      return <span style={fill ? { flex: '1 1 0', minWidth: 0 } : undefined}><RenderTextView text={element.text} mentionNames={mentionNames} /></span>
+    case 'meter':
+      return <CardMeter meter={element} />
     case 'unsupported':
       return <UnsupportedPart />
   }
+}
+
+/**
+ * 量を表すバー。<meter> は既定の見た目がブラウザごとに違い、テーマ色にも合わせにくいため、
+ * 意味は role="meter" と aria-value* で伝え、見た目は div で描く
+ */
+function CardMeter({ meter }: { meter: Extract<RenderContextElement, { type: 'meter' }> }) {
+  const ratio = Math.min(1, Math.max(0, (meter.value - meter.min) / (meter.max - meter.min)))
+  return (
+    <span
+      role="meter"
+      aria-valuenow={meter.value}
+      aria-valuemin={meter.min}
+      aria-valuemax={meter.max}
+      {...(meter.label ? { 'aria-label': meter.label } : {})}
+      style={{ display: 'inline-block', width: 120, height: 8, borderRadius: 999, background: 'var(--border-2)', overflow: 'hidden', flexShrink: 0 }}
+    >
+      <span style={{ display: 'block', width: `${ratio * 100}%`, height: '100%', borderRadius: 999, background: 'var(--accent)' }} />
+    </span>
+  )
 }
 
 // アプリが指定した外部の画像。閲覧中のページの URL をアプリ側へ渡さない

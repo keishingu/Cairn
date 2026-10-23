@@ -42,7 +42,9 @@ export function visibleTextOfBlocks(blocks: MessageBlock[]): string {
     if (Array.isArray(node)) return node.forEach(walk)
     if (typeof node !== 'object' || node === null) return
     const record = node as Record<string, unknown>
-    if ((record['type'] === 'plain_text' || record['type'] === 'mrkdwn') && typeof record['text'] === 'string') texts.push(record['text'])
+    // markdown ブロックの text も表示される本文（文字列のまま持つので、ここで拾わないと安全フィルタを素通りする）
+    if ((record['type'] === 'plain_text' || record['type'] === 'mrkdwn' || record['type'] === 'markdown') && typeof record['text'] === 'string') texts.push(record['text'])
+    if (record['type'] === 'meter' && typeof record['label'] === 'string') texts.push(record['label'])
     if (typeof record['alt_text'] === 'string') texts.push(record['alt_text'])
     for (const [key, value] of Object.entries(record)) {
       // 値・ID・URL は表示されない（URL ボタンの遷移先は表示文と別に扱う）
@@ -80,8 +82,13 @@ export function fallbackTextFromBlocks(blocks: MessageBlock[]): string {
       for (const field of block.fields ?? []) lines.push(field.text)
     }
     if (block.type === 'context') {
-      for (const element of block.elements) if (element.type !== 'image') lines.push(element.text)
+      for (const element of block.elements) {
+        if (element.type === 'plain_text' || element.type === 'mrkdwn') lines.push(element.text)
+        // バーは見た目だけなので、読み上げ用の説明があればそれを代わりの文字にする
+        if (element.type === 'meter' && element.label) lines.push(element.label)
+      }
     }
+    if (block.type === 'markdown') lines.push(block.text)
     // 単独の画像はカードの中身なので代替テキストを使う（補足やアクセサリの画像はアイコン等の飾りなので含めない）
     if (block.type === 'image') lines.push(block.title?.text ?? block.alt_text)
   }

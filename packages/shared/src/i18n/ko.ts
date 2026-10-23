@@ -1352,4 +1352,5 @@ export const KO_MESSAGES: Record<string, string> = {
   "Can't create the poll because the channel is unknown": '채널을 알 수 없어 만들 수 없습니다',
   'A poll was already created from this form (it will be posted with the previous content). Cancel to close.': '이 양식으로 이미 투표를 만들었습니다(이전 내용으로 게시됩니다). 취소를 눌러 닫아 주세요.',
   'Closes {date}': '{date}에 마감',
+  '{count} of {total} voted for this option': '{total}명 중 {count}명이 이 선택지에 투표',
 }

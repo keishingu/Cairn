@@ -105,6 +105,14 @@ export const allElementsFixture = [
       },
     ],
   },
+  {
+    type: 'context',
+    elements: [
+      { type: 'meter', value: 3, max: 4, label: '4人中3人' },
+      { type: 'plain_text', text: '3票' },
+    ],
+  },
+  { type: 'markdown', text: '## Markdown の見出し\n\n- **太字**の項目\n- [リンク](https://example.com/md)\n\n```mermaid\ngraph TD\n  A-->B\n```' },
 ] as const
 
 /**

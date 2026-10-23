@@ -19,6 +19,7 @@ import {
 import type { ThemePalette } from '../lib/theme'
 import { cardTextParagraphs, type TextParagraph, type TextRun } from '../lib/message-card-text'
 import { useT } from './locale-provider'
+import { MobileMarkdown } from './mobile-markdown'
 
 /** 押下されたボタン・選ばれた選択肢。インタラクションの送信（実装順5）で使う */
 export type CardAction =
@@ -186,8 +187,9 @@ export function CardBlock({ block, context }: { block: RenderBlock; context: Car
     case 'context':
       return (
         <View style={styles.context}>
+          {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
           {block.elements.map((element, index) => (
-            <ContextElement key={index} element={element} context={context} />
+            <ContextElement key={index} element={element} context={context} fill={block.elements.some((item) => item.type === 'meter')} />
           ))}
         </View>
       )
@@ -207,9 +209,22 @@ export function CardBlock({ block, context }: { block: RenderBlock; context: Car
       )
     case 'divider':
       return <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+    case 'markdown':
+      return <CardMarkdown text={block.text} context={context} />
     case 'unsupported':
       return <UnsupportedPart palette={palette} />
   }
+}
+
+// 外部から届いた本文のリンクは http(s)・mailto だけを開く（相対パスや独自スキームで Cairn の画面へ誘導させない。Web と同じ）
+const EXTERNAL_LINK = /^(?:https?:\/\/|mailto:)/i
+
+/** 普段のメッセージと同じ部品で描く（Mermaid も図になる。画像は MobileMarkdown が自動で読み込まずリンクにする） */
+function CardMarkdown({ text, context }: { text: string; context: CardContext }) {
+  const { mentionNames, onLinkPress } = context
+  const names = React.useMemo(() => Object.fromEntries(mentionNames), [mentionNames])
+  const handleLinkPress = React.useCallback((url: string) => (EXTERNAL_LINK.test(url) ? onLinkPress(url) : true), [onLinkPress])
+  return <MobileMarkdown content={text} palette={context.palette} mentionNames={names} onLinkPress={handleLinkPress} />
 }
 
 function CardElement({ element, blockId, context }: { element: RenderElement; blockId: string; context: CardContext }) {
@@ -340,15 +355,39 @@ function mentionResolver(context: CardContext, t: (message: string) => string): 
   return (userId) => context.mentionNames.get(userId) ?? t('Unknown member')
 }
 
-function ContextElement({ element, context }: { element: RenderContextElement; context: CardContext }) {
+function ContextElement({ element, context, fill }: { element: RenderContextElement; context: CardContext; fill?: boolean }) {
   switch (element.type) {
     case 'image':
       return <CardImage key={element.url} url={element.url} alt={element.alt} palette={context.palette} style={styles.contextImage} inline />
     case 'text':
-      return <CardText text={element.text} context={context} small />
+      return fill ? (
+        <View style={styles.contextFill}>
+          <CardText text={element.text} context={context} small />
+        </View>
+      ) : (
+        <CardText text={element.text} context={context} small />
+      )
+    case 'meter':
+      return <CardMeter meter={element} palette={context.palette} />
     case 'unsupported':
       return <UnsupportedPart palette={context.palette} />
   }
+}
+
+/** 量を表すバー（Web の CardMeter と同じ見た目）。読み上げは progressbar の値として伝える */
+function CardMeter({ meter, palette }: { meter: Extract<RenderContextElement, { type: 'meter' }>; palette: ThemePalette }) {
+  const ratio = Math.min(1, Math.max(0, (meter.value - meter.min) / (meter.max - meter.min)))
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      {...(meter.label ? { accessibilityLabel: meter.label } : {})}
+      accessibilityValue={{ min: meter.min, max: meter.max, now: meter.value }}
+      style={[styles.meter, { backgroundColor: palette.border }]}
+    >
+      <View style={[styles.meterFill, { width: `${ratio * 100}%`, backgroundColor: palette.accent }]} />
+    </View>
+  )
 }
 
 function CardText({ text, context, small }: { text: RenderText; context: CardContext; small?: boolean }) {
@@ -469,6 +508,9 @@ const styles = StyleSheet.create({
   image: { width: '100%', height: 200, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
   accessoryImage: { width: 56, height: 56, borderRadius: 8 },
   contextImage: { width: 16, height: 16, borderRadius: 4 },
+  contextFill: { flex: 1, minWidth: 0 },
+  meter: { width: 96, height: 8, borderRadius: 4, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: 4 },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   button: { minHeight: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
   buttonText: { fontSize: 13, fontWeight: '600' },

@@ -80,7 +80,7 @@ function LineTaskLabel({ task, t }: { task: LineTask; t: TranslateFn }) {
   )
 }
 
-function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[]): React.ReactNode {
+function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[], external = false): React.ReactNode {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -105,6 +105,12 @@ function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<strin
     } else {
       const url = token.replace(/[.,;:!?)>\]。、，；：！？）〉》】］]+$/, '')
       const isInternal = isInternalHref(url)
+      if (external && isInternal) {
+        // 外部から届いた本文の内部パスはリンクにしない（Cairn の画面へ誘導させない。リンクは http(s)・mailto だけ）
+        nodes.push(token)
+        last = match.index + token.length
+        continue
+      }
       nodes.push(
         <a key={match.index} href={url}
           target={isInternal ? undefined : '_blank'} rel={isInternal ? undefined : 'noopener noreferrer'}
@@ -121,12 +127,12 @@ function renderInlineText(text: string, t: TranslateFn, mentionNames?: Map<strin
   return nodes.length === 0 ? text : nodes.length === 1 && typeof nodes[0] === 'string' ? nodes[0] : nodes
 }
 
-function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[]): React.ReactNode {
-  if (typeof children === 'string') return renderInlineText(children, t, mentionNames, lineTasks)
+function processChildren(children: React.ReactNode, t: TranslateFn, mentionNames?: Map<string, string>, lineTasks?: readonly LineTask[], external = false): React.ReactNode {
+  if (typeof children === 'string') return renderInlineText(children, t, mentionNames, lineTasks, external)
   if (Array.isArray(children)) {
     return children.map((child, i) => {
       if (typeof child === 'string') {
-        const processed = renderInlineText(child, t, mentionNames, lineTasks)
+        const processed = renderInlineText(child, t, mentionNames, lineTasks, external)
         if (processed === child) return child
         return <React.Fragment key={i}>{processed}</React.Fragment>
       }
@@ -151,14 +157,21 @@ interface MarkdownContentProps {
   /** タスク化した行の行末に「✓ タスク」ラベルを出す。呼び出し側は安定参照で渡すこと */
   lineTasks?: readonly LineTask[] | undefined
   onCheckboxToggle?: (index: number, checked: boolean) => void
+  /**
+   * アプリなど外部から届いた本文（カードの markdown ブロック）。画像は自動で読み込まずリンクにし（Slack と同じ。閲覧を送り手に知らせない）、
+   * リンクは http(s)・mailto だけにする（相対パスで Cairn の画面へ誘導させない）
+   */
+  external?: boolean
 }
+
+const EXTERNAL_LINK = /^(?:https?:\/\/|mailto:)/i
 
 // メッセージ一覧では最大100件が同時に描画され、その各行で react-markdown（remark 一式）の
 // パースが走る。入力欄のキーストロークなど親の再レンダーごとに全件を再パースするとモバイルの
 // WebView ではメインスレッドが数百ms〜秒単位でブロックされ、スクロール・タブ切替が固まる。
 // props が変わらない限り再パースしないよう React.memo でラップする（呼び出し側は onCheckboxToggle
 // や mentionNames を安定参照で渡すこと）。
-export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle }: MarkdownContentProps) {
+export const MarkdownContent = React.memo(function MarkdownContent({ content, fontSize = 13.5, lineHeight = 1.6, mentionNames, lineTasks, onCheckboxToggle, external = false }: MarkdownContentProps) {
   const t = useT()
   // 目印は描画用の派生文字列にだけ差し込む（呼び出し側の content、コピー・編集の対象には混ぜない）
   const markedContent = React.useMemo(
@@ -173,28 +186,28 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => (
-          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames, lineTasks)}</p>
+          <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames, lineTasks, external)}</p>
         ),
         h1: ({ children }) => (
-          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h1>
+          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h1>
         ),
         h2: ({ children }) => (
-          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h2>
+          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h2>
         ),
         h3: ({ children }) => (
-          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks)}</h3>
+          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h3>
         ),
-        h4: ({ children }) => <h4>{processChildren(children, t, mentionNames, lineTasks)}</h4>,
-        h5: ({ children }) => <h5>{processChildren(children, t, mentionNames, lineTasks)}</h5>,
-        h6: ({ children }) => <h6>{processChildren(children, t, mentionNames, lineTasks)}</h6>,
+        h4: ({ children }) => <h4>{processChildren(children, t, mentionNames, lineTasks, external)}</h4>,
+        h5: ({ children }) => <h5>{processChildren(children, t, mentionNames, lineTasks, external)}</h5>,
+        h6: ({ children }) => <h6>{processChildren(children, t, mentionNames, lineTasks, external)}</h6>,
         strong: ({ children }) => (
-          <strong style={{ fontWeight: 700 }}>{processChildren(children, t, mentionNames, lineTasks)}</strong>
+          <strong style={{ fontWeight: 700 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</strong>
         ),
         em: ({ children }) => (
-          <em style={{ fontStyle: 'italic' }}>{processChildren(children, t, mentionNames, lineTasks)}</em>
+          <em style={{ fontStyle: 'italic' }}>{processChildren(children, t, mentionNames, lineTasks, external)}</em>
         ),
         del: ({ children }) => (
-          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{processChildren(children, t, mentionNames, lineTasks)}</del>
+          <del style={{ textDecoration: 'line-through', opacity: 0.6 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</del>
         ),
         ul: ({ children }) => (
           <ul style={{ paddingLeft: 20, margin: '2px 0 4px', listStyleType: 'disc' }}>{children}</ul>
@@ -209,7 +222,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
               style={{ marginBottom: 2, lineHeight, listStyleType: isTask ? 'none' : undefined }}
               {...(isTask ? { className: String(props.className) } : {})}
             >
-              {processChildren(children, t, mentionNames, lineTasks)}
+              {processChildren(children, t, mentionNames, lineTasks, external)}
             </li>
           )
         },
@@ -231,7 +244,16 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
             />
           )
         },
+        ...(external ? {
+          img: ({ src, alt }: { src?: string | Blob | undefined; alt?: string | undefined }) => {
+            const label = alt || t('Image')
+            return typeof src === 'string' && EXTERNAL_LINK.test(src)
+              ? <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{label}</a>
+              : <span>{label}</span>
+          },
+        } : {}),
         a: ({ href, children }) => {
+          if (external && !(href && EXTERNAL_LINK.test(href))) return <span>{children}</span>
           // 自動リンク化された生URL（リンクテキスト=URL自体）だけ表示を省略する。
           // `[表示名](url)` のようにテキストを明示したリンクはそのまま表示する
           const linkText = typeof children === 'string'
@@ -294,7 +316,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
           <th style={{ border: '1px solid var(--border-2)', background: 'var(--card-2)', padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap', ...style }}>{children}</th>
         ),
         td: ({ children, style }) => (
-          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames, lineTasks)}</td>
+          <td style={{ border: '1px solid var(--border-2)', padding: '6px 10px', textAlign: 'left', verticalAlign: 'top', ...style }}>{processChildren(children, t, mentionNames, lineTasks, external)}</td>
         ),
         hr: () => (
           <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '8px 0' }} />
