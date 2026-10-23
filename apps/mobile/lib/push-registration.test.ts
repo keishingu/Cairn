@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     mocks.calls.push('token')
     return { data: 'ExponentPushToken[x]' }
   }),
-  apiFetch: vi.fn(async () => ({ ok: true, status: 200 })),
+  apiFetch: vi.fn(async (_path: string, _init?: { method?: string }) => ({ ok: true, status: 200 })),
   channelImportance: 3 as number | null,
   getNotificationChannelAsync: vi.fn(async () => (mocks.channelImportance === null ? null : { importance: mocks.channelImportance })),
 }))
@@ -53,7 +53,7 @@ describe('Android の通知チャンネル', () => {
   })
 
   test('トークンを取得する前にチャンネルを作る（Android 13+ はチャンネルが無いと通知を許可できないため）', async () => {
-    await registerPushToken()
+    await registerPushToken(async () => true)
     expect(mocks.calls).toEqual(['channel', 'token'])
   })
 
@@ -90,5 +90,64 @@ describe('この端末の登録と解除', () => {
   test('サーバーが失敗を返したら解除も失敗にする', async () => {
     mocks.apiFetch.mockResolvedValue({ ok: false, status: 500 })
     await expect(unregisterPushToken()).rejects.toThrow('500')
+  })
+})
+
+describe('登録と解除の順序', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.platformOS = 'ios'
+    mocks.apiFetch.mockResolvedValue({ ok: true, status: 200 })
+  })
+
+  test('登録の途中でオフにしても、解除は登録が終わってから送る', async () => {
+    const methods: string[] = []
+    let finishPost: () => void = () => undefined
+    mocks.apiFetch.mockImplementation(async (_path, init) => {
+      methods.push(`${init?.method}:start`)
+      if (init?.method === 'POST') await new Promise<void>((resolve) => { finishPost = resolve })
+      methods.push(`${init?.method}:end`)
+      return { ok: true, status: 200 }
+    })
+
+    const register = registerPushToken(async () => true)
+    const unregister = unregisterPushToken()
+    await vi.waitFor(() => expect(methods).toEqual(['POST:start']))
+    finishPost()
+    await Promise.all([register, unregister])
+
+    expect(methods).toEqual(['POST:start', 'POST:end', 'DELETE:start', 'DELETE:end'])
+  })
+
+  test('順番待ちの間にオフにされた登録は送らない', async () => {
+    let enabled = true
+    let finishFirst: () => void = () => undefined
+    mocks.apiFetch.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => { finishFirst = resolve })
+      return { ok: true, status: 200 }
+    })
+
+    const first = unregisterPushToken()
+    const pending = registerPushToken(async () => enabled)
+    await vi.waitFor(() => expect(mocks.apiFetch).toHaveBeenCalledTimes(1))
+    enabled = false
+    finishFirst()
+    await Promise.all([first, pending])
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(1)
+  })
+
+  test('前の処理が失敗しても、後の処理は実行する', async () => {
+    mocks.apiFetch.mockResolvedValueOnce({ ok: false, status: 500 })
+
+    const failed = unregisterPushToken()
+    const next = registerPushToken(async () => true)
+
+    await expect(failed).rejects.toThrow('500')
+    await expect(next).resolves.toBeUndefined()
+    expect(mocks.apiFetch).toHaveBeenLastCalledWith('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ deviceType: 'expo', expoToken: 'ExponentPushToken[x]' }),
+    })
   })
 })

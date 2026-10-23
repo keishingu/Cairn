@@ -63,12 +63,30 @@ async function sendSubscription(method: 'POST' | 'DELETE', expoToken: string): P
   if (!response.ok) throw new Error(`Push subscription ${method} failed: ${response.status}`)
 }
 
-/** 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。 */
-export async function registerPushToken(): Promise<void> {
-  await sendSubscription('POST', await getPushToken())
+// 登録と解除は1本の列で順に実行する。並行すると、オフにした後に遅れて届いた登録が購読を作り直し、
+// オフの記録があるため以後の起動では解除もされず、通知が届き続ける
+let subscriptionQueue: Promise<unknown> = Promise.resolve()
+
+function enqueueSubscriptionChange<T>(task: () => Promise<T>): Promise<T> {
+  const run = subscriptionQueue.then(task, task)
+  subscriptionQueue = run.catch(() => undefined)
+  return run
 }
 
-/** この端末の Expo push token をサーバーから外す。失敗は呼び出し側で扱う。 */
-export async function unregisterPushToken(): Promise<void> {
-  await sendSubscription('DELETE', await getPushToken())
+/**
+ * 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。
+ * 列の順番が来た時点で shouldRegister を確かめ直し、その間にオフにされていれば登録しない
+ */
+export function registerPushToken(shouldRegister: () => Promise<boolean>): Promise<void> {
+  return enqueueSubscriptionChange(async () => {
+    if (!(await shouldRegister())) return
+    await sendSubscription('POST', await getPushToken())
+  })
+}
+
+/** この端末の Expo push token をサーバーから外す。先に始まった登録が終わってから実行する。失敗は呼び出し側で扱う。 */
+export function unregisterPushToken(): Promise<void> {
+  return enqueueSubscriptionChange(async () => {
+    await sendSubscription('DELETE', await getPushToken())
+  })
 }

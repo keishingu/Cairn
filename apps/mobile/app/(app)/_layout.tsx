@@ -57,7 +57,7 @@ async function requestAndRegisterPush(userId: string) {
   if (status !== 'granted') return
 
   try {
-    await registerPushToken()
+    await registerPushToken(() => loadPushEnabled(userId, AsyncStorage))
   } catch {
     console.warn('[Push] Failed to register Expo push token')
   }

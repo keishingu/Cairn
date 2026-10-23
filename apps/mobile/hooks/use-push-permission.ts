@@ -42,14 +42,15 @@ export function usePushPermission() {
       const view = pushPermissionView(permission, { channelDisabled })
       // 許可状態は先に見せる。登録を待つと、その間（決着しなければずっと）何も表示されない
       if (id === seq.current) setState({ status: view, enabled, syncFailed: null })
-      if (view !== 'granted' || !enabled) return
+      if (view !== 'granted' || !enabled || !userId) return
       try {
-        await registerPushToken()
+        // 登録の順番が来るまでにオフにされたら登録しない
+        await registerPushToken(() => loadPushEnabled(userId, AsyncStorage))
       } catch {
         if (id === seq.current) setState({ status: view, enabled, syncFailed: 'register' })
       }
     },
-    [],
+    [userId],
   )
 
   const refresh = React.useCallback(async () => {
