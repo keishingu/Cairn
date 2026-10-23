@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildImageViewerHtml,
   buildMarkdownDocumentHtml,
+  canPreviewMarkdown,
   headingSlug,
+  MARKDOWN_PREVIEW_MAX_BYTES,
   markdownDocumentBodyHtml,
   parseImageViewerMessage,
 } from './attachment-viewer-html'
@@ -52,6 +54,11 @@ describe('添付 Markdown の HTML', () => {
   it('連番の id が既存の見出しと重ならない', () => {
     const used = new Map<string, number>()
     expect(['a', 'a-1', 'a'].map((text) => headingSlug(text, used))).toEqual(['a', 'a-1', 'a-2'])
+  })
+
+  it('描画で固まらないよう、上限を超える大きさのファイルは描画しない', () => {
+    expect(canPreviewMarkdown(MARKDOWN_PREVIEW_MAX_BYTES)).toBe(true)
+    expect(canPreviewMarkdown(MARKDOWN_PREVIEW_MAX_BYTES + 1)).toBe(false)
   })
 
   it('全体の HTML にテーマの色と拡大できる viewport を入れる', () => {

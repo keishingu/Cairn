@@ -24,6 +24,15 @@ export type MarkdownDocumentTheme = {
 
 type Options = { imageLabel: string }
 
+// 変換は React Native の JS スレッドで同期的に走り、その間はモーダルを閉じることもできない。
+// 記法の多い文書は 100KB で約1秒かかるため、長い議事録（数十KB〜100KB程度）が収まる大きさで打ち切り、
+// それより大きいファイルは他のアプリで開いてもらう
+export const MARKDOWN_PREVIEW_MAX_BYTES = 300 * 1024
+
+export function canPreviewMarkdown(size: number): boolean {
+  return size <= MARKDOWN_PREVIEW_MAX_BYTES
+}
+
 // 文字を並べる要素。HTML をここでは文字に、それ以外では段落に変える
 const PHRASING_PARENTS = new Set([
   'paragraph',

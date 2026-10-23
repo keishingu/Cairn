@@ -1136,6 +1136,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'This device cannot share files': 'この端末ではファイルを共有できません',
   'This invite link is invalid': '招待リンクが無効です',
   'This is fine': 'これは問題ない',
+  'This file is too large to display in the app.': 'ファイルが大きいため、アプリ内では表示できません。',
   'This link cannot be opened.': 'このリンクは開けません。',
   'This link has expired or has been deleted.': 'このリンクは期限切れか、すでに削除されています。',
   'This message and everything after': 'このメッセージ以降すべて',

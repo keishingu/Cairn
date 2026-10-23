@@ -1136,6 +1136,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'This device cannot share files': '이 기기는 파일을 공유할 수 없습니다',
   'This invite link is invalid': '이 초대 링크는 유효하지 않습니다',
   'This is fine': '괜찮아요',
+  'This file is too large to display in the app.': '파일이 너무 커서 앱에서 표시할 수 없습니다.',
   'This link cannot be opened.': '이 링크를 열 수 없습니다.',
   'This link has expired or has been deleted.': '이 링크는 만료되었거나 삭제되었습니다.',
   'This message and everything after': '이 메시지와 이후 모두',

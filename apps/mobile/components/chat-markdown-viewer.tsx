@@ -9,7 +9,7 @@ import {
   removeCachedAttachment,
   shareCachedAttachment,
 } from '../lib/attachment-cache'
-import { buildMarkdownDocumentHtml } from '../lib/attachment-viewer-html'
+import { buildMarkdownDocumentHtml, canPreviewMarkdown } from '../lib/attachment-viewer-html'
 import { useAppAppearance } from './appearance-provider'
 import { ViewerAction } from './chat-image-viewer'
 import { useT } from './locale-provider'
@@ -21,6 +21,7 @@ type ShouldStartLoadRequest = Parameters<
 type LoadState =
   | { kind: 'downloading' }
   | { kind: 'ready'; markdown: string }
+  | { kind: 'tooLarge' }
   | { kind: 'failed'; message: string }
 
 // 添付の Markdown を Web のプレビューと同じく描画して表示する。
@@ -62,8 +63,15 @@ export function ChatMarkdownViewer({
     ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t, {
       refresh: attempt > 0,
     })
-      .then((localUri) => FileSystem.readAsStringAsync(localUri))
-      .then((markdown) => {
+      .then(async (localUri) => {
+        const info = await FileSystem.getInfoAsync(localUri)
+        if (!info.exists) throw new Error(t('Please try again in a moment.'))
+        // 大きいファイルは文字列として読み込む前に止める（読み込み自体もメモリを使う）
+        if (!canPreviewMarkdown(info.size)) {
+          if (!cancelled) setLoadState({ kind: 'tooLarge' })
+          return
+        }
+        const markdown = await FileSystem.readAsStringAsync(localUri)
         if (!cancelled) setLoadState({ kind: 'ready', markdown })
       })
       .catch((error: unknown) => {
@@ -122,8 +130,10 @@ export function ChatMarkdownViewer({
     setLoadState({ kind: 'failed', message: description || t('Please try again in a moment.') })
   }
 
-  // 描画が完了して表示できたときだけ保存・共有を許す（PDF ビューアと同じ）
-  const actionsDisabled = busyAction !== null || loadState.kind !== 'ready' || !rendered
+  // 描画が完了して表示できたときだけ保存・共有を許す（PDF ビューアと同じ）。
+  // 大きくて描画しないファイルも取得は済んでいるため、保存・共有はできる
+  const actionsDisabled =
+    busyAction !== null || (loadState.kind !== 'tooLarge' && (loadState.kind !== 'ready' || !rendered))
 
   const runFileAction = async (action: 'save' | 'share') => {
     if (busyAction) return
@@ -180,6 +190,22 @@ export function ChatMarkdownViewer({
                 <Text style={styles.retryText}>{t('Retry')}</Text>
               </Pressable>
             </View>
+          ) : loadState.kind === 'tooLarge' ? (
+            <View style={styles.failure}>
+              <Text style={styles.failureText}>{t('This file is too large to display in the app.')}</Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={busyAction !== null}
+                onPress={() => void runFileAction('share')}
+                style={styles.retry}
+              >
+                {busyAction === 'share' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.retryText}>{t('Open in another app')}</Text>
+                )}
+              </Pressable>
+            </View>
           ) : html ? (
             <WebView
               key={attempt}
@@ -199,7 +225,7 @@ export function ChatMarkdownViewer({
               onError={(event) => handleRenderError(event.nativeEvent.description)}
             />
           ) : null}
-          {loadState.kind !== 'failed' && !rendered && (
+          {(loadState.kind === 'downloading' || loadState.kind === 'ready') && !rendered && (
             <ActivityIndicator style={styles.spinner} size="large" color="#FFFFFF" />
           )}
         </View>
