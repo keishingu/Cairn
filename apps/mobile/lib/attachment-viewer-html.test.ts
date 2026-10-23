@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildImageViewerHtml,
   buildMarkdownDocumentHtml,
+  headingSlug,
   markdownDocumentBodyHtml,
   parseImageViewerMessage,
 } from './attachment-viewer-html'
@@ -41,6 +42,18 @@ describe('添付 Markdown の HTML', () => {
     expect(html).toBe('<p><a href="https://example.com">図</a></p>')
   })
 
+  it('目次のリンク先になるよう、見出しに GitHub と同じ規則の id を付ける', () => {
+    const html = markdownDocumentBodyHtml('[概要へ](#概要)\n\n# 概要\n\n## Step 1: **Setup**!\n\n## 概要', options)
+    expect(html).toContain('<h1 id="概要">概要</h1>')
+    expect(html).toContain('<h2 id="step-1-setup">')
+    expect(html).toContain('<h2 id="概要-1">概要</h2>')
+  })
+
+  it('連番の id が既存の見出しと重ならない', () => {
+    const used = new Map<string, number>()
+    expect(['a', 'a-1', 'a'].map((text) => headingSlug(text, used))).toEqual(['a', 'a-1', 'a-2'])
+  })
+
   it('全体の HTML にテーマの色と拡大できる viewport を入れる', () => {
     const html = buildMarkdownDocumentHtml(
       '# 見出し',
@@ -59,7 +72,7 @@ describe('添付 Markdown の HTML', () => {
     expect(html).toContain('maximum-scale=5')
     expect(html).toContain('color-scheme: dark')
     expect(html).toContain('background: #111111')
-    expect(html).toContain('<h1>見出し</h1>')
+    expect(html).toContain('<h1 id="見出し">見出し</h1>')
   })
 })
 

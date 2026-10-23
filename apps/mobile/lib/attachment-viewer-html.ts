@@ -75,12 +75,48 @@ function transformChildren(parent: Parents, options: Options, inLink: boolean) {
   }) as typeof parent.children
 }
 
+function plainText(node: RootContent | Root): string {
+  if ('value' in node && typeof node.value === 'string') return node.value
+  if ('children' in node) return node.children.map(plainText).join('')
+  return ''
+}
+
+// GitHub と同じ規則の見出しの id（小文字化、記号の除去、空白をハイフンに、重複は -1, -2…）。
+// JavaScript を無効にした WebView でも目次の `#見出し` リンクで移動できるよう、id を直接付ける
+export function headingSlug(text: string, used: Map<string, number>): string {
+  const base = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '')
+    .replace(/ /g, '-')
+  // github-slugger と同じく、作った id も使用済みにして `a-1` という見出しとの重なりを避ける
+  let slug = base
+  while (used.has(slug)) {
+    const next = (used.get(base) ?? 0) + 1
+    used.set(base, next)
+    slug = `${base}-${next}`
+  }
+  used.set(slug, 0)
+  return slug
+}
+
+function addHeadingIds(parent: Parents, used: Map<string, number>) {
+  for (const child of parent.children) {
+    if (child.type === 'heading') {
+      child.data = { ...child.data, hProperties: { ...child.data?.hProperties, id: headingSlug(plainText(child), used) } }
+    } else if ('children' in child) {
+      addHeadingIds(child, used)
+    }
+  }
+}
+
 export function markdownDocumentBodyHtml(markdown: string, options: Options): string {
   const tree: Root = fromMarkdown(markdown, {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   })
   transformChildren(tree, options, false)
+  addHeadingIds(tree, new Map())
   // 改行1つでも改行として見せる（Web の remark-breaks と同じ）
   newlineToBreak(tree)
   // 生の HTML は上で文字に変えてあるが、念のため HTML として出力させない
