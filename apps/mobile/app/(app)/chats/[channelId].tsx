@@ -41,6 +41,7 @@ import type { ThemePalette } from '../../../lib/theme'
 import { isEdgeBackSwipe } from '../../../lib/edge-back-swipe'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
@@ -2011,6 +2012,16 @@ export default function ChatThreadScreen() {
               mimeType={attachmentPreview.mimeType}
               accessToken={session.access_token}
               onClose={() => setAttachmentPreview(null)}
+            />
+          ) : previewViewer === 'markdown' ? (
+            <ChatMarkdownViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              accessToken={session.access_token}
+              onClose={() => setAttachmentPreview(null)}
+              onPressLink={openDocumentLink}
             />
           ) : previewViewer === 'office' ? (
             <ChatOfficeViewer
