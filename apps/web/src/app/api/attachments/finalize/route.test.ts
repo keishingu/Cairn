@@ -459,6 +459,9 @@ describe('/api/attachments/finalize の実サイズ上限', () => {
       .mockResolvedValueOnce([{ id: 'upload-1' }])
       .mockResolvedValueOnce([{ projectId: null }])
     mockTransactionSelectLimit.mockReset().mockResolvedValue([])
+    mockInsertReturning.mockImplementation((values) =>
+      Promise.resolve([{ id: 'file-1', ...values }]),
+    )
     mockIsIndexable.mockReturnValue(false)
     mockCreateThumbnailFromStorage.mockResolvedValue(null)
   })
