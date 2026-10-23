@@ -31,7 +31,7 @@ vi.mock('expo-notifications', () => ({
 vi.mock('expo-constants', () => ({ default: { appOwnership: null, easConfig: { projectId: 'project-1' } } }))
 vi.mock('./api-fetch', () => ({ apiFetch: mocks.apiFetch }))
 
-import { ANDROID_NOTIFICATION_CHANNEL_ID, ensureAndroidNotificationChannel, isAndroidNotificationChannelDisabled, registerPushToken } from './push-registration'
+import { ANDROID_NOTIFICATION_CHANNEL_ID, ensureAndroidNotificationChannel, isAndroidNotificationChannelDisabled, registerPushToken, unregisterPushToken } from './push-registration'
 
 describe('Android の通知チャンネル', () => {
   beforeEach(() => {
@@ -68,5 +68,27 @@ describe('Android の通知チャンネル', () => {
     mocks.platformOS = 'ios'
     await expect(isAndroidNotificationChannelDisabled()).resolves.toBe(false)
     expect(mocks.getNotificationChannelAsync).not.toHaveBeenCalled()
+  })
+})
+
+describe('この端末の登録と解除', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.calls = []
+    mocks.platformOS = 'ios'
+    mocks.apiFetch.mockResolvedValue({ ok: true, status: 200 })
+  })
+
+  test('解除はこの端末のトークンを指定して外す', async () => {
+    await unregisterPushToken()
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/api/push/subscribe', {
+      method: 'DELETE',
+      body: JSON.stringify({ deviceType: 'expo', expoToken: 'ExponentPushToken[x]' }),
+    })
+  })
+
+  test('サーバーが失敗を返したら解除も失敗にする', async () => {
+    mocks.apiFetch.mockResolvedValue({ ok: false, status: 500 })
+    await expect(unregisterPushToken()).rejects.toThrow('500')
   })
 })

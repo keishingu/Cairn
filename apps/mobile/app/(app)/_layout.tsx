@@ -2,6 +2,7 @@ import React from 'react'
 import { Alert } from 'react-native'
 import { Tabs, useRouter } from 'expo-router'
 import * as Notifications from 'expo-notifications'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { MobileNav } from '../../components/mobile-nav'
 import { ProjectsViewProvider } from '../../components/projects-view-context'
 import { AppearanceProvider } from '../../components/appearance-provider'
@@ -12,6 +13,8 @@ import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
+import { loadPushEnabled } from '../../lib/push-preference'
+import { useSession } from '../../lib/session-context'
 import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../../lib/push-registration'
 
 if (supportsNotifications) {
@@ -26,9 +29,16 @@ if (supportsNotifications) {
   })
 }
 
-// 起動時に一度だけ許可を求める。拒否後の再許可は通知画面の案内から行う
-async function requestAndRegisterPush() {
+// 起動時に許可を求めて登録する（ダイアログが出るのは初回だけ）。通知一覧のスイッチでオフにしたユーザーは登録し直さない。
+// 拒否後の再許可も通知一覧のスイッチから行う
+async function requestAndRegisterPush(userId: string) {
   if (!supportsNotifications) return
+  try {
+    if (!(await loadPushEnabled(userId, AsyncStorage))) return
+  } catch {
+    console.warn('[Push] Failed to read the push notification setting')
+    return
+  }
 
   // Android 13+ はチャンネルが無いと許可ダイアログが出ない
   try {
@@ -75,9 +85,10 @@ export default function AppLayout() {
   const tRef = React.useRef(t)
   tRef.current = t
 
+  const userId = useSession()?.user.id ?? null
   React.useEffect(() => {
-    void requestAndRegisterPush()
-  }, [])
+    if (userId) void requestAndRegisterPush(userId)
+  }, [userId])
 
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
   React.useEffect(() => {

@@ -1,55 +1,70 @@
 import React from 'react'
 import { AppState, Linking } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Notifications from 'expo-notifications'
 import { pushPermissionView, type PushPermissionView } from '../lib/push-permission'
+import { loadPushEnabled, savePushEnabled } from '../lib/push-preference'
 import {
   ensureAndroidNotificationChannel,
   isAndroidNotificationChannelDisabled,
   registerPushToken,
   supportsNotifications,
+  unregisterPushToken,
 } from '../lib/push-registration'
+import { useSession } from '../lib/session-context'
 
 type PushPermissionState =
   | { status: 'unsupported' }
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: PushPermissionView; registerFailed: boolean }
+  | {
+      status: PushPermissionView
+      /** 通知一覧のスイッチでオフにしていないか（端末内・ユーザーごと） */
+      enabled: boolean
+      /** サーバーへの登録・解除に失敗したか。失敗したほうを再試行する */
+      syncFailed: 'register' | 'unregister' | null
+    }
 
 export function usePushPermission() {
+  const userId = useSession()?.user.id ?? null
   const [state, setState] = React.useState<PushPermissionState>(
     supportsNotifications ? { status: 'loading' } : { status: 'unsupported' },
   )
-  const [requesting, setRequesting] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
 
-  // 復帰時・再試行・許可要求が重なったとき、後から終わった古い結果で上書きしない。アンマウント後の更新も止める
+  // 復帰時・再試行・切り替えが重なったとき、後から終わった古い結果で上書きしない。アンマウント後の更新も止める
   const seq = React.useRef(0)
 
-  const apply = React.useCallback(async (permission: Notifications.NotificationPermissionsStatus, id: number) => {
-    // アプリ全体は許可済みでも、通知が届くチャンネルだけがオフなら届かないのでオン表示にしない
-    const channelDisabled = permission.granted ? await isAndroidNotificationChannelDisabled() : false
-    const view = pushPermissionView(permission, { channelDisabled })
-    if (view !== 'granted') {
-      if (id === seq.current) setState({ status: view, registerFailed: false })
-      return
-    }
-    // 許可状態は先に見せる。トークン登録を待つと、その間（決着しなければずっと）何も表示されない
-    if (id === seq.current) setState({ status: 'granted', registerFailed: false })
-    try {
-      await registerPushToken()
-    } catch {
-      if (id === seq.current) setState({ status: 'granted', registerFailed: true })
-    }
-  }, [])
+  const apply = React.useCallback(
+    async (permission: Notifications.NotificationPermissionsStatus, enabled: boolean, id: number) => {
+      // アプリ全体は許可済みでも、通知が届くチャンネルだけがオフなら届かないのでオン表示にしない
+      const channelDisabled = permission.granted ? await isAndroidNotificationChannelDisabled() : false
+      const view = pushPermissionView(permission, { channelDisabled })
+      // 許可状態は先に見せる。登録を待つと、その間（決着しなければずっと）何も表示されない
+      if (id === seq.current) setState({ status: view, enabled, syncFailed: null })
+      if (view !== 'granted' || !enabled) return
+      try {
+        await registerPushToken()
+      } catch {
+        if (id === seq.current) setState({ status: view, enabled, syncFailed: 'register' })
+      }
+    },
+    [],
+  )
 
   const refresh = React.useCallback(async () => {
-    if (!supportsNotifications) return
+    if (!supportsNotifications || !userId) return
     const id = ++seq.current
     try {
-      await apply(await Notifications.getPermissionsAsync(), id)
+      const [permission, enabled] = await Promise.all([
+        Notifications.getPermissionsAsync(),
+        loadPushEnabled(userId, AsyncStorage),
+      ])
+      await apply(permission, enabled, id)
     } catch {
       if (id === seq.current) setState({ status: 'error' })
     }
-  }, [apply])
+  }, [apply, userId])
 
   // 設定アプリで許可して戻ってきたときに、表示とトークン登録を追従させる
   React.useEffect(() => {
@@ -63,24 +78,53 @@ export function usePushPermission() {
     }
   }, [refresh])
 
-  const request = React.useCallback(async () => {
+  const turnOn = React.useCallback(async () => {
+    if (!userId || state.status === 'unsupported' || state.status === 'loading') return
     const id = ++seq.current
-    setRequesting(true)
+    setBusy(true)
     try {
+      await savePushEnabled(userId, true, AsyncStorage)
+      if (state.status === 'open-settings') {
+        // ダイアログを出せないので設定アプリで許可してもらう。戻ったときの refresh で登録する
+        await Linking.openSettings()
+        return
+      }
       // Android 13+ はチャンネルが無いと許可ダイアログが出ない
       await ensureAndroidNotificationChannel()
-      await apply(await Notifications.requestPermissionsAsync(), id)
+      // 許可済みならダイアログは出ずにそのまま許可状態が返る
+      await apply(await Notifications.requestPermissionsAsync(), true, id)
     } catch {
       if (id === seq.current) setState({ status: 'error' })
     } finally {
       // iOS は許可ダイアログで inactive → active を経て refresh が割り込むため、連番に関係なく解除する
-      setRequesting(false)
+      setBusy(false)
     }
-  }, [apply])
+  }, [apply, state.status, userId])
 
-  const openSettings = React.useCallback(() => {
-    void Linking.openSettings()
-  }, [])
+  const turnOff = React.useCallback(async () => {
+    if (!userId || state.status === 'unsupported' || state.status === 'loading' || state.status === 'error') return
+    const id = ++seq.current
+    const view = state.status
+    setBusy(true)
+    try {
+      // 先に保存して、解除に失敗しても次の起動で再登録しないようにする
+      await savePushEnabled(userId, false, AsyncStorage)
+      if (id === seq.current) setState({ status: view, enabled: false, syncFailed: null })
+      await unregisterPushToken()
+    } catch {
+      if (id === seq.current) setState({ status: view, enabled: false, syncFailed: 'unregister' })
+    } finally {
+      setBusy(false)
+    }
+  }, [state.status, userId])
 
-  return { state, requesting, request, openSettings, retry: refresh }
+  const retry = React.useCallback(async () => {
+    if (state.status !== 'error' && 'syncFailed' in state && state.syncFailed === 'unregister') {
+      await turnOff()
+      return
+    }
+    await refresh()
+  }, [refresh, state, turnOff])
+
+  return { state, busy, turnOn, turnOff, retry }
 }

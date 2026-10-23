@@ -62,6 +62,13 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **Google ログインはネイティブ実装**: `expo-web-browser` で認可コードを受け取り、Supabase の PKCE フロー（`exchangeCodeForSession`）で交換する（`apps/mobile/lib/oauth.ts`）。redirect 先 `cairn://auth/callback` は Supabase の許可リストに登録が必要（ローカルは `supabase/config.toml` の `additional_redirect_urls`、本番はダッシュボードの Redirect URLs）。初回ログイン時も `/api/auth/setup` で profiles を作成する
 - **Apple / Google の追加ログイン手段は設定から手動連携**: 同一メールの自動紐付けに加え、設定 → アカウント → ログイン方法で `linkIdentity` により明示連携できる（Apple relay email 対応）。ローカルは `enable_manual_linking = true`、Preview / Production は Dashboard で Manual Linking を有効化する。Expo の設定 WebView は bridge（`link-apple-identity` / `link-google-identity`）経由で連携する
 
+## プッシュ通知
+
+- 起動時に OS の通知許可を求め（ダイアログは初回だけ）、許可されていれば Expo push token を `/api/push/subscribe` に登録する
+- 通知一覧（スライドインと通知画面）の上部の「Push通知」スイッチは「OS が許可済み」かつ「この端末でオフにしていない」ときにオン。オフにした記録は AsyncStorage にユーザーごと（`cairn:push_enabled_mobile:<userId>`）に残し、起動時の登録も止める。オフでは `DELETE /api/push/subscribe` にこの端末のトークンを送り、サーバーの登録を外す
+- オンにしたとき OS が未許可なら許可ダイアログを出す。iOS の一度拒否・Android 13+ の2回拒否・端末設定やチャンネルでのオフはダイアログで戻せないため、設定アプリを開く。戻ると（AppState が active）許可状態を取り直して登録する
+- トークン取得は iOS で APNs の応答が無いと決着しないことがあるため、取得と登録に時間切れを付け、失敗は通知一覧にエラーと再試行として出す
+
 ## リアクションの選択
 
 チャットのクイック選択は、追加に成功したリアクションの使用順に6件を表示する。履歴は AsyncStorage に端末内・ユーザーごとに最大32件保存し、不足分は既定の6種類で補う。取り消しや送信失敗では更新しない。クイック選択の下の「もっと見る」（またはシート上部の上スワイプ）で Web と同じ `@emoji-mart/data` に基づく一覧を開き、英語名・絵文字で検索、カテゴリ・肌の色を選択できる。下スワイプで一覧をたたみ、たたんだ状態なら閉じる。検索と一覧はオフラインでも使える。履歴の並べ方・絞り込み・スワイプ判定は `@cairn/shared` の `reactions.ts` を Web と共有する（Web の履歴はブラウザの localStorage に保存し、アプリとは共有しない）。

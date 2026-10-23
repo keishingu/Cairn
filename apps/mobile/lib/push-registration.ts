@@ -37,8 +37,7 @@ export async function isAndroidNotificationChannelDisabled(): Promise<boolean> {
 // iOS の getExpoPushTokenAsync() は APNs のデバイストークンが届くまで待ち、届かないと決着しないことがある
 const REGISTER_TIMEOUT_MS = 20_000
 
-/** 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。 */
-export async function registerPushToken(): Promise<void> {
+async function getPushToken(): Promise<string> {
   await ensureAndroidNotificationChannel()
   const projectId =
     Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.['eas']?.projectId
@@ -49,13 +48,27 @@ export async function registerPushToken(): Promise<void> {
     REGISTER_TIMEOUT_MS,
     'Timed out getting Expo push token',
   )
+  return token.data
+}
+
+async function sendSubscription(method: 'POST' | 'DELETE', expoToken: string): Promise<void> {
   const response = await withTimeout(
     apiFetch('/api/push/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ deviceType: 'expo', expoToken: token.data }),
+      method,
+      body: JSON.stringify({ deviceType: 'expo', expoToken }),
     }),
     REGISTER_TIMEOUT_MS,
-    'Timed out registering push token',
+    'Timed out updating push subscription',
   )
-  if (!response.ok) throw new Error(`Push subscribe failed: ${response.status}`)
+  if (!response.ok) throw new Error(`Push subscription ${method} failed: ${response.status}`)
+}
+
+/** 許可済みの端末の Expo push token をサーバーに登録する。失敗は呼び出し側で扱う。 */
+export async function registerPushToken(): Promise<void> {
+  await sendSubscription('POST', await getPushToken())
+}
+
+/** この端末の Expo push token をサーバーから外す。失敗は呼び出し側で扱う。 */
+export async function unregisterPushToken(): Promise<void> {
+  await sendSubscription('DELETE', await getPushToken())
 }

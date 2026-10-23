@@ -1,111 +1,77 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { usePushPermission } from '../hooks/use-push-permission'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
 
-/** 通知一覧の上に、端末のプッシュ通知の許可状態と、オフなら有効化の導線を出す */
+/**
+ * 通知一覧の上に、この端末のプッシュ通知のオン/オフを出す（Web の通知ページのスイッチに相当）。
+ * オンは OS の許可（無ければ許可ダイアログ、出せなければ設定アプリ）を経て登録し、オフは登録を外す
+ */
 export function PushPermissionBanner() {
   const t = useT()
   const { palette } = useAppAppearance()
-  const { state, requesting, request, openSettings, retry } = usePushPermission()
+  const { state, busy, turnOn, turnOff, retry } = usePushPermission()
 
   if (state.status === 'unsupported' || state.status === 'loading') return null
 
-  if (state.status === 'granted' && !state.registerFailed) {
-    return (
-      <View style={[styles.statusRow, { borderBottomColor: palette.border }]}>
-        <Ionicons name="notifications" size={14} color={palette.accentText} />
-        <Text style={[styles.statusText, { color: palette.text3 }]}>{t('Push notifications are on')}</Text>
-      </View>
-    )
-  }
-
-  const content =
+  const on = state.status === 'granted' && state.enabled
+  const message =
     state.status === 'error'
-      ? {
-          title: t('Could not check notification permission'),
-          body: null,
-          action: t('Retry'),
-          onPress: () => void retry(),
-        }
-      : state.status === 'granted'
-        ? {
-            title: t('Could not register this device for push notifications'),
-            body: t('Check your connection and try again.'),
-            action: t('Retry'),
-            onPress: () => void retry(),
-          }
-        : state.status === 'request'
-          ? {
-              title: t('Push notifications are off'),
-              body: t('Turn them on to get mentions and updates even when the app is closed.'),
-              action: t('Turn on notifications'),
-              onPress: () => void request(),
-            }
-          : {
-              title: t('Push notifications are blocked'),
-              body: t('Allow notifications for this app in the Settings app.'),
-              action: t('Open Settings'),
-              onPress: openSettings,
-            }
+      ? { text: t('Could not check notification permission'), error: true }
+      : state.syncFailed === 'register'
+        ? { text: `${t('Could not register this device for push notifications')} ${t('Check your connection and try again.')}`, error: true }
+        : state.syncFailed === 'unregister'
+          ? { text: `${t('Could not turn off push notifications for this device')} ${t('Check your connection and try again.')}`, error: true }
+          : state.status === 'open-settings'
+            ? { text: t('Notifications are blocked. Turning this on opens the Settings app.'), error: false }
+            : null
 
   return (
-    <View style={[styles.banner, { backgroundColor: palette.card, borderColor: palette.border }]}>
-      <View style={styles.bannerText}>
-        <Text style={[styles.title, { color: palette.text }]}>{content.title}</Text>
-        {content.body ? <Text style={[styles.body, { color: palette.text3 }]}>{content.body}</Text> : null}
+    <View style={[styles.container, { borderBottomColor: palette.border }]}>
+      <View style={styles.row}>
+        <Ionicons name={on ? 'notifications' : 'notifications-off-outline'} size={16} color={on ? palette.accentText : palette.text3} />
+        <Text style={[styles.label, { color: palette.text2 }]}>{t('Push notifications')}</Text>
+        {busy ? <ActivityIndicator size="small" color={palette.accent} /> : null}
+        <Switch
+          accessibilityLabel={on ? t('Turn off push notifications') : t('Turn on push notifications')}
+          value={on}
+          disabled={busy || state.status === 'error'}
+          onValueChange={(next) => void (next ? turnOn() : turnOff())}
+          trackColor={{ true: palette.accent }}
+        />
       </View>
-      <Pressable
-        accessibilityRole="button"
-        disabled={requesting}
-        onPress={content.onPress}
-        style={({ pressed }) => [
-          styles.button,
-          { backgroundColor: palette.accent },
-          pressed && styles.pressed,
-        ]}
-      >
-        {requesting ? (
-          <ActivityIndicator size="small" color={palette.onAccent} />
-        ) : (
-          <Text style={[styles.buttonText, { color: palette.onAccent }]}>{content.action}</Text>
-        )}
-      </Pressable>
+      {message ? (
+        <View style={styles.messageRow}>
+          <Text style={[styles.message, { color: message.error ? palette.redText : palette.text3 }]}>{message.text}</Text>
+          {message.error ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void retry()}
+              style={({ pressed }) => [styles.retryButton, { backgroundColor: palette.accentSoft }, pressed && styles.pressed]}
+            >
+              <Text style={[styles.retryText, { color: palette.accentText }]}>{t('Retry')}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  container: {
     paddingHorizontal: 16,
     paddingVertical: 8,
+    gap: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  statusText: { fontSize: 12 },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  bannerText: { flex: 1, gap: 4 },
-  title: { fontSize: 14, fontWeight: '700' },
-  body: { fontSize: 13, lineHeight: 18 },
-  button: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  buttonText: { fontSize: 13, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  label: { flex: 1, fontSize: 14, fontWeight: '600' },
+  messageRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  message: { flex: 1, fontSize: 12, lineHeight: 17 },
+  retryButton: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  retryText: { fontSize: 12, fontWeight: '700' },
   pressed: { opacity: 0.85 },
 })
