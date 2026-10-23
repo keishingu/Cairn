@@ -6,6 +6,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { translate } from '@cairn/shared'
 import { FilesTab } from './files-tab'
 import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { useProjectFiles } from '@/hooks/use-project-files'
@@ -112,7 +113,7 @@ describe('ファイルタブ', () => {
     renderFilesTab()
 
     await userEvent.click(screen.getByRole('button', { name: '操作' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Download original PDF (new PDFs are supporter only)' }))
+    await userEvent.click(screen.getByRole('button', { name: translate('ja', 'Download original PDF (new PDFs are supporter only)') }))
 
     expect(open).toHaveBeenCalledWith('/api/attachments/pdf-1?original=1', '_blank', 'noopener,noreferrer')
     open.mockRestore()
