@@ -239,6 +239,21 @@ describe('compressPdfImages', () => {
     expect(compressed).toBe(pdf)
   })
 
+  it('JPEGの寸法上限を超える画像は原本のまま保持する', async () => {
+    const width = 70_000
+    const height = 2
+    const doc = await PDFDocument.create()
+    const imageRef = doc.context.register(doc.context.flateStream(buildPhotoLikePixels(width, height), {
+      Type: 'XObject', Subtype: 'Image', Width: width, Height: height,
+      BitsPerComponent: 8, ColorSpace: 'DeviceRGB',
+    }))
+    const page = doc.addPage([100, 100])
+    page.node.newXObject('Im1', imageRef)
+    const pdf = Buffer.from(await doc.save())
+
+    expect(await compressPdfImages(pdf)).toBe(pdf)
+  })
+
   it('非デフォルトのDecode配列を持つ画像は対象外のまま変更しない', async () => {
     const width = 400
     const height = 400

@@ -25,6 +25,10 @@ const MIN_PIXELS = 40_000
 // OOMを避けるため対象外にする（インフレート前にWidth/Heightの申告値だけで判定できる）
 const MAX_PIXELS = 40_000_000
 
+// JPEG's dimension limit (JPEG_MAX_DIMENSION in libjpeg) is lower than the
+// pixel-count limit for very wide or tall images.
+const MAX_JPEG_DIMENSION = 65_500
+
 // 差し替えエンジンを容易に切り替えられるよう、入出力を Buffer のみに閉じたシグネチャにする。
 // 実装の詳細（pdf-lib + sharp）は呼び出し側から一切見えない。
 // 対象画像が無い場合や、再圧縮しても縮まらない場合は元の buffer をそのまま返す。
@@ -116,7 +120,8 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   const height = dict.lookupMaybe(PDFName.of('Height'), PDFNumber)?.asNumber()
   if (
     typeof width !== 'number' || typeof height !== 'number' ||
-    !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
+    !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 ||
+    width > MAX_JPEG_DIMENSION || height > MAX_JPEG_DIMENSION
   ) return null
 
   const pixels = width * height
