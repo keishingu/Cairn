@@ -13,9 +13,14 @@ import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
-import { loadPushEnabled } from '../../lib/push-preference'
+import { completePendingRemoval, loadPushEnabled, loadPushSetting } from '../../lib/push-preference'
 import { useSession } from '../../lib/session-context'
-import { ensureAndroidNotificationChannel, registerPushToken, supportsNotifications } from '../../lib/push-registration'
+import {
+  ensureAndroidNotificationChannel,
+  registerPushToken,
+  supportsNotifications,
+  unregisterPushToken,
+} from '../../lib/push-registration'
 
 if (supportsNotifications) {
   Notifications.setNotificationHandler({
@@ -34,9 +39,14 @@ if (supportsNotifications) {
 async function requestAndRegisterPush(userId: string) {
   if (!supportsNotifications) return
   try {
-    if (!(await loadPushEnabled(userId, AsyncStorage))) return
+    const setting = await loadPushSetting(userId, AsyncStorage)
+    if (!setting.enabled) {
+      // オフにしたのにサーバーの登録を外せていなければ送り直す。失敗は通知一覧で再試行できる
+      if (setting.removalPending) await completePendingRemoval(userId, AsyncStorage, unregisterPushToken)
+      return
+    }
   } catch {
-    console.warn('[Push] Failed to read the push notification setting')
+    console.warn('[Push] Failed to read the push notification setting or remove the subscription')
     return
   }
 

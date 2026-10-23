@@ -3,7 +3,13 @@ import { AppState, Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Notifications from 'expo-notifications'
 import { pushPermissionView, type PushPermissionView } from '../lib/push-permission'
-import { loadPushEnabled, savePushEnabled } from '../lib/push-preference'
+import {
+  completePendingRemoval,
+  loadPushEnabled,
+  loadPushSetting,
+  savePushEnabled,
+  subscribePushPreference,
+} from '../lib/push-preference'
 import {
   ensureAndroidNotificationChannel,
   isAndroidNotificationChannelDisabled,
@@ -53,19 +59,31 @@ export function usePushPermission() {
     [userId],
   )
 
+  // オフにしたのにサーバーの登録を外せていなければ、外せるまで送り直す（アプリの終了や通信失敗で残らないように）
+  const retryPendingRemoval = React.useCallback(async (uid: string, id: number) => {
+    try {
+      await completePendingRemoval(uid, AsyncStorage, unregisterPushToken)
+    } catch {
+      if (id === seq.current) {
+        setState((current) => ('syncFailed' in current ? { ...current, syncFailed: 'unregister' } : current))
+      }
+    }
+  }, [])
+
   const refresh = React.useCallback(async () => {
     if (!supportsNotifications || !userId) return
     const id = ++seq.current
     try {
-      const [permission, enabled] = await Promise.all([
+      const [permission, setting] = await Promise.all([
         Notifications.getPermissionsAsync(),
-        loadPushEnabled(userId, AsyncStorage),
+        loadPushSetting(userId, AsyncStorage),
       ])
-      await apply(permission, enabled, id)
+      await apply(permission, setting.enabled, id)
+      if (setting.removalPending) await retryPendingRemoval(userId, id)
     } catch {
       if (id === seq.current) setState({ status: 'error' })
     }
-  }, [apply, userId])
+  }, [apply, retryPendingRemoval, userId])
 
   // 設定アプリで許可して戻ってきたときに、表示とトークン登録を追従させる
   React.useEffect(() => {
@@ -79,12 +97,22 @@ export function usePushPermission() {
     }
   }, [refresh])
 
+  // スイッチは通知パネルと通知画面の両方にある。もう片方で変えたら読み直す
+  const source = React.useRef({})
+  React.useEffect(
+    () =>
+      subscribePushPreference((changedUserId, changedBy) => {
+        if (changedUserId === userId && changedBy !== source.current) void refresh()
+      }),
+    [refresh, userId],
+  )
+
   const turnOn = React.useCallback(async () => {
     if (!userId || state.status === 'unsupported' || state.status === 'loading') return
     const id = ++seq.current
     setBusy(true)
     try {
-      await savePushEnabled(userId, true, AsyncStorage)
+      await savePushEnabled(userId, true, AsyncStorage, source.current)
       if (state.status === 'open-settings') {
         // ダイアログを出せないので設定アプリで許可してもらう。戻ったときの refresh で登録する
         await Linking.openSettings()
@@ -108,10 +136,10 @@ export function usePushPermission() {
     const view = state.status
     setBusy(true)
     try {
-      // 先に保存して、解除に失敗しても次の起動で再登録しないようにする
-      await savePushEnabled(userId, false, AsyncStorage)
+      // 先に「解除待ち」として保存する。解除前にアプリが終了したり失敗したりしても、次の起動や表示更新で解除を送り直す
+      await savePushEnabled(userId, false, AsyncStorage, source.current)
       if (id === seq.current) setState({ status: view, enabled: false, syncFailed: null })
-      await unregisterPushToken()
+      await completePendingRemoval(userId, AsyncStorage, unregisterPushToken)
     } catch {
       if (id === seq.current) setState({ status: view, enabled: false, syncFailed: 'unregister' })
     } finally {
