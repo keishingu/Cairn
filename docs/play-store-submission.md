@@ -162,7 +162,8 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 ## 製品版送信前のブロッカー
 
 - [x] Play デベロッパー アカウント: クラウド版の運営者である株式会社オリカタ（orikata, Inc.）の組織アカウントで、アプリ「Cairn」（`com.oss_cairn`）を作成済み
-- [ ] Firebase プロジェクトと `google-services.json` / FCM V1 サービス アカウントを EAS に登録し、本番ビルドで通知が届くことを確認する
+- [x] Firebase プロジェクト `cairn-9f6f3`（Analytics オフ）に Android アプリ `com.oss_cairn` を登録し、`google-services.json` を EAS production の `GOOGLE_SERVICES_JSON` に登録済み
+- [ ] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、本番ビルドで通知が届くことを確認する
 - [ ] `pnpm build:production:android` で upload key を生成し、AAB を Play Console に手動アップロードして内部テストを開始する
 - [x] フィーチャー グラフィック（1024×500）を作成・アップロード済み
 - [ ] スマートフォン用スクリーンショットを内部テスト版から撮影してアップロードする
