@@ -223,7 +223,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         uploadedBy: files.uploadedBy,
         fileName: files.fileName,
         fileType: files.fileType,
-        metadata: files.metadata,
       })
       .from(files)
       .where(eq(files.id, fileId))
@@ -242,11 +241,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     }
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
-    const meta = (file.metadata ?? {}) as Record<string, unknown>
     await db
       .update(files)
       .set({
-        metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'`,
+        metadata: isLatest
+          ? sql`jsonb_set(coalesce(${files.metadata}, '{}'::jsonb), '{isLatest}', 'true'::jsonb, true)`
+          : sql`${files.metadata} - 'isLatest'`,
       })
       .where(eq(files.id, fileId))
 
