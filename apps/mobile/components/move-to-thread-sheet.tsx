@@ -2,7 +2,6 @@ import React from 'react'
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -98,7 +97,7 @@ export function MoveToThreadSheet({ message, threads, palette, pending, error, o
     <Modal transparent visible={message !== null} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={pending ? undefined : onClose} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         pointerEvents="box-none"
         style={styles.sheetWrap}
       >

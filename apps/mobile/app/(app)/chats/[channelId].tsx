@@ -1321,9 +1321,11 @@ export default function ChatThreadScreen() {
   }
 
   return (
+    // Android も padding にする。targetSdk 36 の edge-to-edge ではキーボードが出てもウィンドウが縮まず、
+    // behavior を付けないと入力欄がキーボードの裏に隠れる。縮む端末では重なりが 0 になり余白は足されない
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       {...backSwipe.panHandlers}
     >
       <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
