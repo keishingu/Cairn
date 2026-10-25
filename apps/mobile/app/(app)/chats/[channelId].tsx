@@ -1501,6 +1501,13 @@ export default function ChatThreadScreen() {
             {sendKeyPreferenceError && (
               <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>{sendKeyPreferenceError}</Text>
             )}
+            {selectedWorkspace.error && (
+              <Pressable accessibilityRole="button" onPress={selectedWorkspace.retry}>
+                <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>
+                  {t('Could not load the selected workspace, so attachments cannot be shown. Tap to retry.')}
+                </Text>
+              </Pressable>
+            )}
             {offlineQueue.restoreError && (
               <View style={styles.queueRestoreError} accessibilityRole="alert">
                 <Text style={[styles.queueRestoreErrorText, { color: palette.redText }]}>
