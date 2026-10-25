@@ -12,18 +12,11 @@ function errorsOf(input: unknown): string[] {
   return result.ok ? [] : result.errors
 }
 
-/** markdown ブロック・meter の受理を有効にした状態（FEATURE_FLAGS.cardMarkdownAndMeter を true にした後）で受理する */
-const accept = (input: unknown) => prepareMessageBlocks(input, { acceptMarkdownAndMeter: true })
-
-function acceptErrorsOf(input: unknown): string[] {
-  const result = accept(input)
-  return result.ok ? [] : result.errors
-}
 
 describe('メッセージの blocks の受理', () => {
   it('投票カードと全要素入りのカードを受理する', () => {
     expect(prepareMessageBlocks(clone(pollCardFixture)).ok).toBe(true)
-    expect(accept(clone(allElementsFixture)).ok).toBe(true)
+    expect(prepareMessageBlocks(clone(allElementsFixture)).ok).toBe(true)
   })
 
   it('未対応のブロック種別を理由と位置つきで拒否する', () => {
@@ -43,28 +36,20 @@ describe('メッセージの blocks の受理', () => {
     ])
   })
 
-  it('markdown ブロックと meter は、受理を有効にするまで未対応として断る（描画を先に、受理を後に）', () => {
-    const blocks = [{ type: 'markdown', text: '**太字**' }, { type: 'context', elements: [{ type: 'meter', value: 1, max: 2 }] }]
-    expect(errorsOf(clone(blocks))).toEqual([
-      '[ERROR] 未対応のブロック種別です: markdown [json-pointer:/blocks/0/type]',
-      '[ERROR] 未対応の要素です: meter [json-pointer:/blocks/1/elements/0/type]',
-    ])
-    expect(accept(clone(blocks)).ok).toBe(true)
+  it('markdown ブロックと meter を受理する', () => {
+    expect(prepareMessageBlocks([{ type: 'markdown', text: '**太字**' }, { type: 'context', elements: [{ type: 'meter', value: 1, max: 2 }] }]).ok).toBe(true)
   })
 
   it('markdown ブロックの文字数はメッセージ内の合計で上限をかける', () => {
-    expect(accept([{ type: 'markdown', text: 'a'.repeat(6000) }, { type: 'markdown', text: 'b'.repeat(6000) }]).ok).toBe(true)
-    expect(acceptErrorsOf([{ type: 'markdown', text: 'a'.repeat(6000) }, { type: 'markdown', text: 'b'.repeat(6001) }])).toEqual([
+    expect(prepareMessageBlocks([{ type: 'markdown', text: 'a'.repeat(6000) }, { type: 'markdown', text: 'b'.repeat(6000) }]).ok).toBe(true)
+    expect(errorsOf([{ type: 'markdown', text: 'a'.repeat(6000) }, { type: 'markdown', text: 'b'.repeat(6001) }])).toEqual([
       '[ERROR] markdown ブロックの文字数はメッセージ内の合計で 12000 文字までです [json-pointer:/blocks/1/text]',
     ])
   })
 
-  it('モーダルの meter も、受理を有効にするまで未対応として断る', () => {
+  it('モーダルの context でも meter を受理する', () => {
     const view = { ...clone(pollModalFixture), blocks: [...clone(pollModalFixture).blocks, { type: 'context', elements: [{ type: 'meter', value: 1, max: 2 }] }] }
-    const index = view.blocks.length - 1
-    const result = prepareModalView(clone(view))
-    expect(result.ok ? [] : result.errors).toEqual([`[ERROR] 未対応の要素です: meter [json-pointer:/view/blocks/${index}/elements/0/type]`])
-    expect(prepareModalView(clone(view), { acceptMarkdownAndMeter: true }).ok).toBe(true)
+    expect(prepareModalView(view).ok).toBe(true)
   })
 
   it('markdown ブロックはモーダルでは拒否する（Slack と同じくメッセージだけ）', () => {
@@ -74,11 +59,11 @@ describe('メッセージの blocks の受理', () => {
 
   it('meter は値が min〜max の範囲にあるときだけ受理する', () => {
     const context = (meter: Record<string, unknown>) => [{ type: 'context', elements: [{ type: 'meter', ...meter }] }]
-    expect(accept(context({ value: 0, max: 5 })).ok).toBe(true)
-    expect(accept(context({ value: -1, min: -2, max: 0 })).ok).toBe(true)
-    expect(acceptErrorsOf(context({ value: 6, max: 5 })).length).toBeGreaterThan(0)
-    expect(acceptErrorsOf(context({ value: 0, max: 0 })).length).toBeGreaterThan(0)
-    expect(acceptErrorsOf(context({ value: 1, max: 5, color: 'red' })).length).toBeGreaterThan(0)
+    expect(prepareMessageBlocks(context({ value: 0, max: 5 })).ok).toBe(true)
+    expect(prepareMessageBlocks(context({ value: -1, min: -2, max: 0 })).ok).toBe(true)
+    expect(errorsOf(context({ value: 6, max: 5 })).length).toBeGreaterThan(0)
+    expect(errorsOf(context({ value: 0, max: 0 })).length).toBeGreaterThan(0)
+    expect(errorsOf(context({ value: 1, max: 5, color: 'red' })).length).toBeGreaterThan(0)
   })
 
   it('空配列と上限超えを拒否する', () => {

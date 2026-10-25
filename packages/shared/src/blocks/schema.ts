@@ -7,10 +7,10 @@
 // 要素を足すときは Web とネイティブの描画を先に出し、OTA が行き渡ってから BLOCKS_SCHEMA_VERSION を上げて受理する。
 
 import { z } from 'zod'
-import { FEATURE_FLAGS } from '../config/feature-flags'
 
 /** message_blocks.schema_version に記録する、受理に使ったスキーマの版 */
-export const BLOCKS_SCHEMA_VERSION = 1
+// 2: markdown ブロック（Slack と同じ形）と、Cairn 独自の context 要素 meter を足した
+export const BLOCKS_SCHEMA_VERSION = 2
 
 // 上限は Slack に合わせる。Bolt アプリが Slack で通る blocks をそのまま送れるようにするため
 export const BLOCK_LIMITS = {
@@ -461,39 +461,12 @@ export type BlocksValidationResult<T> = { ok: true; value: T } | { ok: false; er
  * Slack の invalid_blocks と同じく `[ERROR] <理由> [json-pointer:/blocks/0/text]` の形でエラーを返す。
  * 省略された block_id / action_id は補う（Slack も自動で振る）。インタラクションの宛先を保存済み blocks から一意に引くため
  */
-export function prepareMessageBlocks(
-  input: unknown,
-  options: { acceptMarkdownAndMeter?: boolean } = {},
-): BlocksValidationResult<MessageBlock[]> {
-  const result = prepare(messageBlocksSchema, input, '/blocks')
-  if (!result.ok || (options.acceptMarkdownAndMeter ?? FEATURE_FLAGS.cardMarkdownAndMeter)) return result
-  const unreleased = unreleasedErrors(result.value, '/blocks')
-  return unreleased.length > 0 ? { ok: false, errors: unreleased } : result
+export function prepareMessageBlocks(input: unknown): BlocksValidationResult<MessageBlock[]> {
+  return prepare(messageBlocksSchema, input, '/blocks')
 }
 
-/**
- * 描画を配信したが、まだ受理を有効にしていないブロック・要素（§4.4「描画を先に、受理を後に」）。
- * 古いネイティブでは描けないので、OTA が行き渡って FEATURE_FLAGS.cardMarkdownAndMeter を有効にするまでは断る
- */
-function unreleasedErrors(blocks: Array<{ type: string; elements?: ReadonlyArray<{ type: string }> }>, pointer: string): string[] {
-  const errors: string[] = []
-  blocks.forEach((block, blockIndex) => {
-    if (block.type === 'markdown') errors.push(`[ERROR] 未対応のブロック種別です: markdown [json-pointer:${pointer}/${blockIndex}/type]`)
-    if (block.type === 'context') {
-      block.elements?.forEach((element, elementIndex) => {
-        if (element.type === 'meter') errors.push(`[ERROR] 未対応の要素です: meter [json-pointer:${pointer}/${blockIndex}/elements/${elementIndex}/type]`)
-      })
-    }
-  })
-  return errors
-}
-
-export function prepareModalView(input: unknown, options: { acceptMarkdownAndMeter?: boolean } = {}): BlocksValidationResult<ModalView> {
-  const result = prepare(modalViewSchema, input, '/view')
-  if (!result.ok || (options.acceptMarkdownAndMeter ?? FEATURE_FLAGS.cardMarkdownAndMeter)) return result
-  // モーダルも context ブロックを使うので、meter をメッセージと同じく受理の有効化まで断る（古いネイティブでは描けず、送信も止まる）
-  const unreleased = unreleasedErrors(result.value.blocks, '/view/blocks')
-  return unreleased.length > 0 ? { ok: false, errors: unreleased } : result
+export function prepareModalView(input: unknown): BlocksValidationResult<ModalView> {
+  return prepare(modalViewSchema, input, '/view')
 }
 
 function prepare<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, input: unknown, pointerRoot: string): BlocksValidationResult<T> {

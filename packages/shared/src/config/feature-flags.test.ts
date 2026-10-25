@@ -6,6 +6,6 @@ import { FEATURE_FLAGS } from './feature-flags'
 
 describe('feature flag', () => {
   it('DMとAI PMOを全環境で利用可能にする', () => {
-    expect(FEATURE_FLAGS).toEqual({ dm: true, aiPmo: true, cardMarkdownAndMeter: false })
+    expect(FEATURE_FLAGS).toEqual({ dm: true, aiPmo: true })
   })
 })
