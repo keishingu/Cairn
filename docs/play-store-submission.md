@@ -2,7 +2,7 @@
 
 > 対象: `apps/mobile` の Cairn 本番アプリ（Android package: `com.oss_cairn`）。iOS は [`app-store-submission.md`](app-store-submission.md)。
 
-iOS は App Store 公開済みだが、Android はまだ Google Play に登録していない。この文書は、Play Console の開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
+iOS は App Store 公開済み。Android は株式会社オリカタ（orikata, Inc.）の Play デベロッパー アカウントに登録済みで、内部テストに公開しており、製品版はまだ公開していない。この文書は、開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。進捗は末尾の「製品版送信前のブロッカー」で管理する。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
 
 ## リポジトリ内で準備済みのもの
 
