@@ -62,8 +62,3 @@ export function Table({ head, rows }: { head: ReactNode[]; rows: ReactNode[][] }
 export function Note({ children }: { children: ReactNode }) {
   return <div className={styles['note']}>{children}</div>
 }
-
-/** まだ受理していない（フラグで後から有効にする）ブロック・要素の印 */
-export function ComingSoon({ locale }: { locale: DocsLocale }) {
-  return <span className={styles['badge']}>{locale === 'ja' ? '近日対応' : 'Coming soon'}</span>
-}

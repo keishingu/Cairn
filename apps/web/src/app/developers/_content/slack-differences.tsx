@@ -30,7 +30,7 @@ export const slackDifferencesPage: DocPage = {
                 ['URL', 'http も可', 'https のみ'],
                 ['エラーの理由の文', '英語', '現在は日本語（error コードは Slack と同じ名前）'],
                 ['ペイロードの追加', '—', <><code key="a">cairn.*</code>（message_id / interaction_id / channel_id / locale）、起動の form の <code>locale</code></>],
-                ['独自の要素', '—', <><code key="a">meter</code>（近日対応）</>],
+                ['独自の要素', '—', <code key="a">meter</code>],
               ]}
             />
           ),
@@ -100,7 +100,7 @@ export const slackDifferencesPage: DocPage = {
                 ['URLs', 'http allowed', 'https only'],
                 ['Error reason texts', 'English', 'Currently Japanese (error codes use Slack’s names)'],
                 ['Extra payload fields', '—', <><code key="a">cairn.*</code> (message_id / interaction_id / channel_id / locale), and <code>locale</code> in launch forms</>],
-                ['Cairn-only elements', '—', <><code key="a">meter</code> (coming soon)</>],
+                ['Cairn-only elements', '—', <code key="a">meter</code>],
               ]}
             />
           ),

@@ -3,7 +3,7 @@
 
 import Link from 'next/link'
 import { BLOCK_LIMITS } from '@cairn/shared'
-import { Code, ComingSoon, Note, Table, type DocPage, type DocsLocale } from '../_components/doc'
+import { Code, Table, type DocPage, type DocsLocale } from '../_components/doc'
 
 // 上限の数値は受理判定（packages/shared/src/blocks/schema.ts）から引き、ドキュメントとコードをずらさない
 const LIMIT_ROWS: Array<{ key: keyof typeof BLOCK_LIMITS; ja: string; en: string }> = [
@@ -37,8 +37,8 @@ const LIMIT_ROWS: Array<{ key: keyof typeof BLOCK_LIMITS; ja: string; en: string
   { key: 'callbackId', ja: 'callback_id', en: 'callback_id' },
 ]
 
-// markdown ブロックの合計文字数。受理を有効にするまで BLOCK_LIMITS には無いため、Slack と同じ値をここに書く
-const MARKDOWN_TOTAL_LIMIT = 12000
+// markdown ブロックの合計文字数（Slack と同じ）。数値は受理判定と同じ BLOCK_LIMITS から引く
+const MARKDOWN_TOTAL_LIMIT = BLOCK_LIMITS.markdownTotal
 
 function limitsTable(locale: DocsLocale) {
   return (
@@ -129,7 +129,6 @@ export const blocksPage: DocPage = {
                 [
                   <>
                     <code>markdown</code>
-                    <ComingSoon locale="ja" />
                   </>,
                   '○',
                   '×',
@@ -172,7 +171,6 @@ export const blocksPage: DocPage = {
                   [
                     <>
                       <code>meter</code>
-                      <ComingSoon locale="ja" />
                     </>,
                     <>
                       <code>value</code>、<code>max</code>、<code>min</code>（省略時 0）、<code>label</code>（読み上げ用）。context ブロックの要素。Cairn 独自
@@ -276,14 +274,10 @@ export const blocksPage: DocPage = {
           ),
         },
         {
-          id: 'coming-soon',
-          title: '近日対応: markdown ブロックと meter 要素',
+          id: 'markdown-and-meter',
+          title: 'markdown ブロックと meter 要素',
           content: (
             <>
-              <Note>
-                描画は準備済みで、モバイルアプリの更新が行き渡った後に受け付けを始めます。それまでは <code>invalid_blocks</code>{' '}
-                になります。開始時はこのページの印を外してお知らせします。
-              </Note>
               <h3>markdown ブロック</h3>
               <p>
                 Slack の <code>markdown</code> ブロックと同じ形で、見出し・表・リストなど標準の Markdown を書けます。Cairn の通常メッセージと同じ部品で描くので、
@@ -348,7 +342,6 @@ export const blocksPage: DocPage = {
                 [
                   <>
                     <code>markdown</code>
-                    <ComingSoon locale="en" />
                   </>,
                   '✓',
                   '—',
@@ -391,7 +384,6 @@ export const blocksPage: DocPage = {
                   [
                     <>
                       <code>meter</code>
-                      <ComingSoon locale="en" />
                     </>,
                     <>
                       <code>value</code>, <code>max</code>, <code>min</code> (defaults to 0), <code>label</code> (for screen readers). An element of
@@ -499,14 +491,10 @@ export const blocksPage: DocPage = {
           ),
         },
         {
-          id: 'coming-soon',
-          title: 'Coming soon: markdown block and meter element',
+          id: 'markdown-and-meter',
+          title: 'markdown block and meter element',
           content: (
             <>
-              <Note>
-                Rendering is ready; Cairn will start accepting these once the mobile app update has rolled out. Until then they fail with{' '}
-                <code>invalid_blocks</code>. We will remove the badge on this page when they are accepted.
-              </Note>
               <h3>markdown block</h3>
               <p>
                 Same shape as Slack’s <code>markdown</code> block: write standard Markdown with headings, tables and lists. It is drawn with the same
