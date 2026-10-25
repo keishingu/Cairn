@@ -11,7 +11,7 @@
 | API ルート | `api-conventions.md`（現行） | — |
 | フロントエンド・UI | `frontend-guidelines.md`（現行）、`../.interface-design/system.md` | — |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行） | `archive/notification-ux-redesign.md`（再設計の経緯。Phase 4〜5 は構想） |
-| モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（ストア提出） |
+| モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（App Store 提出）、`play-store-submission.md`（Google Play 提出） |
 | デプロイ・リリース・本番設定 | `production-deployment.md`（現行） | `resend-email-provider.md`（認証メールの SMTP 配送） |
 | プロフィール属性・メンバー表示 | `profile-attributes-design.md`（現行） | `user-deactivation-design.md`（非活性メンバー。実装済み） |
 | マイルストーン | `milestone-design.md`（実装状況・設計判断・残課題） | — |
