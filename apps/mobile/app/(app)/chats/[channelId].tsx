@@ -1492,7 +1492,6 @@ export default function ChatThreadScreen() {
               {
                 backgroundColor: palette.card,
                 borderTopColor: palette.border,
-                paddingBottom: insets.bottom || 12,
               },
             ]}
           >
@@ -2202,7 +2201,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
-  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8 },
+  // 下端の安全領域（ホームインジケーター・ナビゲーションバー）は下のタブバー（MobileNav）が確保する。
+  // ここでも insets.bottom を足すと二重になり、入力欄の下に大きな隙間ができる
+  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
   messageListContainer: { flex: 1 },
   messageList: { flex: 1 },
   olderLoading: { marginVertical: 14 },
