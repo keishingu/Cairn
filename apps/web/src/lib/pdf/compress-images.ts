@@ -3,6 +3,7 @@
 
 import {
   PDFBool,
+  PDFArray,
   PDFContext,
   PDFDict,
   PDFDocument,
@@ -127,8 +128,9 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   const pixels = width * height
   if (pixels < MIN_PIXELS || pixels > MAX_PIXELS) return null
 
-  const channels = resolveChannels(dict, doc.context)
-  if (!channels) return null
+  const colorSpace = resolveColorSpace(dict, doc.context)
+  if (!colorSpace) return null
+  const { channels } = colorSpace
 
   // ここまでの時点で申告サイズは上限内と確認済みなので、ここで初めてインフレートする
   const pixelBytes = width * height * channels
@@ -144,9 +146,9 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   if (decoded.byteLength !== pixelBytes) return null
 
   const raw = decoded
-  const jpeg = await sharp(raw, { raw: { width, height, channels: channels as 1 | 3 } })
-    .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
-    .toBuffer()
+  const encoder = sharp(raw, { raw: { width, height, channels: channels as 1 | 3 } })
+  if (channels === 1) encoder.greyscale().toColourspace('b-w')
+  const jpeg = await encoder.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer()
 
   // 再圧縮しても縮まらないなら差し替えない（PDFに既に格納されている生バイト数と比較）
   if (jpeg.byteLength >= stream.getContentsSize()) return null
@@ -155,17 +157,35 @@ async function recompressIfPhoto(doc: PDFDocument, stream: PDFRawStream): Promis
   // PDFDocument.flush() が通常行う埋め込みをここで先に完了させ、既存refへ
   // 割り当てるストリームが context に登録済みであることを保証する。
   await embedded.embed()
+  if (colorSpace.iccBased) {
+    // embedJpg emits DeviceGray/DeviceRGB. Keep the source ICCBased color space
+    // attached to the JPEG samples so its profile continues to define their color.
+    const replacement = doc.context.lookup(embedded.ref, PDFStream)
+    replacement.dict.set(PDFName.of('ColorSpace'), colorSpace.original)
+  }
   return embedded.ref
 }
 
-// DeviceGray/DeviceRGBだけを扱う。ICCBasedをsRGB相当として解釈すると色が変わるため除外。
-function resolveChannels(dict: PDFDict, context: PDFContext): 1 | 3 | null {
+// ICCBased samples can be JPEG-encoded without color conversion when the JPEG
+// component count matches /N; retain the original color-space object on output.
+function resolveColorSpace(
+  dict: PDFDict,
+  context: PDFContext,
+): { channels: 1 | 3; iccBased: boolean; original: NonNullable<ReturnType<PDFDict['get']>> } | null {
   const csRef = dict.get(PDFName.of('ColorSpace'))
   if (!csRef) return null
 
   const cs = context.lookup(csRef)
-  if (cs === PDFName.of('DeviceGray')) return 1
-  if (cs === PDFName.of('DeviceRGB')) return 3
+  if (cs === PDFName.of('DeviceGray')) return { channels: 1, iccBased: false, original: csRef }
+  if (cs === PDFName.of('DeviceRGB')) return { channels: 3, iccBased: false, original: csRef }
+
+  if (cs instanceof PDFArray && cs.size() === 2 && cs.get(0) === PDFName.of('ICCBased')) {
+    const profile = context.lookupMaybe(cs.get(1), PDFStream)
+    const channels = profile?.dict.lookupMaybe(PDFName.of('N'), PDFNumber)?.asNumber()
+    if (channels === 1 || channels === 3) {
+      return { channels, iccBased: true, original: csRef }
+    }
+  }
 
   return null
 }

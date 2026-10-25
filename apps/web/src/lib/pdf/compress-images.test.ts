@@ -8,7 +8,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PDFDict, PDFDocument, PDFName, PDFRawStream, PDFStream } from 'pdf-lib'
+import { inflateSync } from 'node:zlib'
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFStream } from 'pdf-lib'
 import sharp from 'sharp'
 import { compressPdfImages } from './compress-images'
 
@@ -134,23 +135,70 @@ describe('compressPdfImages', () => {
     }
   })
 
-  it('ICCBased画像は色空間を変換せず対象外にする', async () => {
+  it('ICCBased画像は元のICC色空間を保ったままJPEGへ再圧縮する', async () => {
     const width = 400
     const height = 400
     const doc = await PDFDocument.create()
     const profileRef = doc.context.register(doc.context.flateStream(Buffer.from([1, 2, 3]), { N: 3 }))
-    const colorSpace = doc.context.obj([PDFName.of('ICCBased'), profileRef])
+    const inputColorSpace = doc.context.obj([PDFName.of('ICCBased'), profileRef])
     const imageRef = doc.context.register(
       doc.context.flateStream(buildPhotoLikePixels(width, height), {
         Type: 'XObject', Subtype: 'Image', Width: width, Height: height,
-        BitsPerComponent: 8, ColorSpace: colorSpace,
+        BitsPerComponent: 8, ColorSpace: inputColorSpace,
       }),
     )
     const page = doc.addPage([width, height])
     page.node.newXObject('Im1', imageRef)
     const pdf = Buffer.from(await doc.save())
 
-    expect(await compressPdfImages(pdf)).toBe(pdf)
+    const compressed = await compressPdfImages(pdf)
+    expect(compressed.byteLength).toBeLessThan(pdf.byteLength)
+
+    const loaded = await PDFDocument.load(compressed)
+    const xobjects = loaded.getPages()[0]!.node.Resources()!.lookupMaybe(PDFName.of('XObject'), PDFDict)!
+    const [, ref] = xobjects.entries()[0]!
+    const stream = loaded.context.lookupMaybe(ref, PDFStream)
+    expect(stream).toBeInstanceOf(PDFRawStream)
+    const image = stream as PDFRawStream
+    expect(image.dict.get(PDFName.of('Filter'))).toBe(PDFName.of('DCTDecode'))
+    const colorSpace = image.dict.lookup(PDFName.of('ColorSpace'), PDFArray)
+    expect(loaded.context.lookup(colorSpace.get(0))).toBe(PDFName.of('ICCBased'))
+    const profile = loaded.context.lookupMaybe(colorSpace.get(1), PDFStream)
+    expect(profile?.dict.lookupMaybe(PDFName.of('N'), PDFNumber)?.asNumber()).toBe(3)
+    expect(inflateSync((profile as PDFRawStream).contents)).toEqual(Buffer.from([1, 2, 3]))
+  })
+
+  it('N=1のICCBased画像は1成分JPEGとして色空間を保つ', async () => {
+    const width = 400
+    const height = 400
+    const pixels = Buffer.alloc(width * height)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) pixels[y * width + x] = 128 + 100 * Math.sin(x / 18) * Math.cos(y / 24)
+    }
+    const doc = await PDFDocument.create()
+    const profileRef = doc.context.register(doc.context.flateStream(Buffer.from([1, 2, 3]), { N: 1 }))
+    const imageRef = doc.context.register(doc.context.flateStream(pixels, {
+      Type: 'XObject', Subtype: 'Image', Width: width, Height: height, BitsPerComponent: 8,
+      ColorSpace: [PDFName.of('ICCBased'), profileRef],
+    }))
+    const page = doc.addPage([width, height])
+    page.node.newXObject('Im1', imageRef)
+    const pdf = Buffer.from(await doc.save())
+
+    const compressed = await compressPdfImages(pdf)
+    const loaded = await PDFDocument.load(compressed)
+    const xobjects = loaded.getPages()[0]!.node.Resources()!.lookupMaybe(PDFName.of('XObject'), PDFDict)!
+    const [, ref] = xobjects.entries()[0]!
+    const stream = loaded.context.lookup(ref, PDFStream)
+    expect(stream).toBeInstanceOf(PDFRawStream)
+    const image = stream as PDFRawStream
+    const colorSpace = image.dict.lookup(PDFName.of('ColorSpace'), PDFArray)
+    const profile = loaded.context.lookup(colorSpace.get(1), PDFStream)
+
+    expect(image.dict.get(PDFName.of('Filter'))).toBe(PDFName.of('DCTDecode'))
+    expect((await sharp(image.contents).metadata()).channels).toBe(1)
+    expect(profile.dict.lookup(PDFName.of('N'), PDFNumber).asNumber()).toBe(1)
+    expect(inflateSync((profile as PDFRawStream).contents)).toEqual(Buffer.from([1, 2, 3]))
   })
 
   it('画像refがForm XObject内でも共有される場合に参照先を維持する', async () => {
