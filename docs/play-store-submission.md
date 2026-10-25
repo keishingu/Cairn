@@ -164,7 +164,7 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 - [x] Play デベロッパー アカウント: クラウド版の運営者である株式会社オリカタ（orikata, Inc.）の組織アカウントで、アプリ「Cairn」（`com.oss_cairn`）を作成済み
 - [x] Firebase プロジェクト `cairn-9f6f3`（Analytics オフ）に Android アプリ `com.oss_cairn` を登録し、`google-services.json` を EAS production の `GOOGLE_SERVICES_JSON` に登録済み
 - [ ] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、本番ビルドで通知が届くことを確認する
-- [ ] `pnpm build:production:android` で upload key を生成し、AAB を Play Console に手動アップロードして内部テストを開始する
+- [x] 本番 AAB（1.1.0 / versionCode 2）を手動アップロードし、内部テストに公開済み（テスター: メーリング リスト「Cairn 内部テスター」、参加リンク https://play.google.com/apps/internaltest/4701706245945388102 ）
 - [x] フィーチャー グラフィック（1024×500）を作成・アップロード済み
 - [ ] スマートフォン用スクリーンショットを内部テスト版から撮影してアップロードする
 - [x] アカウント削除 URL に `https://oss-cairn.com/privacy#retention` を登録済み（ログイン不要）。Play は保持期間の明記を求めるため、バックアップの保持期間を具体的な日数で追記するとより確実
