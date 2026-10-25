@@ -1320,6 +1320,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'This form can no longer be submitted to this channel.': 'このチャンネルにはこのフォームを送信できなくなりました。',
   'Could not close the form. Please try again.': 'フォームを閉じられませんでした。もう一度お試しください。',
   'Could not load the app form. Tap to retry.': 'アプリのフォームを読み込めませんでした。タップして再試行してください。',
+  'Could not load the selected workspace, so attachments cannot be shown. Tap to retry.':
+    '選択中のワークスペースを読み込めないため、添付ファイルを表示できません。タップして再試行してください。',
   'Could not load the app form.': 'アプリのフォームを読み込めませんでした。',
   'Multiple choice': '複数選択',
   'Single choice': '単一選択',

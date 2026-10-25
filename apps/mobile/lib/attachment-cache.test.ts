@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const calls: string[] = []
+const downloadHeaders: Record<string, string>[] = []
 let resolveDelete: (() => void) | undefined
 
 vi.mock('expo-sharing', () => ({
@@ -23,8 +24,9 @@ vi.mock('expo-file-system/legacy', () => ({
     }
     return Promise.resolve()
   }),
-  downloadAsync: vi.fn(async (_url: string, path: string) => {
+  downloadAsync: vi.fn(async (_url: string, path: string, options?: { headers?: Record<string, string> }) => {
     calls.push(`download:${path}`)
+    downloadHeaders.push(options?.headers ?? {})
     return { status: 200, uri: path }
   }),
   moveAsync: vi.fn(async ({ to }: { to: string }) => {
@@ -34,15 +36,18 @@ vi.mock('expo-file-system/legacy', () => ({
 
 const { ensureCachedAttachment, removeCachedAttachment, shareOriginalPdf } = await import('./attachment-cache')
 
+const auth = { accessToken: 'token', workspaceId: 'workspace-2' }
+
 describe('attachment-cache', () => {
   beforeEach(() => {
     calls.length = 0
+    downloadHeaders.length = 0
     resolveDelete = undefined
   })
 
   test('キャッシュの削除中に再試行しても、削除が終わってから取り直したファイルを保存先へ移す', async () => {
     const removal = removeCachedAttachment('file-1', 'a.pdf')
-    const download = ensureCachedAttachment('https://example.com/a.pdf', 'file-1', 'a.pdf', 'token', undefined, {
+    const download = ensureCachedAttachment('https://example.com/a.pdf', 'file-1', 'a.pdf', auth, undefined, {
       refresh: true,
     })
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -63,11 +68,27 @@ describe('attachment-cache', () => {
       fileUrl: 'https://example.com/a.pdf?original=1',
       fileId: 'file-1',
       fileName: 'a.pdf',
-      accessToken: 'token',
+      auth,
     })
     expect(calls.some((call) => call.startsWith('download:file:///cache/original-file-1-'))).toBe(true)
     expect(calls.some((call) => call.includes('/file-1-a.pdf'))).toBe(false)
     expect(calls.some((call) => call.startsWith('share:file:///cache/original-file-1-'))).toBe(true)
     expect(calls.some((call) => call.startsWith('delete:file:///cache/original-file-1-'))).toBe(true)
+  })
+
+  test('別のワークスペースの添付も取れるよう、選択中のワークスペースを付けて取得する', async () => {
+    // 保存先の削除を遅らせる仕組みはこのテストでは使わない
+    resolveDelete = () => undefined
+    await ensureCachedAttachment('https://example.com/b.png', 'file-2', 'b.png', auth)
+    await shareOriginalPdf({
+      fileUrl: 'https://example.com/a.pdf?original=1',
+      fileId: 'file-1',
+      fileName: 'a.pdf',
+      auth,
+    })
+    expect(downloadHeaders).toEqual([
+      { Authorization: 'Bearer token', 'X-Cairn-Workspace-Id': 'workspace-2' },
+      { Authorization: 'Bearer token', 'X-Cairn-Workspace-Id': 'workspace-2' },
+    ])
   })
 })

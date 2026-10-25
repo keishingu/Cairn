@@ -1319,6 +1319,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'This form can no longer be submitted to this channel.': '이 채널에는 더 이상 이 양식을 보낼 수 없습니다.',
   'Could not close the form. Please try again.': '양식을 닫지 못했습니다. 다시 시도해 주세요.',
   'Could not load the app form. Tap to retry.': '앱 양식을 불러오지 못했습니다. 탭하여 다시 시도하세요.',
+  'Could not load the selected workspace, so attachments cannot be shown. Tap to retry.':
+    '선택한 워크스페이스를 불러오지 못해 첨부 파일을 표시할 수 없습니다. 탭하여 다시 시도하세요.',
   'Could not load the app form.': '앱 양식을 불러오지 못했습니다.',
   'Multiple choice': '복수 선택',
   'Single choice': '단일 선택',

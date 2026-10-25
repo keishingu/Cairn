@@ -9,6 +9,7 @@ import {
   removeCachedAttachment,
   shareCachedAttachment,
 } from '../lib/attachment-cache'
+import type { AttachmentAuth } from '../lib/attachment-auth'
 import { buildMarkdownDocumentHtml, canPreviewMarkdown } from '../lib/attachment-viewer-html'
 import { useAppAppearance } from './appearance-provider'
 import { ViewerAction } from './chat-image-viewer'
@@ -31,7 +32,7 @@ export function ChatMarkdownViewer({
   fileId,
   fileName,
   mimeType,
-  accessToken,
+  auth,
   onClose,
   onPressLink,
 }: {
@@ -39,7 +40,7 @@ export function ChatMarkdownViewer({
   fileId: string
   fileName: string
   mimeType: string | null
-  accessToken: string
+  auth: AttachmentAuth
   onClose: () => void
   onPressLink: (url: string) => void
 }) {
@@ -52,15 +53,15 @@ export function ChatMarkdownViewer({
   const [busyAction, setBusyAction] = React.useState<'save' | 'share' | null>(null)
 
   // トークンの更新で読み込み直さないよう、取得時点の最新値を参照するだけにする（PDF ビューアと同じ）
-  const accessTokenRef = React.useRef(accessToken)
-  accessTokenRef.current = accessToken
+  const authRef = React.useRef(auth)
+  authRef.current = auth
 
   React.useEffect(() => {
     let cancelled = false
     setLoadState({ kind: 'downloading' })
     setRendered(false)
     // 再試行（attempt > 0）は壊れたキャッシュを再利用しないよう必ず取り直す
-    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t, {
+    ensureCachedAttachment(fileUrl, fileId, fileName, authRef.current, t, {
       refresh: attempt > 0,
     })
       .then(async (localUri) => {
@@ -143,7 +144,7 @@ export function ChatMarkdownViewer({
         fileUrl,
         fileId,
         fileName,
-        accessToken,
+        auth,
         mimeType,
         dialogTitle: action === 'save' ? t('Save file') : t('Share file'),
         t,
