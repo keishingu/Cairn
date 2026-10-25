@@ -43,6 +43,7 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 
 - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先に使わない
 - **ストア版の Android は `production` profile の AAB**（`pnpm build:production:android`）。`app.json` の `android.adaptiveIcon` / `blockedPermissions` / `expo-notifications` plugin が Play 向けの設定で、Push 通知の FCM 設定（`google-services.json`）は EAS の file 型シークレット `GOOGLE_SERVICES_JSON` から `app.config.ts` が渡す。手順は [`play-store-submission.md`](play-store-submission.md)
+- **本番 API に向いた APK を実機へ直接入れるときは `production-apk` profile**（`eas build --platform android --profile production-apk`）。production と同じ環境・キーストアで APK を作り、versionCode は増やさない。ストア用スクリーンショットの撮影や、Play を経由しない本番相当の確認に使う
 - **Internal Distribution は `preview` profile**（Android は APK、iOS は登録済み端末向け Ad Hoc）。ローカルコマンドまたは手動の `.github/workflows/mobile-internal-build.yml` から起動し、`ios` / `all` build は `--refresh-ad-hoc-provisioning-profile` で登録済み端末を反映する。`app.config.ts` で `Cairn Dev` / `Cairn Preview` / `Cairn` の URL scheme と bundle/package ID を分離し、同一端末に共存させる
 - **PR の Mobile Preview**（`.github/workflows/mobile-preview.yml`）は Vercel Deployment Protection を避けるため `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR 固有 branch へ Development Build 用 QR を発行すると同時に `preview` channel へ OTA を配信する
   - 自動配信はモバイル関連 PR の作成時だけ。以降は権限のあるメンバーによる完全一致の `@eas update` コメントで最新 SHA を再配信する
