@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     transactionFile: undefined as Record<string, unknown> | undefined,
     updates: [] as Record<string, unknown>[],
     usageDeltas: [] as Record<string, unknown>[],
+    deletionTargets: [] as Record<string, unknown>[],
     downloads: vi.fn(),
     uploads: vi.fn(),
     removes: vi.fn(),
@@ -59,6 +60,12 @@ const mocks = vi.hoisted(() => {
     db: {
       select: () => makeQuery(() => state.file),
       update: () => update,
+      insert: () => ({
+        values: (value: Record<string, unknown>) => {
+          state.deletionTargets.push(value)
+          return { returning: async () => [{ id: 'storage-job-id' }] }
+        },
+      }),
       transaction: async (
         callback: (transactionClient: {
           select: () => ReturnType<typeof makeQuery>
@@ -79,7 +86,7 @@ vi.mock('./client', () => ({
   },
 }))
 
-vi.mock('@cairn/db', () => ({ db: mocks.db, files: { id: 'id', workspaceId: 'workspaceId' } }))
+vi.mock('@cairn/db', () => ({ db: mocks.db, files: { id: 'id', workspaceId: 'workspaceId' }, storageDeletionJobs: { id: 'storage-deletion-job-id' } }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   and: vi.fn(),
@@ -136,6 +143,7 @@ describe('compressUploadedPdf', () => {
     mocks.state.transactionFile = { derivedFileSize: null, metadata: {} }
     mocks.state.updates.length = 0
     mocks.state.usageDeltas.length = 0
+    mocks.state.deletionTargets.length = 0
     mocks.state.downloads.mockReset().mockResolvedValue({
       data: { arrayBuffer: async () => originalBytes.buffer.slice(originalBytes.byteOffset, originalBytes.byteOffset + originalBytes.byteLength) },
       error: null,
@@ -207,10 +215,16 @@ describe('compressUploadedPdf', () => {
     expect(mocks.state.usageDeltas).toEqual([])
   })
 
-  it('派生ファイルの削除に失敗したらジョブを失敗として返す', async () => {
+  it('元ファイル削除後に派生ファイルの削除が失敗したらoutboxへ登録する', async () => {
     mocks.state.transactionFile = undefined
     mocks.state.removes.mockResolvedValue({ error: new Error('remove failed') })
 
-    await expect(invoke()).rejects.toThrow('Derived PDF cleanup failed: remove failed')
+    await expect(invoke()).resolves.toEqual({ skipped: true, reason: 'file deleted during compression' })
+    expect(mocks.state.deletionTargets).toEqual([{
+      targets: [{
+        bucket: 'chat-attachments',
+        paths: ['workspace-id/channel-id/user-id/pdf-derivatives/file-id.pdf'],
+      }],
+    }])
   })
 })

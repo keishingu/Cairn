@@ -843,7 +843,20 @@ export const compressUploadedPdf = inngest.createFunction(
         const { error: cleanupError } = await supabase.storage
           .from('chat-attachments')
           .remove([derivedStoragePath])
-        if (cleanupError) throw new Error(`Derived PDF cleanup failed: ${cleanupError.message}`)
+        if (cleanupError) {
+          const { storageDeletionJobs } = await import('@cairn/db')
+          const [job] = await db
+            .insert(storageDeletionJobs)
+            .values({ targets: [{ bucket: 'chat-attachments', paths: [derivedStoragePath] }] })
+            .returning({ id: storageDeletionJobs.id })
+          if (!job) throw new Error('storage deletion outbox insert returned no rows')
+          try {
+            await inngest.send({ name: 'storage/deletion.requested', data: { jobId: job.id } })
+          } catch (sendError) {
+            // outboxはDBに残るためcronが再送する。
+            console.error('[compress-uploaded-pdf] storage deletion enqueue failed:', sendError)
+          }
+        }
         return { skipped: true, reason: 'file deleted during compression' }
       }
 
