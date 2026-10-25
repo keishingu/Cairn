@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useKeyboardVisible } from '../hooks/use-keyboard-visible'
 import {
   WORKSPACE_CHANNEL_NAME_MAX,
   defaultThreadNameFromMessage,
@@ -41,6 +42,7 @@ interface Props {
 export function MoveToThreadSheet({ message, threads, palette, pending, error, onSubmit, onClose }: Props) {
   const t = useT()
   const insets = useSafeAreaInsets()
+  const keyboardVisible = useKeyboardVisible()
   const [scope, setScope] = React.useState<MoveScope>('after')
   const [destination, setDestination] = React.useState<'new' | 'existing'>('new')
   const [threadId, setThreadId] = React.useState<string | null>(null)
@@ -101,7 +103,7 @@ export function MoveToThreadSheet({ message, threads, palette, pending, error, o
         pointerEvents="box-none"
         style={styles.sheetWrap}
       >
-        <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border, paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border, paddingBottom: (keyboardVisible ? 0 : insets.bottom) + 12 }]}>
           <Text style={[styles.title, { color: palette.text }]}>{t('Move to thread')}</Text>
           <ScrollView keyboardShouldPersistTaps="handled" style={styles.body}>
             <Text style={[styles.sectionLabel, { color: palette.text3 }]}>{t('Messages to move')}</Text>

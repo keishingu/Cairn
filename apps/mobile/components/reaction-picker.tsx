@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { emojiCategories, reactionEmojis } from '../lib/reaction-emoji-catalog'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useKeyboardVisible } from '../hooks/use-keyboard-visible'
 import { useT } from './locale-provider'
 import type { ThemePalette } from '../lib/theme'
 import { isVerticalSheetDrag, quickReactions, reactionSheetSwipe, REACTION_EMOJI_CATEGORY_LABELS, SKIN_TONE_SAMPLES } from '@cairn/shared'
@@ -37,6 +38,7 @@ export function ReactionPicker({
 }) {
   const t = useT()
   const insets = useSafeAreaInsets()
+  const keyboardVisible = useKeyboardVisible()
   const [expanded, setExpanded] = React.useState(false)
   const [search, setSearch] = React.useState('')
   const [category, setCategory] = React.useState('people')
@@ -104,7 +106,7 @@ export function ReactionPicker({
             {
               backgroundColor: palette.card,
               borderColor: palette.border,
-              paddingBottom: insets.bottom + 16,
+              paddingBottom: (keyboardVisible ? 0 : insets.bottom) + 16,
               transform: [{ translateY: dragY }],
             },
           ]}
