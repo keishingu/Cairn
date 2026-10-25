@@ -1,6 +1,7 @@
 import { translate } from '@cairn/shared'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'
+import { attachmentRequestHeaders, type AttachmentAuth } from './attachment-auth'
 import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './attachment-file'
 
 // legacy download API は安定した進捗不要ダウンロードに使える。
@@ -32,7 +33,7 @@ export function ensureCachedAttachment(
   fileUrl: string,
   fileId: string,
   fileName: string,
-  accessToken: string,
+  auth: AttachmentAuth,
   t: Translate = translateJa,
   options: { refresh?: boolean } = {},
 ): Promise<string> {
@@ -46,7 +47,7 @@ export function ensureCachedAttachment(
     // その完了を待ってから改めてダウンロードする
     return pending
       .catch(() => undefined)
-      .then(() => ensureCachedAttachment(fileUrl, fileId, fileName, accessToken, t, options))
+      .then(() => ensureCachedAttachment(fileUrl, fileId, fileName, auth, t, options))
   }
 
   const download = (async () => {
@@ -63,7 +64,7 @@ export function ensureCachedAttachment(
     const partial = `${target}.download`
     await FileSystem.deleteAsync(partial, { idempotent: true })
     const result = await FileSystem.downloadAsync(fileUrl, partial, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: attachmentRequestHeaders(auth),
     })
     if (result.status !== 200) {
       const message = await downloadErrorMessage(partial, result.status, t)
@@ -95,7 +96,7 @@ export async function shareCachedAttachment(input: {
   fileUrl: string
   fileId: string
   fileName: string
-  accessToken: string
+  auth: AttachmentAuth
   mimeType?: string | null
   dialogTitle: string
   t?: Translate
@@ -105,7 +106,7 @@ export async function shareCachedAttachment(input: {
     input.fileUrl,
     input.fileId,
     input.fileName,
-    input.accessToken,
+    input.auth,
     t,
   )
   if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))
@@ -120,7 +121,7 @@ export async function shareOriginalPdf(input: {
   fileUrl: string
   fileId: string
   fileName: string
-  accessToken: string
+  auth: AttachmentAuth
   t?: Translate
 }): Promise<void> {
   const t = input.t ?? translateJa
@@ -129,7 +130,7 @@ export async function shareOriginalPdf(input: {
   const tempUri = `${cacheDirectory}original-${input.fileId}-${Date.now()}.pdf`
   try {
     const result = await FileSystem.downloadAsync(input.fileUrl, tempUri, {
-      headers: { Authorization: `Bearer ${input.accessToken}` },
+      headers: attachmentRequestHeaders(input.auth),
     })
     if (result.status !== 200) throw new Error(await downloadErrorMessage(tempUri, result.status, t))
     if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))

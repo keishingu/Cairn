@@ -9,6 +9,7 @@ import {
   shareCachedAttachment,
   shareOriginalPdf,
 } from '../lib/attachment-cache'
+import type { AttachmentAuth } from '../lib/attachment-auth'
 import { ViewerAction } from './chat-image-viewer'
 import { useT } from './locale-provider'
 
@@ -24,7 +25,7 @@ export function ChatPdfViewer({
   fileId,
   fileName,
   mimeType,
-  accessToken,
+  auth,
   onClose,
   onPressLink,
 }: {
@@ -32,7 +33,7 @@ export function ChatPdfViewer({
   fileId: string
   fileName: string
   mimeType: string | null
-  accessToken: string
+  auth: AttachmentAuth
   onClose: () => void
   onPressLink: (url: string) => void
 }) {
@@ -46,8 +47,8 @@ export function ChatPdfViewer({
 
   // トークンはおよそ1時間ごとや前面復帰時に更新される。依存に含めると読んでいる途中の PDF が
   // 1ページ目から読み込み直されるため、取得時点の最新値を参照するだけにする
-  const accessTokenRef = React.useRef(accessToken)
-  accessTokenRef.current = accessToken
+  const authRef = React.useRef(auth)
+  authRef.current = auth
 
   React.useEffect(() => {
     let cancelled = false
@@ -55,7 +56,7 @@ export function ChatPdfViewer({
     setRendered(false)
     setPage(null)
     // 再試行（attempt > 0）は壊れたキャッシュを再利用しないよう必ず取り直す
-    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t, {
+    ensureCachedAttachment(fileUrl, fileId, fileName, authRef.current, t, {
       refresh: attempt > 0,
     })
       .then((localUri) => {
@@ -100,7 +101,7 @@ export function ChatPdfViewer({
         fileUrl,
         fileId,
         fileName,
-        accessToken,
+        auth,
         mimeType,
         dialogTitle: action === 'save' ? t('Save PDF') : t('Share PDF'),
         t,
@@ -123,7 +124,7 @@ export function ChatPdfViewer({
         fileUrl: `${fileUrl}?original=1`,
         fileId,
         fileName,
-        accessToken,
+        auth,
         t,
       })
     } catch (error) {

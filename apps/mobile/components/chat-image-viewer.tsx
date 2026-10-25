@@ -21,6 +21,7 @@ import {
   removeCachedAttachment,
   shareCachedAttachment,
 } from '../lib/attachment-cache'
+import { attachmentRequestHeaders, type AttachmentAuth } from '../lib/attachment-auth'
 import { buildImageViewerHtml, parseImageViewerMessage } from '../lib/attachment-viewer-html'
 import { useT } from './locale-provider'
 
@@ -37,14 +38,14 @@ export function ChatImageViewer({
   fileId,
   fileName,
   mimeType,
-  accessToken,
+  auth,
   onClose,
 }: {
   fileUrl: string
   fileId: string
   fileName: string
   mimeType: string | null
-  accessToken: string
+  auth: AttachmentAuth
   onClose: () => void
 }) {
   const t = useT()
@@ -62,7 +63,7 @@ export function ChatImageViewer({
         fileUrl,
         fileId,
         fileName,
-        accessToken,
+        auth,
         mimeType,
         dialogTitle: action === 'save' ? t('Save image') : t('Share image'),
         t,
@@ -119,7 +120,7 @@ export function ChatImageViewer({
               fileUrl={fileUrl}
               fileId={fileId}
               fileName={fileName}
-              accessToken={accessToken}
+              auth={auth}
               onLoadStart={() => setLoading(true)}
               onLoadEnd={() => setLoading(false)}
               onError={() => {
@@ -159,7 +160,7 @@ type ZoomableImageProps = {
   fileUrl: string
   fileId: string
   fileName: string
-  accessToken: string
+  auth: AttachmentAuth
   onLoadStart: () => void
   onLoadEnd: () => void
   onError: () => void
@@ -171,7 +172,7 @@ function ZoomableImage(props: ZoomableImageProps) {
   return Platform.OS === 'ios' ? <IosZoomableImage {...props} /> : <AndroidZoomableImage {...props} />
 }
 
-function IosZoomableImage({ fileUrl, fileName, accessToken, onLoadStart, onLoadEnd, onError }: ZoomableImageProps) {
+function IosZoomableImage({ fileUrl, fileName, auth, onLoadStart, onLoadEnd, onError }: ZoomableImageProps) {
   const scrollRef = React.useRef<ScrollView>(null)
   const [size, setSize] = React.useState<{ width: number; height: number } | null>(null)
   const zoomScaleRef = React.useRef(1)
@@ -179,7 +180,7 @@ function IosZoomableImage({ fileUrl, fileName, accessToken, onLoadStart, onLoadE
   // トークンの更新で読み込み直さないよう、開いた時点の値で固定する（PDF ビューアと同じ）
   const [source] = React.useState<ImageSource>(() => ({
     uri: fileUrl,
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: attachmentRequestHeaders(auth),
   }))
 
   // PDF ビューアと同じく、ダブルタップで拡大し、拡大中のダブルタップで全体表示に戻す
@@ -253,15 +254,15 @@ function AndroidZoomableImage({
   fileUrl,
   fileId,
   fileName,
-  accessToken,
+  auth,
   onLoadStart,
   onLoadEnd,
   onError,
 }: ZoomableImageProps) {
   const t = useT()
   const [localUri, setLocalUri] = React.useState<string | null>(null)
-  const accessTokenRef = React.useRef(accessToken)
-  accessTokenRef.current = accessToken
+  const authRef = React.useRef(auth)
+  authRef.current = auth
   // 親の再描画で渡し直される関数で取得をやり直さないよう、最新の値を参照するだけにする
   const callbacksRef = React.useRef({ onLoadStart, onError })
   callbacksRef.current = { onLoadStart, onError }
@@ -271,7 +272,7 @@ function AndroidZoomableImage({
     let cancelled = false
     callbacksRef.current.onLoadStart()
     // 再試行（attempt > 0）は壊れたキャッシュを再利用しないよう必ず取り直す
-    ensureCachedAttachment(fileUrl, fileId, fileName, accessTokenRef.current, t, { refresh: attempt > 0 })
+    ensureCachedAttachment(fileUrl, fileId, fileName, authRef.current, t, { refresh: attempt > 0 })
       .then((uri) => {
         if (!cancelled) setLocalUri(uri)
       })
