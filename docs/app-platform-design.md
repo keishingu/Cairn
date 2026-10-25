@@ -172,8 +172,8 @@ message_blocks {
 | `context` | ○ | 要素は text / image / `meter`。最大10要素。投票者の表示に使う |
 | `image` | ○ | `image_url`（https のみ）、`alt_text` 必須、`title` 任意 |
 | `divider` / `header` | ○ | 描画が単純で、投票カードの見出しに使うため含める |
-| `markdown` | △ | Slack と同じ形（`text` に標準の Markdown。メッセージ内の合計 12,000 文字、メッセージだけ）。普段のメッセージと同じ部品で描き、Mermaid のコードブロックも図にする。外部から届く本文なので、生の HTML は描かず、画像は読み込まずリンクにし、リンクは http(s)・mailto だけにする。`FEATURE_FLAGS.cardMarkdownAndMeter` で受理を有効にするまでは描画だけ |
-| `meter`（context の要素） | △ | **Cairn 独自**（Slack にはない）。HTML の `<meter>` と同じく量をバーで表す。`value` / `min`（省略時 0）/ `max` / `label`（読み上げ用）。投票の得票率に使う。受理は `markdown` と同じフラグで有効にする |
+| `markdown` | ○ | Slack と同じ形（`text` に標準の Markdown。メッセージ内の合計 12,000 文字、メッセージだけ）。普段のメッセージと同じ部品で描き、Mermaid のコードブロックも図にする。外部から届く本文なので、生の HTML は描かず、画像は読み込まずリンクにし、リンクは http(s)・mailto だけにする |
+| `meter`（context の要素） | ○ | **Cairn 独自**（Slack にはない）。HTML の `<meter>` と同じく量をバーで表す。`value` / `min`（省略時 0）/ `max` / `label`（読み上げ用）。投票の得票率に使う |
 | `input`（モーダル内のみ） | ○ | 要素は `plain_text_input`（単行・複数行）、`static_select` |
 | `button` | ○ | `text` / `action_id` / `value` / `style`(primary・danger) / `url` / `confirm`（確認ダイアログ） |
 | `static_select` | ○ | `options`（最大100）、`initial_option`、`placeholder`。`option_groups` は後続 |
@@ -209,7 +209,7 @@ apps/mobile/components/blocks/           React Native で描く
 Web は deploy で全員が即座に新しくなるが、ネイティブは EAS Update が届くまで古い描画コードが残り、ストア版の `runtimeVersion` が古い端末には OTA 自体が届かない。サーバーが受理するブロックと、手元のクライアントが描けるブロックがずれる前提で設計する。
 
 1. **受理するのは描けるものだけ**: サーバーは `packages/shared` のスキーマに合わない blocks を `chat.postMessage` / `chat.update` / `views.open` の時点で `invalid_blocks` エラーにする（Slack と同じ挙動）。未知の要素を保存して「クライアント任せ」にしない
-2. **描画を先に、受理を後に**: サブセットに要素を足すときは、(a) Web とネイティブの描画を出す → (b) production へ OTA を配信し行き渡りを待つ → (c) `FEATURE_FLAGS` で受理を有効にする、の順にする。`schemaVersion` を `message_blocks` に記録し、どの版のスキーマで受理したかを追えるようにする
+2. **描画を先に、受理を後に**: 本番に出ている機能に要素を足すときは、(a) Web とネイティブの描画を出す → (b) production へ OTA を配信し行き渡りを待つ → (c) `FEATURE_FLAGS` で受理を有効にする、の順にする。まだ本番に出ていない機能（古いクライアントが存在しない）では、この段取りは不要で、描画と受理を同時に出してよい。`schemaVersion` を `message_blocks` に記録し、どの版のスキーマで受理したかを追えるようにする
 3. **それでも描けないものは黙って消さない**: 古いクライアントが未知の要素に出会ったら、その要素の位置に「このカードの一部はこのバージョンのアプリでは表示できません。アプリを更新してください」を出し、カード全体が描けない場合は代替テキスト（`content`）を表示する。空白や要素の欠落で済ませない（エラーを隠さない規約）
 4. **操作は常にサーバーが検証する**: 古いクライアントが送った操作でも、サーバーが保存済みの blocks と照合して判定する（§5.2）ので、描画のずれが不正な操作にはつながらない
 
