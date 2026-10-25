@@ -22,6 +22,7 @@ import { routeFromNotification } from '../../../lib/notification-routing'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import type { ThemePalette } from '../../../lib/theme'
 import { useT } from '../../../components/locale-provider'
+import { PushPermissionBanner } from '../../../components/push-permission-banner'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -155,6 +156,7 @@ export default function NotificationsScreen() {
           <Text style={[styles.markAllLabel, { color: palette.accentText }]}>{t('Mark all read')}</Text>
         </Pressable>
       </View>
+      <PushPermissionBanner />
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}

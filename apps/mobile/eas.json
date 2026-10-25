@@ -44,6 +44,12 @@
       "ios": {
         "ascAppId": "6800673777",
         "metadataPath": "./store.config.json"
+      },
+      "android": {
+        "applicationId": "com.oss_cairn",
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": false
       }
     }
   }

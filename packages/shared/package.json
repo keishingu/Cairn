@@ -6,6 +6,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./blocks/fixtures": {
+      "types": "./src/blocks/fixtures.ts",
+      "default": "./src/blocks/fixtures.ts"
     }
   },
   "dependencies": {

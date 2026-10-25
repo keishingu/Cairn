@@ -137,7 +137,7 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
-function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boolean }) {
+function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; webView: boolean; overlay?: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const page = pageFromPathname(pathname)
@@ -182,6 +182,7 @@ function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boo
           外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
       <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
         <NavigationProgress />
+        {overlay}
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
         {/* タブ状態も URL で管理し、プロジェクト切替・リロード後に同じタブを維持する */}
@@ -216,6 +217,7 @@ function MobileShellInner({ hideNav, webView }: { hideNav: boolean; webView: boo
   )
 }
 
-export function MobileShell({ hideNav = false, webView = false }: { hideNav?: boolean; webView?: boolean }) {
-  return <MobileShellInner hideNav={hideNav} webView={webView} />
+/** overlay は .app-root の中に出す全画面の要素（アプリのモーダルなど）。外に出すとテーマ変数と .app の部品スタイルが当たらない */
+export function MobileShell({ hideNav = false, webView = false, overlay }: { hideNav?: boolean; webView?: boolean; overlay?: React.ReactNode }) {
+  return <MobileShellInner hideNav={hideNav} webView={webView} overlay={overlay} />
 }

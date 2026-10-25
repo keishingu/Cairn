@@ -4,8 +4,11 @@
 'use client'
 
 import React from 'react'
-import { chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
-import type { MessageDto, ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
+import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
+import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
+import { postCardAction } from '@/lib/apps/card-actions'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
@@ -49,7 +52,7 @@ import {
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { useProjectMembers } from '@/hooks/use-project-members'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
-import { useT } from '@/components/locale-provider'
+import { useLocale, useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
 import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
@@ -68,7 +71,7 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
+import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from '@/lib/attachments/upload-client'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 
@@ -92,6 +95,9 @@ const ACCEPT_FILE_TYPES = [
 ].join(',')
 
 const EMPTY_MESSAGES: MessageDto[] = []
+// クエリ未取得時の既定値。`data: x = []` だとレンダーごとに新しい配列になり、依存する useMemo
+// （mentionNames 等）が作り直されて React.memo(ChatMessage) が効かず全メッセージを再パースする
+const EMPTY_LIST: never[] = []
 
 function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
@@ -150,6 +156,15 @@ interface PendingAttachment {
   previewUrl: string
 }
 
+interface FinalizeRetryAttachment {
+  id: string
+  channelId: string
+  file: File
+  error: string
+  retryFinalize: () => Promise<UploadedAttachment>
+  isRetrying?: boolean
+}
+
 interface PersistedDraft {
   text: string
   attachments: Omit<PendingAttachment, 'previewUrl'>[]
@@ -200,7 +215,12 @@ export async function makeTasksFromMessage(messageId: string, items: MessageTask
   }
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+const REACTION_TOOLTIP_MAX_NAMES = 10
+const REACTION_TOOLTIP_MAX_WIDTH = 320
+// 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
+const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -223,6 +243,14 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // memo を効かせるため、linkedTasks は配列でなく id / status / lineIndex / title を連結したキー文字列で受ける
   linkedTasksKey?: string | undefined
   blocked?: boolean | undefined
+  /** messageType が blocks のときのカード本体。サーバーがボタンの value を落としたもの */
+  blocks?: unknown[] | null | undefined
+  /** カードの版（サーバーが計算したもの）。押下時に送り返す */
+  blocksRevision?: string | null | undefined
+  /** カード内のメンションの表示名（非活性のメンバーも含む、サーバーで解決したもの） */
+  cardMentionNames?: Record<string, string> | undefined
+  /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
+  senderApp?: SenderAppDto | null | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -245,14 +273,27 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const t = useT()
   const router = useRouter()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
+  const { locale } = useLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale), [messageId, blocksRevision, locale])
+  const cardNames = React.useMemo(() => {
+    if (!cardMentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(cardMentionNames)) merged.set(id, name)
+    return merged
+  }, [cardMentionNames, mentionNames])
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
   const [editDraft, setEditDraft] = React.useState('')
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
-  const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
-  // モバイルWebの「リアクションした人」シートで選択中の絵文字。null は閉じている
+  // メッセージ一覧のスクロール領域で切れないよう、ツールチップは fixed でボタンの上に置く
+  const [hoveredReaction, setHoveredReaction] = React.useState<{ index: number; position: React.CSSProperties } | null>(null)
+  // 「リアクションした人」の一覧で選択中の絵文字。null は閉じている
   const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
   // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、他の絵文字には名前があるのに「表示できません」から始まる）
   const defaultReaction = reactions.find(reaction => reaction.userNames.length > 0) ?? reactions[0]
@@ -272,10 +313,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
-  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す
+  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す。
+  // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
   const inlinePlaced = React.useMemo(
-    () => (blocked || emojiOnly || !content ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
-    [blocked, emojiOnly, content, linkedTasks],
+    () => (blocked || emojiOnly || !content || messageType === 'blocks' ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
+    [blocked, emojiOnly, content, messageType, linkedTasks],
   )
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
@@ -378,8 +420,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
     { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
     ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
-    ...(isMobile && defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
-    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }, { icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
+    // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
+    ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -425,12 +469,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         />
       )}
       <div title={senderEmail ?? undefined}>
-        <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+        <Avatar name={displaySenderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
           <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
+            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{displaySenderName}</span>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {senderApp && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+                {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </span>
+            )}
             {visibleProjectRole && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
                 {visibleProjectRole}
@@ -488,6 +538,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               <button type="button" className="btn btn-sm" onClick={() => setEditMode(false)}>{t('Cancel')}</button>
               {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
+          </div>
+        ) : messageType === 'blocks' ? (
+          <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
+            <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} onAction={handleCardAction} revision={blocksRevision} />
           </div>
         ) : (
           content && (
@@ -594,7 +648,18 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
-              onMouseEnter={() => !isMobile && setHoveredReaction(i)}
+              onMouseEnter={e => {
+                if (isMobile) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                // 右端に近ければボタンの右端に揃えて左へ広げ、上に余白がなければ下に出す（幅が潰れて縦長になったり画面外へ出たりしないように）
+                const horizontal = rect.left + REACTION_TOOLTIP_MAX_WIDTH + 8 <= window.innerWidth
+                  ? { left: rect.left }
+                  : { right: Math.max(8, window.innerWidth - rect.right) }
+                const vertical = rect.top >= REACTION_TOOLTIP_MIN_SPACE_ABOVE
+                  ? { bottom: window.innerHeight - rect.top + 6 }
+                  : { top: rect.bottom + 6 }
+                setHoveredReaction({ index: i, position: { ...horizontal, ...vertical } })
+              }}
               onMouseLeave={() => !isMobile && setHoveredReaction(null)}
             >
               <button onClick={() => onReact(messageId, r.emoji)} style={{
@@ -606,15 +671,17 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {/* PCはホバー、モバイルWebはメッセージの「…」メニューから表示 */}
-              {!isMobile && hoveredReaction === i && r.userNames.length > 0 && (
+              {/* PCはホバーで抜粋、全員はPC・モバイルWebともメッセージの「…」メニューから表示 */}
+              {!isMobile && hoveredReaction?.index === i && r.userNames.length > 0 && (
                 <span style={{
-                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
+                  position: 'fixed', ...hoveredReaction.position,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 'var(--z-dropdown)',
-                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: `min(${REACTION_TOOLTIP_MAX_WIDTH}px, calc(100vw - 16px))`, overflowWrap: 'anywhere', zIndex: 'var(--z-popover)',
+                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
-                  {r.userNames.join(t(', '))}
+                  {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
+                  {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
             </span>
@@ -634,11 +701,13 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       {!isMobile && messageActions}
       {selectedReaction && (
         <Modal onClose={() => setReactionPeopleEmoji(null)} label={t('Show who reacted')}>
+          {/* モバイルWebは下からのシート、PCは中央のカード */}
           <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '70dvh',
-            background: 'var(--card)', borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)',
+            ...(isMobile
+              ? { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)', animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)' }
+              : { position: 'relative', width: 400, maxWidth: '100%', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }),
+            maxHeight: '70dvh', background: 'var(--card)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
           }}>
             <ModalHeader title={t('Reactions ({count})', { count: reactions.reduce((total, reaction) => total + reaction.count, 0) })} onClose={() => setReactionPeopleEmoji(null)} />
             <div style={{ display: 'flex', gap: 6, padding: '12px 20px', overflowX: 'auto', flexShrink: 0 }}>
@@ -700,7 +769,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, finalizeRetries, onRetryFinalize, onRemoveFinalizeRetry, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -713,6 +782,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   compact?: boolean
   isMobile?: boolean
   pendingAttachments: PendingAttachment[]
+  finalizeRetries: FinalizeRetryAttachment[]
+  onRetryFinalize: (id: string) => void
+  onRemoveFinalizeRetry: (id: string) => void
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
@@ -729,6 +801,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   mentionNames?: Map<string, string>
   onMentionInserted?: (tokenId: string, displayName: string) => void
   onCreateTextFile: () => void
+  /** アプリの起動口（投票など）。DM では渡さない */
+  appEntryButtons?: React.ReactNode
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
 }) => {
@@ -1002,7 +1076,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     </div>
   ) : null
 
-  const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
+  const AttachmentPreviews = pendingAttachments.length > 0 || finalizeRetries.length > 0 || isUploading ? (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
@@ -1025,6 +1099,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               fontFamily: 'inherit', lineHeight: 1,
             }}
           >✕</button>
+        </div>
+      ))}
+      {finalizeRetries.map(item => (
+        <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 11.5, maxWidth: 340 }}>
+          <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}: {item.error}</span>
+          <button type="button" className="btn btn-xs" disabled={item.isRetrying} onClick={() => onRetryFinalize(item.id)}>{item.isRetrying ? t('Uploading...') : t('Retry')}</button>
+          <button type="button" aria-label={t('Remove {name}', { name: item.file.name })} disabled={item.isRetrying} onClick={() => onRemoveFinalizeRetry(item.id)} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>✕</button>
         </div>
       ))}
       {isUploading && (
@@ -1129,6 +1210,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
+            {appEntryButtons}
             <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
@@ -1161,16 +1243,18 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="image" size={13}/> {t('Image')}
+        {/* スマホ幅ではラベル付きのボタンが1行に収まらないため、アイコンだけにする（折り返しは念のため残す） */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
+          <button onClick={() => imageInputRef.current?.click()} aria-label={t('Image')} title={t('Image')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="image" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Image')}</>}
           </button>
-          <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="paperclip" size={13}/> {t('Files')}
+          <button onClick={() => docInputRef.current?.click()} aria-label={t('Files')} title={t('Files')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="paperclip" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Files')}</>}
           </button>
-          <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="file-text" size={13}/> {t('Text file')}
+          <button onClick={onCreateTextFile} aria-label={t('Text file')} title={t('Text file')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="file-text" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Text file')}</>}
           </button>
+          {appEntryButtons}
           <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
@@ -1442,6 +1526,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
+  const [finalizeRetries, setFinalizeRetries] = React.useState<FinalizeRetryAttachment[]>([])
+  const uploadScopeRef = React.useRef({ channelId })
+  if (uploadScopeRef.current.channelId !== channelId) uploadScopeRef.current = { channelId }
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
@@ -1477,9 +1564,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
   React.useEffect(() => {
+    setIsUploading(false)
     if (!channelId) {
       setDraft('')
       setPendingAttachments([])
+      setFinalizeRetries([])
       return
     }
     const saved = localStorage.getItem(chatDraftKey(channelId))
@@ -1498,6 +1587,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       setPendingAttachments([])
     }
     mentionInsertionsRef.current = []
+    setFinalizeRetries([])
     return () => {
       const { draft: d, pendingAttachments: p } = latestDraftRef.current
       persistDraft(channelId, d, p)
@@ -1562,7 +1652,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     || (initialUnreadPosition && !targetMessage && initialMessageQuery.isError)
     || historyMessagesQuery.isError
   const messagesError = latestMessagesQuery.error
-  const { data: nudges = [], isError: nudgesError } = useAiNudges(channelId)
+  const { data: nudges = EMPTY_LIST, isError: nudgesError } = useAiNudges(channelId)
   const nudgeFeedback = useAiNudgeFeedback(channelId)
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
@@ -1570,16 +1660,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const wsMembersQuery = useWorkspaceMembers()
   const chMembersQuery = useChannelMembers(channelId)
   const projectChannelsQuery = useProjectChannels()
-  const { data: wsMembers = [] } = wsMembersQuery
-  const { data: chMemberIds = [] } = chMembersQuery
-  const { data: projectChannels = [], isSuccess: projectChannelsResolved } = projectChannelsQuery
+  const { data: wsMembers = EMPTY_LIST } = wsMembersQuery
+  const { data: chMemberIds = EMPTY_LIST } = chMembersQuery
+  const { data: projectChannels = EMPTY_LIST, isSuccess: projectChannelsResolved } = projectChannelsQuery
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
     [projectChannels, channelId],
   )
   const projectMembersQuery = useProjectMembers(projectId)
-  const { data: projectMembers = [] } = projectMembersQuery
+  const { data: projectMembers = EMPTY_LIST } = projectMembersQuery
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -1804,7 +1894,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     for (const query of mentionScopeQueries) if (query.error) void query.refetch()
   }
 
-  const { data: profileAttributes = [] } = useProfileAttributes()
+  const { data: profileAttributes = EMPTY_LIST } = useProfileAttributes()
 
   // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）
@@ -2052,6 +2142,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    const uploadChannelId = channelId
+    const uploadScope = uploadScopeRef.current
     let file = picked
     // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
     if (isHeicLike(picked)) {
@@ -2059,15 +2151,29 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         file = await convertHeicToJpeg(picked)
       } catch (error) {
         console.error('[ChatThread] HEIC の変換に失敗:', error)
+        if (uploadScopeRef.current !== uploadScope) return null
         setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
         return null
       }
     }
     try {
-      const data = await uploadAttachment(channelId, file)
+      const data = await uploadAttachment(uploadChannelId, file)
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch (error) {
+      if (uploadScopeRef.current !== uploadScope) return null
+      const uploadError = error instanceof AttachmentUploadError ? error : null
+      const retryFinalize = uploadError?.retryFinalize
+      if (retryFinalize) {
+        setFinalizeRetries(current => [...current, {
+          id: `finalize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          channelId: uploadChannelId,
+          file,
+          error: uploadError?.serverMessage ?? t('Could not upload the file'),
+          retryFinalize,
+        }])
+        return null
+      }
       const failure = error instanceof AttachmentUploadError ? error.failure : null
       setSendError(
         failure === 'unsupported_type'
@@ -2082,13 +2188,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const handleFilesSelect = async (files: File[]) => {
     if (!channelId || files.length === 0) return
+    const uploadScope = uploadScopeRef.current
     setIsUploading(true)
     try {
       const results = await Promise.all(files.map(uploadFile))
+      if (uploadScopeRef.current !== uploadScope) return
       const successful = results.filter((r): r is PendingAttachment => r !== null)
       if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
-      setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) setIsUploading(false)
     }
   }
 
@@ -2128,6 +2236,37 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (removed) URL.revokeObjectURL(removed.previewUrl)
       return prev.filter(a => a.fileId !== fileId)
     })
+  }
+
+  const handleRetryFinalize = async (id: string) => {
+    const pending = finalizeRetries.find(item => item.id === id)
+    const retryChannelId = channelId
+    const retryScope = uploadScopeRef.current
+    if (!pending || !retryChannelId || pending.channelId !== retryChannelId) return
+    setFinalizeRetries(current => current.map(item => item.id === id ? { ...item, isRetrying: true } : item))
+    try {
+      const data = await pending.retryFinalize()
+      if (uploadScopeRef.current !== retryScope) return
+      const previewUrl = URL.createObjectURL(pending.file)
+      setPendingAttachments(current => [...current, { ...data, previewUrl }])
+      setFinalizeRetries(current => current.filter(item => item.id !== id))
+    } catch (error) {
+      if (uploadScopeRef.current !== retryScope) return
+      const retryFinalize = error instanceof AttachmentUploadError ? error.retryFinalize : undefined
+      const errorMessage = error instanceof AttachmentUploadError
+        ? error.serverMessage ?? t('Could not upload the file')
+        : t('Could not upload the file')
+      setFinalizeRetries(current => current.map(item => item.id === id ? {
+        ...item,
+        error: errorMessage,
+        ...(retryFinalize ? { retryFinalize } : {}),
+        isRetrying: false,
+      } : item))
+    }
+  }
+
+  const handleRemoveFinalizeRetry = (id: string) => {
+    setFinalizeRetries(current => current.filter(item => item.id !== id))
   }
 
   // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
@@ -2294,6 +2433,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               bookmarked={item.message.bookmarked}
               linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
               blocked={item.message.blocked}
+              blocks={item.message.blocks}
+              blocksRevision={item.message.blocksRevision}
+              cardMentionNames={item.message.mentionNames}
+              senderApp={item.message.senderApp}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -2356,6 +2499,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         isComposing={isComposing}
         setIsComposing={setIsComposing}
         pendingAttachments={pendingAttachments}
+        finalizeRetries={finalizeRetries}
+        onRetryFinalize={(id) => void handleRetryFinalize(id)}
+        onRemoveFinalizeRetry={handleRemoveFinalizeRetry}
         onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
@@ -2369,6 +2515,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
+        {...(!isDm && channelId ? { appEntryButtons: <AppEntryButtons channelId={channelId} onError={setSendError} {...(compact ? { compact: true } : {})} {...(isMobile ? { iconOnly: true } : {})} /> } : {})}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}

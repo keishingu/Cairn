@@ -3,14 +3,17 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const calls: string[] = []
 let resolveDelete: (() => void) | undefined
 
-vi.mock('expo-sharing', () => ({}))
+vi.mock('expo-sharing', () => ({
+  isAvailableAsync: vi.fn(async () => true),
+  shareAsync: vi.fn(async (uri: string) => calls.push(`share:${uri}`)),
+}))
 vi.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///cache/',
   getInfoAsync: vi.fn(async () => ({ exists: false })),
   deleteAsync: vi.fn((path: string) => {
     calls.push(`delete:${path}`)
     // 保存先の削除だけを遅らせ、再試行の取得と重なる状況を作る
-    if (!path.endsWith('.download') && resolveDelete === undefined) {
+    if (!path.endsWith('.download') && !path.includes('/original-') && resolveDelete === undefined) {
       return new Promise<void>((resolve) => {
         resolveDelete = () => {
           calls.push(`deleted:${path}`)
@@ -22,14 +25,14 @@ vi.mock('expo-file-system/legacy', () => ({
   }),
   downloadAsync: vi.fn(async (_url: string, path: string) => {
     calls.push(`download:${path}`)
-    return { status: 200 }
+    return { status: 200, uri: path }
   }),
   moveAsync: vi.fn(async ({ to }: { to: string }) => {
     calls.push(`move:${to}`)
   }),
 }))
 
-const { ensureCachedAttachment, removeCachedAttachment } = await import('./attachment-cache')
+const { ensureCachedAttachment, removeCachedAttachment, shareOriginalPdf } = await import('./attachment-cache')
 
 describe('attachment-cache', () => {
   beforeEach(() => {
@@ -53,5 +56,18 @@ describe('attachment-cache', () => {
     expect(deletedAt).toBeGreaterThanOrEqual(0)
     expect(movedAt).toBeGreaterThan(deletedAt)
     expect(uri).toBe(calls[movedAt]!.slice('move:'.length))
+  })
+
+  test('原本は毎回別の一時ファイルへ認可付きURLから取得し、共有キャッシュを使わない', async () => {
+    await shareOriginalPdf({
+      fileUrl: 'https://example.com/a.pdf?original=1',
+      fileId: 'file-1',
+      fileName: 'a.pdf',
+      accessToken: 'token',
+    })
+    expect(calls.some((call) => call.startsWith('download:file:///cache/original-file-1-'))).toBe(true)
+    expect(calls.some((call) => call.includes('/file-1-a.pdf'))).toBe(false)
+    expect(calls.some((call) => call.startsWith('share:file:///cache/original-file-1-'))).toBe(true)
+    expect(calls.some((call) => call.startsWith('delete:file:///cache/original-file-1-'))).toBe(true)
   })
 })

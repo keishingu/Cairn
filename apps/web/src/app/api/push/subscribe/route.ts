@@ -23,6 +23,12 @@ const expoSchema = z.object({
 
 const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])
 
+// Web は従来どおり endpoint だけを送る。アプリはこの端末のトークンで、アプリでオフにした分だけ外す
+const unsubscribeSchema = z.union([
+  z.object({ deviceType: z.literal('expo'), expoToken: z.string().min(1) }),
+  z.object({ endpoint: z.string() }),
+])
+
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -80,18 +86,21 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const parsed = z.object({ endpoint: z.string() }).safeParse(body)
+  const parsed = unsubscribeSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'endpoint required' }, { status: 422 })
+    return NextResponse.json({ error: 'endpoint or expoToken required' }, { status: 422 })
   }
 
   try {
     const { db, pushSubscriptions } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
+    const target = 'expoToken' in parsed.data
+      ? eq(pushSubscriptions.expoToken, parsed.data.expoToken)
+      : eq(pushSubscriptions.endpoint, parsed.data.endpoint)
     await db
       .delete(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.userId, ctx.userId), eq(pushSubscriptions.endpoint, parsed.data.endpoint)))
+      .where(and(eq(pushSubscriptions.userId, ctx.userId), target))
 
     return NextResponse.json({ ok: true })
   } catch (err) {

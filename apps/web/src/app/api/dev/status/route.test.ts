@@ -9,6 +9,7 @@ const ENV_KEYS_TO_RESTORE = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'INNGEST_EVENT_KEY',
   'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
   'TAVILY_API_KEY',
   'GOOGLE_MAPS_API_KEY',
   'VAPID_PUBLIC_KEY',
@@ -113,13 +114,110 @@ describe('dev/status API の認可と手動診断', () => {
         method: 'POST',
         body: JSON.stringify({
           model: 'gpt-5-mini',
-          messages: [{ role: 'user', content: 'hi' }],
-          max_completion_tokens: 1,
+          messages: [{ role: 'user', content: 'Reply with OK.' }],
+          reasoning_effort: 'minimal',
+          max_completion_tokens: 256,
         }),
       }),
     )
     expect(body.openai.status).toBe('ok')
     expect(body.openai.detail).toBe('クレジット有効・API 正常')
     expect(body.openai.latencyMs).toEqual(expect.any(Number))
+  })
+
+  it('OpenAI が分類できないエラーを返したときは、原因を特定できるようメッセージも表示する', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test'
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { type: 'invalid_request_error', code: null, message: 'Unsupported parameter' },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    const { POST } = await import('./route')
+
+    const res = await POST()
+    const body = await res.json() as { openai: { status: string; detail?: string } }
+
+    expect(body.openai.status).toBe('error')
+    expect(body.openai.detail).toBe('HTTP 400 (invalid_request_error): Unsupported parameter')
+  })
+
+  it('GET は Anthropic を呼ばず設定の有無だけを返す', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test'
+    const { GET } = await import('./route')
+
+    const res = await GET()
+    const body = await res.json() as { anthropic: { status: string; detail?: string } }
+
+    expect(body.anthropic.status).toBe('ok')
+    expect(body.anthropic.detail).toContain('設定済み')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('ANTHROPIC_API_KEY 未設定なら GET も POST も未設定として返し、Anthropic を呼ばない', async () => {
+    const { GET, POST } = await import('./route')
+
+    const staticBody = await (await GET()).json() as { anthropic: { status: string } }
+    const diagnosticBody = await (await POST()).json() as { anthropic: { status: string } }
+
+    expect(staticBody.anthropic.status).toBe('unconfigured')
+    expect(diagnosticBody.anthropic.status).toBe('unconfigured')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('POST の手動診断時だけ Anthropic を呼び、temperature などの既定外パラメータは送らない', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test'
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'msg_test' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { POST } = await import('./route')
+
+    const res = await POST()
+    const body = await res.json() as { anthropic: { status: string; detail?: string } }
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-api-key': 'sk-ant-test',
+          'anthropic-version': '2023-06-01',
+        }),
+        body: JSON.stringify({
+          model: 'claude-haiku-5-5',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      }),
+    )
+    expect(body.anthropic.status).toBe('ok')
+  })
+
+  it('Anthropic のクレジット不足は専用の文言で返す', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test'
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            type: 'invalid_request_error',
+            message: 'Your credit balance is too low to access the Anthropic API.',
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    const { POST } = await import('./route')
+
+    const res = await POST()
+    const body = await res.json() as { anthropic: { status: string; detail?: string } }
+
+    expect(body.anthropic.status).toBe('error')
+    expect(body.anthropic.detail).toBe('クレジット残高なし')
   })
 })

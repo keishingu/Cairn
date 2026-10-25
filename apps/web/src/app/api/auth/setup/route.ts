@@ -105,6 +105,15 @@ export async function POST(req: Request) {
       role: 'owner',
     })
 
+    // ファーストパーティのアプリ（投票など）を既定でインストールする（§11 D7）。失敗してもワークスペースは作れたので止めず、
+    // 起動口・トークンを使う時点の ensureFirstPartyInstallations で欠けを補う
+    try {
+      const { ensureFirstPartyInstallations } = await import('@/lib/apps/first-party')
+      await ensureFirstPartyInstallations(ws.id)
+    } catch (err) {
+      console.warn('[auth/setup] first-party app installation failed (will retry lazily):', err)
+    }
+
     try {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({

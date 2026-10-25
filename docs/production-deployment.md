@@ -82,6 +82,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 ### 接続・キーの方針
 
 - **Vercel AI Gateway**: Production / Preview は Vercel がデプロイへ自動注入・更新する `VERCEL_OIDC_TOKEN` を使う。固定の `AI_GATEWAY_API_KEY` は設定せず、ローカルやVercel外からの実行が必要な場合だけ環境別に発行する。OIDCトークンは短命のため1Passwordへ保存しない。
+- **AI プロバイダーのキー**: `OPENAI_API_KEY`（埋め込み・ベクトル検索、チャットで GPT-5 を選んだとき）と `ANTHROPIC_API_KEY`（チャットで Claude を選んだとき、AI PMO Phase 2 の通知文生成）を Production / Preview に設定する。チャットのモデルはワークスペース設定（`workspaces.ai_chat_model`、既定 GPT-5）で選び、選んだ側のキーが無いと 503 になる。
 - **PostHog**: Vercel の **Production のみ**に `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` と `NEXT_PUBLIC_POSTHOG_HOST` を設定する。ローカルと Preview には設定せず、SDK を初期化しない。これはデプロイ環境の接続設定として扱い、事業判断による公開制御用の Feature Flag には含めない。
 - **アプリ実行時 `DATABASE_URL`（Vercel）**: Transaction pooler の **Shared Pooler / IPv4**（ホスト `aws-X-ap-northeast-1.pooler.supabase.com:6543`、ユーザー `postgres.<ref>`）。
   - Direct connection（`db.<ref>.supabase.co`）は **IPv6 専用で Vercel(IPv4) から繋がらない**ため使わない。
@@ -126,7 +127,7 @@ PostHog は production の利用状況を収集するインフラ接続なので
 - [ ] Auth → URL Configuration の Site URL / Redirect URLs が本番ドメインになっているか最終確認
 - [ ] Google カレンダー連携（`GOOGLE_CALENDAR_*`）を使うなら本番設定
   - Google Calendar API 有効化 / OAuth クライアントに `https://oss-cairn.com/api/calendar/google/callback` を登録 / Vercel に 3 変数設定
-- [ ] `CALENDAR_TOKEN_ENCRYPTION_KEY` を本番用に新規生成して Vercel(Production) に設定（鍵はバックアップ）
+- [ ] `CALENDAR_TOKEN_ENCRYPTION_KEY` を本番用に新規生成して Vercel(Production) に設定（鍵はバックアップ）。Google カレンダーを使わなくても必須（投票などファーストパーティのアプリの署名シークレット・Bot トークンの暗号化に使う。未設定だと投票アプリがインストールされない）
 - [ ] Inngest の Production 環境キーを Preview と分離し、本番 serve エンドポイント（`https://oss-cairn.com/api/inngest`）を Sync
 
 ## 限定公開 → 一般公開（不特定多数）に必要な設定

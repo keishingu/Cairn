@@ -52,6 +52,7 @@ const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead
     profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
 }))
+const uploadAttachmentMock = vi.hoisted(() => vi.fn())
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
@@ -106,6 +107,10 @@ vi.mock('@/hooks/use-profile-attributes', () => ({
   useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
 }))
 vi.mock('@/lib/fetch-with-auth', () => ({ fetchWithAuth: fetchWithAuthMock }))
+vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/attachments/upload-client')>()),
+  uploadAttachment: uploadAttachmentMock,
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -216,11 +221,12 @@ describe('ChatMessage copy action', () => {
 
   describe('タスク化済みの印', () => {
     type LinkedTask = { id: string; title: string; status: 'todo' | 'in_progress' | 'done'; lineIndex: number | null }
-    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn(), content = '資料を確認する') {
+    function renderLinked(linkedTasks: LinkedTask[], onMakeTask = vi.fn(), content = '資料を確認する', messageType: 'text' | 'blocks' = 'text') {
       return render(
         <ChatMessage
           messageId="message-1"
-          messageType="text"
+          messageType={messageType}
+          {...(messageType === 'blocks' ? { blocks: [{ type: 'section', block_id: 's', text: { type: 'plain_text', text: content } }] } : {})}
           senderId="user-2"
           currentUserId="user-1"
           senderName="Alice"
@@ -288,6 +294,12 @@ describe('ChatMessage copy action', () => {
       const chip = screen.getByTestId('linked-task-chip')
       expect(chip).toHaveTextContent('タスク 2/2')
       expect(chip).toHaveStyle({ opacity: '0.75' })
+    })
+
+    it('カードのメッセージは行末ラベルを出せないので、代替テキストの行に対応するタスクもチップで出す', () => {
+      renderLinked([task('task-1', 'todo', '資料を確認する', 0)], vi.fn(), '資料を確認する', 'blocks')
+      expect(screen.queryByTestId('line-task-label')).toBeNull()
+      expect(screen.getByTestId('linked-task-chip')).toHaveAttribute('href', '/tasks?taskId=task-1')
     })
 
     describe('行末ラベル', () => {
@@ -684,7 +696,7 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
   })
 })
 
-describe('モバイルWebのリアクション表示', () => {
+describe('リアクションした人の表示', () => {
   it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
     const user = userEvent.setup()
     render(
@@ -788,6 +800,86 @@ describe('モバイルWebのリアクション表示', () => {
     await user.click(screen.getByRole('button', { name: /👍 2/ }))
     expect(onReact).toHaveBeenCalledWith('message-reactions', '👍')
     expect(screen.queryByRole('dialog', { name: 'リアクションした人を表示' })).not.toBeInTheDocument()
+  })
+
+  it('PCではホバーで先頭10人と残り人数を表示し、全員は「…」メニューから開ける', async () => {
+    const user = userEvent.setup()
+    const userNames = Array.from({ length: 12 }, (_, index) => `メンバー${index + 1}`)
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[{ emoji: '👍', count: 12, mine: false, userNames }]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+
+    await user.hover(screen.getByRole('button', { name: /👍 12/ }))
+    const tooltip = screen.getByText(/メンバー1、/)
+    expect(tooltip).toHaveTextContent('メンバー10 他 2 人')
+    expect(tooltip).not.toHaveTextContent('メンバー11')
+
+    fireEvent.click(screen.getByRole('button', { name: '操作' }))
+    fireEvent.click(screen.getByRole('button', { name: 'リアクションした人を表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'リアクションした人を表示' })
+    expect(dialog).toHaveTextContent('メンバー12')
+  })
+
+  it('PCで画面の右上に近いリアクションは、ツールチップをボタンの右端に揃えて下に出す', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatMessage
+        messageId="message-reactions"
+        messageType="text"
+        senderId="user-2"
+        currentUserId="user-1"
+        senderName="Alice"
+        createdAt="2026-06-25T12:00:00.000Z"
+        isEdited={false}
+        content="hello"
+        reactions={[{ emoji: '👍', count: 1, mine: false, userNames: ['メンバーA'] }]}
+        attachments={[]}
+        replyTo={null}
+        bookmarked={false}
+        onReact={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCheckboxToggle={vi.fn()}
+        onReply={vi.fn()}
+        onBookmark={vi.fn()}
+        onMakeTask={vi.fn()}
+        onJumpToMessage={vi.fn()}
+        onCopyLink={vi.fn()}
+        onImageClick={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /👍 1/ }).parentElement!
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({ left: window.innerWidth - 60, right: window.innerWidth - 10, top: 40, bottom: 64, width: 50, height: 24, x: window.innerWidth - 60, y: 40, toJSON: () => ({}) })
+
+    await user.hover(chip)
+    const tooltip = screen.getByText('メンバーA')
+    expect(tooltip.style.right).toBe('10px')
+    expect(tooltip.style.left).toBe('')
+    expect(tooltip.style.top).toBe('70px')
+    expect(tooltip.style.bottom).toBe('')
   })
 })
 
@@ -902,6 +994,60 @@ describe('ChatThreadの初期既読', () => {
     expect(markChannelRead).not.toHaveBeenCalled()
   })
 
+})
+
+describe('ChatThreadのアップロード中のチャンネル切替', () => {
+  let createObjectURLDescriptor: PropertyDescriptor | undefined
+
+  beforeEach(() => {
+    uploadAttachmentMock.mockReset()
+    localStorage.clear()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+  })
+
+  afterEach(() => {
+    if (createObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', createObjectURLDescriptor)
+    else Reflect.deleteProperty(URL, 'createObjectURL')
+  })
+
+  it('旧チャンネルのアップロード中でも新チャンネルで選択でき、旧完了分を追加しない', async () => {
+    createObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:mock-upload') })
+    let finishOldUpload: ((value: { fileId: string; fileName: string; mimeType: string; fileSize: number }) => void) | undefined
+    uploadAttachmentMock
+      .mockImplementationOnce(() => new Promise(resolve => { finishOldUpload = resolve }))
+      .mockResolvedValueOnce({ fileId: 'new-file', fileName: 'new.pdf', mimeType: 'application/pdf', fileSize: 3 })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const oldInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(oldInput, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-2" />
+      </QueryClientProvider>,
+    )
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const newInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(newInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
+    await waitFor(() => expect(screen.getByText('new.pdf')).toBeInTheDocument())
+    await act(async () => {
+      finishOldUpload?.({ fileId: 'old-file', fileName: 'old.pdf', mimeType: 'application/pdf', fileSize: 3 })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.getByText('new.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('old.pdf')).toBeNull()
+    view.unmount()
+  })
 })
 
 describe('ChatThreadのメンション候補', () => {

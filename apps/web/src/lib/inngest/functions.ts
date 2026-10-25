@@ -782,6 +782,99 @@ export const indexFileChunks = inngest.createFunction(
   },
 )
 
+// PDF内の写真スクショ(PNG貼り付け)らしき画像だけをJPEG再圧縮してファイルサイズを縮める。
+// 検索インデックスとは別イベントで動かし、片方の失敗がもう一方に影響しないようにする
+export const compressUploadedPdf = inngest.createFunction(
+  { id: 'compress-uploaded-pdf', concurrency: { limit: 1, key: 'event.data.fileId' } },
+  { event: 'file/pdf-compression-requested' },
+  async ({ event, step }) => {
+    const { fileId, workspaceId } = event.data as { fileId: string; workspaceId: string }
+
+    return step.run('compress-and-preserve-original', async () => {
+      const { db, files } = await import('@cairn/db')
+      const { eq, and, sql } = await import('drizzle-orm')
+      const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.workspaceId, workspaceId))).limit(1)
+      if (!file?.storagePath || file.mimeType !== 'application/pdf') return { skipped: true }
+
+      const currentMeta = (file.metadata ?? {}) as Record<string, unknown>
+      if (currentMeta['pdfCompressionStatus'] === 'ready') return { skipped: true, reason: 'already ready' }
+      await db.update(files).set({
+        metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"processing"'::jsonb, true)`,
+      }).where(eq(files.id, fileId))
+      const supabase = createServiceRoleClient()
+      const { data, error } = await supabase.storage.from('chat-attachments').download(file.storagePath)
+      if (error || !data) throw new Error(`Storage download failed: ${error?.message}`)
+
+      const original = Buffer.from(await data.arrayBuffer())
+      const { compressPdfImages } = await import('@/lib/pdf/compress-images')
+      const compressed = await compressPdfImages(original)
+      const derivedStoragePath = `${workspaceId}/${file.storagePath.split('/')[1]}/${file.uploadedBy}/pdf-derivatives/${fileId}.pdf`
+
+      if (compressed.byteLength >= original.byteLength) {
+        await db.update(files).set({
+          metadata: sql`jsonb_set(jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"ready"'::jsonb, true), '{pdfCompressionUnchanged}', 'true'::jsonb, true)`,
+        }).where(eq(files.id, fileId))
+        return { compressed: false, originalSize: original.byteLength }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .upload(derivedStoragePath, compressed, { contentType: 'application/pdf', upsert: true })
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`)
+
+      const saved = await db.transaction(async (tx) => {
+        const [latest] = await tx.select({ derivedFileSize: files.derivedFileSize, metadata: files.metadata }).from(files).where(eq(files.id, fileId)).for('update').limit(1)
+        if (!latest) return false
+        const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+        await recordStorageUsageDelta(workspaceId, {
+          originalBytes: 0,
+          derivedBytes: compressed.byteLength - (latest.derivedFileSize ?? 0),
+        }, tx)
+        const latestMeta = (latest.metadata ?? {}) as Record<string, unknown>
+        await tx.update(files).set({
+          derivedStoragePath,
+          derivedFileSize: compressed.byteLength,
+          derivedMimeType: 'application/pdf',
+          metadata: { ...latestMeta, pdfCompressionStatus: 'ready', pdfCompressionUnchanged: false },
+        }).where(eq(files.id, fileId))
+        return true
+      })
+      if (!saved) {
+        const { error: cleanupError } = await supabase.storage
+          .from('chat-attachments')
+          .remove([derivedStoragePath])
+        if (cleanupError) {
+          const { storageDeletionJobs } = await import('@cairn/db')
+          const [job] = await db
+            .insert(storageDeletionJobs)
+            .values({ targets: [{ bucket: 'chat-attachments', paths: [derivedStoragePath] }] })
+            .returning({ id: storageDeletionJobs.id })
+          if (!job) throw new Error('storage deletion outbox insert returned no rows')
+          try {
+            await inngest.send({ name: 'storage/deletion.requested', data: { jobId: job.id } })
+          } catch (sendError) {
+            // outboxはDBに残るためcronが再送する。
+            console.error('[compress-uploaded-pdf] storage deletion enqueue failed:', sendError)
+          }
+        }
+        return { skipped: true, reason: 'file deleted during compression' }
+      }
+
+      return { compressed: true, originalSize: original.byteLength, newSize: compressed.byteLength }
+    }).catch(async (error) => {
+      const { db, files } = await import('@cairn/db')
+      const { eq, sql } = await import('drizzle-orm')
+      const [row] = await db.select({ id: files.id }).from(files).where(eq(files.id, event.data.fileId)).limit(1)
+      if (row) {
+        await db.update(files).set({
+          metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"failed"'::jsonb, true)`,
+        }).where(eq(files.id, event.data.fileId))
+      }
+      throw error
+    })
+  },
+)
+
 export const indexProjectChunks = inngest.createFunction(
   { id: 'index-project-chunks' },
   { event: 'project/upserted' },
@@ -1298,5 +1391,40 @@ export const cleanupExpiredUploadRequests = inngest.createFunction(
       const { cleanupExpiredUploadRequests: cleanup } = await import('@/lib/uploads/cleanup')
       return cleanup()
     })
+  },
+)
+
+// アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）。
+// trigger_id は3秒で失効するので、1日たったものは消す
+export const cleanupAppInteractionDeliveries = inngest.createFunction(
+  { id: 'cleanup-app-interaction-deliveries', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 40 3 * * *' },
+  async ({ step }) => {
+    const deliveries = await step.run('delete-old-deliveries', async () => {
+      const { db, appInteractionDeliveries } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appInteractionDeliveries)
+        .where(lt(appInteractionDeliveries.createdAt, sql`now() - interval '30 days'`))
+        .returning({ id: appInteractionDeliveries.id })
+      return deleted.length
+    })
+    const triggers = await step.run('delete-expired-triggers', async () => {
+      const { db, appTriggers } = await import('@cairn/db')
+      const { lt, sql } = await import('drizzle-orm')
+      const deleted = await db.delete(appTriggers).where(lt(appTriggers.expiresAt, sql`now() - interval '1 day'`)).returning({ id: appTriggers.id })
+      return deleted.length
+    })
+    // 送信済み・閉じたモーダルは view（private_metadata を含む）を残し続けない
+    const views = await step.run('delete-finished-views', async () => {
+      const { db, appViews } = await import('@cairn/db')
+      const { and, inArray, lt, sql } = await import('drizzle-orm')
+      const deleted = await db
+        .delete(appViews)
+        .where(and(inArray(appViews.status, ['submitted', 'closed']), lt(appViews.updatedAt, sql`now() - interval '30 days'`)))
+        .returning({ id: appViews.id })
+      return deleted.length
+    })
+    return { deliveries, triggers, views }
   },
 )

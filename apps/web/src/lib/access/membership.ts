@@ -119,3 +119,17 @@ export async function filterActiveMemberIds(
     ))
   return new Set(rows.map((r) => r.userId))
 }
+
+// 署名付きでアプリへ届ける利用者の身元（表示名）。active なメンバーだけを返す（非活性・非所属は null）。
+// アプリへの配送（カードの操作・モーダルの送信・コマンド）はこれで本人を確かめてから届ける。
+export async function getActiveMemberIdentity(workspaceId: string, userId: string): Promise<{ name: string } | null> {
+  const { profiles } = await import('@cairn/db')
+  const { workspaceMemberDisplayName } = await import('@/lib/workspace-member-display-name')
+  const [row] = await db
+    .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
+    .from(activeWorkspaceMembers)
+    .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
+    .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), eq(activeWorkspaceMembers.userId, userId)))
+    .limit(1)
+  return row ? { name: row.name } : null
+}

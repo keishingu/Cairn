@@ -4,7 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_REQUEST_BODY_BYTES } from './message-input'
 
-const { mockGetAuthContext, mockIsBillingEnabled, mockResolveUploadEntitlements } = vi.hoisted(
+const {
+  mockGetAuthContext,
+  mockIsBillingEnabled,
+  mockResolveUploadEntitlements,
+  mockReserveCredits,
+  mockStreamText,
+  dbSelectResults,
+} = vi.hoisted(
   () => ({
     mockGetAuthContext: vi.fn().mockResolvedValue({
       ctx: {
@@ -15,6 +22,9 @@ const { mockGetAuthContext, mockIsBillingEnabled, mockResolveUploadEntitlements 
     }),
     mockIsBillingEnabled: vi.fn(),
     mockResolveUploadEntitlements: vi.fn(),
+    mockReserveCredits: vi.fn(),
+    mockStreamText: vi.fn(),
+    dbSelectResults: [] as unknown[][],
   }),
 )
 
@@ -24,6 +34,38 @@ vi.mock('@/lib/billing/entitlements', () => ({
   resolveUploadEntitlements: mockResolveUploadEntitlements,
 }))
 
+vi.mock('@/lib/billing/credits', () => ({
+  reserveCreditsForActiveBenefit: mockReserveCredits,
+  refundActiveBenefitReservation: vi.fn(),
+}))
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
+  streamText: mockStreamText,
+}))
+vi.mock('@/lib/ai/workspace-research', () => ({
+  searchResearchDocuments: vi.fn().mockResolvedValue({ items: [] }),
+}))
+vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), desc: vi.fn(), asc: vi.fn() }))
+// select チェーンは where / from / orderBy をそのまま返し、limit で用意した結果を順に返す。
+vi.mock('@cairn/db', () => {
+  const chain: Record<string, unknown> = {}
+  for (const name of ['from', 'where', 'orderBy']) chain[name] = () => chain
+  chain['limit'] = () => Promise.resolve(dbSelectResults.shift() ?? [])
+  return {
+    db: { select: () => chain },
+    aiConversations: { id: 'id', workspaceId: 'workspaceId', createdBy: 'createdBy' },
+    aiMessages: {
+      id: 'id',
+      role: 'role',
+      content: 'content',
+      createdAt: 'createdAt',
+      conversationId: 'conversationId',
+    },
+    workspaces: { id: 'id', aiChatModel: 'aiChatModel', aiChatSystemPrompt: 'aiChatSystemPrompt' },
+  }
+})
+
 describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
@@ -32,6 +74,8 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
 
   afterEach(() => {
     delete process.env['OPENAI_API_KEY']
+    delete process.env['ANTHROPIC_API_KEY']
+    dbSelectResults.length = 0
     vi.clearAllMocks()
   })
 
@@ -124,6 +168,102 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(response.status).toBe(402)
     await expect(response.json()).resolves.toEqual({
       error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
+    })
+  })
+
+  const postQuestion = async () => {
+    const { POST } = await import('./route')
+    return POST(
+      new Request('http://localhost/api/ai/conversations/conv/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '質問' }] }),
+      }),
+      { params: Promise.resolve({ id: 'conv-1' }) },
+    )
+  }
+
+  // 会話の存在確認、履歴、ワークスペースのモデル設定の順に select される。
+  const queueDbResults = (aiChatModel: string, aiChatSystemPrompt: string | null = null) => {
+    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel, aiChatSystemPrompt }])
+  }
+
+  const streamedSystemPrompt = async (aiChatModel: string, aiChatSystemPrompt: string | null) => {
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults(aiChatModel, aiChatSystemPrompt)
+
+    const response = await postQuestion()
+    expect(response.status).toBe(200)
+    // ストリームを読み切り、execute 内の streamText 呼び出しを待つ。
+    await response.text()
+    expect(mockStreamText).toHaveBeenCalledTimes(1)
+    return (mockStreamText.mock.calls[0]![0] as { system: string }).system
+  }
+
+  it.each(['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'])(
+    '%s を選択中でも、ワークスペースのシステムプロンプトをチャットの system に渡す',
+    async (aiChatModel) => {
+      const system = await streamedSystemPrompt(aiChatModel, '社内用語ではタスクを「チケット」と呼ぶ')
+
+      expect(system).toContain('【ワークスペースの追加指示】')
+      expect(system).toContain('社内用語ではタスクを「チケット」と呼ぶ')
+    },
+  )
+
+  it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {
+    const system = await streamedSystemPrompt('gpt-5', null)
+
+    expect(system).not.toContain('【ワークスペースの追加指示】')
+  })
+
+  it('Claude を選択中で ANTHROPIC_API_KEY が未設定なら、OpenAI へ切り替えず 503 を返す', async () => {
+    process.env['OPENAI_API_KEY'] = 'test-key'
+    queueDbResults('claude-sonnet-5-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'ANTHROPIC_API_KEY が設定されていません',
+    })
+  })
+
+  it('GPT-5 を選択中で OPENAI_API_KEY が未設定なら、Anthropic へ切り替えず 503 を返す', async () => {
+    delete process.env['OPENAI_API_KEY']
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    queueDbResults('gpt-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: 'OPENAI_API_KEY が設定されていません',
+    })
+  })
+
+  it('キー未設定の503ではクレジットを予約しない', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({
+      isActiveSupporter: true,
+      creditBalance: 1000,
+    })
+    queueDbResults('claude-opus-5-5')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(503)
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+  })
+
+  it('ワークスペースのモデル設定が不正な値なら、既定モデルへ黙って切り替えず 500 を返す', async () => {
+    queueDbResults('gpt-4o')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({
+      error: 'ワークスペースの AI モデル設定を読み込めませんでした',
     })
   })
 

@@ -3,7 +3,8 @@
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { mockGetAuthContext, mockInsert, mockValues, mockConflictUpdate, mockConflictNothing } = vi.hoisted(() => {
+const { mockGetAuthContext, mockInsert, mockValues, mockConflictUpdate, mockConflictNothing, mockDelete, mockWhere } = vi.hoisted(() => {
+  const mockWhere = vi.fn()
   const mockConflictUpdate = vi.fn()
   const mockConflictNothing = vi.fn()
   const mockValues = vi.fn(() => ({
@@ -16,16 +17,22 @@ const { mockGetAuthContext, mockInsert, mockValues, mockConflictUpdate, mockConf
     mockValues,
     mockConflictUpdate,
     mockConflictNothing,
+    mockDelete: vi.fn(() => ({ where: mockWhere })),
+    mockWhere,
   }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@cairn/db', () => ({
-  db: { insert: mockInsert },
-  pushSubscriptions: { userId: 'user_id', endpoint: 'endpoint' },
+  db: { insert: mockInsert, delete: mockDelete },
+  pushSubscriptions: { userId: 'user_id', endpoint: 'endpoint', expoToken: 'expo_token' },
+}))
+vi.mock('drizzle-orm', () => ({
+  and: (...conditions: unknown[]) => ({ and: conditions }),
+  eq: (column: unknown, value: unknown) => ({ eq: [column, value] }),
 }))
 
-import { POST } from './route'
+import { DELETE, POST } from './route'
 
 function subscribe(body: unknown) {
   return POST(new Request('http://localhost/api/push/subscribe', {
@@ -101,5 +108,60 @@ describe('Push購読の登録', () => {
 
     expect(response.status).toBe(401)
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+})
+
+function unsubscribe(body: unknown) {
+  return DELETE(new Request('http://localhost/api/push/subscribe', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }))
+}
+
+describe('Push購読の解除', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: 'user-1', workspaceId: 'workspace-1' },
+      error: null,
+    })
+  })
+
+  test('Web Pushは従来どおりendpointで自分の購読だけを外す', async () => {
+    const response = await unsubscribe({ endpoint: 'https://push.example.test/subscription-1' })
+
+    expect(response.status).toBe(200)
+    expect(mockWhere).toHaveBeenCalledWith({
+      and: [{ eq: ['user_id', 'user-1'] }, { eq: ['endpoint', 'https://push.example.test/subscription-1'] }],
+    })
+  })
+
+  test('アプリはこの端末のExpoトークンで自分の購読だけを外す', async () => {
+    const response = await unsubscribe({ deviceType: 'expo', expoToken: 'ExponentPushToken[abc]' })
+
+    expect(response.status).toBe(200)
+    expect(mockWhere).toHaveBeenCalledWith({
+      and: [{ eq: ['user_id', 'user-1'] }, { eq: ['expo_token', 'ExponentPushToken[abc]'] }],
+    })
+  })
+
+  test.each([{}, { deviceType: 'expo' }, { deviceType: 'expo', expoToken: '' }])(
+    '外す対象が無ければ422を返し、何も削除しない: %j',
+    async (body) => {
+      const response = await unsubscribe(body)
+
+      expect(response.status).toBe(422)
+      expect(mockDelete).not.toHaveBeenCalled()
+    },
+  )
+
+  test('未認証の解除は何も削除しない', async () => {
+    mockGetAuthContext.mockResolvedValue({ ctx: null, error: new Response(null, { status: 401 }) })
+
+    const response = await unsubscribe({ deviceType: 'expo', expoToken: 'ExponentPushToken[abc]' })
+
+    expect(response.status).toBe(401)
+    expect(mockDelete).not.toHaveBeenCalled()
   })
 })

@@ -47,6 +47,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`user:${me.id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
+          // アプリが本人にモーダルを開いた・差し替えた・閉じた
+          if (table === 'app_views') void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           if (
             table === 'notifications' ||
             table === 'channel_read_states' ||
@@ -71,6 +73,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           void invalidateChannelListQueries(queryClient)
+          // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
+          void queryClient.invalidateQueries({ queryKey: ['app-views'] })
         } else if (shouldRetryRealtime(status, error)) {
           setAuthenticated(false)
           console.warn(
@@ -106,8 +110,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`channel:${channelId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
-          // tasks はタスク化済みの印（メッセージの linkedTasks）の更新に使う
-          if (table === 'messages' || table === 'message_reactions' || table === 'tasks') {
+          // tasks はタスク化済みの印（メッセージの linkedTasks）の更新に使う。
+          // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
+          if (table === 'messages' || table === 'message_reactions' || table === 'tasks' || table === 'message_blocks') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
           if (table === 'messages') void invalidateChannelListQueries(queryClient)

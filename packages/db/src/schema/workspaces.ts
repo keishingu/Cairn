@@ -35,6 +35,8 @@ export const profiles = pgTable(
   {
     id: uuid('id').primaryKey(),
     displayName: text('display_name').notNull(),
+    // bot はアプリのインストールごとの送信者。auth.users を持たず、workspace_members にも入らない
+    kind: text('kind').notNull().default('human'),
     bio: text('bio'),
     icalToken: text('ical_token').unique(),
     aiNudgesEnabled: boolean('ai_nudges_enabled').notNull().default(true),
@@ -46,6 +48,7 @@ export const profiles = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check('profiles_kind_check', sql`${t.kind} in ('human', 'bot')`),
     check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
     check(
       'profiles_accent_id_check',
@@ -83,12 +86,26 @@ export const workspaces = pgTable('workspaces', {
   aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' })
     .notNull()
     .default(0),
+  // AI チャット（/ai）が使うモデル。値の集合は @cairn/shared の AI_CHAT_MODELS と同じ。
+  aiChatModel: text('ai_chat_model').notNull().default('gpt-5'),
+  // AI チャットへ毎回渡す、owner が書くワークスペース固有の追加指示（AGENTS.md 相当）。null は未設定。
+  // 上限は @cairn/shared の AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH と同じ。
+  aiChatSystemPrompt: text('ai_chat_system_prompt'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [
+  check(
+    'workspaces_ai_chat_model_check',
+    sql`${t.aiChatModel} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`,
+  ),
+  check(
+    'workspaces_ai_chat_system_prompt_length_check',
+    sql`char_length(${t.aiChatSystemPrompt}) <= 10000`,
+  ),
+])
 
 export const workspaceMembers = pgTable(
   'workspace_members',

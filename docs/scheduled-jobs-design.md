@@ -3,6 +3,8 @@
 作成日: 2026-06-25 / 最終更新: 2026-09-24
 ステータス: 構想・設計段階（未実装。`polls` / `scheduled_jobs` 系テーブル・`messageType: 'poll'` はいずれも存在しない）
 
+> 投票は Cairn 本体の機能ではなく、アプリ基盤の上のファーストパーティアプリとして作る方針に変更した。`message_type` の `poll` 追加・投票テーブルの所有者・Bot 送信者は [`app-platform-design.md`](./app-platform-design.md) を正とする。
+
 ユーザーが**自然言語で定義した定期アクション**を、**確実なスケジュール実行（cron）**で走らせる仕組み。初期の主ユースケースは「毎月の登山本部（下山連絡の電話当番）決めを、アプリ内投票でチャンネルに投げる」こと。
 
 ## 1. 位置づけ — AI PMO ハートビートとの違い
@@ -122,33 +124,15 @@ scheduled_job_runs {
 
 ### 5.3 投票
 
-```ts
-polls        { id, workspaceId (cascade), channelId, messageId → messages, createdBy,
-               question, allowMultiple default false, anonymous default false, closesAt?, createdAt }
-poll_options { id, pollId (cascade), label, position }
-poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, createdAt }
-```
-
-- 同一選択肢への二重投票は `unique(pollId, optionId, userId)` で防ぐ
-- 単一選択の1人1票は部分一意インデックス `(poll_id, user_id) WHERE allow_multiple = false` で DB に強制する。部分索引から `polls` を参照できないため `allowMultiple` を `poll_votes` へ非正規化する（`polls.allowMultiple` 変更時は追随）。単純な `unique(pollId, userId)` は複数選択を壊し、制約を省くと並行二重投票を許すため
+投票のデータモデル・API・UI・作成ユースケースは [`app-platform-design.md`](./app-platform-design.md) §7 を正とする（投票はアプリ基盤の上のファーストパーティアプリ。`message_type: 'poll'`・`POST /api/polls`・`PollPort.createPoll` は置かない）。
 
 ## 6. 投票機能
 
-定期ジョブとは独立に**単体で使える機能**として作る（手動でも立てられる）。定期ジョブは作成処理を呼ぶだけ。
-
-- **メッセージ種別**: `message_type` enum（現状 `text` / `html` / `system`）に `poll` を追加する。`messages` に metadata カラムはないため、リンクは `polls.messageId` を正とし、クライアントは表示中メッセージの ID から投票を引く
-- **API**: `POST /api/polls`（作成と同時に `poll` メッセージを投稿）、`POST /api/polls/[id]/vote`（単一選択は既存票の削除→挿入を1トランザクションで置換）、`GET /api/polls/[id]`（集計。anonymous でなければ投票者も）
-- **集計の配信**: Broadcast from Database（[`notification-design.md`](./notification-design.md#realtime-配信)）
-- **UI**: チャット内のインライン `PollCard`（選択肢 + 票数バー + 自分の投票状態）
-- **権限**: 作成・投票はチャンネルにアクセスできるメンバー（`requireChannelAccess`）
+[`app-platform-design.md`](./app-platform-design.md) §7.2〜§7.3 を参照。
 
 ## 7. 投票作成スキル
 
-[`10_ai_member_design.md`](./10_ai_member_design.md) Stage 2 の「ツール呼び出しで `packages/core` のユースケースを実行」に乗せる。
-
-- `packages/core` に `PollPort.createPoll(...)`（workspaceId / channelId / authorProfileId / question / options / allowMultiple / anonymous / closesAt → pollId / messageId）と、バリデーションを持つ `createPoll` ユースケースを置く。実装は `apps/web` で `POST /api/polls` と同じ内部関数を呼ぶ
-- AI SDK の tool として `create_poll` を公開すれば、会話中の「投票立てて」にも使える。定期ジョブは LLM を介さず同じユースケースを直接呼ぶ
-- 投票 → スキル → 定期ジョブの順に作り、定期ジョブを「既存スキルを cron で叩く薄い層」に保つ
+定期ジョブと AI の `create_poll` tool は、投票アプリの公開エントリ `createPoll`（[`app-platform-design.md`](./app-platform-design.md) §7.1・§7.4）を呼ぶ。定期ジョブは冪等キーに `scheduled_job_runs.id` を渡し、再試行で投票が二重に投稿されないようにする。投票 → 定期ジョブの順に作り、定期ジョブを「既存の作成口を cron で叩く薄い層」に保つ。
 
 ## 8. 発火フロー（on-scheduled-job-fire）
 

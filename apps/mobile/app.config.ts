@@ -50,6 +50,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       ...config.android,
       package: variant.androidPackage,
+      // Android の Push 通知（FCM）に必要な google-services.json。Firebase の設定ファイルは
+      // リポジトリへ置かず、EAS の各 Environment に file 型のシークレットとして登録して渡す。
+      // 未設定なら従来どおり（ローカルの prebuild / run:android は FCM なしで動く）
+      ...(process.env['GOOGLE_SERVICES_JSON']
+        ? { googleServicesFile: process.env['GOOGLE_SERVICES_JSON'] }
+        : {}),
     },
   }
 }

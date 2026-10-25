@@ -130,6 +130,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
+          } else if (table === 'app_views') {
+            // アプリが本人にモーダルを開いた・差し替えた・閉じた
+            void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           } else if (table === 'ai_nudges') {
             // INSERT（新規）と UPDATE（resolve / feedback / 再 active 化）の双方を反映する。
             void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
@@ -163,6 +166,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
+          // アプリのモーダルも Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
+          void queryClient.invalidateQueries({ queryKey: ['app-views'] })
           invalidateChannelLists(queryClient)
           return
         }
@@ -214,7 +219,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [queryClient, userId, scheduleListInvalidate])
 
-  // ─── チャンネルトピック（messages / message_reactions）─────────
+  // ─── チャンネルトピック（messages / message_reactions / message_blocks）─────────
   // 一覧の変化に追従して join/leave を差分反映する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
@@ -245,7 +250,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
             scheduleListInvalidate()
-          } else if (table === 'message_reactions') {
+          } else if (table === 'message_reactions' || table === 'message_blocks') {
+            // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           } else if (table === 'tasks') {
             void queryClient.invalidateQueries({ queryKey: ['tasks'] })

@@ -11,23 +11,31 @@ const {
   mockGetAuthContext,
   mockCanAccessFile,
   mockDownload,
+  mockCreateSignedUrl,
+  mockResolveUploadEntitlements,
   mockDeleteWhere,
   mockUpdateSet,
   mockUpdateWhere,
   mockTransaction,
   mockTransactionSelectLimit,
   mockRecordStorageUsageDelta,
+  mockInngestSend,
+  transactionDeletedFile,
   fileRow,
 } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
+  mockCreateSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: 'https://storage.test/signed' }, error: null }),
+  mockResolveUploadEntitlements: vi.fn(),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
   mockUpdateSet: vi.fn(),
   mockUpdateWhere: vi.fn().mockResolvedValue(undefined),
   mockTransaction: vi.fn(),
   mockTransactionSelectLimit: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn().mockResolvedValue(undefined),
+  mockInngestSend: vi.fn().mockResolvedValue(undefined),
+  transactionDeletedFile: {} as Record<string, unknown>,
   fileRow: {
     id: '30000000-0000-0000-0000-000000000001',
     workspaceId: '10000000-0000-0000-0000-000000000001',
@@ -38,6 +46,8 @@ const {
     mimeType: 'application/pdf',
     fileName: 'file.pdf',
     metadata: {},
+    derivedStoragePath: null as string | null,
+    derivedFileSize: null as number | null,
   },
 }))
 
@@ -45,11 +55,12 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ download: mockDownload, remove: vi.fn() }) },
+    storage: { from: () => ({ download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }) },
   }),
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
-vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn().mockResolvedValue(undefined) } }))
+vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
+vi.mock('@/lib/inngest/client', () => ({ inngest: { send: mockInngestSend } }))
 
 // db は最初の1件取得だけ使う。チェーンの最後で [fileRow] を返す。
 vi.mock('@cairn/db', () => {
@@ -87,12 +98,26 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       fileType: 'document',
       mimeType: 'application/pdf',
       fileName: 'file.pdf',
+      derivedStoragePath: null,
+      derivedFileSize: null,
+      metadata: {},
+    })
+    Object.assign(transactionDeletedFile, {
+      id: FILE_ID,
+      workspaceId: DEV_WORKSPACE_ID,
+      storagePath: fileRow.storagePath,
+      derivedStoragePath: null,
+      fileSize: 0,
+      derivedFileSize: null,
+      fileType: 'document',
+      metadata: {},
     })
     mockGetAuthContext.mockResolvedValue({
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
     mockDownload.mockResolvedValue({
       data: 'file body',
       error: null,
@@ -107,7 +132,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       }),
       delete: () => ({
         where: () => ({
-          returning: () => Promise.resolve([{ id: FILE_ID }]),
+          returning: () => Promise.resolve([transactionDeletedFile]),
         }),
       }),
     }))
@@ -130,6 +155,59 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       'member',
     )
     expect(mockDownload).not.toHaveBeenCalled()
+  })
+
+  it('Freeは新しいPDFの原本を取得できない', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(res.status).toBe(403)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('支援者は新しいPDFの原本を短期署名URLで取得する', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(res.status).toBe(302)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.storagePath, 60, { download: 'file.pdf' })
+  })
+
+  it.each([
+    ['pending', null, { pdfCompressionStatus: 'pending' }],
+    ['failed', null, { pdfCompressionStatus: 'failed' }],
+    ['missing derivative', null, { pdfCompressionStatus: 'ready' }],
+  ])('最適化版が利用できない状態（%s）では原本にフォールバックしない', async (_label, derivative, metadata) => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.derivedStoragePath = derivative
+    fileRow.metadata = metadata
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), routeParams())
+    expect(res.status).toBe(409)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+    expect(mockDownload).not.toHaveBeenCalled()
+  })
+
+  it('最適化済みPDFは派生物を短期署名URLで返す', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.derivedStoragePath = 'ws/ch/user/pdf-derivatives/file.pdf'
+    fileRow.metadata = { pdfCompressionStatus: 'ready' }
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), routeParams())
+    expect(res.status).toBe(302)
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.derivedStoragePath, 60, undefined)
+  })
+
+  it('thumb取得時に新しいPDFの原本へフォールバックしない', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
+    fileRow.metadata = { pdfCompressionStatus: 'pending' }
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?thumb=1'), routeParams())
+    expect(res.status).toBe(404)
+    expect(mockDownload).not.toHaveBeenCalled()
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
   })
 
   it('閲覧権限が無いファイルは PATCH が 403 を返す', async () => {
@@ -203,6 +281,38 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
 
     expect(res.status).toBe(404)
     expect(mockRecordStorageUsageDelta).not.toHaveBeenCalled()
+  })
+
+  it('DELETE はロック後に確定した派生物と使用量を使う', async () => {
+    fileRow.storagePath = 'ws/ch/user/pdf-originals/old.pdf'
+    Object.assign(transactionDeletedFile, {
+      storagePath: 'ws/ch/user/pdf-originals/current.pdf',
+      derivedStoragePath: 'ws/ch/user/pdf-derivatives/current.pdf',
+      fileSize: 120,
+      derivedFileSize: 80,
+      metadata: { thumbnailPath: 'ws/ch/user/thumbnails/current.jpg' },
+    })
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockRecordStorageUsageDelta).toHaveBeenCalledWith(
+      DEV_WORKSPACE_ID,
+      { originalBytes: -120, derivedBytes: -80 },
+      expect.anything(),
+    )
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'storage/objects.delete',
+      data: {
+        bucket: 'chat-attachments',
+        paths: [
+          'ws/ch/user/pdf-originals/current.pdf',
+          'ws/ch/user/pdf-derivatives/current.pdf',
+          'ws/ch/user/thumbnails/current.jpg',
+        ],
+      },
+    })
   })
 
   it('Markdownファイルは保存MIMEが汎用でもUTF-8つきtext/markdownで返す', async () => {

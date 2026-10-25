@@ -32,11 +32,14 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
+  AI_CHAT_MODELS,
+  AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
   isCalendarWeekStart,
   type AccentId,
+  type AiChatModel,
   type CalendarWeekStart,
   type LocalePreference,
 } from '@cairn/shared'
@@ -1320,8 +1323,27 @@ const SettingsWorkflow = () => {
   )
 }
 
+const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
+  'gpt-5': 'GPT-5 (default)',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-opus-5-5': 'Claude Opus 5.5',
+}
+
+const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
+  'gpt-5': 'OpenAI · default',
+  'claude-sonnet-5-5': 'Anthropic · balanced speed and quality',
+  'claude-opus-5-5': 'Anthropic · most capable, higher cost',
+}
+
 const SettingsAI = () => {
   const t = useT()
+  const { data: wsSettings, isError: loadFailed, refetch, isFetching } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selectedModel = wsSettings?.aiChatModel
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
   <div style={{ maxWidth: 780 }}>
     <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
@@ -1331,100 +1353,204 @@ const SettingsAI = () => {
       {t('Configure the AI assistant that stays with each project.')}
     </p>
 
+    {/* 読み込み失敗を「読み込み中」と区別できるよう、モデル欄・システムプロンプト欄の上に出す */}
+    {loadFailed && (
+      <InlineError variant="box" style={{ marginBottom: 16 }}>
+        {t('Could not load the AI agent settings.')}{' '}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          style={{ height: 26, padding: '0 10px', fontSize: 12, marginLeft: 4 }}
+        >
+          {t('Retry')}
+        </button>
+      </InlineError>
+    )}
+
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
+      </p>
       <div
         className="card"
-        style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
+        role="radiogroup"
+        aria-label={t('Chat model')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}
       >
-        {[
-          { n: 'GPT-5', d: t('High accuracy, recommended'), on: true },
-          { n: 'GPT-5 mini', d: t('Fast and lower cost'), on: false },
-        ].map((m, i) => (
-          <div
-            key={i}
-            style={{
-              padding: 12,
-              borderRadius: 8,
-              border: `2px solid ${m.on ? 'var(--accent)' : 'var(--border)'}`,
-              background: m.on ? 'var(--accent-soft)' : 'var(--card-2)',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icon
-                name="sparkles"
-                size={14}
-                color={m.on ? 'var(--accent-text)' : 'var(--text-3)'}
-              />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{m.n}</span>
-              {m.on && (
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: 'var(--accent-text)',
-                  }}
-                >
-                  {t('Selected')}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{m.d}</div>
-          </div>
-        ))}
+        {AI_CHAT_MODELS.map((model) => {
+          const on = model === selectedModel
+          return (
+            <button
+              key={model}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiChatModel: model })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon
+                  name="sparkles"
+                  size={14}
+                  color={on ? 'var(--accent-text)' : 'var(--text-3)'}
+                />
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_MODEL_LABELS[model])}</span>
+                {on && (
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: 'var(--accent-text)',
+                    }}
+                  >
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_CHAT_MODEL_DESCRIPTIONS[model])}
+              </div>
+            </button>
+          )
+        })}
       </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
     </section>
 
-    <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Behavior')}</h2>
-      <div className="card">
-        {[
-          { l: t('Summarize files automatically on upload'), s: 'PDF / XLSX / GPX', on: true },
-          { l: t('Generate a dashboard summary automatically'), s: t('Daily at 7:00 / 22:00'), on: true },
-          { l: t('Detect hazards and notify'), s: t('Weather, distress reports, and missing gear'), on: false },
-        ].map((r, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              padding: '14px 16px',
-              borderBottom: i < 3 ? '1px solid var(--divider)' : 'none',
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{r.l}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{r.s}</div>
-            </div>
-            <Toggle on={r.on} />
-          </div>
-        ))}
-      </div>
-    </section>
-
-    <section>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
-      <textarea
-        defaultValue={t('As an assistant for alpine club activities, put safety first and make specific suggestions from plans, gear, and weather.')}
-        rows={5}
-        style={{
-          width: '100%',
-          padding: 12,
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          background: 'var(--card)',
-          color: 'var(--text)',
-          fontSize: 13,
-          fontFamily: 'inherit',
-          resize: 'vertical',
-          outline: 'none',
-        }}
-      />
-    </section>
+    <AiChatSystemPromptSection />
   </div>
+  )
+}
+
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiChatSystemPromptSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  const loaded = wsSettings !== undefined
+  const saved = wsSettings?.aiChatSystemPrompt ?? ''
+  const [draft, setDraft] = React.useState('')
+  const [justSaved, setJustSaved] = React.useState(false)
+  // 直前に下書きへ反映した保存済みの値。モデル変更などで設定オブジェクトが差し替わっても、
+  // 保存済みのプロンプト自体が変わったときだけ、未編集の下書きを追従させる。
+  const syncedSavedRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (!loaded) return
+    const previous = syncedSavedRef.current
+    syncedSavedRef.current = saved
+    setDraft((current) => (previous === null || current === previous ? saved : current))
+  }, [loaded, saved])
+
+  const unchanged = draft === saved
+  // 保存の応答を待つ間に書き足されたかを、await 後に最新の下書きで判定する。
+  const draftRef = React.useRef(draft)
+  draftRef.current = draft
+
+  const handleSave = async () => {
+    const submitted = draft
+    let updated: Awaited<ReturnType<typeof updateSettings.mutateAsync>>
+    try {
+      updated = await updateSettings.mutateAsync({ aiChatSystemPrompt: submitted })
+    } catch {
+      // エラーはミューテーションの状態として下に表示する
+      return
+    }
+    // サーバーは前後の空白を除き、空白だけなら null にする。保存後に編集していなければ、
+    // 実際に保存された値を表示し、保存されていない空白を残したまま「保存済み」に見せない。
+    // 保存中に書き足した下書きは保存されていないので、残したまま「保存済み」も出さない。
+    if (draftRef.current !== submitted) return
+    setDraft(updated.aiChatSystemPrompt ?? '')
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 2000)
+  }
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.')}
+      </p>
+      <div className="card" style={{ padding: 14 }}>
+        <textarea
+          aria-label={t('System prompt')}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
+            setJustSaved(false)
+          }}
+          readOnly={readOnly}
+          disabled={wsSettings === undefined}
+          maxLength={AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH}
+          rows={10}
+          placeholder={readOnly ? undefined : t('e.g. Call tasks "tickets". Answer in polite Japanese and end with one suggested next action.')}
+          title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+          className="form-control"
+          style={{
+            width: '100%',
+            height: 'auto',
+            boxSizing: 'border-box',
+            padding: '8px 10px',
+            lineHeight: 1.6,
+            fontFamily: "'SF Mono', ui-monospace, monospace",
+            resize: 'vertical',
+            ...(readOnly ? { cursor: 'not-allowed' } : {}),
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            {t('{count} / {max} characters', { count: draft.length, max: AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH })}
+          </span>
+          {readOnly && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              · {t('Only the workspace owner can edit this.')}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={updateSettings.isPending || unchanged || readOnly || wsSettings === undefined}
+            title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+            className="btn btn-primary"
+            style={{
+              marginLeft: 'auto',
+              height: 32,
+              padding: '0 14px',
+              fontSize: 12.5,
+              ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+            }}
+          >
+            {justSaved ? t('Saved') : updateSettings.isPending ? t('Saving...') : t('Save')}
+          </button>
+        </div>
+        {updateSettings.isError && (
+          <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -1890,9 +2016,11 @@ const SettingsWorkspaceGeneral = () => {
                 <Toggle on={phaseTwoEnabled} />
               </button>
             </div>
-            {updateSettings.isError && (
-              <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
-            )}
+            {updateSettings.isError &&
+              (updateSettings.variables?.aiNudgesPhaseOneEnabled !== undefined ||
+                updateSettings.variables?.aiNudgesPhaseTwoEnabled !== undefined) && (
+                <InlineError style={{ padding: '0 16px 10px' }}>{(updateSettings.error as Error).message}</InlineError>
+              )}
           </div>
         </section>
       )}
@@ -3040,7 +3168,14 @@ const SERVICE_META: { key: ServiceKey; label: string; icon: string; purpose: str
     key: 'openai',
     label: 'OpenAI',
     icon: 'sparkles',
-    purpose: 'Required for the AI assistant, document summaries, and vector search',
+    purpose: 'Required for vector search and for the AI assistant when GPT-5 is selected',
+  },
+  {
+    key: 'anthropic',
+    label: 'Anthropic',
+    icon: 'sparkles',
+    purpose:
+      'Required for AI PMO notification text and for the AI assistant when a Claude model is selected',
   },
   {
     key: 'googleMaps',
@@ -3126,7 +3261,7 @@ const SettingsDeveloper = () => {
       )}
       {!diagnose.data && (
         <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>
-          {t('Live checks such as OpenAI run only from "Manual diagnostics".')}
+          {t('Live checks such as OpenAI and Anthropic run only from "Manual diagnostics".')}
         </p>
       )}
 

@@ -10,6 +10,7 @@ import {
   patchWorkspaceSettingsSchema,
   postMessageSchema,
 } from './index'
+import { AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
 
 describe('patchMeSchema', () => {
   it('テーマとハイライトカラーの許可値を受け入れる', () => {
@@ -265,6 +266,30 @@ describe('ワークスペース設定更新スキーマ', () => {
     if (result.success) {
       expect(result.data.projectLabel).toBeNull()
     }
+  })
+
+  it('AIチャットのモデルは選択肢のID（日付サフィックスなし）だけ受け入れる', () => {
+    for (const aiChatModel of ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(true)
+    }
+    for (const aiChatModel of ['claude-sonnet-5-5-20260101', 'claude-haiku-5-5', 'gpt-5-mini', '']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiChatModel }).success).toBe(false)
+    }
+  })
+
+  it('AIチャットのシステムプロンプトは前後の空白を除き、空なら未設定（null）に戻す', () => {
+    const trimmed = patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: '\n 敬体で答える \n' })
+    expect(trimmed.success && trimmed.data.aiChatSystemPrompt).toBe('敬体で答える')
+    for (const aiChatSystemPrompt of ['', '  \n ', null]) {
+      const result = patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt })
+      expect(result.success && result.data.aiChatSystemPrompt).toBeNull()
+    }
+  })
+
+  it('AIチャットのシステムプロンプトは上限の文字数までだけ受け入れる', () => {
+    const atLimit = 'あ'.repeat(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH)
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: atLimit }).success).toBe(true)
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: `${atLimit}あ` }).success).toBe(false)
   })
 })
 
