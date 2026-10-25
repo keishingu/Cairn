@@ -44,6 +44,11 @@
       "ios": {
         "ascAppId": "6800673777",
         "metadataPath": "./store.config.json"
+      },
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": false
       }
     }
   }
