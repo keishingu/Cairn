@@ -3,7 +3,7 @@
 // react-native の部品だけで描き、runtimeVersion を上げずに EAS Update で配信できるようにする
 
 import React from 'react'
-import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { displayAppName, cardActionErrorMessage, normalizeModalView, viewFieldErrorMessage, type RenderInputElement, type RenderModal, type RenderModalBlock } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
@@ -153,7 +153,7 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => void close()}>
-      <KeyboardAvoidingView style={[styles.sheet, { backgroundColor: palette.card }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={[styles.sheet, { backgroundColor: palette.card }]} behavior="padding">
         <View style={[styles.header, { borderBottomColor: palette.divider }]}>
           <Pressable accessibilityRole="button" onPress={() => void close()} disabled={submitting} hitSlop={8}>
             <Text style={{ color: palette.text2, fontSize: 15 }}>{modal?.close ?? t('Cancel')}</Text>
