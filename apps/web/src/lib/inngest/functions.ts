@@ -782,6 +782,99 @@ export const indexFileChunks = inngest.createFunction(
   },
 )
 
+// PDF内の写真スクショ(PNG貼り付け)らしき画像だけをJPEG再圧縮してファイルサイズを縮める。
+// 検索インデックスとは別イベントで動かし、片方の失敗がもう一方に影響しないようにする
+export const compressUploadedPdf = inngest.createFunction(
+  { id: 'compress-uploaded-pdf', concurrency: { limit: 1, key: 'event.data.fileId' } },
+  { event: 'file/pdf-compression-requested' },
+  async ({ event, step }) => {
+    const { fileId, workspaceId } = event.data as { fileId: string; workspaceId: string }
+
+    return step.run('compress-and-preserve-original', async () => {
+      const { db, files } = await import('@cairn/db')
+      const { eq, and, sql } = await import('drizzle-orm')
+      const [file] = await db.select().from(files).where(and(eq(files.id, fileId), eq(files.workspaceId, workspaceId))).limit(1)
+      if (!file?.storagePath || file.mimeType !== 'application/pdf') return { skipped: true }
+
+      const currentMeta = (file.metadata ?? {}) as Record<string, unknown>
+      if (currentMeta['pdfCompressionStatus'] === 'ready') return { skipped: true, reason: 'already ready' }
+      await db.update(files).set({
+        metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"processing"'::jsonb, true)`,
+      }).where(eq(files.id, fileId))
+      const supabase = createServiceRoleClient()
+      const { data, error } = await supabase.storage.from('chat-attachments').download(file.storagePath)
+      if (error || !data) throw new Error(`Storage download failed: ${error?.message}`)
+
+      const original = Buffer.from(await data.arrayBuffer())
+      const { compressPdfImages } = await import('@/lib/pdf/compress-images')
+      const compressed = await compressPdfImages(original)
+      const derivedStoragePath = `${workspaceId}/${file.storagePath.split('/')[1]}/${file.uploadedBy}/pdf-derivatives/${fileId}.pdf`
+
+      if (compressed.byteLength >= original.byteLength) {
+        await db.update(files).set({
+          metadata: sql`jsonb_set(jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"ready"'::jsonb, true), '{pdfCompressionUnchanged}', 'true'::jsonb, true)`,
+        }).where(eq(files.id, fileId))
+        return { compressed: false, originalSize: original.byteLength }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .upload(derivedStoragePath, compressed, { contentType: 'application/pdf', upsert: true })
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`)
+
+      const saved = await db.transaction(async (tx) => {
+        const [latest] = await tx.select({ derivedFileSize: files.derivedFileSize, metadata: files.metadata }).from(files).where(eq(files.id, fileId)).for('update').limit(1)
+        if (!latest) return false
+        const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+        await recordStorageUsageDelta(workspaceId, {
+          originalBytes: 0,
+          derivedBytes: compressed.byteLength - (latest.derivedFileSize ?? 0),
+        }, tx)
+        const latestMeta = (latest.metadata ?? {}) as Record<string, unknown>
+        await tx.update(files).set({
+          derivedStoragePath,
+          derivedFileSize: compressed.byteLength,
+          derivedMimeType: 'application/pdf',
+          metadata: { ...latestMeta, pdfCompressionStatus: 'ready', pdfCompressionUnchanged: false },
+        }).where(eq(files.id, fileId))
+        return true
+      })
+      if (!saved) {
+        const { error: cleanupError } = await supabase.storage
+          .from('chat-attachments')
+          .remove([derivedStoragePath])
+        if (cleanupError) {
+          const { storageDeletionJobs } = await import('@cairn/db')
+          const [job] = await db
+            .insert(storageDeletionJobs)
+            .values({ targets: [{ bucket: 'chat-attachments', paths: [derivedStoragePath] }] })
+            .returning({ id: storageDeletionJobs.id })
+          if (!job) throw new Error('storage deletion outbox insert returned no rows')
+          try {
+            await inngest.send({ name: 'storage/deletion.requested', data: { jobId: job.id } })
+          } catch (sendError) {
+            // outboxはDBに残るためcronが再送する。
+            console.error('[compress-uploaded-pdf] storage deletion enqueue failed:', sendError)
+          }
+        }
+        return { skipped: true, reason: 'file deleted during compression' }
+      }
+
+      return { compressed: true, originalSize: original.byteLength, newSize: compressed.byteLength }
+    }).catch(async (error) => {
+      const { db, files } = await import('@cairn/db')
+      const { eq, sql } = await import('drizzle-orm')
+      const [row] = await db.select({ id: files.id }).from(files).where(eq(files.id, event.data.fileId)).limit(1)
+      if (row) {
+        await db.update(files).set({
+          metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"failed"'::jsonb, true)`,
+        }).where(eq(files.id, event.data.fileId))
+      }
+      throw error
+    })
+  },
+)
+
 export const indexProjectChunks = inngest.createFunction(
   { id: 'index-project-chunks' },
   { event: 'project/upserted' },

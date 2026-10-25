@@ -6,6 +6,7 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import {
   ALLOWED_MIME_TYPES,
   FREE_ATTACHMENT_MAX_FILE_SIZE,
+  MAX_FILE_SIZE,
   normalizeMimeType,
   resolveFileType,
 } from '@/lib/attachments'
@@ -87,11 +88,37 @@ export async function POST(req: Request) {
       fileName: files.fileName,
       mimeType: files.mimeType,
       fileSize: files.fileSize,
+      storagePath: files.storagePath,
+      metadata: files.metadata,
     })
     .from(files)
     .where(and(eq(files.workspaceId, ctx.workspaceId), eq(files.storagePath, storagePath)))
     .limit(1)
   if (existing) {
+    const metadata = (existing.metadata ?? {}) as Record<string, unknown>
+    if (
+      existing.mimeType === 'application/pdf' &&
+      existing.storagePath?.includes('/pdf-originals/') &&
+      (metadata['pdfCompressionStatus'] === 'pending' || metadata['pdfCompressionStatus'] === 'failed')
+    ) {
+      const retryableStatus = sql`${files.metadata}->>'pdfCompressionStatus' IN ('pending', 'failed')`
+      await db.update(files).set({
+        metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"pending"'::jsonb, true)`,
+      }).where(and(eq(files.id, existing.id), retryableStatus))
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'file/pdf-compression-requested',
+          data: { fileId: existing.id, workspaceId: ctx.workspaceId },
+        })
+      } catch (sendError) {
+        await db.update(files).set({
+          metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"failed"'::jsonb, true)`,
+        }).where(and(eq(files.id, existing.id), sql`${files.metadata}->>'pdfCompressionStatus' = 'pending'`))
+        console.error('[/api/attachments/finalize] PDF compression retry send failed:', sendError)
+        return NextResponse.json({ error: 'PDF最適化の開始に失敗しました。再試行してください' }, { status: 503 })
+      }
+    }
     return NextResponse.json(
       {
         fileId: existing.id,
@@ -111,7 +138,7 @@ export async function POST(req: Request) {
   }
 
   const [uploadRequest] = await db
-    .select({ id: uploadRequests.id })
+    .select({ id: uploadRequests.id, fileName: uploadRequests.fileName, mimeType: uploadRequests.derivedMimeType })
     .from(uploadRequests)
     .where(
       and(
@@ -126,6 +153,16 @@ export async function POST(req: Request) {
     .limit(1)
   if (!uploadRequest) {
     return NextResponse.json({ error: 'アップロード情報が見つかりません' }, { status: 404 })
+  }
+
+  // ファイル種別と元ファイル名は署名URL発行時の intent を正とし、finalize body の
+  // MIME 偽装で Free の PDF 上限を迂回できないようにする。
+  if (uploadRequest.fileName !== fileName || uploadRequest.mimeType !== normalizedMime) {
+    return NextResponse.json({ error: 'アップロード情報とファイル情報が一致しません' }, { status: 400 })
+  }
+  const isPdf = uploadRequest.mimeType === 'application/pdf'
+  if (isPdf !== storagePath.includes('/pdf-originals/')) {
+    return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
 
   const supabase = createServiceRoleClient()
@@ -180,7 +217,39 @@ export async function POST(req: Request) {
 
   const actualSize =
     typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
-  if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) {
+  if (actualSize > MAX_FILE_SIZE) {
+    let committed: {
+      id: string
+      fileName: string
+      mimeType: string | null
+      fileSize: number | null
+    } | null
+    try {
+      committed = await removeIfUnfinalized([storagePath])
+    } catch (cleanupError) {
+      console.error('[/api/attachments/finalize] Oversized object cleanup failed:', cleanupError)
+      return NextResponse.json(
+        { error: 'アップロード済みファイルの削除に失敗しました' },
+        { status: 500 },
+      )
+    }
+    if (committed) {
+      return NextResponse.json(
+        {
+          fileId: committed.id,
+          fileName: committed.fileName,
+          mimeType: committed.mimeType,
+          fileSize: committed.fileSize,
+        },
+        { status: 200 },
+      )
+    }
+    return NextResponse.json(
+      { error: 'ファイルサイズは 50MiB 以下にしてください' },
+      { status: 400 },
+    )
+  }
+  if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE && !isPdf) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.rights.canUploadLargeFile) {
       let committed: {
@@ -290,7 +359,7 @@ export async function POST(req: Request) {
         const exceedsFreeStorageAllowance =
           Number(usage?.originalBytes ?? 0) + actualSize > BILLING_CONFIG.freeStorageBytes
         const requiresPaidStorage =
-          actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE || exceedsFreeStorageAllowance
+          (!isPdf && actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) || exceedsFreeStorageAllowance
         if (requiresPaidStorage) {
           const [[balance], [subscription]] = await Promise.all([
             tx
@@ -327,7 +396,10 @@ export async function POST(req: Request) {
           mimeType: normalizedMime,
           fileSize: actualSize,
           fileType: resolveFileType(normalizedMime),
-          metadata: thumbnailPath ? { thumbnailPath } : {},
+          metadata: {
+            ...(thumbnailPath ? { thumbnailPath } : {}),
+            ...(isPdf ? { pdfCompressionStatus: 'pending' } : {}),
+          },
         })
         // 署名付きURLの完了通知はネットワーク再試行され得る。同一オブジェクトの
         // 二重登録・使用量の二重加算を防ぐため、storagePath を冪等キーにする。
@@ -378,6 +450,24 @@ export async function POST(req: Request) {
         })
       } catch (e) {
         console.warn('[/api/attachments/finalize] Inngest event send failed (indexing skipped):', e)
+      }
+    }
+    if (finalized.created && isPdf) {
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'file/pdf-compression-requested',
+          data: { fileId: finalized.file.id, workspaceId: ctx.workspaceId },
+        })
+      } catch (e) {
+        console.error('[/api/attachments/finalize] PDF compression event send failed:', e)
+        await db.update(files).set({
+          metadata: sql`jsonb_set(${files.metadata}, '{pdfCompressionStatus}', '"failed"'::jsonb, true)`,
+        }).where(and(
+          eq(files.id, finalized.file.id),
+          sql`${files.metadata}->>'pdfCompressionStatus' = 'pending'`,
+        ))
+        return NextResponse.json({ error: 'PDF最適化の開始に失敗しました。再試行してください' }, { status: 503 })
       }
     }
 

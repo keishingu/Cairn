@@ -19,6 +19,7 @@ export class AttachmentUploadError extends Error {
   constructor(
     readonly failure: AttachmentUploadFailure,
     readonly serverMessage?: string,
+    readonly retryFinalize?: () => Promise<UploadedAttachment>,
   ) {
     super(serverMessage ?? failure)
     this.name = 'AttachmentUploadError'
@@ -35,6 +36,36 @@ export interface UploadedAttachment {
 async function serverMessage(res: Response): Promise<string | undefined> {
   const data = (await res.json().catch(() => ({}))) as { error?: unknown }
   return typeof data.error === 'string' ? data.error : undefined
+}
+
+export interface AttachmentFinalizeRequest {
+  channelId: string
+  storagePath: string
+  fileName: string
+  mimeType: string
+  fileSize: number
+}
+
+async function finalizeAttachment(body: AttachmentFinalizeRequest): Promise<UploadedAttachment> {
+  const retryFinalize = () => finalizeAttachment(body)
+  let finalizeRes: Response
+  try {
+    finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    throw new AttachmentUploadError(
+      'finalize',
+      error instanceof Error ? error.message : undefined,
+      retryFinalize,
+    )
+  }
+  if (!finalizeRes.ok) {
+    throw new AttachmentUploadError('finalize', await serverMessage(finalizeRes), retryFinalize)
+  }
+  return (await finalizeRes.json()) as UploadedAttachment
 }
 
 /**
@@ -86,17 +117,11 @@ export async function uploadAttachment(channelId: string, file: File): Promise<U
   if (uploadError) throw new AttachmentUploadError('storage')
 
   // 3. files レコードを登録し検索インデックスジョブを発火する
-  const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      channelId,
-      storagePath,
-      fileName: file.name,
-      mimeType,
-      fileSize: file.size,
-    }),
+  return finalizeAttachment({
+    channelId,
+    storagePath,
+    fileName: file.name,
+    mimeType,
+    fileSize: file.size,
   })
-  if (!finalizeRes.ok) throw new AttachmentUploadError('finalize', await serverMessage(finalizeRes))
-  return (await finalizeRes.json()) as UploadedAttachment
 }

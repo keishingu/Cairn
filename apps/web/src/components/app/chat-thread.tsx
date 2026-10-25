@@ -71,7 +71,7 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
+import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from '@/lib/attachments/upload-client'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 
@@ -154,6 +154,15 @@ interface PendingAttachment {
   mimeType: string | null
   fileSize: number | null
   previewUrl: string
+}
+
+interface FinalizeRetryAttachment {
+  id: string
+  channelId: string
+  file: File
+  error: string
+  retryFinalize: () => Promise<UploadedAttachment>
+  isRetrying?: boolean
 }
 
 interface PersistedDraft {
@@ -570,8 +579,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 }}
               />
             ) : (
+              <div key={a.fileId} style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
               <a
-                key={a.fileId}
                 href={`/api/attachments/${a.fileId}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -588,6 +597,17 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   {a.fileName}
                 </span>
               </a>
+              {a.mimeType === 'application/pdf' && (
+                <a
+                  href={`/api/attachments/${a.fileId}?original=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--text-3)', fontSize: 11, textDecoration: 'underline' }}
+                >
+                  {t('Download original PDF (new PDFs are supporter only)')}
+                </a>
+              )}
+              </div>
             ))}
           </div>
         )}
@@ -760,7 +780,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, finalizeRetries, onRetryFinalize, onRemoveFinalizeRetry, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -773,6 +793,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   compact?: boolean
   isMobile?: boolean
   pendingAttachments: PendingAttachment[]
+  finalizeRetries: FinalizeRetryAttachment[]
+  onRetryFinalize: (id: string) => void
+  onRemoveFinalizeRetry: (id: string) => void
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
@@ -1064,7 +1087,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     </div>
   ) : null
 
-  const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
+  const AttachmentPreviews = pendingAttachments.length > 0 || finalizeRetries.length > 0 || isUploading ? (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
@@ -1087,6 +1110,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               fontFamily: 'inherit', lineHeight: 1,
             }}
           >✕</button>
+        </div>
+      ))}
+      {finalizeRetries.map(item => (
+        <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 11.5, maxWidth: 340 }}>
+          <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}: {item.error}</span>
+          <button type="button" className="btn btn-xs" disabled={item.isRetrying} onClick={() => onRetryFinalize(item.id)}>{item.isRetrying ? t('Uploading...') : t('Retry')}</button>
+          <button type="button" aria-label={t('Remove {name}', { name: item.file.name })} disabled={item.isRetrying} onClick={() => onRemoveFinalizeRetry(item.id)} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>✕</button>
         </div>
       ))}
       {isUploading && (
@@ -1507,6 +1537,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
+  const [finalizeRetries, setFinalizeRetries] = React.useState<FinalizeRetryAttachment[]>([])
+  const uploadScopeRef = React.useRef({ channelId })
+  if (uploadScopeRef.current.channelId !== channelId) uploadScopeRef.current = { channelId }
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
@@ -1542,9 +1575,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
   React.useEffect(() => {
+    setIsUploading(false)
     if (!channelId) {
       setDraft('')
       setPendingAttachments([])
+      setFinalizeRetries([])
       return
     }
     const saved = localStorage.getItem(chatDraftKey(channelId))
@@ -1563,6 +1598,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       setPendingAttachments([])
     }
     mentionInsertionsRef.current = []
+    setFinalizeRetries([])
     return () => {
       const { draft: d, pendingAttachments: p } = latestDraftRef.current
       persistDraft(channelId, d, p)
@@ -2117,6 +2153,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    const uploadChannelId = channelId
+    const uploadScope = uploadScopeRef.current
     let file = picked
     // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
     if (isHeicLike(picked)) {
@@ -2124,15 +2162,29 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         file = await convertHeicToJpeg(picked)
       } catch (error) {
         console.error('[ChatThread] HEIC の変換に失敗:', error)
+        if (uploadScopeRef.current !== uploadScope) return null
         setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
         return null
       }
     }
     try {
-      const data = await uploadAttachment(channelId, file)
+      const data = await uploadAttachment(uploadChannelId, file)
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch (error) {
+      if (uploadScopeRef.current !== uploadScope) return null
+      const uploadError = error instanceof AttachmentUploadError ? error : null
+      const retryFinalize = uploadError?.retryFinalize
+      if (retryFinalize) {
+        setFinalizeRetries(current => [...current, {
+          id: `finalize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          channelId: uploadChannelId,
+          file,
+          error: uploadError?.serverMessage ?? t('Could not upload the file'),
+          retryFinalize,
+        }])
+        return null
+      }
       const failure = error instanceof AttachmentUploadError ? error.failure : null
       setSendError(
         failure === 'unsupported_type'
@@ -2147,13 +2199,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const handleFilesSelect = async (files: File[]) => {
     if (!channelId || files.length === 0) return
+    const uploadScope = uploadScopeRef.current
     setIsUploading(true)
     try {
       const results = await Promise.all(files.map(uploadFile))
+      if (uploadScopeRef.current !== uploadScope) return
       const successful = results.filter((r): r is PendingAttachment => r !== null)
       if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
-      setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) setIsUploading(false)
     }
   }
 
@@ -2193,6 +2247,37 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (removed) URL.revokeObjectURL(removed.previewUrl)
       return prev.filter(a => a.fileId !== fileId)
     })
+  }
+
+  const handleRetryFinalize = async (id: string) => {
+    const pending = finalizeRetries.find(item => item.id === id)
+    const retryChannelId = channelId
+    const retryScope = uploadScopeRef.current
+    if (!pending || !retryChannelId || pending.channelId !== retryChannelId) return
+    setFinalizeRetries(current => current.map(item => item.id === id ? { ...item, isRetrying: true } : item))
+    try {
+      const data = await pending.retryFinalize()
+      if (uploadScopeRef.current !== retryScope) return
+      const previewUrl = URL.createObjectURL(pending.file)
+      setPendingAttachments(current => [...current, { ...data, previewUrl }])
+      setFinalizeRetries(current => current.filter(item => item.id !== id))
+    } catch (error) {
+      if (uploadScopeRef.current !== retryScope) return
+      const retryFinalize = error instanceof AttachmentUploadError ? error.retryFinalize : undefined
+      const errorMessage = error instanceof AttachmentUploadError
+        ? error.serverMessage ?? t('Could not upload the file')
+        : t('Could not upload the file')
+      setFinalizeRetries(current => current.map(item => item.id === id ? {
+        ...item,
+        error: errorMessage,
+        ...(retryFinalize ? { retryFinalize } : {}),
+        isRetrying: false,
+      } : item))
+    }
+  }
+
+  const handleRemoveFinalizeRetry = (id: string) => {
+    setFinalizeRetries(current => current.filter(item => item.id !== id))
   }
 
   // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
@@ -2425,6 +2510,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         isComposing={isComposing}
         setIsComposing={setIsComposing}
         pendingAttachments={pendingAttachments}
+        finalizeRetries={finalizeRetries}
+        onRetryFinalize={(id) => void handleRetryFinalize(id)}
+        onRemoveFinalizeRetry={handleRemoveFinalizeRetry}
         onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}

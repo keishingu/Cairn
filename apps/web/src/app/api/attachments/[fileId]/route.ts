@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -90,6 +91,50 @@ export async function GET(req: Request, { params }: RouteContext) {
     }
 
     const supabase = createServiceRoleClient()
+
+    if (file.mimeType === 'application/pdf' && file.storagePath.includes('/pdf-originals/')) {
+      const search = new URL(req.url).searchParams
+      const wantOriginal = search.get('original') === '1'
+      const meta = (file.metadata ?? {}) as Record<string, unknown>
+      const status = meta['pdfCompressionStatus']
+
+      if (wantThumb) {
+        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+        if (!thumbnailPath) return new NextResponse(null, { status: 404 })
+        const { data: thumb, error: thumbError } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(thumbnailPath, 60)
+        if (thumbError || !thumb) return new NextResponse(null, { status: 502 })
+        return NextResponse.redirect(thumb.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+      }
+
+      if (wantOriginal) {
+        const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+        if (!entitlements.rights.canUploadOriginal) {
+          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の有効な支援とワークスペースの残高が必要です' }, { status: 403 })
+        }
+      } else if (status === 'pending' || status === 'processing') {
+        return NextResponse.json({ error: 'PDFを最適化中です。しばらくしてから再試行してください' }, { status: 409 })
+      } else if (status === 'failed') {
+        return NextResponse.json({ error: 'PDFの最適化に失敗しました。元ファイルは支援者向けダウンロードから取得できます' }, { status: 409 })
+      } else if (status !== 'ready') {
+        return NextResponse.json({ error: 'PDFの最適化状態を確認できません。再試行してください' }, { status: 409 })
+      }
+
+      const optimizedPath = file.derivedStoragePath ?? (meta['pdfCompressionUnchanged'] === true ? file.storagePath : null)
+      if (!wantOriginal && !optimizedPath) {
+        return NextResponse.json({ error: '最適化済みPDFを取得できません。再試行してください' }, { status: 409 })
+      }
+      const storagePath = wantOriginal ? file.storagePath : optimizedPath!
+      const { data: signed, error: signedError } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(storagePath, 60, wantOriginal ? { download: file.fileName } : undefined)
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
+        return new NextResponse(null, { status: 502 })
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
 
     // サムネが要求され、かつ生成済みならそちらを返す（無ければオリジナルにフォールバック）
     const meta = (file.metadata ?? {}) as Record<string, unknown>
@@ -178,7 +223,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         uploadedBy: files.uploadedBy,
         fileName: files.fileName,
         fileType: files.fileType,
-        metadata: files.metadata,
       })
       .from(files)
       .where(eq(files.id, fileId))
@@ -197,11 +241,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     }
 
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
-    const meta = (file.metadata ?? {}) as Record<string, unknown>
     await db
       .update(files)
       .set({
-        metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'`,
+        metadata: isLatest
+          ? sql`jsonb_set(coalesce(${files.metadata}, '{}'::jsonb), '{isLatest}', 'true'::jsonb, true)`
+          : sql`${files.metadata} - 'isLatest'`,
       })
       .where(eq(files.id, fileId))
 
@@ -228,6 +273,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         storagePath: files.storagePath,
+        derivedStoragePath: files.derivedStoragePath,
         fileSize: files.fileSize,
         derivedFileSize: files.derivedFileSize,
         uploadedBy: files.uploadedBy,
@@ -250,45 +296,54 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     // DB削除と使用量カウンタの更新を同一トランザクションにする。
     // 先に行ロックを取り、同時 DELETE の後続リクエストが二重に減算しないようにする。
     // （プロジェクト削除のCASCADE経路は日次reconciliationで回収する。）
-    const deleted = await db.transaction(async (tx) => {
+    const deletedFile = await db.transaction(async (tx) => {
       const [lockedFile] = await tx
         .select({ id: files.id })
         .from(files)
         .where(eq(files.id, fileId))
         .for('update')
         .limit(1)
-      if (!lockedFile) return false
+      if (!lockedFile) return null
 
       const [deletedFile] = await tx
         .delete(files)
         .where(eq(files.id, fileId))
-        .returning({ id: files.id })
-      if (!deletedFile) return false
+        .returning({
+          id: files.id,
+          workspaceId: files.workspaceId,
+          storagePath: files.storagePath,
+          derivedStoragePath: files.derivedStoragePath,
+          fileSize: files.fileSize,
+          derivedFileSize: files.derivedFileSize,
+          fileType: files.fileType,
+          metadata: files.metadata,
+        })
+      if (!deletedFile) return null
 
       const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
       await recordStorageUsageDelta(
-        file.workspaceId,
+        deletedFile.workspaceId,
         {
-          originalBytes: -(file.fileSize ?? 0),
-          derivedBytes: -(file.derivedFileSize ?? 0),
+          originalBytes: -(deletedFile.fileSize ?? 0),
+          derivedBytes: -(deletedFile.derivedFileSize ?? 0),
         },
         tx,
       )
-      return true
+      return deletedFile
     })
 
-    if (!deleted) return new NextResponse(null, { status: 404 })
+    if (!deletedFile) return new NextResponse(null, { status: 404 })
 
     // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
-    if (file.fileType !== 'link' && file.storagePath) {
-      const meta = (file.metadata ?? {}) as Record<string, unknown>
+    if (deletedFile.fileType !== 'link' && deletedFile.storagePath) {
+      const meta = (deletedFile.metadata ?? {}) as Record<string, unknown>
       const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
         data: {
           bucket: 'chat-attachments',
-          paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath],
+          paths: [...new Set([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
         },
       })
     }

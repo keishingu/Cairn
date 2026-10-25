@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { translate } from '@cairn/shared'
 import { FilesTab } from './files-tab'
 import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
+import { useProjectFiles } from '@/hooks/use-project-files'
 
 // 送信の手順（URL 発行 → Storage → 登録）は upload-client.test.ts で確かめる。ここでは画面の振る舞いだけを見る
 vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
@@ -99,6 +101,78 @@ describe('ファイルタブ', () => {
     expect(input?.accept).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation')
   })
 
+  it('PDF のアクションメニューから原本ダウンロード URL を開く', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderFilesTab()
+
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+    await userEvent.click(screen.getByRole('button', { name: translate('ja', 'Download original PDF (new PDFs are supporter only)') }))
+
+    expect(open).toHaveBeenCalledWith('/api/attachments/pdf-1?original=1', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+    vi.mocked(useProjectFiles).mockImplementation(() => ({
+      data: [], isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>))
+  })
+
+  it('スコープ切替後は未完了アップロードを待たずに次のファイルを選べる', async () => {
+    let finishOldUpload: ((value: typeof uploaded) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise(resolve => { finishOldUpload = resolve }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+    expect(screen.getByRole('button', { name: 'アップロード中...' })).toBeDisabled()
+
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-2" channelId="channel-2" />
+      </QueryClientProvider>,
+    )
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-1" channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const nextInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(screen.getByRole('button', { name: 'ファイルを追加' })).toBeEnabled()
+    mockUpload.mockResolvedValueOnce(uploaded)
+    fireEvent.change(nextInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      finishOldUpload?.(uploaded)
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
+    expect(toastMocks.success).toHaveBeenCalledTimes(1)
+  })
+
+  it('A→B→A の間に発生した旧 finalize 失敗を新しい A に表示しない', async () => {
+    let failOldUpload: ((error: Error) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise((_, reject) => { failOldUpload = reject }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-2" channelId="channel-2" /></QueryClientProvider>)
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-1" channelId="channel-1" /></QueryClientProvider>)
+    await act(async () => {
+      failOldUpload?.(new AttachmentUploadError('finalize', '旧チャンネルの finalize 失敗', vi.fn()))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: '再試行' })).toBeNull()
+  })
+
   it('detail panel から PDF をアップロードできる', async () => {
     mockUpload.mockResolvedValue(uploaded)
     const { queryClient } = renderFilesTab()
@@ -145,6 +219,25 @@ describe('ファイルタブ', () => {
     await userEvent.upload(input, [new File(['x'], 'report.pdf', { type: 'application/pdf' })])
 
     expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf: アップロードに失敗しました')
+  })
+
+  it('finalize 失敗の再試行は同じ保存済みファイルを使い、アップロードを呼び直さない', async () => {
+    const retryFinalize = vi.fn().mockResolvedValue(uploaded)
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(
+      'finalize', 'PDF最適化の開始に失敗しました。再試行してください', retryFinalize,
+    ))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/guide\.pdf: PDF最適化の開始に失敗しました/)
+    expect(screen.queryByRole('alert')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    expect(retryFinalize).toHaveBeenCalledTimes(1)
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
   })
 
   it('対応していない形式は、形式の案内を表示する', async () => {

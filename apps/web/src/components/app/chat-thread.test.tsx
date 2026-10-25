@@ -52,6 +52,7 @@ const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead
     profileAttributes: [] as Array<{ id: string; name: string; color: string }>,
   },
 }))
+const uploadAttachmentMock = vi.hoisted(() => vi.fn())
 
 let clipboardWriteText: ReturnType<typeof vi.fn>
 
@@ -106,6 +107,10 @@ vi.mock('@/hooks/use-profile-attributes', () => ({
   useProfileAttributes: () => ({ data: chatThreadState.profileAttributes }),
 }))
 vi.mock('@/lib/fetch-with-auth', () => ({ fetchWithAuth: fetchWithAuthMock }))
+vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/attachments/upload-client')>()),
+  uploadAttachment: uploadAttachmentMock,
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 vi.mock('@/lib/toast', () => ({
@@ -989,6 +994,60 @@ describe('ChatThreadの初期既読', () => {
     expect(markChannelRead).not.toHaveBeenCalled()
   })
 
+})
+
+describe('ChatThreadのアップロード中のチャンネル切替', () => {
+  let createObjectURLDescriptor: PropertyDescriptor | undefined
+
+  beforeEach(() => {
+    uploadAttachmentMock.mockReset()
+    localStorage.clear()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+  })
+
+  afterEach(() => {
+    if (createObjectURLDescriptor) Object.defineProperty(URL, 'createObjectURL', createObjectURLDescriptor)
+    else Reflect.deleteProperty(URL, 'createObjectURL')
+  })
+
+  it('旧チャンネルのアップロード中でも新チャンネルで選択でき、旧完了分を追加しない', async () => {
+    createObjectURLDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:mock-upload') })
+    let finishOldUpload: ((value: { fileId: string; fileName: string; mimeType: string; fileSize: number }) => void) | undefined
+    uploadAttachmentMock
+      .mockImplementationOnce(() => new Promise(resolve => { finishOldUpload = resolve }))
+      .mockResolvedValueOnce({ fileId: 'new-file', fileName: 'new.pdf', mimeType: 'application/pdf', fileSize: 3 })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const oldInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(oldInput, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-2" />
+      </QueryClientProvider>,
+    )
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const newInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(newInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
+    await waitFor(() => expect(screen.getByText('new.pdf')).toBeInTheDocument())
+    await act(async () => {
+      finishOldUpload?.({ fileId: 'old-file', fileName: 'old.pdf', mimeType: 'application/pdf', fileSize: 3 })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.getByText('new.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('old.pdf')).toBeNull()
+    view.unmount()
+  })
 })
 
 describe('ChatThreadのメンション候補', () => {
