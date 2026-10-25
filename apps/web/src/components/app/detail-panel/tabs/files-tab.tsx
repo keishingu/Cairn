@@ -86,8 +86,10 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
     retryFinalize: () => Promise<UploadedAttachment>
     isRetrying?: boolean
   }>>([])
-  const activeScopeRef = React.useRef({ channelId, projectId })
-  activeScopeRef.current = { channelId, projectId }
+  const uploadScopeRef = React.useRef({ channelId, projectId })
+  if (uploadScopeRef.current.channelId !== channelId || uploadScopeRef.current.projectId !== projectId) {
+    uploadScopeRef.current = { channelId, projectId }
+  }
   React.useEffect(() => {
     setIsUploading(false)
     setUploadError(null)
@@ -111,6 +113,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
     if (!channelId || !selectedFiles || selectedFiles.length === 0) return
     const uploadChannelId = channelId
     const uploadProjectId = projectId
+    const uploadScope = uploadScopeRef.current
     // 呼び出し元がすぐ input を空にすると FileList も空になるため、最初の await より前に控えておく
     const files = Array.from(selectedFiles)
 
@@ -136,7 +139,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
             if (!(error instanceof AttachmentUploadError)) throw error
             const retryFinalize = error.retryFinalize
             if (retryFinalize) {
-              if (activeScopeRef.current.channelId !== uploadChannelId || activeScopeRef.current.projectId !== uploadProjectId) throw error
+              if (uploadScopeRef.current !== uploadScope) throw error
               setFinalizeRetries(current => [...current, {
                 id: `finalize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 channelId: uploadChannelId,
@@ -157,7 +160,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           }
         }),
       )
-      if (activeScopeRef.current.channelId !== uploadChannelId || activeScopeRef.current.projectId !== uploadProjectId) return
+      if (uploadScopeRef.current !== uploadScope) return
 
       const succeeded = results.filter((result) => result.status === 'fulfilled').length
       const failures = describeUploadFailures(files, results.map(result =>
@@ -169,16 +172,17 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       if (succeeded > 0) {
         await queryClient.invalidateQueries({ queryKey: ['project-files', projectId] })
         await queryClient.invalidateQueries({ queryKey: ['files'] })
-        toast.success(t('Added {count} files', { count: succeeded }))
       }
+      if (uploadScopeRef.current !== uploadScope) return
+      if (succeeded > 0) toast.success(t('Added {count} files', { count: succeeded }))
       // 複数選択で一部だけ失敗したとき、先頭の1件だけでなく失敗したものをすべて示す
       if (failures.length > 0) setUploadError(failures)
     } catch (error) {
-      if (activeScopeRef.current.channelId === uploadChannelId && activeScopeRef.current.projectId === uploadProjectId) {
+      if (uploadScopeRef.current === uploadScope) {
         setUploadError([error instanceof Error ? error.message : t('Could not upload')])
       }
     } finally {
-      if (activeScopeRef.current.channelId === uploadChannelId && activeScopeRef.current.projectId === uploadProjectId) setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) setIsUploading(false)
     }
   }
 
@@ -186,17 +190,19 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
     const pending = finalizeRetries.find(item => item.id === id)
     const retryChannelId = channelId
     const retryProjectId = projectId
+    const retryScope = uploadScopeRef.current
     if (!pending || !retryChannelId || pending.channelId !== retryChannelId || pending.projectId !== retryProjectId) return
     setFinalizeRetries(current => current.map(item => item.id === id ? { ...item, isRetrying: true } : item))
     try {
       await pending.retryFinalize()
-      if (activeScopeRef.current.channelId !== retryChannelId || activeScopeRef.current.projectId !== retryProjectId) return
+      if (uploadScopeRef.current !== retryScope) return
       setFinalizeRetries(current => current.filter(item => item.id !== id))
       await queryClient.invalidateQueries({ queryKey: ['project-files', retryProjectId] })
       await queryClient.invalidateQueries({ queryKey: ['files'] })
+      if (uploadScopeRef.current !== retryScope) return
       toast.success(t('Added {count} files', { count: 1 }))
     } catch (error) {
-      if (activeScopeRef.current.channelId !== retryChannelId || activeScopeRef.current.projectId !== retryProjectId) return
+      if (uploadScopeRef.current !== retryScope) return
       const nextRetry = error instanceof AttachmentUploadError ? error.retryFinalize : undefined
       setFinalizeRetries(current => current.map(item => item.id === id ? {
         ...item,

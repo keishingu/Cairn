@@ -136,6 +136,11 @@ describe('ファイルタブ', () => {
         <FilesTab projectId="project-2" channelId="channel-2" />
       </QueryClientProvider>,
     )
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-1" channelId="channel-1" />
+      </QueryClientProvider>,
+    )
     const nextInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
     expect(screen.getByRole('button', { name: 'ファイルを追加' })).toBeEnabled()
     mockUpload.mockResolvedValueOnce(uploaded)
@@ -147,6 +152,25 @@ describe('ファイルタブ', () => {
     })
     expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
     expect(toastMocks.success).toHaveBeenCalledTimes(1)
+  })
+
+  it('A→B→A の間に発生した旧 finalize 失敗を新しい A に表示しない', async () => {
+    let failOldUpload: ((error: Error) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise((_, reject) => { failOldUpload = reject }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-2" channelId="channel-2" /></QueryClientProvider>)
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-1" channelId="channel-1" /></QueryClientProvider>)
+    await act(async () => {
+      failOldUpload?.(new AttachmentUploadError('finalize', '旧チャンネルの finalize 失敗', vi.fn()))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: '再試行' })).toBeNull()
   })
 
   it('detail panel から PDF をアップロードできる', async () => {

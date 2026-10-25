@@ -1538,8 +1538,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
   const [finalizeRetries, setFinalizeRetries] = React.useState<FinalizeRetryAttachment[]>([])
-  const activeChannelIdRef = React.useRef(channelId)
-  activeChannelIdRef.current = channelId
+  const uploadScopeRef = React.useRef({ channelId })
+  if (uploadScopeRef.current.channelId !== channelId) uploadScopeRef.current = { channelId }
   const [isUploading, setIsUploading] = React.useState(false)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
@@ -2154,6 +2154,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
     const uploadChannelId = channelId
+    const uploadScope = uploadScopeRef.current
     let file = picked
     // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
     if (isHeicLike(picked)) {
@@ -2161,6 +2162,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         file = await convertHeicToJpeg(picked)
       } catch (error) {
         console.error('[ChatThread] HEIC の変換に失敗:', error)
+        if (uploadScopeRef.current !== uploadScope) return null
         setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
         return null
       }
@@ -2170,11 +2172,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch (error) {
-      if (activeChannelIdRef.current !== uploadChannelId) return null
+      if (uploadScopeRef.current !== uploadScope) return null
       const uploadError = error instanceof AttachmentUploadError ? error : null
       const retryFinalize = uploadError?.retryFinalize
       if (retryFinalize) {
-        if (activeChannelIdRef.current !== uploadChannelId) return null
         setFinalizeRetries(current => [...current, {
           id: `finalize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           channelId: uploadChannelId,
@@ -2198,15 +2199,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   const handleFilesSelect = async (files: File[]) => {
     if (!channelId || files.length === 0) return
-    const uploadChannelId = channelId
+    const uploadScope = uploadScopeRef.current
     setIsUploading(true)
     try {
       const results = await Promise.all(files.map(uploadFile))
-      if (activeChannelIdRef.current !== uploadChannelId) return
+      if (uploadScopeRef.current !== uploadScope) return
       const successful = results.filter((r): r is PendingAttachment => r !== null)
       if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
-      if (activeChannelIdRef.current === uploadChannelId) setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) setIsUploading(false)
     }
   }
 
@@ -2251,16 +2252,17 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const handleRetryFinalize = async (id: string) => {
     const pending = finalizeRetries.find(item => item.id === id)
     const retryChannelId = channelId
+    const retryScope = uploadScopeRef.current
     if (!pending || !retryChannelId || pending.channelId !== retryChannelId) return
     setFinalizeRetries(current => current.map(item => item.id === id ? { ...item, isRetrying: true } : item))
     try {
       const data = await pending.retryFinalize()
-      if (activeChannelIdRef.current !== retryChannelId) return
+      if (uploadScopeRef.current !== retryScope) return
       const previewUrl = URL.createObjectURL(pending.file)
       setPendingAttachments(current => [...current, { ...data, previewUrl }])
       setFinalizeRetries(current => current.filter(item => item.id !== id))
     } catch (error) {
-      if (activeChannelIdRef.current !== retryChannelId) return
+      if (uploadScopeRef.current !== retryScope) return
       const retryFinalize = error instanceof AttachmentUploadError ? error.retryFinalize : undefined
       const errorMessage = error instanceof AttachmentUploadError
         ? error.serverMessage ?? t('Could not upload the file')

@@ -1031,6 +1031,11 @@ describe('ChatThreadのアップロード中のチャンネル切替', () => {
         <ChatThread channelId="channel-2" />
       </QueryClientProvider>,
     )
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" />
+      </QueryClientProvider>,
+    )
     const newInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(newInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
     await waitFor(() => expect(screen.getByText('new.pdf')).toBeInTheDocument())
