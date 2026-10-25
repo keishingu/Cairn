@@ -166,7 +166,7 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 - [ ] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、本番ビルドで通知が届くことを確認する
 - [x] 本番 AAB（1.1.0 / versionCode 2）を手動アップロードし、内部テストに公開済み（テスター: メーリング リスト「Cairn 内部テスター」、参加リンク https://play.google.com/apps/internaltest/4701706245945388102 ）
 - [x] フィーチャー グラフィック（1024×500）を作成・アップロード済み
-- [ ] スマートフォン用スクリーンショットを内部テスト版から撮影してアップロードする
+- [x] スマートフォン用スクリーンショット 5 枚を作成（`apps/mobile/store/screenshots/play/phone/`）
 - [x] アカウント削除 URL に `https://oss-cairn.com/privacy#retention` を登録済み（ログイン不要）。Play は保持期間の明記を求めるため、バックアップの保持期間を具体的な日数で追記するとより確実
 - [x] データ セーフティ、コンテンツのレーティング（IARC 12 歳以上相当）、ログインの詳細（iOS と同じ審査用アカウント）、ターゲット ユーザー（18 歳以上）、広告・広告 ID・行政・金融・健康の申告を完了
 - [ ] Play 提出用サービス アカウントを招待し、EAS に鍵を登録して `pnpm submit:android:latest` が通ることを確認する
