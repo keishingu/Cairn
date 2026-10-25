@@ -12,7 +12,7 @@ iOS は App Store 公開済みだが、Android はまだ Google Play に登録�
   - `expo-notifications` plugin: ステータスバー用の単色通知アイコン `assets/notification-icon.png` とアクセント色。未設定だとアプリアイコンが白い四角として表示される
   - 残る権限は `INTERNET` / `ACCESS_NETWORK_STATE` / `VIBRATE` / `DOWNLOAD_WITHOUT_NOTIFICATION`（添付ファイルの保存）/ Android 12 以下限定の `READ_EXTERNAL_STORAGE` `WRITE_EXTERNAL_STORAGE`（`maxSdkVersion=32`）。Android 13 以降は写真ピッカーを使うため `READ_MEDIA_*` を要求せず、Play の「写真と動画の権限」ポリシーの申告対象にならない
 - `apps/mobile/app.config.ts`: `GOOGLE_SERVICES_JSON` 環境変数（EAS の file 型シークレット）から `android.googleServicesFile` を渡す
-- `apps/mobile/eas.json`: `submit.production.android`（`internal` トラック、`releaseStatus: draft`）
+- `apps/mobile/eas.json`: `submit.production.android`（`internal` トラック、`releaseStatus: draft`）。`eas submit` は build profile の `env` を読まず `app.config.ts` が開発用の package に解決してしまうため、`applicationId: com.oss_cairn` を固定して本番の認証情報を引けるようにしている
 - `apps/mobile/package.json`: `build:production:android` / `submit:android` / `submit:android:latest` / `release:play:android`
 - `apps/mobile/.eas/workflows/submit-android.yml`: 手動起動する「本番ビルド → 内部テストへ提出」の EAS Workflow
 - `apps/mobile/store/play-listing.ja.md`: Play Console へ貼り付ける日本語の掲載文と素材仕様
