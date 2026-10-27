@@ -4,6 +4,7 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   jsonb,
   pgTable,
@@ -140,3 +141,60 @@ export const aiNudges = pgTable(
       .where(sql`${t.detector} = 'unanswered_ask' AND ${t.messageId} IS NOT NULL`),
   ],
 )
+
+export type AiPendingActionType =
+  | 'post_message'
+  | 'invite_project_member'
+  | 'set_project_member_role'
+  | 'create_task'
+export type AiPendingActionStatus =
+  | 'pending'
+  | 'executing'
+  | 'executed'
+  | 'failed'
+  | 'rejected'
+  | 'expired'
+
+/**
+ * AI が作った書き込みの実行案（docs/ai-automation-design.md §2.4）。承認者が承認したときだけ、承認者の権限で実行する。
+ * 実行案は承認者本人にだけ見せる。payload は承認時の編集を反映した最終値で上書きし、実行結果は result / error に残す
+ */
+export const aiPendingActions = pgTable(
+  'ai_pending_actions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    // /ai から提案した場合の会話。オートメーションの run から作る場合（Phase 3 以降）は null
+    conversationId: uuid('conversation_id').references(() => aiConversations.id, { onDelete: 'cascade' }),
+    // 承認・却下できる唯一の人（Skill では呼んだ本人）
+    approverId: uuid('approver_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    actionType: text('action_type').$type<AiPendingActionType>().notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    // AI が実行案に添えた理由（承認カードに出す）
+    reason: text('reason'),
+    status: text('status').$type<AiPendingActionStatus>().notNull().default('pending'),
+    result: jsonb('result').$type<Record<string, unknown>>(),
+    error: text('error'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    executedAt: timestamp('executed_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_ai_pending_actions_approver_status').on(t.approverId, t.status, t.createdAt),
+    index('idx_ai_pending_actions_conversation').on(t.conversationId),
+    check(
+      'ai_pending_actions_type_known',
+      sql`${t.actionType} in ('post_message', 'invite_project_member', 'set_project_member_role', 'create_task')`,
+    ),
+    check(
+      'ai_pending_actions_status_known',
+      sql`${t.status} in ('pending', 'executing', 'executed', 'failed', 'rejected', 'expired')`,
+    ),
+  ],
+).enableRLS()
