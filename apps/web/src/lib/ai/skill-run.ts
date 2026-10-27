@@ -100,13 +100,15 @@ export async function reserveSkillRun(
   const { and, count, eq, gte, isNull, sql } = await import('drizzle-orm')
   const reserved = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ai-automation-runs:${ctx.workspaceId}`}))`)
+    // 実行記録はワークスペースで数える（削除したスキルの分も数え、削除と作り直しで上限を戻させない）。
+    // 組み込みの PMO の実行は数えない（定義を消せないので、結合した定義の builtin で見分けられる）
     const [{ value } = { value: 0 }] = await tx
       .select({ value: count() })
       .from(aiAutomationRuns)
-      .innerJoin(aiAutomations, eq(aiAutomations.id, aiAutomationRuns.automationId))
+      .leftJoin(aiAutomations, eq(aiAutomations.id, aiAutomationRuns.automationId))
       .where(
         and(
-          eq(aiAutomations.workspaceId, ctx.workspaceId),
+          eq(aiAutomationRuns.workspaceId, ctx.workspaceId),
           isNull(aiAutomations.builtin),
           gte(aiAutomationRuns.startedAt, jstDayStart(now)),
           sql`${aiAutomationRuns.status} <> 'skipped'`,
@@ -116,6 +118,7 @@ export async function reserveSkillRun(
     const [row] = await tx
       .insert(aiAutomationRuns)
       .values({
+        workspaceId: ctx.workspaceId,
         automationId: skill.id,
         triggerKey: input.triggerKey,
         triggeredBy: ctx.userId,
@@ -161,7 +164,7 @@ export async function finishSkillRun(
     })
     .where(eq(aiAutomationRuns.id, runId))
     .returning({ automationId: aiAutomationRuns.automationId })
-  if (run) {
+  if (run?.automationId) {
     await db.update(aiAutomations).set({ lastRunAt: finishedAt }).where(eq(aiAutomations.id, run.automationId))
   }
 }
