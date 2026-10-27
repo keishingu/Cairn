@@ -197,6 +197,34 @@ function proposalTargets(proposal: DryRunResultDto['proposals'][number]): string
   ].filter(Boolean).join(' / ')
 }
 
+// テスト実行では承認カードを出さないため、実際に書き込まれる中身（投稿の本文・タスクの説明など）をここで見せる
+function ProposalPayload({ proposal }: { proposal: DryRunResultDto['proposals'][number] }) {
+  const t = useT()
+  const { payload, display } = proposal
+  if (proposal.actionType === 'post_message' && typeof payload['text'] === 'string') {
+    return (
+      <div data-testid="dry-run-post-text" style={{ marginTop: 4, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)' }}>
+        <MarkdownContent content={payload['text']} mentionNames={new Map(Object.entries(display.mentionNames ?? {}))}/>
+      </div>
+    )
+  }
+  if (proposal.actionType === 'create_task') {
+    const rows = [
+      typeof payload['description'] === 'string' && payload['description'] ? [t('Description'), payload['description']] : null,
+      display.assignee ? [t('Assignee'), display.assignee.name] : null,
+      typeof payload['dueDate'] === 'string' ? [t('Due date'), payload['dueDate']] : null,
+      typeof payload['priority'] === 'string' ? [t('Priority'), t(payload['priority'] === 'high' ? 'High' : payload['priority'] === 'low' ? 'Low' : 'Medium')] : null,
+    ].filter((row): row is [string, string] => row !== null)
+    if (rows.length === 0) return null
+    return (
+      <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+        {rows.map(([label, value]) => <div key={label}>{label}: {value}</div>)}
+      </div>
+    )
+  }
+  return null
+}
+
 // テスト実行。読んで判断するところまで実際に行い、実行案は作らずにここへ表示するだけ（§2.9）
 function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClose: () => void }) {
   const t = useT()
@@ -239,6 +267,7 @@ function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClo
                 <li key={index}>
                   {t(DRY_RUN_ACTION_LABELS[proposal.actionType] ?? proposal.actionType)}: {proposalTargets(proposal)}
                   {proposal.reason && <span style={{ color: 'var(--text-3)' }}>（{proposal.reason}）</span>}
+                  <ProposalPayload proposal={proposal}/>
                 </li>
               ))}
             </ul>
