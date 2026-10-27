@@ -1296,7 +1296,8 @@ export default function ChatThreadScreen() {
   const profileMember = profileTarget
     ? workspaceMembers.data?.find((member) => member.userId === profileTarget.userId)
     : undefined
-  const profileNotMember = !!profileTarget && !!workspaceMembers.data && !profileMember
+  // ゲストのメンバー一覧は同じプロジェクトの人に絞られるため、一覧にいなくても非活性とは言えない（判定せずサーバーに委ねる）
+  const profileNotMember = !!profileTarget && !!workspaceMembers.data && !profileMember && me?.wsRole !== 'guest'
   // 取得済みの一覧が残っていれば、裏の再取得の失敗でプロフィールを隠さない（判定も同じ data を使う）
   const profileMembersError =
     workspaceMembers.error && !workspaceMembers.data
@@ -1312,7 +1313,7 @@ export default function ChatThreadScreen() {
         targetId: profileTarget.userId,
         blockedByMe: profileBlockedByMe,
         blockedEitherWay: profileTarget.blockedEitherWay,
-        isActiveMember: workspaceMembers.data ? !profileNotMember : null,
+        isActiveMember: profileMember ? true : profileNotMember ? false : null,
         // 相手との DM を開いている最中に同じ DM へ移動する操作は出さない
         dmEnabled: FEATURE_FLAGS.dm && channelType !== 'dm',
         canMention: canMentionUser({
