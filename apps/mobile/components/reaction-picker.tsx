@@ -6,7 +6,6 @@ import {
   LayoutAnimation,
   Modal,
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -91,7 +90,7 @@ export function ReactionPicker({
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         <Pressable
           style={StyleSheet.absoluteFill}

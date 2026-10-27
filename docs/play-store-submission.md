@@ -2,7 +2,7 @@
 
 > 対象: `apps/mobile` の Cairn 本番アプリ（Android package: `com.oss_cairn`）。iOS は [`app-store-submission.md`](app-store-submission.md)。
 
-iOS は App Store 公開済みだが、Android はまだ Google Play に登録していない。この文書は、Play Console の開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
+iOS は App Store 公開済み。Android は株式会社オリカタ（orikata, Inc.）の Play デベロッパー アカウントに登録済みで、内部テストに公開しており、製品版はまだ公開していない。この文書は、開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。進捗は末尾の「製品版送信前のブロッカー」で管理する。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
 
 ## リポジトリ内で準備済みのもの
 
@@ -164,9 +164,9 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 - [x] Play デベロッパー アカウント: クラウド版の運営者である株式会社オリカタ（orikata, Inc.）の組織アカウントで、アプリ「Cairn」（`com.oss_cairn`）を作成済み
 - [x] Firebase プロジェクト `cairn-9f6f3`（Analytics オフ）に Android アプリ `com.oss_cairn` を登録し、`google-services.json` を EAS production の `GOOGLE_SERVICES_JSON` に登録済み
 - [ ] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、本番ビルドで通知が届くことを確認する
-- [ ] `pnpm build:production:android` で upload key を生成し、AAB を Play Console に手動アップロードして内部テストを開始する
+- [x] 本番 AAB（1.1.0 / versionCode 2）を手動アップロードし、内部テストに公開済み（テスター: メーリング リスト「Cairn 内部テスター」、参加リンク https://play.google.com/apps/internaltest/4701706245945388102 ）
 - [x] フィーチャー グラフィック（1024×500）を作成・アップロード済み
-- [ ] スマートフォン用スクリーンショットを内部テスト版から撮影してアップロードする
+- [x] スマートフォン用スクリーンショット 5 枚を作成（`apps/mobile/store/screenshots/play/phone/`）
 - [x] アカウント削除 URL に `https://oss-cairn.com/privacy#retention` を登録済み（ログイン不要）。Play は保持期間の明記を求めるため、バックアップの保持期間を具体的な日数で追記するとより確実
 - [x] データ セーフティ、コンテンツのレーティング（IARC 12 歳以上相当）、ログインの詳細（iOS と同じ審査用アカウント）、ターゲット ユーザー（18 歳以上）、広告・広告 ID・行政・金融・健康の申告を完了
 - [ ] Play 提出用サービス アカウントを招待し、EAS に鍵を登録して `pnpm submit:android:latest` が通ることを確認する

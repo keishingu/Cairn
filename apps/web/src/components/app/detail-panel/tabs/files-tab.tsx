@@ -14,6 +14,7 @@ import type { ProjectFileDto } from '@/app/api/projects/[id]/files/route'
 import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from '@/lib/attachments/upload-client'
 import { useProjectFiles } from '@/hooks/use-project-files'
 import { useT } from '@/components/locale-provider'
+import { useAppShell } from '../../app-shell-context'
 import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
 
@@ -71,6 +72,8 @@ function isImageFile(file: ProjectFileDto): boolean {
 
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
   const t = useT()
+  // 原本は支援者向けの機能。アプリ（WebView）では課金への誘導と受け取られないよう、ストアの決済ポリシーに合わせて出さない
+  const { isWebView } = useAppShell()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
@@ -315,7 +318,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
-                ...(f.mimeType === 'application/pdf' ? [{ icon: 'external-link' as const, label: t('Download original PDF (new PDFs are supporter only)'), onSelect: () => window.open(`/api/attachments/${f.id}?original=1`, '_blank', 'noopener,noreferrer') }] : []),
+                ...(f.mimeType === 'application/pdf' && !isWebView ? [{ icon: 'external-link' as const, label: t('Download original PDF (new PDFs are supporter only)'), onSelect: () => window.open(`/api/attachments/${f.id}?original=1`, '_blank', 'noopener,noreferrer') }] : []),
                 f.isLatest
                   ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
                   : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },

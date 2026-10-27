@@ -45,4 +45,19 @@ describe('モバイルのワークスペース選択', () => {
     await expect(getSelectedWorkspaceId('user-1')).resolves.toBe('workspace-3')
     expect(getItem).toHaveBeenCalledTimes(2)
   })
+
+  it('切替を購読している画面へ、切り替え後のワークスペースを知らせる', async () => {
+    setItem.mockResolvedValue(undefined)
+    const { setSelectedWorkspaceId, subscribeSelectedWorkspace } =
+      await import('./workspace-selection')
+    const listener = vi.fn()
+    const unsubscribe = subscribeSelectedWorkspace(listener)
+
+    await setSelectedWorkspaceId('user-1', 'workspace-2')
+    unsubscribe()
+    await setSelectedWorkspaceId('user-1', 'workspace-3')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener).toHaveBeenCalledWith('user-1', 'workspace-2')
+  })
 })

@@ -37,6 +37,14 @@
         "EXPO_PUBLIC_CAIRN_DEPLOYMENT_ENV": "production"
       },
       "channel": "production"
+    },
+    "production-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

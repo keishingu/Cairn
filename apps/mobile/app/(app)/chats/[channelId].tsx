@@ -53,6 +53,8 @@ import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSub
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
+import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/attachment-auth'
+import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
 import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
@@ -111,7 +113,7 @@ async function openAttachmentFile(
   fileId: string,
   fileName: string,
   mimeType: string | null,
-  accessToken: string,
+  auth: AttachmentAuth,
   t: (message: string, values?: Record<string, string | number>) => string,
 ): Promise<void> {
   try {
@@ -119,7 +121,7 @@ async function openAttachmentFile(
       fileUrl: attachmentUrl(fileId),
       fileId,
       fileName,
-      accessToken,
+      auth,
       mimeType,
       dialogTitle: t('Open file'),
       t,
@@ -136,12 +138,12 @@ async function openAttachmentFile(
 function AttachmentChip({
   attachment,
   palette,
-  accessToken,
+  auth,
   onOpenPreview,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
-  accessToken?: string
+  auth?: AttachmentAuth
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
@@ -153,9 +155,9 @@ function AttachmentChip({
       accessibilityLabel={
         isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
       }
-      disabled={!accessToken}
+      disabled={!auth}
       onPress={() => {
-        if (!accessToken) return
+        if (!auth) return
         if (isPreviewable) {
           onOpenPreview(attachment)
           return
@@ -164,7 +166,7 @@ function AttachmentChip({
           attachment.fileId,
           attachment.fileName,
           attachment.mimeType,
-          accessToken,
+          auth,
           t,
         )
       }}
@@ -173,11 +175,11 @@ function AttachmentChip({
         { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      {isImage && accessToken ? (
+      {isImage && auth ? (
         <Image
           source={{
             uri: attachmentUrl(attachment.fileId),
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers: attachmentRequestHeaders(auth),
           }}
           style={styles.attachmentImage}
         />
@@ -195,7 +197,7 @@ function ChatMessageRow({
   message,
   palette,
   mentionNames,
-  accessToken,
+  attachmentAuth,
   onToggleReaction,
   onAddReaction,
   onShowReactors,
@@ -209,7 +211,7 @@ function ChatMessageRow({
   palette: Palette
   /** userId → 現在の表示名。カードの mrkdwn のメンション（`<@id>`、名前なし）を解決する */
   mentionNames: Map<string, string>
-  accessToken?: string
+  attachmentAuth?: AttachmentAuth
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
   onShowReactors: (emoji: string, messageId: string) => void
@@ -369,7 +371,7 @@ function ChatMessageRow({
                   attachment={attachment}
                   palette={palette}
                   onOpenPreview={onOpenPreview}
-                  {...(accessToken ? { accessToken } : {})}
+                  {...(attachmentAuth ? { auth: attachmentAuth } : {})}
                 />
               ))}
             </View>
@@ -612,6 +614,14 @@ export default function ChatThreadScreen() {
   )
   const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
+  const selectedWorkspace = useSelectedWorkspaceId(session?.user.id)
+  const attachmentAuth = React.useMemo<AttachmentAuth | undefined>(
+    () =>
+      session?.access_token && selectedWorkspace.ready
+        ? { accessToken: session.access_token, workspaceId: selectedWorkspace.workspaceId }
+        : undefined,
+    [session?.access_token, selectedWorkspace.ready, selectedWorkspace.workspaceId],
+  )
   const reactionHistory = useReactionHistory(session?.user.id)
   const [queueReactionHistory] = React.useState(createReactionHistoryQueue)
   const offlineQueue = useOfflineMessageQueue()
@@ -1311,9 +1321,11 @@ export default function ChatThreadScreen() {
   }
 
   return (
+    // Android も padding にする。targetSdk 36 の edge-to-edge ではキーボードが出てもウィンドウが縮まず、
+    // behavior を付けないと入力欄がキーボードの裏に隠れる。縮む端末では重なりが 0 になり余白は足されない
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       {...backSwipe.panHandlers}
     >
       <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
@@ -1438,7 +1450,7 @@ export default function ChatThreadScreen() {
                     onOpenPreview={setAttachmentPreview}
                     onOpenTask={openTask}
                     onShowTasks={setLinkedTasksSheet}
-                    {...(session?.access_token ? { accessToken: session.access_token } : {})}
+                    {...(attachmentAuth ? { attachmentAuth } : {})}
                   />
                 )
               }
@@ -1482,7 +1494,6 @@ export default function ChatThreadScreen() {
               {
                 backgroundColor: palette.card,
                 borderTopColor: palette.border,
-                paddingBottom: insets.bottom || 12,
               },
             ]}
           >
@@ -1491,6 +1502,13 @@ export default function ChatThreadScreen() {
             )}
             {sendKeyPreferenceError && (
               <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>{sendKeyPreferenceError}</Text>
+            )}
+            {selectedWorkspace.error && (
+              <Pressable accessibilityRole="button" onPress={selectedWorkspace.retry}>
+                <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>
+                  {t('Could not load the selected workspace, so attachments cannot be shown. Tap to retry.')}
+                </Text>
+              </Pressable>
             )}
             {offlineQueue.restoreError && (
               <View style={styles.queueRestoreError} accessibilityRole="alert">
@@ -2003,14 +2021,14 @@ export default function ChatThreadScreen() {
           }}
           onClose={() => setLinkedTasksSheet(null)}
         />
-        {attachmentPreview && session?.access_token && (
+        {attachmentPreview && attachmentAuth && (
           previewViewer === 'pdf' ? (
             <ChatPdfViewer
               fileUrl={attachmentUrl(attachmentPreview.fileId)}
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
@@ -2020,7 +2038,7 @@ export default function ChatThreadScreen() {
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
             />
           ) : previewViewer === 'markdown' ? (
@@ -2029,7 +2047,7 @@ export default function ChatThreadScreen() {
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
@@ -2039,7 +2057,7 @@ export default function ChatThreadScreen() {
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
@@ -2192,7 +2210,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
-  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8 },
+  // 下端の安全領域（ホームインジケーター・ナビゲーションバー）は下のタブバー（MobileNav）が確保する。
+  // ここでも insets.bottom を足すと二重になり、入力欄の下に大きな隙間ができる
+  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
   messageListContainer: { flex: 1 },
   messageList: { flex: 1 },
   olderLoading: { marginVertical: 14 },
