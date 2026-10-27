@@ -211,7 +211,8 @@ ai_automations
   next_run_at, last_run_at, created_at, updated_at
 
 ai_automation_runs
-  id, automation_id → ai_automations (cascade)
+  id, workspace_id → workspaces (cascade)
+  automation_id → ai_automations (set null)   -- 定義を削除しても記録は残す
   trigger_key     text   -- cron: 予定時刻 / heartbeat: 差分カーソル終端 / skill: 呼び出しメッセージID / dry-run: 'dry:' + 実行ID
   dry_run         boolean default false
   status          text   -- running | success | silent | failed | skipped
@@ -304,6 +305,6 @@ ai_automation_mutes          -- §2.8 受信者ごとの受信停止
 - 書き込みの種類は、保存時に作成者がチェックボックスで選ぶ（指示文から LLM に推定させない）。選んだものだけを Skill の実行時に `propose_*` tool として渡し、どれも承認カードを通す。何も選ばなければ読み取り専用
 - §2.6 の注意（評価・報告を含む指示文は公開される）は、指示文の中身を判定せず、作成・編集フォームに常に表示する
 - 定義の上限（20件）は、作成時にワークスペース単位のアドバイザリロックの中で数えて、同時に作っても超えないようにする
-- 削除すると実行記録も消える（`ai_automation_runs` は cascade）。記録を残したいときは「停止」を使う。停止から再開すると `paused_reason` も消す
+- 削除しても実行記録は残す（`ai_automation_runs.automation_id` は set null、`workspace_id` を持つ）。監査のためと、1日の実行回数の上限を削除・作り直しで戻させないため。停止から再開すると `paused_reason` も消す
 - 一覧（`GET /api/automations`）は member 以上。guest には見せない（§2.5）。作成・編集・停止・削除は admin 以上
 

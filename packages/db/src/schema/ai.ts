@@ -248,14 +248,16 @@ export const aiAutomations = pgTable(
 
 export type AiAutomationRunStatus = 'running' | 'success' | 'silent' | 'failed' | 'skipped'
 
-/** オートメーションの実行記録。(automation_id, trigger_key) の予約で同じ発火を1回だけ進める（§6） */
+/** オートメーションの実行記録。(automation_id, trigger_key) の予約で同じ発火を1回だけ進める（§6）。定義を削除しても残す */
 export const aiAutomationRuns = pgTable(
   'ai_automation_runs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    automationId: uuid('automation_id')
+    // 定義を削除しても実行記録は残す（監査と、1日の実行回数の上限を削除・作り直しで戻させないため）
+    workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => aiAutomations.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    automationId: uuid('automation_id').references(() => aiAutomations.id, { onDelete: 'set null' }),
     // cron: 予定時刻 / heartbeat: 差分カーソル終端 / skill: 呼び出しメッセージ ID / dry-run: 'dry:' + 実行 ID
     triggerKey: text('trigger_key').notNull(),
     // 実行した人（Skill の呼び出し・dry-run）。cron / heartbeat は null
@@ -272,6 +274,7 @@ export const aiAutomationRuns = pgTable(
   (t) => [
     unique('ai_automation_runs_trigger_unique').on(t.automationId, t.triggerKey),
     index('idx_ai_automation_runs_automation_started').on(t.automationId, t.startedAt),
+    index('idx_ai_automation_runs_workspace_started').on(t.workspaceId, t.startedAt),
     check('ai_automation_runs_status_known', sql`${t.status} in ('running', 'success', 'silent', 'failed', 'skipped')`),
   ],
 ).enableRLS()

@@ -165,7 +165,7 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
       <ConfirmDialog
         open={confirmDelete}
         title={t('Delete automation')}
-        message={t('Delete ${name}. Its run history is deleted too.', { name: automation.name })}
+        message={t('Delete ${name}. Its run records are kept for auditing.', { name: automation.name })}
         onConfirm={() => remove.mutateAsync()}
         onClose={() => setConfirmDelete(false)}
       />

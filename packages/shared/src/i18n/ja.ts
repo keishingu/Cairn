@@ -1329,7 +1329,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Read only': '読み取りのみ',
   'Created by {name}': '作成: {name}',
   'Delete automation': 'オートメーションを削除',
-  'Delete ${name}. Its run history is deleted too.': '${name} を削除します。実行履歴も削除されます。',
+  'Delete ${name}. Its run records are kept for auditing.': '${name} を削除します。実行記録は監査のために残ります。',
   'AI automations': 'AIオートメーション',
   'Define skills that the AI runs from written instructions. Members call a skill as $name in the AI assistant, and any write runs only after the caller approves it.': '指示文で AI に任せる手順（スキル）を定義します。メンバーは AIアシスタントで $名前 と書いて呼び出し、書き込みは呼び出した人が承認したときだけ実行されます。',
   'Add skill': 'スキルを追加',
