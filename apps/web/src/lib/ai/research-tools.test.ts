@@ -12,6 +12,9 @@ vi.mock('./workspace-research', () => ({
   ResearchAccessError: class ResearchAccessError extends Error {
     readonly code = 'ACCESS_DENIED'
   },
+  ResearchInputError: class ResearchInputError extends Error {
+    readonly code = 'INVALID_INPUT'
+  },
   listResearchProjects: mockListResearchProjects,
   listResearchProjectTasks: vi.fn(),
   getResearchRiskSnapshot: vi.fn(),

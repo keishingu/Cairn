@@ -29,6 +29,11 @@ export class ResearchAccessError extends Error {
   readonly code = 'ACCESS_DENIED'
 }
 
+// 日時・カーソルなど入力値の誤り。権限不足と区別し、AI・MCP に直せる誤りとして返す
+export class ResearchInputError extends Error {
+  readonly code = 'INVALID_INPUT'
+}
+
 export interface ResearchScope {
   role: AuthContext['role']
   guestProjectIds: string[] | null

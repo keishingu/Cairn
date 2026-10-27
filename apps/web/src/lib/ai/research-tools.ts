@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { AuthContext } from '@/lib/get-auth-context'
 import {
   ResearchAccessError,
+  ResearchInputError,
   getResearchRiskSnapshot,
   listResearchProjects,
   listResearchProjectTasks,
@@ -22,13 +23,13 @@ import {
 } from './workspace-research-directory'
 
 function toolError(error: unknown) {
-  const accessDenied = error instanceof ResearchAccessError
+  const expected = error instanceof ResearchAccessError || error instanceof ResearchInputError
   console.error('[AI research tool]', error)
   return {
     ok: false as const,
     error: {
-      code: accessDenied ? error.code : 'QUERY_FAILED',
-      message: accessDenied
+      code: expected ? error.code : 'QUERY_FAILED',
+      message: expected
         ? error.message
         : '調査データの取得に失敗しました。この範囲は調査できなかったものとして扱ってください。',
     },

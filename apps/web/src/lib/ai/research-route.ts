@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext, type AuthContext } from '@/lib/get-auth-context'
-import { ResearchAccessError } from './workspace-research'
+import { ResearchAccessError, ResearchInputError } from './workspace-research'
 
 // `/api/research/*` の共通処理。MCP の読み取り tool がこの Route Handler を呼ぶ（mcp-server-design.md §6）。
 // PAT / MCP OAuth の read scope を受け付け、`/ai` の tool と同じ調査関数を実行する。
@@ -38,6 +38,9 @@ export async function researchRoute<T>(
     }
     return NextResponse.json(result)
   } catch (err) {
+    if (err instanceof ResearchInputError) {
+      return NextResponse.json({ error: err.message }, { status: 422 })
+    }
     if (err instanceof ResearchAccessError) {
       return NextResponse.json({ error: err.message }, { status: 403 })
     }

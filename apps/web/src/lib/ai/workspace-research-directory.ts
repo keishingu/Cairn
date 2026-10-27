@@ -24,6 +24,7 @@ import {
 } from './research'
 import {
   ResearchAccessError,
+  ResearchInputError,
   assertProjectAccess,
   canAccessResearchChannel,
   resolveScope,
@@ -208,10 +209,10 @@ export async function readResearchChannelMessages(
     ? new Date(input.since)
     : new Date(until.getTime() - AI_RESEARCH_LIMITS.messageLookbackDefaultDays * 86_400_000)
   if (Number.isNaN(since.getTime()) || Number.isNaN(until.getTime())) {
-    throw new ResearchAccessError('since / until の日時が不正です')
+    throw new ResearchInputError('since / until の日時が不正です')
   }
   const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null
-  if (input.cursor && !cursor) throw new ResearchAccessError('cursor が不正です')
+  if (input.cursor && !cursor) throw new ResearchInputError('cursor が不正です')
 
   const { db, messages, profiles, workspaceMembers } = await import('@cairn/db')
   const { and, asc, eq, gt, isNull, lte, ne, or, sql } = await import('drizzle-orm')

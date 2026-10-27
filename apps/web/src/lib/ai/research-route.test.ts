@@ -11,6 +11,9 @@ vi.mock('./workspace-research', () => ({
   ResearchAccessError: class ResearchAccessError extends Error {
     readonly code = 'ACCESS_DENIED'
   },
+  ResearchInputError: class ResearchInputError extends Error {
+    readonly code = 'INVALID_INPUT'
+  },
 }))
 
 const CTX = {
@@ -91,6 +94,21 @@ describe('MCP向け調査Route Handlerの共通処理', () => {
       'test',
     )
     expect(failed.status).toBe(500)
+  })
+
+  test('日時・カーソルの誤りは権限不足と区別して422を返す', async () => {
+    const { researchRoute } = await import('./research-route')
+    const { ResearchInputError } = await import('./workspace-research')
+    const response = await researchRoute(
+      new Request('http://cairn.local/api/research/channels/x/messages'),
+      z.object({}),
+      async () => {
+        throw new ResearchInputError('cursor が不正です')
+      },
+      'test',
+    )
+    expect(response.status).toBe(422)
+    await expect(response.json()).resolves.toEqual({ error: 'cursor が不正です' })
   })
 
   test('認証に失敗したら調査を実行せずそのエラーを返す', async () => {
