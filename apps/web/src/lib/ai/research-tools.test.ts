@@ -3,8 +3,9 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-const { mockListResearchProjects } = vi.hoisted(() => ({
+const { mockListResearchProjects, mockListResearchMembers } = vi.hoisted(() => ({
   mockListResearchProjects: vi.fn(),
+  mockListResearchMembers: vi.fn(),
 }))
 
 vi.mock('./workspace-research', () => ({
@@ -16,6 +17,15 @@ vi.mock('./workspace-research', () => ({
   getResearchRiskSnapshot: vi.fn(),
   searchResearchChannelMessages: vi.fn(),
   searchResearchDocuments: vi.fn(),
+}))
+
+vi.mock('./workspace-research-directory', () => ({
+  listResearchChannels: vi.fn(),
+  readResearchChannelMessages: vi.fn(),
+  getResearchProjectMembers: vi.fn(),
+  listResearchMembers: mockListResearchMembers,
+  getResearchMemberHistory: vi.fn(),
+  readResearchFile: vi.fn(),
 }))
 
 const CTX = {
@@ -71,7 +81,7 @@ describe('AI横断調査toolの信頼境界', () => {
     })
   })
 
-  test('推奨された5つの読み取り専用toolだけを構成する', async () => {
+  test('横断調査とチャンネル・メンバー・経歴の読み取り専用toolだけを構成する', async () => {
     const { createResearchTools } = await import('./research-tools')
     expect(Object.keys(createResearchTools(CTX))).toEqual([
       'list_projects',
@@ -79,7 +89,32 @@ describe('AI横断調査toolの信頼境界', () => {
       'get_project_risk_snapshot',
       'search_channel_messages',
       'search_workspace_documents',
+      'list_channels',
+      'read_channel_messages',
+      'get_project_members',
+      'list_members',
+      'get_member_history',
+      'read_file',
     ])
+  })
+
+  test('list_membersの属性絞り込みとnullの任意入力を調査関数へそのまま渡す', async () => {
+    mockListResearchMembers.mockResolvedValue({ ok: true, items: [] })
+    const { createResearchTools } = await import('./research-tools')
+    const tools = createResearchTools(CTX)
+    const parsed = tools.list_members.parameters.parse({
+      query: null,
+      attributeNames: ['コーチ'],
+      includeInactive: null,
+      limit: null,
+    })
+    await tools.list_members.execute?.(parsed, { toolCallId: 'tool-3', messages: [] })
+    expect(mockListResearchMembers).toHaveBeenCalledWith(CTX, {
+      query: undefined,
+      attributeNames: ['コーチ'],
+      includeInactive: undefined,
+      limit: undefined,
+    })
   })
 
   test('問い合わせ失敗を空配列にせず調査不能エラーとして返す', async () => {

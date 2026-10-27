@@ -3,10 +3,20 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-const { mockVerifyApiToken, mockVerifyOAuthToken, mockListProjects } = vi.hoisted(() => ({
+const {
+  mockVerifyApiToken,
+  mockVerifyOAuthToken,
+  mockListProjects,
+  mockListMembers,
+  mockGetMemberHistory,
+} = vi.hoisted(() => ({
   mockVerifyApiToken: vi.fn(),
   mockVerifyOAuthToken: vi.fn(),
   mockListProjects: vi.fn(() => Response.json([{ id: 'project-1', name: 'Project' }])),
+  mockListMembers: vi.fn<(req: Request) => Response>(() => Response.json({ ok: true, items: [] })),
+  mockGetMemberHistory: vi.fn<(req: Request) => Response>(() =>
+    Response.json({ ok: true, items: [] }),
+  ),
 }))
 
 vi.mock('@cairn/db', () => ({ db: {} }))
@@ -39,6 +49,8 @@ vi.mock('@/lib/mcp-oauth', () => ({
   verifyMcpOAuthAccessToken: mockVerifyOAuthToken,
 }))
 vi.mock('@/app/api/projects/route', () => ({ GET: mockListProjects }))
+vi.mock('@/app/api/research/members/route', () => ({ GET: mockListMembers }))
+vi.mock('@/app/api/research/members/history/route', () => ({ GET: mockGetMemberHistory }))
 
 describe('MCP Route Handler', () => {
   it('Bearer PATがないリクエストを401で拒否する', async () => {
@@ -163,5 +175,64 @@ describe('MCP Route Handler', () => {
       'cairn_oauth_at_test',
       expect.objectContaining({ resource: 'http://localhost/api/mcp', consumeRateLimit: true }),
     )
+  }, 15_000)
+
+  it('チャンネル・メンバー・経歴の読み取りツールを公開し、配列入力を繰り返しクエリで渡す', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'read',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const send = async (body: unknown) => {
+      const response = await POST(
+        new Request('http://localhost/api/mcp', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            authorization: 'Bearer cairn_pat_test',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-06-18',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+
+    const toolsList = await send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    for (const name of [
+      'list_channels',
+      'read_channel_messages',
+      'get_project_members',
+      'list_members',
+      'get_member_history',
+    ]) {
+      expect(toolsList).toContain(`"${name}"`)
+    }
+
+    await send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'list_members', arguments: { attributeNames: ['コーチ', '3年生'] } },
+    })
+    const membersUrl = new URL(mockListMembers.mock.calls[0]![0].url)
+    expect(membersUrl.pathname).toBe('/api/research/members')
+    expect(membersUrl.searchParams.getAll('attribute')).toEqual(['コーチ', '3年生'])
+
+    const userIds = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
+    await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'get_member_history', arguments: { userIds, includeFiles: false } },
+    })
+    const historyUrl = new URL(mockGetMemberHistory.mock.calls[0]![0].url)
+    expect(historyUrl.searchParams.getAll('userId')).toEqual(userIds)
+    expect(historyUrl.searchParams.get('includeFiles')).toBe('false')
   }, 15_000)
 })

@@ -29,12 +29,12 @@ export class ResearchAccessError extends Error {
   readonly code = 'ACCESS_DENIED'
 }
 
-interface ResearchScope {
+export interface ResearchScope {
   role: AuthContext['role']
   guestProjectIds: string[] | null
 }
 
-async function resolveScope(ctx: AuthContext): Promise<ResearchScope> {
+export async function resolveScope(ctx: AuthContext): Promise<ResearchScope> {
   // Tool execution can happen several seconds after route authentication. Re-evaluate active
   // membership at the read boundary so deactivation/access loss is not hidden by a long stream.
   const role = await getWorkspaceRole(ctx.workspaceId, ctx.userId)
@@ -46,11 +46,11 @@ async function resolveScope(ctx: AuthContext): Promise<ResearchScope> {
   }
 }
 
-function toIso(value: Date | string): string {
+export function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 }
 
-function safeExternalUrl(value: unknown): string | null {
+export function safeExternalUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null
   try {
     const url = new URL(value)
@@ -229,7 +229,7 @@ export interface ResearchTask {
   evidence: ResearchEvidence
 }
 
-async function assertProjectAccess(ctx: AuthContext, scope: ResearchScope, projectId: string) {
+export async function assertProjectAccess(ctx: AuthContext, scope: ResearchScope, projectId: string) {
   if (scope.guestProjectIds && !scope.guestProjectIds.includes(projectId)) {
     throw new ResearchAccessError('指定されたプロジェクトは見つからないか、アクセスできません')
   }
@@ -524,7 +524,7 @@ export async function getResearchRiskSnapshot(
   }
 }
 
-interface ResearchChannelRow {
+export interface ResearchChannelRow {
   id: string
   name: string
   type: string
