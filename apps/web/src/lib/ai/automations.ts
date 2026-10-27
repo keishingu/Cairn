@@ -25,7 +25,8 @@ export const AUTOMATION_WRITE_ACTIONS = [
 export const automationNameSchema = z
   .string()
   .trim()
-  .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, '名前は半角英小文字・数字・ハイフンで40文字以内にしてください（先頭は英数字）')
+  // 先頭を英字に限る（`$100` のような金額をスキルの呼び出しと取り違えないため）
+  .regex(/^[a-z][a-z0-9-]{0,39}$/, '名前は半角英小文字・数字・ハイフンで40文字以内にしてください（先頭は英字）')
 
 const instructionSchema = z
   .string()

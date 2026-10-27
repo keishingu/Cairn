@@ -70,7 +70,7 @@ function AutomationForm({
             style={{ flex: 1 }}
           />
         </div>
-        <span style={{ fontWeight: 400, color: 'var(--text-4)' }}>{t('Lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.', { name: input.name || 'assign-reviewer' })}</span>
+        <span style={{ fontWeight: 400, color: 'var(--text-4)' }}>{t('Start with a lowercase letter; use lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.', { name: input.name || 'assign-reviewer' })}</span>
       </label>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
         {t('Instructions')}

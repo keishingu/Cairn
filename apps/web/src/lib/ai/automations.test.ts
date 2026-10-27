@@ -25,7 +25,7 @@ describe('オートメーションの入力の検証', () => {
 
   test('$ で呼べない名前は受け付けない', async () => {
     const { createAutomationSchema } = await import('./automations')
-    for (const name of ['Assign', '-assign', 'レビュー', 'a'.repeat(41), 'assign reviewer']) {
+    for (const name of ['Assign', '-assign', '100', '1st-review', 'レビュー', 'a'.repeat(41), 'assign reviewer']) {
       expect(
         createAutomationSchema.safeParse({ kind: 'skill', name, instruction: '指示', writeActions: [] }).success,
       ).toBe(false)
