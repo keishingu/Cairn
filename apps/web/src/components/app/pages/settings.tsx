@@ -47,6 +47,7 @@ import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
+import { AutomationsSettings } from '../automations-settings'
 import { SettingsProjectRoles } from '../settings-project-roles'
 
 const CreditPlacementBoard = dynamic(
@@ -3440,6 +3441,7 @@ export function getSettingsNavGroups(
     { id: 'project-roles', label: 'Roles', icon: 'users' },
     { id: 'profile-attributes', label: 'Profile attributes', icon: 'hash' },
     { id: 'ai', label: 'AI agent', icon: 'sparkles' },
+    { id: 'automations', label: 'AI automations', icon: 'sparkles' },
     { id: 'members', label: 'Members', icon: 'users' },
     { id: 'integrations', label: 'Integrations', icon: 'layers' },
     ...(options.isMobile
@@ -3490,6 +3492,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   'project-roles': SettingsProjectRoles,
   'profile-attributes': ProfileAttributesSettings,
   ai: SettingsAI,
+  automations: AutomationsSettings,
   integrations: SettingsIntegrations,
   billing: SettingsBilling,
   contributions: SettingsContributions,

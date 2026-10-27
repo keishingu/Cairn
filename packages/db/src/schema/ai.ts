@@ -6,6 +6,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -196,5 +197,81 @@ export const aiPendingActions = pgTable(
       'ai_pending_actions_status_known',
       sql`${t.status} in ('pending', 'executing', 'executed', 'failed', 'rejected', 'expired')`,
     ),
+  ],
+).enableRLS()
+
+export type AiAutomationKind = 'skill' | 'cron' | 'heartbeat'
+export type AiAutomationBuiltin = 'pmo_tasks' | 'pmo_messages'
+
+/**
+ * AI オートメーションの定義（docs/ai-automation-design.md §6）。指示文（raw_instruction）を実行時のプロンプトの正とし、
+ * 保存時に確定できる部分（許可する書き込み・スケジュール・宛先など）だけを compiled に持つ。
+ * 組み込みの AI PMO も Phase 2 で builtin の行として載せる
+ */
+export const aiAutomations = pgTable(
+  'ai_automations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<AiAutomationKind>().notNull(),
+    builtin: text('builtin').$type<AiAutomationBuiltin>(),
+    // Skill は `$name` の name。ワークスペース内で一意
+    name: text('name').notNull(),
+    rawInstruction: text('raw_instruction'),
+    compiled: jsonb('compiled').$type<Record<string, unknown>>().notNull().default({}),
+    // ユーザー定義 heartbeat の読み取り範囲（Phase 4 で必須にする）
+    scopeProjectId: uuid('scope_project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    // cron / heartbeat の書き込みの承認者。Skill は呼んだ本人が承認者なので null
+    approverId: uuid('approver_id').references(() => profiles.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    enabled: boolean('enabled').notNull().default(true),
+    pausedReason: text('paused_reason'),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('ai_automations_workspace_name_idx').on(t.workspaceId, t.name),
+    index('idx_ai_automations_next_run').on(t.nextRunAt).where(sql`${t.enabled} and ${t.nextRunAt} is not null`),
+    check('ai_automations_kind_known', sql`${t.kind} in ('skill', 'cron', 'heartbeat')`),
+    check('ai_automations_builtin_known', sql`${t.builtin} is null or ${t.builtin} in ('pmo_tasks', 'pmo_messages')`),
+    check('ai_automations_name_format', sql`${t.name} ~ '^[a-z0-9][a-z0-9-]{0,39}$'`),
+    // ユーザー定義は指示文が必須（組み込みは検知ロジックが本体なので持たない）
+    check('ai_automations_instruction_required', sql`${t.builtin} is not null or length(trim(coalesce(${t.rawInstruction}, ''))) > 0`),
+    check('ai_automations_instruction_length', sql`char_length(${t.rawInstruction}) <= 10000`),
+    check('ai_automations_compiled_object', sql`jsonb_typeof(${t.compiled}) = 'object'`),
+  ],
+).enableRLS()
+
+export type AiAutomationRunStatus = 'running' | 'success' | 'silent' | 'failed' | 'skipped'
+
+/** オートメーションの実行記録。(automation_id, trigger_key) の予約で同じ発火を1回だけ進める（§6） */
+export const aiAutomationRuns = pgTable(
+  'ai_automation_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    automationId: uuid('automation_id')
+      .notNull()
+      .references(() => aiAutomations.id, { onDelete: 'cascade' }),
+    // cron: 予定時刻 / heartbeat: 差分カーソル終端 / skill: 呼び出しメッセージ ID / dry-run: 'dry:' + 実行 ID
+    triggerKey: text('trigger_key').notNull(),
+    // 実行した人（Skill の呼び出し・dry-run）。cron / heartbeat は null
+    triggeredBy: uuid('triggered_by').references(() => profiles.id, { onDelete: 'set null' }),
+    dryRun: boolean('dry_run').notNull().default(false),
+    status: text('status').$type<AiAutomationRunStatus>().notNull().default('running'),
+    evidence: jsonb('evidence').$type<unknown[]>().notNull().default([]),
+    output: jsonb('output').$type<Record<string, unknown>>(),
+    creditsUsed: integer('credits_used'),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('ai_automation_runs_trigger_unique').on(t.automationId, t.triggerKey),
+    index('idx_ai_automation_runs_automation_started').on(t.automationId, t.startedAt),
+    check('ai_automation_runs_status_known', sql`${t.status} in ('running', 'success', 'silent', 'failed', 'skipped')`),
   ],
 ).enableRLS()
