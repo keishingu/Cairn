@@ -98,6 +98,19 @@ describe('middleware', () => {
     }
   })
 
+  it('未認証でもアプリ開発者向けドキュメントへアクセスできる', async () => {
+    getClaims.mockResolvedValue(unauthed())
+    const { middleware } = await import('./middleware')
+
+    for (const path of ['/developers', '/developers/blocks', '/developers/en', '/developers/en/web-api']) {
+      const res = await middleware(makeRequest(path))
+      expect(res.headers.get('location')).toBeNull()
+    }
+    // 前方一致で別のパスまで公開しない
+    const res = await middleware(makeRequest('/developers-private'))
+    expect(res.headers.get('location')).toContain('/auth/login')
+  })
+
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
     getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')

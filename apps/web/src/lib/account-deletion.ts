@@ -144,6 +144,7 @@ export function buildStorageDeletionTargets(
       add(GALLERY_BUCKET, file.derivedStoragePath)
     } else {
       add(ATTACHMENTS_BUCKET, file.storagePath)
+      add(ATTACHMENTS_BUCKET, file.derivedStoragePath)
       add(ATTACHMENTS_BUCKET, file.thumbnailPath)
     }
   }

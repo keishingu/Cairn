@@ -1,12 +1,24 @@
 import { translate } from '@cairn/shared'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'
+import { attachmentRequestHeaders, type AttachmentAuth } from './attachment-auth'
 import { attachmentCacheFileName, isImageMime, shouldReuseCachedFile } from './attachment-file'
 
 // legacy download API は安定した進捗不要ダウンロードに使える。
 // SDK 55 からは package exports の types 条件で build 配下の型定義が解決される。
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
+
+async function downloadErrorMessage(uri: string, status: number, t: Translate): Promise<string> {
+  try {
+    const body = await FileSystem.readAsStringAsync(uri)
+    const parsed = JSON.parse(body) as { error?: unknown }
+    if (typeof parsed.error === 'string') return parsed.error
+  } catch {
+    // Non-JSON errors use the generic status message below.
+  }
+  return t('Download failed ({status})', { status })
+}
 
 const translateJa: Translate = (message, values) => translate('ja', message, values)
 
@@ -21,7 +33,7 @@ export function ensureCachedAttachment(
   fileUrl: string,
   fileId: string,
   fileName: string,
-  accessToken: string,
+  auth: AttachmentAuth,
   t: Translate = translateJa,
   options: { refresh?: boolean } = {},
 ): Promise<string> {
@@ -35,7 +47,7 @@ export function ensureCachedAttachment(
     // その完了を待ってから改めてダウンロードする
     return pending
       .catch(() => undefined)
-      .then(() => ensureCachedAttachment(fileUrl, fileId, fileName, accessToken, t, options))
+      .then(() => ensureCachedAttachment(fileUrl, fileId, fileName, auth, t, options))
   }
 
   const download = (async () => {
@@ -52,11 +64,12 @@ export function ensureCachedAttachment(
     const partial = `${target}.download`
     await FileSystem.deleteAsync(partial, { idempotent: true })
     const result = await FileSystem.downloadAsync(fileUrl, partial, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: attachmentRequestHeaders(auth),
     })
     if (result.status !== 200) {
+      const message = await downloadErrorMessage(partial, result.status, t)
       await FileSystem.deleteAsync(partial, { idempotent: true }).catch(() => undefined)
-      throw new Error(t('Download failed ({status})', { status: result.status }))
+      throw new Error(message)
     }
     await FileSystem.deleteAsync(target, { idempotent: true })
     await FileSystem.moveAsync({ from: partial, to: target })
@@ -83,7 +96,7 @@ export async function shareCachedAttachment(input: {
   fileUrl: string
   fileId: string
   fileName: string
-  accessToken: string
+  auth: AttachmentAuth
   mimeType?: string | null
   dialogTitle: string
   t?: Translate
@@ -93,7 +106,7 @@ export async function shareCachedAttachment(input: {
     input.fileUrl,
     input.fileId,
     input.fileName,
-    input.accessToken,
+    input.auth,
     t,
   )
   if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))

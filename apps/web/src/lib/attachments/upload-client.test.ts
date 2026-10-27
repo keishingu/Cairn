@@ -40,12 +40,12 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
   })
 
   it('URL 発行で拒否されたら、サーバーが返した理由を持つエラーにし、Storage へは送らない', async () => {
-    mockFetch.mockResolvedValueOnce(json({ error: 'ファイルサイズは 10MB 以下にしてください' }, 400))
+    mockFetch.mockResolvedValueOnce(json({ error: 'ファイルサイズは 50MiB 以下にしてください' }, 400))
 
     const error = await uploadAttachment('channel-1', new File(['x'], 'big.pdf', { type: 'application/pdf' })).catch(e => e)
 
     expect(error).toBeInstanceOf(AttachmentUploadError)
-    expect(error).toMatchObject({ failure: 'prepare', serverMessage: 'ファイルサイズは 10MB 以下にしてください' })
+    expect(error).toMatchObject({ failure: 'prepare', serverMessage: 'ファイルサイズは 50MiB 以下にしてください' })
     expect(uploadToSignedUrl).not.toHaveBeenCalled()
   })
 
@@ -57,6 +57,44 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
       failure: 'storage',
     })
     expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('finalize が失敗した後は同じ保存先を finalize だけで再試行する', async () => {
+    mockFetch
+      .mockResolvedValueOnce(json(signed))
+      .mockResolvedValueOnce(json({ error: 'PDF最適化の開始に失敗しました。再試行してください' }, 503))
+      .mockResolvedValueOnce(json({ fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }, 200))
+    const file = new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' })
+
+    const error = await uploadAttachment('channel-1', file).catch(e => e)
+    expect(error).toBeInstanceOf(AttachmentUploadError)
+    expect(error).toMatchObject({ failure: 'finalize' })
+    await expect(error.retryFinalize()).resolves.toMatchObject({ fileId: 'f1' })
+
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/attachments/upload-url', '/api/attachments/finalize', '/api/attachments/finalize',
+    ])
+    expect(JSON.parse(mockFetch.mock.calls[1]![1]!.body as string)).toEqual(
+      JSON.parse(mockFetch.mock.calls[2]![1]!.body as string),
+    )
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it('finalize の応答が失われても同じ finalize 要求を再試行できる', async () => {
+    mockFetch
+      .mockResolvedValueOnce(json(signed))
+      .mockRejectedValueOnce(new TypeError('network unavailable'))
+      .mockResolvedValueOnce(json({ fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }, 200))
+    const file = new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' })
+
+    const error = await uploadAttachment('channel-1', file).catch(e => e)
+    expect(error).toMatchObject({ failure: 'finalize', serverMessage: 'network unavailable' })
+    await expect(error.retryFinalize()).resolves.toMatchObject({ fileId: 'f1' })
+
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      '/api/attachments/upload-url', '/api/attachments/finalize', '/api/attachments/finalize',
+    ])
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1)
   })
 
   it('対応していない形式は、API を呼ぶ前に弾く', async () => {

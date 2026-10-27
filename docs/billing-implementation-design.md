@@ -26,13 +26,14 @@
 | 課金ポイント | Free | 支援者本人（funded WS） | 執行ポイント |
 |---|---|---|---|
 | ギャラリー画像 | 圧縮派生のみ（長辺2048px。EXIF の撮影日時・GPS は保持） | オリジナルも保存（閲覧は全員） | `projects/[id]/gallery/upload-url` / `finalize` |
-| チャット添付・ファイル | 5MB/ファイル | 10MB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
+| チャット添付・ファイル | 非PDF 5MiB/PDF 圧縮前50MiB | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
 | 動画、チャット添付の音声・ZIP | 不可（MIME whitelist 外） | 未開放（`canUploadVideo` の権利判定だけ定義済み） | — |
 | ストレージ保有 | 10GB まで | 残高が家賃を払える限り | 家賃 cron（§6） |
 | AI 能動利用（`/ai`） | 不可 | クレジットを消費 | `api/ai/conversations/[id]/messages` |
 | AI 受動利用（AI PMO） | ケルンに残高があれば受信 | 受信 | `lib/ai-nudges/`（配信ごとに消費） |
 
 - 画像圧縮は**アップロード前のクライアントサイド**で行う（`lib/process-image.ts`。ingress 帯域と処理コストの節約）。撮影日時・GPS を失わないこと（地図・タイムラインの前提）。オリジナルを保存する場合も必ず表示用の圧縮派生を持たせる（サムネイル兼、風化時のフォールバック）
+- PDF は無料でも圧縮前50MiBまで受け付け、最適化版は全員が利用できる。原本のダウンロードは本人の有効な支援と残高を要求し、課金無効環境では許可する。
 - アバター・ワークスペースロゴ・カバー写真は**家賃対象外**（サイズ上限のみ。プロフィール設定が課金で詰まる体験を避けるため）
 - 音声・動画・ZIP は原価（ストレージ・egress）が大きく無料開放しづらいため、支援者本人の能動権として開放する想定（MIME・上限は未決）
 

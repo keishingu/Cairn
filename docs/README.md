@@ -11,7 +11,7 @@
 | API ルート | `api-conventions.md`（現行） | — |
 | フロントエンド・UI | `frontend-guidelines.md`（現行）、`../.interface-design/system.md` | — |
 | 通知・未読・Push・Realtime | `notification-design.md`（現行） | `archive/notification-ux-redesign.md`（再設計の経緯。Phase 4〜5 は構想） |
-| モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（ストア提出） |
+| モバイル（Expo） | `../apps/mobile/AGENTS.md`、`mobile-app.md`（現行の設計判断） | `mobile-internal-distribution.md`（配布・オフライン基盤）、`mobile-webview-auth-handoff.md`（WebView 認証）、`app-store-submission.md`（App Store 提出）、`play-store-submission.md`（Google Play 提出） |
 | デプロイ・リリース・本番設定 | `production-deployment.md`（現行） | `resend-email-provider.md`（認証メールの SMTP 配送） |
 | プロフィール属性・メンバー表示 | `profile-attributes-design.md`（現行） | `user-deactivation-design.md`（非活性メンバー。実装済み） |
 | マイルストーン | `milestone-design.md`（実装状況・設計判断・残課題） | — |
@@ -20,6 +20,7 @@
 | `/ai` のプロダクトヘルプ | `../apps/web/src/lib/ai/product-help.ts`（正本。方式と更新ルールは冒頭コメント） | — |
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
+| アプリ（プラグイン）基盤・Slack 互換 | `app-platform-design.md`（構想。Bot・Block Kit 互換カード・インタラクション、投票アプリ）。外部の開発者向けの公開仕様は `/developers`（`apps/web/src/app/developers/`） | `scheduled-jobs-design.md`（投票の元設計） |
 | キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
 | LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware）、`../marketing/ad-30s/README.md`（30 秒広告の素材と書き出し手順） |
 | パフォーマンス | `performance-improvement-plan.md`（残作業） | — |

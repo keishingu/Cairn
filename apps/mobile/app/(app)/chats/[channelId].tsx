@@ -41,15 +41,21 @@ import type { ThemePalette } from '../../../lib/theme'
 import { isEdgeBackSwipe } from '../../../lib/edge-back-swipe'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
 import { MobileMarkdown } from '../../../components/mobile-markdown'
+import { MessageCard, type CardAction } from '../../../components/message-card'
+import { AppEntryActions } from '../../../components/app-entry-actions'
+import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
-import { FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
+import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/attachment-auth'
+import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
+import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
@@ -79,7 +85,7 @@ import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
 import { TextSelectSheet } from '../../../components/text-select-sheet'
 import * as Clipboard from 'expo-clipboard'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
-import { useT } from '../../../components/locale-provider'
+import { useAppLocale, useT } from '../../../components/locale-provider'
 import { ReactionPicker } from '../../../components/reaction-picker'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
@@ -109,7 +115,7 @@ async function openAttachmentFile(
   fileId: string,
   fileName: string,
   mimeType: string | null,
-  accessToken: string,
+  auth: AttachmentAuth,
   t: (message: string, values?: Record<string, string | number>) => string,
 ): Promise<void> {
   try {
@@ -117,7 +123,7 @@ async function openAttachmentFile(
       fileUrl: attachmentUrl(fileId),
       fileId,
       fileName,
-      accessToken,
+      auth,
       mimeType,
       dialogTitle: t('Open file'),
       t,
@@ -134,12 +140,12 @@ async function openAttachmentFile(
 function AttachmentChip({
   attachment,
   palette,
-  accessToken,
+  auth,
   onOpenPreview,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
-  accessToken?: string
+  auth?: AttachmentAuth
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
 }) {
   const t = useT()
@@ -151,9 +157,9 @@ function AttachmentChip({
       accessibilityLabel={
         isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
       }
-      disabled={!accessToken}
+      disabled={!auth}
       onPress={() => {
-        if (!accessToken) return
+        if (!auth) return
         if (isPreviewable) {
           onOpenPreview(attachment)
           return
@@ -162,7 +168,7 @@ function AttachmentChip({
           attachment.fileId,
           attachment.fileName,
           attachment.mimeType,
-          accessToken,
+          auth,
           t,
         )
       }}
@@ -171,11 +177,11 @@ function AttachmentChip({
         { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      {isImage && accessToken ? (
+      {isImage && auth ? (
         <Image
           source={{
             uri: attachmentUrl(attachment.fileId),
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers: attachmentRequestHeaders(auth),
           }}
           style={styles.attachmentImage}
         />
@@ -192,7 +198,8 @@ function AttachmentChip({
 function ChatMessageRow({
   message,
   palette,
-  accessToken,
+  mentionNames,
+  attachmentAuth,
   onToggleReaction,
   onAddReaction,
   onShowReactors,
@@ -204,7 +211,9 @@ function ChatMessageRow({
 }: {
   message: MessageDto
   palette: Palette
-  accessToken?: string
+  /** userId → 現在の表示名。カードの mrkdwn のメンション（`<@id>`、名前なし）を解決する */
+  mentionNames: Map<string, string>
+  attachmentAuth?: AttachmentAuth
   onToggleReaction: (messageId: string, emoji: string) => void
   onAddReaction: (message: MessageDto) => void
   onShowReactors: (emoji: string, messageId: string) => void
@@ -215,6 +224,18 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
 }) {
   const t = useT()
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const senderName = message.senderApp ? displayAppName(message.senderApp, t) : message.senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
+  const { locale } = useAppLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
+  const cardMentionNames = React.useMemo(() => {
+    if (!message.mentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(message.mentionNames)) merged.set(id, name)
+    return merged
+  }, [message.mentionNames, mentionNames])
   const projectRoleLabelText = chatProjectRoleLabel({
     legacyRole: message.senderProjectRole,
     roleName: message.senderProjectRoleName,
@@ -224,10 +245,11 @@ function ChatMessageRow({
   // 行末に「✓ タスク」ラベルを出せたタスクは下部のチップから除く（行に対応しない分・ブロック中の本文は従来どおりチップで示す）
   const chipTasks = React.useMemo(() => {
     if (message.linkedTasks.length === 0) return message.linkedTasks
-    if (message.blocked || message.content.length === 0) return message.linkedTasks
+    // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
+    if (message.blocked || message.content.length === 0 || message.messageType === 'blocks') return message.linkedTasks
     const { placed } = insertLineTaskMarkers(message.content, message.linkedTasks)
     return message.linkedTasks.filter((_, index) => !placed[index])
-  }, [message.linkedTasks, message.content, message.blocked])
+  }, [message.linkedTasks, message.content, message.blocked, message.messageType])
 
   if (message.messageType === 'system') {
     return (
@@ -246,12 +268,18 @@ function ChatMessageRow({
 
   return (
     <View style={styles.messageRow}>
-      <UserAvatar name={message.senderName} url={message.senderAvatarUrl} size={36} />
+      <UserAvatar name={senderName} url={message.senderApp ? message.senderApp.iconUrl : message.senderAvatarUrl} size={36} />
 
       <View style={styles.messageBody}>
         <Pressable onLongPress={() => onOpenActions(message)} delayLongPress={350}>
           <View style={styles.messageMeta}>
-            <Text style={[styles.senderName, { color: palette.text }]}>{message.senderName}</Text>
+            <Text style={[styles.senderName, { color: palette.text }]}>{senderName}</Text>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {message.senderApp && (
+              <Text style={[styles.projectRole, { backgroundColor: palette.card2, color: palette.text3 }]}>
+                {message.senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </Text>
+            )}
             {projectRoleLabelText && (
               <Text
                 style={[
@@ -309,6 +337,16 @@ function ChatMessageRow({
 
           {message.blocked ? (
             <Text style={[styles.messageText, { color: palette.text3 }]}>{t('Message from a blocked user (long-press the menu to show it)')}</Text>
+          ) : message.messageType === 'blocks' ? (
+            <MessageCard
+              blocks={message.blocks}
+              fallbackText={message.content}
+              palette={palette}
+              mentionNames={cardMentionNames}
+              onLinkPress={onLinkPress}
+              onAction={handleCardAction}
+              revision={message.blocksRevision}
+            />
           ) : (
             message.content.length > 0 && (
               <MobileMarkdown
@@ -335,7 +373,7 @@ function ChatMessageRow({
                   attachment={attachment}
                   palette={palette}
                   onOpenPreview={onOpenPreview}
-                  {...(accessToken ? { accessToken } : {})}
+                  {...(attachmentAuth ? { auth: attachmentAuth } : {})}
                 />
               ))}
             </View>
@@ -566,6 +604,11 @@ export default function ChatThreadScreen() {
           ? t('Open to everyone')
           : undefined
   const workspaceMembers = useWorkspaceMembers()
+  // userId → 現在の表示名。本文のメンションはサーバーが名前を埋めて返すが、カードの mrkdwn は名前なしの `<@id>` のため
+  const mentionNames = React.useMemo(
+    () => new Map((workspaceMembers.data ?? []).map((member) => [member.userId, member.displayName])),
+    [workspaceMembers.data],
+  )
   // 公開チャンネルでも、ゲストを候補に出してよいかの判定に channel_members が要る
   const channelMembers = useChannelMembers(
     channelId ?? null,
@@ -573,6 +616,14 @@ export default function ChatThreadScreen() {
   )
   const projectMembers = useProjectMembers(projectId ?? null)
   const session = useSession()
+  const selectedWorkspace = useSelectedWorkspaceId(session?.user.id)
+  const attachmentAuth = React.useMemo<AttachmentAuth | undefined>(
+    () =>
+      session?.access_token && selectedWorkspace.ready
+        ? { accessToken: session.access_token, workspaceId: selectedWorkspace.workspaceId }
+        : undefined,
+    [session?.access_token, selectedWorkspace.ready, selectedWorkspace.workspaceId],
+  )
   const reactionHistory = useReactionHistory(session?.user.id)
   const [queueReactionHistory] = React.useState(createReactionHistoryQueue)
   const offlineQueue = useOfflineMessageQueue()
@@ -1096,7 +1147,8 @@ export default function ChatThreadScreen() {
       return
     }
     // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
-    if (message.senderId === me?.id || message.blocked) {
+    // アプリ（Bot）はユーザーではないのでブロックの対象にしない
+    if (message.senderId === me?.id || message.blocked || message.senderApp) {
       Alert.alert(t('Reported'), t('The moderators will review it.'))
       return
     }
@@ -1308,9 +1360,11 @@ export default function ChatThreadScreen() {
   }
 
   return (
+    // Android も padding にする。targetSdk 36 の edge-to-edge ではキーボードが出てもウィンドウが縮まず、
+    // behavior を付けないと入力欄がキーボードの裏に隠れる。縮む端末では重なりが 0 になり余白は足されない
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       {...backSwipe.panHandlers}
     >
       <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
@@ -1426,6 +1480,7 @@ export default function ChatThreadScreen() {
                   <ChatMessageRow
                     message={item.message}
                     palette={palette}
+                    mentionNames={mentionNames}
                     onToggleReaction={handleToggleReaction}
                     onAddReaction={setReactionTarget}
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
@@ -1434,7 +1489,7 @@ export default function ChatThreadScreen() {
                     onOpenPreview={setAttachmentPreview}
                     onOpenTask={openTask}
                     onShowTasks={setLinkedTasksSheet}
-                    {...(session?.access_token ? { accessToken: session.access_token } : {})}
+                    {...(attachmentAuth ? { attachmentAuth } : {})}
                   />
                 )
               }
@@ -1478,7 +1533,6 @@ export default function ChatThreadScreen() {
               {
                 backgroundColor: palette.card,
                 borderTopColor: palette.border,
-                paddingBottom: insets.bottom || 12,
               },
             ]}
           >
@@ -1487,6 +1541,13 @@ export default function ChatThreadScreen() {
             )}
             {sendKeyPreferenceError && (
               <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>{sendKeyPreferenceError}</Text>
+            )}
+            {selectedWorkspace.error && (
+              <Pressable accessibilityRole="button" onPress={selectedWorkspace.retry}>
+                <Text accessibilityRole="alert" style={[styles.sendError, { color: palette.redText }]}>
+                  {t('Could not load the selected workspace, so attachments cannot be shown. Tap to retry.')}
+                </Text>
+              </Pressable>
             )}
             {offlineQueue.restoreError && (
               <View style={styles.queueRestoreError} accessibilityRole="alert">
@@ -1547,17 +1608,20 @@ export default function ChatThreadScreen() {
             )}
             {!editingMessage && (
               <View style={styles.attachmentActions}>
-                <Pressable style={styles.attachmentAction} onPress={() => void upload.pickImage()}>
-                  <Ionicons name="image-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Photo')}</Text>
+                {/* 画面幅が狭いので、ラベルは付けずアイコンだけにする（読み上げは accessibilityLabel） */}
+                <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Photo')} hitSlop={6} onPress={() => void upload.pickImage()}>
+                  <Ionicons name="image-outline" size={17} color={palette.text3} />
                 </Pressable>
                 <Pressable
                   style={styles.attachmentAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Files')}
+                  hitSlop={6}
                   onPress={() => void upload.pickDocument()}
                 >
-                  <Ionicons name="attach-outline" size={15} color={palette.text3} />
-                  <Text style={[styles.attachmentActionText, { color: palette.text3 }]}>{t('Files')}</Text>
+                  <Ionicons name="attach-outline" size={17} color={palette.text3} />
                 </Pressable>
+                {channelType !== 'dm' && channelId && <AppEntryActions channelId={channelId} palette={palette} onError={setSendError} />}
                 <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
                   <Pressable
                     accessibilityRole="switch"
@@ -1602,6 +1666,16 @@ export default function ChatThreadScreen() {
                         ? `${pending.fileName}: ${pending.error}`
                         : pending.fileName}
                     </Text>
+                    {pending.status === 'error' && pending.retryFinalize && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('Retry')}
+                        onPress={() => void upload.retryUpload(pending.id)}
+                        hitSlop={8}
+                      >
+                        <Text style={{ color: palette.accent, fontSize: 12, fontWeight: '600' }}>{t('Retry')}</Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={t('Remove {name}', { name: pending.fileName })}
@@ -1992,14 +2066,14 @@ export default function ChatThreadScreen() {
           }}
           onClose={() => setLinkedTasksSheet(null)}
         />
-        {attachmentPreview && session?.access_token && (
+        {attachmentPreview && attachmentAuth && (
           previewViewer === 'pdf' ? (
             <ChatPdfViewer
               fileUrl={attachmentUrl(attachmentPreview.fileId)}
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
@@ -2009,8 +2083,18 @@ export default function ChatThreadScreen() {
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
+            />
+          ) : previewViewer === 'markdown' ? (
+            <ChatMarkdownViewer
+              fileUrl={attachmentUrl(attachmentPreview.fileId)}
+              fileId={attachmentPreview.fileId}
+              fileName={attachmentPreview.fileName}
+              mimeType={attachmentPreview.mimeType}
+              auth={attachmentAuth}
+              onClose={() => setAttachmentPreview(null)}
+              onPressLink={openDocumentLink}
             />
           ) : previewViewer === 'office' ? (
             <ChatOfficeViewer
@@ -2018,7 +2102,7 @@ export default function ChatThreadScreen() {
               fileId={attachmentPreview.fileId}
               fileName={attachmentPreview.fileName}
               mimeType={attachmentPreview.mimeType}
-              accessToken={session.access_token}
+              auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
               onPressLink={openDocumentLink}
             />
@@ -2171,7 +2255,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
   },
-  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8 },
+  // 下端の安全領域（ホームインジケーター・ナビゲーションバー）は下のタブバー（MobileNav）が確保する。
+  // ここでも insets.bottom を足すと二重になり、入力欄の下に大きな隙間ができる
+  composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
   messageListContainer: { flex: 1 },
   messageList: { flex: 1 },
   olderLoading: { marginVertical: 14 },
@@ -2211,7 +2297,8 @@ const styles = StyleSheet.create({
   composerContextText: { flex: 1, minWidth: 0 },
   composerContextTitle: { fontSize: 11.5, fontWeight: '700' },
   composerContextBody: { fontSize: 11.5, marginTop: 1 },
-  attachmentActions: { flexDirection: 'row', gap: 16, paddingHorizontal: 4, paddingBottom: 7 },
+  // アプリの起動口が並ぶと狭い端末・大きな文字で1行に収まらないため、折り返して右端のスイッチを画面外に出さない
+  attachmentActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingHorizontal: 4, paddingBottom: 7 },
   attachmentAction: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 28 },
   attachmentActionText: { fontSize: 12, fontWeight: '600' },
   uploads: { gap: 5, marginBottom: 7 },

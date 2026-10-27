@@ -26,6 +26,7 @@ import { followNotification } from '../lib/follow-notification'
 import { routeFromNotification } from '../lib/notification-routing'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
+import { PushPermissionBanner } from './push-permission-banner'
 
 interface NotificationPanelContextValue {
   unreadCount: number
@@ -205,6 +206,8 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   </Pressable>
                 </View>
               </View>
+
+              <PushPermissionBanner />
 
               {notificationsQuery.isLoading ? (
                 <View style={styles.center}>

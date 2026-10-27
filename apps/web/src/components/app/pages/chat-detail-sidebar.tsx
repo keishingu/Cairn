@@ -214,7 +214,6 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
   // 読み込み済みなら実データ、未読込なら ProjectDto の集計値を使う
   const total = isLoading && project ? project.taskCount : tasks.length
   const completed = isLoading && project ? project.completedTaskCount : tasks.filter(t => t.status === 'done').length
-  const progress = total > 0 ? Math.round((completed / total) * 100) : 0
 
   React.useLayoutEffect(() => {
     const el = listRef.current
@@ -249,9 +248,6 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
             </button>
           )}
         </div>
-      </div>
-      <div style={{ height: 5, borderRadius: 999, background: 'var(--card-2)', overflow: 'hidden' }}>
-        <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--accent)', transition: 'width .2s' }}/>
       </div>
 
       {isLoading ? (

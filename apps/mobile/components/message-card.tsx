@@ -1,0 +1,531 @@
+// アプリが投稿したカード（Block Kit サブセット）をネイティブで描く。
+// 中間表現への変換は @cairn/shared の normalizeMessageBlocks、文字の平坦化は lib/message-card-text が持ち、
+// ここは部品への写像だけにする（Web の MessageCard と解釈をずらさないため。docs/app-platform-design.md §4.3）。
+// ネイティブモジュールを足さず既存の react-native の部品だけで描き、runtimeVersion を上げずに EAS Update で配信できるようにする。
+
+import React from 'react'
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  cardActionErrorMessage,
+  mrkdwnToPlainText,
+  normalizeMessageBlocks,
+  parseMrkdwn,
+  type RenderBlock,
+  type RenderConfirm,
+  type RenderContextElement,
+  type RenderElement,
+  type RenderText,
+} from '@cairn/shared'
+import type { ThemePalette } from '../lib/theme'
+import { cardTextParagraphs, type TextParagraph, type TextRun } from '../lib/message-card-text'
+import { useT } from './locale-provider'
+import { MobileMarkdown } from './mobile-markdown'
+
+/** 押下されたボタン・選ばれた選択肢。インタラクションの送信（実装順5）で使う */
+export type CardAction =
+  | { type: 'button'; blockId: string; actionId: string }
+  | { type: 'static_select'; blockId: string; actionId: string; selectedOptionValue: string }
+
+/**
+ * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
+ * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
+ */
+type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
+
+/** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
+const CARD_UPDATE_WAIT_MS = 8000
+
+export type CardContext = {
+  palette: ThemePalette
+  mentionNames: Map<string, string>
+  onLinkPress: (url: string) => boolean
+  onAction: CardRun | undefined
+  /** URL ボタンの押下の通知。ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため） */
+  onLinkAction?: CardRun | undefined
+}
+
+const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
+
+export function MessageCard({
+  blocks,
+  fallbackText,
+  palette,
+  mentionNames,
+  onLinkPress,
+  onAction,
+  revision,
+}: {
+  blocks: unknown
+  /** messages.content（Slack の text）。カードが何も描けないときに代わりに出す */
+  fallbackText: string
+  palette: ThemePalette
+  mentionNames: Map<string, string>
+  onLinkPress: (url: string) => boolean
+  /**
+   * 未指定なら操作できない表示にする。Promise を返したら終わるまでカードの操作を止め、
+   * 失敗したらカードの下にエラーを出す（黙って元に戻さない）。エラーに code があれば案内文に変える
+   */
+  onAction?: (action: CardAction) => void | Promise<void>
+  /** カードの版。見えないボタンの value だけの書き換えでは blocks が変わらないので、これでも書き換えの到着を知る */
+  revision?: string | null | undefined
+}) {
+  const t = useT()
+  const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopWaiting = React.useCallback(() => {
+    if (waitTimer.current) clearTimeout(waitTimer.current)
+    waitTimer.current = null
+    setBusy(false)
+  }, [])
+  // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
+  // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
+  const generation = React.useRef(0)
+  React.useEffect(() => {
+    generation.current += 1
+    stopWaiting()
+    // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
+    setActionError(null)
+  }, [blocks, revision, stopWaiting])
+  React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
+  const run = React.useMemo<CardRun | undefined>(() => {
+    if (!onAction) return undefined
+    return async (action: CardAction, options?: { link?: boolean }) => {
+      const startedAt = generation.current
+      const superseded = () => generation.current !== startedAt
+      if (options?.link) {
+        setActionError(null)
+        try {
+          await onAction(action)
+          return true
+        } catch (err) {
+          if (superseded()) return true
+          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+          setActionError(t(cardActionErrorMessage(code)))
+          return false
+        }
+      }
+      setBusy(true)
+      setActionError(null)
+      try {
+        await onAction(action)
+      } catch (err) {
+        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない
+        if (superseded()) return true
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+        setActionError(t(cardActionErrorMessage(code)))
+        stopWaiting()
+        return false
+      }
+      if (superseded()) return true
+      // アプリは先に応答してから chat.update することが多い。古いカードで続けて押させず、書き換えが届くまで止めておく。
+      // カードを書き換えない操作（モーダルを開くだけ等）で止まったままにならないよう、一定時間で戻す
+      if (waitTimer.current) clearTimeout(waitTimer.current)
+      waitTimer.current = setTimeout(stopWaiting, CARD_UPDATE_WAIT_MS)
+      return true
+    }
+  }, [onAction, t, stopWaiting])
+  // 送信中は同じカードの操作を止め、二重に押させない
+  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run, onLinkAction: run }
+
+  if (card.nothingRenderable) {
+    return (
+      <View style={styles.card}>
+        {fallbackText.length > 0 && <CardText text={{ kind: 'mrkdwn', blocks: parseMrkdwn(fallbackText) }} context={context} />}
+        <UnsupportedNotice palette={palette}>{t('This card cannot be shown in this version. Update the app to see it.')}</UnsupportedNotice>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.card} accessibilityState={{ busy }}>
+      {card.blocks.map((block) => (
+        <CardBlock key={block.blockId} block={block} context={context} />
+      ))}
+      {actionError && (
+        <Text accessibilityRole="alert" style={[styles.smallText, { color: palette.redText }]}>
+          {actionError}
+        </Text>
+      )}
+    </View>
+  )
+}
+
+/** モーダルの中の入力欄以外のブロックも同じ見た目で描くため、外から使えるようにする */
+export function CardBlock({ block, context }: { block: RenderBlock; context: CardContext }) {
+  const { palette } = context
+  switch (block.type) {
+    case 'header':
+      return <Text style={[styles.header, { color: palette.text }]}>{block.text}</Text>
+    case 'section':
+      return (
+        <View style={styles.section}>
+          <View style={styles.sectionBody}>
+            {block.text && <CardText text={block.text} context={context} />}
+            {block.fields.length > 0 && (
+              <View style={styles.fields}>
+                {block.fields.map((field, index) => (
+                  <View key={index} style={styles.field}>
+                    <CardText text={field} context={context} />
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+          {block.accessory && <CardElement element={block.accessory} blockId={block.blockId} context={context} />}
+        </View>
+      )
+    case 'actions':
+      return (
+        <View style={styles.actions}>
+          {block.elements.map((element, index) => (
+            <CardElement key={index} element={element} blockId={block.blockId} context={context} />
+          ))}
+        </View>
+      )
+    case 'context':
+      return (
+        <View style={styles.context}>
+          {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
+          {block.elements.map((element, index) => (
+            <ContextElement key={index} element={element} context={context} fill={block.elements.some((item) => item.type === 'meter')} />
+          ))}
+        </View>
+      )
+    case 'image':
+      return (
+        <View style={styles.imageBlock}>
+          {block.title && <Text style={[styles.imageTitle, { color: palette.text3 }]}>{block.title}</Text>}
+          <CardImage
+            key={block.url}
+            url={block.url}
+            alt={block.alt}
+            palette={palette}
+            resizeMode="contain"
+            style={[styles.image, { borderColor: palette.border, backgroundColor: palette.card2 }]}
+          />
+        </View>
+      )
+    case 'divider':
+      return <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+    case 'markdown':
+      return <CardMarkdown text={block.text} context={context} />
+    case 'unsupported':
+      return <UnsupportedPart palette={palette} />
+  }
+}
+
+// 外部から届いた本文のリンクは http(s)・mailto だけを開く（相対パスや独自スキームで Cairn の画面へ誘導させない。Web と同じ）
+const EXTERNAL_LINK = /^(?:https?:\/\/|mailto:)/i
+
+/** 普段のメッセージと同じ部品で描く（Mermaid も図になる。画像は MobileMarkdown が自動で読み込まずリンクにする） */
+function CardMarkdown({ text, context }: { text: string; context: CardContext }) {
+  const { mentionNames, onLinkPress } = context
+  const names = React.useMemo(() => Object.fromEntries(mentionNames), [mentionNames])
+  const handleLinkPress = React.useCallback((url: string) => (EXTERNAL_LINK.test(url) ? onLinkPress(url) : true), [onLinkPress])
+  return <MobileMarkdown content={text} palette={context.palette} mentionNames={names} onLinkPress={handleLinkPress} />
+}
+
+function CardElement({ element, blockId, context }: { element: RenderElement; blockId: string; context: CardContext }) {
+  const t = useT()
+  const { palette, onAction, onLinkPress } = context
+  switch (element.type) {
+    case 'button': {
+      const filled = element.style === 'primary' ? palette.accent : element.style === 'danger' ? palette.redText : null
+      // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
+      const disabled = !element.url && !onAction
+      return (
+        <Pressable
+          accessibilityRole={element.url ? 'link' : 'button'}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={() => {
+            const url = element.url
+            confirmThen(element.confirm, mentionResolver(context, t), () => {
+              if (url) {
+                onLinkPress(url)
+                void (context.onLinkAction ?? onAction)?.({ type: 'button', blockId, actionId: element.actionId }, { link: true })
+              } else void onAction?.({ type: 'button', blockId, actionId: element.actionId })
+            })
+          }}
+          style={({ pressed }) => [
+            styles.button,
+            filled ? { backgroundColor: filled, borderColor: filled } : { backgroundColor: palette.card, borderColor: palette.border },
+            (pressed || disabled) && styles.buttonDimmed,
+          ]}
+        >
+          <Text style={[styles.buttonText, { color: filled ? palette.onAccent : palette.text }]} numberOfLines={1}>
+            {element.text}
+          </Text>
+        </Pressable>
+      )
+    }
+    case 'static_select':
+      // chat.update で初期選択が変わったら選び直した状態を捨てて新しい初期選択を表示する（key で作り直す）
+      return <CardSelect key={element.initialValue ?? ''} element={element} blockId={blockId} context={context} />
+    case 'image':
+      return <CardImage key={element.url} url={element.url} alt={element.alt} palette={palette} style={styles.accessoryImage} />
+    case 'unsupported':
+      return <UnsupportedPart palette={palette} />
+  }
+}
+
+function CardSelect({
+  element,
+  blockId,
+  context,
+}: {
+  element: Extract<RenderElement, { type: 'static_select' }>
+  blockId: string
+  context: CardContext
+}) {
+  const t = useT()
+  const { palette, onAction } = context
+  const [open, setOpen] = React.useState(false)
+  const [selected, setSelected] = React.useState(element.initialValue)
+  const label = element.options.find((option) => option.value === selected)?.text ?? element.placeholder ?? t('Choose an option')
+  const disabled = !onAction
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled, expanded: open }}
+        disabled={disabled}
+        onPress={() => setOpen(true)}
+        style={[styles.select, { backgroundColor: palette.card, borderColor: palette.border }, disabled && styles.buttonDimmed]}
+      >
+        <Text style={[styles.buttonText, { color: palette.text }]} numberOfLines={1}>{label}</Text>
+        <Text style={{ color: palette.text3, fontSize: 10 }}>▼</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setOpen(false)}>
+          <View style={[styles.sheet, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <ScrollView>
+              {element.options.map((option) => (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: option.value === selected }}
+                  onPress={() => {
+                    setOpen(false)
+                    confirmThen(element.confirm, mentionResolver(context, t), () => {
+                      const previous = selected
+                      setSelected(option.value)
+                      // 届かなかった選択を、選んだまま見せない（アプリは受け取っていない）
+                      void onAction?.({ type: 'static_select', blockId, actionId: element.actionId, selectedOptionValue: option.value }).then((ok) => {
+                        if (!ok) setSelected(previous)
+                      })
+                    })
+                  }}
+                  style={({ pressed }) => [styles.sheetOption, pressed && { backgroundColor: palette.cardHover }]}
+                >
+                  <Text style={{ color: option.value === selected ? palette.accentText : palette.text, fontSize: 15 }}>{option.text}</Text>
+                  {option.description && <Text style={{ color: palette.text3, fontSize: 12 }}>{option.description}</Text>}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  )
+}
+
+/**
+ * アプリが confirm を指定したら、確認を挟んでから操作する（Slack と同じく確認を飛ばさない）。
+ * 確認の本文は書式を落とした文字列にする（Alert は書式を描けない）
+ */
+function confirmThen(confirm: RenderConfirm | undefined, resolveMention: (userId: string) => string, run: () => void) {
+  if (!confirm) {
+    run()
+    return
+  }
+  const message = confirm.text.kind === 'plain'
+    ? confirm.text.text
+    : mrkdwnToPlainText(confirm.text.blocks, resolveMention)
+  Alert.alert(confirm.title, message, [
+    { text: confirm.deny, style: 'cancel' },
+    { text: confirm.confirm, style: confirm.style === 'danger' ? 'destructive' : 'default', onPress: run },
+  ])
+}
+
+/** 確認文のメンションも、カードと同じ名前のマップで解決する（解決できなければ「不明なメンバー」） */
+function mentionResolver(context: CardContext, t: (message: string) => string): (userId: string) => string {
+  return (userId) => context.mentionNames.get(userId) ?? t('Unknown member')
+}
+
+function ContextElement({ element, context, fill }: { element: RenderContextElement; context: CardContext; fill?: boolean }) {
+  switch (element.type) {
+    case 'image':
+      return <CardImage key={element.url} url={element.url} alt={element.alt} palette={context.palette} style={styles.contextImage} inline />
+    case 'text':
+      return fill ? (
+        <View style={styles.contextFill}>
+          <CardText text={element.text} context={context} small />
+        </View>
+      ) : (
+        <CardText text={element.text} context={context} small />
+      )
+    case 'meter':
+      return <CardMeter meter={element} palette={context.palette} />
+    case 'unsupported':
+      return <UnsupportedPart palette={context.palette} />
+  }
+}
+
+/** 量を表すバー（Web の CardMeter と同じ見た目）。読み上げは progressbar の値として伝える */
+function CardMeter({ meter, palette }: { meter: Extract<RenderContextElement, { type: 'meter' }>; palette: ThemePalette }) {
+  const ratio = Math.min(1, Math.max(0, (meter.value - meter.min) / (meter.max - meter.min)))
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      {...(meter.label ? { accessibilityLabel: meter.label } : {})}
+      accessibilityValue={{ min: meter.min, max: meter.max, now: meter.value }}
+      style={[styles.meter, { backgroundColor: palette.border }]}
+    >
+      <View style={[styles.meterFill, { width: `${ratio * 100}%`, backgroundColor: palette.accent }]} />
+    </View>
+  )
+}
+
+function CardText({ text, context, small }: { text: RenderText; context: CardContext; small?: boolean }) {
+  const t = useT()
+  const { palette, mentionNames } = context
+  const paragraphs = React.useMemo(
+    () => cardTextParagraphs(text, (id) => mentionNames.get(id), t('@Member')),
+    [text, mentionNames, t],
+  )
+  const base = small ? styles.smallText : styles.text
+  return (
+    <>
+      {paragraphs.map((paragraph, index) => (
+        <Paragraph key={index} paragraph={paragraph} base={[base, { color: small ? palette.text3 : palette.text2 }]} context={context} />
+      ))}
+    </>
+  )
+}
+
+function Paragraph({ paragraph, base, context }: { paragraph: TextParagraph; base: React.ComponentProps<typeof Text>['style']; context: CardContext }) {
+  const { palette } = context
+  if (paragraph.type === 'pre') {
+    return (
+      <Text style={[styles.pre, { color: palette.text2, backgroundColor: palette.card2, borderColor: palette.border }]}>
+        {paragraph.text}
+      </Text>
+    )
+  }
+  const runs = paragraph.runs.map((run, index) => <Run key={index} run={run} context={context} />)
+  if (paragraph.type === 'quote') {
+    return (
+      <View style={[styles.quote, { borderLeftColor: palette.border }]}>
+        <Text style={[base, { color: palette.text3 }]}>{runs}</Text>
+      </View>
+    )
+  }
+  return <Text style={base}>{runs}</Text>
+}
+
+function Run({ run, context }: { run: TextRun; context: CardContext }) {
+  const { palette, onLinkPress } = context
+  const style = [
+    run.bold && styles.bold,
+    run.italic && styles.italic,
+    run.strike && styles.strike,
+    run.code && [styles.code, { color: palette.text, backgroundColor: palette.card2 }],
+    run.mention && { color: palette.accentText, backgroundColor: palette.accentSoft, fontWeight: '600' as const },
+    run.url && { color: palette.accentText, textDecorationLine: 'underline' as const },
+  ]
+  const url = run.url
+  if (url) {
+    return <Text accessibilityRole="link" style={style} onPress={() => onLinkPress(url)}>{run.text}</Text>
+  }
+  return <Text style={style}>{run.text}</Text>
+}
+
+/**
+ * アプリが指定した外部の画像。読み込めない（404・証明書切れ・オフライン）ときに空白のまま隠さず、代替テキストと案内を出す
+ */
+function CardImage({
+  url,
+  alt,
+  palette,
+  style,
+  resizeMode,
+  inline,
+}: {
+  url: string
+  alt: string
+  palette: ThemePalette
+  style: React.ComponentProps<typeof Image>['style']
+  resizeMode?: React.ComponentProps<typeof Image>['resizeMode']
+  /** context の小さな画像。案内の枠を出さず、代替テキストだけを文字で出す */
+  inline?: boolean
+}) {
+  const t = useT()
+  const [failed, setFailed] = React.useState(false)
+  if (failed) {
+    const message = t('Could not load the image: {alt}', { alt })
+    if (inline) return <Text style={[styles.smallText, { color: palette.text3 }]}>{message}</Text>
+    return <UnsupportedNotice palette={palette}>{message}</UnsupportedNotice>
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      accessibilityLabel={alt}
+      onError={() => setFailed(true)}
+      {...(resizeMode ? { resizeMode } : {})}
+      style={style}
+    />
+  )
+}
+
+function UnsupportedPart({ palette }: { palette: ThemePalette }) {
+  const t = useT()
+  return <UnsupportedNotice palette={palette}>{t('This part of the card cannot be shown in this version. Update the app to see it.')}</UnsupportedNotice>
+}
+
+function UnsupportedNotice({ palette, children }: { palette: ThemePalette; children: React.ReactNode }) {
+  return (
+    <View accessibilityRole="text" style={[styles.notice, { borderColor: palette.border }]}>
+      <Text style={[styles.smallText, { color: palette.text3 }]}>{children}</Text>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  card: { gap: 8, marginTop: 2 },
+  header: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  section: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  sectionBody: { flex: 1, minWidth: 0, gap: 6 },
+  fields: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6, columnGap: 16 },
+  field: { minWidth: '40%', flexGrow: 1 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  context: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  imageBlock: { gap: 4 },
+  imageTitle: { fontSize: 12 },
+  image: { width: '100%', height: 200, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
+  accessoryImage: { width: 56, height: 56, borderRadius: 8 },
+  contextImage: { width: 16, height: 16, borderRadius: 4 },
+  contextFill: { flex: 1, minWidth: 0 },
+  meter: { width: 96, height: 8, borderRadius: 4, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: 4 },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
+  button: { minHeight: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
+  buttonText: { fontSize: 13, fontWeight: '600' },
+  buttonDimmed: { opacity: 0.55 },
+  select: { minHeight: 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 240 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 },
+  sheet: { borderRadius: 14, borderWidth: 1, maxHeight: '70%', paddingVertical: 6 },
+  sheetOption: { paddingHorizontal: 16, paddingVertical: 12, gap: 2 },
+  text: { fontSize: 14, lineHeight: 22 },
+  smallText: { fontSize: 12, lineHeight: 18 },
+  bold: { fontWeight: '700' },
+  italic: { fontStyle: 'italic' },
+  strike: { textDecorationLine: 'line-through' },
+  code: { fontFamily: MONOSPACE, fontSize: 12.5 },
+  pre: { fontFamily: MONOSPACE, fontSize: 12.5, lineHeight: 19, borderWidth: 1, borderRadius: 8, padding: 8, overflow: 'hidden' },
+  quote: { borderLeftWidth: 3, paddingLeft: 10 },
+  notice: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+})
