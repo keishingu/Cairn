@@ -42,14 +42,30 @@ async function channelNames(ctx: AuthContext, ids: string[]): Promise<Map<string
   return names
 }
 
+const REFERENCE_NAME_MAX_LENGTH = 60
+
+/**
+ * 参照に埋め込む名前を、記法を壊せない形にする。表示名・チャンネル名はメンバーが自由に付けられるため、
+ * `<` `>` `|` や改行を含む名前で参照を閉じて、admin の指示文としてプロンプトに指示を書き足せないようにする
+ */
+export function sanitizeReferenceName(name: string): string {
+  return name.replace(/[<>|\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, REFERENCE_NAME_MAX_LENGTH)
+}
+
 /** 指示文の参照を `<@id|名前>`・`<#id|名前>` に解決する（読む人に見えないチャンネルは名前を伏せる） */
 export async function hydrateInstructionReferences(ctx: AuthContext, texts: string[]): Promise<string[]> {
   const mentionNames = await buildMentionNameMap(ctx.workspaceId, texts)
   const channels = await channelNames(ctx, [...new Set(texts.flatMap(extractChannelReferenceIds))])
   return texts.map((text) =>
-    hydrateMentions(text, (id) => mentionNames.get(id)).replace(
+    hydrateMentions(text, (id) => {
+      const name = mentionNames.get(id)
+      return name === undefined ? undefined : sanitizeReferenceName(name)
+    }).replace(
       new RegExp(CHANNEL_REFERENCE_SOURCE, 'gi'),
-      (_full, id: string) => `<#${id}|${channels.get(id) ?? HIDDEN_CHANNEL_NAME}>`,
+      (_full, id: string) => {
+        const name = channels.get(id)
+        return `<#${id}|${name === undefined ? HIDDEN_CHANNEL_NAME : sanitizeReferenceName(name)}>`
+      },
     ),
   )
 }
