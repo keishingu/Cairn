@@ -168,17 +168,21 @@ export interface ResearchChannelMessage {
   evidence: ResearchEvidence
 }
 
-// 時系列（古い順）の続きを読むためのカーソル。同時刻の投稿を取りこぼさないよう ID も含める
+// 時系列（古い順）の続きを読むためのカーソル。同時刻の投稿を取りこぼさないよう ID も含める。
+// 日時は DB のマイクロ秒精度の文字列のまま持つ（JS の Date に通すとミリ秒に丸まり、同じ投稿を再取得する）
+const CURSOR_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/
+
 export function encodeMessageCursor(createdAt: string, id: string): string {
   return `${createdAt}_${id}`
 }
 
-export function decodeMessageCursor(cursor: string): { createdAt: Date; id: string } | null {
+export function decodeMessageCursor(cursor: string): { createdAt: string; id: string } | null {
   const separator = cursor.lastIndexOf('_')
   if (separator <= 0) return null
-  const createdAt = new Date(cursor.slice(0, separator))
+  const createdAt = cursor.slice(0, separator)
   const id = cursor.slice(separator + 1)
-  if (Number.isNaN(createdAt.getTime()) || !/^[0-9a-f-]{36}$/i.test(id)) return null
+  if (!CURSOR_TIMESTAMP_RE.test(createdAt) || Number.isNaN(Date.parse(createdAt))) return null
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null
   return { createdAt, id }
 }
 
@@ -219,6 +223,7 @@ export async function readResearchChannelMessages(
       createdAt: messages.createdAt,
       content: messages.content,
       replyToId: messages.parentMessageId,
+      cursorAt: sql<string>`to_char(${messages.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       totalCount: sql<number>`count(*) over()`,
     })
     .from(messages)
@@ -237,8 +242,11 @@ export async function readResearchChannelMessages(
         ne(messages.messageType, 'system'),
         cursor
           ? or(
-              gt(messages.createdAt, cursor.createdAt),
-              and(eq(messages.createdAt, cursor.createdAt), gt(messages.id, cursor.id)),
+              sql`${messages.createdAt} > ${cursor.createdAt}::timestamptz`,
+              and(
+                sql`${messages.createdAt} = ${cursor.createdAt}::timestamptz`,
+                gt(messages.id, cursor.id),
+              ),
             )
           : gt(messages.createdAt, since),
         lte(messages.createdAt, until),
@@ -272,7 +280,7 @@ export async function readResearchChannelMessages(
     }
   })
   const hasMore = rows.length > limit
-  const last = items.at(-1)
+  const last = selected.at(-1)
   return {
     ok: true as const,
     channel: {
@@ -286,7 +294,7 @@ export async function readResearchChannelMessages(
     returnedCount: items.length,
     totalCount: Number(selected[0]?.totalCount ?? 0),
     truncated: hasMore || items.some((item) => item.contentTruncated),
-    nextCursor: hasMore && last ? encodeMessageCursor(last.createdAt, last.id) : null,
+    nextCursor: hasMore && last ? encodeMessageCursor(last.cursorAt, last.id) : null,
     appliedFilters: {
       channelId: channel.id,
       since: cursor ? null : since.toISOString(),
