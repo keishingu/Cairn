@@ -144,6 +144,7 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 - 個人アカウントの場合は「クローズド テスト」トラックを作り、12 人以上のテスターに 14 日間連続でオプトインしてもらってから「製品版アクセスを申請」する。テスターは Google グループまたはメールリストで管理し、オプトイン URL を共有する。
 - 製品版の初回審査は数日〜1 週間程度かかる。審査中にアプリのコンテンツの回答や審査用アカウントを変えない。
 - 公開国・地域は日本から始め、必要に応じて広げる（法務ページは日本語のみ）。
+- ストアの掲載情報は入力しただけでは下書きのままで、製品版リリースの確認画面で「詳しい説明を追加し、保存してください」のエラーになる。掲載情報の「次へ」→ レビュー（AI アセットの申告を含む）→「保存」まで進めて公開の概要に載せる。
 - 公開後の OTA は iOS と同じ `.github/workflows/mobile-production-update.yml`（`main` への push）で `production` channel に届く。`runtimeVersion` が一致するストア版だけに届くため、ネイティブモジュールを変えたら iOS と同様に `runtimeVersion` を上げてから Android も作り直す。
 
 ## 本番相当の確認項目（Android 固有）
@@ -163,11 +164,12 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 
 - [x] Play デベロッパー アカウント: クラウド版の運営者である株式会社オリカタ（orikata, Inc.）の組織アカウントで、アプリ「Cairn」（`com.oss_cairn`）を作成済み
 - [x] Firebase プロジェクト `cairn-9f6f3`（Analytics オフ）に Android アプリ `com.oss_cairn` を登録し、`google-services.json` を EAS production の `GOOGLE_SERVICES_JSON` に登録済み
-- [ ] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、本番ビルドで通知が届くことを確認する
-- [x] 本番 AAB（1.1.0 / versionCode 2）を手動アップロードし、内部テストに公開済み（テスター: メーリング リスト「Cairn 内部テスター」、参加リンク https://play.google.com/apps/internaltest/4701706245945388102 ）
+- [x] FCM V1 サービス アカウント鍵を `eas credentials` で登録し、Play の内部テストから入れた本番ビルドで通知が届くことを確認済み
+- [x] 本番 AAB（1.1.0 / versionCode 3、`main` と同じ中身から作成）を手動アップロードし、内部テストに公開済み（テスター: メーリング リスト「Cairn 内部テスター」、参加リンク https://play.google.com/apps/internaltest/4701706245945388102 ）
 - [x] フィーチャー グラフィック（1024×500）を作成・アップロード済み
-- [x] スマートフォン用スクリーンショット 5 枚を作成（`apps/mobile/store/screenshots/play/phone/`）
+- [x] スマートフォン用スクリーンショット 5 枚を作成・アップロード済み（`apps/mobile/store/screenshots/play/phone/`）。背景を画像生成で作っているため、掲載情報の「AI アセットの申告」でこの 5 枚にラベルを付けた
 - [x] アカウント削除 URL に `https://oss-cairn.com/privacy#retention` を登録済み（ログイン不要）。Play は保持期間の明記を求めるため、バックアップの保持期間を具体的な日数で追記するとより確実
 - [x] データ セーフティ、コンテンツのレーティング（IARC 12 歳以上相当）、ログインの詳細（iOS と同じ審査用アカウント）、ターゲット ユーザー（18 歳以上）、広告・広告 ID・行政・金融・健康の申告を完了
 - [ ] Play 提出用サービス アカウントを招待し、EAS に鍵を登録して `pnpm submit:android:latest` が通ることを確認する
-- [ ] 個人アカウントの場合、クローズド テストで 12 人 × 14 日の要件を満たして製品版アクセスを申請する
+- [x] 個人アカウントの場合のクローズド テスト（12 人 × 14 日）は、組織アカウントのため不要
+- [x] 2026-10-27 に製品版リリース（versionCode 3、公開国は日本のみ）を審査に送信済み。管理対象の公開はオフのため、承認されると自動で公開される
