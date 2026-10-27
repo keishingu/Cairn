@@ -33,25 +33,32 @@ async function fetchItems<T>(url: string): Promise<T[]> {
   return body.items ?? []
 }
 
-function useReferenceCandidates(enabled: boolean) {
+// メンバー・チャンネルはサーバー側で絞り込んでから上限をかける（先頭の200件だけから探すと、大きなワークスペースで選べない人が出る）
+function useReferenceCandidates(trigger: { symbol: '@' | '#'; query: string } | null) {
+  const query = React.useDeferredValue(trigger?.query.trim() ?? '')
   const members = useQuery({
-    queryKey: ['instruction-reference-members'],
-    queryFn: () => fetchItems<{ userId: string; name: string }>('/api/research/members?limit=200'),
-    enabled,
+    queryKey: ['instruction-reference-members', query],
+    queryFn: () => fetchItems<{ userId: string; name: string }>(`/api/research/members?limit=20&query=${encodeURIComponent(query)}`),
+    enabled: trigger?.symbol === '@',
   })
   const channels = useQuery({
-    queryKey: ['instruction-reference-channels'],
-    queryFn: () => fetchItems<{ id: string; name: string; parentChannelId: string | null }>('/api/research/channels?limit=200'),
-    enabled,
+    queryKey: ['instruction-reference-channels', query],
+    queryFn: () => fetchItems<{ id: string; name: string }>(`/api/research/channels?limit=20&query=${encodeURIComponent(query)}`),
+    enabled: trigger?.symbol === '#',
   })
-  const { data: attributes = [] } = useProfileAttributes(enabled)
-  const { data: roles = [] } = useProjectRoles()
+  const attributes = useProfileAttributes(trigger?.symbol === '@')
+  const roles = useProjectRoles()
+  // どれか1つでも取れなければ、欠けた候補を「一致なし」に見せずにエラーを出す
+  const error = trigger?.symbol === '#'
+    ? channels.error
+    : members.error ?? attributes.error ?? (roles.error as Error | null)
   return {
     members: members.data ?? [],
     channels: channels.data ?? [],
-    attributes,
-    roles,
-    error: members.error ?? channels.error,
+    attributes: attributes.data ?? [],
+    roles: roles.data ?? [],
+    isLoading: trigger?.symbol === '#' ? channels.isLoading : members.isLoading || attributes.isLoading || roles.isLoading,
+    error,
   }
 }
 
@@ -84,8 +91,9 @@ export function InstructionPreview({ text }: { text: string }) {
 export function InstructionEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
   const t = useT()
   const ref = React.useRef<HTMLTextAreaElement>(null)
+  const pickerRef = React.useRef<HTMLDivElement>(null)
   const [trigger, setTrigger] = React.useState<ReturnType<typeof referenceTrigger>>(null)
-  const data = useReferenceCandidates(true)
+  const data = useReferenceCandidates(trigger)
 
   const candidates: Candidate[] = React.useMemo(() => {
     if (!trigger) return []
@@ -109,7 +117,8 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
   }
   const insert = (candidate: Candidate) => {
     if (!trigger) return
-    const caret = ref.current?.selectionStart ?? value.length
+    // キーボードで候補へ移ると入力欄のカーソル位置が読めないため、入力中の `@名前` の終わりを使う
+    const caret = trigger.start + 1 + trigger.query.length
     const next = `${value.slice(0, trigger.start)}${candidate.token} ${value.slice(caret)}`
     onChange(next)
     setTrigger(null)
@@ -118,6 +127,12 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
       ref.current?.focus()
       ref.current?.setSelectionRange(position, position)
     })
+  }
+  // 候補の一覧へフォーカスが移っても閉じない（Tab で候補を選べるようにする）。どちらからも外れたら閉じる
+  const closeUnlessInPicker = (event: React.FocusEvent) => {
+    const next = event.relatedTarget as Node | null
+    if (next && (pickerRef.current?.contains(next) || next === ref.current)) return
+    setTrigger(null)
   }
   const kindLabel = (kind: Candidate['kind']) =>
     kind === 'member' ? t('Member') : kind === 'role' ? t('Project role') : kind === 'attribute' ? t('Attribute') : t('Channel')
@@ -134,13 +149,15 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
         value={value}
         onChange={event => update(event.target.value, event.target.selectionStart)}
         onKeyUp={event => setTrigger(referenceTrigger(event.currentTarget.value, event.currentTarget.selectionStart))}
-        onBlur={() => setTimeout(() => setTrigger(null), 150)}
+        onBlur={closeUnlessInPicker}
         style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
       />
       {trigger && (
-        <div role="listbox" aria-label={t('References')} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+        <div ref={pickerRef} role="listbox" aria-label={t('References')} onBlur={closeUnlessInPicker} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
           {data.error ? (
             <div role="alert" style={{ padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>{data.error.message}</div>
+          ) : data.isLoading ? (
+            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('Loading...')}</div>
           ) : candidates.length === 0 ? (
             <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('No matches')}</div>
           ) : candidates.map(candidate => (
@@ -150,7 +167,9 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
               role="option"
               aria-selected={false}
               className="hover-bg"
-              onMouseDown={event => { event.preventDefault(); insert(candidate) }}
+              // マウスでは入力欄のフォーカスを保ったまま選び、キーボード・支援技術ではボタンとして押せるようにする
+              onMouseDown={event => event.preventDefault()}
+              onClick={() => insert(candidate)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 13 }}
             >
               <span style={{ fontWeight: 600, color: 'var(--text)' }}>{candidate.kind === 'channel' ? '#' : '@'}{candidate.label}</span>
