@@ -10,7 +10,7 @@ import { useAutomations } from '@/hooks/use-automations'
 
 /** 入力が `$` と名前の途中だけのときに、その前方一致の名前を返す（スペースを打ったら候補を閉じる） */
 export function skillQueryFromInput(input: string): string | null {
-  const match = /^\s*\$([a-z0-9-]*)$/.exec(input)
+  const match = /^\s*\$((?:[a-z][a-z0-9-]*)?)$/.exec(input)
   return match ? match[1]! : null
 }
 
