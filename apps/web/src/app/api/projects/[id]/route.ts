@@ -112,15 +112,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       if (!lockedProject) return null
 
       // CASCADE 前にストレージパスを収集する。
-      const filePaths = await tx
+      const selectedFilePaths = await tx
         .selectDistinct({
-          storagePath: files.storagePath,
-          derivedStoragePath: files.derivedStoragePath,
           id: files.id,
           projectId: files.projectId,
-          fileSize: files.fileSize,
-          derivedFileSize: files.derivedFileSize,
-          metadata: files.metadata,
           galleryItemId: galleryItems.id,
         })
         .from(files)
@@ -129,6 +124,32 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
         .leftJoin(channels, eq(channels.id, messages.channelId))
         .leftJoin(galleryItems, eq(galleryItems.fileId, files.id))
         .where(or(eq(files.projectId, projectId), eq(channels.projectId, projectId)))
+
+      // PDF圧縮などの派生物更新と競合した場合に、ロック取得後の確定値で
+      // 削除対象パスを作る。JOIN/DISTINCT 行は直接ロックせず、IDでfilesだけをロックする。
+      const selectedFileIds = [...new Set(selectedFilePaths.map((file) => file.id))]
+      const lockedFiles =
+        selectedFileIds.length > 0
+          ? await tx
+              .select({
+                id: files.id,
+                storagePath: files.storagePath,
+                derivedStoragePath: files.derivedStoragePath,
+                fileSize: files.fileSize,
+                derivedFileSize: files.derivedFileSize,
+                metadata: files.metadata,
+              })
+              .from(files)
+              .where(inArray(files.id, selectedFileIds))
+              .for('update')
+          : []
+      const lockedFileById = new Map(lockedFiles.map((file) => [file.id, file]))
+      const filePaths = selectedFilePaths.flatMap((file) => {
+        const lockedFile = lockedFileById.get(file.id)
+        return lockedFile
+          ? [{ ...lockedFile, projectId: file.projectId, galleryItemId: file.galleryItemId }]
+          : []
+      })
 
       // 未確定アップロードは files に現れないため、CASCADE 前に別途回収する。
       const pendingUploadPaths = await tx
@@ -148,7 +169,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           const metadata = (file.metadata ?? {}) as Record<string, unknown>
           const thumbnailPath =
             typeof metadata['thumbnailPath'] === 'string' ? metadata['thumbnailPath'] : null
-          return [file.storagePath, thumbnailPath].filter((path): path is string => path !== null)
+          return [file.storagePath, file.derivedStoragePath, thumbnailPath].filter(
+            (path): path is string => path !== null,
+          )
         })
       const galleryDerivedPaths = [
         ...filePaths
@@ -383,7 +406,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (statusId !== undefined) set.statusId = statusId
 
     const { projectUpdateChange } = await import('@/lib/chat/project-update-message')
-    const { lockProjectUpdateChannel, postProjectUpdateMessage } = await import('@/lib/chat/post-project-update-message')
+    const { lockProjectUpdateChannel, postProjectUpdateMessage } =
+      await import('@/lib/chat/post-project-update-message')
 
     // 行をロックしてから「保存済みの値と合わせた検証 → 更新 → 通知」までを1つのトランザクションで行う。
     // 分けると、開始日だけ・終了日だけを直す更新が同時に来た時に、互いに古い値で検証を通って
@@ -433,11 +457,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (nextStartDate !== current.startDate || nextEndDate !== current.endDate) {
         changes.push(projectUpdateChange.dates(nextStartDate, nextEndDate))
       }
-      if (nextLocation !== current.location) changes.push(projectUpdateChange.location(nextLocation))
+      if (nextLocation !== current.location)
+        changes.push(projectUpdateChange.location(nextLocation))
       if ('description' in b && (b.description ?? null) !== current.description) {
         changes.push(projectUpdateChange.description())
       }
-      if (b.title !== undefined && b.title !== current.title) changes.push(projectUpdateChange.title(b.title))
+      if (b.title !== undefined && b.title !== current.title)
+        changes.push(projectUpdateChange.title(b.title))
       if (b.archived !== undefined && b.archived !== current.archived) {
         changes.push(projectUpdateChange.archived(b.archived))
       }

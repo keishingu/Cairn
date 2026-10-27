@@ -134,6 +134,14 @@ vi.mock('@cairn/db', () => ({
     mimeType: 'files.mimeType',
     fileSize: 'files.fileSize',
   },
+  messageBlocks: { messageId: 'messageBlocks.messageId', blocks: 'messageBlocks.blocks' },
+  appInstallations: {
+    appId: 'appInstallations.appId',
+    botProfileId: 'appInstallations.botProfileId',
+    workspaceId: 'appInstallations.workspaceId',
+    revokedAt: 'appInstallations.revokedAt',
+  },
+  apps: { id: 'apps.id', name: 'apps.name', iconUrl: 'apps.iconUrl' },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: mockEq,
@@ -299,6 +307,78 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         senderProjectRoleColor: '#EC4899',
         senderProjectRoleLegacy: null,
       }),
+    ])
+  })
+
+  it('GET はアプリのカードをボタンの value を除いて返し、送信者のアプリを付ける', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockSelectResults(
+      [
+        {
+          id: 'msg-card',
+          content: '11月の登山本部 担当決め',
+          messageType: 'blocks',
+          senderId: 'bot-profile',
+          senderName: '投票',
+          senderAvatarUrl: null,
+          createdAt: new Date('2026-10-21T01:00:00.000Z'),
+          updatedAt: new Date('2026-10-21T01:00:00.000Z'),
+          blocks: [
+            {
+              type: 'section',
+              block_id: 'option-1',
+              text: { type: 'plain_text', text: '第1週' },
+              accessory: { type: 'button', action_id: 'vote', text: { type: 'plain_text', text: '投票' }, value: 'option:1' },
+            },
+          ],
+          appName: 'Polls',
+          appSlug: 'polls',
+          appOwnerWorkspaceId: null,
+          appIconUrl: 'https://example.com/polls.png',
+          appRevokedAt: null,
+        },
+        {
+          id: 'msg-human',
+          content: 'hello',
+          messageType: 'text',
+          senderId: 'user-2',
+          senderName: 'Sender',
+          senderAvatarUrl: null,
+          createdAt: new Date('2026-10-21T01:01:00.000Z'),
+          updatedAt: new Date('2026-10-21T01:01:00.000Z'),
+          blocks: null,
+          appName: null,
+          appIconUrl: null,
+          appRevokedAt: null,
+        },
+      ].reverse(),
+      [],
+      [],
+      [],
+      [],
+    )
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual([
+      expect.objectContaining({
+        id: 'msg-card',
+        isEdited: false,
+        blocks: [
+          {
+            type: 'section',
+            block_id: 'option-1',
+            text: { type: 'plain_text', text: '第1週' },
+            accessory: { type: 'button', action_id: 'vote', text: { type: 'plain_text', text: '投票' } },
+          },
+        ],
+        senderApp: { name: 'Polls', firstParty: true, iconUrl: 'https://example.com/polls.png', uninstalled: false },
+        mentionNames: {},
+      }),
+      expect.objectContaining({ id: 'msg-human', blocks: null, senderApp: null }),
     ])
   })
 

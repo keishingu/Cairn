@@ -15,11 +15,12 @@ export interface ProfileSheetSource {
   senderName: string
   senderAvatarUrl: string | null
   blocked?: boolean
+  senderApp?: unknown
 }
 
-/** システムメッセージには送信者がいないため、プロフィールシートを開かない */
+/** システムメッセージには送信者がおらず、アプリ（Bot）の発言はユーザーではないため、プロフィールシートを開かない */
 export function profileSheetTargetFromMessage(message: ProfileSheetSource): ProfileSheetTarget | null {
-  if (message.messageType === 'system' || !message.senderId) return null
+  if (message.messageType === 'system' || !message.senderId || message.senderApp) return null
   return {
     userId: message.senderId,
     displayName: message.senderName,

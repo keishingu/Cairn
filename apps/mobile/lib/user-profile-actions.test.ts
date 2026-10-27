@@ -31,6 +31,12 @@ describe('profileSheetTargetFromMessage', () => {
     expect(profileSheetTargetFromMessage({ ...message, messageType: 'system' })).toBeNull()
   })
 
+  test('アプリ（Bot）の発言は対象にしない', () => {
+    expect(
+      profileSheetTargetFromMessage({ ...message, senderApp: { name: '投票', iconUrl: null, uninstalled: false } }),
+    ).toBeNull()
+  })
+
   test('送信者 ID がないメッセージは対象にしない', () => {
     expect(profileSheetTargetFromMessage({ ...message, senderId: '' })).toBeNull()
   })

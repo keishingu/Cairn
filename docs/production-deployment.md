@@ -127,7 +127,7 @@ PostHog は production の利用状況を収集するインフラ接続なので
 - [ ] Auth → URL Configuration の Site URL / Redirect URLs が本番ドメインになっているか最終確認
 - [ ] Google カレンダー連携（`GOOGLE_CALENDAR_*`）を使うなら本番設定
   - Google Calendar API 有効化 / OAuth クライアントに `https://oss-cairn.com/api/calendar/google/callback` を登録 / Vercel に 3 変数設定
-- [ ] `CALENDAR_TOKEN_ENCRYPTION_KEY` を本番用に新規生成して Vercel(Production) に設定（鍵はバックアップ）
+- [ ] `CALENDAR_TOKEN_ENCRYPTION_KEY` を本番用に新規生成して Vercel(Production) に設定（鍵はバックアップ）。Google カレンダーを使わなくても必須（投票などファーストパーティのアプリの署名シークレット・Bot トークンの暗号化に使う。未設定だと投票アプリがインストールされない）
 - [ ] Inngest の Production 環境キーを Preview と分離し、本番 serve エンドポイント（`https://oss-cairn.com/api/inngest`）を Sync
 
 ## 限定公開 → 一般公開（不特定多数）に必要な設定

@@ -1,6 +1,7 @@
 # iOS App Store申請手順
 
 > 対象: `apps/mobile` のCairn本番アプリ（Bundle ID: `com.oss-cairn`）
+> Android（Google Play）は [`play-store-submission.md`](play-store-submission.md)。
 
 ## リポジトリ内で準備済みのもの
 

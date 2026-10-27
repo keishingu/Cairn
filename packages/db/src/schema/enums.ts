@@ -33,7 +33,8 @@ export const attendanceStatusEnum = pgEnum('attendance_status', [
   'declined',
 ])
 
-export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system'])
+// blocks はアプリの Bot が投稿するカード（Block Kit 互換）。本体は message_blocks、content は代替テキスト
+export const messageTypeEnum = pgEnum('message_type', ['text', 'html', 'system', 'blocks'])
 
 export const apiTokenScopeEnum = pgEnum('api_token_scope', ['read', 'write'])
 

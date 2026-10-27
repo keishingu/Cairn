@@ -77,9 +77,12 @@ async function checkOpenAI(): Promise<ServiceStatus> {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-5-mini',
-        messages: [{ role: 'user', content: 'hi' }],
+        messages: [{ role: 'user', content: 'Reply with OK.' }],
         // GPT-5 系は max_tokens を受け付けないため、Chat Completions の後継パラメータを使う。
-        max_completion_tokens: 1,
+        // 推論モデルは推論と本文が上限を共有し、回答を書き切れないと 400 になる。
+        // 16 でも開発環境で上限到達の 400 が出たため、推論を最小にしたうえで十分な余裕を取る。
+        reasoning_effort: 'minimal',
+        max_completion_tokens: 256,
       }),
     })
     const latencyMs = Date.now() - t
@@ -87,9 +90,11 @@ async function checkOpenAI(): Promise<ServiceStatus> {
     if (res.ok) return { status: 'ok', latencyMs, detail: 'クレジット有効・API 正常' }
 
     let code: string | undefined
+    let message: string | undefined
     try {
       const body = await res.json() as { error?: { code?: string; type?: string; message?: string } }
       code = body.error?.code ?? body.error?.type
+      message = body.error?.message
     } catch { /* ignore */ }
 
     const detail = (() => {
@@ -99,7 +104,8 @@ async function checkOpenAI(): Promise<ServiceStatus> {
         case 'invalid_api_key':       return 'APIキーが無効'
         case 'model_not_found':       return 'モデルが見つかりません'
         case 'billing_hard_limit_reached': return '請求上限に達しました'
-        default: return `HTTP ${res.status}${code ? ` (${code})` : ''}`
+        // 原因を画面で特定できるよう、OpenAI のエラーメッセージも添える。
+        default: return `HTTP ${res.status}${code ? ` (${code})` : ''}${message ? `: ${message.slice(0, 200)}` : ''}`
       }
     })()
 

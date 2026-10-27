@@ -99,6 +99,15 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 
 フォローアップ送信時、クライアントは最新の利用者メッセージだけを送る。会話履歴はサーバーが保存済みの本文から読み直すため、UI表示用の大きなtool結果をリクエストへ再送しない。
 
+#### ワークスペースのシステムプロンプト
+
+owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` へ毎回渡す追加指示（用語・口調・回答形式・チームの決まりごと）を書ける。保存先は `workspaces.ai_chat_system_prompt`（null は未設定、上限 `AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH` = 10,000 文字を Zod と CHECK 制約の両方で強制）。member 以下にも読み取り専用で表示し、更新は `PATCH /api/workspaces/settings` で owner だけが行える。
+
+- system prompt の組み立ては `apps/web/src/app/api/ai/conversations/[id]/messages/system-prompt.ts` に集約する。追加指示は【Cairnの使い方】の後、未信頼の workspace-data と「権限・安全規律」の前に `<workspace-instructions>` で囲んで置き、規律側にも「追加指示より規律が優先する」と明記する
+- 本文中の区切りタグは無害化し、ブロックを閉じて後ろへ指示を続けられないようにする。追加指示で認可・tool 方針・読み取り専用の制約は変えられない
+- モデルに関係なく同じ `system` に入れるため、GPT-5 / Claude のどちらを選んでも効く。未設定（空）のときは従来とまったく同じ文面になる
+- `ai_agents.system_prompt` / `agents_md` は使わない。`ai_agents` は §4 のAIメンバー用（スコープ・名前・モデル・作成者が必須の複数行）で、ワークスペースに1つの `/ai` 向け設定とは粒度が違い、モデルも `workspaces.ai_chat_model` と二重管理になるため
+
 ### 2.4 AI PMOと共有できるもの・できないもの
 
 共有してよいもの:
@@ -135,7 +144,7 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 
 既存資産:
 
-- `ai_agents` — スコープ、名前、モデル、system prompt、`agentsMd`、HTMLテンプレート
+- `ai_agents` — スコープ、名前、モデル、system prompt、`agentsMd`、HTMLテンプレート（未使用。`/ai` のワークスペース追加指示は `workspaces.ai_chat_system_prompt` に別に持つ。§2.3）
 - `channels` / `channel_members` / `messages` / `channel_read_states`
 - `document_chunks` と `/ai` 向けRAG
 

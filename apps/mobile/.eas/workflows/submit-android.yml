@@ -1,0 +1,20 @@
+name: Submit Android to Google Play (internal testing)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build_android:
+    name: Build production Android app
+    type: build
+    params:
+      platform: android
+      profile: production
+
+  submit_android:
+    name: Submit build to Google Play internal testing
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: production
