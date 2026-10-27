@@ -164,8 +164,16 @@ OAuth / MCP の基準は [MCP 2026-07-28 authorization](https://modelcontextprot
 | `complete_task`   | write | `PATCH /api/tasks/[id]`                   |
 | `post_message`    | write | `POST /api/channels/[channelId]/messages` |
 | `search_messages` | read  | `GET /api/search/messages?q=...`          |
+| `list_channels`         | read | `GET /api/research/channels`                         |
+| `read_channel_messages` | read | `GET /api/research/channels/[channelId]/messages`    |
+| `get_project_members`   | read | `GET /api/research/projects/[id]/members`            |
+| `list_members`          | read | `GET /api/research/members?attribute=...`            |
+| `get_member_history`    | read | `GET /api/research/members/history?userId=...`       |
 
-MCP 層は薄い protocol 変換に徹し、各 tool は既存 Route Handler を呼ぶ。`read_file` は Storage の
+MCP 層は薄い protocol 変換に徹し、各 tool は既存 Route Handler を呼ぶ。`/api/research/*` は
+`/ai` の調査 tool と同じ関数（`apps/web/src/lib/ai/workspace-research-directory.ts`）を PAT / OAuth の
+read scope で公開する Route Handler で、可視範囲・上限・evidence は `/ai` と同じになる
+（[`ai-automation-design.md`](./ai-automation-design.md) §7）。`read_file` は Storage の
 元 binary ではなく、`canAccessFile` 適用後に `document_chunks` の抽出済み本文を最大 10 chunk ずつ
 返す。
 

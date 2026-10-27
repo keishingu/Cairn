@@ -97,7 +97,7 @@ function MessageSources({ annotations, toolInvocations }: {
   return (
     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
       {visibleSources.map(src => {
-        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' ? 'chat' : 'users'
+        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' || src.type === 'channel' ? 'chat' : 'users'
         const isExternal = src.href.startsWith('https://') || src.href.startsWith('http://')
         return (
           <a key={`${src.type}:${src.id}`} href={src.href}

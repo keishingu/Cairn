@@ -1,7 +1,7 @@
 # AIオートメーション設計書 — Skill / cron / heartbeat
 
 作成日: 2026-10-27
-ステータス: 構想・設計段階（未実装）。§2 の決定事項は 2026-10-27 に合意済み
+ステータス: Phase 0（§5.1 の読み取りツール）実装済み、Phase 1 以降は未実装。§2 の決定事項は 2026-10-27 に合意済み
 
 利用者（admin 以上）が**自然言語の指示文**で AI の動きを定義し、手動呼び出し（Skill）・定刻（cron）・巡回（heartbeat）で実行させる仕組み。AI PMO のナッジは「Cairn が組み込みで持つ cron / heartbeat」と位置づけ直し、最初から同じ実行基盤に載せる。
 
@@ -229,7 +229,7 @@ ai_automation_mutes          -- §2.8 受信者ごとの受信停止
 - メンバー一覧・プロフィール属性の取得
 - プロジェクトの参加者と役割の取得（`get_project` が参加者を返さない）
 
-そのため、外部 AI で「メンバーの経歴一覧」を作ることは現状できない。§5.1 の読み取りツールを MCP にも同じ実装で公開する（MCP 層は既存 Route Handler を呼ぶ薄い変換のまま。`mcp-server-design.md` §6）。これは Cairn 内のオートメーションを待たずに出せるので、最初に実装する（§8 Phase 0）。
+そのため、外部 AI で「メンバーの経歴一覧」を作ることができなかった。§5.1 の読み取りツールを MCP にも同じ実装で公開する（MCP 層は既存 Route Handler を呼ぶ薄い変換のまま。`mcp-server-design.md` §6）。これは Cairn 内のオートメーションを待たずに出せるので、最初に実装した（§8 Phase 0。MCP からは `/api/research/*` を呼ぶ。`mcp-server-design.md` §6）。
 
 ## 8. 段階
 
@@ -263,3 +263,12 @@ ai_automation_mutes          -- §2.8 受信者ごとの受信停止
 ## 11. 未決事項
 
 なし（2026-10-27 時点）。実装中に出た論点はここに追記する。
+
+### 11.1 Phase 0 の実装で決めたこと（2026-10-28）
+
+- MCP 用の Route Handler は `/api/research/*` にまとめ、`/ai` の tool と同じ関数（`workspace-research-directory.ts`）を呼ぶ。画面用の既存 API（`/api/workspaces/members` 等）は UI 向けの DTO で上限・evidence を持たないため、PAT / OAuth に開かない
+- `get_member_history` は1回で最大50人を受け取る。tool calling が8ステップに制限されているため、1人ずつ呼ぶと全員の比較表を作れない
+- `list_members` の属性絞り込みは「いずれかを持つ（OR）」。属性名は完全一致
+- `read_channel_messages` は既定で30日前から古い順に読み、期間の上限は設けない（cron の `since` が前回実行時刻になるため）。続きは `(作成日時, ID)` のカーソルで読む
+- プロジェクトのチャンネル名は画面と同じくプロジェクト名（マイルストーンはマイルストーン名）、スレッドはスレッド名で返す
+

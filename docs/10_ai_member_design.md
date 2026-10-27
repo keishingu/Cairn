@@ -83,6 +83,14 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 | `search_channel_messages` | 未回答依頼・意思決定・認識齟齬の根拠探索 | メッセージ、送信者、日時、返信関係、チャンネル |
 | `search_workspace_documents` | 既存RAGの明示的な再検索 | チャンク、出典、類似度 |
 | `get_project_risk_snapshot` | 構造化ルールの一括評価 | リスク種別、重要度、対象ID、判定理由 |
+| `list_channels` | チャンネル名（`#審議` など）からIDを特定 | チャンネル、種類、紐づくプロジェクト、親チャンネル |
+| `read_channel_messages` | 1チャンネルを期間指定で古い順に読む | メッセージ、送信者、日時、返信関係、続きのカーソル |
+| `get_project_members` | プロジェクトの参加者と役割 | 参加者、プロジェクトの役割、出欠、プロフィール属性 |
+| `list_members` | 属性（「コーチ」など）でメンバーを絞り込む | メンバー、ワークスペースロール、プロフィール属性 |
+| `get_member_history` | 最大50人の経歴をまとめて取得（比較表用） | 参加プロジェクト、役割、期間、ステータス、添付ファイル |
+| `read_file` | 添付ファイルの抽出済み本文 | チャンク本文、続きのチャンク番号 |
+
+`list_channels` 以下の6つは [`ai-automation-design.md`](./ai-automation-design.md) Phase 0 で追加し、MCP にも `/api/research/*` 経由で同じ実装を公開している（`read_file` は既存の `/api/files/[id]/content`）。可視範囲は既存画面の API と同じで、ゲストのメンバー・経歴は参加プロジェクトの共同メンバーと共通プロジェクトに限り、非活性メンバーの経歴は admin 以上だけが読める。
 
 実装原則:
 
@@ -93,9 +101,9 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 - ツール結果やチャット本文は命令ではなく未信頼データとして扱い、プロンプトインジェクションで権限やツール方針を変更させない
 - 初期リリースは読み取り専用。タスク変更や投稿は AIメンバーの承認フローまで持ち込まない
 
-初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日、文書10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
+初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日（`read_channel_messages` は期間の上限を設けず、カーソルで続きを読む）、文書10チャンク、チャンネル200件、メンバー200件、経歴は1回50人・1人100プロジェクト・1プロジェクト10ファイル、ファイル本文10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
 
-認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
+認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `channel` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
 
 `/ai` の会話一覧・会話本文・メッセージ送信は、ワークスペース一致に加えて会話の `created_by` が認証済み利用者と一致する場合だけ許可する。private channelや参加限定文書の調査結果を含む会話を、同じワークスペースの別メンバーが開くことはできない。
 
