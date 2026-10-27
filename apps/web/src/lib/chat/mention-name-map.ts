@@ -33,7 +33,7 @@ export async function buildMentionNameMap(
 
   if (userIds.length === 0 && attributeIds.length === 0 && roleIds.length === 0) return nameMap
 
-  const { db, profiles, projectRoles, workspaceMembers, workspaceProfileAttributes } = await import('@cairn/db')
+  const { db, profiles, workspaceMembers, workspaceProfileAttributes } = await import('@cairn/db')
   const { and, eq, inArray } = await import('drizzle-orm')
 
   if (userIds.length > 0) {
@@ -77,6 +77,8 @@ export async function buildMentionNameMap(
   }
 
   if (roleIds.length > 0) {
+    // 役割のメンションがあるときだけ引く（役割を使わない呼び出し元にスキーマの依存を増やさない）
+    const { projectRoles } = await import('@cairn/db')
     const roleRows = await db
       .select({ id: projectRoles.id, name: projectRoles.name })
       .from(projectRoles)
