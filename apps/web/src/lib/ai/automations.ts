@@ -9,6 +9,7 @@ import { z } from 'zod'
 import type { AiAutomationKind, AiPendingActionType } from '@cairn/db'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { canonicalizeInstructionReferences, hydrateInstructionReferences } from './instruction-references'
 
 // ワークスペースあたりのユーザー定義オートメーションの上限（§2.9）。組み込みの PMO は数えない
 export const AI_AUTOMATION_DEFINITION_LIMIT = 20
@@ -29,9 +30,10 @@ export const automationNameSchema = z
 
 const instructionSchema = z
   .string()
-  .trim()
+  .transform(canonicalizeInstructionReferences)
+  .pipe(z.string().trim()
   .min(1, '指示文を入力してください')
-  .max(AI_AUTOMATION_INSTRUCTION_MAX_LENGTH, `指示文は${AI_AUTOMATION_INSTRUCTION_MAX_LENGTH.toLocaleString()}文字以内にしてください`)
+  .max(AI_AUTOMATION_INSTRUCTION_MAX_LENGTH, `指示文は${AI_AUTOMATION_INSTRUCTION_MAX_LENGTH.toLocaleString()}文字以内にしてください`))
 
 const writeActionsSchema = z
   .array(z.enum(AUTOMATION_WRITE_ACTIONS))
@@ -119,12 +121,14 @@ async function selectAutomations(ctx: AuthContext, id?: string) {
       ),
     )
     .orderBy(asc(aiAutomations.name))
+  // 指示文の参照（@メンバー・@属性・@役割・#チャンネル）は、見る人の権限で名前に解決して返す
+  const instructions = await hydrateInstructionReferences(ctx, rows.map((row) => row.instruction ?? ''))
   return rows.map(
-    (row): AutomationDto => ({
+    (row, index): AutomationDto => ({
       id: row.id,
       kind: row.kind,
       name: row.name,
-      instruction: row.instruction ?? '',
+      instruction: instructions[index] ?? '',
       writeActions: compiledWriteActions(row.compiled),
       enabled: row.enabled,
       pausedReason: row.pausedReason,

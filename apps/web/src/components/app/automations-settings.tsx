@@ -17,6 +17,7 @@ import {
 } from '@/hooks/use-automations'
 import type { DryRunResultDto } from '@/lib/ai/skill-dry-run'
 import { MarkdownContent } from './markdown-content'
+import { InstructionEditor, InstructionPreview } from './instruction-editor'
 import { ConfirmDialog } from './confirm-dialog'
 import { RowActionMenu } from './row-action-menu'
 
@@ -72,19 +73,14 @@ function AutomationForm({
         </div>
         <span style={{ fontWeight: 400, color: 'var(--text-4)' }}>{t('Lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.', { name: input.name || 'assign-reviewer' })}</span>
       </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
         {t('Instructions')}
-        <textarea
-          name="automationInstruction"
-          className="form-control"
-          rows={6}
-          maxLength={10000}
-          placeholder={t('e.g. Read the plan attached to this project, invite coaches who reviewed similar plans before as reviewers, and mention them.')}
+        <InstructionEditor
           value={input.instruction}
-          onChange={event => setInput(current => ({ ...current, instruction: event.target.value }))}
-          style={{ resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+          onChange={instruction => setInput(current => ({ ...current, instruction }))}
+          placeholder={t('e.g. Read the plan attached to this project, invite coaches who reviewed similar plans before as reviewers, and mention them.')}
         />
-      </label>
+      </div>
       <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <legend style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{t('What it may do after approval')}</legend>
         {WRITE_ACTION_OPTIONS.map(option => (
@@ -148,7 +144,7 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
             <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Paused')}</span>
           )}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{automation.instruction}</div>
+        <div style={{ color: 'var(--text-2)' }}><InstructionPreview text={automation.instruction}/></div>
         <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
           {t('Allowed after approval')}: {writeLabels.length > 0 ? writeLabels.join(t(', ')) : t('Read only')}
         </div>

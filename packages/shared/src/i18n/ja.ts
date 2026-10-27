@@ -1316,6 +1316,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Run polls in a channel': 'チャンネルで投票をとる',
   'Posts messages proposed by Cairn AI after a member approves them': 'メンバーが承認した Cairn AI の提案を投稿する',
   'Approved by {name}': '{name}さんが承認',
+  'References': '参照',
+  'Type @ for members, attributes, and project roles, or # for channels. Picked items are saved by ID, so renames and duplicate names do not change their meaning.': '@ でメンバー・属性・プロジェクトの役割、# でチャンネルを選べます。選んだものは ID で保存されるので、名前の変更や同名があっても指す相手は変わりません。',
   'A test run reads and decides with your permissions, but creates no approval cards and writes nothing. It uses credits and counts toward the daily run limit.': 'テスト実行は、あなたの権限で実際に読んで判断しますが、承認カードは出さず、何も書き込みません。クレジットを消費し、1日の実行回数にも数えます。',
   'Additional request after ${name} (optional)': '${name} の後ろに書く追加の依頼（任意）',
   'Run test': 'テスト実行',

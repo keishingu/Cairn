@@ -1315,6 +1315,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'Run polls in a channel': '채널에서 투표하기',
   'Posts messages proposed by Cairn AI after a member approves them': '멤버가 승인한 Cairn AI의 제안을 게시하기',
   'Approved by {name}': '{name}님이 승인',
+  'References': '참조',
+  'Type @ for members, attributes, and project roles, or # for channels. Picked items are saved by ID, so renames and duplicate names do not change their meaning.': '@로 멤버·속성·프로젝트 역할, #로 채널을 선택할 수 있습니다. 선택한 항목은 ID로 저장되므로 이름이 바뀌거나 같은 이름이 있어도 가리키는 대상은 바뀌지 않습니다.',
   'A test run reads and decides with your permissions, but creates no approval cards and writes nothing. It uses credits and counts toward the daily run limit.': '테스트 실행은 회원님의 권한으로 실제로 읽고 판단하지만, 승인 카드를 만들지 않고 아무것도 쓰지 않습니다. 크레딧을 사용하며 하루 실행 횟수에도 포함됩니다.',
   'Additional request after ${name} (optional)': '${name} 뒤에 쓸 추가 요청(선택)',
   'Run test': '테스트 실행',

@@ -8,6 +8,7 @@ import type { AiPendingActionType } from '@cairn/db'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { isWorkspaceMember } from '@/lib/permissions'
 import { AUTOMATION_WRITE_ACTIONS, type AutomationWriteAction } from './automations'
+import { hydrateInstructionReferences } from './instruction-references'
 
 // ワークスペースあたり、ユーザー定義オートメーションの実行は JST の暦日で1日100回まで（§2.9）
 export const AI_AUTOMATION_DAILY_RUN_LIMIT = 100
@@ -65,10 +66,12 @@ export async function resolveSkill(ctx: AuthContext, name: string): Promise<Skil
   if (!row) throw new SkillRunError(404, `スキル $${name} が見つかりません。設定の「AIオートメーション」で確認してください`)
   if (!row.enabled) throw new SkillRunError(409, `スキル $${name} は停止中です`)
   const value = row.compiled['writeActions']
+  // 参照は ID と名前の両方を AI に渡す（ID で tool を呼べ、名前で依頼を理解できる）
+  const [instruction = ''] = await hydrateInstructionReferences(ctx, [row.instruction ?? ''])
   return {
     id: row.id,
     name: row.name,
-    instruction: row.instruction ?? '',
+    instruction,
     writeActions: Array.isArray(value) ? AUTOMATION_WRITE_ACTIONS.filter((action) => value.includes(action)) : [],
   }
 }

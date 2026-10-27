@@ -106,6 +106,48 @@ export async function listActiveMembersByAttributeIds(
     )
 }
 
+/**
+ * `@役割` の宛先。そのチャンネルのプロジェクトで、指定した役割を持つ active メンバー。
+ * プロジェクトに紐づかないチャンネルでは誰にも展開しない（どのプロジェクトの役割か決まらないため）
+ */
+export async function listActiveProjectMembersByRoleIds(
+  workspaceId: string,
+  projectId: string | null | undefined,
+  roleIds: string[],
+  excludeUserId: string,
+): Promise<ExpandedMentionMember[]> {
+  if (!projectId || roleIds.length === 0) return []
+
+  const { db, activeWorkspaceMembers, profiles, projectMembers, projectRoles } = await import('@cairn/db')
+  const { and, eq, inArray, ne } = await import('drizzle-orm')
+
+  return db
+    .selectDistinct({
+      userId: activeWorkspaceMembers.userId,
+      displayName: profiles.displayName,
+    })
+    .from(projectMembers)
+    .innerJoin(
+      projectRoles,
+      and(eq(projectRoles.id, projectMembers.roleId), eq(projectRoles.workspaceId, workspaceId)),
+    )
+    .innerJoin(
+      activeWorkspaceMembers,
+      and(
+        eq(activeWorkspaceMembers.userId, projectMembers.userId),
+        eq(activeWorkspaceMembers.workspaceId, workspaceId),
+      ),
+    )
+    .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        inArray(projectMembers.roleId, roleIds),
+        ne(activeWorkspaceMembers.userId, excludeUserId),
+      ),
+    )
+}
+
 /** 複数ソースのメンション宛先を userId で重複排除してマージする */
 export function mergeMentionMembers(
   ...groups: ExpandedMentionMember[][]

@@ -94,3 +94,21 @@ describe('stripMentionsToText', () => {
     )
   })
 })
+
+describe('プロジェクトの役割メンション', () => {
+  it('<@role:id> を役割として扱い、ユーザーメンションに混ぜない', async () => {
+    const m = await import('./mentions')
+    const content = '<@role:r1> <@u1> <@role:r1> <@attr:a1>'
+    expect(m.extractRoleMentionIds(content)).toEqual(['r1'])
+    expect(m.extractMentionIds(content)).toEqual(['u1'])
+    expect(m.hasGroupMention('<@role:r1>')).toBe(true)
+    expect(m.roleMentionTokenId('r1')).toBe('role:r1')
+  })
+
+  it('役割名を解決できないときは不明な役割と表示する', async () => {
+    const m = await import('./mentions')
+    expect(m.stripMentionsToText('<@role:r1> <@role:r2>', (id) => (id === 'role:r1' ? 'レビュワー' : undefined))).toBe(
+      '@レビュワー @不明な役割',
+    )
+  })
+})

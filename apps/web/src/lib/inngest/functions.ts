@@ -9,6 +9,7 @@ import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
 import {
   extractAttributeMentionIds,
+  extractRoleMentionIds,
   extractMentionIds,
   hasAllMention,
   hasGroupMention,
@@ -201,6 +202,7 @@ export const onMessageCreated = inngest.createFunction(
     // @メンション通知（個別・@all・@project_members・属性）。チャンネル未参加でも到達可能な人へ通知。
     const mentionedIds = extractMentionIds(content)
     const attributeMentionIds = extractAttributeMentionIds(content)
+    const roleMentionIds = extractRoleMentionIds(content)
     const wantsAll = hasAllMention(content)
     const wantsProjectMembers = hasProjectMembersMention(content)
     const hasAnyMentionTarget =
@@ -257,12 +259,27 @@ export const onMessageCreated = inngest.createFunction(
         })
       : []
 
+    const roleMentionMembers = roleMentionIds.length > 0
+      ? await step.run('expand-role-mentions', async () => {
+          const { db, channels } = await import('@cairn/db')
+          const { eq } = await import('drizzle-orm')
+          const { listActiveProjectMembersByRoleIds } = await import('@/lib/chat/mention-expand')
+          const [ch] = await db
+            .select({ projectId: channels.projectId })
+            .from(channels)
+            .where(eq(channels.id, channelId))
+            .limit(1)
+          return listActiveProjectMembersByRoleIds(workspaceId, ch?.projectId, roleMentionIds, senderId)
+        })
+      : []
+
     const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
     const candidateMentioned = mergeMentionMembers(
       mentionedMembers,
       allMentionMembers,
       projectMentionMembers,
       attributeMentionMembers,
+      roleMentionMembers,
     )
 
     // 本文プレビューのメンションは送信時点の最新名で解決する

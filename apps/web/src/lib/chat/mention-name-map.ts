@@ -7,6 +7,8 @@ import {
   PROJECT_MEMBERS_MENTION_ID,
   PROJECT_MEMBERS_MENTION_LABEL,
   attributeMentionTokenId,
+  extractRoleMentionIds,
+  roleMentionTokenId,
   extractAttributeMentionIds,
   extractMentionIds,
 } from '@/lib/chat/mentions'
@@ -23,10 +25,11 @@ export async function buildMentionNameMap(
 
   const userIds = [...new Set(contents.flatMap(extractMentionIds))]
   const attributeIds = [...new Set(contents.flatMap(extractAttributeMentionIds))]
+  const roleIds = [...new Set(contents.flatMap(extractRoleMentionIds))]
 
-  if (userIds.length === 0 && attributeIds.length === 0) return nameMap
+  if (userIds.length === 0 && attributeIds.length === 0 && roleIds.length === 0) return nameMap
 
-  const { db, profiles, workspaceMembers, workspaceProfileAttributes } = await import('@cairn/db')
+  const { db, profiles, projectRoles, workspaceMembers, workspaceProfileAttributes } = await import('@cairn/db')
   const { and, eq, inArray } = await import('drizzle-orm')
 
   if (userIds.length > 0) {
@@ -67,6 +70,14 @@ export async function buildMentionNameMap(
     for (const attribute of attributeRows) {
       nameMap.set(attributeMentionTokenId(attribute.id), attribute.name)
     }
+  }
+
+  if (roleIds.length > 0) {
+    const roleRows = await db
+      .select({ id: projectRoles.id, name: projectRoles.name })
+      .from(projectRoles)
+      .where(and(eq(projectRoles.workspaceId, workspaceId), inArray(projectRoles.id, roleIds)))
+    for (const role of roleRows) nameMap.set(roleMentionTokenId(role.id), role.name)
   }
 
   return nameMap
