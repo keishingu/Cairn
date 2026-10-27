@@ -88,9 +88,9 @@ function PendingActionCard({ id }: { id: string }) {
         <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-3)' }}>
           {fieldLabel(key, t)}
           {key === 'title' ? (
-            <input className="input" value={field(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}/>
+            <input className="form-control" value={field(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}/>
           ) : (
-            <textarea className="input" rows={key === 'text' ? 5 : 3} value={field(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} style={{ resize: 'vertical', fontFamily: 'inherit' }}/>
+            <textarea className="form-control" rows={key === 'text' ? 5 : 3} value={field(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} style={{ resize: 'vertical', fontFamily: 'inherit' }}/>
           )}
         </label>
       ))}
