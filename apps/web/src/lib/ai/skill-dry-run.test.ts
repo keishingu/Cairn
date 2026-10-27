@@ -25,7 +25,10 @@ vi.mock('@cairn/core/billing', () => ({ BILLING_CONFIG: { activeAiRequestCredits
 vi.mock('@/lib/billing/credits', () => ({ reserveCreditsForActiveBenefit: mockReserveCredits, refundActiveBenefitReservation: vi.fn() }))
 vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockEntitlements }))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: mockIsBillingEnabled }))
-vi.mock('./instruction-references', () => ({ hydrateInstructionReferences: async (_ctx: unknown, texts: string[]) => texts }))
+vi.mock('./instruction-references', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./instruction-references')>()),
+  hydrateInstructionReferences: async (_ctx: unknown, texts: string[]) => texts,
+}))
 
 const CTX = { workspaceId: 'workspace-1', userId: 'user-1', role: 'admin' as const }
 
