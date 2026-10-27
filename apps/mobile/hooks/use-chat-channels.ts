@@ -120,6 +120,21 @@ export function useProjectMembers(projectId: string | null) {
   })
 }
 
+export interface ProjectRoleDto {
+  id: string
+  name: string
+}
+
+/** プロジェクトの役割（`@レビュワー` のメンション候補）。プロジェクトチャンネルでだけ取る */
+export function useProjectRoles(enabled: boolean) {
+  const t = useT()
+  return useQuery<ProjectRoleDto[]>({
+    queryKey: ['project-roles'],
+    queryFn: fetchJson('/api/projects/roles', t('Could not load project roles ({status})')),
+    enabled,
+  })
+}
+
 export function useCreateWorkspaceChannel() {
   const t = useT()
   const qc = useQueryClient()
