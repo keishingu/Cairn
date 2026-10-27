@@ -1341,9 +1341,14 @@ export default function ChatThreadScreen() {
     }
   }
 
+  // iOS は閉じかけの操作メニューの上に別の Modal を出すと表示が捨てられるため、メニューが閉じ終えてから（onDismiss で）開く
+  const pendingSelectTextRef = React.useRef<string | null>(null)
   const beginSelectText = (message: MessageDto) => {
     setActionTarget(null)
-    setSelectableText(parseMentions(message.content, t))
+    const text = parseMentions(message.content, t)
+    // onDismiss は iOS でしか呼ばれない。Android はそのまま開ける
+    if (Platform.OS === 'ios') pendingSelectTextRef.current = text
+    else setSelectableText(text)
   }
 
   const shareMessage = async (message: MessageDto) => {
@@ -1830,6 +1835,11 @@ export default function ChatThreadScreen() {
           visible={actionTarget !== null}
           animationType="fade"
           onRequestClose={() => setActionTarget(null)}
+          onDismiss={() => {
+            const pending = pendingSelectTextRef.current
+            pendingSelectTextRef.current = null
+            if (pending !== null) setSelectableText(pending)
+          }}
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
           <View
