@@ -14,7 +14,8 @@ import { sanitizeReferenceName } from './reference-name'
 
 export { sanitizeReferenceName }
 
-const CHANNEL_REFERENCE_SOURCE = '<#([0-9a-f-]{36})(?:\\|[^>\\n]*)?>'
+// チャンネル ID は UUID の形に限る（形の崩れた ID を UUID の列への問い合わせに渡さない）
+const CHANNEL_REFERENCE_SOURCE = '<#([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\\|[^>\\n]*)?>'
 
 export const HIDDEN_CHANNEL_NAME = '非公開のチャンネル'
 
@@ -67,12 +68,16 @@ const UUID_SOURCE = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const VALID_MENTION_REFERENCE_RE = new RegExp(`^(?:(?:attr|role):)?${UUID_SOURCE}$`, 'i')
 
 /**
- * 指示文の `<@…>` 参照が、入力補完で入れられる形（メンバー・属性・役割の UUID）だけかを確かめる。
+ * 指示文の `<@…>`・`<#…>` 参照が、入力補完で入れられる形（メンバー・属性・役割・チャンネルの UUID）だけかを確かめる。
  * 手で書いた `<@鈴木>` のような参照を保存させない（名前で推測し直さない方針と、UUID の列への問い合わせの失敗を防ぐため）
  */
 export function hasOnlyValidReferences(text: string): boolean {
   for (const match of text.matchAll(/<@([^|>\s]+)(?:\|[^>\n]*)?>/g)) {
     if (!VALID_MENTION_REFERENCE_RE.test(match[1]!)) return false
+  }
+  // チャンネルの参照も、入力補完で入れられる UUID の形だけを許す
+  for (const match of text.matchAll(/<#([^|>\s]*)(?:\|[^>\n]*)?>/g)) {
+    if (!new RegExp(`^${UUID_SOURCE}$`, 'i').test(match[1]!)) return false
   }
   return true
 }

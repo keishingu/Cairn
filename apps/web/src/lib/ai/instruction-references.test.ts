@@ -17,7 +17,7 @@ describe('指示文の参照', () => {
 
   test('チャンネルの参照からIDを重複なく取り出す', async () => {
     const { extractChannelReferenceIds } = await import('./instruction-references')
-    expect(extractChannelReferenceIds(`<#${CHANNEL_ID}> と <#${CHANNEL_ID}|審議> と #審議`)).toEqual([CHANNEL_ID])
+    expect(extractChannelReferenceIds(`<#${CHANNEL_ID}> と <#${CHANNEL_ID}|審議> と #審議 と <#------------------------------------>`)).toEqual([CHANNEL_ID])
   })
 
   test('名前に記法を閉じる文字や改行があっても、参照の外へ文を書き足せない形にする', async () => {
@@ -34,6 +34,8 @@ describe('指示文の参照', () => {
     expect(hasOnlyValidReferences('<@鈴木> に報告')).toBe(false)
     expect(hasOnlyValidReferences('<@role:レビュワー>')).toBe(false)
     expect(hasOnlyValidReferences('<@all> に知らせる')).toBe(false)
+    expect(hasOnlyValidReferences('<#------------------------------------> を読む')).toBe(false)
+    expect(hasOnlyValidReferences(`<#${id}|審議> を読む`)).toBe(true)
     expect(hasOnlyValidReferences('参照なし')).toBe(true)
   })
 })
