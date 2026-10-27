@@ -1843,109 +1843,112 @@ export default function ChatThreadScreen() {
             ]}
           >
             <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
-            <ActionButton
-              icon="arrow-undo-outline"
-              label={t('Reply')}
-              palette={palette}
-              onPress={() => actionTarget && beginReply(actionTarget)}
-            />
-            {actionTarget?.blocked && (
+            {/* 項目が多く横向きなど縦の短い画面では収まらないため、シートの高さを抑えて一覧をスクロールさせる */}
+            <ScrollView style={styles.actionList} bounces={false}>
               <ActionButton
-                icon="eye-outline"
-                label={t('Show message temporarily')}
+                icon="arrow-undo-outline"
+                label={t('Reply')}
                 palette={palette}
-                onPress={() => {
-                  Alert.alert(t('Message from a blocked user'), actionTarget.content)
-                  setActionTarget(null)
-                }}
+                onPress={() => actionTarget && beginReply(actionTarget)}
               />
-            )}
-            {actionTarget?.senderId === me?.id && (
-              <ActionButton
-                icon="create-outline"
-                label={t('Edit')}
-                palette={palette}
-                onPress={() => actionTarget && beginEdit(actionTarget)}
-              />
-            )}
-            {actionTarget && !actionTarget.blocked && actionTarget.content.trim().length > 0 && (
-              <>
+              {actionTarget?.blocked && (
                 <ActionButton
-                  icon="copy-outline"
-                  label={t('Copy text')}
-                  palette={palette}
-                  onPress={() => void copyMessageText(actionTarget)}
-                />
-                <ActionButton
-                  icon="text-outline"
-                  label={t('Select text')}
-                  palette={palette}
-                  onPress={() => beginSelectText(actionTarget)}
-                />
-              </>
-            )}
-            <ActionButton
-              icon="checkbox-outline"
-              label={t('Make a task')}
-              palette={palette}
-              onPress={() => actionTarget && void makeTask(actionTarget)}
-            />
-            <ActionButton
-              icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
-              label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
-              palette={palette}
-              onPress={() => actionTarget && handleBookmark(actionTarget)}
-            />
-            <ActionButton
-              icon="happy-outline"
-              label={t('Add reaction')}
-              palette={palette}
-              onPress={() => {
-                setReactionTarget(actionTarget)
-                setActionTarget(null)
-              }}
-            />
-            <ActionButton
-              icon="share-outline"
-              label={t('Share')}
-              palette={palette}
-              onPress={() => actionTarget && void shareMessage(actionTarget)}
-            />
-            {actionTarget &&
-              canMoveMessageToThread({
-                channelType,
-                workspaceChannel,
-                role: me?.wsRole,
-                messageType: actionTarget.messageType,
-              }) && (
-                <ActionButton
-                  icon="arrow-redo-outline"
-                  label={t('Move to thread')}
+                  icon="eye-outline"
+                  label={t('Show message temporarily')}
                   palette={palette}
                   onPress={() => {
-                    setMoveError(null)
-                    setMoveTarget(actionTarget)
+                    Alert.alert(t('Message from a blocked user'), actionTarget.content)
                     setActionTarget(null)
                   }}
                 />
               )}
-            {actionTarget?.senderId === me?.id ? (
+              {actionTarget?.senderId === me?.id && (
+                <ActionButton
+                  icon="create-outline"
+                  label={t('Edit')}
+                  palette={palette}
+                  onPress={() => actionTarget && beginEdit(actionTarget)}
+                />
+              )}
+              {actionTarget && !actionTarget.blocked && actionTarget.content.trim().length > 0 && (
+                <>
+                  <ActionButton
+                    icon="copy-outline"
+                    label={t('Copy text')}
+                    palette={palette}
+                    onPress={() => void copyMessageText(actionTarget)}
+                  />
+                  <ActionButton
+                    icon="text-outline"
+                    label={t('Select text')}
+                    palette={palette}
+                    onPress={() => beginSelectText(actionTarget)}
+                  />
+                </>
+              )}
               <ActionButton
-                icon="trash-outline"
-                label={t('Delete')}
+                icon="checkbox-outline"
+                label={t('Make a task')}
                 palette={palette}
-                destructive
-                onPress={() => actionTarget && confirmDelete(actionTarget)}
+                onPress={() => actionTarget && void makeTask(actionTarget)}
               />
-            ) : (
               <ActionButton
-                icon="flag-outline"
-                label={t('Report')}
+                icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
+                label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
                 palette={palette}
-                destructive
-                onPress={() => actionTarget && reportMenu(actionTarget)}
+                onPress={() => actionTarget && handleBookmark(actionTarget)}
               />
-            )}
+              <ActionButton
+                icon="happy-outline"
+                label={t('Add reaction')}
+                palette={palette}
+                onPress={() => {
+                  setReactionTarget(actionTarget)
+                  setActionTarget(null)
+                }}
+              />
+              <ActionButton
+                icon="share-outline"
+                label={t('Share')}
+                palette={palette}
+                onPress={() => actionTarget && void shareMessage(actionTarget)}
+              />
+              {actionTarget &&
+                canMoveMessageToThread({
+                  channelType,
+                  workspaceChannel,
+                  role: me?.wsRole,
+                  messageType: actionTarget.messageType,
+                }) && (
+                  <ActionButton
+                    icon="arrow-redo-outline"
+                    label={t('Move to thread')}
+                    palette={palette}
+                    onPress={() => {
+                      setMoveError(null)
+                      setMoveTarget(actionTarget)
+                      setActionTarget(null)
+                    }}
+                  />
+                )}
+              {actionTarget?.senderId === me?.id ? (
+                <ActionButton
+                  icon="trash-outline"
+                  label={t('Delete')}
+                  palette={palette}
+                  destructive
+                  onPress={() => actionTarget && confirmDelete(actionTarget)}
+                />
+              ) : (
+                <ActionButton
+                  icon="flag-outline"
+                  label={t('Report')}
+                  palette={palette}
+                  destructive
+                  onPress={() => actionTarget && reportMenu(actionTarget)}
+                />
+              )}
+            </ScrollView>
           </View>
         </Modal>
 
@@ -2365,7 +2368,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
     paddingTop: 8,
     paddingHorizontal: 12,
+    maxHeight: '85%',
   },
+  actionList: { flexGrow: 0, flexShrink: 1 },
   copiedNoticeWrap: { position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' },
   copiedNotice: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   copiedNoticeLabel: { fontSize: 13, fontWeight: '600' },
