@@ -66,6 +66,8 @@ export function buildModelMessages(
   lastUserContent: string,
 ): CoreMessage[] {
   const normalizedHistory = normalizeStoredConversationMessages(history)
+    // 本文のない応答（tool 結果だけ）はモデルの履歴に入れない
+    .filter(message => message.content.length > 0)
     .slice(-MAX_HISTORY_MESSAGES)
     .map<CoreMessage>(message => ({
       role: message.role,
@@ -89,7 +91,11 @@ export function normalizeStoredConversationMessages<T extends StoredConversation
 ): Array<T & { role: 'user' | 'assistant' }> {
   return history
     .filter((message): message is T & { role: 'user' | 'assistant' } =>
-      (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.length > 0,
+      (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && (
+        message.content.length > 0
+        // 本文がなくても tool 結果（スキルの承認カードなど）を持つ応答は残す。消すと会話を開き直したときに承認カードへ戻れない
+        || (message.role === 'assistant' && Array.isArray(message.toolInvocations) && message.toolInvocations.length > 0)
+      ),
     )
     .sort(compareStoredConversationMessages)
 }

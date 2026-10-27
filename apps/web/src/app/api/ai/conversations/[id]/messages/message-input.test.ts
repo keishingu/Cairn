@@ -143,3 +143,23 @@ describe('normalizeStoredConversationMessages', () => {
     ])
   })
 })
+
+describe('本文のない tool 結果だけの応答', () => {
+  const history = [
+    { role: 'user', content: '$assign-reviewer 秋山ハイキング', createdAt: '2026-10-28T00:00:00Z' },
+    {
+      role: 'assistant',
+      content: '',
+      createdAt: '2026-10-28T00:00:01Z',
+      toolInvocations: [{ toolName: 'propose_post_message', result: { ok: true, pendingAction: { id: 'a1' } } }],
+    },
+  ]
+
+  it('会話の表示には残し、承認カードへ戻れるようにする', () => {
+    expect(normalizeStoredConversationMessages(history).map(message => message.role)).toEqual(['user', 'assistant'])
+  })
+
+  it('モデルへの履歴には空の応答を入れない', () => {
+    expect(buildModelMessages(history, '次の依頼').map(message => message.role)).toEqual(['user', 'user'])
+  })
+})
