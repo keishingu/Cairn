@@ -9,7 +9,11 @@ import { z } from 'zod'
 import type { AiAutomationKind, AiPendingActionType } from '@cairn/db'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import { canonicalizeInstructionReferences, hydrateInstructionReferences } from './instruction-references'
+import {
+  canonicalizeInstructionReferences,
+  hasOnlyValidReferences,
+  hydrateInstructionReferences,
+} from './instruction-references'
 
 // ワークスペースあたりのユーザー定義オートメーションの上限（§2.9）。組み込みの PMO は数えない
 export const AI_AUTOMATION_DEFINITION_LIMIT = 20
@@ -34,7 +38,8 @@ const instructionSchema = z
   .transform(canonicalizeInstructionReferences)
   .pipe(z.string().trim()
   .min(1, '指示文を入力してください')
-  .max(AI_AUTOMATION_INSTRUCTION_MAX_LENGTH, `指示文は${AI_AUTOMATION_INSTRUCTION_MAX_LENGTH.toLocaleString()}文字以内にしてください`))
+  .max(AI_AUTOMATION_INSTRUCTION_MAX_LENGTH, `指示文は${AI_AUTOMATION_INSTRUCTION_MAX_LENGTH.toLocaleString()}文字以内にしてください`)
+  .refine(hasOnlyValidReferences, '指示文のメンバー・属性・役割の参照が不正です。@ の入力補完から選び直してください'))
 
 const writeActionsSchema = z
   .array(z.enum(AUTOMATION_WRITE_ACTIONS))

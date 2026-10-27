@@ -26,4 +26,15 @@ describe('指示文の参照', () => {
     expect(sanitizeReferenceName('a|b')).toBe('a b')
     expect(sanitizeReferenceName('長'.repeat(100))).toHaveLength(60)
   })
+
+  test('入力補完で入れられる形（メンバー・属性・役割の UUID）以外の参照を見分ける', async () => {
+    const { hasOnlyValidReferences } = await import('./instruction-references')
+    const id = '00000000-0000-4000-8000-000000000003'
+    expect(hasOnlyValidReferences(`<@${id}> と <@attr:${id}|コーチ> と <@role:${id}>`)).toBe(true)
+    expect(hasOnlyValidReferences('<@鈴木> に報告')).toBe(false)
+    expect(hasOnlyValidReferences('<@role:レビュワー>')).toBe(false)
+    expect(hasOnlyValidReferences('<@all> に知らせる')).toBe(false)
+    expect(hasOnlyValidReferences('参照なし')).toBe(true)
+  })
 })
+

@@ -19,7 +19,7 @@ function json(body: unknown, status = 200) {
 
 function Harness({ onValue }: { onValue: (value: string) => void }) {
   const [value, setValue] = React.useState('')
-  return <InstructionEditor value={value} onChange={next => { setValue(next); onValue(next) }} placeholder="指示文"/>
+  return <InstructionEditor id="instruction" value={value} onChange={next => { setValue(next); onValue(next) }} placeholder="指示文"/>
 }
 
 function renderEditor(onValue = vi.fn()) {

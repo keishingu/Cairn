@@ -8,11 +8,8 @@
 // 保存後は名前で推測し直さないので、同名や改名で誤解釈しない。
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useT } from '@/components/locale-provider'
-import { useProfileAttributes } from '@/hooks/use-profile-attributes'
-import { useProjectRoles } from '@/hooks/use-project-roles'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useReferenceCandidates } from '@/hooks/use-instruction-reference-candidates'
 import { sanitizeReferenceName } from '@/lib/ai/reference-name'
 
 type Candidate = { token: string; label: string; kind: 'member' | 'attribute' | 'role' | 'channel' }
@@ -25,42 +22,6 @@ export function referenceTrigger(text: string, caret: number): { symbol: '@' | '
   const match = TRIGGER_RE.exec(text.slice(0, caret))
   if (!match) return null
   return { symbol: match[2] as '@' | '#', query: match[3] ?? '', start: caret - (match[3] ?? '').length - 1 }
-}
-
-async function fetchItems<T>(url: string): Promise<T[]> {
-  const response = await fetchWithAuth(url)
-  if (!response.ok) throw new Error('候補を取得できませんでした')
-  const body = (await response.json()) as { items?: T[] }
-  return body.items ?? []
-}
-
-// メンバー・チャンネルはサーバー側で絞り込んでから上限をかける（先頭の200件だけから探すと、大きなワークスペースで選べない人が出る）
-function useReferenceCandidates(trigger: { symbol: '@' | '#'; query: string } | null) {
-  const query = React.useDeferredValue(trigger?.query.trim() ?? '')
-  const members = useQuery({
-    queryKey: ['instruction-reference-members', query],
-    queryFn: () => fetchItems<{ userId: string; name: string }>(`/api/research/members?limit=20&query=${encodeURIComponent(query)}`),
-    enabled: trigger?.symbol === '@',
-  })
-  const channels = useQuery({
-    queryKey: ['instruction-reference-channels', query],
-    queryFn: () => fetchItems<{ id: string; name: string }>(`/api/research/channels?limit=20&query=${encodeURIComponent(query)}`),
-    enabled: trigger?.symbol === '#',
-  })
-  const attributes = useProfileAttributes(trigger?.symbol === '@')
-  const roles = useProjectRoles()
-  // どれか1つでも取れなければ、欠けた候補を「一致なし」に見せずにエラーを出す
-  const error = trigger?.symbol === '#'
-    ? channels.error
-    : members.error ?? attributes.error ?? (roles.error as Error | null)
-  return {
-    members: members.data ?? [],
-    channels: channels.data ?? [],
-    attributes: attributes.data ?? [],
-    roles: roles.data ?? [],
-    isLoading: trigger?.symbol === '#' ? channels.isLoading : members.isLoading || attributes.isLoading || roles.isLoading,
-    error,
-  }
 }
 
 /** 参照を `@名前` / `#名前` の文字にする（1行の要約用） */
@@ -89,7 +50,7 @@ export function InstructionPreview({ text }: { text: string }) {
   return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 13 }}>{parts}</div>
 }
 
-export function InstructionEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+export function InstructionEditor({ id, value, onChange, placeholder }: { id: string; value: string; onChange: (value: string) => void; placeholder: string }) {
   const t = useT()
   const ref = React.useRef<HTMLTextAreaElement>(null)
   const pickerRef = React.useRef<HTMLDivElement>(null)
@@ -142,6 +103,7 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <textarea
         ref={ref}
+        id={id}
         name="automationInstruction"
         className="form-control"
         rows={6}

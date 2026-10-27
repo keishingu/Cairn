@@ -14,7 +14,9 @@ import {
 } from '@/lib/chat/mentions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
-/** 本文群に含まれるメンション id → 表示ラベルのマップを組み立てる（ユーザー・予約・属性） */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** 本文群に含まれるメンション id → 表示ラベルのマップを組み立てる（ユーザー・予約・属性・役割） */
 export async function buildMentionNameMap(
   workspaceId: string,
   contents: string[],
@@ -23,9 +25,11 @@ export async function buildMentionNameMap(
   nameMap.set(ALL_MENTION_ID, ALL_MENTION_LABEL)
   nameMap.set(PROJECT_MEMBERS_MENTION_ID, PROJECT_MEMBERS_MENTION_LABEL)
 
-  const userIds = [...new Set(contents.flatMap(extractMentionIds))]
-  const attributeIds = [...new Set(contents.flatMap(extractAttributeMentionIds))]
-  const roleIds = [...new Set(contents.flatMap(extractRoleMentionIds))]
+  // 手で書かれた `<@foo>` のような ID は UUID の列へ渡すと問い合わせごと失敗するため、UUID の形のものだけを引く
+  const isUuid = (id: string) => UUID_RE.test(id)
+  const userIds = [...new Set(contents.flatMap(extractMentionIds))].filter(isUuid)
+  const attributeIds = [...new Set(contents.flatMap(extractAttributeMentionIds))].filter(isUuid)
+  const roleIds = [...new Set(contents.flatMap(extractRoleMentionIds))].filter(isUuid)
 
   if (userIds.length === 0 && attributeIds.length === 0 && roleIds.length === 0) return nameMap
 

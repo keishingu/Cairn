@@ -48,6 +48,7 @@ function AutomationForm({
 }) {
   const t = useT()
   const [input, setInput] = React.useState(initial)
+  const instructionId = React.useId()
   const toggle = (action: AutomationWriteAction) => setInput(current => ({
     ...current,
     writeActions: current.writeActions.includes(action)
@@ -74,8 +75,10 @@ function AutomationForm({
         <span style={{ fontWeight: 400, color: 'var(--text-4)' }}>{t('Start with a lowercase letter; use lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.', { name: input.name || 'assign-reviewer' })}</span>
       </label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
-        {t('Instructions')}
+        {/* 候補の一覧（ボタン）を label の中に入れないため、label は入力欄と id で結ぶ */}
+        <label htmlFor={instructionId}>{t('Instructions')}</label>
         <InstructionEditor
+          id={instructionId}
           value={input.instruction}
           onChange={instruction => setInput(current => ({ ...current, instruction }))}
           placeholder={t('e.g. Read the plan attached to this project, invite coaches who reviewed similar plans before as reviewers, and mention them.')}

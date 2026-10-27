@@ -63,6 +63,20 @@ export async function hydrateInstructionReferences(ctx: AuthContext, texts: stri
   )
 }
 
+const UUID_SOURCE = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+const VALID_MENTION_REFERENCE_RE = new RegExp(`^(?:(?:attr|role):)?${UUID_SOURCE}$`, 'i')
+
+/**
+ * 指示文の `<@…>` 参照が、入力補完で入れられる形（メンバー・属性・役割の UUID）だけかを確かめる。
+ * 手で書いた `<@鈴木>` のような参照を保存させない（名前で推測し直さない方針と、UUID の列への問い合わせの失敗を防ぐため）
+ */
+export function hasOnlyValidReferences(text: string): boolean {
+  for (const match of text.matchAll(/<@([^|>\s]+)(?:\|[^>\n]*)?>/g)) {
+    if (!VALID_MENTION_REFERENCE_RE.test(match[1]!)) return false
+  }
+  return true
+}
+
 /** 保存前に、表示用に埋め込まれた名前を落として ID だけの形にそろえる */
 export function canonicalizeInstructionReferences(text: string): string {
   return text
