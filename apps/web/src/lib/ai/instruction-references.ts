@@ -10,6 +10,9 @@ import type { AuthContext } from '@/lib/get-auth-context'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { hydrateMentions } from '@/lib/chat/mentions'
 import { canAccessChannel } from '@/lib/permissions'
+import { sanitizeReferenceName } from './reference-name'
+
+export { sanitizeReferenceName }
 
 const CHANNEL_REFERENCE_SOURCE = '<#([0-9a-f-]{36})(?:\\|[^>\\n]*)?>'
 
@@ -40,16 +43,6 @@ async function channelNames(ctx: AuthContext, ids: string[]): Promise<Map<string
     if (await canAccessChannel(ctx.workspaceId, ctx.userId, row.id, ctx.role)) names.set(row.id, row.name)
   }
   return names
-}
-
-const REFERENCE_NAME_MAX_LENGTH = 60
-
-/**
- * 参照に埋め込む名前を、記法を壊せない形にする。表示名・チャンネル名はメンバーが自由に付けられるため、
- * `<` `>` `|` や改行を含む名前で参照を閉じて、admin の指示文としてプロンプトに指示を書き足せないようにする
- */
-export function sanitizeReferenceName(name: string): string {
-  return name.replace(/[<>|\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, REFERENCE_NAME_MAX_LENGTH)
 }
 
 /** 指示文の参照を `<@id|名前>`・`<#id|名前>` に解決する（読む人に見えないチャンネルは名前を伏せる） */

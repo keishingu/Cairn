@@ -65,4 +65,21 @@ describe('指示文の入力補完', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('役割の取得に失敗しました')
     expect(screen.queryByText('一致する候補がありません')).toBeNull()
   })
+
+  it('名前に記法を閉じる文字があっても、参照の外へ名前がはみ出さない形で入れる', async () => {
+    fetchWithAuth.mockImplementation(async (input: unknown) => {
+      const url = String(input)
+      if (url.startsWith('/api/research/channels')) {
+        return json({ items: [{ id: '50000000-0000-4000-8000-000000000009', name: '計画 > 最終\n版' }] })
+      }
+      if (url === '/api/projects/roles') return json([])
+      throw new Error(`unexpected ${url}`)
+    })
+    const onValue = renderEditor()
+    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText('指示文'), '#計')
+    await user.click(await screen.findByRole('option', { name: /#計画/ }))
+    expect(onValue).toHaveBeenLastCalledWith('<#50000000-0000-4000-8000-000000000009|計画 最終 版> ')
+  })
 })
+

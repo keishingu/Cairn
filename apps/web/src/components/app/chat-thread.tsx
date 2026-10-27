@@ -1892,11 +1892,15 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // 候補の絞り込みに使うデータのうち、このチャンネルで実際に必要なものだけを見る。
   // 取得に失敗したまま候補を出すと、条件付きで出るはずのゲストが黙って消える
+  const projectRolesQuery = useProjectRoles()
+  const projectRoles = projectRolesQuery.data ?? EMPTY_LIST
   const mentionScopeQueries = [
     wsMembersQuery,
     ...(isPrivate || isDm
       ? [chMembersQuery]
       : [projectChannelsQuery, projectId ? projectMembersQuery : chMembersQuery]),
+    // プロジェクトチャンネルでは役割も候補に出すため、取れなければ候補が欠けていることをエラーと再試行で示す
+    ...(!isDm && projectId ? [projectRolesQuery] : []),
   ]
   const mentionMembersError = mentionScopeQueries.find(query => query.error)?.error?.message ?? null
   const isRetryingMentionMembers = mentionScopeQueries.some(query => query.error && query.isFetching)
@@ -1905,7 +1909,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   }
 
   const { data: profileAttributes = EMPTY_LIST } = useProfileAttributes()
-  const { data: projectRoles = EMPTY_LIST } = useProjectRoles()
 
   // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
   // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）

@@ -13,6 +13,7 @@ import { useT } from '@/components/locale-provider'
 import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useProjectRoles } from '@/hooks/use-project-roles'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { sanitizeReferenceName } from '@/lib/ai/reference-name'
 
 type Candidate = { token: string; label: string; kind: 'member' | 'attribute' | 'role' | 'channel' }
 
@@ -101,13 +102,13 @@ export function InstructionEditor({ value, onChange, placeholder }: { value: str
     if (trigger.symbol === '#') {
       return data.channels
         .filter(channel => channel.name.toLowerCase().includes(q))
-        .map(channel => ({ token: `<#${channel.id}|${channel.name}>`, label: channel.name, kind: 'channel' as const }))
+        .map(channel => ({ token: `<#${channel.id}|${sanitizeReferenceName(channel.name)}>`, label: channel.name, kind: 'channel' as const }))
         .slice(0, 8)
     }
     return [
-      ...data.members.filter(member => member.name.toLowerCase().includes(q)).map(member => ({ token: `<@${member.userId}|${member.name}>`, label: member.name, kind: 'member' as const })),
-      ...data.roles.filter(role => role.name.toLowerCase().includes(q)).map(role => ({ token: `<@role:${role.id}|${role.name}>`, label: role.name, kind: 'role' as const })),
-      ...data.attributes.filter(attribute => attribute.name.toLowerCase().includes(q)).map(attribute => ({ token: `<@attr:${attribute.id}|${attribute.name}>`, label: attribute.name, kind: 'attribute' as const })),
+      ...data.members.filter(member => member.name.toLowerCase().includes(q)).map(member => ({ token: `<@${member.userId}|${sanitizeReferenceName(member.name)}>`, label: member.name, kind: 'member' as const })),
+      ...data.roles.filter(role => role.name.toLowerCase().includes(q)).map(role => ({ token: `<@role:${role.id}|${sanitizeReferenceName(role.name)}>`, label: role.name, kind: 'role' as const })),
+      ...data.attributes.filter(attribute => attribute.name.toLowerCase().includes(q)).map(attribute => ({ token: `<@attr:${attribute.id}|${sanitizeReferenceName(attribute.name)}>`, label: attribute.name, kind: 'attribute' as const })),
     ].slice(0, 8)
   }, [trigger, data.channels, data.members, data.roles, data.attributes])
 
