@@ -12,6 +12,16 @@ import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
+import { createProposalTools } from '@/lib/ai/proposal-tools'
+import {
+  SkillRunError,
+  collectEvidence,
+  finishSkillRun,
+  parseSkillInvocation,
+  reserveSkillRun,
+  resolveSkill,
+  type SkillDefinition,
+} from '@/lib/ai/skill-run'
 import { searchResearchDocuments } from '@/lib/ai/workspace-research'
 import { webSearchTool } from '@/lib/ai/web-search'
 import {
@@ -141,6 +151,18 @@ export async function POST(req: Request, { params }: RouteContext) {
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
       { status: 422 },
     )
+  }
+
+  // `$名前` から始まる依頼はスキルの呼び出し（ai-automation-design.md §2.1）。課金より前に引き、無い・停止中なら課金しない
+  let skill: SkillDefinition | null = null
+  const invocation = parseSkillInvocation(lastUserContent)
+  if (invocation) {
+    try {
+      skill = await resolveSkill(ctx, invocation.name)
+    } catch (err) {
+      if (err instanceof SkillRunError) return NextResponse.json({ error: err.message }, { status: err.status })
+      throw err
+    }
   }
 
   const assistantMessageId = crypto.randomUUID()
@@ -315,6 +337,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     contextSection,
     hasWebSearch,
     workspaceInstructions: chatSystemPrompt,
+    skill,
   })
 
   const refundPendingActiveCredit = async () => {
@@ -339,6 +362,24 @@ export async function POST(req: Request, { params }: RouteContext) {
     throw lastError
   }
 
+  // スキルの run を予約する（1日の上限を超えたら skipped を記録して断る。§2.9）
+  let skillRunId: string | null = null
+  if (skill) {
+    try {
+      skillRunId = await reserveSkillRun(ctx, skill, { triggerKey: assistantMessageId, dryRun: false })
+    } catch (err) {
+      await refundPendingActiveCredit()
+      if (err instanceof SkillRunError) return NextResponse.json({ error: err.message }, { status: err.status })
+      throw err
+    }
+  }
+  const finishRun = async (result: Parameters<typeof finishSkillRun>[1]) => {
+    if (!skillRunId) return
+    const runId = skillRunId
+    skillRunId = null
+    await finishSkillRun(runId, result).catch((err: unknown) => console.error('[AI chat] skill run bookkeeping failed:', err))
+  }
+
   return createDataStreamResponse({
     execute: async (dataStream) => {
       try {
@@ -351,14 +392,31 @@ export async function POST(req: Request, { params }: RouteContext) {
           messages,
           tools: {
             ...createResearchTools(ctx),
+            // 書き込みの実行案を作る tool は、スキルで許可された種類だけを渡す
+            ...(skill ? createProposalTools(ctx, conversationId, { allowed: skill.writeActions }) : {}),
             ...(hasWebSearch ? { webSearch: webSearchTool } : {}),
           },
-          maxSteps: AI_RESEARCH_LIMITS.toolSteps,
+          maxSteps: skill ? AI_RESEARCH_LIMITS.skillToolSteps : AI_RESEARCH_LIMITS.toolSteps,
           onError: async () => {
             streamErrored = true
             await refundPendingActiveCredit()
+            await finishRun({ status: 'failed', error: 'stream_failed' })
           },
           onFinish: async ({ text, steps }) => {
+            const toolResults = steps.flatMap((step) => step.toolResults.map((r) => r.result as unknown))
+            await finishRun({
+              status: streamErrored ? 'failed' : 'success',
+              evidence: collectEvidence(toolResults),
+              output: {
+                conversationId,
+                assistantMessageId,
+                pendingActionIds: toolResults.flatMap((result) => {
+                  const id = (result as { pendingAction?: { id?: unknown } } | null)?.pendingAction?.id
+                  return typeof id === 'string' ? [id] : []
+                }),
+              },
+              creditsUsed: isBillingEnabled() ? BILLING_CONFIG.activeAiRequestCredits : null,
+            })
             if (
               !lastUserContent ||
               !shouldPersistFinishedAssistantMessage(activeCreditReservationFailed || streamErrored)
@@ -415,6 +473,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         // streamText の生成前に失敗すると内側の onError は登録されないため、
         // createDataStreamResponse の外側ハンドラへ渡す前に予約を明示的に返金する。
         await refundPendingActiveCredit()
+        await finishRun({ status: 'failed', error: 'stream_failed' })
         throw err
       }
     },

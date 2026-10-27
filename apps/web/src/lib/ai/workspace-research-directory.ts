@@ -316,6 +316,7 @@ export interface ResearchProjectMember {
   userId: string
   name: string
   role: ProjectMemberRole
+  roleId: string | null
   roleName: string
   attendance: 'attending' | 'tentative' | 'declined'
   addedAt: string
@@ -343,6 +344,7 @@ export async function getResearchProjectMembers(
       userId: profiles.id,
       name: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       role: projectMembers.role,
+      roleId: projectRoles.id,
       roleName: projectRoles.name,
       attendance: projectMembers.attendance,
       addedAt: projectMembers.createdAt,
@@ -377,6 +379,7 @@ export async function getResearchProjectMembers(
     userId: row.userId,
     name: row.name,
     role: row.role,
+    roleId: row.roleId ?? null,
     roleName: row.roleName ?? LEGACY_PROJECT_ROLE_NAMES[row.role],
     attendance: row.attendance,
     addedAt: toIso(row.addedAt),
@@ -500,6 +503,7 @@ export interface ResearchMemberHistoryProject {
   title: string
   status: string | null
   role: ProjectMemberRole
+  roleId: string | null
   roleName: string
   startDate: string | null
   endDate: string | null
@@ -586,6 +590,7 @@ export async function getResearchMemberHistory(
       title: projects.title,
       status: projectStatuses.name,
       role: projectMembers.role,
+      roleId: projectRoles.id,
       roleName: projectRoles.name,
       startDate: projects.startDate,
       endDate: projects.endDate,
@@ -662,6 +667,7 @@ export async function getResearchMemberHistory(
           title: row.title,
           status: row.status ?? null,
           role: row.role,
+          roleId: row.roleId ?? null,
           roleName: row.roleName ?? LEGACY_PROJECT_ROLE_NAMES[row.role],
           startDate: row.startDate,
           endDate: row.endDate,
@@ -745,5 +751,23 @@ export async function readResearchFile(
     returnedCount: chunks.length,
     nextStartChunk,
     truncated: nextStartChunk !== null,
+  }
+}
+
+/** ワークスペースのプロジェクトの役割（レビュワー等）の一覧。役割を付ける実行案に役割 ID が要るため（画面の役割設定と同じ範囲） */
+export async function listResearchProjectRoles(ctx: AuthContext) {
+  await resolveScope(ctx)
+  const { db, projectRoles } = await import('@cairn/db')
+  const { asc, eq } = await import('drizzle-orm')
+  const rows = await db
+    .select({ id: projectRoles.id, name: projectRoles.name, legacyRole: projectRoles.legacyRole })
+    .from(projectRoles)
+    .where(eq(projectRoles.workspaceId, ctx.workspaceId))
+    .orderBy(asc(projectRoles.sortOrder), asc(projectRoles.name))
+  return {
+    ok: true as const,
+    items: rows.map((row) => ({ id: row.id, name: row.name, legacyRole: row.legacyRole })),
+    returnedCount: rows.length,
+    truncated: false,
   }
 }

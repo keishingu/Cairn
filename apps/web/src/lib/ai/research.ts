@@ -17,6 +17,8 @@ export const AI_RESEARCH_LIMITS = {
   messageLookbackDefaultDays: 30,
   messageLookbackMaxDays: 90,
   toolSteps: 8,
+  // スキルは読む → 判断する → 実行案を作る、まで進むため、通常の調査より多く許す
+  skillToolSteps: 12,
   risks: 100,
   projectEndSoonDays: 7,
   projectIncompleteTaskThreshold: 3,

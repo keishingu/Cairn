@@ -24,6 +24,7 @@ vi.mock('./workspace-research', () => ({
 
 vi.mock('./workspace-research-directory', () => ({
   listResearchChannels: vi.fn(),
+  listResearchProjectRoles: vi.fn(),
   readResearchChannelMessages: vi.fn(),
   getResearchProjectMembers: vi.fn(),
   listResearchMembers: mockListResearchMembers,
@@ -94,6 +95,7 @@ describe('AI横断調査toolの信頼境界', () => {
       'search_workspace_documents',
       'list_channels',
       'read_channel_messages',
+      'list_project_roles',
       'get_project_members',
       'list_members',
       'get_member_history',

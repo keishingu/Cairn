@@ -8,6 +8,7 @@ import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { MarkdownContent } from '../markdown-content'
 import { PendingActionCards } from '../ai-pending-action-card'
+import { SkillSuggestions } from '../ai-skill-suggestions'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
@@ -129,6 +130,17 @@ function MessageSources({ annotations, toolInvocations }: {
       })}
     </div>
   )
+}
+
+// useChat はエラー応答の本文をそのまま message にする。API の `{ error }` は文だけを見せる
+export function chatErrorMessage(error: Error): string {
+  try {
+    const body = JSON.parse(error.message) as { error?: unknown }
+    if (typeof body.error === 'string') return body.error
+  } catch {
+    // JSON でなければそのまま出す
+  }
+  return error.message
 }
 
 // ---- 会話サイドバー (PC) ----
@@ -260,7 +272,7 @@ function ChatView({
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
+  const { messages, input, setInput, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({
@@ -293,7 +305,7 @@ function ChatView({
 
       {error && (
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
-          {t('Error: {message}', { message: error.message })}
+          {t('Error: {message}', { message: chatErrorMessage(error) })}
         </div>
       )}
 
@@ -373,6 +385,7 @@ function ChatView({
               ))}
             </div>
           )}
+          <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <textarea
