@@ -1316,7 +1316,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Posts messages proposed by Cairn AI after a member approves them': '멤버가 승인한 Cairn AI의 제안을 게시하기',
   'Approved by {name}': '{name}님이 승인',
   'Skill name': '스킬 이름',
-  'Lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.': '영문 소문자·숫자·하이픈으로 지정합니다. AI 어시스턴트에서 ${name}(으)로 호출합니다.',
+  'Start with a lowercase letter; use lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.': '영문 소문자로 시작하고, 영문 소문자·숫자·하이픈으로 지정합니다. AI 어시스턴트에서 ${name}(으)로 호출합니다.',
   'Instructions': '지시문',
   'e.g. Read the plan attached to this project, invite coaches who reviewed similar plans before as reviewers, and mention them.': '예: 이 프로젝트에 첨부된 계획서를 읽고, 비슷한 계획에서 리뷰어였던 코치를 리뷰어로 초대하고 멘션한다',
   'What it may do after approval': '승인 후 허용할 작업',
