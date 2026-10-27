@@ -3,7 +3,7 @@
 作成日: 2026-06-25 / 最終更新: 2026-09-24
 ステータス: 構想・設計段階（未実装。`polls` / `scheduled_jobs` 系テーブル・`messageType: 'poll'` はいずれも存在しない）
 
-> 定期ジョブ（`scheduled_jobs` / `scheduled_job_runs`）は [`ai-automation-design.md`](./ai-automation-design.md) の cron が置き換える（2026-10-27）。冪等性の予約方式・保存時コンパイル・メンションの固定はそちらへ引き継いだ。§1 の「AI PMO の cron を流用しない」方針も同書で変更している。
+> 定期ジョブ（`scheduled_jobs` / `scheduled_job_runs`）は [`ai-automation-design.md`](./ai-automation-design.md) の cron が置き換える（2026-10-27）。冪等性の予約方式・保存時コンパイル・メンションの固定はそちらへ引き継いだ。§1 の「AI PMO の cron を流用しない」方針も同書で変更している。**以下の本文は置き換え前の設計の記録**で、定期ジョブ・AI PMO の現行方針は同書を正とする。
 
 > 投票は Cairn 本体の機能ではなく、アプリ基盤の上のファーストパーティアプリとして作る方針に変更した。`message_type` の `poll` 追加・投票テーブルの所有者・Bot 送信者は [`app-platform-design.md`](./app-platform-design.md) を正とする。
 
