@@ -22,7 +22,7 @@ BEGIN
   	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   	CONSTRAINT "ai_automations_kind_known" CHECK ("ai_automations"."kind" in ('skill', 'cron', 'heartbeat')),
   	CONSTRAINT "ai_automations_builtin_known" CHECK ("ai_automations"."builtin" is null or "ai_automations"."builtin" in ('pmo_tasks', 'pmo_messages')),
-  	CONSTRAINT "ai_automations_name_format" CHECK ("ai_automations"."name" ~ '^[a-z0-9][a-z0-9-]{0,39}$'),
+  	CONSTRAINT "ai_automations_name_format" CHECK ("ai_automations"."name" ~ '^[a-z][a-z0-9-]{0,39}$'),
   	CONSTRAINT "ai_automations_instruction_required" CHECK ("ai_automations"."builtin" is not null or length(trim(coalesce("ai_automations"."raw_instruction", ''))) > 0),
   	CONSTRAINT "ai_automations_instruction_length" CHECK (char_length("ai_automations"."raw_instruction") <= 10000),
   	CONSTRAINT "ai_automations_compiled_object" CHECK (jsonb_typeof("ai_automations"."compiled") = 'object')

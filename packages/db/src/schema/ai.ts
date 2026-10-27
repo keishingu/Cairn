@@ -238,7 +238,8 @@ export const aiAutomations = pgTable(
     index('idx_ai_automations_next_run').on(t.nextRunAt).where(sql`${t.enabled} and ${t.nextRunAt} is not null`),
     check('ai_automations_kind_known', sql`${t.kind} in ('skill', 'cron', 'heartbeat')`),
     check('ai_automations_builtin_known', sql`${t.builtin} is null or ${t.builtin} in ('pmo_tasks', 'pmo_messages')`),
-    check('ai_automations_name_format', sql`${t.name} ~ '^[a-z0-9][a-z0-9-]{0,39}$'`),
+    // 先頭は英字（`$100` のような金額をスキルの呼び出しと取り違えないため）
+    check('ai_automations_name_format', sql`${t.name} ~ '^[a-z][a-z0-9-]{0,39}$'`),
     // ユーザー定義は指示文が必須（組み込みは検知ロジックが本体なので持たない）
     check('ai_automations_instruction_required', sql`${t.builtin} is not null or length(trim(coalesce(${t.rawInstruction}, ''))) > 0`),
     check('ai_automations_instruction_length', sql`char_length(${t.rawInstruction}) <= 10000`),

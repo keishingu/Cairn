@@ -13,7 +13,8 @@ import { hydrateInstructionReferences } from './instruction-references'
 // ワークスペースあたり、ユーザー定義オートメーションの実行は JST の暦日で1日100回まで（§2.9）
 export const AI_AUTOMATION_DAILY_RUN_LIMIT = 100
 
-const SKILL_INVOCATION_RE = /^\s*\$([a-z0-9][a-z0-9-]{0,39})(?=\s|$)([\s\S]*)$/
+// スキル名は英字で始まる（`$100 は予算です` のような金額で始まる依頼をスキルとして扱わない）
+const SKILL_INVOCATION_RE = /^\s*\$([a-z][a-z0-9-]{0,39})(?=\s|$)([\s\S]*)$/
 
 /** 依頼の先頭の `$名前` を切り出す。名前の後ろは、そのスキルへの追加の依頼として渡す */
 export function parseSkillInvocation(text: string): { name: string; request: string } | null {

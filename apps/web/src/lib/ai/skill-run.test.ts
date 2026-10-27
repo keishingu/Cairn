@@ -18,6 +18,8 @@ describe('スキルの呼び出しの解釈', () => {
   test('先頭以外の $ や、名前の形でないものはスキルとして扱わない', async () => {
     const { parseSkillInvocation } = await import('./skill-run')
     expect(parseSkillInvocation('費用は $100 です')).toBeNull()
+    expect(parseSkillInvocation('$100 は予算です。計画を提案して')).toBeNull()
+    expect(parseSkillInvocation('$1st-review')).toBeNull()
     expect(parseSkillInvocation('$Assign')).toBeNull()
     expect(parseSkillInvocation('$assign-reviewer:北アルプス')).toBeNull()
     expect(parseSkillInvocation('レビュワーを決めて $assign-reviewer')).toBeNull()

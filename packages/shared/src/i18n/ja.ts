@@ -1331,7 +1331,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Skills': 'スキル',
   'No matching skills. Admins can add skills in Settings > AI automations.': '一致するスキルがありません。スキルは管理者が「設定 > AIオートメーション」で追加できます。',
   'Skill name': 'スキル名',
-  'Lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.': '半角英小文字・数字・ハイフンで指定します。AIアシスタントで ${name} と書いて呼び出します。',
+  'Start with a lowercase letter; use lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.': '英小文字で始め、半角英小文字・数字・ハイフンで指定します。AIアシスタントで ${name} と書いて呼び出します。',
   'Instructions': '指示文',
   'e.g. Read the plan attached to this project, invite coaches who reviewed similar plans before as reviewers, and mention them.': '例: このプロジェクトに添付された計画書を読み、過去に似た計画でレビュワーだったコーチをレビュワーとして招待し、メンションする',
   'What it may do after approval': '承認後に許可する操作',
