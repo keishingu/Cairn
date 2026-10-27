@@ -9,6 +9,7 @@ import { BILLING_CONFIG } from '@cairn/core/billing'
 import { isAiChatModel } from '@cairn/shared'
 import { buildChatSystemPrompt } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { apiKeyEnvForChatModel, chatLanguageModel } from './client'
@@ -71,6 +72,14 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
   }
   const apiKeyEnv = apiKeyEnvForChatModel(workspace.aiChatModel)
   if (!process.env[apiKeyEnv]) throw new DryRunError(503, `${apiKeyEnv} が設定されていません`)
+
+  // 通常の /ai と同じく、AI を使えるのは石を積んでいるメンバーだけ（テスト実行で制限を回避させない）
+  if (isBillingEnabled()) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.isActiveSupporter) {
+      throw new DryRunError(403, 'AIへの依頼は、石を積んでいるメンバーのみ利用できます。設定の請求から石を積んでください。')
+    }
+  }
 
   const triggerKey = `dry:${crypto.randomUUID()}`
   const credits = BILLING_CONFIG.activeAiRequestCredits
