@@ -224,6 +224,8 @@ senderProjectRole?: ProjectMemberRole | null
 
 属性による人物検索を実装する場合は、公開範囲・本人訂正・AI回答での利用可否を決めてから `member/upserted` のインデックス対象へ追加する。
 
+AI のツール呼び出し（`list_members` 等）から、実行主体の画面に表示される属性をそのまま参照・絞り込みに使うことは許可する（2026-10-27 決定。構想段階。[`ai-automation-design.md`](./ai-automation-design.md) §2.7）。埋め込みへの投入は引き続き行わない。
+
 ## 8. スコープ外
 
 - 属性カテゴリ・キーと値の構造化
