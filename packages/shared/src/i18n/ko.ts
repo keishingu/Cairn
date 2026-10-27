@@ -1339,7 +1339,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Read only': '읽기 전용',
   'Created by {name}': '작성: {name}',
   'Delete automation': '자동화 삭제',
-  'Delete ${name}. Its run history is deleted too.': '${name}을(를) 삭제합니다. 실행 기록도 삭제됩니다.',
+  'Delete ${name}. Its run records are kept for auditing.': '${name}을(를) 삭제합니다. 실행 기록은 감사를 위해 남습니다.',
   'AI automations': 'AI 자동화',
   'Define skills that the AI runs from written instructions. Members call a skill as $name in the AI assistant, and any write runs only after the caller approves it.': '지시문으로 AI에게 맡길 절차(스킬)를 정의합니다. 멤버는 AI 어시스턴트에서 $이름으로 호출하며, 쓰기 작업은 호출한 사람이 승인할 때만 실행됩니다.',
   'Add skill': '스킬 추가',

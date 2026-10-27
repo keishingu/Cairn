@@ -30,7 +30,8 @@ BEGIN
 
   CREATE TABLE "ai_automation_runs" (
   	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  	"automation_id" uuid NOT NULL,
+  	"workspace_id" uuid NOT NULL,
+  	"automation_id" uuid,
   	"trigger_key" text NOT NULL,
   	"triggered_by" uuid,
   	"dry_run" boolean DEFAULT false NOT NULL,
@@ -49,11 +50,14 @@ BEGIN
   ALTER TABLE "ai_automations" ADD CONSTRAINT "ai_automations_scope_project_id_projects_id_fk" FOREIGN KEY ("scope_project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "ai_automations" ADD CONSTRAINT "ai_automations_approver_id_profiles_id_fk" FOREIGN KEY ("approver_id") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "ai_automations" ADD CONSTRAINT "ai_automations_created_by_profiles_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "ai_automation_runs" ADD CONSTRAINT "ai_automation_runs_automation_id_ai_automations_id_fk" FOREIGN KEY ("automation_id") REFERENCES "public"."ai_automations"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "ai_automation_runs" ADD CONSTRAINT "ai_automation_runs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
+  -- 定義を削除しても実行記録は残す（監査と、1日の実行回数の上限を削除・作り直しで戻させないため）
+  ALTER TABLE "ai_automation_runs" ADD CONSTRAINT "ai_automation_runs_automation_id_ai_automations_id_fk" FOREIGN KEY ("automation_id") REFERENCES "public"."ai_automations"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "ai_automation_runs" ADD CONSTRAINT "ai_automation_runs_triggered_by_profiles_id_fk" FOREIGN KEY ("triggered_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;
   CREATE UNIQUE INDEX "ai_automations_workspace_name_idx" ON "ai_automations" USING btree ("workspace_id","name");
   CREATE INDEX "idx_ai_automations_next_run" ON "ai_automations" USING btree ("next_run_at") WHERE "ai_automations"."enabled" and "ai_automations"."next_run_at" is not null;
   CREATE INDEX "idx_ai_automation_runs_automation_started" ON "ai_automation_runs" USING btree ("automation_id","started_at");
+  CREATE INDEX "idx_ai_automation_runs_workspace_started" ON "ai_automation_runs" USING btree ("workspace_id","started_at");
   ALTER TABLE "ai_automations" ENABLE ROW LEVEL SECURITY;
   ALTER TABLE "ai_automation_runs" ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON TABLE "ai_automations", "ai_automation_runs" FROM anon, authenticated;
