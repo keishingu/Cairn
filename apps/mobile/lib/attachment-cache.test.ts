@@ -14,7 +14,7 @@ vi.mock('expo-file-system/legacy', () => ({
   deleteAsync: vi.fn((path: string) => {
     calls.push(`delete:${path}`)
     // 保存先の削除だけを遅らせ、再試行の取得と重なる状況を作る
-    if (!path.endsWith('.download') && !path.includes('/original-') && resolveDelete === undefined) {
+    if (!path.endsWith('.download') && resolveDelete === undefined) {
       return new Promise<void>((resolve) => {
         resolveDelete = () => {
           calls.push(`deleted:${path}`)
@@ -34,7 +34,7 @@ vi.mock('expo-file-system/legacy', () => ({
   }),
 }))
 
-const { ensureCachedAttachment, removeCachedAttachment, shareOriginalPdf } = await import('./attachment-cache')
+const { ensureCachedAttachment, removeCachedAttachment } = await import('./attachment-cache')
 
 const auth = { accessToken: 'token', workspaceId: 'workspace-2' }
 
@@ -63,32 +63,10 @@ describe('attachment-cache', () => {
     expect(uri).toBe(calls[movedAt]!.slice('move:'.length))
   })
 
-  test('原本は毎回別の一時ファイルへ認可付きURLから取得し、共有キャッシュを使わない', async () => {
-    await shareOriginalPdf({
-      fileUrl: 'https://example.com/a.pdf?original=1',
-      fileId: 'file-1',
-      fileName: 'a.pdf',
-      auth,
-    })
-    expect(calls.some((call) => call.startsWith('download:file:///cache/original-file-1-'))).toBe(true)
-    expect(calls.some((call) => call.includes('/file-1-a.pdf'))).toBe(false)
-    expect(calls.some((call) => call.startsWith('share:file:///cache/original-file-1-'))).toBe(true)
-    expect(calls.some((call) => call.startsWith('delete:file:///cache/original-file-1-'))).toBe(true)
-  })
-
   test('別のワークスペースの添付も取れるよう、選択中のワークスペースを付けて取得する', async () => {
     // 保存先の削除を遅らせる仕組みはこのテストでは使わない
     resolveDelete = () => undefined
     await ensureCachedAttachment('https://example.com/b.png', 'file-2', 'b.png', auth)
-    await shareOriginalPdf({
-      fileUrl: 'https://example.com/a.pdf?original=1',
-      fileId: 'file-1',
-      fileName: 'a.pdf',
-      auth,
-    })
-    expect(downloadHeaders).toEqual([
-      { Authorization: 'Bearer token', 'X-Cairn-Workspace-Id': 'workspace-2' },
-      { Authorization: 'Bearer token', 'X-Cairn-Workspace-Id': 'workspace-2' },
-    ])
+    expect(downloadHeaders).toEqual([{ Authorization: 'Bearer token', 'X-Cairn-Workspace-Id': 'workspace-2' }])
   })
 })

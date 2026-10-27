@@ -115,27 +115,3 @@ export async function shareCachedAttachment(input: {
   if (isImageMime(input.mimeType)) options.UTI = 'public.image'
   await Sharing.shareAsync(uri, options)
 }
-
-// 原本は権限が失効し得るため共有キャッシュへ保存せず、毎回APIで認可した後に一時取得する。
-export async function shareOriginalPdf(input: {
-  fileUrl: string
-  fileId: string
-  fileName: string
-  auth: AttachmentAuth
-  t?: Translate
-}): Promise<void> {
-  const t = input.t ?? translateJa
-  const cacheDirectory = FileSystem.cacheDirectory
-  if (!cacheDirectory) throw new Error(t('This device cannot save files'))
-  const tempUri = `${cacheDirectory}original-${input.fileId}-${Date.now()}.pdf`
-  try {
-    const result = await FileSystem.downloadAsync(input.fileUrl, tempUri, {
-      headers: attachmentRequestHeaders(input.auth),
-    })
-    if (result.status !== 200) throw new Error(await downloadErrorMessage(tempUri, result.status, t))
-    if (!(await Sharing.isAvailableAsync())) throw new Error(t('This device cannot share files'))
-    await Sharing.shareAsync(result.uri, { dialogTitle: input.fileName, mimeType: 'application/pdf' })
-  } finally {
-    await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => undefined)
-  }
-}
