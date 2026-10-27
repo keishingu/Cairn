@@ -10,6 +10,7 @@ import { translate } from '@cairn/shared'
 import { FilesTab } from './files-tab'
 import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
 import { useProjectFiles } from '@/hooks/use-project-files'
+import { AppShellContext } from '../../app-shell-context'
 
 // 送信の手順（URL 発行 → Storage → 登録）は upload-client.test.ts で確かめる。ここでは画面の振る舞いだけを見る
 vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
@@ -33,7 +34,7 @@ vi.mock('@/hooks/use-project-files', () => ({
 const mockUpload = vi.mocked(uploadAttachment)
 const uploaded = { fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }
 
-function renderFilesTab(channelId: string | null = 'channel-1') {
+function renderFilesTab(channelId: string | null = 'channel-1', options: { isWebView?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -45,7 +46,25 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <FilesTab projectId="project-1" channelId={channelId} />
+        {options.isWebView ? (
+          // アプリの WebView として描画する。既定（Provider なし）は Web と同じ isWebView: false
+          <AppShellContext.Provider
+            value={{
+              openPanel: () => {},
+              openMember: () => {},
+              openNotif: () => {},
+              isWebView: true,
+              projectsView: 'list',
+              setProjectsView: () => {},
+              crossSearchNonce: 0,
+              consumeCrossSearch: () => {},
+            }}
+          >
+            <FilesTab projectId="project-1" channelId={channelId} />
+          </AppShellContext.Provider>
+        ) : (
+          <FilesTab projectId="project-1" channelId={channelId} />
+        )}
       </QueryClientProvider>,
     ),
   }
@@ -117,6 +136,25 @@ describe('ファイルタブ', () => {
 
     expect(open).toHaveBeenCalledWith('/api/attachments/pdf-1?original=1', '_blank', 'noopener,noreferrer')
     open.mockRestore()
+    vi.mocked(useProjectFiles).mockImplementation(() => ({
+      data: [], isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>))
+  })
+
+  it('アプリ（WebView）では支援者向けの原本ダウンロードをメニューに出さない', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    renderFilesTab('channel-1', { isWebView: true })
+
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+
+    expect(screen.queryByRole('button', { name: translate('ja', 'Download original PDF (new PDFs are supporter only)') })).toBeNull()
     vi.mocked(useProjectFiles).mockImplementation(() => ({
       data: [], isLoading: false, isError: false,
       deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
