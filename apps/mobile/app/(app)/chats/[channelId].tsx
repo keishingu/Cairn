@@ -819,20 +819,24 @@ export default function ChatThreadScreen() {
       ...roles,
     ]
   }, [channelType, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
+  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で出すため、その取得失敗も候補の欠けとして示す
+  const projectRolesError = projectId ? projectRoles.error : null
   const mentionMembersError =
     channelType === 'dm'
       ? null
       : isPrivate === '1'
-        ? channelMembers.error
+        ? (channelMembers.error ?? projectRolesError)
         : (workspaceMembers.error ??
           (projectId
-            ? (projectMembers.error ?? projectRoles.error)
+            ? (projectMembers.error ?? projectRolesError)
             : channelType === 'workspace' ? channelMembers.error : null))
   const isFetchingMentionMembers =
     channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching || projectRoles.isFetching
 
   const retryMentionMembers = () => {
-    if (isPrivate === '1') return channelMembers.refetch()
+    if (isPrivate === '1') {
+      return projectId ? Promise.all([channelMembers.refetch(), projectRoles.refetch()]) : channelMembers.refetch()
+    }
     if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch()])
     if (channelType === 'workspace') return Promise.all([workspaceMembers.refetch(), channelMembers.refetch()])
     return workspaceMembers.refetch()
