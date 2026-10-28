@@ -6,6 +6,7 @@ import {
   AI_ATTACHMENT_SENDABLE_MS,
   AI_ATTACHMENT_UNSENT_TTL_MS,
   buildUserContentParts,
+  delayedAiAttachmentDeletion,
   listMessageAttachments,
   loadHistoryAttachments,
 } from './attachments'
@@ -123,6 +124,17 @@ describe('文書の本文の合計の上限', () => {
 describe('送らずに残った添付の回収と送信', () => {
   it('送信に使える期限から回収までの間を、1回の送信の最長時間（/ai の maxDuration = 300秒）より長く空ける', () => {
     expect(AI_ATTACHMENT_UNSENT_TTL_MS - AI_ATTACHMENT_SENDABLE_MS).toBeGreaterThan(300 * 1000)
+  })
+})
+
+describe('署名付きアップロード URL の期限後にもう一度消すジョブ', () => {
+  it('URL を発行した時刻から、期限（2時間）と cron の間隔（15分）を過ぎてから消す', () => {
+    const issuedAt = new Date('2026-10-29T00:00:00Z')
+    expect(delayedAiAttachmentDeletion(['w/u/c/a.pdf', 'w/u/c/a.pdf'], issuedAt)).toEqual({
+      targets: [{ bucket: 'ai-attachments', paths: ['w/u/c/a.pdf'] }],
+      notBefore: new Date('2026-10-29T02:15:00Z'),
+    })
+    expect(delayedAiAttachmentDeletion([], issuedAt)).toBeNull()
   })
 })
 

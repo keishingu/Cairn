@@ -41,7 +41,7 @@ import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { getStripeClient } from '@/lib/billing/stripe'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
-import { AI_ATTACHMENT_BUCKET, AI_ATTACHMENT_UPLOAD_URL_TTL_MS } from '@/lib/ai/attachments'
+import { AI_ATTACHMENT_BUCKET, delayedAiAttachmentDeletion } from '@/lib/ai/attachments'
 import { inngest } from '@/lib/inngest/client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
@@ -158,19 +158,6 @@ export function buildStorageDeletionTargets(
   for (const path of aiAttachmentPaths) add(AI_ATTACHMENT_BUCKET, path)
 
   return [...pathsByBucket].map(([bucket, paths]) => ({ bucket, paths: [...paths] }))
-}
-
-/** 署名付きアップロード URL の期限（と cron の間隔ぶんの余裕）を過ぎてから、AIアシスタントの添付をもう一度消すジョブ */
-export function delayedAiAttachmentDeletion(
-  aiAttachmentPaths: string[],
-  now: Date,
-): { targets: StorageDeletionTarget[]; notBefore: Date } | null {
-  const paths = [...new Set(aiAttachmentPaths)]
-  if (paths.length === 0) return null
-  return {
-    targets: [{ bucket: AI_ATTACHMENT_BUCKET, paths }],
-    notBefore: new Date(now.getTime() + AI_ATTACHMENT_UPLOAD_URL_TTL_MS + 15 * 60 * 1000),
-  }
 }
 
 async function deleteBillingCustomer(customerId: string | null): Promise<void> {

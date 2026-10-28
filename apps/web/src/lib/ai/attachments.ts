@@ -147,7 +147,7 @@ export async function deleteUnsentAiAttachment(ctx: AuthContext, conversationId:
   const { aiAttachments, db } = await import('@cairn/db')
   const { and, eq, isNull } = await import('drizzle-orm')
   const [row] = await db
-    .select({ storagePath: aiAttachments.storagePath })
+    .select({ storagePath: aiAttachments.storagePath, createdAt: aiAttachments.createdAt })
     .from(aiAttachments)
     .where(
       and(
@@ -166,7 +166,30 @@ export async function deleteUnsentAiAttachment(ctx: AuthContext, conversationId:
     console.error('[ai attachments] remove failed:', error)
     throw new AiAttachmentError(500, '添付を外せませんでした。時間をおいてもう一度お試しください')
   }
-  await db.delete(aiAttachments).where(eq(aiAttachments.id, attachmentId))
+  // 行を消すと本体をたどれなくなるが、署名付きアップロード URL は発行から2時間使えるため、同じ場所へ
+  // アップロードし直されると本体だけが残る。行を消すのと同時に、URL の期限後にもう一度消すジョブを積む
+  const { storageDeletionJobs } = await import('@cairn/db')
+  const delayed = delayedAiAttachmentDeletion([row.storagePath], row.createdAt)
+  await db.transaction(async (tx) => {
+    if (delayed && delayed.notBefore.getTime() > Date.now()) await tx.insert(storageDeletionJobs).values(delayed)
+    await tx.delete(aiAttachments).where(eq(aiAttachments.id, attachmentId))
+  })
+}
+
+/**
+ * 署名付きアップロード URL の期限（と cron の間隔ぶんの余裕）を過ぎてから、AIアシスタントの添付の本体をもう一度消すジョブ。
+ * URL は添付の行を作ったとき（issuedAt）に発行する。退会・送信前の添付を外したときに積む
+ */
+export function delayedAiAttachmentDeletion(
+  storagePaths: string[],
+  issuedAt: Date,
+): { targets: Array<{ bucket: string; paths: string[] }>; notBefore: Date } | null {
+  const paths = [...new Set(storagePaths)]
+  if (paths.length === 0) return null
+  return {
+    targets: [{ bucket: AI_ATTACHMENT_BUCKET, paths }],
+    notBefore: new Date(issuedAt.getTime() + AI_ATTACHMENT_UPLOAD_URL_TTL_MS + 15 * 60 * 1000),
+  }
 }
 
 /** AI に渡す形にした添付。文書は取り出した本文、画像は本体のバイト列 */
