@@ -315,7 +315,7 @@ function ChatView({
     setInput('')
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
     void append(
-      { role: 'user', content: mentions.takeEncoded(text), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { role: 'user', content: mentions.takeEncoded(input), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
     )
   }
