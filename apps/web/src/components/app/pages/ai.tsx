@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
-import type { JSONValue, ToolInvocation } from 'ai'
+import type { JSONValue, Message, ToolInvocation } from 'ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
@@ -255,6 +255,18 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
 
 // ---- チャットビュー ----
 
+/** サーバーが保存した会話を、useChat のメッセージの形にする */
+function toChatMessages(saved: MessageDto[]): Message[] {
+  return saved.map(m => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+    ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
+    ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
+    ...(m.attachments ? { experimental_attachments: toDisplayAttachments(m.attachments) } : {}),
+  }))
+}
+
 const SUGGESTIONS = [
   'How is the project going?',
   'I want to check member skills',
@@ -277,26 +289,15 @@ function ChatView({
   const [isComposing, setIsComposing] = React.useState(false)
 
   const attachments = useAiAttachments(conversationId)
-  // 添付付きで送った依頼（応答の後に、そのメッセージの添付を保存後のリンクへ置き換えるため）
-  const sentWithAttachmentsRef = React.useRef<{ messageId: string; attachmentIds: string[] } | null>(null)
   const { messages, input, setInput, setMessages, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
-    initialMessages: initialMessages.map(m => ({
-      id: m.id,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
-      ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
-      ...(m.attachments ? { experimental_attachments: toDisplayAttachments(m.attachments) } : {}),
-    })),
+    initialMessages: toChatMessages(initialMessages),
     experimental_prepareRequestBody: ({ messages, requestBody }) => buildAiRequestBody(messages, requestBody),
     onFinish: () => {
-      // 送った添付に、保存後のリンクを付け直す（送った直後は文書にリンクが無く、画像も手元のプレビューだけのため）
-      attachments.takeLastSentIds()
-      const sent = sentWithAttachmentsRef.current
-      sentWithAttachmentsRef.current = null
-      if (sent) void refreshSentAttachments(sent.messageId, sent.attachmentIds)
+      attachments.clearLastSent()
+      // 送ったメッセージを、サーバーが保存した内容（添付の期限付きリンクを含む）に置き換える
+      void syncFromServer()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
     // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）
@@ -307,43 +308,66 @@ function ChatView({
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length, isLoading])
 
-  // 送った添付を、サーバーが保存した添付（期限付きのリンク付き）に置き換える。
-  // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、送った添付が保存済みのメッセージに付くまで少し待つ
-  async function refreshSentAttachments(messageId: string, sentIds: string[]) {
+  // 送信済みのメッセージはサーバーを正とする。useChat は会話ごとにメッセージを手元に持ち続ける（initialMessages は
+  // 最初の表示にしか使わない）ため、開き直したときと応答の後に、サーバーの内容で置き換える。
+  // サーバーがまだ保存し終えていない（手元より少ない）ときや、応答を受信している途中は置き換えない（表示中の会話を消さない）
+  const messageCountRef = React.useRef(messages.length)
+  messageCountRef.current = messages.length
+  const isLoadingRef = React.useRef(isLoading)
+  isLoadingRef.current = isLoading
+  const applyServerMessages = (saved: MessageDto[]): boolean => {
+    if (isLoadingRef.current || saved.length < messageCountRef.current) return false
+    setMessages(toChatMessages(saved))
+    queryClient.setQueryData(['ai-messages', conversationId], saved)
+    return true
+  }
+  const loadFromServer = async (): Promise<boolean> => {
+    const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`).catch(() => null)
+    return !!res?.ok && applyServerMessages((await res.json()) as MessageDto[])
+  }
+  // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、保存が追いつくまで少し待って取り直す
+  async function syncFromServer() {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500 * attempt))
-      const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`)
-      if (!res.ok) return
-      const saved = (await res.json()) as MessageDto[]
-      const message = saved.find(item => item.attachments?.some(attachment => sentIds.includes(attachment.id)))
-      if (!message?.attachments) continue
-      const display = toDisplayAttachments(message.attachments)
-      // 取り直している間に次の依頼を送っていても、送ったときのメッセージだけを置き換える
-      setMessages(prev => prev.map(item => (item.id === messageId ? { ...item, experimental_attachments: display } : item)))
-      return
+      await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
+      if (await loadFromServer()) return
     }
   }
+  // 会話を開いたときと、タブに戻ってきたときにも取り直す（添付のリンクは1時間で切れるため、取得キャッシュの古さに任せない）
+  React.useEffect(() => {
+    void loadFromServer()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadFromServer()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+    // 会話ごとに1回だけ登録する（ChatView は会話ごとに作り直される）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId])
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
-  // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
-  // アップロード中・失敗した添付があるうちは送らない（黙って添付を外して送らない）
-  // 外している途中の添付があるうちも送らない（外れた添付を送る・送った添付が外れる、を起こさない）
-  const canSend = !!input.trim() && !isLoading && !attachments.isUploading && !attachments.isRemoving && !attachments.hasError
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const text = input.trim()
-    if (!text || !canSend) return
-    setInput('')
+  // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
+  const ready = !isLoading && attachments.blocker === null
+
+  // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
+  const send = (content: string) => {
+    if (!content.trim() || !ready) return
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
-    const messageId = crypto.randomUUID()
-    sentWithAttachmentsRef.current = attachmentIds.length > 0 ? { messageId, attachmentIds } : null
     void append(
-      { id: messageId, role: 'user', content: mentions.takeEncoded(input), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
     )
+  }
+  const canSubmit = ready && !!input.trim()
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
+    const content = mentions.takeEncoded(input)
+    setInput('')
+    send(content)
   }
 
   return (
@@ -426,12 +450,12 @@ function ChatView({
                 <button
                   key={i}
                   type="button"
-                  disabled={isLoading}
-                  onClick={() => void append({ role: 'user', content: t(s) })}
+                  disabled={!ready}
+                  onClick={() => send(t(s))}
                   style={{
                     padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 500,
                     background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)',
-                    cursor: isLoading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isLoading ? 0.5 : 1,
+                    cursor: ready ? 'pointer' : 'default', fontFamily: 'inherit', opacity: ready ? 1 : 0.5,
                     ...(isMobile ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
                   }}
                 >
@@ -446,7 +470,7 @@ function ChatView({
           {attachments.notice && (
             <div role="alert" style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{attachments.notice}</div>
           )}
-          {attachments.hasError && (
+          {attachments.blocker === 'failed' && (
             <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{t('Remove the attachments that failed to upload before sending')}</div>
           )}
           <form
@@ -509,13 +533,13 @@ function ChatView({
               />
               <button
                 type="submit"
-                disabled={!canSend}
-                aria-label={attachments.isUploading ? t('Uploading...') : t('Send')}
+                disabled={!canSubmit}
+                aria-label={attachments.blocker === 'uploading' ? t('Uploading...') : t('Send')}
                 style={{
                   width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: canSend ? 'var(--accent)' : 'var(--border-2)',
-                  color: canSend ? 'var(--on-accent)' : 'var(--text-4)',
-                  cursor: canSend ? 'pointer' : 'default',
+                  background: canSubmit ? 'var(--accent)' : 'var(--border-2)',
+                  color: canSubmit ? 'var(--on-accent)' : 'var(--text-4)',
+                  cursor: canSubmit ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}

@@ -32,17 +32,38 @@ export function toDisplayAttachments(attachments: ReadonlyArray<{ fileName: stri
   }))
 }
 
+/**
+ * 送信前の添付の状態。送信してよいかはこの状態だけで決める（sendBlocker）。
+ * - uploading: 行の作成と Storage へのアップロードの途中
+ * - ready: 送れる
+ * - removing: サーバーから消している途中
+ * - upload-failed: アップロードに失敗した（外すまで送らせない）
+ * - remove-failed: 外そうとしたが消せなかった（もう一度外すまで送らせない）
+ */
+export type PendingAttachmentState =
+  | { kind: 'uploading' }
+  | { kind: 'ready'; attachmentId: string }
+  | { kind: 'removing'; attachmentId: string }
+  | { kind: 'upload-failed'; attachmentId: string | null; error: string }
+  | { kind: 'remove-failed'; attachmentId: string; error: string }
+
 export interface PendingAiAttachment {
   localId: string
   fileName: string
   mimeType: string
-  status: 'uploading' | 'ready' | 'error'
-  attachmentId?: string
-  /** 画像のプレビュー（送信後のメッセージの表示にも使う） */
+  /** 画像のプレビュー（送信後のメッセージの表示にも、保存した添付で置き換えるまで使う） */
   previewUrl?: string
-  error?: string
-  /** 外す処理の途中（二重に押させない） */
-  removing?: boolean
+  state: PendingAttachmentState
+}
+
+export type SendBlocker = 'uploading' | 'removing' | 'failed'
+
+/** 送信を止める理由。null なら送れる（どの添付も ready）。黙って一部の添付を外して送らない */
+export function sendBlocker(items: ReadonlyArray<PendingAiAttachment>): SendBlocker | null {
+  if (items.some(item => item.state.kind === 'uploading')) return 'uploading'
+  if (items.some(item => item.state.kind === 'removing')) return 'removing'
+  if (items.some(item => item.state.kind === 'upload-failed' || item.state.kind === 'remove-failed')) return 'failed'
+  return null
 }
 
 async function serverError(res: Response): Promise<string | undefined> {
@@ -63,10 +84,15 @@ export function useAiAttachments(conversationId: string) {
   const t = useT()
   const [pending, setPending] = React.useState<PendingAiAttachment[]>([])
   const [notice, setNotice] = React.useState<string | null>(null)
+  // 送信に失敗したときに入力欄へ戻す添付
   const lastSentRef = React.useRef<PendingAiAttachment[]>([])
-  // アップロードの途中で外した添付。サーバーに行ができたら、アップロードが終わってから消す
+  // アップロードの途中で外した添付。行ができた時点でサーバーから消す
   // （消さないと送信前の添付の上限に数えられ、1日の定期回収までその会話で添付できなくなる）
   const canceledRef = React.useRef(new Set<string>())
+
+  const setState = (localId: string, state: PendingAttachmentState) =>
+    setPending(prev => prev.map(item => (item.localId === localId ? { ...item, state } : item)))
+  const drop = (localId: string) => setPending(prev => prev.filter(item => item.localId !== localId))
 
   /** サーバーから添付を消す。消せたか（すでに無いときも含む）を返す */
   const deleteOnServer = async (attachmentId: string): Promise<boolean> => {
@@ -77,15 +103,13 @@ export function useAiAttachments(conversationId: string) {
       return false
     }
   }
-  // アップロードの途中で外した添付は表示から消えているため、消せなかったことだけを知らせる（送らなければ1日で定期回収される）
+  // 途中で外した添付は表示から消えているため、消せなかったことだけを知らせる（送らなければ1日で定期回収される）
   const deleteCanceled = async (attachmentId: string) => {
     if (!(await deleteOnServer(attachmentId))) setNotice(t('Could not remove an attachment on the server. It will be removed automatically within a day.'))
   }
 
-  const update = (localId: string, patch: Partial<PendingAiAttachment>) =>
-    setPending(prev => prev.map(item => (item.localId === localId ? { ...item, ...patch } : item)))
-
   const upload = async (localId: string, file: File, mimeType: string) => {
+    let attachmentId: string | null = null
     try {
       const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/attachments`, {
         method: 'POST',
@@ -93,35 +117,32 @@ export function useAiAttachments(conversationId: string) {
         body: JSON.stringify({ fileName: file.name, mimeType, fileSize: file.size }),
       })
       if (!res.ok) {
-        canceledRef.current.delete(localId)
-        update(localId, { status: 'error', error: (await serverError(res)) ?? t('Could not upload the file') })
+        const error = (await serverError(res)) ?? t('Could not upload the file')
+        if (!canceledRef.current.delete(localId)) setState(localId, { kind: 'upload-failed', attachmentId: null, error })
         return
       }
-      const { attachmentId, path, token, mimeType: normalized } = (await res.json()) as {
-        attachmentId: string
-        path: string
-        token: string
-        mimeType: string
-      }
+      const created = (await res.json()) as { attachmentId: string; path: string; token: string; mimeType: string }
+      attachmentId = created.attachmentId
       if (canceledRef.current.delete(localId)) {
         void deleteCanceled(attachmentId)
         return
       }
       // Storage はファイル自身の type を見るため、正規化した MIME を持つ File で送る（チャットの添付と同じ）
-      const body = file.type === normalized ? file : new File([file], file.name, { type: normalized })
-      const { error } = await createSupabaseClient().storage.from('ai-attachments').uploadToSignedUrl(path, token, body)
+      const body = file.type === created.mimeType ? file : new File([file], file.name, { type: created.mimeType })
+      const { error } = await createSupabaseClient().storage.from('ai-attachments').uploadToSignedUrl(created.path, created.token, body)
       if (canceledRef.current.delete(localId)) {
         void deleteCanceled(attachmentId)
         return
       }
-      if (error) {
-        update(localId, { status: 'error', attachmentId, error: t('Could not upload the file') })
+      setState(localId, error
+        ? { kind: 'upload-failed', attachmentId, error: t('Could not upload the file') }
+        : { kind: 'ready', attachmentId })
+    } catch {
+      if (canceledRef.current.delete(localId)) {
+        if (attachmentId) void deleteCanceled(attachmentId)
         return
       }
-      update(localId, { status: 'ready', attachmentId })
-    } catch {
-      canceledRef.current.delete(localId)
-      update(localId, { status: 'error', error: t('Could not upload the file') })
+      setState(localId, { kind: 'upload-failed', attachmentId, error: t('Could not upload the file') })
     }
   }
 
@@ -145,7 +166,7 @@ export function useAiAttachments(conversationId: string) {
         localId,
         fileName: file.name,
         mimeType,
-        status: 'uploading',
+        state: { kind: 'uploading' },
         ...(AI_ATTACHMENT_IMAGE_TYPES.has(mimeType) ? { previewUrl: URL.createObjectURL(file) } : {}),
       }])
       void upload(localId, file, mimeType)
@@ -155,23 +176,29 @@ export function useAiAttachments(conversationId: string) {
   const remove = async (localId: string) => {
     const item = pending.find(candidate => candidate.localId === localId)
     if (!item) return
-    // アップロード中なら表示から外し、終わった時点でサーバーから消す
-    if (item.status === 'uploading') {
-      setPending(prev => prev.filter(candidate => candidate.localId !== localId))
+    const { state } = item
+    if (state.kind === 'removing') return
+    // アップロード中なら表示から外し、行ができた時点でサーバーから消す
+    if (state.kind === 'uploading') {
       canceledRef.current.add(localId)
+      drop(localId)
       return
     }
-    // サーバーから消せてから表示から外す。消せなければ表示に残してエラーを出し、もう一度外せるようにする
-    // （残った添付は送信前の上限に数えられるため、消せたことにはしない）
-    if (item.attachmentId) {
-      update(localId, { removing: true })
-      if (!(await deleteOnServer(item.attachmentId))) {
-        update(localId, { removing: false, error: t('Could not remove the attachment. Try again.') })
-        setNotice(t('Could not remove {name}. Try again.', { name: item.fileName }))
-        return
-      }
+    // サーバーに行が無ければ、表示から外すだけでよい
+    if (state.kind === 'upload-failed' && !state.attachmentId) {
+      drop(localId)
+      return
     }
-    setPending(prev => prev.filter(candidate => candidate.localId !== localId))
+    // サーバーから消せてから表示から外す。消せなければ残してエラーを出し、もう一度外せるようにする
+    // （残った添付は送信前の上限に数えられるため、消せたことにはしない）
+    const attachmentId = state.attachmentId!
+    setState(localId, { kind: 'removing', attachmentId })
+    if (await deleteOnServer(attachmentId)) {
+      drop(localId)
+      return
+    }
+    setState(localId, { kind: 'remove-failed', attachmentId, error: t('Could not remove the attachment. Try again.') })
+    setNotice(t('Could not remove {name}. Try again.', { name: item.fileName }))
   }
 
   return {
@@ -179,33 +206,25 @@ export function useAiAttachments(conversationId: string) {
     notice,
     add,
     remove,
-    isUploading: pending.some(item => item.status === 'uploading'),
-    /** 外している途中の添付がある（消えるかどうか決まるまで送らせない） */
-    isRemoving: pending.some(item => item.removing),
-    hasError: pending.some(item => item.status === 'error'),
-    /** 送信する添付を取り出して入力欄から外す。送信に失敗したら restoreLastSent で戻す */
+    blocker: sendBlocker(pending),
+    /** 送信する添付を取り出して入力欄から外す。送れる状態（blocker が null）のときだけ呼ぶ。送信に失敗したら restoreLastSent で戻す */
     takeForSend: () => {
-      const ready = pending.filter(item => item.status === 'ready' && item.attachmentId && !item.removing)
-      lastSentRef.current = ready
+      const ready = pending.flatMap(item => (item.state.kind === 'ready' ? [{ item, attachmentId: item.state.attachmentId }] : []))
+      lastSentRef.current = ready.map(({ item }) => item)
       setPending([])
       setNotice(null)
       return {
-        attachmentIds: ready.map(item => item.attachmentId!),
-        displayAttachments: ready.map<Attachment>(item => ({ name: item.fileName, contentType: item.mimeType, url: item.previewUrl ?? '' })),
+        attachmentIds: ready.map(({ attachmentId }) => attachmentId),
+        displayAttachments: ready.map<Attachment>(({ item }) => ({ name: item.fileName, contentType: item.mimeType, url: item.previewUrl ?? '' })),
       }
     },
     restoreLastSent: () => {
-      if (lastSentRef.current.length === 0) return
       const restored = lastSentRef.current
       lastSentRef.current = []
-      setPending(prev => [...restored, ...prev])
+      if (restored.length > 0) setPending(prev => [...restored, ...prev])
     },
-    /** 送信が終わったとき。送った添付の ID を返し、失敗時に戻す記録を空にする */
-    takeLastSentIds: () => {
-      const ids = lastSentRef.current.flatMap(item => (item.attachmentId ? [item.attachmentId] : []))
-      lastSentRef.current = []
-      return ids
-    },
+    /** 送信が成功したとき（戻す必要がなくなった） */
+    clearLastSent: () => { lastSentRef.current = [] },
   }
 }
 
@@ -218,10 +237,10 @@ export function PendingAttachmentChips({ items, onRemove }: { items: PendingAiAt
       {items.map(item => (
         <div
           key={item.localId}
-          title={item.error ?? item.fileName}
+          title={'error' in item.state ? item.state.error : item.fileName}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 240, padding: '4px 6px 4px 8px', borderRadius: 8,
-            border: `1px solid ${item.status === 'error' ? 'var(--red-text)' : 'var(--border)'}`, background: 'var(--card)', fontSize: 12,
+            border: `1px solid ${'error' in item.state ? 'var(--red-text)' : 'var(--border)'}`, background: 'var(--card)', fontSize: 12,
           }}
         >
           {item.previewUrl
@@ -229,13 +248,14 @@ export function PendingAttachmentChips({ items, onRemove }: { items: PendingAiAt
             ? <img src={item.previewUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}/>
             : <Icon name="file" size={14}/>}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{item.fileName}</span>
-          {item.status === 'uploading' && <span style={{ color: 'var(--text-4)', flexShrink: 0 }}>{t('Uploading...')}</span>}
-          {item.status === 'error' && <span role="alert" style={{ color: 'var(--red-text)', flexShrink: 0 }}>{t('Upload failed')}</span>}
+          {item.state.kind === 'uploading' && <span style={{ color: 'var(--text-4)', flexShrink: 0 }}>{t('Uploading...')}</span>}
+          {item.state.kind === 'upload-failed' && <span role="alert" style={{ color: 'var(--red-text)', flexShrink: 0 }}>{t('Upload failed')}</span>}
+          {item.state.kind === 'remove-failed' && <span role="alert" style={{ color: 'var(--red-text)', flexShrink: 0 }}>{t('Could not remove')}</span>}
           <button
             type="button"
             aria-label={t('Remove {name}', { name: item.fileName })}
             onClick={() => onRemove(item.localId)}
-            disabled={item.removing}
+            disabled={item.state.kind === 'removing'}
             className="icon-btn"
             style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0 }}
           >

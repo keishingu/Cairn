@@ -752,6 +752,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Menu: 'メニュー',
   'Mermaid diagram': 'Mermaid図',
   'Show diagram full screen': '図を全画面で表示',
+  'Could not remove': '外せませんでした',
   'Could not remove {name}. Try again.': '{name} を外せませんでした。もう一度お試しください',
   'Could not remove the attachment. Try again.': '添付を外せませんでした。もう一度お試しください',
   'Could not remove an attachment on the server. It will be removed automatically within a day.': 'サーバー上の添付を消せませんでした。1日以内に自動で削除されます',
