@@ -9,8 +9,10 @@ import { MobileHeader } from '../mobile/header'
 import { MarkdownContent } from '../markdown-content'
 import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
+import { useAiMemberMentions } from '../ai-member-mentions'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
@@ -272,7 +274,7 @@ function ChatView({
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
-  const { messages, input, setInput, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
+  const { messages, input, setInput, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({
@@ -291,6 +293,17 @@ function ChatView({
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length, isLoading])
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const mentions = useAiMemberMentions({ input, setInput, textareaRef })
+  // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const text = input.trim()
+    if (!text || isLoading) return
+    setInput('')
+    void append({ role: 'user', content: mentions.takeEncoded(input) })
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -319,7 +332,7 @@ function ChatView({
           {messages.map(m => m.role === 'user' ? (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                {m.content}
+                {stripMentionsToText(m.content)}
               </div>
             </div>
           ) : (
@@ -386,14 +399,23 @@ function ChatView({
             </div>
           )}
           <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
-          <form onSubmit={handleSubmit}>
+          {mentions.picker}
+          <form onSubmit={submit}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={handleInputChange}
+                onChange={e => { handleInputChange(e); mentions.onEdit(e.target.value, e.target.selectionStart) }}
+                onSelect={e => mentions.syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onBlur={mentions.close}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
+                onKeyDown={e => {
+                  // 日本語入力の確定の Enter や変換中の矢印キーでは、候補を選ばない
+                  if (isImeConfirmingEnter(e, isComposing)) return
+                  if (mentions.handleKeyDown(e)) return
+                  if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); submit(e) }
+                }}
                 placeholder={isMobile ? t('Ask AI…') : t('Type a question (Shift+Enter for a new line)')}
                 rows={1}
                 disabled={isLoading}

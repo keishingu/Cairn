@@ -55,6 +55,7 @@ import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useProjectRoles } from '@/hooks/use-project-roles'
 import { useLocale, useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { encodeInsertedMentions, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
 import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
 import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
 import {
@@ -105,28 +106,7 @@ function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
 }
 
-/** ピッカーで入れた `@表示名` が本文に残っていれば、その位置を返す。送信時に `<@id>` へ変換するときと同じ区切りで判定する */
-export function findInsertedMention(text: string, displayName: string): number | null {
-  const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = new RegExp(`@${escaped}(?=[\\s、。！？]|$)`).exec(text)
-  return match ? match.index : null
-}
-
-/**
- * 本文に残っているメンションの tokenId。送信時の変換と同じく挿入順に `@表示名` を1件ずつ割り当てるので、
- * 同名の人・役割を2件入れて1件消すと、割り当てが残るのは先に入れた方だけになる
- */
-export function survivingMentionTokenIds(text: string, insertions: ReadonlyArray<{ tokenId: string; displayName: string }>): Set<string> {
-  const ids = new Set<string>()
-  let rest = text
-  for (const { tokenId, displayName } of insertions) {
-    const index = findInsertedMention(rest, displayName)
-    if (index === null) continue
-    ids.add(tokenId)
-    rest = rest.slice(0, index) + `<@${tokenId}>` + rest.slice(index + 1 + displayName.length)
-  }
-  return ids
-}
+export { findInsertedMention, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
 
 // 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
 // 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
@@ -1649,19 +1629,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない。
   // 同名ラベルは挿入順に「先頭から1件ずつ」置換し、後勝ちの Map 衝突を避ける。
-  const transformContent = (text: string): string => {
-    const insertions = mentionInsertionsRef.current
-    if (insertions.length === 0) return text
-    let result = text
-    for (const { tokenId, displayName } of insertions) {
-      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      result = result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`),
-        `<@${tokenId}>`,
-      )
-    }
-    return result
-  }
+  const transformContent = (text: string): string =>
+    encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
   const latestMessagesQuery = useChannelMessages(channelId)

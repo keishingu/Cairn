@@ -10,6 +10,7 @@ import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
 import { createProposalTools } from '@/lib/ai/proposal-tools'
@@ -299,7 +300,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (lastUserContent) {
     try {
       const result = await searchResearchDocuments(ctx, {
-        query: lastUserContent,
+        // メンバーの記法（`<@userId|名前>`）は `@名前` に戻して検索する（ID は本文の検索の手がかりにならない）
+        query: stripMentionsToText(lastUserContent),
         limit: 5,
       })
       console.log(
@@ -461,7 +463,7 @@ export async function POST(req: Request, { params }: RouteContext) {
               // 初回メッセージでタイトルを設定
               await db
                 .update(aiConversations)
-                .set({ title: lastUserContent.slice(0, 40) })
+                .set({ title: stripMentionsToText(lastUserContent).slice(0, 40) })
                 .where(
                   and(
                     eq(aiConversations.id, conversationId),
