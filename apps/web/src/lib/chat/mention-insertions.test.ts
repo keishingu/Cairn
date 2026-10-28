@@ -70,5 +70,17 @@ describe('位置で対応づけた挿入', () => {
     expect(rebaseMentionInsertions('@Alice', '@Alicex', insertions)).toEqual([])
     expect(intactMentionTokenIds('@Alicex', insertions)).toEqual(new Set())
   })
+
+  it('同名の2人の前の方を選択して消すと、書き換えた位置から後ろの人を残す', () => {
+    const text = '@Alice @Alice '
+    const insertions = [
+      { tokenId: 'user-a', displayName: 'Alice', start: 0 },
+      { tokenId: 'user-b', displayName: 'Alice', start: 7 },
+    ]
+    // 先頭の「@Alice 」を消すと、カーソルは先頭（0）にある
+    expect(rebaseMentionInsertions(text, '@Alice ', insertions, 0)).toEqual([{ tokenId: 'user-b', displayName: 'Alice', start: 0 }])
+    // 後ろの「@Alice 」を消したときはカーソルが 7 にあり、前の人を残す
+    expect(rebaseMentionInsertions(text, '@Alice ', insertions, 7)).toEqual([{ tokenId: 'user-a', displayName: 'Alice', start: 0 }])
+  })
 })
 

@@ -460,7 +460,7 @@ function ChatView({
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={e => { handleInputChange(e); mentions.syncTrigger(e.target.value, e.target.selectionStart) }}
+                onChange={e => { handleInputChange(e); mentions.onEdit(e.target.value, e.target.selectionStart) }}
                 onSelect={e => mentions.syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
                 onBlur={mentions.close}
                 onPaste={e => {
