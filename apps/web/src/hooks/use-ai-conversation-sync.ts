@@ -24,9 +24,12 @@ export function useAiConversationSync({ conversationId, isReceiving, onSaved }: 
   const syncRef = React.useRef(new ConversationServerSync())
   const inFlightIdRef = React.useRef<string | null>(null)
   const isReceivingRef = React.useRef(isReceiving)
-  isReceivingRef.current = isReceiving
   const onSavedRef = React.useRef(onSaved)
-  onSavedRef.current = onSaved
+  // 描画が確定してから最新の値に合わせる（描画中に ref を書き換えると、捨てられた描画の値が残りうる）
+  React.useLayoutEffect(() => {
+    isReceivingRef.current = isReceiving
+    onSavedRef.current = onSaved
+  })
   const [syncError, setSyncError] = React.useState(false)
 
   const loadFromServer = React.useCallback(async (): Promise<LoadResult> => {

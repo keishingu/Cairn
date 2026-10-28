@@ -78,7 +78,9 @@ export function useAiAttachments(conversationId: string) {
   // 画像のプレビュー用の blob URL。使い終わったら解放する（解放しないとファイルを掴んだままメモリに残る）。
   // 送った添付のプレビューは、保存した添付のリンクに置き換わるまで送信済みのメッセージで使う
   const pendingRef = React.useRef(pending)
-  pendingRef.current = pending
+  React.useLayoutEffect(() => {
+    pendingRef.current = pending
+  })
   const sentPreviewUrlsRef = React.useRef<string[]>([])
   const revoke = (url: string | undefined) => {
     if (url) URL.revokeObjectURL(url)
