@@ -302,7 +302,7 @@ function ChatView({
     const text = input.trim()
     if (!text || isLoading) return
     setInput('')
-    void append({ role: 'user', content: mentions.takeEncoded(text) })
+    void append({ role: 'user', content: mentions.takeEncoded(input) })
   }
 
   return (

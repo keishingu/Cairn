@@ -18,7 +18,7 @@ describe('memberMentionTrigger', () => {
 
 describe('encodeAiMemberMentions', () => {
   it('ピッカーで入れた @表示名 を名前付きの記法にする', () => {
-    expect(encodeAiMemberMentions('@山田 太郎 の担当を教えて', [{ tokenId: 'user-1', displayName: '山田 太郎' }]))
+    expect(encodeAiMemberMentions('@山田 太郎 の担当を教えて', [{ tokenId: 'user-1', displayName: '山田 太郎', start: 0 }]))
       .toBe('<@user-1|山田 太郎> の担当を教えて')
   })
 

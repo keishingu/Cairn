@@ -10,7 +10,12 @@ import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useT } from '@/components/locale-provider'
 import { sanitizeReferenceName } from '@/lib/ai/reference-name'
-import { encodeInsertedMentions, survivingMentionTokenIds, type MentionInsertion } from '@/lib/chat/mention-insertions'
+import {
+  encodePositionedMentions,
+  intactMentionTokenIds,
+  rebaseMentionInsertions,
+  type PositionedMentionInsertion,
+} from '@/lib/chat/mention-insertions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 interface MemberCandidate {
@@ -29,9 +34,9 @@ export function memberMentionTrigger(text: string, caret: number): { query: stri
   return { query, start: caret - query.length - 1 }
 }
 
-/** 送信する本文。ピッカーで入れた `@表示名` を `<@userId|表示名>` にする */
-export function encodeAiMemberMentions(text: string, insertions: ReadonlyArray<MentionInsertion>): string {
-  return encodeInsertedMentions(text, insertions, ({ tokenId, displayName }) => `<@${tokenId}|${displayName}>`)
+/** 送信する本文。ピッカーで入れた位置に残っている `@表示名` を `<@userId|表示名>` にする */
+export function encodeAiMemberMentions(text: string, insertions: ReadonlyArray<PositionedMentionInsertion>): string {
+  return encodePositionedMentions(text, insertions, ({ tokenId, displayName }) => `<@${tokenId}|${displayName}>`)
 }
 
 async function fetchMembers(query: string): Promise<MemberCandidate[]> {
@@ -48,7 +53,15 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
 }) {
   const [trigger, setTrigger] = React.useState<ReturnType<typeof memberMentionTrigger>>(null)
   const [activeIndex, setActiveIndex] = React.useState(0)
-  const [insertions, setInsertions] = React.useState<MentionInsertion[]>([])
+  // 入れた位置ごとに誰を選んだかを持つ。同名の人を入れて消して入れ直しても、名前ではなく位置で対応づける
+  const [insertions, setInsertions] = React.useState<PositionedMentionInsertion[]>([])
+  const previousInputRef = React.useRef(input)
+  React.useEffect(() => {
+    if (previousInputRef.current === input) return
+    const previous = previousInputRef.current
+    previousInputRef.current = input
+    setInsertions(prev => rebaseMentionInsertions(previous, input, prev))
+  }, [input])
   const query = React.useDeferredValue(trigger?.query.trim() ?? '')
   const members = useQuery({
     queryKey: ['ai-member-mention-candidates', query],
@@ -56,7 +69,7 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
     enabled: trigger !== null,
   })
   // すでに入れた人は候補に出さない（同じ人を二重に入れない）
-  const mentioned = React.useMemo(() => survivingMentionTokenIds(input, insertions), [input, insertions])
+  const mentioned = React.useMemo(() => intactMentionTokenIds(input, insertions), [input, insertions])
   const candidates = React.useMemo(
     () => (members.data ?? []).filter(member => !mentioned.has(member.userId)),
     [members.data, mentioned],
@@ -72,8 +85,11 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
     const displayName = sanitizeReferenceName(member.name)
     const end = trigger.start + 1 + trigger.query.length
     const next = `${input.slice(0, trigger.start)}@${displayName} ${input.slice(end)}`
+    // 既存の挿入はこの書き換えに合わせてずらし、新しい挿入は書き換え後の位置で足す（effect では二重にずらさない）
+    const rebased = rebaseMentionInsertions(input, next, insertions)
+    previousInputRef.current = next
     setInput(next)
-    setInsertions(prev => [...prev, { tokenId: member.userId, displayName }])
+    setInsertions([...rebased, { tokenId: member.userId, displayName, start: trigger.start }])
     setTrigger(null)
     const position = trigger.start + displayName.length + 2
     requestAnimationFrame(() => {
@@ -109,9 +125,9 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
     syncTrigger,
     handleKeyDown,
     close: () => setTrigger(null),
-    /** 送信する本文に変換し、挿入の記録を空にする */
-    takeEncoded: (text: string) => {
-      const encoded = encodeAiMemberMentions(text, insertions)
+    /** 入力欄の本文（前後の空白を落とす前のもの）を送信する本文に変換し、挿入の記録を空にする。位置は入力欄の本文に対するものなので、変換してから空白を落とす */
+    takeEncoded: (rawInput: string) => {
+      const encoded = encodeAiMemberMentions(rawInput, insertions).trim()
       setInsertions([])
       setTrigger(null)
       return encoded
