@@ -327,7 +327,14 @@ async function anonymizeAndRevoke(
       .update(messages)
       .set({ content: '', deletedAt: now, updatedAt: now })
       .where(eq(messages.senderId, userId))
-    // AIアシスタントの添付は会話と一緒に行が消えるため、消す前に Storage の本体を削除の対象に控える
+    // AIアシスタントの添付は会話と一緒に行が消えるため、消す前に Storage の本体を削除の対象に控える。
+    // 先に本人の会話をロックし、控えたあとに新しい添付の行が作られて本体だけが残ることを防ぐ
+    // （添付の行は会話を外部キーで参照するため、ロック中は作れず、会話の削除後は作れない）
+    await tx
+      .select({ id: aiConversations.id })
+      .from(aiConversations)
+      .where(eq(aiConversations.createdBy, userId))
+      .for('update')
     const aiAttachmentRows = await tx
       .select({ storagePath: aiAttachments.storagePath })
       .from(aiAttachments)
