@@ -41,6 +41,8 @@ export interface PendingAiAttachment {
   /** 画像のプレビュー（送信後のメッセージの表示にも使う） */
   previewUrl?: string
   error?: string
+  /** 外す処理の途中（二重に押させない） */
+  removing?: boolean
 }
 
 async function serverError(res: Response): Promise<string | undefined> {
@@ -66,8 +68,19 @@ export function useAiAttachments(conversationId: string) {
   // （消さないと送信前の添付の上限に数えられ、1日の定期回収までその会話で添付できなくなる）
   const canceledRef = React.useRef(new Set<string>())
 
-  const deleteOnServer = (attachmentId: string) =>
-    fetchWithAuth(`/api/ai/conversations/${conversationId}/attachments/${attachmentId}`, { method: 'DELETE' }).catch(() => undefined)
+  /** サーバーから添付を消す。消せたか（すでに無いときも含む）を返す */
+  const deleteOnServer = async (attachmentId: string): Promise<boolean> => {
+    try {
+      const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/attachments/${attachmentId}`, { method: 'DELETE' })
+      return res.ok || res.status === 404
+    } catch {
+      return false
+    }
+  }
+  // アップロードの途中で外した添付は表示から消えているため、消せなかったことだけを知らせる（送らなければ1日で定期回収される）
+  const deleteCanceled = async (attachmentId: string) => {
+    if (!(await deleteOnServer(attachmentId))) setNotice(t('Could not remove an attachment on the server. It will be removed automatically within a day.'))
+  }
 
   const update = (localId: string, patch: Partial<PendingAiAttachment>) =>
     setPending(prev => prev.map(item => (item.localId === localId ? { ...item, ...patch } : item)))
@@ -91,14 +104,14 @@ export function useAiAttachments(conversationId: string) {
         mimeType: string
       }
       if (canceledRef.current.delete(localId)) {
-        void deleteOnServer(attachmentId)
+        void deleteCanceled(attachmentId)
         return
       }
       // Storage はファイル自身の type を見るため、正規化した MIME を持つ File で送る（チャットの添付と同じ）
       const body = file.type === normalized ? file : new File([file], file.name, { type: normalized })
       const { error } = await createSupabaseClient().storage.from('ai-attachments').uploadToSignedUrl(path, token, body)
       if (canceledRef.current.delete(localId)) {
-        void deleteOnServer(attachmentId)
+        void deleteCanceled(attachmentId)
         return
       }
       if (error) {
@@ -141,14 +154,24 @@ export function useAiAttachments(conversationId: string) {
 
   const remove = async (localId: string) => {
     const item = pending.find(candidate => candidate.localId === localId)
-    setPending(prev => prev.filter(candidate => candidate.localId !== localId))
-    // アップロード中なら、終わった時点で消す
-    if (item?.status === 'uploading') {
+    if (!item) return
+    // アップロード中なら表示から外し、終わった時点でサーバーから消す
+    if (item.status === 'uploading') {
+      setPending(prev => prev.filter(candidate => candidate.localId !== localId))
       canceledRef.current.add(localId)
       return
     }
-    // サーバーに行ができていれば本体ごと消す（失敗しても送らなければ定期回収で消える）
-    if (item?.attachmentId) await deleteOnServer(item.attachmentId)
+    // サーバーから消せてから表示から外す。消せなければ表示に残してエラーを出し、もう一度外せるようにする
+    // （残った添付は送信前の上限に数えられるため、消せたことにはしない）
+    if (item.attachmentId) {
+      update(localId, { removing: true })
+      if (!(await deleteOnServer(item.attachmentId))) {
+        update(localId, { removing: false, error: t('Could not remove the attachment. Try again.') })
+        setNotice(t('Could not remove {name}. Try again.', { name: item.fileName }))
+        return
+      }
+    }
+    setPending(prev => prev.filter(candidate => candidate.localId !== localId))
   }
 
   return {
@@ -210,6 +233,7 @@ export function PendingAttachmentChips({ items, onRemove }: { items: PendingAiAt
             type="button"
             aria-label={t('Remove {name}', { name: item.fileName })}
             onClick={() => onRemove(item.localId)}
+            disabled={item.removing}
             className="icon-btn"
             style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0 }}
           >
