@@ -214,5 +214,16 @@ describe('extractText', () => {
     await expect(extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
       .rejects.toThrow('too large')
   })
+
+  it('Excel で長い共有文字列を1行の多数のセルから参照させても、取り出す本文は上限で止める', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', `<sst><si><t>${'あ'.repeat(40_000)}</t></si></sst>`)
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData><row r="1">${'<c t="s"><v>0</v></c>'.repeat(5_000)}</row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    // 1セルは Excel の上限の 32,767 文字で切り、行は全体の上限（200,000 文字）を超えたところで打ち切る
+    expect(text.length).toBeLessThan(200_000 + 32_767 + 100)
+  })
 })
 

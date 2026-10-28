@@ -126,23 +126,60 @@ const XLSX_MAX_SHEETS = 50
 /** 取り出す文字数の上限。AI に渡すのは先頭5万文字までなので、それより十分に長くなったら読むのをやめる */
 const XLSX_MAX_OUTPUT_CHARS = 200_000
 
+/** Excel のセルに入る文字数の上限。共有文字列もこの長さで切る（同じ長い文字列を何度も参照させて膨らませない） */
+const XLSX_MAX_CELL_CHARS = 32_767
+
+interface ZipStreamHelper {
+  on(event: 'data', listener: (chunk: Uint8Array) => void): ZipStreamHelper
+  on(event: 'error', listener: (error: Error) => void): ZipStreamHelper
+  on(event: 'end', listener: () => void): ZipStreamHelper
+  pause(): ZipStreamHelper
+  resume(): ZipStreamHelper
+}
+
 class XlsxReader {
   private readBytes = 0
   constructor(private readonly zip: JSZip) {}
 
-  async read(path: string): Promise<string | null> {
+  /**
+   * ZIP のエントリを展開しながら実際のバイト数を数え、上限を超えた時点で止める。
+   * ZIP に書かれた展開後のサイズは偽れるため信用せず、展開した量で判定する（圧縮爆弾を最後まで展開しない）
+   */
+  read(path: string): Promise<string | null> {
     const file = this.zip.files[path]
-    if (!file) return null
-    // 展開前に、ZIP のディレクトリに書かれた展開後のサイズで弾く（圧縮爆弾を展開しない）
-    const size = (file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0
-    this.readBytes += size
-    if (size > XLSX_MAX_ENTRY_BYTES || this.readBytes > XLSX_MAX_TOTAL_BYTES) {
-      throw new Error('xlsx entry is too large to extract')
-    }
-    const text = await file.async('text')
-    // サイズの記載が実際と違っても、展開した長さで確かめ直す
-    if (text.length > XLSX_MAX_ENTRY_BYTES) throw new Error('xlsx entry is too large to extract')
-    return text
+    if (!file || file.dir) return Promise.resolve(null)
+    return new Promise((resolve, reject) => {
+      const decoder = new TextDecoder('utf-8')
+      const chunks: string[] = []
+      let entryBytes = 0
+      let stopped = false
+      // internalStream は JSZip の実装にあるが型定義に無い（generateInternalStream と同じ StreamHelper を返す）
+      const stream = (file as unknown as { internalStream(type: 'uint8array'): ZipStreamHelper }).internalStream('uint8array')
+      stream
+        .on('data', (chunk: Uint8Array) => {
+          if (stopped) return
+          entryBytes += chunk.length
+          this.readBytes += chunk.length
+          if (entryBytes > XLSX_MAX_ENTRY_BYTES || this.readBytes > XLSX_MAX_TOTAL_BYTES) {
+            stopped = true
+            stream.pause()
+            reject(new Error('xlsx entry is too large to extract'))
+            return
+          }
+          chunks.push(decoder.decode(chunk, { stream: true }))
+        })
+        .on('error', (error: Error) => {
+          if (stopped) return
+          stopped = true
+          reject(error)
+        })
+        .on('end', () => {
+          if (stopped) return
+          chunks.push(decoder.decode())
+          resolve(chunks.join(''))
+        })
+        .resume()
+    })
   }
 }
 
@@ -186,7 +223,7 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
   const reader = new XlsxReader(zip)
   const sharedXml = await reader.read('xl/sharedStrings.xml')
   const sharedStrings: string[] = []
-  if (sharedXml) for (const { body } of scanElements(sharedXml, 'si')) sharedStrings.push(textRuns(body))
+  if (sharedXml) for (const { body } of scanElements(sharedXml, 'si')) sharedStrings.push(textRuns(body).slice(0, XLSX_MAX_CELL_CHARS))
 
   const parts: string[] = []
   let length = 0
@@ -198,16 +235,20 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
     for (const { body: rowBody } of scanElements(xml, 'row')) {
       if (length >= XLSX_MAX_OUTPUT_CHARS) break
       const cells: string[] = []
+      // セルごとに上限を確かめる（行を組み立ててからでは、1行に大きなセルを並べたファイルで上限を超えて膨らむ）
+      let rowLength = 0
       for (const { attrs, body } of scanElements(rowBody, 'c')) {
         const type = attrs.match(/\bt="([^"]*)"/)?.[1]
+        let cell: string
         if (type === 'inlineStr') {
-          cells.push(textRuns(body))
-          continue
+          cell = textRuns(body).slice(0, XLSX_MAX_CELL_CHARS)
+        } else {
+          const value = scanElements(body, 'v').next().value?.body
+          cell = value === undefined ? '' : type === 's' ? sharedStrings[Number(value)] ?? '' : decodeXmlEntities(value).slice(0, XLSX_MAX_CELL_CHARS)
         }
-        const value = scanElements(body, 'v').next().value?.body
-        if (value === undefined) cells.push('')
-        else if (type === 's') cells.push(sharedStrings[Number(value)] ?? '')
-        else cells.push(decodeXmlEntities(value))
+        cells.push(cell)
+        rowLength += cell.length + 1
+        if (length + rowLength >= XLSX_MAX_OUTPUT_CHARS) break
       }
       const row = cells.join('\t').replace(/\t+$/, '')
       if (row.length === 0) continue
