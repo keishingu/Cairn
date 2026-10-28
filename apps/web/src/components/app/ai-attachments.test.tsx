@@ -39,7 +39,17 @@ describe('送信前の添付を外す', () => {
     await act(async () => { await result.current.add([new File(['a,b'], 'memo.csv', { type: 'text/csv' })]) })
     await waitFor(() => expect(result.current.pending[0]?.status).toBe('ready'))
 
-    await act(async () => { await result.current.remove(result.current.pending[0]!.localId) })
+    let finishRemoval: (res: Response) => void = () => undefined
+    fetchWithAuth.mockImplementation(() => new Promise<Response>(resolve => { finishRemoval = resolve }))
+    let removal: Promise<void> = Promise.resolve()
+    act(() => { removal = result.current.remove(result.current.pending[0]!.localId) })
+    // 外している途中は送らせず、送る添付にも含めない
+    await waitFor(() => expect(result.current.isRemoving).toBe(true))
+    await act(async () => {
+      finishRemoval(json({ error: 'failed' }, 500))
+      await removal
+    })
+    expect(result.current.isRemoving).toBe(false)
     expect(result.current.pending).toHaveLength(1)
     expect(result.current.notice).toBe('memo.csv を外せませんでした。もう一度お試しください')
 

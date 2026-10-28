@@ -330,7 +330,8 @@ function ChatView({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
   // アップロード中・失敗した添付があるうちは送らない（黙って添付を外して送らない）
-  const canSend = !!input.trim() && !isLoading && !attachments.isUploading && !attachments.hasError
+  // 外している途中の添付があるうちも送らない（外れた添付を送る・送った添付が外れる、を起こさない）
+  const canSend = !!input.trim() && !isLoading && !attachments.isUploading && !attachments.isRemoving && !attachments.hasError
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     const text = input.trim()

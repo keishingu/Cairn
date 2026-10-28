@@ -180,10 +180,12 @@ export function useAiAttachments(conversationId: string) {
     add,
     remove,
     isUploading: pending.some(item => item.status === 'uploading'),
+    /** 外している途中の添付がある（消えるかどうか決まるまで送らせない） */
+    isRemoving: pending.some(item => item.removing),
     hasError: pending.some(item => item.status === 'error'),
     /** 送信する添付を取り出して入力欄から外す。送信に失敗したら restoreLastSent で戻す */
     takeForSend: () => {
-      const ready = pending.filter(item => item.status === 'ready' && item.attachmentId)
+      const ready = pending.filter(item => item.status === 'ready' && item.attachmentId && !item.removing)
       lastSentRef.current = ready
       setPending([])
       setNotice(null)
