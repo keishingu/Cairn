@@ -19,6 +19,7 @@ import { AI_RESEARCH_LIMITS } from './research'
 import { createResearchTools } from './research-tools'
 import { SkillRunError, collectEvidence, finishSkillRun, reserveSkillRun, type SkillDefinition } from './skill-run'
 import { AUTOMATION_WRITE_ACTIONS } from './automations'
+import { hydrateInstructionReferences } from './instruction-references'
 
 export interface DryRunResultDto {
   runId: string
@@ -47,10 +48,11 @@ async function loadSkillForDryRun(ctx: AuthContext, id: string): Promise<SkillDe
     .limit(1)
   if (!row || row.kind !== 'skill') throw new DryRunError(404, 'スキルが見つかりません')
   const value = row.compiled['writeActions']
+  const [instruction = ''] = await hydrateInstructionReferences(ctx, [row.instruction ?? ''])
   return {
     id: row.id,
     name: row.name,
-    instruction: row.instruction ?? '',
+    instruction,
     writeActions: Array.isArray(value) ? AUTOMATION_WRITE_ACTIONS.filter((action) => value.includes(action)) : [],
   }
 }

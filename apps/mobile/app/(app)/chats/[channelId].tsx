@@ -79,6 +79,7 @@ import {
   myBlocksQueryKey,
   useMyBlocks,
   useProjectMembers,
+  useProjectRoles,
   useWorkspaceChannels,
   useWorkspaceDms,
   useWorkspaceMembers,
@@ -656,6 +657,7 @@ export default function ChatThreadScreen() {
     isPrivate === '1' || channelType === 'workspace',
   )
   const projectMembers = useProjectMembers(projectId ?? null)
+  const projectRoles = useProjectRoles(!!projectId && channelType !== 'dm')
   const session = useSession()
   const selectedWorkspace = useSelectedWorkspaceId(session?.user.id)
   const attachmentAuth = React.useMemo<AttachmentAuth | undefined>(
@@ -798,6 +800,12 @@ export default function ChatThreadScreen() {
         hint: t('Project members'),
       })
     }
+    // プロジェクトの役割（`<@role:id>`）。そのプロジェクトでその役割を持つ人へ通知が届く。並びは Web と同じくメンバーの後
+    const roles: MentionCandidate[] = projectId
+      ? (projectRoles.data ?? [])
+          .filter((role) => role.name.toLocaleLowerCase().includes(query))
+          .map((role) => ({ tokenId: `role:${role.id}`, displayName: role.name, avatarUrl: null, hint: t('Project role') }))
+      : []
     return [
       ...groups,
       ...mentionableMembers
@@ -808,21 +816,28 @@ export default function ChatThreadScreen() {
           displayName: member.displayName,
           avatarUrl: member.avatarUrl,
         })),
+      ...roles,
     ]
-  }, [channelType, me?.id, mentionRange, mentionableMembers, projectId, t])
+  }, [channelType, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
+  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で出すため、その取得失敗も候補の欠けとして示す
+  const projectRolesError = projectId ? projectRoles.error : null
   const mentionMembersError =
     channelType === 'dm'
       ? null
       : isPrivate === '1'
-        ? channelMembers.error
+        ? (channelMembers.error ?? projectRolesError)
         : (workspaceMembers.error ??
-          (projectId ? projectMembers.error : channelType === 'workspace' ? channelMembers.error : null))
+          (projectId
+            ? (projectMembers.error ?? projectRolesError)
+            : channelType === 'workspace' ? channelMembers.error : null))
   const isFetchingMentionMembers =
-    channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching
+    channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching || projectRoles.isFetching
 
   const retryMentionMembers = () => {
-    if (isPrivate === '1') return channelMembers.refetch()
-    if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch()])
+    if (isPrivate === '1') {
+      return projectId ? Promise.all([channelMembers.refetch(), projectRoles.refetch()]) : channelMembers.refetch()
+    }
+    if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch()])
     if (channelType === 'workspace') return Promise.all([workspaceMembers.refetch(), channelMembers.refetch()])
     return workspaceMembers.refetch()
   }

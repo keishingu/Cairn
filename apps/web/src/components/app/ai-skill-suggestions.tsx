@@ -7,6 +7,7 @@ import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useAutomations } from '@/hooks/use-automations'
+import { instructionToPlainText } from './instruction-editor'
 
 /** 入力が `$` と名前の途中だけのときに、その前方一致の名前を返す（スペースを打ったら候補を閉じる） */
 export function skillQueryFromInput(input: string): string | null {
@@ -39,7 +40,7 @@ export function SkillSuggestions({ input, onSelect }: { input: string; onSelect:
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
         >
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>${skill.name}</span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{skill.instruction}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{instructionToPlainText(skill.instruction)}</span>
         </button>
       ))}
     </div>

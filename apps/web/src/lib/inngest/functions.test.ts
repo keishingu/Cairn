@@ -134,6 +134,51 @@ describe('onMessageCreated', () => {
     expect(names).toContain('expand-attr-mentions')
     expect(names).not.toContain('fetch-mentioned-members')
   })
+  it('プロジェクトの役割メンションを展開ステップへ渡し、ユーザーメンションとして扱わない', async () => {
+    const handler = handlers.get('on-message-created')
+    expect(handler).toBeDefined()
+
+    const run = vi.fn(async (name: string) => {
+      switch (name) {
+        case 'fetch-members':
+        case 'filter-blocked-members':
+        case 'filter-mention-access':
+        case 'filter-blocked-mentions':
+          return []
+        case 'expand-role-mentions':
+          return [{ userId: 'u-reviewer', displayName: 'レビュワー候補' }]
+        case 'resolve-mention-preview-names':
+          return { 'role:role-1': 'レビュワー' }
+        case 'resolve-current-channel':
+          return 'channel-id'
+        case 'check-dm':
+          return false
+        default:
+          throw new Error(`Unexpected step: ${name}`)
+      }
+    })
+
+    await expect(
+      handler!({
+        event: {
+          data: {
+            messageId: 'message-id',
+            channelId: 'channel-id',
+            workspaceId: 'workspace-id',
+            senderId: 'sender-id',
+            senderName: '送信者',
+            content: '<@role:role-1> 確認お願いします',
+            attachmentFileIds: [],
+          },
+        },
+        step: { run, sleep: vi.fn() },
+      }),
+    ).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
+
+    const names = stepNames(run)
+    expect(names).toContain('expand-role-mentions')
+    expect(names).not.toContain('fetch-mentioned-members')
+  })
   it('スレッドへ移動済みでも通知の宛先を決める前に今のチャンネルを読み直す', async () => {
     const handler = handlers.get('on-message-created')
     expect(handler).toBeDefined()

@@ -54,4 +54,12 @@ describe('オートメーションの入力の検証', () => {
     expect(updateAutomationSchema.safeParse({}).success).toBe(false)
     expect(updateAutomationSchema.parse({ enabled: false })).toEqual({ enabled: false })
   })
+
+  test('手で書いた不正な参照を含む指示文は保存させない', async () => {
+    const { createAutomationSchema } = await import('./automations')
+    const result = createAutomationSchema.safeParse({ kind: 'skill', name: 'x', instruction: '<@鈴木> に報告', writeActions: [] })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toContain('@ の入力補完から選び直してください')
+  })
 })
+
