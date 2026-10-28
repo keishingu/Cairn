@@ -246,5 +246,19 @@ describe('extractText', () => {
     expect(Date.now() - started).toBeLessThan(2000)
     expect(Math.max(...text.split('\n').map(line => line.split('\t').length))).toBeLessThanOrEqual(1000)
   })
+
+  it('Excel のシートが上限を超えたときは、読まなかったシートがあることを本文の先頭で伝える', async () => {
+    const zip = new JSZip()
+    const count = 52
+    zip.file('xl/workbook.xml', `<workbook><sheets>${Array.from({ length: count }, (_, i) => `<sheet name="W${i + 1}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`)
+    zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${Array.from({ length: count }, (_, i) => `<Relationship Id="rId${i + 1}" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`)
+    for (let i = 1; i <= count; i += 1) zip.file(`xl/worksheets/sheet${i}.xml`, `<worksheet><sheetData><row r="1"><c r="A1"><v>${i}</v></c></row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(text.startsWith('[注記] シートが52枚あるため、先頭の50枚だけを読みました（残りの2枚は読んでいません）。')).toBe(true)
+    expect(text).toContain('# W50')
+    expect(text).not.toContain('# W51')
+  })
 })
 

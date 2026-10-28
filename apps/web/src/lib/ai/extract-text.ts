@@ -238,20 +238,33 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
 
   const parts: string[] = []
   let length = 0
-  for (const sheet of (await resolveSheets(zip, reader)).slice(0, XLSX_MAX_SHEETS)) {
-    if (length >= XLSX_MAX_OUTPUT_CHARS) break
+  // 上限で読み切れなかったことは黙って捨てず、本文の先頭に書いて AI に伝える（一部だけの表を全体として扱わせない）
+  let outputCut = false
+  let columnsCut = false
+  const sheets = await resolveSheets(zip, reader)
+  for (const sheet of sheets.slice(0, XLSX_MAX_SHEETS)) {
+    if (length >= XLSX_MAX_OUTPUT_CHARS) {
+      outputCut = true
+      break
+    }
     const xml = await reader.read(sheet.path)
     if (!xml) continue
     const rows: string[] = []
     for (const { body: rowBody } of scanElements(xml, 'row')) {
-      if (length >= XLSX_MAX_OUTPUT_CHARS) break
+      if (length >= XLSX_MAX_OUTPUT_CHARS) {
+        outputCut = true
+        break
+      }
       const cells: string[] = []
       // セルごとに上限を確かめる（行を組み立ててからでは、1行に大きなセルを並べたファイルで上限を超えて膨らむ）
       let rowLength = 0
       for (const { attrs, body } of scanElements(rowBody, 'c')) {
         // 空のセルは XML から省かれることがあるため、r="C2" の列で位置を合わせる（省いた分だけ空欄を入れる）
         const column = columnIndex(attrs.match(/\br="([A-Z]{1,3})\d*"/)?.[1])
-        if ((column ?? cells.length) >= XLSX_MAX_COLUMNS || cells.length >= XLSX_MAX_COLUMNS) break
+        if ((column ?? cells.length) >= XLSX_MAX_COLUMNS || cells.length >= XLSX_MAX_COLUMNS) {
+          columnsCut = true
+          break
+        }
         if (column !== null && column > cells.length) {
           const gap = column - cells.length
           for (let index = 0; index < gap; index += 1) cells.push('')
@@ -267,7 +280,10 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
         }
         cells.push(cell)
         rowLength += cell.length + 1
-        if (length + rowLength >= XLSX_MAX_OUTPUT_CHARS) break
+        if (length + rowLength >= XLSX_MAX_OUTPUT_CHARS) {
+          outputCut = true
+          break
+        }
       }
       // 空欄だけの行も、作ったセルの数を全体の上限に数える（空の行を大量に並べたファイルで処理を膨らませない）
       length += rowLength
@@ -277,7 +293,13 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
     }
     if (rows.length > 0) parts.push(`# ${sheet.name}\n${rows.join('\n')}`)
   }
-  return parts.join('\n\n')
+  const notes = [
+    ...(sheets.length > XLSX_MAX_SHEETS ? [`シートが${sheets.length}枚あるため、先頭の${XLSX_MAX_SHEETS}枚だけを読みました（残りの${sheets.length - XLSX_MAX_SHEETS}枚は読んでいません）`] : []),
+    ...(columnsCut ? [`${XLSX_MAX_COLUMNS}列より右の列は読んでいません`] : []),
+    ...(outputCut ? ['表が大きいため、途中までしか読んでいません'] : []),
+  ]
+  const body = parts.join('\n\n')
+  return notes.length > 0 ? `[注記] ${notes.join('。')}。\n\n${body}` : body
 }
 
 async function resolveSheets(zip: JSZip, reader: XlsxReader): Promise<Array<{ name: string; path: string }>> {
