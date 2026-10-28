@@ -50,6 +50,12 @@ export function useAiAttachments(conversationId: string) {
   const [pending, setPending] = React.useState<PendingAiAttachment[]>([])
   const [notice, setNotice] = React.useState<string | null>(null)
   const lastSentRef = React.useRef<PendingAiAttachment[]>([])
+  // アップロードの途中で外した添付。サーバーに行ができたら、アップロードが終わってから消す
+  // （消さないと送信前の添付の上限に数えられ、1日の定期回収までその会話で添付できなくなる）
+  const canceledRef = React.useRef(new Set<string>())
+
+  const deleteOnServer = (attachmentId: string) =>
+    fetchWithAuth(`/api/ai/conversations/${conversationId}/attachments/${attachmentId}`, { method: 'DELETE' }).catch(() => undefined)
 
   const update = (localId: string, patch: Partial<PendingAiAttachment>) =>
     setPending(prev => prev.map(item => (item.localId === localId ? { ...item, ...patch } : item)))
@@ -62,6 +68,7 @@ export function useAiAttachments(conversationId: string) {
         body: JSON.stringify({ fileName: file.name, mimeType, fileSize: file.size }),
       })
       if (!res.ok) {
+        canceledRef.current.delete(localId)
         update(localId, { status: 'error', error: (await serverError(res)) ?? t('Could not upload the file') })
         return
       }
@@ -71,15 +78,24 @@ export function useAiAttachments(conversationId: string) {
         token: string
         mimeType: string
       }
+      if (canceledRef.current.delete(localId)) {
+        void deleteOnServer(attachmentId)
+        return
+      }
       // Storage はファイル自身の type を見るため、正規化した MIME を持つ File で送る（チャットの添付と同じ）
       const body = file.type === normalized ? file : new File([file], file.name, { type: normalized })
       const { error } = await createSupabaseClient().storage.from('ai-attachments').uploadToSignedUrl(path, token, body)
+      if (canceledRef.current.delete(localId)) {
+        void deleteOnServer(attachmentId)
+        return
+      }
       if (error) {
         update(localId, { status: 'error', attachmentId, error: t('Could not upload the file') })
         return
       }
       update(localId, { status: 'ready', attachmentId })
     } catch {
+      canceledRef.current.delete(localId)
       update(localId, { status: 'error', error: t('Could not upload the file') })
     }
   }
@@ -114,10 +130,13 @@ export function useAiAttachments(conversationId: string) {
   const remove = async (localId: string) => {
     const item = pending.find(candidate => candidate.localId === localId)
     setPending(prev => prev.filter(candidate => candidate.localId !== localId))
-    // サーバーに行ができていれば本体ごと消す（失敗しても送らなければ定期回収で消える）
-    if (item?.attachmentId) {
-      await fetchWithAuth(`/api/ai/conversations/${conversationId}/attachments/${item.attachmentId}`, { method: 'DELETE' }).catch(() => undefined)
+    // アップロード中なら、終わった時点で消す
+    if (item?.status === 'uploading') {
+      canceledRef.current.add(localId)
+      return
     }
+    // サーバーに行ができていれば本体ごと消す（失敗しても送らなければ定期回収で消える）
+    if (item?.attachmentId) await deleteOnServer(item.attachmentId)
   }
 
   return {
