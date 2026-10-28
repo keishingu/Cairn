@@ -907,7 +907,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <MobileHeader
           title={channelName}
           subtitle={channelSubtitle}

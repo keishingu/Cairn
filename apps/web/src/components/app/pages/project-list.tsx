@@ -3,7 +3,7 @@
 import React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/lib/chat/client'
-import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { Icon, AvatarStack, StatusChip, MountainPhoto, Fab, MOBILE_FAB_LIST_PADDING, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import type { ProjectDto } from '@/app/api/projects/route'
 import { MobileHeader } from '../mobile/header'
 import { CreateProjectSheet } from '../mobile/create-project-sheet'
@@ -352,7 +352,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       <div style={{
         flex: 1, overflow: 'auto',
         padding: isMobile ? '12px 16px' : '20px 24px',
-        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+        paddingBottom: isMobile ? MOBILE_FAB_LIST_PADDING : undefined,
       }}>
         {isLoading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>

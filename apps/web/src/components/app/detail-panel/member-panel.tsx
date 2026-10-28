@@ -602,7 +602,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       <div style={{
         flex: 1, overflow: 'auto',
         padding: isMobile ? '0' : '12px 16px',
-        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+        paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
       }}>
         <div style={{
           fontSize: 11, fontWeight: 600, color: 'var(--text-4)',
