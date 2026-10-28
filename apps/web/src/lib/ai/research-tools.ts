@@ -18,6 +18,7 @@ import {
   getResearchProjectMembers,
   listResearchChannels,
   listResearchMembers,
+  listResearchProjectRoles,
   readResearchChannelMessages,
   readResearchFile,
 } from './workspace-research-directory'
@@ -178,6 +179,13 @@ export function createResearchTools(ctx: AuthContext) {
             limit: limit ?? undefined,
           }),
         ),
+    }),
+
+    list_project_roles: tool({
+      description:
+        'ワークスペースで使うプロジェクトの役割（リーダー・レビュワー等）と、そのIDを一覧します。役割を付ける実行案には、ここで取得した役割IDを使ってください。',
+      parameters: z.object({}),
+      execute: () => safely(() => listResearchProjectRoles(ctx)),
     }),
 
     get_project_members: tool({

@@ -250,9 +250,24 @@ function missingTargets(display: PendingActionDisplay): string[] {
 }
 
 /**
- * 実行案を作る。AI が作った内容をそのまま保存せず、承認者に見える対象だけを指していることを確かめる
- * （見えない対象を指す案は作らず、AI に誤りとして返す）
+ * 実行案の中身を確かめる。AI が作った内容をそのまま信じず、承認者に見える対象だけを指していることを確かめる
+ * （見えない対象を指す案は作らず、AI に誤りとして返す）。dry-run では保存せずにこの結果だけを使う
  */
+export async function validateProposal(
+  ctx: AuthContext,
+  actionType: AiPendingActionType,
+  rawPayload: unknown,
+): Promise<{ payload: Record<string, unknown>; display: PendingActionDisplay }> {
+  const payload = parsePendingActionPayload(actionType, rawPayload)
+  const display = await describePendingAction(ctx, actionType, payload)
+  const missing = missingTargets(display)
+  if (missing.length > 0) {
+    throw new PendingActionError(404, `${missing.join('・')}が見つからないか、アクセスできません`)
+  }
+  return { payload, display }
+}
+
+/** 実行案を作る（承認カードに出す） */
 export async function proposePendingAction(
   ctx: AuthContext,
   input: {
@@ -263,12 +278,7 @@ export async function proposePendingAction(
   },
   now = new Date(),
 ): Promise<PendingActionDto> {
-  const payload = parsePendingActionPayload(input.actionType, input.payload)
-  const display = await describePendingAction(ctx, input.actionType, payload)
-  const missing = missingTargets(display)
-  if (missing.length > 0) {
-    throw new PendingActionError(404, `${missing.join('・')}が見つからないか、アクセスできません`)
-  }
+  const { payload, display } = await validateProposal(ctx, input.actionType, input.payload)
   const { aiPendingActions, db } = await import('@cairn/db')
   const expiresAt = new Date(now.getTime() + PENDING_ACTION_TTL_DAYS * 86_400_000)
   const [row] = await db

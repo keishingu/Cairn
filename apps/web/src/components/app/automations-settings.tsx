@@ -11,9 +11,12 @@ import {
   useAutomations,
   useCreateAutomation,
   useDeleteAutomation,
+  useDryRunAutomation,
   useUpdateAutomation,
   type AutomationInput,
 } from '@/hooks/use-automations'
+import type { DryRunResultDto } from '@/lib/ai/skill-dry-run'
+import { MarkdownContent } from './markdown-content'
 import { ConfirmDialog } from './confirm-dialog'
 import { RowActionMenu } from './row-action-menu'
 
@@ -117,6 +120,7 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
   const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
+  const [testing, setTesting] = React.useState(false)
   const update = useUpdateAutomation(automation.id)
   const remove = useDeleteAutomation(automation.id)
 
@@ -152,9 +156,11 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
           {t('Created by {name}', { name: automation.createdBy?.name ?? t('Unknown member') })}
         </div>
         {update.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 12 }}>{update.error.message}</p>}
+        {testing && <DryRunPanel automation={automation} onClose={() => setTesting(false)}/>}
       </div>
       {canManage && (
         <RowActionMenu actions={[
+          { icon: 'sparkles', label: 'Test run', onSelect: () => setTesting(true) },
           { icon: 'edit', label: 'Edit', onSelect: () => { update.reset(); setEditing(true) } },
           automation.enabled
             ? { icon: 'bell-off', label: 'Pause', onSelect: () => update.mutate({ enabled: false }) }
@@ -169,6 +175,117 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
         onConfirm={() => remove.mutateAsync()}
         onClose={() => setConfirmDelete(false)}
       />
+    </div>
+  )
+}
+
+const DRY_RUN_ACTION_LABELS: Record<string, string> = {
+  post_message: 'Post to a channel',
+  invite_project_member: 'Add a member to the project',
+  set_project_member_role: 'Change a project role',
+  create_task: 'Create a task',
+}
+
+function proposalTargets(proposal: DryRunResultDto['proposals'][number]): string {
+  const { display, payload } = proposal
+  return [
+    display.channel ? `#${display.channel.name}` : null,
+    display.project?.title ?? null,
+    display.user?.name ?? null,
+    display.role?.name ?? null,
+    typeof payload['title'] === 'string' ? payload['title'] : null,
+  ].filter(Boolean).join(' / ')
+}
+
+// テスト実行では承認カードを出さないため、実際に書き込まれる中身（投稿の本文・タスクの説明など）をここで見せる
+function ProposalPayload({ proposal }: { proposal: DryRunResultDto['proposals'][number] }) {
+  const t = useT()
+  const { payload, display } = proposal
+  if (proposal.actionType === 'post_message' && typeof payload['text'] === 'string') {
+    return (
+      <div data-testid="dry-run-post-text" style={{ marginTop: 4, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)' }}>
+        <MarkdownContent content={payload['text']} mentionNames={new Map(Object.entries(display.mentionNames ?? {}))}/>
+      </div>
+    )
+  }
+  if (proposal.actionType === 'create_task') {
+    const rows = [
+      typeof payload['description'] === 'string' && payload['description'] ? [t('Description'), payload['description']] : null,
+      display.assignee ? [t('Assignee'), display.assignee.name] : null,
+      typeof payload['dueDate'] === 'string' ? [t('Due date'), payload['dueDate']] : null,
+      typeof payload['priority'] === 'string' ? [t('Priority'), t(payload['priority'] === 'high' ? 'High' : payload['priority'] === 'low' ? 'Low' : 'Medium')] : null,
+    ].filter((row): row is [string, string] => row !== null)
+    if (rows.length === 0) return null
+    return (
+      <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+        {rows.map(([label, value]) => <div key={label}>{label}: {value}</div>)}
+      </div>
+    )
+  }
+  return null
+}
+
+// テスト実行。読んで判断するところまで実際に行い、実行案は作らずにここへ表示するだけ（§2.9）
+function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClose: () => void }) {
+  const t = useT()
+  const [request, setRequest] = React.useState('')
+  const run = useDryRunAutomation(automation.id)
+  const result = run.data
+  return (
+    <div data-testid="automation-dry-run" style={{ marginTop: 6, padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6 }}>
+        {t('A test run reads and decides with your permissions, but creates no approval cards and writes nothing. It uses credits and counts toward the daily run limit.')}
+      </div>
+      <input
+        className="form-control"
+        name="dryRunRequest"
+        autoComplete="off"
+        placeholder={t('Additional request after ${name} (optional)', { name: automation.name })}
+        value={request}
+        maxLength={2000}
+        onChange={event => setRequest(event.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn" onClick={onClose}>{t('Close')}</button>
+        <button type="button" className="btn btn-primary" disabled={run.isPending} onClick={() => run.mutate(request)}>
+          {run.isPending ? t('Running…') : t('Run test')}
+        </button>
+      </div>
+      {run.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 12 }}>{run.error.message}</p>}
+      {result && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+          <div style={{ fontWeight: 600 }}>{t('Answer')}</div>
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <MarkdownContent content={result.text || t('(No answer)')}/>
+          </div>
+          <div style={{ fontWeight: 600 }}>{t('Actions it would propose')}</div>
+          {result.proposals.length === 0 ? (
+            <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('None')}</div>
+          ) : (
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+              {result.proposals.map((proposal, index) => (
+                <li key={index}>
+                  {t(DRY_RUN_ACTION_LABELS[proposal.actionType] ?? proposal.actionType)}: {proposalTargets(proposal)}
+                  {proposal.reason && <span style={{ color: 'var(--text-3)' }}>（{proposal.reason}）</span>}
+                  <ProposalPayload proposal={proposal}/>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div style={{ fontWeight: 600 }}>{t('What it read')}</div>
+          <div style={{ color: 'var(--text-3)', fontSize: 12 }}>
+            {result.evidence.length === 0
+              ? t('None')
+              : result.evidence.slice(0, 30).map(item => String(item['label'] ?? item['id'])).join(t(', '))}
+            {result.evidence.length > 30 && ` ${t('{count} more', { count: result.evidence.length - 30 })}`}
+          </div>
+          {result.toolCalls.some(call => !call.ok) && (
+            <div role="alert" style={{ color: 'var(--red-text)', fontSize: 12 }}>
+              {t('Some tools failed: {names}', { names: result.toolCalls.filter(call => !call.ok).map(call => call.toolName).join(', ') })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

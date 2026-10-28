@@ -2,13 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // 書き込みの実行案を作る tool（docs/ai-automation-design.md §2.4・§5.2）。どれも実行はせず、承認カードを出すだけ。
-// `/ai` は読み取り専用が原則で、Skill を呼んだときだけこれらを渡す（Phase 1 の Skill 呼び出しで接続する）。
+// `/ai` は読み取り専用が原則で、Skill を呼んだときだけ、そのスキルで許可された種類だけを渡す。
 
 import { tool } from 'ai'
 import { z } from 'zod'
 import type { AiPendingActionType } from '@cairn/db'
 import type { AuthContext } from '@/lib/get-auth-context'
-import { POST_MESSAGE_MAX_LENGTH, PendingActionError, proposePendingAction } from './pending-actions'
+import {
+  POST_MESSAGE_MAX_LENGTH,
+  PendingActionError,
+  proposePendingAction,
+  validateProposal,
+  type PendingActionDisplay,
+} from './pending-actions'
+
+/** dry-run で作られた実行案（保存も承認カードの発行もしない） */
+export interface DryRunProposal {
+  actionType: AiPendingActionType
+  payload: Record<string, unknown>
+  display: PendingActionDisplay
+  reason: string | null
+}
+
+export interface ProposalToolOptions {
+  /** このスキルで許可された書き込み。含まれない種類の tool は渡さない */
+  allowed: readonly AiPendingActionType[]
+  /** dry-run では実行案を保存せず、ここに集める */
+  dryRun?: { proposals: DryRunProposal[] } | undefined
+}
 
 const reason = z
   .string()
@@ -23,13 +44,23 @@ async function propose(
   actionType: AiPendingActionType,
   payload: Record<string, unknown>,
   why: string | null,
+  dryRun: ProposalToolOptions['dryRun'],
 ) {
   try {
+    if (dryRun) {
+      const validated = await validateProposal(ctx, actionType, payload)
+      dryRun.proposals.push({ actionType, ...validated, reason: why?.trim() || null })
+      return {
+        ok: true as const,
+        dryRun: true,
+        note: 'テスト実行のため、実行案は作られていません。承認カードも出ていません。実行済みとして扱わないでください。',
+      }
+    }
     const action = await proposePendingAction(ctx, { conversationId, actionType, payload, reason: why })
     return {
       ok: true as const,
       pendingAction: { id: action.id, actionType: action.actionType, status: action.status },
-      note: '承認カードを表示しました。利用者が承認するまで実行されていません。実行済みとして扱わないでください。回答本文では <@userId> の記法を使わず、メンバーを名前で書いてください。',
+      note: '承認カードを表示しました。利用者が承認するまで実行されていません。実行済みとして扱わないでください。（実行案の投稿本文ではなく）あなたの回答の文章では <@userId> の記法を使わず、メンバーを名前で書いてください。',
     }
   } catch (error) {
     if (error instanceof PendingActionError) {
@@ -43,18 +74,22 @@ async function propose(
   }
 }
 
-export function createProposalTools(ctx: AuthContext, conversationId: string | null) {
-  return {
+export function createProposalTools(
+  ctx: AuthContext,
+  conversationId: string | null,
+  options: ProposalToolOptions,
+) {
+  const tools = {
     propose_post_message: tool({
       description:
-        'チャンネルへの投稿（メンションを含む）の実行案を作り、利用者に承認カードを出します。承認されると Cairn AI として投稿し、承認者名を添えます。メンションは <@userId> の形式で本文に書いてください。',
+        'チャンネルへの投稿（メンションを含む）の実行案を作り、利用者に承認カードを出します。承認されると Cairn AI として投稿し、承認者名を添えます。人をメンションする（通知を届ける）ときは、本文に必ず <@userId> の形式で書いてください。名前だけを書いても通知は届きません。',
       parameters: z.object({
         channelId: z.string().uuid().describe('list_channels等で取得したチャンネルID'),
-        text: z.string().trim().min(1).max(POST_MESSAGE_MAX_LENGTH).describe('投稿する本文（Markdown）'),
+        text: z.string().trim().min(1).max(POST_MESSAGE_MAX_LENGTH).describe('投稿する本文（Markdown）。メンションは <@userId>'),
         reason,
       }),
       execute: ({ channelId, text, reason: why }) =>
-        propose(ctx, conversationId, 'post_message', { channelId, text }, why),
+        propose(ctx, conversationId, 'post_message', { channelId, text }, why, options.dryRun),
     }),
 
     propose_invite_project_member: tool({
@@ -63,11 +98,11 @@ export function createProposalTools(ctx: AuthContext, conversationId: string | n
       parameters: z.object({
         projectId: z.string().uuid().describe('プロジェクトID'),
         userId: z.string().uuid().describe('追加するメンバーのユーザーID'),
-        roleId: z.string().uuid().nullable().describe('付けるプロジェクトの役割のID。メンバーのままならnull'),
+        roleId: z.string().uuid().nullable().describe('付けるプロジェクトの役割のID（list_project_rolesで取得）。メンバーのままならnull'),
         reason,
       }),
       execute: ({ projectId, userId, roleId, reason: why }) =>
-        propose(ctx, conversationId, 'invite_project_member', { projectId, userId, roleId }, why),
+        propose(ctx, conversationId, 'invite_project_member', { projectId, userId, roleId }, why, options.dryRun),
     }),
 
     propose_set_project_member_role: tool({
@@ -75,11 +110,11 @@ export function createProposalTools(ctx: AuthContext, conversationId: string | n
       parameters: z.object({
         projectId: z.string().uuid().describe('プロジェクトID'),
         userId: z.string().uuid().describe('対象メンバーのユーザーID'),
-        roleId: z.string().uuid().describe('付けるプロジェクトの役割のID'),
+        roleId: z.string().uuid().describe('付けるプロジェクトの役割のID（list_project_rolesで取得）'),
         reason,
       }),
       execute: ({ projectId, userId, roleId, reason: why }) =>
-        propose(ctx, conversationId, 'set_project_member_role', { projectId, userId, roleId }, why),
+        propose(ctx, conversationId, 'set_project_member_role', { projectId, userId, roleId }, why, options.dryRun),
     }),
 
     propose_create_task: tool({
@@ -94,7 +129,11 @@ export function createProposalTools(ctx: AuthContext, conversationId: string | n
         dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().describe('期限（YYYY-MM-DD）。未指定ならnull'),
         reason,
       }),
-      execute: ({ reason: why, ...payload }) => propose(ctx, conversationId, 'create_task', payload, why),
+      execute: ({ reason: why, ...payload }) => propose(ctx, conversationId, 'create_task', payload, why, options.dryRun),
     }),
   }
+  // 許可されていない種類の tool は存在ごと渡さない（説明文で禁じるだけにしない）
+  return Object.fromEntries(
+    Object.entries(tools).filter(([name]) => options.allowed.includes(name.replace(/^propose_/, '') as AiPendingActionType)),
+  ) as Partial<typeof tools>
 }
