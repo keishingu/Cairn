@@ -28,4 +28,15 @@ describe('AI会話リクエスト本文', () => {
       messages: [{ role: 'user', content: '続きも教えて' }],
     })
   })
+
+  test('添付は ID だけを送り、表示用の URL は送らない', () => {
+    const body = buildAiRequestBody(
+      [{ id: 'u1', role: 'user', content: 'これを要約して', parts: [], experimental_attachments: [{ name: 'a.pdf', contentType: 'application/pdf', url: 'blob:local' }] }],
+      { attachmentIds: ['11111111-1111-4111-8111-111111111111'] },
+    )
+    expect(body).toEqual({
+      messages: [{ role: 'user', content: 'これを要約して' }],
+      attachmentIds: ['11111111-1111-4111-8111-111111111111'],
+    })
+  })
 })

@@ -18,6 +18,15 @@ vi.mock('@/lib/get-auth-context', () => ({
     error: null,
   }),
 }))
+// 添付の読み込みはこのテストの対象外（添付の無い会話として扱う）
+vi.mock('@/lib/ai/attachments', () => ({
+  AiAttachmentError: class extends Error {},
+  buildUserContentParts: vi.fn(),
+  listMessageAttachments: async () => new Map(),
+  loadHistoryAttachments: async () => new Map(),
+  prepareAttachmentsForSend: async () => [],
+}))
+
 vi.mock('@cairn/db', () => ({
   db: { select: mockSelect },
   aiConversations: {

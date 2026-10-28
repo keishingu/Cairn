@@ -1411,6 +1411,18 @@ export const cleanupExpiredUploadRequests = inngest.createFunction(
   },
 )
 
+// AIアシスタントに添付したまま送られなかったファイル（送信に失敗したものを含む）を1日たったら回収する
+export const cleanupUnsentAiAttachments = inngest.createFunction(
+  { id: 'cleanup-unsent-ai-attachments', concurrency: { limit: 1 } },
+  { cron: 'TZ=Asia/Tokyo 25 * * * *' },
+  async ({ step }) => {
+    return step.run('remove-unsent-ai-attachments', async () => {
+      const { cleanupUnsentAiAttachments: cleanup } = await import('@/lib/ai/attachments')
+      return cleanup()
+    })
+  },
+)
+
 // アプリへの配送ログは直近の失敗を見るためのもので、30日より古いものは使わない（docs/app-platform-design.md §11 D10）。
 // trigger_id は3秒で失効するので、1日たったものは消す
 export const cleanupAppInteractionDeliveries = inngest.createFunction(

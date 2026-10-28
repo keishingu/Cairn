@@ -11,6 +11,14 @@ import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { stripMentionsToText } from '@/lib/chat/mentions'
+import {
+  AiAttachmentError,
+  listMessageAttachments,
+  loadHistoryAttachments,
+  prepareAttachmentsForSend,
+  type AiAttachmentDto,
+  type PreparedAttachment,
+} from '@/lib/ai/attachments'
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
 import { createProposalTools } from '@/lib/ai/proposal-tools'
@@ -49,6 +57,8 @@ export interface MessageDto {
   createdAt: string
   annotations?: unknown[]
   toolInvocations?: unknown[]
+  /** 利用者のメッセージに付けた添付 */
+  attachments?: AiAttachmentDto[]
 }
 
 type StoredMessageRow = StoredConversationMessage & {
@@ -104,9 +114,12 @@ export async function GET(_req: Request, { params }: RouteContext) {
       })),
     )
 
+    const attachmentsByMessage = await listMessageAttachments(conversationId)
+
     return NextResponse.json(
       normalizedRows.map((r) => {
         const createdAt = r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)
+        const attachments = attachmentsByMessage.get(r.id)
 
         return {
           id: r.id,
@@ -115,6 +128,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           createdAt: createdAt.toISOString(),
           ...(r.annotations ? { annotations: r.annotations } : {}),
           ...(r.toolInvocations ? { toolInvocations: r.toolInvocations } : {}),
+          ...(attachments ? { attachments } : {}),
         }
       }) satisfies MessageDto[],
     )
@@ -147,10 +161,12 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   let lastUserContent: string
   let clientMessageCount: number
+  let attachmentIds: string[]
   try {
     const parsed = parseLatestUserInput(requestBody)
     lastUserContent = parsed.lastUserContent
     clientMessageCount = parsed.clientMessageCount
+    attachmentIds = parsed.attachmentIds
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
@@ -171,6 +187,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   const assistantMessageId = crypto.randomUUID()
+  const userMessageId = crypto.randomUUID()
   let activeCreditReservationPending = false
   let activeCreditReservationFailed = false
   // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
@@ -254,6 +271,20 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
 
+  // 添付は課金より前に確かめて読み込む（見つからない・本文を取り出せないときに課金しない）
+  let latestAttachments: PreparedAttachment[]
+  let historyAttachments: Awaited<ReturnType<typeof loadHistoryAttachments>>
+  try {
+    latestAttachments = await prepareAttachmentsForSend(ctx, conversationId, attachmentIds)
+    historyAttachments = await loadHistoryAttachments(
+      conversationId,
+      historyMessages.flatMap((message) => (message.role === 'user' && message.id ? [message.id] : [])),
+    )
+  } catch (err) {
+    if (err instanceof AiAttachmentError) return NextResponse.json({ error: err.message }, { status: err.status })
+    throw err
+  }
+
   if (isBillingEnabled()) {
     if (
       !(await reserveCreditsForActiveBenefit(
@@ -270,7 +301,10 @@ export async function POST(req: Request, { params }: RouteContext) {
     activeCreditReservationPending = true
   }
 
-  const messages = buildModelMessages(historyMessages, lastUserContent)
+  const messages = buildModelMessages(historyMessages, lastUserContent, {
+    latest: latestAttachments,
+    history: historyAttachments,
+  })
 
   const hasWebSearch = !!process.env['TAVILY_API_KEY']
 
@@ -281,6 +315,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     lastUserContent: lastUserContent.slice(0, 80),
     clientMessageCount,
     messageCount: messages.length,
+    attachmentCount: latestAttachments.length,
   })
 
   // RAG: 最後のユーザーメッセージに関連するチャンクを検索
@@ -446,10 +481,25 @@ export async function POST(req: Request, { params }: RouteContext) {
                   result: r.result,
                 })),
               )
+              const { aiAttachments } = await import('@cairn/db')
+              const { inArray } = await import('drizzle-orm')
               await db.transaction(async (tx) => {
                 await tx
                   .insert(aiMessages)
-                  .values({ conversationId, role: 'user', content: lastUserContent })
+                  .values({ id: userMessageId, conversationId, role: 'user', content: lastUserContent })
+                // 送った添付をこの依頼に結び付ける（会話を開き直したときに表示し、続けて質問したときにも AI に渡す）
+                if (latestAttachments.length > 0) {
+                  await tx
+                    .update(aiAttachments)
+                    .set({ messageId: userMessageId })
+                    .where(
+                      and(
+                        inArray(aiAttachments.id, latestAttachments.map((attachment) => attachment.id)),
+                        eq(aiAttachments.conversationId, conversationId),
+                        isNull(aiAttachments.messageId),
+                      ),
+                    )
+                }
                 await tx.insert(aiMessages).values({
                   id: assistantMessageId,
                   conversationId,

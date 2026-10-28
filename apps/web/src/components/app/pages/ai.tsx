@@ -10,6 +10,8 @@ import { MarkdownContent } from '../markdown-content'
 import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
 import { useAiMemberMentions } from '../ai-member-mentions'
+import { PendingAttachmentChips, SentAttachments, useAiAttachments } from '../ai-attachments'
+import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
@@ -274,6 +276,7 @@ function ChatView({
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
+  const attachments = useAiAttachments(conversationId)
   const { messages, input, setInput, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
@@ -283,11 +286,15 @@ function ChatView({
       content: m.content,
       ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
       ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
+      ...(m.attachments ? { experimental_attachments: m.attachments.map(a => ({ name: a.fileName, contentType: a.mimeType, url: a.url ?? '' })) } : {}),
     })),
-    experimental_prepareRequestBody: ({ messages }) => buildAiRequestBody(messages),
+    experimental_prepareRequestBody: ({ messages, requestBody }) => buildAiRequestBody(messages, requestBody),
     onFinish: () => {
+      attachments.clearLastSent()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
+    // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）
+    onError: () => attachments.restoreLastSent(),
   })
 
   React.useEffect(() => {
@@ -297,12 +304,20 @@ function ChatView({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
   // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = React.useState(false)
+  // アップロード中・失敗した添付があるうちは送らない（黙って添付を外して送らない）
+  const canSend = !!input.trim() && !isLoading && !attachments.isUploading && !attachments.hasError
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     const text = input.trim()
-    if (!text || isLoading) return
+    if (!text || !canSend) return
     setInput('')
-    void append({ role: 'user', content: mentions.takeEncoded(text) })
+    const { attachmentIds, displayAttachments } = attachments.takeForSend()
+    void append(
+      { role: 'user', content: mentions.takeEncoded(text), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { body: { attachmentIds } },
+    )
   }
 
   return (
@@ -332,6 +347,7 @@ function ChatView({
           {messages.map(m => m.role === 'user' ? (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                {m.experimental_attachments && <SentAttachments attachments={m.experimental_attachments}/>}
                 {stripMentionsToText(m.content)}
               </div>
             </div>
@@ -400,14 +416,58 @@ function ChatView({
           )}
           <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
           {mentions.picker}
-          <form onSubmit={submit}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
+          <PendingAttachmentChips items={attachments.pending} onRemove={localId => void attachments.remove(localId)}/>
+          {attachments.notice && (
+            <div role="alert" style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{attachments.notice}</div>
+          )}
+          {attachments.hasError && (
+            <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{t('Remove the attachments that failed to upload before sending')}</div>
+          )}
+          <form
+            onSubmit={submit}
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => {
+              if (e.dataTransfer.files.length === 0) return
+              e.preventDefault()
+              setDragging(false)
+              void attachments.add(e.dataTransfer.files)
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: `1px solid ${dragging ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 14, padding: '10px 12px 10px 10px', boxShadow: 'var(--shadow-sm)' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={AI_ATTACHMENT_ACCEPT}
+                hidden
+                onChange={e => {
+                  if (e.target.files) void attachments.add(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={t('Attach files')}
+                title={t('Attach files')}
+                disabled={isLoading}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }}
+              >
+                <Icon name="paperclip" size={16}/>
+              </button>
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={e => { handleInputChange(e); mentions.syncTrigger(e.target.value, e.target.selectionStart) }}
                 onSelect={e => mentions.syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
                 onBlur={mentions.close}
+                onPaste={e => {
+                  if (e.clipboardData.files.length === 0) return
+                  e.preventDefault()
+                  void attachments.add(e.clipboardData.files)
+                }}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={e => {
@@ -423,12 +483,13 @@ function ChatView({
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={!canSend}
+                aria-label={attachments.isUploading ? t('Uploading...') : t('Send')}
                 style={{
                   width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: (input.trim() && !isLoading) ? 'var(--accent)' : 'var(--border-2)',
-                  color: (input.trim() && !isLoading) ? 'var(--on-accent)' : 'var(--text-4)',
-                  cursor: (input.trim() && !isLoading) ? 'pointer' : 'default',
+                  background: canSend ? 'var(--accent)' : 'var(--border-2)',
+                  color: canSend ? 'var(--on-accent)' : 'var(--text-4)',
+                  cursor: canSend ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}

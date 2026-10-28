@@ -177,4 +177,21 @@ describe('extractText', () => {
 
     expect(text).toBe('name,note\n太郎,�')
   })
+
+  it('Excel はシートの並び順に、共有文字列・インライン文字列・数値をタブ区切りの行で取り出す', async () => {
+    const zip = new JSZip()
+    zip.file('xl/workbook.xml', '<workbook><sheets><sheet name="予算 &amp; 実績" sheetId="2" r:id="rId2"/><sheet name="メモ" sheetId="1" r:id="rId1"/></sheets></workbook>')
+    zip.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>')
+    zip.file('xl/sharedStrings.xml', '<sst><si><t>項目</t></si><si><r><t>交通</t></r><r><t>費</t></r></si></sst>')
+    zip.file('xl/worksheets/sheet2.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>金額</t></is></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><f>1000*2</f><v>2000</v></c></row><row r="3"><c r="A3"/></row></sheetData></worksheet>')
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>持ち物</t></is></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .toBe('# 予算 & 実績\n項目\t金額\n交通費\t2000\n\n# メモ\n持ち物')
+  })
+
+  it('Excel はファイル一覧のインデックス対象には入れない', () => {
+    expect(isIndexable('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(false)
+  })
 })

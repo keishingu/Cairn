@@ -14,6 +14,7 @@ describe('parseLatestUserInput', () => {
     })).toEqual({
       lastUserContent: '次の予定を教えて',
       clientMessageCount: 2,
+      attachmentIds: [],
     })
   })
 
@@ -52,6 +53,7 @@ describe('parseLatestUserInput', () => {
     })).toEqual({
       lastUserContent: '最新の質問',
       clientMessageCount: 2,
+      attachmentIds: [],
     })
   })
 
@@ -65,6 +67,7 @@ describe('parseLatestUserInput', () => {
     expect(parseLatestUserInput({ messages })).toEqual({
       lastUserContent: '最後の質問',
       clientMessageCount: 61,
+      attachmentIds: [],
     })
   })
 
@@ -161,5 +164,40 @@ describe('本文のない tool 結果だけの応答', () => {
 
   it('モデルへの履歴には空の応答を入れない', () => {
     expect(buildModelMessages(history, '次の依頼').map(message => message.role)).toEqual(['user', 'user'])
+  })
+})
+
+describe('添付の受け取り', () => {
+  const ID = '11111111-1111-4111-8111-111111111111'
+
+  it('最新の依頼に付けた添付の ID を受け取る', () => {
+    expect(parseLatestUserInput({ messages: [{ role: 'user', content: 'これを要約して' }], attachmentIds: [ID] }).attachmentIds)
+      .toEqual([ID])
+  })
+
+  it('添付が6個以上・ID の形が崩れていれば、理由が分かるエラーにする', () => {
+    const six = Array.from({ length: 6 }, (_, index) => `11111111-1111-4111-8111-11111111111${index}`)
+    expect(() => parseLatestUserInput({ messages: [{ role: 'user', content: 'a' }], attachmentIds: six })).toThrow('添付は5個まで')
+    expect(() => parseLatestUserInput({ messages: [{ role: 'user', content: 'a' }], attachmentIds: ['../x'] })).toThrow('添付は5個まで')
+  })
+
+  it('今回の添付と、履歴の利用者メッセージの添付をメッセージの中身として渡す', () => {
+    const messages = buildModelMessages(
+      [{ id: 'm1', role: 'user', content: '前の質問', createdAt: '2026-10-28T00:00:00Z' }, { id: 'm2', role: 'assistant', content: '前の回答', createdAt: '2026-10-28T00:00:01Z' }],
+      'この表の合計は？',
+      {
+        latest: [{ kind: 'document', id: 'a2', fileName: '予算.xlsx', text: '交通費\t2000', truncated: false }],
+        history: new Map([['m1', [{ kind: 'omitted-image' as const, id: 'a1', fileName: '地図.png' }]]]),
+      },
+    )
+    expect(messages[0]).toEqual({ role: 'user', content: [
+      { type: 'text', text: '前の質問' },
+      { type: 'text', text: expect.stringContaining('name="地図.png" kind="image"') },
+    ] })
+    expect(messages[1]).toEqual({ role: 'assistant', content: '前の回答' })
+    expect(messages[2]).toEqual({ role: 'user', content: [
+      { type: 'text', text: 'この表の合計は？' },
+      { type: 'text', text: '<attached-file name="予算.xlsx" kind="document">\n交通費\t2000\n</attached-file>' },
+    ] })
   })
 })

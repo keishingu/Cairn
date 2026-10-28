@@ -113,6 +113,67 @@ function extractParagraphsFromSlideXml(xml: string): string {
   return paragraphs.join('\n')
 }
 
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+// Excel は文字列セルの本文を xl/sharedStrings.xml にまとめて持ち、各シートのセルは t="s" のとき
+// その通し番号を持つ。シート名は xl/workbook.xml の並び順、実体のファイルは rels で解決する。
+// 書式や数式は捨て、表示に近い値（数式は計算済みの値）をタブ区切りの行にする。
+async function extractXlsxText(buffer: Buffer): Promise<string> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+  const sharedXml = await zip.files['xl/sharedStrings.xml']?.async('text')
+  const sharedStrings = sharedXml
+    ? [...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(([, body]) =>
+      [...(body ?? '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map(m => decodeXmlEntities(m[1] ?? '')).join(''))
+    : []
+
+  const sheets = await resolveSheets(zip)
+  const parts: string[] = []
+  for (const sheet of sheets) {
+    const xml = await zip.files[sheet.path]?.async('text')
+    if (!xml) continue
+    const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map(([, rowBody]) =>
+      [...(rowBody ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map(([, attrs, cellBody]) => {
+        const type = attrs?.match(/\bt="([^"]+)"/)?.[1]
+        if (type === 'inlineStr') {
+          return [...(cellBody ?? '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map(m => decodeXmlEntities(m[1] ?? '')).join('')
+        }
+        const value = cellBody?.match(/<v>([^<]*)<\/v>/)?.[1]
+        if (value === undefined) return ''
+        if (type === 's') return sharedStrings[Number(value)] ?? ''
+        return decodeXmlEntities(value)
+      }).join('\t').replace(/\t+$/, ''))
+      .filter(row => row.length > 0)
+    if (rows.length > 0) parts.push(`# ${sheet.name}\n${rows.join('\n')}`)
+  }
+  return parts.join('\n\n')
+}
+
+async function resolveSheets(zip: JSZip): Promise<Array<{ name: string; path: string }>> {
+  const workbookXml = await zip.files['xl/workbook.xml']?.async('text')
+  const relsXml = await zip.files['xl/_rels/workbook.xml.rels']?.async('text')
+  if (workbookXml && relsXml) {
+    const targetById = new Map<string, string>()
+    for (const [tag] of relsXml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
+      const id = tag.match(/\bId="([^"]+)"/)?.[1]
+      const target = tag.match(/\bTarget="([^"]+)"/)?.[1]
+      if (id && target) targetById.set(id, target.startsWith('/') ? target.slice(1) : `xl/${target}`)
+    }
+    const sheets = [...workbookXml.matchAll(/<sheet\b[^>]*\/?>/g)].flatMap(([tag]) => {
+      const name = tag.match(/\bname="([^"]*)"/)?.[1]
+      const rId = tag.match(/\br:id="([^"]+)"/)?.[1]
+      const path = rId ? targetById.get(rId) : undefined
+      return name !== undefined && path ? [{ name: decodeXmlEntities(name), path }] : []
+    })
+    if (sheets.length > 0) return sheets
+  }
+  // 解決できない場合（壊れたファイル等）はファイル名の連番で読む
+  return Object.keys(zip.files)
+    .filter(name => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+    .sort((a, b) => Number(a.match(/sheet(\d+)/)?.[1] ?? 0) - Number(b.match(/sheet(\d+)/)?.[1] ?? 0))
+    .map((path, index) => ({ name: `Sheet${index + 1}`, path }))
+}
+
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
     // エントリ (pdf-parse) ではなく本体実装を直接読み込む。
@@ -134,6 +195,11 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
   if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
     return extractPptxText(buffer)
+  }
+
+  // Excel は AIアシスタントの添付でだけ読む（ファイル一覧のインデックス対象 isIndexable には入れていない）
+  if (mimeType === XLSX_MIME_TYPE) {
+    return extractXlsxText(buffer)
   }
 
   if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'text/csv') {
