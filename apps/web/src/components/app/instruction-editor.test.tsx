@@ -62,7 +62,7 @@ describe('指示文の入力補完', () => {
     })
     renderEditor()
     await userEvent.setup().type(screen.getByPlaceholderText('指示文'), '@レ')
-    expect(await screen.findByRole('alert')).toHaveTextContent('役割の取得に失敗しました')
+    expect(await screen.findByRole('alert')).toHaveTextContent('候補を取得できませんでした。時間をおいて再度お試しください')
     expect(screen.queryByText('一致する候補がありません')).toBeNull()
   })
 
