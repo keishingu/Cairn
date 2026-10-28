@@ -263,8 +263,10 @@ export async function loadHistoryAttachments(
     if (!row.messageId) continue
     const list = result.get(row.messageId) ?? []
     if (AI_ATTACHMENT_IMAGE_TYPES.has(row.mimeType)) {
-      const bytes = images < MAX_HISTORY_IMAGES ? await download(row.storagePath) : null
-      if (bytes) {
+      if (images < MAX_HISTORY_IMAGES) {
+        const bytes = await download(row.storagePath)
+        // 読み込み直す対象なのに読めないときは、古いので省いたことにせずエラーにする（課金前に返す）
+        if (!bytes) throw new AiAttachmentError(500, `以前に添付した ${row.fileName} を読み込めませんでした。時間をおいてもう一度お試しください`)
         images += 1
         list.unshift({ kind: 'image', id: row.id, fileName: row.fileName, mimeType: row.mimeType, data: bytes })
       } else {
