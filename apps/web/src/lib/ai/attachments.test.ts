@@ -51,6 +51,14 @@ describe('buildUserContentParts', () => {
     expect(text).toContain('name="a”＞')
   })
 
+  it('本文の合計の上限で読み込まなかった文書は、取り出せなかった文書と取り違えずに伝える', () => {
+    const [, part] = buildUserContentParts('q', [{ kind: 'document', id: 'a', fileName: 'big.pdf', text: '', truncated: true }])
+    const text = (part as { text: string }).text
+    expect(text).toContain('今回は読み込んでいません')
+    expect(text).not.toContain('取り出せませんでした')
+    expect(text).not.toContain('途中までです')
+  })
+
   it('切り詰めた本文・本文を取り出せなかった文書は、その旨を伝える', () => {
     const parts = buildUserContentParts('q', [
       { kind: 'document', id: 'a', fileName: 'long.pdf', text: 'x', truncated: true },

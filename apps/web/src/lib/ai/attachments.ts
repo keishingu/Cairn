@@ -46,6 +46,8 @@ export const AI_ATTACHMENT_UNSENT_TTL_MS = 24 * 60 * 60 * 1000
  * 送信に使える添付は、アップロードから回収の1時間前までのもの。1回の送信（最長5分）の間に回収が本体を消し、
  * 依頼には結び付いたのに本体だけが無い添付ができないよう、回収と送信が同じ添付に触れない時間帯を空ける
  */
+/** Supabase の署名付きアップロード URL が使える時間（発行から2時間） */
+export const AI_ATTACHMENT_UPLOAD_URL_TTL_MS = 2 * 60 * 60 * 1000
 export const AI_ATTACHMENT_SENDABLE_MS = AI_ATTACHMENT_UNSENT_TTL_MS - 60 * 60 * 1000
 const READ_URL_TTL_SECONDS = 60 * 60
 
@@ -339,10 +341,14 @@ export function buildUserContentParts(
     } else if (attachment.kind === 'omitted-document') {
       parts.push({ type: 'text', text: `<attached-file name="${name}" kind="document">以前に添付された文書です（会話の添付の本文が多いため、古いこの文書は今回は読み込んでいません。必要なら添付し直すよう伝えてください）。</attached-file>` })
     } else {
+      // 本文が空なのは、取り出せなかった（画像だけのPDFなど）か、今回の依頼の本文の合計の上限を使い切ったかのどちらか。
+      // 理由を取り違えて伝えると、読み込んでいないだけの文書を「読めない文書」と案内してしまう
       const body = attachment.text
         ? neutralize(attachment.text)
-        : '（本文を取り出せませんでした。画像だけのPDFなどの可能性があります）'
-      const note = attachment.truncated ? '\n（長いため途中までです。それ以降は読んでいません）' : ''
+        : attachment.truncated
+          ? '（添付の本文が多いため、この文書は今回は読み込んでいません。必要なら、この文書だけを添付し直すよう伝えてください）'
+          : '（本文を取り出せませんでした。画像だけのPDFなどの可能性があります）'
+      const note = attachment.truncated && attachment.text ? '\n（長いため途中までです。それ以降は読んでいません）' : ''
       parts.push({ type: 'text', text: `<attached-file name="${name}" kind="document">\n${body}${note}\n</attached-file>` })
     }
   }
