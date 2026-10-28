@@ -277,6 +277,8 @@ function ChatView({
   const [isComposing, setIsComposing] = React.useState(false)
 
   const attachments = useAiAttachments(conversationId)
+  // 添付付きで送った依頼（応答の後に、そのメッセージの添付を保存後のリンクへ置き換えるため）
+  const sentWithAttachmentsRef = React.useRef<{ messageId: string; attachmentIds: string[] } | null>(null)
   const { messages, input, setInput, setMessages, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
@@ -291,8 +293,10 @@ function ChatView({
     experimental_prepareRequestBody: ({ messages, requestBody }) => buildAiRequestBody(messages, requestBody),
     onFinish: () => {
       // 送った添付に、保存後のリンクを付け直す（送った直後は文書にリンクが無く、画像も手元のプレビューだけのため）
-      const sentIds = attachments.takeLastSentIds()
-      if (sentIds.length > 0) void refreshSentAttachments(sentIds)
+      attachments.takeLastSentIds()
+      const sent = sentWithAttachmentsRef.current
+      sentWithAttachmentsRef.current = null
+      if (sent) void refreshSentAttachments(sent.messageId, sent.attachmentIds)
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
     // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）
@@ -305,7 +309,7 @@ function ChatView({
 
   // 送った添付を、サーバーが保存した添付（期限付きのリンク付き）に置き換える。
   // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、送った添付が保存済みのメッセージに付くまで少し待つ
-  async function refreshSentAttachments(sentIds: string[]) {
+  async function refreshSentAttachments(messageId: string, sentIds: string[]) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500 * attempt))
       const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`)
@@ -314,11 +318,8 @@ function ChatView({
       const message = saved.find(item => item.attachments?.some(attachment => sentIds.includes(attachment.id)))
       if (!message?.attachments) continue
       const display = toDisplayAttachments(message.attachments)
-      setMessages(prev => {
-        const index = prev.findLastIndex(item => item.role === 'user' && (item.experimental_attachments?.length ?? 0) > 0)
-        if (index === -1) return prev
-        return prev.map((item, i) => (i === index ? { ...item, experimental_attachments: display } : item))
-      })
+      // 取り直している間に次の依頼を送っていても、送ったときのメッセージだけを置き換える
+      setMessages(prev => prev.map(item => (item.id === messageId ? { ...item, experimental_attachments: display } : item)))
       return
     }
   }
@@ -336,8 +337,10 @@ function ChatView({
     if (!text || !canSend) return
     setInput('')
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
+    const messageId = crypto.randomUUID()
+    sentWithAttachmentsRef.current = attachmentIds.length > 0 ? { messageId, attachmentIds } : null
     void append(
-      { role: 'user', content: mentions.takeEncoded(input), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { id: messageId, role: 'user', content: mentions.takeEncoded(input), ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
     )
   }
