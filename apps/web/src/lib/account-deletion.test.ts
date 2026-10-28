@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   buildStorageDeletionTargets,
+  delayedAiAttachmentDeletion,
   deleteAccount,
   LastOwnerAccountDeletionError,
   type AccountDeletionDependencies,
@@ -88,6 +89,16 @@ describe('アカウント削除', () => {
     expect(dependencies.enqueueProjectReindex).not.toHaveBeenCalled()
     expect(dependencies.deleteBillingCustomer).not.toHaveBeenCalled()
     expect(dependencies.deleteAuthUser).not.toHaveBeenCalled()
+  })
+
+  it('AIアシスタントの添付は、署名付きアップロード URL の期限を過ぎてからもう一度消すジョブも積む', () => {
+    const now = new Date('2026-10-29T00:00:00Z')
+    expect(delayedAiAttachmentDeletion(['w/u/c/a.pdf', 'w/u/c/a.pdf'], now)).toEqual({
+      targets: [{ bucket: 'ai-attachments', paths: ['w/u/c/a.pdf'] }],
+      // 2時間の期限 + cron の間隔（15分）
+      notBefore: new Date('2026-10-29T02:15:00Z'),
+    })
+    expect(delayedAiAttachmentDeletion([], now)).toBeNull()
   })
 
   it('AIアシスタントの添付も ai-attachments バケットの削除対象に含める', () => {

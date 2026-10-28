@@ -606,11 +606,13 @@ export const runStorageDeletionJob = inngest.createFunction(
     const { db, storageDeletionJobs } = await import('@cairn/db')
     const { eq } = await import('drizzle-orm')
     const [job] = await db
-      .select({ targets: storageDeletionJobs.targets })
+      .select({ targets: storageDeletionJobs.targets, notBefore: storageDeletionJobs.notBefore })
       .from(storageDeletionJobs)
       .where(eq(storageDeletionJobs.id, jobId))
       .limit(1)
     if (!job) return { deleted: 0 }
+    // 実行してよい時刻より前なら消さずに残す（時刻を過ぎてから cron が積み直す）
+    if (job.notBefore && job.notBefore.getTime() > Date.now()) return { deleted: 0, deferred: true }
 
     let deleted = 0
     for (const { bucket, paths } of job.targets) {
@@ -634,9 +636,11 @@ export const requeueStorageDeletionJobs = inngest.createFunction(
   { cron: 'TZ=Asia/Tokyo */15 * * * *' },
   async () => {
     const { db, storageDeletionJobs } = await import('@cairn/db')
+    const { isNull, lte, or } = await import('drizzle-orm')
     const rows = await db
       .select({ id: storageDeletionJobs.id })
       .from(storageDeletionJobs)
+      .where(or(isNull(storageDeletionJobs.notBefore), lte(storageDeletionJobs.notBefore, new Date())))
       .limit(100)
     if (rows.length > 0) {
       await inngest.send(
