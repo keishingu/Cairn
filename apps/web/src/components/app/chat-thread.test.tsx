@@ -13,6 +13,7 @@ import {
   ChatThread,
   copyMessageContent,
   copyMessageLink,
+  findInsertedMention,
   isNearMessageTimelineEnd,
   shouldFollowLatestMessage,
   fetchMessageTaskCandidates,
@@ -1307,5 +1308,19 @@ describe('ChatThreadの送信キー切替', () => {
     expect(sendMessage).not.toHaveBeenCalled()
 
     view.unmount()
+  })
+})
+
+describe('findInsertedMention', () => {
+  it('本文に残っている @表示名 の位置を返す', () => {
+    expect(findInsertedMention('確認 @小川聡 よろしく', '小川聡')).toBe(3)
+  })
+
+  it('名前の途中で続く別人の名前はメンション済みとみなさない', () => {
+    expect(findInsertedMention('@小川聡太 よろしく', '小川聡')).toBeNull()
+  })
+
+  it('消したメンションはメンション済みとみなさない', () => {
+    expect(findInsertedMention('よろしく', '小川聡')).toBeNull()
   })
 })
