@@ -70,19 +70,22 @@ function isIntactAt(text: string, insertion: PositionedMentionInsertion): boolea
 
 /**
  * 入力欄の書き換えに合わせて挿入の位置をずらす。書き換えた範囲に重なった挿入（消した・名前を書き換えた）は外す。
- * 書き換えは前後の一致しない範囲1か所とみなす（打鍵・貼り付け・削除はどれもこの形になる）
+ * 書き換えは前後の一致しない範囲1か所とみなす（打鍵・貼り付け・削除はどれもこの形になる）。
+ * 前後の文字列だけでは `@Alice @Alice` のどちらを消したか区別できないため、入力欄の書き換え直後のカーソル位置
+ * （書き換えた範囲の終わり）が分かるときは渡す。範囲はカーソルより後ろへは伸びず、カーソルより前から始まる
  */
 export function rebaseMentionInsertions(
   previous: string,
   next: string,
   insertions: ReadonlyArray<PositionedMentionInsertion>,
+  caret?: number,
 ): PositionedMentionInsertion[] {
   if (previous === next) return [...insertions]
   let prefix = 0
-  const maxPrefix = Math.min(previous.length, next.length)
+  const maxPrefix = Math.min(previous.length, next.length, caret ?? Infinity)
   while (prefix < maxPrefix && previous[prefix] === next[prefix]) prefix += 1
   let suffix = 0
-  const maxSuffix = Math.min(previous.length, next.length) - prefix
+  const maxSuffix = Math.min(Math.min(previous.length, next.length) - prefix, caret === undefined ? Infinity : next.length - caret)
   while (suffix < maxSuffix && previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix += 1
   const changedEnd = previous.length - suffix
   const delta = next.length - previous.length

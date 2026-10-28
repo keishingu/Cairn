@@ -75,6 +75,14 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
     [members.data, mentioned],
   )
 
+  /** 入力欄を書き換えたとき。書き換えた位置（カーソル）で挿入をずらし、候補の表示も合わせる */
+  const onEdit = (text: string, caret: number) => {
+    const previous = previousInputRef.current
+    previousInputRef.current = text
+    setInsertions(prev => rebaseMentionInsertions(previous, text, prev, caret))
+    syncTrigger(text, caret)
+  }
+
   const syncTrigger = (text: string, caret: number) => {
     setTrigger(memberMentionTrigger(text, caret))
     setActiveIndex(0)
@@ -122,6 +130,7 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
   }
 
   return {
+    onEdit,
     syncTrigger,
     handleKeyDown,
     close: () => setTrigger(null),
