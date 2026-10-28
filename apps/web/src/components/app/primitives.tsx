@@ -56,6 +56,7 @@ const PATHS: Record<string, React.ReactNode> = {
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
   chevronsLeft:  <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>,
   chevronsRight: <><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></>,
+  maximize:    <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>,
   close:       <><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></>,
   more:        <><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></>,
   filter:      <><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5"/></>,
