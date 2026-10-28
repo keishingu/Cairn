@@ -234,5 +234,17 @@ describe('extractText', () => {
     expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
       .toBe('# Sheet1\n項目\t予算\t実績\n交通費\t\t2000')
   })
+
+  it('Excel で遠い列のセルを並べた行は、上限より右の列を読まずに空欄も増やさない', async () => {
+    const zip = new JSZip()
+    const farCells = Array.from({ length: 300 }, (_, index) => `<c r="${['A', 'Z', 'AZ', 'ZZ', 'AAA', 'XFD'][index % 6]}1"><v>1</v></c>`).join('')
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData>${`<row r="1">${farCells}</row>`.repeat(2_000)}</sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const started = Date.now()
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(Math.max(...text.split('\n').map(line => line.split('\t').length))).toBeLessThanOrEqual(1000)
+  })
 })
 

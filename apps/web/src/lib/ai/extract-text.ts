@@ -225,8 +225,8 @@ function columnIndex(letters: string | undefined): number | null {
   return index - 1
 }
 
-/** 空欄で埋める列数の上限（XFD 列のような遠いセルだけを置いた行で、大量の空欄を作らない） */
-const XLSX_MAX_EMPTY_COLUMNS = 1000
+/** 1行で読む列数の上限（XFD 列のような遠いセルを置いた行で、大量の空欄を作らない）。これより右の列は読まない */
+const XLSX_MAX_COLUMNS = 1000
 
 async function extractXlsxText(buffer: Buffer): Promise<string> {
   const JSZip = (await import('jszip')).default
@@ -251,8 +251,9 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
       for (const { attrs, body } of scanElements(rowBody, 'c')) {
         // 空のセルは XML から省かれることがあるため、r="C2" の列で位置を合わせる（省いた分だけ空欄を入れる）
         const column = columnIndex(attrs.match(/\br="([A-Z]{1,3})\d*"/)?.[1])
+        if ((column ?? cells.length) >= XLSX_MAX_COLUMNS || cells.length >= XLSX_MAX_COLUMNS) break
         if (column !== null && column > cells.length) {
-          const gap = Math.min(column - cells.length, XLSX_MAX_EMPTY_COLUMNS)
+          const gap = column - cells.length
           for (let index = 0; index < gap; index += 1) cells.push('')
           rowLength += gap
         }
@@ -268,10 +269,11 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
         rowLength += cell.length + 1
         if (length + rowLength >= XLSX_MAX_OUTPUT_CHARS) break
       }
+      // 空欄だけの行も、作ったセルの数を全体の上限に数える（空の行を大量に並べたファイルで処理を膨らませない）
+      length += rowLength
       const row = cells.join('\t').replace(/\t+$/, '')
       if (row.length === 0) continue
       rows.push(row)
-      length += row.length + 1
     }
     if (rows.length > 0) parts.push(`# ${sheet.name}\n${rows.join('\n')}`)
   }
