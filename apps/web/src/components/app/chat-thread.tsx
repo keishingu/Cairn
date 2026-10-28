@@ -225,7 +225,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -268,6 +268,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onImageClick: (attachmentId: string) => void
   /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
   onMoveToThread?: (messageId: string) => void
+  /** 渡されたときだけアバターを押して送信者のメンバー詳細を開ける（ワークスペースの在籍者で、アプリ・システムの発言でないとき） */
+  onOpenSender?: (userId: string) => void
   /** 切り出すメッセージの選択モード。渡されたときはチェックボックスを出し、行のクリックで選択を切り替える */
   selection?: { selected: boolean; onToggle: (messageId: string) => void }
   mentionNames?: Map<string, string>
@@ -473,9 +475,21 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           style={{ accentColor: 'var(--accent)', margin: '10px 0 0', flexShrink: 0, width: 16, height: 16 }}
         />
       )}
-      <div title={senderEmail ?? undefined}>
-        <Avatar name={displaySenderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
-      </div>
+      {onOpenSender ? (
+        <button
+          type="button"
+          onClick={() => onOpenSender(senderId)}
+          title={senderEmail ?? undefined}
+          aria-label={t('Open profile of {name}', { name: displaySenderName })}
+          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: '50%', flexShrink: 0 }}
+        >
+          <Avatar name={displaySenderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+        </button>
+      ) : (
+        <div title={senderEmail ?? undefined}>
+          <Avatar name={displaySenderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
           <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
@@ -1521,7 +1535,7 @@ function useMessageTimelineScroll({
 
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false, onMoveToThread, moveSelection, onMessageNotInChannel }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false, onMoveToThread, moveSelection, onMessageNotInChannel, onOpenMember }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
@@ -1542,6 +1556,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   }
   /** ジャンプ先のメッセージがこのチャンネルに無かったとき（別チャンネルへ移された可能性）に呼ばれる */
   onMessageNotInChannel?: (messageId: string) => void
+  /** 渡すとメッセージのアバターから送信者のメンバー詳細を開ける */
+  onOpenMember?: (userId: string) => void
 }) => {
   const t = useT()
   const [draft, setDraft] = React.useState('')
@@ -2464,6 +2480,9 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
               {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
+              {...(onOpenMember && !moveSelection && !item.message.senderApp && item.message.messageType !== 'system' && emailByUserId.has(item.message.senderId)
+                ? { onOpenSender: onOpenMember }
+                : {})}
               {...(moveSelection && item.message.messageType !== 'system'
                 ? { selection: { selected: moveSelection.selectedIds.has(item.message.id), onToggle: handleToggleMoveSelection } }
                 : {})}
