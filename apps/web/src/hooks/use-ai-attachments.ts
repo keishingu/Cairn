@@ -205,6 +205,7 @@ export function useAiAttachments(conversationId: string) {
   return {
     pending,
     notice,
+    dismissNotice: () => setNotice(null),
     add,
     remove,
     blocker: sendBlocker(pending),

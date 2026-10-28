@@ -8,6 +8,7 @@
 
 import React from 'react'
 import { useT } from '@/components/locale-provider'
+import { InlineError } from './inline-error'
 import { sanitizeReferenceName } from '@/lib/ai/reference-name'
 import {
   encodePositionedMentions,
@@ -146,13 +147,11 @@ function MemberMentionPicker({ candidates, activeIndex, isLoading, error, onSele
   onSelect: (member: MemberCandidate) => void
 }) {
   const t = useT()
-  const message = (text: string, color = 'var(--text-4)') => (
-    <div role={color === 'var(--red-text)' ? 'alert' : undefined} style={{ padding: '8px 12px', fontSize: 12, color }}>{text}</div>
-  )
+  const message = (text: string) => <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{text}</div>
   return (
     <div role="listbox" aria-label={t('Members')} style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
       {error
-        ? message(t('Could not load suggestions. Try again later.'), 'var(--red-text)')
+        ? <InlineError style={{ padding: '8px 12px' }}>{t('Could not load suggestions. Try again later.')}</InlineError>
         : isLoading
           ? message(t('Loading...'))
           : candidates.length === 0

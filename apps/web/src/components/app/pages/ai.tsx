@@ -14,6 +14,7 @@ import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '.
 import { useAiAttachments } from '@/hooks/use-ai-attachments'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
+import { InlineError } from '../inline-error'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
@@ -372,9 +373,11 @@ function ChatView({
       )}
 
       {conversationSync.syncError && !error && (
-        <div role="alert" style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ flex: 1 }}>{t('Could not load the latest conversation. Attachment links may be out of date.')}</span>
-          <button type="button" className="btn btn-ghost" style={{ height: 26, fontSize: 11.5 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
+        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}` }}>
+          <InlineError variant="box">
+            {t('Could not load the latest conversation. Attachment links may be out of date.')}{' '}
+            <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
+          </InlineError>
         </div>
       )}
       {error && (
@@ -463,11 +466,12 @@ function ChatView({
           <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
           {mentions.picker}
           <PendingAttachmentChips items={attachments.pending} onRemove={localId => void attachments.remove(localId)}/>
+          {/* 添付できなかった・外せなかったファイルは、閉じるまで残す */}
           {attachments.notice && (
-            <div role="alert" style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{attachments.notice}</div>
+            <InlineError onDismiss={attachments.dismissNotice} style={{ marginBottom: 8 }}>{attachments.notice}</InlineError>
           )}
           {attachments.blocker === 'failed' && (
-            <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--red-text)' }}>{t('Remove the attachments that failed to upload before sending')}</div>
+            <InlineError style={{ marginBottom: 8 }}>{t('Remove the attachments that failed to upload before sending')}</InlineError>
           )}
           <form
             onSubmit={submit}
