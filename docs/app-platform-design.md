@@ -27,6 +27,7 @@
 |---|---|
 | [`scheduled-jobs-design.md`](./scheduled-jobs-design.md) | 投票のデータモデル・権限・登山本部ユースケースは引き継ぐ。**`message_type` に `poll` を足す案は、汎用の `blocks` に置き換える**（§4.1）。定期ジョブの「Bot 送信者」は投票アプリの Bot になる（§7.4） |
 | [`10_ai_member_design.md`](./10_ai_member_design.md) | 未決事項「`auth.users` に紐づかない送信者の認証・RLS」は、本書の Bot profile（§3.2）で先に解く。AI メンバーも将来は同じ Bot 機構に載せられる。Stage 2 の「承認カード」はカード型メッセージで描ける |
+| [`ai-automation-design.md`](./ai-automation-design.md) | AI オートメーションの投稿主「Cairn AI」（slug `ai`）は、各ワークスペースへ自動インストールするファーストパーティのアプリとして本基盤の Bot に載せる。Cairn 本体の一部なので、投票アプリと違い HTTP の Bot API を通らず投稿関数を直接呼び、インタラクションの受け口・起動口を持たない（同書 §11.2） |
 | [`mcp-server-design.md`](./mcp-server-design.md) | MCP の OAuth / PAT は**人間本人の代理**で、`resource` が `/api/mcp` に固定され REST の資格情報にならない。Bot トークンは**アプリ自身の身元**で、別系統として新設する（§3.3）。MCP の資格情報を流用しない |
 
 ## 2. 用語

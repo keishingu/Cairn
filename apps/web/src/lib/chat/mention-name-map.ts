@@ -7,12 +7,16 @@ import {
   PROJECT_MEMBERS_MENTION_ID,
   PROJECT_MEMBERS_MENTION_LABEL,
   attributeMentionTokenId,
+  extractRoleMentionIds,
+  roleMentionTokenId,
   extractAttributeMentionIds,
   extractMentionIds,
 } from '@/lib/chat/mentions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
-/** 本文群に含まれるメンション id → 表示ラベルのマップを組み立てる（ユーザー・予約・属性） */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** 本文群に含まれるメンション id → 表示ラベルのマップを組み立てる（ユーザー・予約・属性・役割） */
 export async function buildMentionNameMap(
   workspaceId: string,
   contents: string[],
@@ -21,10 +25,13 @@ export async function buildMentionNameMap(
   nameMap.set(ALL_MENTION_ID, ALL_MENTION_LABEL)
   nameMap.set(PROJECT_MEMBERS_MENTION_ID, PROJECT_MEMBERS_MENTION_LABEL)
 
-  const userIds = [...new Set(contents.flatMap(extractMentionIds))]
-  const attributeIds = [...new Set(contents.flatMap(extractAttributeMentionIds))]
+  // 手で書かれた `<@foo>` のような ID は UUID の列へ渡すと問い合わせごと失敗するため、UUID の形のものだけを引く
+  const isUuid = (id: string) => UUID_RE.test(id)
+  const userIds = [...new Set(contents.flatMap(extractMentionIds))].filter(isUuid)
+  const attributeIds = [...new Set(contents.flatMap(extractAttributeMentionIds))].filter(isUuid)
+  const roleIds = [...new Set(contents.flatMap(extractRoleMentionIds))].filter(isUuid)
 
-  if (userIds.length === 0 && attributeIds.length === 0) return nameMap
+  if (userIds.length === 0 && attributeIds.length === 0 && roleIds.length === 0) return nameMap
 
   const { db, profiles, workspaceMembers, workspaceProfileAttributes } = await import('@cairn/db')
   const { and, eq, inArray } = await import('drizzle-orm')
@@ -67,6 +74,16 @@ export async function buildMentionNameMap(
     for (const attribute of attributeRows) {
       nameMap.set(attributeMentionTokenId(attribute.id), attribute.name)
     }
+  }
+
+  if (roleIds.length > 0) {
+    // 役割のメンションがあるときだけ引く（役割を使わない呼び出し元にスキーマの依存を増やさない）
+    const { projectRoles } = await import('@cairn/db')
+    const roleRows = await db
+      .select({ id: projectRoles.id, name: projectRoles.name })
+      .from(projectRoles)
+      .where(and(eq(projectRoles.workspaceId, workspaceId), inArray(projectRoles.id, roleIds)))
+    for (const role of roleRows) nameMap.set(roleMentionTokenId(role.id), role.name)
   }
 
   return nameMap

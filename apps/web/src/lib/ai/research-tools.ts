@@ -6,21 +6,31 @@ import { z } from 'zod'
 import type { AuthContext } from '@/lib/get-auth-context'
 import {
   ResearchAccessError,
+  ResearchInputError,
   getResearchRiskSnapshot,
   listResearchProjects,
   listResearchProjectTasks,
   searchResearchChannelMessages,
   searchResearchDocuments,
 } from './workspace-research'
+import {
+  getResearchMemberHistory,
+  getResearchProjectMembers,
+  listResearchChannels,
+  listResearchMembers,
+  listResearchProjectRoles,
+  readResearchChannelMessages,
+  readResearchFile,
+} from './workspace-research-directory'
 
 function toolError(error: unknown) {
-  const accessDenied = error instanceof ResearchAccessError
+  const expected = error instanceof ResearchAccessError || error instanceof ResearchInputError
   console.error('[AI research tool]', error)
   return {
     ok: false as const,
     error: {
-      code: accessDenied ? error.code : 'QUERY_FAILED',
-      message: accessDenied
+      code: expected ? error.code : 'QUERY_FAILED',
+      message: expected
         ? error.message
         : '調査データの取得に失敗しました。この範囲は調査できなかったものとして扱ってください。',
     },
@@ -127,6 +137,118 @@ export function createResearchTools(ctx: AuthContext) {
       }),
       execute: ({ query, limit }) =>
         safely(() => searchResearchDocuments(ctx, { query, limit: limit ?? undefined })),
+    }),
+
+    list_channels: tool({
+      description:
+        '権限内の非DMチャンネル（ワークスペース・プロジェクト・スレッド）を名前やプロジェクトで探します。「#審議」のようにチャンネル名で指定されたら、最初にこれでIDを特定してください。',
+      parameters: z.object({
+        query: z.string().trim().max(100).nullable().describe('チャンネル名またはプロジェクト名の部分一致。先頭の#は無視。未指定ならnull'),
+        projectId: z.string().uuid().nullable().describe('対象プロジェクトを限定。未指定ならnull'),
+        includeArchived: z.boolean().nullable().describe('アーカイブ済みスレッドを含めるか。既定はfalse。指定しない場合はnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
+      }),
+      execute: ({ query, projectId, includeArchived, limit }) =>
+        safely(() =>
+          listResearchChannels(ctx, {
+            query: query || undefined,
+            projectId: projectId ?? undefined,
+            includeArchived: includeArchived ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
+    }),
+
+    read_channel_messages: tool({
+      description:
+        '権限内の1チャンネルのメッセージを期間指定で古い順に読みます。「昨日以降の投稿」のように期間で読むとき、会話の流れを追うときに使います。truncatedがtrueならnextCursorを渡して続きを読んでください。',
+      parameters: z.object({
+        channelId: z.string().uuid().describe('list_channels等で取得したチャンネルID（スレッドのIDも可）'),
+        since: z.string().datetime({ offset: true }).nullable().describe('この日時より後の投稿（ISO 8601）。未指定なら30日前。cursor指定時は無視'),
+        until: z.string().datetime({ offset: true }).nullable().describe('この日時以前の投稿（ISO 8601）。未指定なら現在'),
+        cursor: z.string().max(100).nullable().describe('前回のnextCursor。未指定ならnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
+      }),
+      execute: ({ channelId, since, until, cursor, limit }) =>
+        safely(() =>
+          readResearchChannelMessages(ctx, {
+            channelId,
+            since: since ?? undefined,
+            until: until ?? undefined,
+            cursor: cursor ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
+    }),
+
+    list_project_roles: tool({
+      description:
+        'ワークスペースで使うプロジェクトの役割（リーダー・レビュワー等）と、そのIDを一覧します。役割を付ける実行案には、ここで取得した役割IDを使ってください。',
+      parameters: z.object({}),
+      execute: () => safely(() => listResearchProjectRoles(ctx)),
+    }),
+
+    get_project_members: tool({
+      description:
+        '権限内のプロジェクトの参加者と、プロジェクトの役割（リーダー・レビュワー等）・出欠・プロフィール属性を取得します。',
+      parameters: z.object({
+        projectId: z.string().uuid().describe('list_projects等で取得したプロジェクトID'),
+      }),
+      execute: ({ projectId }) => safely(() => getResearchProjectMembers(ctx, { projectId })),
+    }),
+
+    list_members: tool({
+      description:
+        '利用者に見えるワークスペースのメンバーを、プロフィール属性（例: 「コーチ」「3年生」）付きで一覧します。属性名で絞り込めます。',
+      parameters: z.object({
+        query: z.string().trim().max(100).nullable().describe('表示名の部分一致。未指定ならnull'),
+        attributeNames: z
+          .array(z.string().trim().min(1).max(20))
+          .nullable()
+          .describe('このいずれかのプロフィール属性を持つメンバーに絞る（完全一致・OR）。未指定ならnull'),
+        includeInactive: z.boolean().nullable().describe('非活性メンバーを含めるか（admin以上のみ有効）。既定はfalse。指定しない場合はnull'),
+        limit: nullableRequestedLimit.describe('指定しない場合はnull'),
+      }),
+      execute: ({ query, attributeNames, includeInactive, limit }) =>
+        safely(() =>
+          listResearchMembers(ctx, {
+            query: query || undefined,
+            attributeNames: attributeNames ?? undefined,
+            includeInactive: includeInactive ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
+    }),
+
+    get_member_history: tool({
+      description:
+        'メンバーの経歴（参加プロジェクト・プロジェクトの役割・期間・ステータス・各プロジェクトの添付ファイル）を最大50人まとめて取得します。経歴の比較表は、list_membersで対象を決めてからこれを1回呼んで作ってください。添付ファイルの本文はread_fileで読みます。',
+      parameters: z.object({
+        userIds: z.array(z.string().uuid()).describe('list_members等で取得したユーザーID。最大50人（超えた分は返さずtruncatedになります）'),
+        includeFiles: z.boolean().nullable().describe('各プロジェクトの添付ファイル一覧を含めるか。既定はtrue。指定しない場合はnull'),
+      }),
+      execute: ({ userIds, includeFiles }) =>
+        safely(() =>
+          getResearchMemberHistory(ctx, { userIds, includeFiles: includeFiles ?? undefined }),
+        ),
+    }),
+
+    read_file: tool({
+      description:
+        '権限内の添付ファイル（振り返り資料・計画書など）の抽出済み本文をチャンク単位で読みます。nextStartChunkがあれば続きを読めます。',
+      parameters: z.object({
+        fileId: z.string().uuid().describe('get_member_historyやsearch_workspace_documentsで取得したファイルID'),
+        startChunk: z.number().int().min(0).nullable().describe('読み始めるチャンク番号。既定は0。指定しない場合はnull'),
+        limit: nullableRequestedLimit.describe('読むチャンク数。サーバー上限10。指定しない場合はnull'),
+      }),
+      execute: ({ fileId, startChunk, limit }) =>
+        safely(() =>
+          readResearchFile(ctx, {
+            fileId,
+            startChunk: startChunk ?? undefined,
+            limit: limit ?? undefined,
+          }),
+        ),
     }),
   }
 }

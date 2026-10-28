@@ -7,6 +7,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { MarkdownContent } from '../markdown-content'
+import { PendingActionCards } from '../ai-pending-action-card'
+import { SkillSuggestions } from '../ai-skill-suggestions'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
@@ -97,7 +99,7 @@ function MessageSources({ annotations, toolInvocations }: {
   return (
     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
       {visibleSources.map(src => {
-        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' ? 'chat' : 'users'
+        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' || src.type === 'channel' ? 'chat' : 'users'
         const isExternal = src.href.startsWith('https://') || src.href.startsWith('http://')
         return (
           <a key={`${src.type}:${src.id}`} href={src.href}
@@ -128,6 +130,17 @@ function MessageSources({ annotations, toolInvocations }: {
       })}
     </div>
   )
+}
+
+// useChat はエラー応答の本文をそのまま message にする。API の `{ error }` は文だけを見せる
+export function chatErrorMessage(error: Error): string {
+  try {
+    const body = JSON.parse(error.message) as { error?: unknown }
+    if (typeof body.error === 'string') return body.error
+  } catch {
+    // JSON でなければそのまま出す
+  }
+  return error.message
 }
 
 // ---- 会話サイドバー (PC) ----
@@ -259,7 +272,7 @@ function ChatView({
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
+  const { messages, input, setInput, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
     initialMessages: initialMessages.map(m => ({
@@ -292,7 +305,7 @@ function ChatView({
 
       {error && (
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
-          {t('Error: {message}', { message: error.message })}
+          {t('Error: {message}', { message: chatErrorMessage(error) })}
         </div>
       )}
 
@@ -318,6 +331,7 @@ function ChatView({
                 <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
                   <MarkdownContent content={m.content} lineHeight={1.7}/>
                 </div>
+                <PendingActionCards toolInvocations={m.toolInvocations}/>
                 <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
@@ -371,6 +385,7 @@ function ChatView({
               ))}
             </div>
           )}
+          <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <textarea

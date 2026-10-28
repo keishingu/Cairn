@@ -731,6 +731,14 @@ describe('モバイル設定のセクション', () => {
   })
 })
 
+describe('AIオートメーションの設定セクション', () => {
+  it('一覧を見られないゲストには項目を出さず、URLを直接開いても既定の画面にする', () => {
+    expect(isSettingsSection('automations', false, { isGuest: true })).toBe(false)
+    expect(isSettingsSection('automations', false, { isMobile: true, isGuest: true })).toBe(false)
+    expect(isSettingsSection('automations', false)).toBe(true)
+  })
+})
+
 describe('AIエージェントのモデル選択', () => {
   function renderAiSection(wsRole: 'owner' | 'member') {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {

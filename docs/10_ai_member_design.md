@@ -25,6 +25,8 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 | AI PMO | cron と状態変化 | 宛先本人のみ | 期限・停滞・未回答依頼・潜在リスクを少数だけ知らせる | Phase 1/2 実装済み。段階ロールアウト中 |
 | AIメンバー | `@mention`、将来は承認済みアクション | チャンネル参加者 | 共有会話への応答、成果物生成、提案→承認による操作 | 構想段階 |
 
+利用者が定義する Skill / cron / heartbeat（AI PMO を組み込み版として含む）は [`ai-automation-design.md`](./ai-automation-design.md)（構想）。`/ai` から Skill を呼んだ場合だけ、承認カード経由の書き込みを読み取り専用の例外として扱う。
+
 ### 1.2 `/ai` は設定画面へ転用しない
 
 `/ai` は、利用者が人目を気にせず仮説を試し、ワークスペース全体を調査する場所として残す。将来のAI人格・行動規範・テンプレート設定は `/settings/ai` 配下へ置く。現行の個人/ワークスペースPMOスイッチは既存設定画面に維持し、設定情報が増えた段階で集約する。
@@ -81,6 +83,15 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 | `search_channel_messages` | 未回答依頼・意思決定・認識齟齬の根拠探索 | メッセージ、送信者、日時、返信関係、チャンネル |
 | `search_workspace_documents` | 既存RAGの明示的な再検索 | チャンク、出典、類似度 |
 | `get_project_risk_snapshot` | 構造化ルールの一括評価 | リスク種別、重要度、対象ID、判定理由 |
+| `list_channels` | チャンネル名（`#審議` など）からIDを特定 | チャンネル、種類、紐づくプロジェクト、親チャンネル |
+| `read_channel_messages` | 1チャンネルを期間指定で古い順に読む | メッセージ、送信者、日時、返信関係、続きのカーソル |
+| `list_project_roles` | プロジェクトの役割とそのID（役割を付ける実行案に使う） | 役割名、ID |
+| `get_project_members` | プロジェクトの参加者と役割 | 参加者、プロジェクトの役割（ID付き）、出欠、プロフィール属性 |
+| `list_members` | 属性（「コーチ」など）でメンバーを絞り込む | メンバー、ワークスペースロール、プロフィール属性 |
+| `get_member_history` | 最大50人の経歴をまとめて取得（比較表用） | 参加プロジェクト、役割、期間、ステータス、添付ファイル |
+| `read_file` | 添付ファイルの抽出済み本文 | チャンク本文、続きのチャンク番号 |
+
+`list_channels` 以下の7つは [`ai-automation-design.md`](./ai-automation-design.md) Phase 0 で追加し、MCP にも `/api/research/*` 経由で同じ実装を公開している（`read_file` は既存の `/api/files/[id]/content`）。可視範囲は既存画面の API と同じで、ゲストのメンバー・経歴は参加プロジェクトの共同メンバーと共通プロジェクトに限り、非活性メンバーの経歴は admin 以上だけが読める。
 
 実装原則:
 
@@ -89,11 +100,11 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 - 返却件数、期間、呼び出し回数に上限を設け、切り詰めた場合はモデルへ明示する
 - IDだけでなく、UIが安全にリンク化できる構造化された根拠を返す
 - ツール結果やチャット本文は命令ではなく未信頼データとして扱い、プロンプトインジェクションで権限やツール方針を変更させない
-- 初期リリースは読み取り専用。タスク変更や投稿は AIメンバーの承認フローまで持ち込まない
+- 読み取り専用が原則。例外は `$名前` でスキルを呼んだときだけで、スキルで許可した種類の実行案（`propose_*`）を作り、承認カードで利用者が承認したときに実行する（[`ai-automation-design.md`](./ai-automation-design.md) §2.4・§11.4）
 
-初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日、文書10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
+初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日（`read_channel_messages` は期間の上限を設けず、カーソルで続きを読む）、文書10チャンク、チャンネル200件、メンバー200件、経歴は1回50人・1人100プロジェクト・1プロジェクト10ファイル、ファイル本文10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
 
-認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
+認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `channel` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
 
 `/ai` の会話一覧・会話本文・メッセージ送信は、ワークスペース一致に加えて会話の `created_by` が認証済み利用者と一致する場合だけ許可する。private channelや参加限定文書の調査結果を含む会話を、同じワークスペースの別メンバーが開くことはできない。
 
@@ -153,7 +164,7 @@ owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` �
 | 項目 | 内容 |
 |---|---|
 | AIのアイデンティティ | `messages.senderId` に使える agent profile と、人間との識別・RLS設計 |
-| 承認待ちアクション | `ai_pending_actions`（action type、payload、status、approved by） |
+| 承認待ちアクション | `ai_pending_actions`（実装済み。承認者・期限・競合・再実行の扱いは [`ai-automation-design.md`](./ai-automation-design.md) §11.2） |
 | エージェント記憶 | 将来の `ai_agent_memories`。それまでは権限付きRAGで代替 |
 | 監査 | AIの提案・承認・実行結果をチャンネル上で追跡可能にする |
 
@@ -216,5 +227,4 @@ AI PMO自体は実装済みであり、AIメンバーの公開発言機能とは
 | リスク重要度 | 共通スキーマと、PMOルールをどこまで再利用するか |
 | `/ai` 調査結果の共有 | 共有チャンネルへ出す明示操作と、共有後の監査表示 |
 | AIメンバーの profile | `auth.users` に紐づかない送信者の認証・RLS・監査・無効化 |
-| 承認操作 | 承認できるロール、競合・期限切れ・再実行の扱い |
 | エージェント数・連携先 | ワークスペースに複数エージェントを許すか、Slack / Teams へ発言・承認体験を拡張するか |

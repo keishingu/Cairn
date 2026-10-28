@@ -8,6 +8,7 @@ AI時代の「プロジェクト推進ツール」の中核仮説 —— **AIが
 
 - 戦略上の位置づけ（「逆転② 視線」）: [`ai-era-pm-strategy.md`](./ai-era-pm-strategy.md)
 - 3つのAIサーフェス（`/ai` ワークベンチ・AI PMO・AIメンバー）の境界: [`10_ai_member_design.md`](./10_ai_member_design.md)。本書は**本人だけに見える受動的なプライベートナッジ**を担当する
+- ユーザー定義の Skill / cron / heartbeat（構想）: [`ai-automation-design.md`](./ai-automation-design.md)。PMO は組み込みの cron / heartbeat として同じ基盤へ載せ替える予定（同書 Phase 2）。§2.3 の禁止事項は組み込みの PMO だけに適用し、ユーザー定義のオートメーションには公開を条件に適用しない（同書 §2.6）
 
 ## 0. 実装状況
 

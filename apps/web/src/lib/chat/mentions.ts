@@ -6,6 +6,7 @@
 // - 全員: `<@all>`（チャンネル到達可能な active メンバー）
 // - プロジェクトメンバー: `<@project_members>`（そのプロジェクトの project_members）
 // - 属性: `<@attr:{attributeId}>`
+// - プロジェクトの役割: `<@role:{projectRoleId}>`（そのチャンネルのプロジェクトで、その役割を持つメンバー）
 // 表示名は本文に焼き込まず、read 時に最新名へ解決する。
 // 旧データには `<@id|displayName>` 形式が残っているため、両方を受理する。
 const MENTION_TOKEN_SOURCE = '<@([^|>\\s]+)(?:\\|([^>\\n]+))?>'
@@ -15,8 +16,10 @@ export const ALL_MENTION_LABEL = 'all'
 export const PROJECT_MEMBERS_MENTION_ID = 'project_members'
 export const PROJECT_MEMBERS_MENTION_LABEL = 'project_members'
 export const ATTR_MENTION_PREFIX = 'attr:'
+export const ROLE_MENTION_PREFIX = 'role:'
 export const UNKNOWN_MENTION_NAME = '不明なメンバー'
 export const UNKNOWN_ATTRIBUTE_NAME = '不明な属性'
+export const UNKNOWN_ROLE_NAME = '不明な役割'
 
 const RESERVED_MENTION_IDS = new Set([ALL_MENTION_ID, PROJECT_MEMBERS_MENTION_ID])
 
@@ -26,6 +29,10 @@ export function mentionTokenRegExp(): RegExp {
 
 export function attributeMentionTokenId(attributeId: string): string {
   return `${ATTR_MENTION_PREFIX}${attributeId}`
+}
+
+export function roleMentionTokenId(roleId: string): string {
+  return `${ROLE_MENTION_PREFIX}${roleId}`
 }
 
 export function isAllMentionId(id: string): boolean {
@@ -40,8 +47,17 @@ export function isAttributeMentionId(id: string): boolean {
   return id.startsWith(ATTR_MENTION_PREFIX) && id.length > ATTR_MENTION_PREFIX.length
 }
 
+export function isRoleMentionId(id: string): boolean {
+  return id.startsWith(ROLE_MENTION_PREFIX) && id.length > ROLE_MENTION_PREFIX.length
+}
+
 export function isUserMentionId(id: string): boolean {
-  return !RESERVED_MENTION_IDS.has(id) && !id.startsWith(ATTR_MENTION_PREFIX)
+  return !RESERVED_MENTION_IDS.has(id) && !id.startsWith(ATTR_MENTION_PREFIX) && !id.startsWith(ROLE_MENTION_PREFIX)
+}
+
+export function parseRoleMentionId(id: string): string | null {
+  if (!isRoleMentionId(id)) return null
+  return id.slice(ROLE_MENTION_PREFIX.length)
 }
 
 export function parseAttributeMentionId(id: string): string | null {
@@ -65,6 +81,14 @@ export function extractAttributeMentionIds(content: string): string[] {
   return [...new Set(ids)]
 }
 
+/** 本文中のプロジェクトの役割メンションから roleId を抽出する（重複排除） */
+export function extractRoleMentionIds(content: string): string[] {
+  const ids = [...content.matchAll(mentionTokenRegExp())]
+    .map(m => parseRoleMentionId(m[1]!))
+    .filter((id): id is string => id !== null)
+  return [...new Set(ids)]
+}
+
 export function hasAllMention(content: string): boolean {
   return [...content.matchAll(mentionTokenRegExp())].some(m => isAllMentionId(m[1]!))
 }
@@ -78,6 +102,7 @@ export function hasGroupMention(content: string): boolean {
     hasAllMention(content)
     || hasProjectMembersMention(content)
     || extractAttributeMentionIds(content).length > 0
+    || extractRoleMentionIds(content).length > 0
   )
 }
 
@@ -92,6 +117,9 @@ export function resolveMentionDisplayName(
   }
   if (id.startsWith(ATTR_MENTION_PREFIX)) {
     return nameOf?.(id) ?? embedded ?? UNKNOWN_ATTRIBUTE_NAME
+  }
+  if (id.startsWith(ROLE_MENTION_PREFIX)) {
+    return nameOf?.(id) ?? embedded ?? UNKNOWN_ROLE_NAME
   }
   return nameOf?.(id) ?? embedded ?? UNKNOWN_MENTION_NAME
 }
