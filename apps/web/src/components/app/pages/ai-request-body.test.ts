@@ -39,4 +39,16 @@ describe('AI会話リクエスト本文', () => {
       attachmentIds: ['11111111-1111-4111-8111-111111111111'],
     })
   })
+
+  test('送信時に決めた UUID の依頼 ID を送り、自動で付いた ID は送らない', () => {
+    const id = '33333333-3333-4333-8333-333333333333'
+    expect(buildAiRequestBody([{ id, role: 'user', content: 'q', parts: [] }])).toEqual({
+      messages: [{ role: 'user', content: 'q' }],
+      messageId: id,
+    })
+    expect(buildAiRequestBody([{ id: 'aBc123', role: 'user', content: 'q', parts: [] }])).toEqual({
+      messages: [{ role: 'user', content: 'q' }],
+    })
+  })
 })
+

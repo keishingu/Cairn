@@ -19,6 +19,8 @@ const aiRequestSchema = z.object({
   messages: z.array(clientMessageSchema).min(1),
   // 会話に上げた添付（送信前のもの）。本体は Storage にあり、ここでは ID だけを受け取る
   attachmentIds: z.array(z.string().uuid()).max(AI_ATTACHMENT_MAX_FILES).optional(),
+  // クライアントが決めた依頼のメッセージ ID。この ID のまま保存し、クライアントは保存されたかを ID で確かめる
+  messageId: z.string().uuid().optional(),
 })
 
 export interface StoredConversationMessage {
@@ -35,7 +37,12 @@ const MESSAGE_ROLE_ORDER = {
   assistant: 1,
 } as const
 
-export function parseLatestUserInput(body: unknown): { lastUserContent: string; clientMessageCount: number; attachmentIds: string[] } {
+export function parseLatestUserInput(body: unknown): {
+  lastUserContent: string
+  clientMessageCount: number
+  attachmentIds: string[]
+  messageId: string | null
+} {
   const parsed = aiRequestSchema.safeParse(body)
   if (!parsed.success) {
     if (parsed.error.issues.some(issue => issue.path[0] === 'attachmentIds')) {
@@ -66,6 +73,7 @@ export function parseLatestUserInput(body: unknown): { lastUserContent: string; 
     lastUserContent,
     clientMessageCount: parsed.data.messages.length,
     attachmentIds: parsed.data.attachmentIds ?? [],
+    messageId: parsed.data.messageId ?? null,
   }
 }
 

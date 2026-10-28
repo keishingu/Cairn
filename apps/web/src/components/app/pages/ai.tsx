@@ -297,14 +297,18 @@ function ChatView({
     onFinish: () => {
       attachments.clearLastSent()
       // 送ったメッセージを、サーバーが保存した内容（添付の期限付きリンクを含む）に置き換える
-      void syncFromServer()
+      const sentId = inFlightIdRef.current
+      inFlightIdRef.current = null
+      if (sentId) void syncFromServer(sentId)
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
     // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）。
     // 失敗した依頼はサーバーに保存されないため、保存待ちの記録も消す（次にサーバーの内容で置き換えたとき、画面からも消える）
     onError: () => {
       attachments.restoreLastSent()
-      awaitingSaveRef.current = null
+      // 失敗した依頼は保存されないため、待つのをやめる
+      if (inFlightIdRef.current) unsavedIdsRef.current.delete(inFlightIdRef.current)
+      inFlightIdRef.current = null
     },
   })
 
@@ -317,39 +321,59 @@ function ChatView({
   // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
   // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
   // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
-  const serverCountRef = React.useRef(initialMessages.length)
-  const awaitingSaveRef = React.useRef<number | null>(null)
+  // 送ったがまだ保存を確かめていない依頼の ID（クライアントが決め、サーバーも同じ ID で保存する）。
+  // これらが全部サーバーにそろうまで置き換えない（そろわないうちに置き換えると、後の依頼・応答・添付が画面から消える）
+  const unsavedIdsRef = React.useRef(new Set<string>())
+  const inFlightIdRef = React.useRef<string | null>(null)
   const isLoadingRef = React.useRef(isLoading)
   isLoadingRef.current = isLoading
+  const [syncError, setSyncError] = React.useState(false)
   const applyServerMessages = (saved: MessageDto[]): boolean => {
     if (isLoadingRef.current) return false
-    if (awaitingSaveRef.current !== null) {
-      if (saved.length < awaitingSaveRef.current) return false
-      awaitingSaveRef.current = null
-    }
-    serverCountRef.current = saved.length
+    // 保存を確かめられた依頼は待つ対象から外し、まだ保存されていない依頼が残っていれば置き換えない
+    const savedIds = new Set(saved.map(message => message.id))
+    for (const id of unsavedIdsRef.current) if (savedIds.has(id)) unsavedIdsRef.current.delete(id)
+    if (unsavedIdsRef.current.size > 0) return false
     setMessages(toChatMessages(saved))
     queryClient.setQueryData(['ai-messages', conversationId], saved)
+    setSyncError(false)
     return true
   }
-  const loadFromServer = async (): Promise<boolean> => {
-    const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`).catch(() => null)
-    return !!res?.ok && applyServerMessages((await res.json()) as MessageDto[])
+  /** サーバーから取り直す。取得に失敗したら 'failed'、保存が追いついておらず置き換えなかったら 'waiting' */
+  const loadFromServer = async (): Promise<'applied' | 'waiting' | 'failed'> => {
+    try {
+      const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`)
+      if (!res.ok) return 'failed'
+      return applyServerMessages((await res.json()) as MessageDto[]) ? 'applied' : 'waiting'
+    } catch {
+      return 'failed'
+    }
   }
   // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、保存が追いつくまで少し待って取り直す。
-  // 追いつかなければ（応答が保存されなかったとき）待つのをやめ、次に取り直したときはサーバーの内容で置き換える
-  async function syncFromServer() {
+  // 取り直せなかった・この依頼が保存されなかったときは、黙って古い表示のままにせず知らせて、もう一度読み込めるようにする
+  async function syncFromServer(sentId: string) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
-      if (await loadFromServer()) return
+      const result = await loadFromServer()
+      // 置き換えた・この依頼はもう保存を確かめた（後の依頼を待っているだけ）なら、後のことは後の依頼に任せる
+      if (result === 'applied' || !unsavedIdsRef.current.has(sentId)) return
     }
-    awaitingSaveRef.current = null
+    // この依頼は保存されなかったものとして待つのをやめ、知らせる（続けて送った依頼は引き続き待つ）
+    unsavedIdsRef.current.delete(sentId)
+    setSyncError(true)
+  }
+  const reload = async () => {
+    const result = await loadFromServer()
+    setSyncError(result !== 'applied')
   }
   // 会話を開いたときと、タブに戻ってきたときにも取り直す（添付のリンクは1時間で切れるため、取得キャッシュの古さに任せない）
   React.useEffect(() => {
-    void loadFromServer()
+    const refresh = async () => {
+      if ((await loadFromServer()) === 'failed') setSyncError(true)
+    }
+    void refresh()
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadFromServer()
+      if (document.visibilityState === 'visible') void refresh()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
@@ -368,10 +392,12 @@ function ChatView({
   const send = (content: string) => {
     if (!content.trim() || !ready) return
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
-    // 依頼と応答の2件が保存されるまで、サーバーの内容で置き換えない
-    awaitingSaveRef.current = serverCountRef.current + 2
+    // 依頼の ID はここで決め、サーバーにも同じ ID で保存させる。保存を確かめるまでサーバーの内容で置き換えない
+    const messageId = crypto.randomUUID()
+    unsavedIdsRef.current.add(messageId)
+    inFlightIdRef.current = messageId
     void append(
-      { role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { id: messageId, role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
     )
   }
@@ -396,6 +422,12 @@ function ChatView({
         </div>
       )}
 
+      {syncError && !error && (
+        <div role="alert" style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>{t('Could not load the latest conversation. Attachment links may be out of date.')}</span>
+          <button type="button" className="btn btn-ghost" style={{ height: 26, fontSize: 11.5 }} onClick={() => void reload()}>{t('Reload')}</button>
+        </div>
+      )}
       {error && (
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
           {t('Error: {message}', { message: chatErrorMessage(error) })}

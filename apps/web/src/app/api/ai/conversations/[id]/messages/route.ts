@@ -162,11 +162,13 @@ export async function POST(req: Request, { params }: RouteContext) {
   let lastUserContent: string
   let clientMessageCount: number
   let attachmentIds: string[]
+  let requestedMessageId: string | null
   try {
     const parsed = parseLatestUserInput(requestBody)
     lastUserContent = parsed.lastUserContent
     clientMessageCount = parsed.clientMessageCount
     attachmentIds = parsed.attachmentIds
+    requestedMessageId = parsed.messageId
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
@@ -187,7 +189,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   }
 
   const assistantMessageId = crypto.randomUUID()
-  const userMessageId = crypto.randomUUID()
+  // クライアントが決めた ID があればそのまま使う（クライアントは保存されたかをこの ID で確かめる）
+  const userMessageId = requestedMessageId ?? crypto.randomUUID()
   let activeCreditReservationPending = false
   let activeCreditReservationFailed = false
   // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。

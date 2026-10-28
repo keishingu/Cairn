@@ -752,6 +752,7 @@ export const KO_MESSAGES: Record<string, string> = {
   Menu: '메뉴',
   'Mermaid diagram': 'Mermaid 다이어그램',
   'Show diagram full screen': '다이어그램을 전체 화면으로 보기',
+  'Could not load the latest conversation. Attachment links may be out of date.': '대화의 최신 상태를 불러오지 못했습니다. 첨부 링크가 오래되었을 수 있습니다',
   'Could not remove': '제거하지 못했습니다',
   'Could not remove {name}. Try again.': '{name}을(를) 제거하지 못했습니다. 다시 시도해 주세요',
   'Could not remove the attachment. Try again.': '첨부를 제거하지 못했습니다. 다시 시도해 주세요',

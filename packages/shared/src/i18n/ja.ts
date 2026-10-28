@@ -752,6 +752,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Menu: 'メニュー',
   'Mermaid diagram': 'Mermaid図',
   'Show diagram full screen': '図を全画面で表示',
+  'Could not load the latest conversation. Attachment links may be out of date.': '会話の最新の状態を読み込めませんでした。添付のリンクが古い可能性があります',
   'Could not remove': '外せませんでした',
   'Could not remove {name}. Try again.': '{name} を外せませんでした。もう一度お試しください',
   'Could not remove the attachment. Try again.': '添付を外せませんでした。もう一度お試しください',

@@ -15,6 +15,7 @@ describe('parseLatestUserInput', () => {
       lastUserContent: '次の予定を教えて',
       clientMessageCount: 2,
       attachmentIds: [],
+      messageId: null,
     })
   })
 
@@ -54,6 +55,7 @@ describe('parseLatestUserInput', () => {
       lastUserContent: '最新の質問',
       clientMessageCount: 2,
       attachmentIds: [],
+      messageId: null,
     })
   })
 
@@ -68,6 +70,7 @@ describe('parseLatestUserInput', () => {
       lastUserContent: '最後の質問',
       clientMessageCount: 61,
       attachmentIds: [],
+      messageId: null,
     })
   })
 
@@ -201,3 +204,12 @@ describe('添付の受け取り', () => {
     ] })
   })
 })
+
+describe('依頼のメッセージ ID', () => {
+  it('クライアントが決めた UUID を受け取り、形の崩れた ID は受け付けない', () => {
+    const id = '22222222-2222-4222-8222-222222222222'
+    expect(parseLatestUserInput({ messages: [{ role: 'user', content: 'q' }], messageId: id }).messageId).toBe(id)
+    expect(() => parseLatestUserInput({ messages: [{ role: 'user', content: 'q' }], messageId: 'abc' })).toThrow()
+  })
+})
+
