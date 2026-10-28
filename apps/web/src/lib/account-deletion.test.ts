@@ -90,6 +90,12 @@ describe('アカウント削除', () => {
     expect(dependencies.deleteAuthUser).not.toHaveBeenCalled()
   })
 
+  it('AIアシスタントの添付も ai-attachments バケットの削除対象に含める', () => {
+    expect(
+      buildStorageDeletionTargets([], [], [], ['workspace-1/user-1/conversation-1/a.pdf', 'workspace-1/user-1/conversation-1/a.pdf']),
+    ).toEqual([{ bucket: 'ai-attachments', paths: ['workspace-1/user-1/conversation-1/a.pdf'] }])
+  })
+
   it('アバター・投稿ファイル・未確定アップロードをバケット別に重複なくまとめる', () => {
     expect(
       buildStorageDeletionTargets(

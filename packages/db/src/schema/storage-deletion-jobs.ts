@@ -14,4 +14,6 @@ export const storageDeletionJobs = pgTable('storage_deletion_jobs', {
   id: uuid('id').primaryKey().defaultRandom(),
   targets: jsonb('targets').$type<StorageDeletionTarget[]>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // この時刻より前には実行しない（null はすぐ実行する）。署名付きアップロード URL の期限後に消し直すときに使う
+  notBefore: timestamp('not_before', { withTimezone: true }),
 })
