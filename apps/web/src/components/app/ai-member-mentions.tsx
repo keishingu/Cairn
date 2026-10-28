@@ -7,8 +7,8 @@
 // `<@userId|表示名>` へ置き換える。AI は名前で探し直さずにこの ID で調べられ、同名の人を取り違えない。
 
 import React from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useT } from '@/components/locale-provider'
+import { InlineError } from './inline-error'
 import { sanitizeReferenceName } from '@/lib/ai/reference-name'
 import {
   encodePositionedMentions,
@@ -16,12 +16,9 @@ import {
   rebaseMentionInsertions,
   type PositionedMentionInsertion,
 } from '@/lib/chat/mention-insertions'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useAiMemberCandidates, type AiMemberCandidate } from '@/hooks/use-ai-member-candidates'
 
-interface MemberCandidate {
-  userId: string
-  name: string
-}
+type MemberCandidate = AiMemberCandidate
 
 // 日本語入力で打った全角の ＠ でも候補を出す
 const TRIGGER_RE = /(^|\s)[@＠]([^\s@＠<>]*)$/
@@ -37,13 +34,6 @@ export function memberMentionTrigger(text: string, caret: number): { query: stri
 /** 送信する本文。ピッカーで入れた位置に残っている `@表示名` を `<@userId|表示名>` にする */
 export function encodeAiMemberMentions(text: string, insertions: ReadonlyArray<PositionedMentionInsertion>): string {
   return encodePositionedMentions(text, insertions, ({ tokenId, displayName }) => `<@${tokenId}|${displayName}>`)
-}
-
-async function fetchMembers(query: string): Promise<MemberCandidate[]> {
-  const response = await fetchWithAuth(`/api/research/members?limit=8&query=${encodeURIComponent(query)}`)
-  if (!response.ok) throw new Error(`Could not load suggestions (${response.status})`)
-  const body = (await response.json()) as { items?: MemberCandidate[] }
-  return body.items ?? []
 }
 
 export function useAiMemberMentions({ input, setInput, textareaRef }: {
@@ -63,11 +53,7 @@ export function useAiMemberMentions({ input, setInput, textareaRef }: {
     setInsertions(prev => rebaseMentionInsertions(previous, input, prev))
   }, [input])
   const query = React.useDeferredValue(trigger?.query.trim() ?? '')
-  const members = useQuery({
-    queryKey: ['ai-member-mention-candidates', query],
-    queryFn: () => fetchMembers(query),
-    enabled: trigger !== null,
-  })
+  const members = useAiMemberCandidates(query, trigger !== null)
   // すでに入れた人は候補に出さない（同じ人を二重に入れない）
   const mentioned = React.useMemo(() => intactMentionTokenIds(input, insertions), [input, insertions])
   const candidates = React.useMemo(
@@ -161,13 +147,11 @@ function MemberMentionPicker({ candidates, activeIndex, isLoading, error, onSele
   onSelect: (member: MemberCandidate) => void
 }) {
   const t = useT()
-  const message = (text: string, color = 'var(--text-4)') => (
-    <div role={color === 'var(--red-text)' ? 'alert' : undefined} style={{ padding: '8px 12px', fontSize: 12, color }}>{text}</div>
-  )
+  const message = (text: string) => <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{text}</div>
   return (
     <div role="listbox" aria-label={t('Members')} style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
       {error
-        ? message(t('Could not load suggestions. Try again later.'), 'var(--red-text)')
+        ? <InlineError style={{ padding: '8px 12px' }}>{t('Could not load suggestions. Try again later.')}</InlineError>
         : isLoading
           ? message(t('Loading...'))
           : candidates.length === 0

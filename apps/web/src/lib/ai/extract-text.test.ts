@@ -177,4 +177,97 @@ describe('extractText', () => {
 
     expect(text).toBe('name,note\n太郎,�')
   })
+
+  it('Excel はシートの並び順に、共有文字列・インライン文字列・数値をタブ区切りの行で取り出す', async () => {
+    const zip = new JSZip()
+    zip.file('xl/workbook.xml', '<workbook><sheets><sheet name="予算 &amp; 実績" sheetId="2" r:id="rId2"/><sheet name="メモ" sheetId="1" r:id="rId1"/></sheets></workbook>')
+    zip.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>')
+    zip.file('xl/sharedStrings.xml', '<sst><si><t>項目</t></si><si><r><t>交通</t></r><r><t>費</t></r></si></sst>')
+    zip.file('xl/worksheets/sheet2.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>金額</t></is></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><f>1000*2</f><v>2000</v></c></row><row r="3"><c r="A3"/></row></sheetData></worksheet>')
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>持ち物</t></is></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .toBe('# 予算 & 実績\n項目\t金額\n交通費\t2000\n\n# メモ\n持ち物')
+  })
+
+  it('Excel はファイル一覧のインデックス対象には入れない', () => {
+    expect(isIndexable('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(false)
+  })
+
+  it('Excel の閉じタグが欠けた XML でも、処理時間を膨らませずに読み終える', async () => {
+    const zip = new JSZip()
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData><row r="1">${'<c r="A1"><v>1'.repeat(200_000)}</row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const started = Date.now()
+    await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  it('Excel の展開後のサイズが上限を超えるファイルは、展開せずにエラーにする', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', 'a'.repeat(31 * 1024 * 1024))
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+    expect(buffer.length).toBeLessThan(1024 * 1024)
+
+    await expect(extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .rejects.toThrow('too large')
+  })
+
+  it('Excel で長い共有文字列を1行の多数のセルから参照させても、取り出す本文は上限で止める', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', `<sst><si><t>${'あ'.repeat(40_000)}</t></si></sst>`)
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData><row r="1">${'<c t="s"><v>0</v></c>'.repeat(5_000)}</row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    // 1セルは Excel の上限の 32,767 文字で切り、行は全体の上限（200,000 文字）を超えたところで打ち切る
+    expect(text.length).toBeLessThan(200_000 + 32_767 + 100)
+  })
+
+  it('Excel で空のセルが省かれた行も、列の位置を保って取り出す', async () => {
+    const zip = new JSZip()
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>項目</t></is></c><c r="B1" t="inlineStr"><is><t>予算</t></is></c><c r="C1" t="inlineStr"><is><t>実績</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>交通費</t></is></c><c r="C2"><v>2000</v></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .toBe('# Sheet1\n項目\t予算\t実績\n交通費\t\t2000')
+  })
+
+  it('Excel で遠い列のセルを並べた行は、上限より右の列を読まずに空欄も増やさない', async () => {
+    const zip = new JSZip()
+    const farCells = Array.from({ length: 300 }, (_, index) => `<c r="${['A', 'Z', 'AZ', 'ZZ', 'AAA', 'XFD'][index % 6]}1"><v>1</v></c>`).join('')
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData>${`<row r="1">${farCells}</row>`.repeat(2_000)}</sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const started = Date.now()
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(Math.max(...text.split('\n').map(line => line.split('\t').length))).toBeLessThanOrEqual(1000)
+  })
+
+  it('Excel のシートが上限を超えたときは、読まなかったシートがあることを本文の先頭で伝える', async () => {
+    const zip = new JSZip()
+    const count = 52
+    zip.file('xl/workbook.xml', `<workbook><sheets>${Array.from({ length: count }, (_, i) => `<sheet name="W${i + 1}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`)
+    zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${Array.from({ length: count }, (_, i) => `<Relationship Id="rId${i + 1}" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`)
+    for (let i = 1; i <= count; i += 1) zip.file(`xl/worksheets/sheet${i}.xml`, `<worksheet><sheetData><row r="1"><c r="A1"><v>${i}</v></c></row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const text = await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(text.startsWith('[注記] シートが52枚あるため、先頭の50枚だけを読みました（残りの2枚は読んでいません）。')).toBe(true)
+    expect(text).toContain('# W50')
+    expect(text).not.toContain('# W51')
+  })
+
+  it('Excel の文字列のふりがなは本文に入れない', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', '<sst><si><t>交通費</t><rPh sb="0" eb="3"><t>コウツウヒ</t></rPh><phoneticPr fontId="1"/></si><si><r><t>宿泊</t></r><r><t>費</t></r><rPh sb="0" eb="2"><t>シュクハク</t></rPh></si></sst>')
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe('# Sheet1\n交通費\t宿泊費')
+  })
 })
+
