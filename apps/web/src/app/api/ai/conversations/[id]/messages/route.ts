@@ -274,6 +274,17 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
 
+  // 依頼のメッセージ ID は課金より前に、まだ使われていないことを確かめる。使用済みの ID を指定すると
+  // 回答の後の保存が重複で失敗し、保存の失敗として返金されて、回答だけを無料で受け取れてしまうため
+  if (requestedMessageId) {
+    const { aiMessages, db } = await import('@cairn/db')
+    const { eq } = await import('drizzle-orm')
+    const [existing] = await db.select({ id: aiMessages.id }).from(aiMessages).where(eq(aiMessages.id, requestedMessageId)).limit(1)
+    if (existing) {
+      return NextResponse.json({ error: 'このメッセージは送信済みです。ページを再読み込みしてください' }, { status: 409 })
+    }
+  }
+
   // 添付は課金より前に確かめて読み込む（見つからない・本文を取り出せないときに課金しない）
   let latestAttachments: PreparedAttachment[]
   let historyAttachments: Awaited<ReturnType<typeof loadHistoryAttachments>>
@@ -525,6 +536,13 @@ export async function POST(req: Request, { params }: RouteContext) {
                   ),
                 )
             } catch (e) {
+              // 確かめた後に同じ ID の依頼が先に保存された（同じ ID で同時に送った）ときは、回答は渡しているので返金しない
+              const code = (e as { code?: unknown; cause?: { code?: unknown } } | null)
+              if (requestedMessageId && (code?.code === '23505' || code?.cause?.code === '23505')) {
+                activeCreditReservationPending = false
+                console.warn('[AI chat] duplicate client message id; keeping the charge:', requestedMessageId)
+                return
+              }
               await refundPendingActiveCredit()
               console.error('[AI chat] onFinish DB save failed:', e)
             }
