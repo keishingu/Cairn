@@ -35,6 +35,10 @@ import {
 import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
 import { buildChatSystemPrompt } from './system-prompt'
 
+// スキルの呼び出しは読む → 判断する → 実行案を作る、まで tool calling を重ね、数分かかる（GPT-5 で3〜4分を確認）。
+// Pro プランの既定・上限の範囲で、途中で打ち切られないよう明示する
+export const maxDuration = 300
+
 type RouteContext = { params: Promise<{ id: string }> }
 
 export interface MessageDto {
