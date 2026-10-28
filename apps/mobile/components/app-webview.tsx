@@ -358,7 +358,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       <WebView
         ref={webViewRef}
         source={{ uri }}
-        style={styles.webview}
+        // WebView 既定の白い背景が、ページ遷移で次の画面が描かれるまでの間に見えてしまう。
+        // テーマの背景色にして、ダークテーマで白くチラつかないようにする
+        style={[styles.webview, { backgroundColor: bg }]}
         // originWhitelist 外のURLはreact-native-webviewがOSへ直接渡すため、
         // HTTP(S)はここで受け、上の信頼済みオリジン判定で許可・拒否する。
         originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
