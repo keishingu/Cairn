@@ -132,6 +132,8 @@ export async function deleteUnsentAiAttachment(ctx: AuthContext, conversationId:
     .where(
       and(
         eq(aiAttachments.id, attachmentId),
+        // 認証したワークスペースの添付に限る（非活性になった別ワークスペースの添付を、所属が続くワークスペースから消させない）
+        eq(aiAttachments.workspaceId, ctx.workspaceId),
         eq(aiAttachments.conversationId, conversationId),
         eq(aiAttachments.uploadedBy, ctx.userId),
         isNull(aiAttachments.messageId),
@@ -204,6 +206,7 @@ export async function prepareAttachmentsForSend(
     .where(
       and(
         inArray(aiAttachments.id, ids),
+        eq(aiAttachments.workspaceId, ctx.workspaceId),
         eq(aiAttachments.conversationId, conversationId),
         eq(aiAttachments.uploadedBy, ctx.userId),
         isNull(aiAttachments.messageId),
