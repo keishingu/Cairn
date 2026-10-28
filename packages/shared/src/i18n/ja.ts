@@ -816,6 +816,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load conversations': '会話の一覧を読み込めませんでした',
   'Could not load the conversation': '会話を読み込めませんでした',
   'Could not start a new conversation': '新しい会話を始められませんでした',
+  'You cannot use this workspace. Check that you are still a member.': 'このワークスペースを利用できません。メンバーのままか確認してください',
   'No matching members': '該当するメンバーがいません',
   'No matching notifications': '該当する通知はありません',
   'No members': 'メンバーはいません',

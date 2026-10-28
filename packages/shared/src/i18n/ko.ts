@@ -816,6 +816,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load conversations': '대화 목록을 불러오지 못했습니다',
   'Could not load the conversation': '대화를 불러오지 못했습니다',
   'Could not start a new conversation': '새 대화를 시작하지 못했습니다',
+  'You cannot use this workspace. Check that you are still a member.': '이 워크스페이스를 이용할 수 없습니다. 아직 멤버인지 확인해 주세요',
   'No matching members': '일치하는 멤버 없음',
   'No matching notifications': '일치하는 알림 없음',
   'No members': '멤버 없음',

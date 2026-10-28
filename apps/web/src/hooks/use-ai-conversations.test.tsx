@@ -65,4 +65,26 @@ describe('AIアシスタントの会話の取得', () => {
     await act(async () => { await result.current.mutateAsync().catch(() => undefined) })
     expect(toast.error).toHaveBeenCalledWith('クレジットが不足しています')
   })
+
+  it('ログインが切れた・ワークスペースを使えないときは、生の 401 / 403 の文言を出さず訳した理由にする', async () => {
+    const { Wrapper } = wrapper()
+    mockFetchWithAuth.mockResolvedValue(json({ error: 'Unauthorized' }, 401))
+    const unauthorized = renderHook(() => useAiConversations(), { wrapper: Wrapper })
+    await waitFor(() => expect(unauthorized.result.current.isError).toBe(true))
+    expect(unauthorized.result.current.error?.message).toBe('セッションが切れました。再度ログインしてください。')
+
+    mockFetchWithAuth.mockResolvedValue(json({ error: 'No workspace found' }, 403))
+    const forbidden = renderHook(() => useAiConversationMessages('c2'), { wrapper: Wrapper })
+    await waitFor(() => expect(forbidden.result.current.isError).toBe(true))
+    expect(forbidden.result.current.error?.message).toBe('このワークスペースを利用できません。メンバーのままか確認してください')
+  })
+
+  it('権限を説明する日本語の 403 は、そのまま出す', async () => {
+    const { Wrapper } = wrapper()
+    mockFetchWithAuth.mockResolvedValue(json({ error: 'AIへの依頼は、石を積んでいるメンバーのみ利用できます。' }, 403))
+    const { result } = renderHook(() => useAiConversationMessages('c3'), { wrapper: Wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error?.message).toBe('AIへの依頼は、石を積んでいるメンバーのみ利用できます。')
+  })
 })
+
