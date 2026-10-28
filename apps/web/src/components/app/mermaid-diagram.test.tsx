@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MermaidDiagram } from './mermaid-diagram'
 
@@ -73,5 +74,26 @@ describe('Mermaid図', () => {
     rerender(<MermaidDiagram definition="flowchart LR\nA --> B" />)
 
     await waitFor(() => expect(renderMock).toHaveBeenCalledTimes(2))
+  })
+
+  it('全画面ボタンで図を大きく表示し、Escape で閉じる', async () => {
+    renderMock.mockResolvedValue({ svg: '<svg><text>工程</text></svg>' })
+    const user = userEvent.setup()
+    render(<MermaidDiagram definition="flowchart LR\nA --> B" />)
+
+    await user.click(await screen.findByRole('button', { name: '図を全画面で表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'Mermaid図' })
+    expect(within(dialog).getByRole('img', { name: 'Mermaid図' })).toHaveTextContent('工程')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('描画に失敗したときは全画面ボタンを出さない', async () => {
+    renderMock.mockRejectedValue(new Error('Parse error'))
+    render(<MermaidDiagram definition="not a diagram" />)
+
+    await screen.findByText('Mermaid図を表示できません')
+    expect(screen.queryByRole('button', { name: '図を全画面で表示' })).toBeNull()
   })
 })

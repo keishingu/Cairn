@@ -751,6 +751,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Mentions and updates will show up here.': 'メンションや更新が届くとここに表示されます。',
   Menu: 'メニュー',
   'Mermaid diagram': 'Mermaid図',
+  'Show diagram full screen': '図を全画面で表示',
   'Message {name}': '{name} にメッセージ送信',
   'Message from a blocked user': 'ブロックしたユーザーのメッセージ',
   'Message from a blocked user (long-press the menu to show it)': 'ブロックしたユーザーのメッセージ（長押しメニューから表示できます）',

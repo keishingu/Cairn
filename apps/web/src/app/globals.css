@@ -155,6 +155,14 @@
   margin: 0 auto;
 }
 
+/* 全画面の図は枠いっぱいに広げる（Mermaid が useMaxWidth で付ける max-width の上限を外す） */
+.mermaid-diagram-full svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none !important;
+}
+
 .app {
   font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-feature-settings: 'cv11', 'ss01', 'ss03';

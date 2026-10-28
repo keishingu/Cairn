@@ -7,6 +7,7 @@ import React from 'react'
 import { useTheme } from 'next-themes'
 import { useAccentColor } from '@/components/accent-color-provider'
 import { useT } from '@/components/locale-provider'
+import { Icon, Modal, ModalHeader } from './primitives'
 
 interface MermaidDiagramProps {
   definition: string
@@ -28,6 +29,7 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
   const diagramId = React.useId().replace(/:/g, '')
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [state, setState] = React.useState<DiagramState>({ svg: null, error: false })
+  const [fullScreen, setFullScreen] = React.useState(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -89,6 +91,7 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
       ref={containerRef}
       className="mermaid-diagram"
       style={{
+        position: 'relative',
         margin: '6px 0',
         padding: state.error ? '10px 12px' : '12px',
         minHeight: state.svg || state.error ? undefined : 96,
@@ -105,12 +108,39 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
       aria-busy={!state.svg && !state.error}
     >
       {state.svg ? (
-        <div
-          role="img"
-          aria-label={t('Mermaid diagram')}
-          style={{ width: '100%', minWidth: 0 }}
-          dangerouslySetInnerHTML={{ __html: state.svg }}
-        />
+        <>
+          <div
+            role="img"
+            aria-label={t('Mermaid diagram')}
+            style={{ width: '100%', minWidth: 0 }}
+            dangerouslySetInnerHTML={{ __html: state.svg }}
+          />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t('Show diagram full screen')}
+            title={t('Show diagram full screen')}
+            onClick={() => setFullScreen(true)}
+            style={{ position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)' }}
+          >
+            <Icon name="maximize" size={14}/>
+          </button>
+          {fullScreen && (
+            <Modal onClose={() => setFullScreen(false)} label={t('Mermaid diagram')}>
+              <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+                <ModalHeader title={t('Mermaid diagram')} onClose={() => setFullScreen(false)}/>
+                {/* 本文の図と同じ SVG を、画面に収まる最大の大きさで縦横比を保って描く */}
+                <div
+                  role="img"
+                  aria-label={t('Mermaid diagram')}
+                  className="mermaid-diagram-full"
+                  style={{ flex: 1, minHeight: 0, padding: 24, background: 'var(--card-2)' }}
+                  dangerouslySetInnerHTML={{ __html: state.svg }}
+                />
+              </div>
+            </Modal>
+          )}
+        </>
       ) : state.error ? (
         <div style={{ width: '100%' }}>
           <div style={{ fontWeight: 600 }}>{t('Could not display the Mermaid diagram')}</div>

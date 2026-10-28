@@ -751,6 +751,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Mentions and updates will show up here.': '멘션과 업데이트가 여기에 표시됩니다.',
   Menu: '메뉴',
   'Mermaid diagram': 'Mermaid 다이어그램',
+  'Show diagram full screen': '다이어그램을 전체 화면으로 보기',
   'Message {name}': '{name}에게 메시지 보내기',
   'Message from a blocked user': '차단한 사용자의 메시지',
   'Message from a blocked user (long-press the menu to show it)': '차단한 사용자의 메시지(메뉴를 길게 눌러 표시)',
