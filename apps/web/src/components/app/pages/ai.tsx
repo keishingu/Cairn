@@ -21,6 +21,7 @@ import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
 import { buildAiRequestBody } from './ai-request-body'
+import { ConversationServerSync } from './ai-server-sync'
 
 // ---- ソースチップ ----
 
@@ -307,7 +308,7 @@ function ChatView({
     onError: () => {
       attachments.restoreLastSent()
       // 失敗した依頼は保存されないため、待つのをやめる
-      if (inFlightIdRef.current) unsavedIdsRef.current.delete(inFlightIdRef.current)
+      if (inFlightIdRef.current) serverSyncRef.current.abandoned(inFlightIdRef.current)
       inFlightIdRef.current = null
     },
   })
@@ -321,30 +322,28 @@ function ChatView({
   // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
   // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
   // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
-  // 送ったがまだ保存を確かめていない依頼の ID（クライアントが決め、サーバーも同じ ID で保存する）。
-  // これらが全部サーバーにそろうまで置き換えない（そろわないうちに置き換えると、後の依頼・応答・添付が画面から消える）
-  const unsavedIdsRef = React.useRef(new Set<string>())
+  // 置き換えてよいかの判定は ConversationServerSync にまとめる（受信中・保存待ちの依頼・古い取り直しの結果では置き換えない）
+  const serverSyncRef = React.useRef(new ConversationServerSync())
   const inFlightIdRef = React.useRef<string | null>(null)
   const isLoadingRef = React.useRef(isLoading)
   isLoadingRef.current = isLoading
   const [syncError, setSyncError] = React.useState(false)
-  const applyServerMessages = (saved: MessageDto[]): boolean => {
-    if (isLoadingRef.current) return false
-    // 保存を確かめられた依頼は待つ対象から外し、まだ保存されていない依頼が残っていれば置き換えない
-    const savedIds = new Set(saved.map(message => message.id))
-    for (const id of unsavedIdsRef.current) if (savedIds.has(id)) unsavedIdsRef.current.delete(id)
-    if (unsavedIdsRef.current.size > 0) return false
-    setMessages(toChatMessages(saved))
-    queryClient.setQueryData(['ai-messages', conversationId], saved)
-    setSyncError(false)
-    return true
-  }
   /** サーバーから取り直す。取得に失敗したら 'failed'、保存が追いついておらず置き換えなかったら 'waiting' */
   const loadFromServer = async (): Promise<'applied' | 'waiting' | 'failed'> => {
+    const seq = serverSyncRef.current.begin()
     try {
       const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`)
       if (!res.ok) return 'failed'
-      return applyServerMessages((await res.json()) as MessageDto[]) ? 'applied' : 'waiting'
+      const saved = (await res.json()) as MessageDto[]
+      const decision = serverSyncRef.current.decide(saved.map(message => message.id), seq, isLoadingRef.current)
+      if (decision === 'waiting') return 'waiting'
+      // より新しい取り直しを反映済みなら、この古い結果は捨てる（反映済みの内容がある）
+      if (decision === 'apply') {
+        setMessages(toChatMessages(saved))
+        queryClient.setQueryData(['ai-messages', conversationId], saved)
+        setSyncError(false)
+      }
+      return 'applied'
     } catch {
       return 'failed'
     }
@@ -356,10 +355,10 @@ function ChatView({
       await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
       const result = await loadFromServer()
       // 置き換えた・この依頼はもう保存を確かめた（後の依頼を待っているだけ）なら、後のことは後の依頼に任せる
-      if (result === 'applied' || !unsavedIdsRef.current.has(sentId)) return
+      if (result === 'applied' || !serverSyncRef.current.isAwaiting(sentId)) return
     }
     // この依頼は保存されなかったものとして待つのをやめ、知らせる（続けて送った依頼は引き続き待つ）
-    unsavedIdsRef.current.delete(sentId)
+    serverSyncRef.current.abandoned(sentId)
     setSyncError(true)
   }
   const reload = async () => {
@@ -394,7 +393,7 @@ function ChatView({
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
     // 依頼の ID はここで決め、サーバーにも同じ ID で保存させる。保存を確かめるまでサーバーの内容で置き換えない
     const messageId = crypto.randomUUID()
-    unsavedIdsRef.current.add(messageId)
+    serverSyncRef.current.sent(messageId)
     inFlightIdRef.current = messageId
     void append(
       { id: messageId, role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
