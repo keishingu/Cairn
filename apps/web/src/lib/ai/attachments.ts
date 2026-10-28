@@ -45,7 +45,7 @@ export interface AiAttachmentDto {
   fileName: string
   mimeType: string
   fileSize: number
-  /** 期限付きの読み出し URL（画像の表示・ファイルを開く用） */
+  /** 期限付きの読み出し URL（画像の表示・ファイルを開く用）。発行に失敗したときは null（画面は開けないことを表示する） */
   url: string | null
 }
 
@@ -332,8 +332,12 @@ export async function listMessageAttachments(conversationId: string): Promise<Ma
   const { data, error } = await createServiceRoleClient()
     .storage.from(AI_ATTACHMENT_BUCKET)
     .createSignedUrls(rows.map((row) => row.storagePath), READ_URL_TTL_SECONDS)
+  // リンクを発行できなくても会話は読めるようにし、その添付だけを url: null で返す（画面で開けないことを表示する）
   if (error) console.error('[ai attachments] createSignedUrls failed:', error)
-  const urlByPath = new Map((data ?? []).flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])))
+  for (const item of data ?? []) {
+    if (item.error) console.error('[ai attachments] createSignedUrl failed for an object:', item.path, item.error)
+  }
+  const urlByPath = new Map((data ?? []).flatMap((item) => (item.path && item.signedUrl && !item.error ? [[item.path, item.signedUrl] as const] : [])))
   for (const row of rows) {
     const list = result.get(row.messageId!) ?? []
     list.push({ id: row.id, fileName: row.fileName, mimeType: row.mimeType, fileSize: row.fileSize, url: urlByPath.get(row.storagePath) ?? null })

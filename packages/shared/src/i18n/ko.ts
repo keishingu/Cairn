@@ -752,6 +752,7 @@ export const KO_MESSAGES: Record<string, string> = {
   Menu: '메뉴',
   'Mermaid diagram': 'Mermaid 다이어그램',
   'Show diagram full screen': '다이어그램을 전체 화면으로 보기',
+  'Could not get the link': '링크를 가져오지 못했습니다',
   'Send': '보내기',
   'Attach files': '파일 첨부',
   'You can attach up to {count} files at a time': '한 번에 첨부할 수 있는 파일은 {count}개까지입니다',

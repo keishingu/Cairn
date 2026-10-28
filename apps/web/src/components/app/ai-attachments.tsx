@@ -20,6 +20,18 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { Icon } from './primitives'
 
+/** リンクを発行できなかった送信済みの添付の印（表示用の Attachment.url に入れる） */
+export const ATTACHMENT_URL_UNAVAILABLE = 'cairn-attachment:unavailable'
+
+/** サーバーが返した送信済みの添付を、メッセージの表示用の形にする */
+export function toDisplayAttachments(attachments: ReadonlyArray<{ fileName: string; mimeType: string; url: string | null }>): Attachment[] {
+  return attachments.map(attachment => ({
+    name: attachment.fileName,
+    contentType: attachment.mimeType,
+    url: attachment.url ?? ATTACHMENT_URL_UNAVAILABLE,
+  }))
+}
+
 export interface PendingAiAttachment {
   localId: string
   fileName: string
@@ -163,7 +175,12 @@ export function useAiAttachments(conversationId: string) {
       lastSentRef.current = []
       setPending(prev => [...restored, ...prev])
     },
-    clearLastSent: () => { lastSentRef.current = [] },
+    /** 送信が終わったとき。送った添付の ID を返し、失敗時に戻す記録を空にする */
+    takeLastSentIds: () => {
+      const ids = lastSentRef.current.flatMap(item => (item.attachmentId ? [item.attachmentId] : []))
+      lastSentRef.current = []
+      return ids
+    },
   }
 }
 
@@ -206,21 +223,24 @@ export function PendingAttachmentChips({ items, onRemove }: { items: PendingAiAt
 
 /** 送信済みのメッセージに付いた添付（画像はサムネイル、文書はファイル名。押すと新しいタブで開く） */
 export function SentAttachments({ attachments }: { attachments: ReadonlyArray<Attachment> }) {
+  const t = useT()
   if (attachments.length === 0) return null
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', marginBottom: 6 }}>
       {attachments.map((attachment, index) => {
+        const unavailable = attachment.url === ATTACHMENT_URL_UNAVAILABLE
         const isImage = attachment.contentType ? AI_ATTACHMENT_IMAGE_TYPES.has(attachment.contentType) : false
-        const content = isImage && attachment.url
+        const content = isImage && attachment.url && !unavailable
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={attachment.url} alt={attachment.name ?? ''} style={{ display: 'block', maxWidth: 160, maxHeight: 120, borderRadius: 8, border: '1px solid var(--border)' }}/>
           : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, color: 'var(--text-2)', maxWidth: 220 }}>
               <Icon name="file" size={14}/>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attachment.name}</span>
+              {unavailable && <span role="alert" style={{ color: 'var(--red-text)', flexShrink: 0 }}>{t('Could not get the link')}</span>}
             </span>
           )
-        return attachment.url && !attachment.url.startsWith('blob:')
+        return attachment.url && !unavailable && !attachment.url.startsWith('blob:')
           ? <a key={index} href={attachment.url} target="_blank" rel="noopener noreferrer">{content}</a>
           : <div key={index}>{content}</div>
       })}

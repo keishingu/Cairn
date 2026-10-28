@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from 'vitest'
-import { buildUserContentParts, loadHistoryAttachments } from './attachments'
+import { buildUserContentParts, listMessageAttachments, loadHistoryAttachments } from './attachments'
 
 const historyRows = vi.hoisted(() => ({ rows: [] as unknown[] }))
 const download = vi.hoisted(() => vi.fn())
+const createSignedUrls = vi.hoisted(() => vi.fn())
 
 vi.mock('@cairn/db', () => ({
   aiAttachments: {},
   db: { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => historyRows.rows }) }) }) },
 }))
-vi.mock('drizzle-orm', () => ({ and: vi.fn(), desc: vi.fn(), eq: vi.fn(), inArray: vi.fn() }))
+vi.mock('drizzle-orm', () => ({ and: vi.fn(), asc: vi.fn(), desc: vi.fn(), eq: vi.fn(), inArray: vi.fn(), isNotNull: vi.fn() }))
 vi.mock('@/lib/supabase/service', () => ({
-  createServiceRoleClient: () => ({ storage: { from: () => ({ download }) } }),
+  createServiceRoleClient: () => ({ storage: { from: () => ({ download, createSignedUrls }) } }),
 }))
 
 describe('buildUserContentParts', () => {
@@ -70,6 +71,24 @@ describe('loadHistoryAttachments', () => {
     const result = (await loadHistoryAttachments('c1', ['m1'])).get('m1') ?? []
     expect(result.map(item => item.kind)).toEqual(['omitted-image', 'image', 'image', 'image', 'image'])
     expect(download).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('listMessageAttachments', () => {
+  it('リンクを発行できなかった添付は url を null にし、ほかの添付のリンクは返す', async () => {
+    historyRows.rows = [
+      { id: 'a', messageId: 'm1', fileName: 'a.pdf', mimeType: 'application/pdf', fileSize: 1, storagePath: 'p/a.pdf' },
+      { id: 'b', messageId: 'm1', fileName: 'b.png', mimeType: 'image/png', fileSize: 1, storagePath: 'p/b.png' },
+    ]
+    createSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'p/a.pdf', signedUrl: 'https://storage/a', error: null },
+        { path: 'p/b.png', signedUrl: '', error: 'Object not found' },
+      ],
+      error: null,
+    })
+    const result = await listMessageAttachments('c1')
+    expect(result.get('m1')?.map(item => item.url)).toEqual(['https://storage/a', null])
   })
 })
 

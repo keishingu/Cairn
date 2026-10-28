@@ -752,6 +752,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Menu: 'メニュー',
   'Mermaid diagram': 'Mermaid図',
   'Show diagram full screen': '図を全画面で表示',
+  'Could not get the link': 'リンクを取得できませんでした',
   'Send': '送信',
   'Attach files': 'ファイルを添付',
   'You can attach up to {count} files at a time': '一度に添付できるファイルは{count}個までです',
