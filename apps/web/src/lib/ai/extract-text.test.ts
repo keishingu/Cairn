@@ -194,4 +194,25 @@ describe('extractText', () => {
   it('Excel はファイル一覧のインデックス対象には入れない', () => {
     expect(isIndexable('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(false)
   })
+
+  it('Excel の閉じタグが欠けた XML でも、処理時間を膨らませずに読み終える', async () => {
+    const zip = new JSZip()
+    zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData><row r="1">${'<c r="A1"><v>1'.repeat(200_000)}</row></sheetData></worksheet>`)
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+
+    const started = Date.now()
+    await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  it('Excel の展開後のサイズが上限を超えるファイルは、展開せずにエラーにする', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', 'a'.repeat(31 * 1024 * 1024))
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+    expect(buffer.length).toBeLessThan(1024 * 1024)
+
+    await expect(extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .rejects.toThrow('too large')
+  })
 })
+

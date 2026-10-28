@@ -118,53 +118,128 @@ const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadshee
 // Excel は文字列セルの本文を xl/sharedStrings.xml にまとめて持ち、各シートのセルは t="s" のとき
 // その通し番号を持つ。シート名は xl/workbook.xml の並び順、実体のファイルは rels で解決する。
 // 書式や数式は捨て、表示に近い値（数式は計算済みの値）をタブ区切りの行にする。
+// 利用者が上げたファイルをそのまま読むため、展開後のサイズ・シート数・取り出す文字数に上限を設け、
+// XML は正規表現の後戻りではなく indexOf で前へ進むだけの走査にする（閉じタグのない XML で処理時間が膨らまないように）
+const XLSX_MAX_ENTRY_BYTES = 30 * 1024 * 1024
+const XLSX_MAX_TOTAL_BYTES = 100 * 1024 * 1024
+const XLSX_MAX_SHEETS = 50
+/** 取り出す文字数の上限。AI に渡すのは先頭5万文字までなので、それより十分に長くなったら読むのをやめる */
+const XLSX_MAX_OUTPUT_CHARS = 200_000
+
+class XlsxReader {
+  private readBytes = 0
+  constructor(private readonly zip: JSZip) {}
+
+  async read(path: string): Promise<string | null> {
+    const file = this.zip.files[path]
+    if (!file) return null
+    // 展開前に、ZIP のディレクトリに書かれた展開後のサイズで弾く（圧縮爆弾を展開しない）
+    const size = (file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0
+    this.readBytes += size
+    if (size > XLSX_MAX_ENTRY_BYTES || this.readBytes > XLSX_MAX_TOTAL_BYTES) {
+      throw new Error('xlsx entry is too large to extract')
+    }
+    const text = await file.async('text')
+    // サイズの記載が実際と違っても、展開した長さで確かめ直す
+    if (text.length > XLSX_MAX_ENTRY_BYTES) throw new Error('xlsx entry is too large to extract')
+    return text
+  }
+}
+
+/** xml の from 以降にある <tag ...>…</tag> を順に返す（自己終了の <tag/> は body を空にする）。見つからなければ打ち切る */
+function* scanElements(xml: string, tag: string, from = 0, to = xml.length): Generator<{ attrs: string; body: string }> {
+  const open = `<${tag}`
+  const close = `</${tag}>`
+  let index = from
+  while (index < to) {
+    const start = xml.indexOf(open, index)
+    if (start === -1 || start >= to) return
+    const next = xml[start + open.length]
+    // <c と <col のように前方一致する別の要素は飛ばす
+    if (next !== '>' && next !== '/' && next !== ' ' && next !== '\t' && next !== '\n' && next !== '\r') {
+      index = start + open.length
+      continue
+    }
+    const tagEnd = xml.indexOf('>', start)
+    if (tagEnd === -1 || tagEnd >= to) return
+    if (xml[tagEnd - 1] === '/') {
+      yield { attrs: xml.slice(start + open.length, tagEnd - 1), body: '' }
+      index = tagEnd + 1
+      continue
+    }
+    const end = xml.indexOf(close, tagEnd + 1)
+    if (end === -1 || end > to) return
+    yield { attrs: xml.slice(start + open.length, tagEnd), body: xml.slice(tagEnd + 1, end) }
+    index = end + close.length
+  }
+}
+
+function textRuns(body: string): string {
+  let text = ''
+  for (const { body: run } of scanElements(body, 't')) text += decodeXmlEntities(run)
+  return text
+}
+
 async function extractXlsxText(buffer: Buffer): Promise<string> {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buffer)
-  const sharedXml = await zip.files['xl/sharedStrings.xml']?.async('text')
-  const sharedStrings = sharedXml
-    ? [...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(([, body]) =>
-      [...(body ?? '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map(m => decodeXmlEntities(m[1] ?? '')).join(''))
-    : []
+  const reader = new XlsxReader(zip)
+  const sharedXml = await reader.read('xl/sharedStrings.xml')
+  const sharedStrings: string[] = []
+  if (sharedXml) for (const { body } of scanElements(sharedXml, 'si')) sharedStrings.push(textRuns(body))
 
-  const sheets = await resolveSheets(zip)
   const parts: string[] = []
-  for (const sheet of sheets) {
-    const xml = await zip.files[sheet.path]?.async('text')
+  let length = 0
+  for (const sheet of (await resolveSheets(zip, reader)).slice(0, XLSX_MAX_SHEETS)) {
+    if (length >= XLSX_MAX_OUTPUT_CHARS) break
+    const xml = await reader.read(sheet.path)
     if (!xml) continue
-    const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map(([, rowBody]) =>
-      [...(rowBody ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)].map(([, attrs, cellBody]) => {
-        const type = attrs?.match(/\bt="([^"]+)"/)?.[1]
+    const rows: string[] = []
+    for (const { body: rowBody } of scanElements(xml, 'row')) {
+      if (length >= XLSX_MAX_OUTPUT_CHARS) break
+      const cells: string[] = []
+      for (const { attrs, body } of scanElements(rowBody, 'c')) {
+        const type = attrs.match(/\bt="([^"]*)"/)?.[1]
         if (type === 'inlineStr') {
-          return [...(cellBody ?? '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map(m => decodeXmlEntities(m[1] ?? '')).join('')
+          cells.push(textRuns(body))
+          continue
         }
-        const value = cellBody?.match(/<v>([^<]*)<\/v>/)?.[1]
-        if (value === undefined) return ''
-        if (type === 's') return sharedStrings[Number(value)] ?? ''
-        return decodeXmlEntities(value)
-      }).join('\t').replace(/\t+$/, ''))
-      .filter(row => row.length > 0)
+        const value = scanElements(body, 'v').next().value?.body
+        if (value === undefined) cells.push('')
+        else if (type === 's') cells.push(sharedStrings[Number(value)] ?? '')
+        else cells.push(decodeXmlEntities(value))
+      }
+      const row = cells.join('\t').replace(/\t+$/, '')
+      if (row.length === 0) continue
+      rows.push(row)
+      length += row.length + 1
+    }
     if (rows.length > 0) parts.push(`# ${sheet.name}\n${rows.join('\n')}`)
   }
   return parts.join('\n\n')
 }
 
-async function resolveSheets(zip: JSZip): Promise<Array<{ name: string; path: string }>> {
-  const workbookXml = await zip.files['xl/workbook.xml']?.async('text')
-  const relsXml = await zip.files['xl/_rels/workbook.xml.rels']?.async('text')
+async function resolveSheets(zip: JSZip, reader: XlsxReader): Promise<Array<{ name: string; path: string }>> {
+  const workbookXml = await reader.read('xl/workbook.xml')
+  const relsXml = await reader.read('xl/_rels/workbook.xml.rels')
   if (workbookXml && relsXml) {
     const targetById = new Map<string, string>()
-    for (const [tag] of relsXml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
-      const id = tag.match(/\bId="([^"]+)"/)?.[1]
-      const target = tag.match(/\bTarget="([^"]+)"/)?.[1]
+    for (const { attrs } of scanElements(relsXml, 'Relationship')) {
+      const id = attrs.match(/\bId="([^"]+)"/)?.[1]
+      const target = attrs.match(/\bTarget="([^"]+)"/)?.[1]
       if (id && target) targetById.set(id, target.startsWith('/') ? target.slice(1) : `xl/${target}`)
     }
-    const sheets = [...workbookXml.matchAll(/<sheet\b[^>]*\/?>/g)].flatMap(([tag]) => {
-      const name = tag.match(/\bname="([^"]*)"/)?.[1]
-      const rId = tag.match(/\br:id="([^"]+)"/)?.[1]
+    // 同じシートの実体を何度も指して読ませる（同じ本文を繰り返し取り出させる）ファイルは、1回だけ読む
+    const seen = new Set<string>()
+    const sheets: Array<{ name: string; path: string }> = []
+    for (const { attrs } of scanElements(workbookXml, 'sheet')) {
+      const name = attrs.match(/\bname="([^"]*)"/)?.[1]
+      const rId = attrs.match(/\br:id="([^"]+)"/)?.[1]
       const path = rId ? targetById.get(rId) : undefined
-      return name !== undefined && path ? [{ name: decodeXmlEntities(name), path }] : []
-    })
+      if (name === undefined || !path || seen.has(path)) continue
+      seen.add(path)
+      sheets.push({ name: decodeXmlEntities(name), path })
+    }
     if (sheets.length > 0) return sheets
   }
   // 解決できない場合（壊れたファイル等）はファイル名の連番で読む
