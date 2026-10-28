@@ -27,6 +27,19 @@ export const AI_ATTACHMENT_MAX_TEXT_CHARS = 50_000
 const MAX_UNSENT_PER_CONVERSATION = 10
 /** 履歴の画像を AI に見せ直す上限（古い画像まで毎回読み込まない） */
 const MAX_HISTORY_IMAGES = 4
+/**
+ * AI に渡す文書の本文の合計の上限（文字数）。今回の依頼に付けた文書と、履歴の文書で別々に数える。
+ * 1文書は5万文字までだが、5つ付けたり何度も付けたりすると、送るたびに全部を渡してモデルの入力の上限を超え、
+ * その会話は以降ずっと回答できなくなる。履歴は新しい文書から数え、上限を超えた古い文書はファイル名だけを伝える
+ */
+export const AI_ATTACHMENT_REQUEST_MAX_TEXT_CHARS = 150_000
+export const AI_ATTACHMENT_HISTORY_MAX_TEXT_CHARS = 100_000
+
+/** 本文を渡さず、ファイル名だけを伝える添付（古い画像・上限を超えた古い文書） */
+export type OmittedAttachment =
+  | { kind: 'omitted-image'; id: string; fileName: string }
+  | { kind: 'omitted-document'; id: string; fileName: string }
+export type HistoryAttachment = PreparedAttachment | OmittedAttachment
 /** 送られずに残った添付を回収するまでの時間 */
 export const AI_ATTACHMENT_UNSENT_TTL_MS = 24 * 60 * 60 * 1000
 const READ_URL_TTL_SECONDS = 60 * 60
@@ -230,18 +243,27 @@ export async function prepareAttachmentsForSend(
       prepared.push({ kind: 'document', id: row.id, fileName: row.fileName, text, truncated })
     }
   }
-  return prepared
+  // 今回の依頼に付けた文書の本文は、合計の上限までにする（越えた分は切り詰めたことを伝える）
+  let remaining = AI_ATTACHMENT_REQUEST_MAX_TEXT_CHARS
+  return prepared.map((attachment) => {
+    if (attachment.kind !== 'document') return attachment
+    const fits = attachment.text.length <= remaining
+    const text = fits ? attachment.text : attachment.text.slice(0, remaining)
+    remaining -= text.length
+    return fits ? attachment : { ...attachment, text, truncated: true }
+  })
 }
 
 /**
- * 会話の履歴にある添付を、メッセージごとに AI に渡す形にする。文書は保存した本文を使い、
- * 画像は新しいものから MAX_HISTORY_IMAGES 枚だけ読み込み直す（それより古い画像はファイル名だけ伝える）
+ * 会話の履歴にある添付を、メッセージごとに AI に渡す形にする。新しいものから数え、
+ * 画像は MAX_HISTORY_IMAGES 枚まで読み込み直し、文書は保存した本文を合計 AI_ATTACHMENT_HISTORY_MAX_TEXT_CHARS 文字まで渡す
+ * （それより古いものはファイル名だけ伝える）
  */
 export async function loadHistoryAttachments(
   conversationId: string,
   messageIds: string[],
-): Promise<Map<string, Array<PreparedAttachment | { kind: 'omitted-image'; id: string; fileName: string }>>> {
-  const result = new Map<string, Array<PreparedAttachment | { kind: 'omitted-image'; id: string; fileName: string }>>()
+): Promise<Map<string, HistoryAttachment[]>> {
+  const result = new Map<string, HistoryAttachment[]>()
   if (messageIds.length === 0) return result
   const { aiAttachments, db } = await import('@cairn/db')
   const { and, desc, eq, inArray } = await import('drizzle-orm')
@@ -259,6 +281,7 @@ export async function loadHistoryAttachments(
     .where(and(eq(aiAttachments.conversationId, conversationId), inArray(aiAttachments.messageId, messageIds)))
     .orderBy(desc(aiAttachments.createdAt))
   let images = 0
+  let documentChars = 0
   for (const row of rows) {
     if (!row.messageId) continue
     const list = result.get(row.messageId) ?? []
@@ -273,7 +296,13 @@ export async function loadHistoryAttachments(
         list.unshift({ kind: 'omitted-image', id: row.id, fileName: row.fileName })
       }
     } else {
-      list.unshift({ kind: 'document', id: row.id, fileName: row.fileName, text: row.extractedText ?? '', truncated: row.textTruncated })
+      const text = row.extractedText ?? ''
+      if (documentChars + text.length <= AI_ATTACHMENT_HISTORY_MAX_TEXT_CHARS) {
+        documentChars += text.length
+        list.unshift({ kind: 'document', id: row.id, fileName: row.fileName, text, truncated: row.textTruncated })
+      } else {
+        list.unshift({ kind: 'omitted-document', id: row.id, fileName: row.fileName })
+      }
     }
     result.set(row.messageId, list)
   }
@@ -288,7 +317,7 @@ function neutralize(text: string): string {
 /** 依頼の本文と添付を、AI に渡すメッセージの中身（テキスト・画像のパーツ）にする */
 export function buildUserContentParts(
   text: string,
-  attachments: ReadonlyArray<PreparedAttachment | { kind: 'omitted-image'; id: string; fileName: string }>,
+  attachments: ReadonlyArray<HistoryAttachment>,
 ): Array<TextPart | ImagePart | FilePart> {
   if (attachments.length === 0) return [{ type: 'text', text }]
   const parts: Array<TextPart | ImagePart | FilePart> = [{ type: 'text', text }]
@@ -300,11 +329,13 @@ export function buildUserContentParts(
       parts.push({ type: 'image', image: attachment.data, mimeType: attachment.mimeType })
     } else if (attachment.kind === 'omitted-image') {
       parts.push({ type: 'text', text: `<attached-file name="${name}" kind="image">以前に添付された画像です（古いため今回は読み込んでいません。必要なら添付し直すよう伝えてください）。</attached-file>` })
+    } else if (attachment.kind === 'omitted-document') {
+      parts.push({ type: 'text', text: `<attached-file name="${name}" kind="document">以前に添付された文書です（会話の添付の本文が多いため、古いこの文書は今回は読み込んでいません。必要なら添付し直すよう伝えてください）。</attached-file>` })
     } else {
       const body = attachment.text
         ? neutralize(attachment.text)
         : '（本文を取り出せませんでした。画像だけのPDFなどの可能性があります）'
-      const note = attachment.truncated ? `\n（長いため先頭の${AI_ATTACHMENT_MAX_TEXT_CHARS.toLocaleString()}文字までです。それ以降は読んでいません）` : ''
+      const note = attachment.truncated ? '\n（長いため途中までです。それ以降は読んでいません）' : ''
       parts.push({ type: 'text', text: `<attached-file name="${name}" kind="document">\n${body}${note}\n</attached-file>` })
     }
   }

@@ -50,7 +50,7 @@ describe('buildUserContentParts', () => {
       { kind: 'document', id: 'a', fileName: 'long.pdf', text: 'x', truncated: true },
       { kind: 'document', id: 'b', fileName: 'scan.pdf', text: '', truncated: false },
     ])
-    expect((parts[1] as { text: string }).text).toContain('先頭の50,000文字まで')
+    expect((parts[1] as { text: string }).text).toContain('長いため途中までです')
     expect((parts[2] as { text: string }).text).toContain('本文を取り出せませんでした')
   })
 })
@@ -89,6 +89,20 @@ describe('listMessageAttachments', () => {
     })
     const result = await listMessageAttachments('c1')
     expect(result.get('m1')?.map(item => item.url)).toEqual(['https://storage/a', null])
+  })
+})
+
+describe('文書の本文の合計の上限', () => {
+  const doc = (id: string, chars: number) => ({ id, messageId: 'm1', fileName: `${id}.pdf`, mimeType: 'application/pdf', storagePath: `p/${id}.pdf`, extractedText: 'あ'.repeat(chars), textTruncated: false })
+
+  it('履歴の文書は新しいものから合計10万文字まで渡し、それより古い文書はファイル名だけにする', async () => {
+    // 新しい順（a が最新）
+    historyRows.rows = [doc('a', 50_000), doc('b', 40_000), doc('c', 30_000)]
+    const result = (await loadHistoryAttachments('c1', ['m1'])).get('m1') ?? []
+    expect(result.map(item => `${item.fileName}:${item.kind}`)).toEqual(['c.pdf:omitted-document', 'b.pdf:document', 'a.pdf:document'])
+
+    const [, omitted] = buildUserContentParts('q', [result[0]!])
+    expect((omitted as { text: string }).text).toContain('古いこの文書は今回は読み込んでいません')
   })
 })
 

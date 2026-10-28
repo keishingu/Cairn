@@ -4,7 +4,7 @@
 import type { CoreMessage } from 'ai'
 import { z } from 'zod'
 import { AI_ATTACHMENT_MAX_FILES } from '@/lib/ai/attachment-types'
-import { buildUserContentParts, type PreparedAttachment } from '@/lib/ai/attachments'
+import { buildUserContentParts, type HistoryAttachment, type PreparedAttachment } from '@/lib/ai/attachments'
 
 export const MAX_HISTORY_MESSAGES = 40
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -69,7 +69,6 @@ export function parseLatestUserInput(body: unknown): { lastUserContent: string; 
   }
 }
 
-type HistoryAttachment = Parameters<typeof buildUserContentParts>[1][number]
 
 export function buildModelMessages(
   history: StoredConversationMessage[],
