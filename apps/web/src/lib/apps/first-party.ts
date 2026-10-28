@@ -10,14 +10,14 @@ import { createBotToken } from './bot-tokens'
 // 作成は冪等な ensureFirstPartyInstallations に一本化し、ワークスペース作成時と、起動口・トークンを使う時点で欠けを補う。
 // 投票アプリのコードはこのファイルの公開関数（Bot トークン・署名シークレット）だけを使い、ほかの Cairn 本体の関数は使わない（§7.1）
 
-export type FirstPartyAppSlug = 'polls'
+export type FirstPartyAppSlug = 'polls' | 'ai'
 
 type FirstPartyAppDefinition = {
   slug: FirstPartyAppSlug
   name: string
   description: string
-  /** Request URL のパス。送る時点で今のデプロイの URL を前に付ける（§ resolveRequestUrl） */
-  requestPath: string
+  /** Request URL のパス。送る時点で今のデプロイの URL を前に付ける（§ resolveRequestUrl）。インタラクションを受けないアプリは null */
+  requestPath: string | null
   /** 作成メニューの起動口。label は英語のキーで、表示時に翻訳する */
   entryPoints: Array<{ command: string; label: string }>
 }
@@ -30,6 +30,16 @@ export const FIRST_PARTY_APPS: readonly FirstPartyAppDefinition[] = [
     description: 'Run polls in a channel',
     requestPath: '/api/first-party-apps/polls/interactions',
     entryPoints: [{ command: '/poll', label: 'Create a poll' }],
+  },
+  {
+    // Cairn の AI が承認後に投稿するときの送信者（docs/ai-automation-design.md §2.4）。
+    // 投稿は Cairn 本体が承認者の操作から直接行うため、インタラクションの受け口と起動口を持たない。
+    // slug は固定し、名前はここを書き換えれば次のデプロイで Bot の表示名まで追従する
+    slug: 'ai',
+    name: 'Cairn AI',
+    description: 'Posts messages proposed by Cairn AI after a member approves them',
+    requestPath: null,
+    entryPoints: [],
   },
 ]
 

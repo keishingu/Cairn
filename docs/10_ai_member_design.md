@@ -163,7 +163,7 @@ owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` �
 | 項目 | 内容 |
 |---|---|
 | AIのアイデンティティ | `messages.senderId` に使える agent profile と、人間との識別・RLS設計 |
-| 承認待ちアクション | `ai_pending_actions`（action type、payload、status、approved by） |
+| 承認待ちアクション | `ai_pending_actions`（実装済み。承認者・期限・競合・再実行の扱いは [`ai-automation-design.md`](./ai-automation-design.md) §11.2） |
 | エージェント記憶 | 将来の `ai_agent_memories`。それまでは権限付きRAGで代替 |
 | 監査 | AIの提案・承認・実行結果をチャンネル上で追跡可能にする |
 
@@ -226,5 +226,4 @@ AI PMO自体は実装済みであり、AIメンバーの公開発言機能とは
 | リスク重要度 | 共通スキーマと、PMOルールをどこまで再利用するか |
 | `/ai` 調査結果の共有 | 共有チャンネルへ出す明示操作と、共有後の監査表示 |
 | AIメンバーの profile | `auth.users` に紐づかない送信者の認証・RLS・監査・無効化 |
-| 承認操作 | 承認できるロール、競合・期限切れ・再実行の扱い |
 | エージェント数・連携先 | ワークスペースに複数エージェントを許すか、Slack / Teams へ発言・承認体験を拡張するか |
