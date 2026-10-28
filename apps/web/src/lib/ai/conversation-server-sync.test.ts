@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from 'vitest'
-import { ConversationServerSync } from './ai-server-sync'
+import { ConversationServerSync } from './conversation-server-sync'
 
 describe('会話をサーバーの内容で置き換えてよいかの判定', () => {
   test('送った依頼が保存された会話に入るまで置き換えず、入ったら置き換える', () => {

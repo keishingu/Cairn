@@ -10,7 +10,8 @@ import { MarkdownContent } from '../markdown-content'
 import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
 import { useAiMemberMentions } from '../ai-member-mentions'
-import { PendingAttachmentChips, SentAttachments, toDisplayAttachments, useAiAttachments } from '../ai-attachments'
+import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
+import { useAiAttachments } from '@/hooks/use-ai-attachments'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
@@ -21,7 +22,7 @@ import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
 import { buildAiRequestBody } from './ai-request-body'
-import { ConversationServerSync } from './ai-server-sync'
+import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
 
 // ---- ソースチップ ----
 
@@ -298,9 +299,7 @@ function ChatView({
     onFinish: () => {
       attachments.clearLastSent()
       // 送ったメッセージを、サーバーが保存した内容（添付の期限付きリンクを含む）に置き換える
-      const sentId = inFlightIdRef.current
-      inFlightIdRef.current = null
-      if (sentId) void syncFromServer(sentId)
+      void conversationSync.finished()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
     // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）。
@@ -308,8 +307,7 @@ function ChatView({
     onError: () => {
       attachments.restoreLastSent()
       // 失敗した依頼は保存されないため、待つのをやめる
-      if (inFlightIdRef.current) serverSyncRef.current.abandoned(inFlightIdRef.current)
-      inFlightIdRef.current = null
+      conversationSync.failed()
     },
   })
 
@@ -322,63 +320,16 @@ function ChatView({
   // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
   // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
   // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
-  // 置き換えてよいかの判定は ConversationServerSync にまとめる（受信中・保存待ちの依頼・古い取り直しの結果では置き換えない）
-  const serverSyncRef = React.useRef(new ConversationServerSync())
-  const inFlightIdRef = React.useRef<string | null>(null)
-  const isLoadingRef = React.useRef(isLoading)
-  isLoadingRef.current = isLoading
-  const [syncError, setSyncError] = React.useState(false)
-  /** サーバーから取り直す。取得に失敗したら 'failed'、保存が追いついておらず置き換えなかったら 'waiting' */
-  const loadFromServer = async (): Promise<'applied' | 'waiting' | 'failed'> => {
-    const seq = serverSyncRef.current.begin()
-    try {
-      const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`)
-      if (!res.ok) return 'failed'
-      const saved = (await res.json()) as MessageDto[]
-      const decision = serverSyncRef.current.decide(saved.map(message => message.id), seq, isLoadingRef.current)
-      if (decision === 'waiting') return 'waiting'
-      // より新しい取り直しを反映済みなら、この古い結果は捨てる（反映済みの内容がある）
-      if (decision === 'apply') {
-        setMessages(toChatMessages(saved))
-        queryClient.setQueryData(['ai-messages', conversationId], saved)
-        setSyncError(false)
-      }
-      return 'applied'
-    } catch {
-      return 'failed'
-    }
-  }
-  // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、保存が追いつくまで少し待って取り直す。
-  // 取り直せなかった・この依頼が保存されなかったときは、黙って古い表示のままにせず知らせて、もう一度読み込めるようにする
-  async function syncFromServer(sentId: string) {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
-      const result = await loadFromServer()
-      // 置き換えた・この依頼はもう保存を確かめた（後の依頼を待っているだけ）なら、後のことは後の依頼に任せる
-      if (result === 'applied' || !serverSyncRef.current.isAwaiting(sentId)) return
-    }
-    // この依頼は保存されなかったものとして待つのをやめ、知らせる（続けて送った依頼は引き続き待つ）
-    serverSyncRef.current.abandoned(sentId)
-    setSyncError(true)
-  }
-  const reload = async () => {
-    const result = await loadFromServer()
-    setSyncError(result !== 'applied')
-  }
-  // 会話を開いたときと、タブに戻ってきたときにも取り直す（添付のリンクは1時間で切れるため、取得キャッシュの古さに任せない）
-  React.useEffect(() => {
-    const refresh = async () => {
-      if ((await loadFromServer()) === 'failed') setSyncError(true)
-    }
-    void refresh()
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-    // 会話ごとに1回だけ登録する（ChatView は会話ごとに作り直される）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId])
+  // 送信済みのメッセージはサーバーを正とし、保存された会話で置き換える（取り直しと置き換えの判定はフックにまとめる）
+  const conversationSync = useAiConversationSync({
+    conversationId,
+    isReceiving: isLoading,
+    onSaved: saved => {
+      setMessages(toChatMessages(saved))
+      // 送ったときのプレビューは、保存した添付のリンクに置き換わったので解放する
+      attachments.releaseSentPreviews()
+    },
+  })
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
@@ -393,8 +344,7 @@ function ChatView({
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
     // 依頼の ID はここで決め、サーバーにも同じ ID で保存させる。保存を確かめるまでサーバーの内容で置き換えない
     const messageId = crypto.randomUUID()
-    serverSyncRef.current.sent(messageId)
-    inFlightIdRef.current = messageId
+    conversationSync.sent(messageId)
     void append(
       { id: messageId, role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
@@ -421,10 +371,10 @@ function ChatView({
         </div>
       )}
 
-      {syncError && !error && (
+      {conversationSync.syncError && !error && (
         <div role="alert" style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{t('Could not load the latest conversation. Attachment links may be out of date.')}</span>
-          <button type="button" className="btn btn-ghost" style={{ height: 26, fontSize: 11.5 }} onClick={() => void reload()}>{t('Reload')}</button>
+          <button type="button" className="btn btn-ghost" style={{ height: 26, fontSize: 11.5 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
         </div>
       )}
       {error && (
