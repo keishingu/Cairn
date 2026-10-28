@@ -494,6 +494,8 @@ export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaEl
 
 // ─── FAB（モバイルの新規作成ボタン）──────────────────────────────
 // ボトムナビの上・右下固定。モバイルのページ主要作成アクションはこれに統一する
+// FAB を置く一覧の下端余白。アプリの WebView ではナビ余白が 0 になるため、FAB の高さ（下端16px + 52px + 間16px）を下回らないようにする
+export const MOBILE_FAB_LIST_PADDING = 'max(var(--mobile-nav-clearance), 84px)'
 export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) => (
   <button
     onClick={onClick}

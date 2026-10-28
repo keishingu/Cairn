@@ -3,7 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Icon, Avatar, Fab } from '../primitives'
+import { Icon, Avatar, Fab, MOBILE_FAB_LIST_PADDING } from '../primitives'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { CreateTaskModal } from './create-task-modal'
 import { TaskDeleteDialog } from '../task-delete-dialog'
@@ -437,7 +437,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       />
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? MOBILE_FAB_LIST_PADDING : undefined }}>
         {scope === 'mine' && currentUser.isError ? (
           <div style={{ margin: isMobile ? '12px' : '16px 20px' }}>
             <InlineError>{t('Could not load your user info')}</InlineError>

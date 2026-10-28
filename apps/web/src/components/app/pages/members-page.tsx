@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import { formatAppDate } from '@cairn/shared'
-import { Icon, Avatar, Fab, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
+import { Icon, Avatar, Fab, MOBILE_FAB_LIST_PADDING, ArchivedBadge, ARCHIVED_OPACITY } from '../primitives'
 import { InlineError } from '../inline-error'
 import { CopyButton } from '../copy-button'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
@@ -429,7 +429,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         </div>
 
         {/* 2-column card grid */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: MOBILE_FAB_LIST_PADDING }}>
           {isLoading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
               {Array.from({ length: 6 }).map((_, i) => <MemberCardSkeleton key={i} />)}
