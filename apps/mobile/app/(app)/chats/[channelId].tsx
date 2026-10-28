@@ -66,6 +66,7 @@ import {
   findMentionQuery,
   getReactionPeopleSummary,
   insertMention,
+  mentionedTokenIds,
   parseEditableMentions,
   rebaseMentionSelections,
   resolveMobileMarkdownLink,
@@ -787,6 +788,8 @@ export default function ChatThreadScreen() {
   const mentionCandidates = React.useMemo(() => {
     if (channelType === 'dm' || !mentionRange) return []
     const query = mentionRange.query.toLocaleLowerCase()
+    // 本文に残っているメンションの相手は二重に入れないよう候補から外す。選択位置は入力のたびに付け直しているので draft と揃っている
+    const mentioned = mentionedTokenIds(draft, mentionSelectionsRef.current)
     type MentionCandidate = { tokenId: string; displayName: string; avatarUrl: string | null; hint?: string }
     const groups: MentionCandidate[] = []
     if ('all'.startsWith(query)) {
@@ -817,8 +820,8 @@ export default function ChatThreadScreen() {
           avatarUrl: member.avatarUrl,
         })),
       ...roles,
-    ]
-  }, [channelType, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
+    ].filter((candidate) => !mentioned.has(candidate.tokenId))
+  }, [channelType, draft, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
   // 役割の候補はプロジェクトのチャンネル（非公開を含む）で出すため、その取得失敗も候補の欠けとして示す
   const projectRolesError = projectId ? projectRoles.error : null
   const mentionMembersError =
