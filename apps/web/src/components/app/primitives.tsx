@@ -501,7 +501,7 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
     style={{
       position: 'fixed',
       right: 16,
-      bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+      bottom: 'calc(var(--mobile-nav-clearance) + 16px)',
       width: 52, height: 52, borderRadius: '50%',
       background: 'var(--accent)', color: 'var(--on-accent)',
       border: 'none', cursor: 'pointer',

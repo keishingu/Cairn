@@ -437,7 +437,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       />
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
         {scope === 'mine' && currentUser.isError ? (
           <div style={{ margin: isMobile ? '12px' : '16px 20px' }}>
             <InlineError>{t('Could not load your user info')}</InlineError>

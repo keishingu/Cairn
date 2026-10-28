@@ -429,7 +429,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
         </div>
 
         {/* 2-column card grid */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
           {isLoading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
               {Array.from({ length: 6 }).map((_, i) => <MemberCardSkeleton key={i} />)}

@@ -494,7 +494,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (mobilePane === 'chat' && activeId && initialMessages) {
       const title = conversations.find(c => c.id === activeId)?.title ?? t('AI assistant')
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-h)' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
           <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
         </div>
@@ -505,7 +505,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title={t('Past conversations')} onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-h)' }}>
             {conversations.map(c => (
               <button
                 key={c.id}

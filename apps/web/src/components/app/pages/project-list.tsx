@@ -352,7 +352,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
       <div style={{
         flex: 1, overflow: 'auto',
         padding: isMobile ? '12px 16px' : '20px 24px',
-        paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+        paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
       }}>
         {isLoading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>
