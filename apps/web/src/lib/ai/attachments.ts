@@ -42,6 +42,11 @@ export type OmittedAttachment =
 export type HistoryAttachment = PreparedAttachment | OmittedAttachment
 /** 送られずに残った添付を回収するまでの時間 */
 export const AI_ATTACHMENT_UNSENT_TTL_MS = 24 * 60 * 60 * 1000
+/**
+ * 送信に使える添付は、アップロードから回収の1時間前までのもの。1回の送信（最長5分）の間に回収が本体を消し、
+ * 依頼には結び付いたのに本体だけが無い添付ができないよう、回収と送信が同じ添付に触れない時間帯を空ける
+ */
+export const AI_ATTACHMENT_SENDABLE_MS = AI_ATTACHMENT_UNSENT_TTL_MS - 60 * 60 * 1000
 const READ_URL_TTL_SECONDS = 60 * 60
 
 export class AiAttachmentError extends Error {
@@ -205,7 +210,7 @@ export async function prepareAttachmentsForSend(
     throw new AiAttachmentError(422, `1回に添付できるファイルは${AI_ATTACHMENT_MAX_FILES}個までです`)
   }
   const { aiAttachments, db } = await import('@cairn/db')
-  const { and, eq, inArray, isNull } = await import('drizzle-orm')
+  const { and, eq, gt, inArray, isNull } = await import('drizzle-orm')
   const rows = await db
     .select({
       id: aiAttachments.id,
@@ -223,6 +228,8 @@ export async function prepareAttachmentsForSend(
         eq(aiAttachments.conversationId, conversationId),
         eq(aiAttachments.uploadedBy, ctx.userId),
         isNull(aiAttachments.messageId),
+        // 回収が近い（古い）添付は送らせない。回収と送信が同じ添付の本体と行を取り合わないようにする
+        gt(aiAttachments.createdAt, new Date(Date.now() - AI_ATTACHMENT_SENDABLE_MS)),
       ),
     )
   if (rows.length !== ids.length) {

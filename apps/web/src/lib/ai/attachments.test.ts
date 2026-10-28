@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from 'vitest'
-import { buildUserContentParts, listMessageAttachments, loadHistoryAttachments } from './attachments'
+import {
+  AI_ATTACHMENT_SENDABLE_MS,
+  AI_ATTACHMENT_UNSENT_TTL_MS,
+  buildUserContentParts,
+  listMessageAttachments,
+  loadHistoryAttachments,
+} from './attachments'
 
 const historyRows = vi.hoisted(() => ({ rows: [] as unknown[] }))
 const download = vi.hoisted(() => vi.fn())
@@ -103,6 +109,12 @@ describe('文書の本文の合計の上限', () => {
 
     const [, omitted] = buildUserContentParts('q', [result[0]!])
     expect((omitted as { text: string }).text).toContain('古いこの文書は今回は読み込んでいません')
+  })
+})
+
+describe('送らずに残った添付の回収と送信', () => {
+  it('送信に使える期限から回収までの間を、1回の送信の最長時間（/ai の maxDuration = 300秒）より長く空ける', () => {
+    expect(AI_ATTACHMENT_UNSENT_TTL_MS - AI_ATTACHMENT_SENDABLE_MS).toBeGreaterThan(300 * 1000)
   })
 })
 
