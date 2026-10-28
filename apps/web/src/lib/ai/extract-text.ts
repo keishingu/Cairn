@@ -217,6 +217,17 @@ function textRuns(body: string): string {
   return text
 }
 
+/** 列の参照（A, B, …, Z, AA, …）を0始まりの番号にする */
+function columnIndex(letters: string | undefined): number | null {
+  if (!letters) return null
+  let index = 0
+  for (const letter of letters) index = index * 26 + (letter.charCodeAt(0) - 64)
+  return index - 1
+}
+
+/** 空欄で埋める列数の上限（XFD 列のような遠いセルだけを置いた行で、大量の空欄を作らない） */
+const XLSX_MAX_EMPTY_COLUMNS = 1000
+
 async function extractXlsxText(buffer: Buffer): Promise<string> {
   const JSZip = (await import('jszip')).default
   const zip = await JSZip.loadAsync(buffer)
@@ -238,6 +249,13 @@ async function extractXlsxText(buffer: Buffer): Promise<string> {
       // セルごとに上限を確かめる（行を組み立ててからでは、1行に大きなセルを並べたファイルで上限を超えて膨らむ）
       let rowLength = 0
       for (const { attrs, body } of scanElements(rowBody, 'c')) {
+        // 空のセルは XML から省かれることがあるため、r="C2" の列で位置を合わせる（省いた分だけ空欄を入れる）
+        const column = columnIndex(attrs.match(/\br="([A-Z]{1,3})\d*"/)?.[1])
+        if (column !== null && column > cells.length) {
+          const gap = Math.min(column - cells.length, XLSX_MAX_EMPTY_COLUMNS)
+          for (let index = 0; index < gap; index += 1) cells.push('')
+          rowLength += gap
+        }
         const type = attrs.match(/\bt="([^"]*)"/)?.[1]
         let cell: string
         if (type === 'inlineStr') {

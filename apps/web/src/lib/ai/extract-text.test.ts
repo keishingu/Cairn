@@ -225,5 +225,14 @@ describe('extractText', () => {
     // 1セルは Excel の上限の 32,767 文字で切り、行は全体の上限（200,000 文字）を超えたところで打ち切る
     expect(text.length).toBeLessThan(200_000 + 32_767 + 100)
   })
+
+  it('Excel で空のセルが省かれた行も、列の位置を保って取り出す', async () => {
+    const zip = new JSZip()
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>項目</t></is></c><c r="B1" t="inlineStr"><is><t>予算</t></is></c><c r="C1" t="inlineStr"><is><t>実績</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>交通費</t></is></c><c r="C2"><v>2000</v></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+      .toBe('# Sheet1\n項目\t予算\t実績\n交通費\t\t2000')
+  })
 })
 
