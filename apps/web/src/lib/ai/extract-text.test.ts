@@ -260,5 +260,14 @@ describe('extractText', () => {
     expect(text).toContain('# W50')
     expect(text).not.toContain('# W51')
   })
+
+  it('Excel の文字列のふりがなは本文に入れない', async () => {
+    const zip = new JSZip()
+    zip.file('xl/sharedStrings.xml', '<sst><si><t>交通費</t><rPh sb="0" eb="3"><t>コウツウヒ</t></rPh><phoneticPr fontId="1"/></si><si><r><t>宿泊</t></r><r><t>費</t></r><rPh sb="0" eb="2"><t>シュクハク</t></rPh></si></sst>')
+    zip.file('xl/worksheets/sheet1.xml', '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row></sheetData></worksheet>')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    expect(await extractText(buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe('# Sheet1\n交通費\t宿泊費')
+  })
 })
 

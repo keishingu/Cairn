@@ -211,9 +211,25 @@ function* scanElements(xml: string, tag: string, from = 0, to = xml.length): Gen
   }
 }
 
+/** ふりがな（<rPh>…</rPh>）を除く。日本語版 Excel は文字列に読みを持ち、そのまま連結すると「交通費コウツウヒ」になる */
+function withoutPhonetic(body: string): string {
+  if (!body.includes('<rPh')) return body
+  let result = ''
+  let index = 0
+  for (;;) {
+    const start = body.indexOf('<rPh', index)
+    if (start === -1) return result + body.slice(index)
+    result += body.slice(index, start)
+    const end = body.indexOf('</rPh>', start)
+    // 閉じタグが無ければ、そこから後ろは本文として読まない（壊れた XML で読みを本文に混ぜない）
+    if (end === -1) return result
+    index = end + '</rPh>'.length
+  }
+}
+
 function textRuns(body: string): string {
   let text = ''
-  for (const { body: run } of scanElements(body, 't')) text += decodeXmlEntities(run)
+  for (const { body: run } of scanElements(withoutPhonetic(body), 't')) text += decodeXmlEntities(run)
   return text
 }
 
