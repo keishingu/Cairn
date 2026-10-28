@@ -811,6 +811,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'No files yet': 'ファイルはまだありません',
   'No joined projects': '参加プロジェクトはありません',
   'No matches': '該当なし',
+  'Could not load suggestions. Try again later.': '候補を取得できませんでした。時間をおいて再度お試しください',
   'No matching members': '該当するメンバーがいません',
   'No matching notifications': '該当する通知はありません',
   'No members': 'メンバーはいません',

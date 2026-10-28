@@ -118,7 +118,7 @@ export function InstructionEditor({ id, value, onChange, placeholder }: { id: st
       {trigger && (
         <div ref={pickerRef} role="listbox" aria-label={t('References')} onBlur={closeUnlessInPicker} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
           {data.error ? (
-            <div role="alert" style={{ padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>{data.error.message}</div>
+            <div role="alert" style={{ padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>{t('Could not load suggestions. Try again later.')}</div>
           ) : data.isLoading ? (
             <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('Loading...')}</div>
           ) : candidates.length === 0 ? (

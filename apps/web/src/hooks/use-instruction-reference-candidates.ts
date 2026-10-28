@@ -10,7 +10,7 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 async function fetchItems<T>(url: string): Promise<T[]> {
   const response = await fetchWithAuth(url)
-  if (!response.ok) throw new Error('候補を取得できませんでした')
+  if (!response.ok) throw new Error(`Could not load suggestions (${response.status})`)
   const body = (await response.json()) as { items?: T[] }
   return body.items ?? []
 }

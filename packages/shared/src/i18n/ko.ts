@@ -811,6 +811,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'No files yet': '아직 파일이 없습니다',
   'No joined projects': '참가 중인 프로젝트 없음',
   'No matches': '일치 항목 없음',
+  'Could not load suggestions. Try again later.': '후보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요',
   'No matching members': '일치하는 멤버 없음',
   'No matching notifications': '일치하는 알림 없음',
   'No members': '멤버 없음',
