@@ -300,8 +300,12 @@ function ChatView({
       void syncFromServer()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
     },
-    // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）
-    onError: () => attachments.restoreLastSent(),
+    // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）。
+    // 失敗した依頼はサーバーに保存されないため、保存待ちの記録も消す（次にサーバーの内容で置き換えたとき、画面からも消える）
+    onError: () => {
+      attachments.restoreLastSent()
+      awaitingSaveRef.current = null
+    },
   })
 
   React.useEffect(() => {
@@ -309,14 +313,21 @@ function ChatView({
   }, [messages.length, isLoading])
 
   // 送信済みのメッセージはサーバーを正とする。useChat は会話ごとにメッセージを手元に持ち続ける（initialMessages は
-  // 最初の表示にしか使わない）ため、開き直したときと応答の後に、サーバーの内容で置き換える。
-  // サーバーがまだ保存し終えていない（手元より少ない）ときや、応答を受信している途中は置き換えない（表示中の会話を消さない）
-  const messageCountRef = React.useRef(messages.length)
-  messageCountRef.current = messages.length
+  // 最初の表示にしか使わない）ため、応答の後・開き直したとき・タブに戻ったときに、サーバーの内容で置き換える。
+  // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
+  // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
+  // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
+  const serverCountRef = React.useRef(initialMessages.length)
+  const awaitingSaveRef = React.useRef<number | null>(null)
   const isLoadingRef = React.useRef(isLoading)
   isLoadingRef.current = isLoading
   const applyServerMessages = (saved: MessageDto[]): boolean => {
-    if (isLoadingRef.current || saved.length < messageCountRef.current) return false
+    if (isLoadingRef.current) return false
+    if (awaitingSaveRef.current !== null) {
+      if (saved.length < awaitingSaveRef.current) return false
+      awaitingSaveRef.current = null
+    }
+    serverCountRef.current = saved.length
     setMessages(toChatMessages(saved))
     queryClient.setQueryData(['ai-messages', conversationId], saved)
     return true
@@ -325,12 +336,14 @@ function ChatView({
     const res = await fetchWithAuth(`/api/ai/conversations/${conversationId}/messages`).catch(() => null)
     return !!res?.ok && applyServerMessages((await res.json()) as MessageDto[])
   }
-  // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、保存が追いつくまで少し待って取り直す
+  // 応答の受信が終わった時点ではサーバーがまだ保存中のことがあるため、保存が追いつくまで少し待って取り直す。
+  // 追いつかなければ（応答が保存されなかったとき）待つのをやめ、次に取り直したときはサーバーの内容で置き換える
   async function syncFromServer() {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)))
       if (await loadFromServer()) return
     }
+    awaitingSaveRef.current = null
   }
   // 会話を開いたときと、タブに戻ってきたときにも取り直す（添付のリンクは1時間で切れるため、取得キャッシュの古さに任せない）
   React.useEffect(() => {
@@ -355,6 +368,8 @@ function ChatView({
   const send = (content: string) => {
     if (!content.trim() || !ready) return
     const { attachmentIds, displayAttachments } = attachments.takeForSend()
+    // 依頼と応答の2件が保存されるまで、サーバーの内容で置き換えない
+    awaitingSaveRef.current = serverCountRef.current + 2
     void append(
       { role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
       { body: { attachmentIds } },
