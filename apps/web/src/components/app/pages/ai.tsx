@@ -3,7 +3,7 @@
 import React from 'react'
 import { useChat } from 'ai/react'
 import type { JSONValue, Message, ToolInvocation } from 'ai'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { MarkdownContent } from '../markdown-content'
@@ -15,12 +15,12 @@ import { useAiAttachments } from '@/hooks/use-ai-attachments'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { InlineError } from '../inline-error'
+import { useAiConversationMessages, useAiConversations, useCreateAiConversation } from '@/hooks/use-ai-conversations'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
 import { buildAiRequestBody } from './ai-request-body'
 import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
@@ -152,18 +152,34 @@ export function chatErrorMessage(error: Error): string {
 
 // ---- 会話サイドバー (PC) ----
 
+const EMPTY_CONVERSATIONS: ConversationDto[] = []
+
+/** 取得できなかったことと理由を出し、もう一度読み込めるようにする */
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const t = useT()
+  return (
+    <InlineError variant="box">
+      {message}{' '}
+      <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={onRetry}>{t('Reload')}</button>
+    </InlineError>
+  )
+}
+
 function ConversationSidebar({
   conversations,
   activeId,
   onSelect,
   onNew,
   isCreating,
+  loadError,
 }: {
   conversations: ConversationDto[]
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
   isCreating: boolean
+  /** 一覧を取得できなかったときの表示（「まだ会話がない」と見せない） */
+  loadError?: React.ReactNode
 }) {
   const t = useT()
   const grouped: Record<string, ConversationDto[]> = {}
@@ -191,7 +207,8 @@ function ConversationSidebar({
         </button>
       </div>
       <div style={{ padding: '0 8px 12px', overflow: 'auto', flex: 1 }}>
-        {groups.length === 0 && (
+        {loadError}
+        {!loadError && groups.length === 0 && (
           <div style={{ padding: '16px 10px', fontSize: 12, color: 'var(--text-4)', textAlign: 'center' }}>
             {t('No conversations yet')}
           </div>
@@ -561,30 +578,40 @@ function ChatView({
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const t = useT()
-  const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
 
-  const { data: conversations = [] } = useQuery<ConversationDto[]>({
-    queryKey: ['ai-conversations'],
-    queryFn: () => fetchWithAuth('/api/ai/conversations').then(r => r.json()),
+  const conversationsQuery = useAiConversations()
+  const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
+  const messagesQuery = useAiConversationMessages(activeId)
+  const initialMessages = messagesQuery.data
+
+  const createConversation = useCreateAiConversation(conv => {
+    setActiveId(conv.id)
+    if (isMobile) setMobilePane('chat')
   })
 
-  const { data: initialMessages } = useQuery<MessageDto[]>({
-    queryKey: ['ai-messages', activeId],
-    queryFn: () => fetchWithAuth(`/api/ai/conversations/${activeId}/messages`).then(r => r.json()),
-    enabled: !!activeId,
-  })
-
-  const createConversation = useMutation({
-    mutationFn: () => fetchWithAuth('/api/ai/conversations', { method: 'POST' }).then(r => r.json()) as Promise<ConversationDto>,
-    onSuccess: (conv) => {
-      queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conv, ...(prev ?? [])])
-      setActiveId(conv.id)
-      if (isMobile) setMobilePane('chat')
-    },
-
-  })
+  // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
+  const conversationsError = conversationsQuery.isError ? (
+    <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+  ) : null
+  // 会話を開いている途中・開けなかったときの本文（会話の中身が無いのに最初の画面を出さない）
+  const conversationBody = (mobile: boolean) => {
+    if (!activeId) return null
+    if (initialMessages) return <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile={mobile}/>
+    if (messagesQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={messagesQuery.error.message} onRetry={() => void messagesQuery.refetch()}/>
+        </div>
+      )
+    }
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13, gap: 8 }}>
+        <TypingDots/> {t('Loading...')}
+      </div>
+    )
+  }
 
   const selectConversation = (id: string) => {
     setActiveId(id)
@@ -624,12 +651,12 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       </button>
     )
 
-    if (mobilePane === 'chat' && activeId && initialMessages) {
+    if (mobilePane === 'chat' && activeId) {
       const title = conversations.find(c => c.id === activeId)?.title ?? t('AI assistant')
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-h)' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
+          {conversationBody(true)}
         </div>
       )
     }
@@ -639,6 +666,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title={t('Past conversations')} onBack={() => setMobilePane('welcome')} right={newButton}/>
           <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-h)' }}>
+            {conversationsError && <div style={{ padding: 16 }}>{conversationsError}</div>}
             {conversations.map(c => (
               <button
                 key={c.id}
@@ -675,6 +703,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
         <MobileHeader title={t('AI assistant')} right={historyButton} />
+        {conversationsError && <div style={{ padding: '12px 16px 0' }}>{conversationsError}</div>}
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
@@ -692,10 +721,9 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
         onSelect={setActiveId}
         onNew={() => createConversation.mutate()}
         isCreating={createConversation.isPending}
+        loadError={conversationsError}
       />
-      {activeId && initialMessages ? (
-        <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages}/>
-      ) : (
+      {activeId ? conversationBody(false) : (
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending}/>
       )}
       </div>
