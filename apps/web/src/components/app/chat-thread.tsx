@@ -112,6 +112,22 @@ export function findInsertedMention(text: string, displayName: string): number |
   return match ? match.index : null
 }
 
+/**
+ * 本文に残っているメンションの tokenId。送信時の変換と同じく挿入順に `@表示名` を1件ずつ割り当てるので、
+ * 同名の人・役割を2件入れて1件消すと、割り当てが残るのは先に入れた方だけになる
+ */
+export function survivingMentionTokenIds(text: string, insertions: ReadonlyArray<{ tokenId: string; displayName: string }>): Set<string> {
+  const ids = new Set<string>()
+  let rest = text
+  for (const { tokenId, displayName } of insertions) {
+    const index = findInsertedMention(rest, displayName)
+    if (index === null) continue
+    ids.add(tokenId)
+    rest = rest.slice(0, index) + `<@${tokenId}>` + rest.slice(index + 1 + displayName.length)
+  }
+  return ids
+}
+
 // 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
 // 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
 // 送信/編集直後の楽観・POST/PATCH レスポンスはメンションが canonical のままキャッシュに載るため、
@@ -912,7 +928,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const rest = mentionAnchorPos === null || mentionQuery === null
       ? draft
       : draft.slice(0, mentionAnchorPos) + draft.slice(mentionAnchorPos + 1 + mentionQuery.length)
-    return new Set(insertedMentions.filter(m => findInsertedMention(rest, m.displayName) !== null).map(m => m.tokenId))
+    return survivingMentionTokenIds(rest, insertedMentions)
   }, [draft, insertedMentions, mentionAnchorPos, mentionQuery])
 
   const mentionCandidates = React.useMemo(() => {

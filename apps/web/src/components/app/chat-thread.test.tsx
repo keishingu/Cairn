@@ -14,6 +14,7 @@ import {
   copyMessageContent,
   copyMessageLink,
   findInsertedMention,
+  survivingMentionTokenIds,
   isNearMessageTimelineEnd,
   shouldFollowLatestMessage,
   fetchMessageTaskCandidates,
@@ -1322,5 +1323,24 @@ describe('findInsertedMention', () => {
 
   it('消したメンションはメンション済みとみなさない', () => {
     expect(findInsertedMention('よろしく', '小川聡')).toBeNull()
+  })
+})
+
+describe('survivingMentionTokenIds', () => {
+  const ogawaA = { tokenId: 'user-a', displayName: '小川聡' }
+  const ogawaB = { tokenId: 'user-b', displayName: '小川聡' }
+
+  it('同名の2人を入れて1件消すと、先に入れた方だけを本文に残っているとみなす', () => {
+    expect(survivingMentionTokenIds('@小川聡 よろしく', [ogawaA, ogawaB])).toEqual(new Set(['user-a']))
+  })
+
+  it('同名の2人がどちらも本文に残っていれば両方を返す', () => {
+    expect(survivingMentionTokenIds('@小川聡 @小川聡 よろしく', [ogawaA, ogawaB])).toEqual(new Set(['user-a', 'user-b']))
+  })
+
+  it('人と役割のラベルが同じでも1件ずつ割り当てる', () => {
+    const role = { tokenId: 'role:design', displayName: 'デザイン' }
+    const user = { tokenId: 'user-c', displayName: 'デザイン' }
+    expect(survivingMentionTokenIds('@デザイン 確認', [role, user])).toEqual(new Set(['role:design']))
   })
 })
