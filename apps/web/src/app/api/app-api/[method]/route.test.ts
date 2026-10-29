@@ -30,7 +30,7 @@ describe('/api/app-api/[method]', () => {
   })
 
   it('Bolt と同じ form-urlencoded の本文を受け取り、token を除いた引数でメソッドを呼ぶ', async () => {
-    const body = new URLSearchParams({ channel: 'c1', text: 'hi', blocks: '[{"type":"divider"}]', token: 'cairn_bot_x' })
+    const body = new URLSearchParams({ channel: 'c1', text: 'hi', blocks: '[{"type":"divider"}]', token: 'cairn_bot_x' }).toString()
     const res = await call('chat.postMessage', { body, headers: { 'content-type': 'application/x-www-form-urlencoded' } })
 
     expect(res.status).toBe(200)
