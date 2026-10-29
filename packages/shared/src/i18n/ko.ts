@@ -1358,6 +1358,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Paused': '정지됨',
   'Allowed after approval': '승인 후 허용',
   'Read only': '읽기 전용',
+  'Open profile of {name}': '{name} 님의 프로필 열기',
   'Created by {name}': '작성: {name}',
   'Delete automation': '자동화 삭제',
   'Delete ${name}. Its run records are kept for auditing.': '${name}을(를) 삭제합니다. 실행 기록은 감사를 위해 남습니다.',

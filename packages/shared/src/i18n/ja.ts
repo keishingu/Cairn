@@ -1359,6 +1359,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Paused': '停止中',
   'Allowed after approval': '承認後に許可',
   'Read only': '読み取りのみ',
+  'Open profile of {name}': '{name} さんのプロフィールを開く',
   'Created by {name}': '作成: {name}',
   'Delete automation': 'オートメーションを削除',
   'Delete ${name}. Its run records are kept for auditing.': '${name} を削除します。実行記録は監査のために残ります。',
