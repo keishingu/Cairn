@@ -8,7 +8,7 @@
 
 ## ローカル開発環境
 
-必要なツール: Node.js 22.23.4+ / 24.22.1+ / 26.12.1+ のいずれか / pnpm 9+ / [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) / Docker（Supabase CLI が使用）
+必要なツール: Node.js 22.x (>=22.23.4) / 24.x (>=24.22.1) / 26.x (>=26.12.1) のいずれか / pnpm 9+ / [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) / Docker（Supabase CLI が使用）
 
 リポジトリルートで実行する。
 
