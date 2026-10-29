@@ -211,6 +211,29 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     },
   )
 
+  it('使用済みの依頼のメッセージ ID を指定すると、課金も回答もせず 409 を返す', async () => {
+    const { POST } = await import('./route')
+    const messageId = '44444444-4444-4444-8444-444444444444'
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 100 })
+    // 会話の存在確認、履歴、モデル設定に続き、依頼の ID がすでにあることを返す
+    queueDbResults('gpt-5')
+    dbSelectResults.push([{ id: messageId }])
+
+    const response = await POST(
+      new Request('http://localhost/api/ai/conversations/conv/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '質問' }], messageId }),
+      }),
+      { params: Promise.resolve({ id: 'conv-1' }) },
+    )
+
+    expect(response.status).toBe(409)
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+    expect(mockStreamText).not.toHaveBeenCalled()
+  })
+
   it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {
     const system = await streamedSystemPrompt('gpt-5', null)
 

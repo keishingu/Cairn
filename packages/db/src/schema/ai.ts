@@ -77,6 +77,40 @@ export const aiMessages = pgTable('ai_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// AIアシスタントの会話に添付したファイル（docs/10_ai_member_design.md「会話への添付」）。
+// ファイル一覧には出さず、会話の中だけで使う。本体は非公開の ai-attachments バケットに置き、会話を消すまで残す。
+// message_id はアップロードの時点では null で、そのメッセージを送ったときに付ける（送られずに残ったものは定期回収する）。
+// 文書から取り出した本文は extracted_text に保存し、続けて質問したときにも読み直さずに使う。
+export const aiAttachments = pgTable(
+  'ai_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').references(() => aiMessages.id, { onDelete: 'cascade' }),
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    fileSize: integer('file_size').notNull(),
+    storagePath: text('storage_path').notNull(),
+    extractedText: text('extracted_text'),
+    textTruncated: boolean('text_truncated').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_ai_attachments_conversation').on(t.conversationId),
+    index('idx_ai_attachments_message').on(t.messageId),
+    index('idx_ai_attachments_unsent').on(t.createdAt).where(sql`${t.messageId} is null`),
+    check('ai_attachments_file_size_positive', sql`${t.fileSize} > 0`),
+  ],
+)
+
 // LLM 巡回がチャンネルごとに保持する差分カーソル。
 // チャンネル削除時は状態も不要になる一方、最後に読んだメッセージだけが削除された場合は
 // last_scanned_at をフォールバックとして再開できるようカーソル参照だけを NULL にする。

@@ -2,21 +2,28 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
-import type { JSONValue, ToolInvocation } from 'ai'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { JSONValue, Message, ToolInvocation } from 'ai'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { MarkdownContent } from '../markdown-content'
 import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
+import { useAiMemberMentions } from '../ai-member-mentions'
+import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
+import { useAiAttachments } from '@/hooks/use-ai-attachments'
+import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
+import { InlineError } from '../inline-error'
+import { useAiConversationMessages, useAiConversations, useCreateAiConversation } from '@/hooks/use-ai-conversations'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useCommand } from '@/lib/command-registry'
 import { buildAiRequestBody } from './ai-request-body'
+import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
 
 // ---- ソースチップ ----
 
@@ -145,18 +152,34 @@ export function chatErrorMessage(error: Error): string {
 
 // ---- 会話サイドバー (PC) ----
 
+const EMPTY_CONVERSATIONS: ConversationDto[] = []
+
+/** 取得できなかったことと理由を出し、もう一度読み込めるようにする */
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const t = useT()
+  return (
+    <InlineError variant="box">
+      {message}{' '}
+      <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={onRetry}>{t('Reload')}</button>
+    </InlineError>
+  )
+}
+
 function ConversationSidebar({
   conversations,
   activeId,
   onSelect,
   onNew,
   isCreating,
+  loadError,
 }: {
   conversations: ConversationDto[]
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
   isCreating: boolean
+  /** 一覧を取得できなかったときの表示（「まだ会話がない」と見せない） */
+  loadError?: React.ReactNode
 }) {
   const t = useT()
   const grouped: Record<string, ConversationDto[]> = {}
@@ -184,7 +207,8 @@ function ConversationSidebar({
         </button>
       </div>
       <div style={{ padding: '0 8px 12px', overflow: 'auto', flex: 1 }}>
-        {groups.length === 0 && (
+        {loadError}
+        {!loadError && groups.length === 0 && (
           <div style={{ padding: '16px 10px', fontSize: 12, color: 'var(--text-4)', textAlign: 'center' }}>
             {t('No conversations yet')}
           </div>
@@ -251,6 +275,18 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
 
 // ---- チャットビュー ----
 
+/** サーバーが保存した会話を、useChat のメッセージの形にする */
+function toChatMessages(saved: MessageDto[]): Message[] {
+  return saved.map(m => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+    ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
+    ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
+    ...(m.attachments ? { experimental_attachments: toDisplayAttachments(m.attachments) } : {}),
+  }))
+}
+
 const SUGGESTIONS = [
   'How is the project going?',
   'I want to check member skills',
@@ -272,25 +308,75 @@ function ChatView({
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
-  const { messages, input, setInput, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
+  const attachments = useAiAttachments(conversationId)
+  const { messages, input, setInput, setMessages, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
-    initialMessages: initialMessages.map(m => ({
-      id: m.id,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
-      ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
-    })),
-    experimental_prepareRequestBody: ({ messages }) => buildAiRequestBody(messages),
+    initialMessages: toChatMessages(initialMessages),
+    experimental_prepareRequestBody: ({ messages, requestBody }) => buildAiRequestBody(messages, requestBody),
     onFinish: () => {
+      attachments.clearLastSent()
+      // 送ったメッセージを、サーバーが保存した内容（添付の期限付きリンクを含む）に置き換える
+      void conversationSync.finished()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+    },
+    // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）。
+    // 失敗した依頼はサーバーに保存されないため、保存待ちの記録も消す（次にサーバーの内容で置き換えたとき、画面からも消える）
+    onError: () => {
+      attachments.restoreLastSent()
+      // 失敗した依頼は保存されないため、待つのをやめる
+      conversationSync.failed()
     },
   })
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length, isLoading])
+
+  // 送信済みのメッセージはサーバーを正とする。useChat は会話ごとにメッセージを手元に持ち続ける（initialMessages は
+  // 最初の表示にしか使わない）ため、応答の後・開き直したとき・タブに戻ったときに、サーバーの内容で置き換える。
+  // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
+  // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
+  // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
+  // 送信済みのメッセージはサーバーを正とし、保存された会話で置き換える（取り直しと置き換えの判定はフックにまとめる）
+  const conversationSync = useAiConversationSync({
+    conversationId,
+    isReceiving: isLoading,
+    onSaved: saved => {
+      setMessages(toChatMessages(saved))
+      // 送ったときのプレビューは、保存した添付のリンクに置き換わったので解放する
+      attachments.releaseSentPreviews()
+    },
+  })
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const mentions = useAiMemberMentions({ input, setInput, textareaRef })
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = React.useState(false)
+  // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
+  const ready = !isLoading && attachments.blocker === null
+
+  // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
+  const send = (content: string) => {
+    if (!content.trim() || !ready) return
+    const { attachmentIds, displayAttachments } = attachments.takeForSend()
+    // 依頼の ID はここで決め、サーバーにも同じ ID で保存させる。保存を確かめるまでサーバーの内容で置き換えない
+    const messageId = crypto.randomUUID()
+    conversationSync.sent(messageId)
+    void append(
+      { id: messageId, role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { body: { attachmentIds } },
+    )
+  }
+  const canSubmit = ready && !!input.trim()
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
+    const content = mentions.takeEncoded(input)
+    setInput('')
+    send(content)
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -303,6 +389,14 @@ function ChatView({
         </div>
       )}
 
+      {conversationSync.syncError && !error && (
+        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}` }}>
+          <InlineError variant="box">
+            {t('Could not load the latest conversation. Attachment links may be out of date.')}{' '}
+            <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
+          </InlineError>
+        </div>
+      )}
       {error && (
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
           {t('Error: {message}', { message: chatErrorMessage(error) })}
@@ -319,7 +413,8 @@ function ChatView({
           {messages.map(m => m.role === 'user' ? (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                {m.content}
+                {m.experimental_attachments && <SentAttachments attachments={m.experimental_attachments}/>}
+                {stripMentionsToText(m.content)}
               </div>
             </div>
           ) : (
@@ -371,12 +466,12 @@ function ChatView({
                 <button
                   key={i}
                   type="button"
-                  disabled={isLoading}
-                  onClick={() => void append({ role: 'user', content: t(s) })}
+                  disabled={!ready}
+                  onClick={() => send(t(s))}
                   style={{
                     padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 500,
                     background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)',
-                    cursor: isLoading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isLoading ? 0.5 : 1,
+                    cursor: ready ? 'pointer' : 'default', fontFamily: 'inherit', opacity: ready ? 1 : 0.5,
                     ...(isMobile ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
                   }}
                 >
@@ -386,14 +481,68 @@ function ChatView({
             </div>
           )}
           <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
+          {mentions.picker}
+          <PendingAttachmentChips items={attachments.pending} onRemove={localId => void attachments.remove(localId)}/>
+          {/* 添付できなかった・外せなかったファイルは、閉じるまで残す */}
+          {attachments.notice && (
+            <InlineError onDismiss={attachments.dismissNotice} style={{ marginBottom: 8 }}>{attachments.notice}</InlineError>
+          )}
+          {attachments.blocker === 'failed' && (
+            <InlineError style={{ marginBottom: 8 }}>{t('Remove the attachments that failed to upload before sending')}</InlineError>
+          )}
+          <form
+            onSubmit={submit}
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => {
+              if (e.dataTransfer.files.length === 0) return
+              e.preventDefault()
+              setDragging(false)
+              void attachments.add(e.dataTransfer.files)
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: `1px solid ${dragging ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 14, padding: '10px 12px 10px 10px', boxShadow: 'var(--shadow-sm)' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={AI_ATTACHMENT_ACCEPT}
+                hidden
+                onChange={e => {
+                  if (e.target.files) void attachments.add(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={t('Attach files')}
+                title={t('Attach files')}
+                disabled={isLoading}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }}
+              >
+                <Icon name="paperclip" size={16}/>
+              </button>
               <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={handleInputChange}
+                onChange={e => { handleInputChange(e); mentions.onEdit(e.target.value, e.target.selectionStart) }}
+                onSelect={e => mentions.syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onBlur={mentions.close}
+                onPaste={e => {
+                  if (e.clipboardData.files.length === 0) return
+                  e.preventDefault()
+                  void attachments.add(e.clipboardData.files)
+                }}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
+                onKeyDown={e => {
+                  // 日本語入力の確定の Enter や変換中の矢印キーでは、候補を選ばない
+                  if (isImeConfirmingEnter(e, isComposing)) return
+                  if (mentions.handleKeyDown(e)) return
+                  if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); submit(e) }
+                }}
                 placeholder={isMobile ? t('Ask AI…') : t('Type a question (Shift+Enter for a new line)')}
                 rows={1}
                 disabled={isLoading}
@@ -401,12 +550,13 @@ function ChatView({
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={!canSubmit}
+                aria-label={attachments.blocker === 'uploading' ? t('Uploading...') : t('Send')}
                 style={{
                   width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: (input.trim() && !isLoading) ? 'var(--accent)' : 'var(--border-2)',
-                  color: (input.trim() && !isLoading) ? 'var(--on-accent)' : 'var(--text-4)',
-                  cursor: (input.trim() && !isLoading) ? 'pointer' : 'default',
+                  background: canSubmit ? 'var(--accent)' : 'var(--border-2)',
+                  color: canSubmit ? 'var(--on-accent)' : 'var(--text-4)',
+                  cursor: canSubmit ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}
@@ -428,30 +578,40 @@ function ChatView({
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const t = useT()
-  const queryClient = useQueryClient()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
 
-  const { data: conversations = [] } = useQuery<ConversationDto[]>({
-    queryKey: ['ai-conversations'],
-    queryFn: () => fetchWithAuth('/api/ai/conversations').then(r => r.json()),
+  const conversationsQuery = useAiConversations()
+  const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
+  const messagesQuery = useAiConversationMessages(activeId)
+  const initialMessages = messagesQuery.data
+
+  const createConversation = useCreateAiConversation(conv => {
+    setActiveId(conv.id)
+    if (isMobile) setMobilePane('chat')
   })
 
-  const { data: initialMessages } = useQuery<MessageDto[]>({
-    queryKey: ['ai-messages', activeId],
-    queryFn: () => fetchWithAuth(`/api/ai/conversations/${activeId}/messages`).then(r => r.json()),
-    enabled: !!activeId,
-  })
-
-  const createConversation = useMutation({
-    mutationFn: () => fetchWithAuth('/api/ai/conversations', { method: 'POST' }).then(r => r.json()) as Promise<ConversationDto>,
-    onSuccess: (conv) => {
-      queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conv, ...(prev ?? [])])
-      setActiveId(conv.id)
-      if (isMobile) setMobilePane('chat')
-    },
-
-  })
+  // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
+  const conversationsError = conversationsQuery.isError ? (
+    <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+  ) : null
+  // 会話を開いている途中・開けなかったときの本文（会話の中身が無いのに最初の画面を出さない）
+  const conversationBody = (mobile: boolean) => {
+    if (!activeId) return null
+    if (initialMessages) return <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile={mobile}/>
+    if (messagesQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={messagesQuery.error.message} onRetry={() => void messagesQuery.refetch()}/>
+        </div>
+      )
+    }
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13, gap: 8 }}>
+        <TypingDots/> {t('Loading...')}
+      </div>
+    )
+  }
 
   const selectConversation = (id: string) => {
     setActiveId(id)
@@ -491,12 +651,12 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       </button>
     )
 
-    if (mobilePane === 'chat' && activeId && initialMessages) {
+    if (mobilePane === 'chat' && activeId) {
       const title = conversations.find(c => c.id === activeId)?.title ?? t('AI assistant')
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-h)' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
+          {conversationBody(true)}
         </div>
       )
     }
@@ -505,7 +665,8 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
           <MobileHeader title={t('Past conversations')} onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-h)' }}>
+            {conversationsError && <div style={{ padding: 16 }}>{conversationsError}</div>}
             {conversations.map(c => (
               <button
                 key={c.id}
@@ -542,6 +703,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
         <MobileHeader title={t('AI assistant')} right={historyButton} />
+        {conversationsError && <div style={{ padding: '12px 16px 0' }}>{conversationsError}</div>}
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
@@ -559,10 +721,9 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
         onSelect={setActiveId}
         onNew={() => createConversation.mutate()}
         isCreating={createConversation.isPending}
+        loadError={conversationsError}
       />
-      {activeId && initialMessages ? (
-        <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages}/>
-      ) : (
+      {activeId ? conversationBody(false) : (
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending}/>
       )}
       </div>

@@ -76,6 +76,18 @@ export function shouldRenderMobileNav(hideNav: boolean) {
   return !hideNav
 }
 
+/**
+ * 各ページが下部ナビに隠れないよう下端に空ける余白。--mobile-nav-h はナビの高さ、
+ * --mobile-nav-clearance はナビに少し間を足した高さ。アプリの WebView では Web のナビを描かず、
+ * ネイティブのタブバーが下端の安全領域まで受け持つため 0 にする（残すと中身のない帯が見える）
+ */
+export function mobileNavSpaceStyle(navVisible: boolean): React.CSSProperties {
+  return {
+    '--mobile-nav-h': navVisible ? 'calc(65px + env(safe-area-inset-bottom))' : '0px',
+    '--mobile-nav-clearance': navVisible ? 'calc(80px + env(safe-area-inset-bottom))' : '0px',
+  } as React.CSSProperties
+}
+
 function MobilePlaceholder({ title }: { title: string }) {
   const t = useT()
   return (
@@ -180,7 +192,7 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
     <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       {/* .app の部品スタイル（.btn 等）は子孫セレクタで当たる。全画面パネルや .app-root への portal が
           外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
-      <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+      <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', ...mobileNavSpaceStyle(shouldRenderMobileNav(hideNav)) }}>
         <NavigationProgress />
         {overlay}
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}

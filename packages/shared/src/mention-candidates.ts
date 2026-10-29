@@ -31,3 +31,14 @@ export function filterMentionCandidates<T extends { userId: string; role: Worksp
       return members.filter(member => member.role !== 'guest')
   }
 }
+
+// 日本語入力では全角の「＠」が入りやすいため、半角 @ と同じく候補を出すきっかけにする。
+// 選んだ後は半角 @ に置き換わるので、送信時の `<@id>` への変換は半角だけを見ればよい
+const MENTION_QUERY_PATTERN = /[@＠]([^\s@＠]*)$/
+
+/** カーソル直前の `@名前` / `＠名前` を探す。index はトリガー文字の位置 */
+export function matchMentionQuery(textBeforeCursor: string): { index: number; query: string } | null {
+  const match = MENTION_QUERY_PATTERN.exec(textBeforeCursor)
+  if (!match) return null
+  return { index: match.index, query: match[1] ?? '' }
+}

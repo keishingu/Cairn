@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, matchMentionQuery, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
@@ -55,6 +55,7 @@ import { useProfileAttributes } from '@/hooks/use-profile-attributes'
 import { useProjectRoles } from '@/hooks/use-project-roles'
 import { useLocale, useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { encodeInsertedMentions, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
 import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
 import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
 import {
@@ -104,6 +105,8 @@ const EMPTY_LIST: never[] = []
 function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
 }
+
+export { findInsertedMention, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
 
 // 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
 // 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
@@ -869,7 +872,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
-  const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
+  const [insertedMentions, setInsertedMentions] = React.useState<{ tokenId: string; displayName: string }[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
@@ -894,9 +897,19 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     if (!draft) {
       setMentionQuery(null)
       setMentionAnchorPos(null)
-      setInsertedMentionNames(new Set())
+      setInsertedMentions([])
     }
   }, [draft])
+
+  // 本文に残っているメンション。同じ相手を二重に入れても通知は1回で、本文が「@小川 @小川」と読みにくくなるだけなので、
+  // 候補から外す。メンションを消せば再び候補に出る
+  // 入力中の `@名前` 自体を既存のメンションと数えないよう、その部分を除いた本文で判定する
+  const mentionedTokenIds = React.useMemo(() => {
+    const rest = mentionAnchorPos === null || mentionQuery === null
+      ? draft
+      : draft.slice(0, mentionAnchorPos) + draft.slice(mentionAnchorPos + 1 + mentionQuery.length)
+    return survivingMentionTokenIds(rest, insertedMentions)
+  }, [draft, insertedMentions, mentionAnchorPos, mentionQuery])
 
   const mentionCandidates = React.useMemo(() => {
     // 絞り込みに失敗したまま一部の候補だけを出すと、出てこない人が「居ない」ように見える
@@ -938,16 +951,15 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         roles.push({ tokenId: roleMentionTokenId(role.id), displayName: role.name, kind: 'role' })
       }
     }
-    return [...specials, ...users, ...roles, ...attributes]
-  }, [mentionQuery, mentionMembers, mentionMembersError, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention])
+    return [...specials, ...users, ...roles, ...attributes].filter(item => !mentionedTokenIds.has(item.tokenId))
+  }, [mentionQuery, mentionMembers, mentionMembersError, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention, mentionedTokenIds])
 
   // 候補が変わったら選択をリセット
   React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
 
   const detectMention = (val: string, cursorPos: number) => {
-    const before = val.slice(0, cursorPos)
-    const m = /@([^\s@]*)$/.exec(before)
-    if (m) { setMentionQuery(m[1]!); setMentionAnchorPos(m.index) }
+    const m = matchMentionQuery(val.slice(0, cursorPos))
+    if (m) { setMentionQuery(m.query); setMentionAnchorPos(m.index) }
     else { setMentionQuery(null); setMentionAnchorPos(null) }
   }
 
@@ -962,7 +974,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
     onMentionInserted?.(tokenId, displayName)
-    setInsertedMentionNames(prev => { const next = new Set(prev); next.add(displayName); return next })
+    setInsertedMentions(prev => [...prev, { tokenId, displayName }])
     setMentionQuery(null)
     setMentionAnchorPos(null)
     const targetPos = mentionAnchorPos + displayName.length + 2
@@ -1045,8 +1057,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
 
   // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ
   const draftOverlay = React.useMemo(() => {
-    if (insertedMentionNames.size === 0 || !draft) return null
-    const sorted = [...insertedMentionNames].sort((a, b) => b.length - a.length)
+    if (insertedMentions.length === 0 || !draft) return null
+    const sorted = [...new Set(insertedMentions.map(m => m.displayName))].sort((a, b) => b.length - a.length)
     const escaped = sorted.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     const re = new RegExp(`@(${escaped.join('|')})(?=[\\s、。！？]|$)`, 'g')
     const nodes: React.ReactNode[] = []
@@ -1062,7 +1074,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     if (nodes.length === 0) return null
     if (last < draft.length) nodes.push(<span key="last" style={{ color: 'var(--text)' }}>{draft.slice(last)}</span>)
     return nodes
-  }, [draft, insertedMentionNames])
+  }, [draft, insertedMentions])
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
@@ -1617,19 +1629,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
   // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない。
   // 同名ラベルは挿入順に「先頭から1件ずつ」置換し、後勝ちの Map 衝突を避ける。
-  const transformContent = (text: string): string => {
-    const insertions = mentionInsertionsRef.current
-    if (insertions.length === 0) return text
-    let result = text
-    for (const { tokenId, displayName } of insertions) {
-      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      result = result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`),
-        `<@${tokenId}>`,
-      )
-    }
-    return result
-  }
+  const transformContent = (text: string): string =>
+    encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
   const latestMessagesQuery = useChannelMessages(channelId)

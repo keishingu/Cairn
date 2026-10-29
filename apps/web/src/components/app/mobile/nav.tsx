@@ -92,7 +92,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       {projectsPickerOpen && (
         <div style={{
           position: 'fixed',
-          bottom: 'calc(65px + env(safe-area-inset-bottom))',
+          bottom: 'var(--mobile-nav-h)',
           left: 'calc(8px + env(safe-area-inset-left))',
           zIndex: 'var(--z-nav)',
           background: 'var(--card)',
@@ -130,7 +130,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
       {menuOpen && (
         <div style={{
           position: 'fixed',
-          bottom: 'calc(65px + env(safe-area-inset-bottom))',
+          bottom: 'var(--mobile-nav-h)',
           left: 'calc(12px + env(safe-area-inset-left))',
           right: 'calc(12px + env(safe-area-inset-right))',
           zIndex: 'var(--z-nav)',

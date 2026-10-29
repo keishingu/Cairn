@@ -48,7 +48,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
       {/* コンテンツ */}
       <div style={{
         flex: 1, overflow: 'auto',
-        padding: isMobile ? `6px 10px calc(80px + env(safe-area-inset-bottom))` : '0 24px 24px',
+        padding: isMobile ? `6px 10px var(--mobile-nav-clearance)` : '0 24px 24px',
       }}>
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>

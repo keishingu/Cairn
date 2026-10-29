@@ -5,6 +5,7 @@ import {
   hasFailedUploads,
   insertMention,
   matchMarkdownMention,
+  mentionedTokenIds,
   mergeChatMessages,
   nextMessagePageCursor,
   parseEditableMentions,
@@ -152,5 +153,25 @@ describe('モバイルチャット状態', () => {
     expect(resolveInternalAppPath('/projects/../chats/channel-1', baseUrl)).toBe(
       '/chats/channel-1',
     )
+  })
+})
+
+describe('全角＠のメンション', () => {
+  it('全角の ＠ でも候補を出し、選ぶと半角 @ のメンションに置き換える', () => {
+    const range = findMentionQuery('確認を ＠山', 6)
+    expect(range).toEqual({ start: 4, end: 6, query: '山' })
+    expect(insertMention('確認を ＠山', range!, '山田 太郎')).toEqual({ text: '確認を @山田 太郎 ', cursor: 11 })
+  })
+})
+
+describe('mentionedTokenIds', () => {
+  const mention = { start: 0, end: 3, userId: 'user-ogawa', displayName: '小川聡' }
+
+  it('本文に残っているメンションの相手を返す', () => {
+    expect(mentionedTokenIds('@小川聡 よろしく', [{ ...mention, end: 4 }])).toEqual(new Set(['user-ogawa']))
+  })
+
+  it('メンションを消したり書き換えたりした相手は含めない', () => {
+    expect(mentionedTokenIds('@小川 よろしく', [{ ...mention, end: 4 }])).toEqual(new Set())
   })
 })
