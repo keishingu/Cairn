@@ -97,8 +97,8 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
 
   const navigate = (route: string) => {
     closeOverlays()
-    // チャットのタブは詳細を開いていても一覧へ戻す
-    if (route === 'chats') navigation.navigate(route, { screen: 'index' })
+    // チャットのタブは詳細を開いていても一覧へ戻す。pop がないと一覧が積み増され、戻ると閉じた詳細が再び開く
+    if (route === 'chats') navigation.navigate(route, { screen: 'index', pop: true })
     else navigation.navigate(route)
   }
 
