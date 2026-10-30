@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +24,7 @@ import {
 } from '../lib/attachment-cache'
 import { attachmentRequestHeaders, type AttachmentAuth } from '../lib/attachment-auth'
 import { buildImageViewerHtml, parseImageViewerMessage } from '../lib/attachment-viewer-html'
+import { isHorizontalDrag, resolveSwipe, stepImageIndex } from '../lib/image-viewer-navigation'
 import { useT } from './locale-provider'
 
 // 拡大の上限は PDF・Office ビューアの WebView（maximum-scale）と揃える
@@ -33,27 +35,66 @@ const STAGE_BACKGROUND = '#000000'
 
 type ImageSource = { uri: string; headers: Record<string, string> }
 
+export type ViewerImageFile = { fileId: string; fileName: string; mimeType: string | null }
+
+// images は同じメッセージの画像だけ。index の画像から開き、スワイプか画面端のボタンで前後へ移動する
 export function ChatImageViewer({
-  fileUrl,
-  fileId,
-  fileName,
-  mimeType,
+  images,
+  initialIndex,
+  fileUrlFor,
   auth,
   onClose,
 }: {
-  fileUrl: string
-  fileId: string
-  fileName: string
-  mimeType: string | null
+  images: ViewerImageFile[]
+  initialIndex: number
+  fileUrlFor: (fileId: string) => string
   auth: AttachmentAuth
   onClose: () => void
 }) {
   const t = useT()
   const insets = useSafeAreaInsets()
+  const [index, setIndex] = React.useState(initialIndex)
+  const { fileId, fileName, mimeType } = images[index] ?? images[0]!
+  const fileUrl = fileUrlFor(fileId)
   const [attempt, setAttempt] = React.useState(0)
   const [loading, setLoading] = React.useState(true)
   const [failed, setFailed] = React.useState(false)
+  const [zoomed, setZoomed] = React.useState(false)
   const [busyAction, setBusyAction] = React.useState<'save' | 'share' | null>(null)
+  const zoomedRef = React.useRef(false)
+  zoomedRef.current = zoomed
+  const indexRef = React.useRef(index)
+  indexRef.current = index
+  const countRef = React.useRef(images.length)
+  countRef.current = images.length
+
+  const go = React.useCallback((direction: 'prev' | 'next') => {
+    const next = stepImageIndex(indexRef.current, countRef.current, direction)
+    if (next === indexRef.current) return
+    setIndex(next)
+    setAttempt(0)
+    setLoading(true)
+    setFailed(false)
+    setZoomed(false)
+  }, [])
+
+  // 等倍のときだけ 1 本指の横ドラッグを奪って画像送りにする。拡大中は子（ScrollView / WebView）のパンに任せる
+  const swipe = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (event, gesture) =>
+          !zoomedRef.current &&
+          countRef.current > 1 &&
+          event.nativeEvent.touches.length === 1 &&
+          isHorizontalDrag(gesture.dx, gesture.dy),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderRelease: (_event, gesture) => {
+          const direction = resolveSwipe(gesture.dx, gesture.dy)
+          if (direction) go(direction)
+        },
+      }),
+    [go],
+  )
 
   const runFileAction = async (action: 'save' | 'share') => {
     if (busyAction) return
@@ -94,9 +135,12 @@ export function ChatImageViewer({
           <Text style={styles.fileName} numberOfLines={1}>
             {fileName}
           </Text>
+          {images.length > 1 && (
+            <Text style={styles.counter}>{`${index + 1} / ${images.length}`}</Text>
+          )}
         </View>
 
-        <View style={styles.stage}>
+        <View style={styles.stage} {...swipe.panHandlers}>
           {failed ? (
             <View style={styles.failure}>
               <Text style={styles.failureText}>{t('Could not display the image')}</Text>
@@ -115,12 +159,13 @@ export function ChatImageViewer({
             </View>
           ) : (
             <ZoomableImage
-              key={attempt}
+              key={`${fileId}:${attempt}`}
               attempt={attempt}
               fileUrl={fileUrl}
               fileId={fileId}
               fileName={fileName}
               auth={auth}
+              onZoomChange={setZoomed}
               onLoadStart={() => setLoading(true)}
               onLoadEnd={() => setLoading(false)}
               onError={() => {
@@ -131,6 +176,30 @@ export function ChatImageViewer({
           )}
           {loading && !failed && (
             <ActivityIndicator style={styles.spinner} size="large" color="#FFFFFF" />
+          )}
+          {images.length > 1 && !zoomed && (
+            <>
+              {index > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Previous image')}
+                  onPress={() => go('prev')}
+                  style={[styles.edge, styles.edgeLeft]}
+                >
+                  <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+                </Pressable>
+              )}
+              {index < images.length - 1 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Next image')}
+                  onPress={() => go('next')}
+                  style={[styles.edge, styles.edgeRight]}
+                >
+                  <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
+                </Pressable>
+              )}
+            </>
           )}
         </View>
 
@@ -161,6 +230,7 @@ type ZoomableImageProps = {
   fileId: string
   fileName: string
   auth: AttachmentAuth
+  onZoomChange: (zoomed: boolean) => void
   onLoadStart: () => void
   onLoadEnd: () => void
   onError: () => void
@@ -172,7 +242,7 @@ function ZoomableImage(props: ZoomableImageProps) {
   return Platform.OS === 'ios' ? <IosZoomableImage {...props} /> : <AndroidZoomableImage {...props} />
 }
 
-function IosZoomableImage({ fileUrl, fileName, auth, onLoadStart, onLoadEnd, onError }: ZoomableImageProps) {
+function IosZoomableImage({ fileUrl, fileName, auth, onZoomChange, onLoadStart, onLoadEnd, onError }: ZoomableImageProps) {
   const scrollRef = React.useRef<ScrollView>(null)
   const [size, setSize] = React.useState<{ width: number; height: number } | null>(null)
   const zoomScaleRef = React.useRef(1)
@@ -230,6 +300,7 @@ function IosZoomableImage({ fileUrl, fileName, auth, onLoadStart, onLoadEnd, onE
           scrollEventThrottle={16}
           onScroll={(event) => {
             zoomScaleRef.current = event.nativeEvent.zoomScale
+            onZoomChange(zoomScaleRef.current > 1.01)
           }}
         >
           <Pressable accessible={false} onPress={handlePress} style={size}>
@@ -255,6 +326,7 @@ function AndroidZoomableImage({
   fileId,
   fileName,
   auth,
+  onZoomChange,
   onLoadStart,
   onLoadEnd,
   onError,
@@ -320,6 +392,8 @@ function AndroidZoomableImage({
       onMessage={(event) => {
         const message = parseImageViewerMessage(event.nativeEvent.data)
         if (message === 'loaded') onLoadEnd()
+        else if (message === 'zoomed') onZoomChange(true)
+        else if (message === 'fit') onZoomChange(false)
         else if (message === 'error') handleRenderError('img')
       }}
       onError={(event) => handleRenderError(event.nativeEvent.description)}
@@ -381,9 +455,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   fileName: { flex: 1, color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  counter: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   webview: { flex: 1, backgroundColor: STAGE_BACKGROUND },
   spinner: { position: 'absolute' },
+  edge: {
+    position: 'absolute',
+    top: '40%',
+    width: 40,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  edgeLeft: { left: 0, borderTopRightRadius: 12, borderBottomRightRadius: 12 },
+  edgeRight: { right: 0, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 },
   failure: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   failureText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', textAlign: 'center' },
   retry: {

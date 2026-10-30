@@ -87,12 +87,15 @@ describe('Android の画像ビューアの HTML', () => {
   it('画像の URI を属性から抜け出せないようエスケープする', () => {
     const html = buildImageViewerHtml('file:///cache/a"><script>.png', '#000000')
     expect(html).toContain('src="file:///cache/a&quot;>&lt;script>.png"')
-    expect(html).not.toContain('<script>')
+    // 固定のスクリプトはあるが、URI 由来のタグは増えない
+    expect(html.match(/<script>/g)).toHaveLength(1)
   })
 
-  it('img の読み込み結果だけをメッセージとして受け取る', () => {
+  it('img の読み込み結果と拡大状態だけをメッセージとして受け取る', () => {
     expect(parseImageViewerMessage('loaded')).toBe('loaded')
     expect(parseImageViewerMessage('error')).toBe('error')
+    expect(parseImageViewerMessage('zoomed')).toBe('zoomed')
+    expect(parseImageViewerMessage('fit')).toBe('fit')
     expect(parseImageViewerMessage('{"type":"loaded"}')).toBeNull()
   })
 })

@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   AppState,
   BackHandler,
   FlatList,
@@ -12,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   Share,
@@ -38,9 +36,9 @@ import {
 } from '../../../hooks/use-messages'
 import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
-import { isEdgeBackSwipe } from '../../../lib/edge-back-swipe'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
@@ -57,7 +55,14 @@ import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/atta
 import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
 import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
+import {
+  attachmentViewer,
+  CHAT_IMAGE_MAX_MULTI,
+  CHAT_IMAGE_MAX_SINGLE,
+  fitImageSize,
+  isImageMime,
+  isPreviewableAttachment,
+} from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -149,57 +154,109 @@ async function openAttachmentFile(
   }
 }
 
-function AttachmentChip({
+// 画像はファイル名を出さずサムネイルだけを大きく表示する（Web の ChatMessage と同じ）。
+// 寸法はサーバーから届かないため、読み込み前は 4:3 の枠を確保し、読み込み後に実寸の縦横比へ合わせる
+function AttachmentImage({
   attachment,
   palette,
   auth,
-  onOpenPreview,
+  maxSize,
+  onPress,
+  accessibilityLabel,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
-  auth?: AttachmentAuth
-  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+  auth: AttachmentAuth
+  maxSize: number
+  onPress: () => void
+  accessibilityLabel: string
 }) {
-  const t = useT()
-  const isImage = isImageMime(attachment.mimeType)
-  const isPreviewable = isPreviewableAttachment(attachment.mimeType, attachment.fileName, Platform.OS)
+  const [size, setSize] = React.useState<{ width: number; height: number } | null>(null)
+  const [failed, setFailed] = React.useState(false)
+  const box = size ?? { width: maxSize, height: maxSize * 0.75 }
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={
-        isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
-      }
-      disabled={!auth}
-      onPress={() => {
-        if (!auth) return
-        if (isPreviewable) {
-          onOpenPreview(attachment)
-          return
-        }
-        void openAttachmentFile(
-          attachment.fileId,
-          attachment.fileName,
-          attachment.mimeType,
-          auth,
-          t,
-        )
-      }}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
       style={({ pressed }) => [
-        styles.attachmentChip,
-        { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
+        styles.attachmentImageBox,
+        { width: box.width, aspectRatio: box.width / box.height, backgroundColor: palette.card2, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      {isImage && auth ? (
+      {failed ? (
+        <Ionicons name="image-outline" size={24} color={palette.text3} />
+      ) : (
         <Image
           source={{
             uri: attachmentUrl(attachment.fileId),
             headers: attachmentRequestHeaders(auth),
           }}
-          style={styles.attachmentImage}
+          style={styles.attachmentImageFill}
+          resizeMode="cover"
+          onLoad={(event) => {
+            const { width, height } = event.nativeEvent.source
+            const fitted = fitImageSize(width, height, maxSize)
+            if (fitted) setSize(fitted)
+          }}
+          onError={() => setFailed(true)}
         />
-      ) : (
-        <Ionicons name={attachmentIcon(attachment.mimeType)} size={20} color={palette.text3} />
       )}
+    </Pressable>
+  )
+}
+
+function AttachmentChip({
+  attachment,
+  palette,
+  auth,
+  imageMaxSize,
+  onOpenPreview,
+}: {
+  attachment: MessageDto['attachments'][number]
+  palette: Palette
+  auth?: AttachmentAuth
+  imageMaxSize: number
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+}) {
+  const t = useT()
+  const isImage = isImageMime(attachment.mimeType)
+  const isPreviewable = isPreviewableAttachment(attachment.mimeType, attachment.fileName, Platform.OS)
+  const accessibilityLabel = isPreviewable
+    ? t('View {name}', { name: attachment.fileName })
+    : t('Open {name}', { name: attachment.fileName })
+  const open = () => {
+    if (!auth) return
+    if (isPreviewable) {
+      onOpenPreview(attachment)
+      return
+    }
+    void openAttachmentFile(attachment.fileId, attachment.fileName, attachment.mimeType, auth, t)
+  }
+  if (isImage && auth) {
+    return (
+      <AttachmentImage
+        attachment={attachment}
+        palette={palette}
+        auth={auth}
+        maxSize={imageMaxSize}
+        onPress={open}
+        accessibilityLabel={accessibilityLabel}
+      />
+    )
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      disabled={!auth}
+      onPress={open}
+      style={({ pressed }) => [
+        styles.attachmentChip,
+        { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
+      ]}
+    >
+      <Ionicons name={attachmentIcon(attachment.mimeType)} size={20} color={palette.text3} />
       <Text style={[styles.attachmentText, { color: palette.text2 }]} numberOfLines={1}>
         {attachment.fileName}
       </Text>
@@ -416,6 +473,7 @@ function ChatMessageRow({
                   key={attachment.id}
                   attachment={attachment}
                   palette={palette}
+                  imageMaxSize={message.attachments.length === 1 ? CHAT_IMAGE_MAX_SINGLE : CHAT_IMAGE_MAX_MULTI}
                   onOpenPreview={onOpenPreview}
                   {...(attachmentAuth ? { auth: attachmentAuth } : {})}
                 />
@@ -749,6 +807,18 @@ export default function ChatThreadScreen() {
   }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesQuery.data ?? []
+  // 開いた画像と同じメッセージの画像だけをビューアで前後に移動できるようにする
+  const previewImages = React.useMemo(
+    () =>
+      attachmentPreview
+        ? resolveViewerImages(
+            messages.find((message) => message.attachments.some((a) => a.id === attachmentPreview.id))
+              ?.attachments,
+            attachmentPreview,
+          )
+        : { images: [], index: 0 },
+    [attachmentPreview, messages],
+  )
   const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
   const reactionPeopleSummary = reactionPeople && reactionPeopleMessage
     ? getReactionPeopleSummary(reactionPeopleMessage.reactions, reactionPeople.selectedEmoji)
@@ -858,36 +928,12 @@ export default function ChatThreadScreen() {
   const draftRef = React.useRef(draft)
   draftRef.current = draft
 
-  // chats/[channelId] は chats/index と同じ Tab Navigator 内の兄弟タブ（href: null）のため、
-  // 他のタブへ切り替えても既定では画面がアンマウントされない。
+  // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
-  const swipeX = React.useRef(new Animated.Value(0)).current
   const goBackToList = React.useCallback(() => {
-    swipeX.setValue(0)
-    router.replace('/(app)/chats')
-  }, [router, swipeX])
-  const backSwipe = React.useMemo(
-    () =>
-      PanResponder.create({
-        // 左端から右へ動かしたときだけ一覧へ戻す。縦スクロールと戻るボタンのタップは奪わない。
-        onMoveShouldSetPanResponderCapture: (_event, gesture) => isEdgeBackSwipe(gesture),
-        onPanResponderMove: (_event, gesture) => {
-          swipeX.setValue(Math.max(0, gesture.dx))
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dx > 72 || gesture.vx > 0.75) {
-            goBackToList()
-            return
-          }
-          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
-        },
-        onPanResponderTerminate: () => {
-          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
-        },
-      }),
-    [goBackToList, swipeX],
-  )
+    router.dismissTo('/(app)/chats')
+  }, [router])
   const channelListsSettled = projectChannelsQuery.isSuccess && !projectChannelsQuery.isFetching
     && workspaceChannelsQuery.isSuccess && !workspaceChannelsQuery.isFetching
     && (!FEATURE_FLAGS.dm || (dmsQuery.isSuccess && !dmsQuery.isFetching))
@@ -912,15 +958,12 @@ export default function ChatThreadScreen() {
 
   React.useEffect(() => {
     const unsubFocus = navigation.addListener('focus', () => setIsFocused(true))
-    const unsubBlur = navigation.addListener('blur', () => {
-      setIsFocused(false)
-      swipeX.setValue(0)
-    })
+    const unsubBlur = navigation.addListener('blur', () => setIsFocused(false))
     return () => {
       unsubFocus()
       unsubBlur()
     }
-  }, [navigation, swipeX])
+  }, [navigation])
 
   React.useEffect(() => {
     if (!isFocused) return
@@ -957,8 +1000,7 @@ export default function ChatThreadScreen() {
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
 
-  // chats/[channelId] は隠しタブとして常駐するため、一覧に戻って別チャンネルを開いても
-  // コンポーネントは再マウントされない。channelId が変わったら下書き・エラー・既読化の
+  // 同じ画面のまま params だけが変わった場合に備える。channelId が変わったら下書き・エラー・既読化の
   // 状態を初期化しないと、A に入力した下書きが B に誤送信されてしまう。
   // また refetchOnMount: 'always' はコンポーネント自体の再マウント時にしか働かないため、
   // 常駐したまま queryKey だけが切り替わるこのケースでは staleTime 内のキャッシュが
@@ -1550,17 +1592,26 @@ export default function ChatThreadScreen() {
     else setSelectableText(text)
   }
 
-  const shareMessage = async (message: MessageDto) => {
-    setActionTarget(null)
-    const body = parseMentions(message.content, t).trim()
-    const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
+  const openShareSheet = async (content: string) => {
     try {
-      await Share.share({ message: body ? `${body}\n${url}` : url })
+      await Share.share({ message: content })
     } catch (shareError) {
       setSendError(
         shareError instanceof Error ? shareError.message : t('Could not share the message'),
       )
     }
+  }
+
+  // 共有シートも閉じかけの操作メニューの上に出すと、メニューと一緒に閉じられて何も表示されないため、閉じ終えてから開く
+  const pendingShareRef = React.useRef<string | null>(null)
+  const shareMessage = (message: MessageDto) => {
+    setActionTarget(null)
+    const body = parseMentions(message.content, t).trim()
+    const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
+    const content = body ? `${body}\n${url}` : url
+    // onDismiss は iOS でしか呼ばれない。Android はそのまま開ける
+    if (Platform.OS === 'ios') pendingShareRef.current = content
+    else void openShareSheet(content)
   }
 
   return (
@@ -1569,9 +1620,8 @@ export default function ChatThreadScreen() {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
       behavior="padding"
-      {...backSwipe.panHandlers}
     >
-      <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
+      <View style={styles.screenContent}>
         <View
           style={[
             styles.header,
@@ -2040,6 +2090,9 @@ export default function ChatThreadScreen() {
             const pending = pendingSelectTextRef.current
             pendingSelectTextRef.current = null
             if (pending !== null) setSelectableText(pending)
+            const pendingShare = pendingShareRef.current
+            pendingShareRef.current = null
+            if (pendingShare !== null) void openShareSheet(pendingShare)
           }}
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
@@ -2122,7 +2175,7 @@ export default function ChatThreadScreen() {
                 icon="share-outline"
                 label={t('Share')}
                 palette={palette}
-                onPress={() => actionTarget && void shareMessage(actionTarget)}
+                onPress={() => actionTarget && shareMessage(actionTarget)}
               />
               {actionTarget &&
                 canMoveMessageToThread({
@@ -2311,10 +2364,9 @@ export default function ChatThreadScreen() {
             />
           ) : previewViewer === 'image' ? (
             <ChatImageViewer
-              fileUrl={attachmentUrl(attachmentPreview.fileId)}
-              fileId={attachmentPreview.fileId}
-              fileName={attachmentPreview.fileName}
-              mimeType={attachmentPreview.mimeType}
+              images={previewImages.images}
+              initialIndex={previewImages.index}
+              fileUrlFor={attachmentUrl}
               auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
             />
@@ -2340,14 +2392,14 @@ export default function ChatThreadScreen() {
             />
           ) : null
         )}
-      </Animated.View>
+      </View>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  swipeContent: { flex: 1 },
+  screenContent: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2417,9 +2469,10 @@ const styles = StyleSheet.create({
   },
   replySender: { fontSize: 11.5, fontWeight: '600', flexShrink: 0 },
   replyText: { fontSize: 11.5, flex: 1 },
-  attachments: { gap: 6 },
+  attachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   attachmentsWithContent: { marginTop: 8 },
   attachmentChip: {
+    width: '100%',
     maxWidth: 240,
     minHeight: 44,
     flexDirection: 'row',
@@ -2430,7 +2483,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  attachmentImage: { width: 72, height: 54, borderRadius: 6 },
+  attachmentImageBox: { maxWidth: '100%', borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  attachmentImageFill: { width: '100%', height: '100%' },
   attachmentText: { flex: 1, fontSize: 12.5 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reaction: {

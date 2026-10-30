@@ -41,6 +41,12 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **`pnpm setup:mobile-lan` を実行する**: WebView 内の Next.js バンドルに埋め込まれた `NEXT_PUBLIC_SUPABASE_URL` が `127.0.0.1` のままだと端末から繋がらない。ミドルウェアの `getUser()` がタイムアウトして `/auth/login` へ飛び、それを検知したネイティブまでサインアウトする。このコマンドで `apps/web/.env.local` を LAN IP に書き換える（Wi-Fi 切替時は再実行）
 - **`allowedDevOrigins` を確認する**: Next.js 15 の開発サーバーは `localhost` 以外からの `/_next/*` をブロックする。`apps/web/next.config.ts` が LAN IP を自動設定しているが、ターミナルに `Cross origin request detected from <IP> to /_next/* resource` が出ていれば効いていない
 
+## チャットの画面遷移
+
+- `app/(app)/chats/_layout.tsx` は Stack で、一覧の上に詳細を重ねる。iOS の標準のスワイプで戻る途中も背面に一覧が見える。チャットのタブを押すと一覧へ戻る
+- 通知などから詳細を直接開いても戻り先があるよう、`unstable_settings.anchor` を `index` にしている。詳細の戻るボタンは `router.dismissTo` で一覧まで戻す
+- 詳細は `getId` で 1 画面に固定する。DM やスレッド、通知で別のチャットへ移っても画面は重ならず、同じ画面の params が変わるだけなので、戻り先は常に一覧になる
+
 ## ビルド・配布
 
 - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先に使わない
