@@ -31,6 +31,9 @@ export function useAppIconSync(
   // 実行中は 1 回にまとめ、終わってから最新の設定と照らし合わせる
   const inFlightRef = React.useRef(false)
   const pendingRef = React.useRef(false)
+  // iOS は確認表示を短時間に何度も出させず、前面に戻るたびの再試行も失敗し続けることがある。
+  // 同じアイコンへの失敗は 1 回だけ知らせる
+  const alertedRef = React.useRef<string | null | undefined>(undefined)
 
   const apply = React.useCallback(() => {
     const name = targetRef.current
@@ -41,9 +44,11 @@ export function useAppIconSync(
     }
     if (getAppIconName() === name) return
     inFlightRef.current = true
-    setAlternateAppIcon(name)
+    changeIcon(name, IOS_RETRY_COUNT)
       .catch((error: unknown) => {
         console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
+        if (alertedRef.current === name) return
+        alertedRef.current = name
         Alert.alert(t('Could not change the app icon.'))
       })
       .finally(() => {
@@ -55,15 +60,49 @@ export function useAppIconSync(
       })
   }, [t])
 
+  // iOS は前面に戻った直後に変更すると「リソースが一時的に使用できません」で失敗するため、少し待ってから呼ぶ
+  const scheduleRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const schedule = React.useCallback(() => {
+    if (Platform.OS !== 'ios') {
+      apply()
+      return
+    }
+    if (scheduleRef.current) clearTimeout(scheduleRef.current)
+    scheduleRef.current = setTimeout(() => {
+      scheduleRef.current = null
+      if (AppState.currentState === 'active') apply()
+    }, IOS_SETTLE_MS)
+  }, [apply])
+  React.useEffect(() => () => {
+    if (scheduleRef.current) clearTimeout(scheduleRef.current)
+  }, [])
+
   React.useEffect(() => {
-    if (Platform.OS === 'ios' && AppState.currentState === 'active') apply()
-  }, [target, apply])
+    if (Platform.OS === 'ios' && AppState.currentState === 'active') schedule()
+  }, [target, schedule])
 
   React.useEffect(() => {
     const trigger: AppStateStatus = Platform.OS === 'ios' ? 'active' : 'background'
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === trigger) apply()
+      if (state === trigger) schedule()
     })
     return () => sub.remove()
-  }, [apply])
+  }, [schedule])
+}
+
+const IOS_SETTLE_MS = 1000
+const IOS_RETRY_COUNT = 1
+
+// 一時的な失敗（他の確認表示と重なったときなど）は前面にいる間に 1 回だけ再試行する。
+// 失敗が返っても実際には切り替わっている場合があるため、現在のアイコンで成否を判断する
+async function changeIcon(name: string | null, retriesLeft: number): Promise<void> {
+  try {
+    await setAlternateAppIcon(name)
+  } catch (error) {
+    if (getAppIconName() === name) return
+    if (Platform.OS !== 'ios' || retriesLeft <= 0) throw error
+    await new Promise((resolve) => setTimeout(resolve, IOS_SETTLE_MS))
+    if (AppState.currentState !== 'active') return
+    await changeIcon(name, retriesLeft - 1)
+  }
 }
