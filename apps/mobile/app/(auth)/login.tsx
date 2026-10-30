@@ -2,7 +2,7 @@ import React from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
 import { Link, useLocalSearchParams } from 'expo-router'
 import { useT } from '../../components/locale-provider'
-import { AUTH_PALETTE as palette } from '../../lib/auth-palette'
+import { AUTH_BUTTON_BACKGROUND, AUTH_PALETTE as palette } from '../../lib/auth-palette'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
 import { AppleSignInButton } from '../../components/apple-sign-in-button'
@@ -42,7 +42,7 @@ export default function LoginScreen() {
         )}
         <TextInput
           style={styles.input}
-          placeholderTextColor={palette.text4}
+          placeholderTextColor={palette.text3}
           placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
@@ -52,7 +52,7 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholderTextColor={palette.text4}
+          placeholderTextColor={palette.text3}
           placeholder={t('Password')}
           value={password}
           onChangeText={setPassword}
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    backgroundColor: palette.accent,
+    backgroundColor: AUTH_BUTTON_BACKGROUND,
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',

@@ -22,13 +22,37 @@ export function useAppIconSync(
       )
     : undefined
   const targetRef = React.useRef(target)
-  targetRef.current = target
+  // render 中に書き換えると、破棄された render の値で AppState のイベントが動きうるため、確定後に反映する
+  React.useEffect(() => {
+    targetRef.current = target
+  }, [target])
+
+  // 起動直後は設定の反映と前面復帰が同時に来る。iOS は変更中に重ねて呼ぶと後の呼び出しを失敗させるため、
+  // 実行中は 1 回にまとめ、終わってから最新の設定と照らし合わせる
+  const inFlightRef = React.useRef(false)
+  const pendingRef = React.useRef(false)
 
   const apply = React.useCallback(() => {
     const name = targetRef.current
     if (name === undefined || !supportsAlternateIcons) return
+    if (inFlightRef.current) {
+      pendingRef.current = true
+      return
+    }
     if (getAppIconName() === name) return
-    setAlternateAppIcon(name).catch(() => Alert.alert(t('Could not change the app icon.')))
+    inFlightRef.current = true
+    setAlternateAppIcon(name)
+      .catch((error: unknown) => {
+        console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
+        Alert.alert(t('Could not change the app icon.'))
+      })
+      .finally(() => {
+        inFlightRef.current = false
+        if (pendingRef.current) {
+          pendingRef.current = false
+          apply()
+        }
+      })
   }, [t])
 
   React.useEffect(() => {

@@ -13,7 +13,7 @@ import {
   CONSENT_LINK_LABELS,
 } from '../../lib/account-consent'
 import { useT } from '../../components/locale-provider'
-import { AUTH_PALETTE as palette } from '../../lib/auth-palette'
+import { AUTH_BUTTON_BACKGROUND, AUTH_PALETTE as palette } from '../../lib/auth-palette'
 
 export default function SignupScreen() {
   const t = useT()
@@ -74,7 +74,7 @@ export default function SignupScreen() {
       <View style={styles.form}>
         <TextInput
           style={styles.input}
-          placeholderTextColor={palette.text4}
+          placeholderTextColor={palette.text3}
           placeholder={t('Display name')}
           value={displayName}
           onChangeText={setDisplayName}
@@ -82,7 +82,7 @@ export default function SignupScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholderTextColor={palette.text4}
+          placeholderTextColor={palette.text3}
           placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
@@ -92,7 +92,7 @@ export default function SignupScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholderTextColor={palette.text4}
+          placeholderTextColor={palette.text3}
           placeholder={t('Password (at least 8 characters)')}
           value={password}
           onChangeText={setPassword}
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    backgroundColor: palette.accent,
+    backgroundColor: AUTH_BUTTON_BACKGROUND,
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',

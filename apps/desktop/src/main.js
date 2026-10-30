@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = requi
 const path = require('path')
 const pkg = require('../package.json')
 const { registerExternalNavigation } = require('./external-navigation')
-const { registerPermissionPolicy } = require('./permission-policy')
+const { isSameOrigin, registerPermissionPolicy } = require('./permission-policy')
 const { resolveAppIconFile } = require('./app-icon')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
@@ -94,6 +94,8 @@ function registerBadgeBridge() {
 // Finder やスタートメニューに出る同梱アイコンは変えられないため、実行中の表示だけが追従する。
 function registerAppIconBridge() {
   ipcMain.on('cairn:set-app-icon', (event, appearance) => {
+    // 外部サイトへ遷移したフレームからはアプリのアイコンを変えさせない
+    if (!isSameOrigin(event.senderFrame?.url ?? '', APP_URL)) return
     const file = resolveAppIconFile(appearance, DEPLOYMENT_ENV)
     if (!file) return
     const image = nativeImage.createFromPath(file)
