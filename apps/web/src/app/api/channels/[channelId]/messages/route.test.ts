@@ -60,6 +60,7 @@ vi.mock('@/lib/chat/channel-family', () => ({ loadChannelFamilyIds: mockLoadFami
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }))
 vi.mock('@/lib/profile-attributes', () => ({ getProfileAttributesByUserIds: mockGetProfileAttributes }))
 vi.mock('@cairn/shared', () => ({
+  formatTaskTitleForDisplay: (title: string) => title,
   postMessageSchema: {
     safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }),
   },
