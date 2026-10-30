@@ -4,7 +4,8 @@
   "private": true,
   "main": "src/main.js",
   "config": {
-    "appUrl": "https://develop.oss-cairn.com"
+    "appUrl": "https://develop.oss-cairn.com",
+    "deploymentEnv": "development"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development DESKTOP_APP_URL=https://develop.oss-cairn.com electron .",

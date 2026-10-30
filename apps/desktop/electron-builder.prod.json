@@ -10,7 +10,8 @@
   ],
   "extraMetadata": {
     "config": {
-      "appUrl": "https://oss-cairn.com"
+      "appUrl": "https://oss-cairn.com",
+      "deploymentEnv": "production"
     }
   },
   "mac": {

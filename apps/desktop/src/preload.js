@@ -22,4 +22,6 @@ contextBridge.exposeInMainWorld('cairnDesktop', {
   // macOS Dock / Linux ランチャーは Web の navigator.setAppBadge が Electron 経由で
   // 直接数字を出すため、この橋渡しは Windows のためだけに存在する。
   setBadgeCount: (count) => ipcRenderer.send('cairn:set-badge', count),
+  // 外観設定を main へ通知し、Dock / タスクバーのアイコンを合わせる。
+  setAppIcon: (appearance) => ipcRenderer.send('cairn:set-app-icon', appearance),
 })

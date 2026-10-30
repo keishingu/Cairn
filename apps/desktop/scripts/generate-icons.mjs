@@ -1,3 +1,4 @@
+import { copyFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import iconGen from 'icon-gen'
@@ -26,4 +27,16 @@ for (const target of targets) {
     icns: { name: 'icon', sizes: [16, 32, 64, 128, 256, 512] },
     favicon: { name: 'icon', pngSizes: [16, 32, 48, 64, 128, 256, 512], icoSizes: [] },
   })
+}
+
+// 外観設定に合わせて実行中に差し替える Dock / タスクバー用アイコン（src/assets/app-icons）
+const appIconsDir = path.join(__dirname, '../src/assets/app-icons')
+mkdirSync(appIconsDir, { recursive: true })
+for (const accent of ['emerald', 'blue', 'violet', 'rose', 'pink', 'amber', 'cyan']) {
+  for (const theme of ['light', 'dark']) {
+    copyFileSync(
+      path.join(root, `apps/web/public/icon-${accent}-${theme}-512.png`),
+      path.join(appIconsDir, `${accent}-${theme}.png`),
+    )
+  }
 }

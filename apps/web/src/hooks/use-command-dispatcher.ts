@@ -17,6 +17,8 @@ declare global {
       onToggleSidebar?: (cb: () => void) => (() => void) | void
       /** 未読バッジ数を Electron main へ通知（Windows タスクバーのオーバーレイ用） */
       setBadgeCount?: (count: number) => void
+      /** 外観設定を Electron main へ通知（Dock / タスクバーのアイコン差し替え用） */
+      setAppIcon?: (appearance: { theme: string; accentId: string; resolvedTheme: string }) => void
     }
   }
 }

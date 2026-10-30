@@ -5,7 +5,7 @@
 
 ## リポジトリ内で準備済みのもの
 
-- `apps/mobile/assets/icon-ios.png`: 1024×1024、非透過の本番アイコン
+- `apps/mobile/assets/app-icons/emerald-dark-ios.png`: 1024×1024、非透過の本番アイコン（`app.config.ts` が `production` で選ぶ）
 - `apps/mobile/eas.json`: `production` build / submit profile
 - `apps/mobile/store.config.json`: 日本語のApp Storeメタデータ
 - `apps/mobile/.eas/workflows/submit-ios.yml`: 手動起動するTestFlight workflow

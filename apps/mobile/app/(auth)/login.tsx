@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
 import { Link, useLocalSearchParams } from 'expo-router'
 import { useT } from '../../components/locale-provider'
+import { AUTH_PALETTE as palette } from '../../lib/auth-palette'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
 import { AppleSignInButton } from '../../components/apple-sign-in-button'
@@ -41,6 +42,7 @@ export default function LoginScreen() {
         )}
         <TextInput
           style={styles.input}
+          placeholderTextColor={palette.text4}
           placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
@@ -50,6 +52,7 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
+          placeholderTextColor={palette.text4}
           placeholder={t('Password')}
           value={password}
           onChangeText={setPassword}
@@ -65,7 +68,7 @@ export default function LoginScreen() {
 
         <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={palette.onAccent} />
           ) : <Text style={styles.buttonText}>{t('Sign in')}</Text>}
         </TouchableOpacity>
 
@@ -95,16 +98,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: palette.bg,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 8,
+    color: palette.text,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: palette.text3,
     marginBottom: 32,
   },
   form: {
@@ -113,10 +117,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: palette.border,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    color: palette.text,
+    backgroundColor: palette.card,
   },
   errorBox: {
     backgroundColor: '#fef2f2',
@@ -141,14 +147,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#0070f3',
+    backgroundColor: palette.accent,
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',
     marginTop: 4,
   },
   buttonText: {
-    color: '#fff',
+    color: palette.onAccent,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -161,15 +167,15 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: palette.border,
   },
   dividerText: {
-    color: '#999',
+    color: palette.text4,
     fontSize: 13,
   },
   link: {
     marginTop: 24,
-    color: '#0070f3',
+    color: palette.accentText,
     fontSize: 14,
   },
 })

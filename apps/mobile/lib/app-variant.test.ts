@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAppVariant } from '../app.config'
+import { resolveAppAssets, resolveAppVariant } from '../app.config'
 
 describe('モバイルアプリの配布環境別設定', () => {
   it('未指定時は本番アプリを上書きしない開発版になる', () => {
@@ -26,6 +26,19 @@ describe('モバイルアプリの配布環境別設定', () => {
       scheme: 'cairn',
       iosBundleIdentifier: 'com.oss-cairn',
       androidPackage: 'com.oss_cairn',
+    })
+  })
+
+  it('開発系は白＋青、本番は紺＋緑のアイコンとスプラッシュで見分けられる', () => {
+    expect(resolveAppAssets('development')).toEqual({
+      icon: './assets/app-icons/blue-light-ios.png',
+      adaptiveIcon: { foregroundImage: './assets/app-icons/blue-light-android.png', backgroundColor: '#FFFFFF' },
+      splash: { image: './assets/app-icons/splash-blue.png', backgroundColor: '#FFFFFF' },
+    })
+    expect(resolveAppAssets('production')).toEqual({
+      icon: './assets/app-icons/emerald-dark-ios.png',
+      adaptiveIcon: { foregroundImage: './assets/app-icons/emerald-dark-android.png', backgroundColor: '#0B1622' },
+      splash: { image: './assets/app-icons/splash-emerald.png', backgroundColor: '#0B1622' },
     })
   })
 })

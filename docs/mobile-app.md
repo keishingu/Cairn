@@ -44,7 +44,7 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 ## ビルド・配布
 
 - EAS Build profile は `apps/mobile/eas.json` で `development` / `preview` / `production` の同名 EAS Environment へ明示的に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update の接続先に使わない
-- **ストア版の Android は `production` profile の AAB**（`pnpm build:production:android`）。`app.json` の `android.adaptiveIcon` / `blockedPermissions` / `expo-notifications` plugin が Play 向けの設定で、Push 通知の FCM 設定（`google-services.json`）は EAS の file 型シークレット `GOOGLE_SERVICES_JSON` から `app.config.ts` が渡す。手順は [`play-store-submission.md`](play-store-submission.md)
+- **ストア版の Android は `production` profile の AAB**（`pnpm build:production:android`）。`app.config.ts` の `android.adaptiveIcon`、`app.json` の `blockedPermissions` / `expo-notifications` plugin が Play 向けの設定で、Push 通知の FCM 設定（`google-services.json`）は EAS の file 型シークレット `GOOGLE_SERVICES_JSON` から `app.config.ts` が渡す。手順は [`play-store-submission.md`](play-store-submission.md)
 - **本番 API に向いた APK を実機へ直接入れるときは `production-apk` profile**（`eas build --platform android --profile production-apk`）。production と同じ環境・キーストアで APK を作り、versionCode は増やさない。ストア用スクリーンショットの撮影や、Play を経由しない本番相当の確認に使う
 - **Internal Distribution は `preview` profile**（Android は APK、iOS は登録済み端末向け Ad Hoc）。ローカルコマンドまたは手動の `.github/workflows/mobile-internal-build.yml` から起動し、`ios` / `all` build は `--refresh-ad-hoc-provisioning-profile` で登録済み端末を反映する。`app.config.ts` で `Cairn Dev` / `Cairn Preview` / `Cairn` の URL scheme と bundle/package ID を分離し、同一端末に共存させる
 - **PR の Mobile Preview**（`.github/workflows/mobile-preview.yml`）は Vercel Deployment Protection を避けるため `https://develop.oss-cairn.com` を Web / API 接続先にする。この URL と共有 Supabase Preview 設定を EAS の `preview` 環境へ同期し、PR 固有 branch へ Development Build 用 QR を発行すると同時に `preview` channel へ OTA を配信する
@@ -52,6 +52,8 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
   - 同一 PR の古い実行はキャンセルし、異なる PR は EAS 同期直前の FIFO ゲートで直列化する。このゲートは PR 配信同士を対象とし、develop からの配信とは独立して動く
 - **develop から Preview 端末への OTA**（`.github/workflows/mobile-preview-update.yml`）は `develop` への push ごとに自動実行し、実行開始時点の `develop` の先頭を EAS の `preview` 環境の値で `preview` channel へ配信する（手動実行も可）。`EXPO_TOKEN` は GitHub の `Preview` Environment に置く。PR の Mobile Preview も同じ channel へ配信するため、PR 更新または develop 更新のどちらが後に完了したかで Preview 端末の最新版が変わる
 - **ストア版への OTA**（`.github/workflows/mobile-production-update.yml`）は `main` への push ごとに自動実行し（paths は変更ファイル 300 件までしか見ず大きなリリースで起動漏れするため絞らない）、実行開始時点の `main` の先頭を EAS の `production` 環境の接続先で `production` channel へ配信する（手動実行も可）。届くのは `runtimeVersion` が一致するストア版だけなので、ネイティブモジュールを変えた PR は `runtimeVersion` を上げてから `main` へ入れ、ストア版を作り直す。`EXPO_TOKEN` は GitHub の `production` Environment に置く
+- **アイコン・スプラッシュ・未ログイン画面の配色は環境で分ける**（`development` / `preview` は白＋青、`production` は紺＋緑）。`app.config.ts` がビルド環境から既定アイコン（`assets/app-icons/`）とスプラッシュを選び、ログイン・サインアップ画面は `lib/auth-palette.ts` の同じ配色を使う。画像は `node scripts/generate-icons.mjs` で再生成する
+- **ログイン後のホーム画面アイコンは外観設定（テーマ・アクセント）に連動する**（`expo-alternate-app-icons`、14 種をネイティブに同梱）。初期値（システム＋エメラルド）は未設定と区別できないため環境別の既定アイコンのまま。テーマが「システム」なら OS のライト／ダークに合わせる。iOS は前面にいる間に切り替え、そのたびに OS のアラートが出る。Android は使用中に起動口を切り替えるとタスクが閉じることがあるため、バックグラウンドへ移るときに反映する。別アイコン中は `MainActivity` が無効になるので、OAuth のリダイレクト用 scheme を `android.intentFilters` で activity-alias にも付けている
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
 
 ## オフライン・送信

@@ -1,6 +1,6 @@
 // Node.js script to generate all PWA icon variants
 // Usage: node scripts/generate-icons.mjs
-// Requires: canvas package (pnpm add -w -D canvas)
+// Requires: canvas package (pnpm add -w -D canvas、終わったら外す)
 
 import { createCanvas } from 'canvas';
 import { writeFileSync, mkdirSync } from 'fs';
@@ -99,6 +99,47 @@ for (const preset of ACCENT_PRESETS) {
     generate(`icon-${preset.id}-${themeName}-512.png`, 512, theme.bg, preset.swatch, theme.cornerRadius);
     generate(`apple-touch-icon-${preset.id}-${themeName}.png`, 180, theme.bg, preset.swatch, theme.cornerRadius);
   }
+}
+
+// Expo のアプリアイコン（環境別の既定と、外観設定に連動する別アイコン）とスプラッシュ。
+// iOS は角丸なしの全面塗り（OS がマスクする）、Android は前景を透過にして
+// アダプティブアイコンのセーフゾーン（中央 66%）に収まるよう縮小する。
+const mobileDir = join(__dirname, '../apps/mobile/assets/app-icons');
+mkdirSync(mobileDir, { recursive: true });
+
+function generateMobile(filename, { bgColor, blockColor, scale = 1, shadow = false }) {
+  const size = 1024;
+  const canvas = createCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  if (bgColor) {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, size, size);
+  }
+  if (shadow) {
+    const { r, g, b } = hexToRgb(blockColor);
+    ctx.shadowColor = `rgba(${r},${g},${b},0.25)`;
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 6;
+  }
+  // ブロック群の外接矩形（512 基準で x 96–408, y 88–412）の中心をキャンバス中心へ合わせる
+  const s = (size / 512) * scale;
+  ctx.translate(size / 2 - 252 * s, size / 2 - 250 * s);
+  ctx.fillStyle = blockColor;
+  roundRect(ctx, 192 * s, 88 * s, 188 * s, 88 * s, 22 * s); ctx.fill();
+  roundRect(ctx, 96 * s, 204 * s, 228 * s, 88 * s, 22 * s); ctx.fill();
+  roundRect(ctx, 112 * s, 320 * s, 296 * s, 92 * s, 22 * s); ctx.fill();
+  writeFileSync(join(mobileDir, filename), canvas.toBuffer('image/png'));
+  console.log(`  app-icons/${filename} (1024x1024)`);
+}
+
+console.log('\nmobile icons');
+for (const preset of ACCENT_PRESETS) {
+  for (const [themeName, theme] of Object.entries(THEMES)) {
+    const light = themeName === 'light';
+    generateMobile(`${preset.id}-${themeName}-ios.png`, { bgColor: theme.bg, blockColor: preset.swatch, shadow: light });
+    generateMobile(`${preset.id}-${themeName}-android.png`, { blockColor: preset.swatch, scale: 0.68 });
+  }
+  generateMobile(`splash-${preset.id}.png`, { blockColor: preset.swatch });
 }
 
 console.log('\nfallback icons');

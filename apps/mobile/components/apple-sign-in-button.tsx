@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication'
 import { signInWithApple } from '../lib/oauth'
 import { completePostAuthNavigation } from '../lib/auth-navigation'
 import { useT } from './locale-provider'
+import { AUTH_THEME } from '../lib/auth-palette'
 
 interface Props {
   buttonType: AppleAuthentication.AppleAuthenticationButtonType
@@ -49,7 +50,11 @@ export function AppleSignInButton({ buttonType, onError }: Props) {
   return (
     <AppleAuthentication.AppleAuthenticationButton
       buttonType={buttonType}
-      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+      buttonStyle={
+        AUTH_THEME === 'dark'
+          ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+          : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+      }
       cornerRadius={8}
       style={[styles.button, loading && styles.loading]}
       onPress={handlePress}
