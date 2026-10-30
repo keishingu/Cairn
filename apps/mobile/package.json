@@ -53,6 +53,7 @@
     "expo-sharing": "~55.0.24",
     "expo-splash-screen": "~55.0.25",
     "expo-sqlite": "~55.0.20",
+    "expo-system-ui": "~55.0.21",
     "expo-updates": "~55.0.33",
     "expo-web-browser": "~55.0.20",
     "hast-util-to-html": "^9.0.5",
