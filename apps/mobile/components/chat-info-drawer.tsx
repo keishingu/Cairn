@@ -74,6 +74,7 @@ export function ChatInfoDrawer({
   const [visible, setVisible] = React.useState(true)
   const progress = React.useRef(new Animated.Value(0)).current
   const afterCloseRef = React.useRef<(() => void) | null>(null)
+  const closingRef = React.useRef(false)
 
   React.useEffect(() => {
     Animated.timing(progress, { toValue: 1, duration: SLIDE_MS, useNativeDriver: true }).start()
@@ -88,6 +89,9 @@ export function ChatInfoDrawer({
 
   // 閉じかけの Modal の上に次の画面を出すと一緒に閉じられるため、閉じきってから開く。onDismiss は iOS でしか呼ばれない
   const close = (after?: () => void) => {
+    // 閉じている途中の 2 回目で、次に開く画面の指定を消さない。閉じ終えるとアンマウントされるので戻さない
+    if (closingRef.current) return
+    closingRef.current = true
     afterCloseRef.current = after ?? null
     Animated.timing(progress, { toValue: 0, duration: SLIDE_MS, useNativeDriver: true }).start(() => {
       setVisible(false)
