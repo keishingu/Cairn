@@ -1,4 +1,4 @@
-import { translate } from '@cairn/shared'
+import { matchMentionQuery, translate } from '@cairn/shared'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
@@ -40,10 +40,9 @@ export function getReactionPeopleSummary(
 }
 
 export function findMentionQuery(text: string, cursor: number) {
-  const beforeCursor = text.slice(0, cursor)
-  const match = /@([^\s@]*)$/.exec(beforeCursor)
+  const match = matchMentionQuery(text.slice(0, cursor))
   if (!match) return null
-  return { start: cursor - match[0].length, end: cursor, query: match[1] ?? '' }
+  return { start: match.index, end: cursor, query: match.query }
 }
 
 export function insertMention(
@@ -107,6 +106,18 @@ export function serializeMentions(text: string, mentions: ReadonlyArray<MentionS
       if (text.slice(mention.start, mention.end) !== `@${mention.displayName}`) return result
       return `${result.slice(0, mention.start)}<@${mention.userId}>${result.slice(mention.end)}`
     }, text)
+}
+
+/**
+ * 本文に残っているメンションの宛先。同じ相手を二重に入れても通知は1回で、本文が「@小川 @小川」と読みにくくなるだけなので、
+ * 候補から外すために使う。名前を書き換えた・消したものは送信時に変換されないため数えない
+ */
+export function mentionedTokenIds(text: string, mentions: ReadonlyArray<MentionSelection>) {
+  return new Set(
+    mentions
+      .filter((mention) => text.slice(mention.start, mention.end) === `@${mention.displayName}`)
+      .map((mention) => mention.userId),
+  )
 }
 
 /** 入力欄でメンション部分だけ色を変えるため、本文をメンションとそれ以外に分ける */

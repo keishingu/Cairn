@@ -30,7 +30,7 @@ export function MobileSettings() {
   const t = useT()
   const { data: me } = useCurrentUser()
   const router = useRouter()
-  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true })
+  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true, isGuest: me?.wsRole === 'guest' })
 
   async function handleLogout() {
     const supabase = createClient()
@@ -42,7 +42,7 @@ export function MobileSettings() {
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title={t('Settings')} />
 
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         {/* プロフィールカード（アカウント設定へのショートカット） */}
         <button
           onClick={() => router.push('/settings/account')}
@@ -120,11 +120,12 @@ export function MobileSettingsDetail({ section }: { section: string }) {
   const { data: me } = useCurrentUser()
   const router = useRouter()
   const isOwner = me?.wsRole === 'owner'
-  const resolvedSection = isSettingsSection(section, isOwner, { isMobile: true }) ? section : 'account'
+  const navOptions = { isMobile: true, isGuest: me?.wsRole === 'guest' }
+  const resolvedSection = isSettingsSection(section, isOwner, navOptions) ? section : 'account'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, { isMobile: true }))} onBack={() => router.push('/settings')}/>
-      <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => router.push('/settings')}/>
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <SettingsSectionContent section={resolvedSection}/>
       </div>
     </div>

@@ -907,7 +907,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <MobileHeader
           title={channelName}
           subtitle={channelSubtitle}
@@ -928,7 +928,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         />
         {searchOpen && channelId
           ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
-          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
+          : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition onOpenMember={openMember} {...moveToThreadProps}/>
         }
         {showMemberInvite && channelId && (
           <ChannelMemberSheet channelId={channelId} onClose={() => setShowMemberInvite(false)}/>
@@ -1038,7 +1038,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                 ? <CrossChannelSearch onClose={closeGlobalSearch} onJump={jumpToChannelMessage}/>
                 : searchOpen && channelId
                   ? <ChatMessageSearch channelId={channelId} onClose={() => { setSearchOpen(false); clearUrlPanel('search') }} onJump={jumpToMessage} isMobile={isMobile}/>
-                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition {...moveToThreadProps}/>
+                  : <ChatThread key={channelId} channelId={channelId} channelName={channelName} isPrivate={isPrivate} isDm={isDm} isMobile={isMobile} targetMessage={targetMessage} initialUnreadPosition onOpenMember={openMember} {...moveToThreadProps}/>
             }
           </main>
 

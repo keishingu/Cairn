@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  aiAttachments,
   aiConversations,
   aiNudges,
   apiTokens,
@@ -40,6 +41,7 @@ import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { getStripeClient } from '@/lib/billing/stripe'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
+import { AI_ATTACHMENT_BUCKET, delayedAiAttachmentDeletion } from '@/lib/ai/attachments'
 import { inngest } from '@/lib/inngest/client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
@@ -128,6 +130,7 @@ export function buildStorageDeletionTargets(
   avatarPaths: string[],
   storedFiles: StoredFile[],
   pendingUploads: PendingUpload[],
+  aiAttachmentPaths: string[] = [],
 ): StorageDeletionTarget[] {
   const pathsByBucket = new Map<string, Set<string>>()
   const add = (bucket: string, path: string | null) => {
@@ -152,6 +155,7 @@ export function buildStorageDeletionTargets(
     add(upload.storageBucket, upload.derivedStoragePath)
     add(GALLERY_ORIGINALS_BUCKET, upload.originalStoragePath)
   }
+  for (const path of aiAttachmentPaths) add(AI_ATTACHMENT_BUCKET, path)
 
   return [...pathsByBucket].map(([bucket, paths]) => ({ bucket, paths: [...paths] }))
 }
@@ -323,6 +327,18 @@ async function anonymizeAndRevoke(
       .update(messages)
       .set({ content: '', deletedAt: now, updatedAt: now })
       .where(eq(messages.senderId, userId))
+    // AIアシスタントの添付は会話と一緒に行が消えるため、消す前に Storage の本体を削除の対象に控える。
+    // 先に本人の会話をロックし、控えたあとに新しい添付の行が作られて本体だけが残ることを防ぐ
+    // （添付の行は会話を外部キーで参照するため、ロック中は作れず、会話の削除後は作れない）
+    await tx
+      .select({ id: aiConversations.id })
+      .from(aiConversations)
+      .where(eq(aiConversations.createdBy, userId))
+      .for('update')
+    const aiAttachmentRows = await tx
+      .select({ storagePath: aiAttachments.storagePath })
+      .from(aiAttachments)
+      .where(eq(aiAttachments.uploadedBy, userId))
     await tx.delete(aiConversations).where(eq(aiConversations.createdBy, userId))
     await tx.delete(workspaceInvites).where(eq(workspaceInvites.createdBy, userId))
 
@@ -398,6 +414,7 @@ async function anonymizeAndRevoke(
         isGallery: galleryFileIds.has(file.id),
       })),
       pendingUploads,
+      aiAttachmentRows.map((row) => row.storagePath),
     )
     let storageDeletionJobId: string | null = null
     if (storageTargets.length > 0) {
@@ -408,6 +425,10 @@ async function anonymizeAndRevoke(
       if (!job) throw new Error('storage deletion outbox insert returned no rows')
       storageDeletionJobId = job.id
     }
+    // AIアシスタントの添付は、署名付きアップロード URL が発行から2時間使えるため、本体を消した後でも
+    // その URL で同じ場所へアップロードし直せる。URL の期限が切れた後にもう一度消すジョブを積む（cron が時刻後に実行する）
+    const delayedAiDeletion = delayedAiAttachmentDeletion(aiAttachmentRows.map((row) => row.storagePath), now)
+    if (delayedAiDeletion) await tx.insert(storageDeletionJobs).values(delayedAiDeletion)
 
     // owner集合をロックしたトランザクション内で課金停止まで完了させる。
     // これによりowner競合でDB処理だけロールバックしたのに課金だけ止まる状態を避ける。

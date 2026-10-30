@@ -4,7 +4,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, test, vi } from 'vitest'
 import React from 'react'
-import { MobileShell, shouldRenderMobileNav } from './mobile-shell'
+import { MobileShell, mobileNavSpaceStyle, shouldRenderMobileNav } from './mobile-shell'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/projects',
@@ -61,5 +61,19 @@ describe('shouldRenderMobileNav', () => {
 
   it('通常のモバイルブラウザでは MobileNav を表示する', () => {
     expect(shouldRenderMobileNav(false)).toBe(true)
+  })
+})
+
+describe('mobileNavSpaceStyle', () => {
+  // アプリの WebView では Web のナビを描かないため、ナビ分の余白が残ると下端に中身のない帯が見える
+  it('ナビを描かないときは各ページの下端余白を 0 にする', () => {
+    expect(mobileNavSpaceStyle(false)).toEqual({ '--mobile-nav-h': '0px', '--mobile-nav-clearance': '0px' })
+  })
+
+  it('ナビを描くときはナビの高さと下端の安全領域ぶん空ける', () => {
+    expect(mobileNavSpaceStyle(true)).toEqual({
+      '--mobile-nav-h': 'calc(65px + env(safe-area-inset-bottom))',
+      '--mobile-nav-clearance': 'calc(80px + env(safe-area-inset-bottom))',
+    })
   })
 })

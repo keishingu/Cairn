@@ -47,6 +47,7 @@ import { writeStoredCalendarWeekStart } from '@/lib/calendar-week-start'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
+import { AutomationsSettings } from '../automations-settings'
 import { SettingsProjectRoles } from '../settings-project-roles'
 
 const CreditPlacementBoard = dynamic(
@@ -3432,7 +3433,7 @@ const SettingsDeveloper = () => {
 
 export function getSettingsNavGroups(
   isOwner: boolean,
-  options: { isMobile?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
     { id: 'general', label: 'Workspace settings', icon: 'settings' },
@@ -3440,6 +3441,10 @@ export function getSettingsNavGroups(
     { id: 'project-roles', label: 'Roles', icon: 'users' },
     { id: 'profile-attributes', label: 'Profile attributes', icon: 'hash' },
     { id: 'ai', label: 'AI agent', icon: 'sparkles' },
+    // 一覧は member 以上だけが見られる（API もゲストを 403 にする）ため、ゲストには項目ごと出さない
+    ...(!options.isGuest
+      ? [{ id: 'automations', label: 'AI automations', icon: 'sparkles' } satisfies SettingsSectionMeta]
+      : []),
     { id: 'members', label: 'Members', icon: 'users' },
     { id: 'integrations', label: 'Integrations', icon: 'layers' },
     ...(options.isMobile
@@ -3490,6 +3495,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   'project-roles': SettingsProjectRoles,
   'profile-attributes': ProfileAttributesSettings,
   ai: SettingsAI,
+  automations: AutomationsSettings,
   integrations: SettingsIntegrations,
   billing: SettingsBilling,
   contributions: SettingsContributions,
@@ -3501,7 +3507,7 @@ const DEFAULT_SECTION = 'account'
 export function isSettingsSection(
   id: string | null | undefined,
   isOwner = true,
-  options: { isMobile?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean } = {},
 ): id is string {
   return (
     id != null &&
@@ -3512,7 +3518,7 @@ export function isSettingsSection(
 export function settingsSectionLabel(
   id: string,
   isOwner = true,
-  options: { isMobile?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean } = {},
 ): string {
   for (const g of getSettingsNavGroups(isOwner, options)) {
     const item = g.items.find((i) => i.id === id)
@@ -3538,10 +3544,10 @@ export const PageSettings = () => {
   const t = useT()
   const pathname = usePathname()
   const router = useRouter()
-  const { isOwner } = useWorkspacePermissions()
-  const navGroups = getSettingsNavGroups(isOwner)
+  const { isOwner, isGuest } = useWorkspacePermissions()
+  const navGroups = getSettingsNavGroups(isOwner, { isGuest })
   const seg = pathname.split('/')[2]
-  const section = isSettingsSection(seg, isOwner) ? seg : DEFAULT_SECTION
+  const section = isSettingsSection(seg, isOwner, { isGuest }) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title={t('Settings')} />

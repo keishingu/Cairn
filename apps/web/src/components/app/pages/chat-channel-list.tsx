@@ -801,7 +801,7 @@ export const ChannelList = ({
     t,
   })
   return (
-  <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined }}>
+  <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
     <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})}>
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup

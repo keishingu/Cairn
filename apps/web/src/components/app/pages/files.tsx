@@ -662,7 +662,7 @@ export const PageFiles = ({
           flex: 1,
           overflowY: 'auto',
           minHeight: 0,
-          paddingBottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom))' : undefined,
+          paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
         }}
       >
         {isLoading ? (

@@ -198,10 +198,10 @@ describe('GET /api/projects', () => {
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([]))
       .mockReturnValueOnce(chain([]))
-      .mockReturnValueOnce(chain([{ id: 'mentioned-user', displayName: '現在の名前' }]))
-      .mockReturnValueOnce(chain([{ id: 'coach', name: 'コーチ' }]))
+      .mockReturnValueOnce(chain([{ id: '00000000-0000-4000-8000-0000000000b1', displayName: '現在の名前' }]))
+      .mockReturnValueOnce(chain([{ id: '00000000-0000-4000-8000-0000000000c1', name: 'コーチ' }]))
     mockDb.selectDistinctOn.mockReturnValueOnce(chain([{
-      projectId: PROJ_1, senderName: '送信者', content: '<@mentioned-user> <@outside-user> <@attr:coach>\n集合しましょう',
+      projectId: PROJ_1, senderName: '送信者', content: '<@00000000-0000-4000-8000-0000000000b1> <@00000000-0000-4000-8000-0000000000b2> <@attr:00000000-0000-4000-8000-0000000000c1>\n集合しましょう',
     }]))
 
     const { GET } = await import('./route')

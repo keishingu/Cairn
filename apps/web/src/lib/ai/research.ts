@@ -8,9 +8,17 @@ export const AI_RESEARCH_LIMITS = {
   tasks: 100,
   messages: 100,
   documents: 10,
+  channels: 200,
+  members: 200,
+  memberHistoryUsers: 50,
+  memberHistoryProjects: 100,
+  memberHistoryFilesPerProject: 10,
+  fileChunks: 10,
   messageLookbackDefaultDays: 30,
   messageLookbackMaxDays: 90,
   toolSteps: 8,
+  // スキルは読む → 判断する → 実行案を作る、まで進むため、通常の調査より多く許す
+  skillToolSteps: 12,
   risks: 100,
   projectEndSoonDays: 7,
   projectIncompleteTaskThreshold: 3,
@@ -31,7 +39,7 @@ export function isResearchTruncated(
   return totalCount > returnedCount || contentTruncated
 }
 
-export type ResearchEvidenceType = 'project' | 'task' | 'message' | 'file' | 'member'
+export type ResearchEvidenceType = 'project' | 'task' | 'message' | 'channel' | 'file' | 'member'
 
 export interface ResearchEvidence {
   type: ResearchEvidenceType
@@ -84,6 +92,42 @@ export function messageEvidence(input: {
     ...(input.projectId ? { projectId: input.projectId } : {}),
     occurredAt: input.occurredAt,
     href: `/chats/${encodeURIComponent(input.channelId)}?m=${encodeURIComponent(input.id)}`,
+  }
+}
+
+export function channelEvidence(input: {
+  id: string
+  label: string
+  projectId?: string | null
+}): ResearchEvidence {
+  return {
+    type: 'channel',
+    id: input.id,
+    label: input.label,
+    channelId: input.id,
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    href: `/chats/${encodeURIComponent(input.id)}`,
+  }
+}
+
+// メンバーの evidence は、表示名に加えてプロフィール属性を読んだことの記録も兼ねる
+// （ai-automation-design.md §2.7: 配信前に宛先が対象メンバーの属性を閲覧できるか検証する）。
+export function memberEvidence(id: string, label: string): ResearchEvidence {
+  return { type: 'member', id, label, href: `/members/${encodeURIComponent(id)}` }
+}
+
+export function fileEvidence(input: {
+  id: string
+  label: string
+  projectId?: string | null
+  externalUrl?: string | null
+}): ResearchEvidence {
+  return {
+    type: 'file',
+    id: input.id,
+    label: input.label,
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    href: input.externalUrl ?? `/api/attachments/${encodeURIComponent(input.id)}`,
   }
 }
 

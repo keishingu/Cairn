@@ -12,6 +12,11 @@ import { GET as listTasksRoute, POST as createTaskRoute } from '@/app/api/tasks/
 import { PATCH as updateTaskRoute } from '@/app/api/tasks/[id]/route'
 import { POST as postMessageRoute } from '@/app/api/channels/[channelId]/messages/route'
 import { GET as searchMessagesRoute } from '@/app/api/search/messages/route'
+import { GET as listChannelsRoute } from '@/app/api/research/channels/route'
+import { GET as readChannelMessagesRoute } from '@/app/api/research/channels/[channelId]/messages/route'
+import { GET as getProjectMembersRoute } from '@/app/api/research/projects/[id]/members/route'
+import { GET as listMembersRoute } from '@/app/api/research/members/route'
+import { GET as getMemberHistoryRoute } from '@/app/api/research/members/history/route'
 import {
   ApiTokenError,
   runWithApiTokenAccess,
@@ -223,9 +228,121 @@ const mcpHandler = createMcpHandler(
         return routeResult(searchMessagesRoute(new Request(url)))
       },
     )
+    server.registerTool(
+      'list_channels',
+      {
+        title: 'List channels',
+        description:
+          'List non-DM channels (workspace, project and thread channels) visible to the current Cairn user. Use this to resolve a channel name such as "#review" to its ID.',
+        inputSchema: z.object({
+          query: z.string().trim().max(100).optional(),
+          projectId: z.uuid().optional(),
+          includeArchived: z.boolean().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ query, projectId, includeArchived, limit }) => {
+        const url = new URL('http://cairn.local/api/research/channels')
+        if (query) url.searchParams.set('query', query)
+        if (projectId) url.searchParams.set('projectId', projectId)
+        if (includeArchived !== undefined) url.searchParams.set('includeArchived', String(includeArchived))
+        if (limit) url.searchParams.set('limit', String(limit))
+        return routeResult(listChannelsRoute(new Request(url)))
+      },
+    )
+
+    server.registerTool(
+      'read_channel_messages',
+      {
+        title: 'Read channel messages',
+        description:
+          'Read messages in one visible channel, oldest first, within a time range. Continue with nextCursor when truncated is true.',
+        inputSchema: z.object({
+          channelId: z.uuid(),
+          since: z.iso.datetime({ offset: true }).optional(),
+          until: z.iso.datetime({ offset: true }).optional(),
+          cursor: z.string().max(100).optional(),
+          limit: z.number().int().min(1).max(100).optional(),
+        }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ channelId, since, until, cursor, limit }) => {
+        const url = new URL(`http://cairn.local/api/research/channels/${channelId}/messages`)
+        if (since) url.searchParams.set('since', since)
+        if (until) url.searchParams.set('until', until)
+        if (cursor) url.searchParams.set('cursor', cursor)
+        if (limit) url.searchParams.set('limit', String(limit))
+        return routeResult(
+          readChannelMessagesRoute(new Request(url), { params: Promise.resolve({ channelId }) }),
+        )
+      },
+    )
+
+    server.registerTool(
+      'get_project_members',
+      {
+        title: 'Get project members',
+        description:
+          'List the members of a visible project with their project role (leader, reviewer, ...), attendance and profile attributes.',
+        inputSchema: z.object({ projectId: z.uuid() }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ projectId }) =>
+        routeResult(
+          getProjectMembersRoute(
+            new Request(`http://cairn.local/api/research/projects/${projectId}/members`),
+            { params: Promise.resolve({ id: projectId }) },
+          ),
+        ),
+    )
+
+    server.registerTool(
+      'list_members',
+      {
+        title: 'List members',
+        description:
+          'List workspace members visible to the current Cairn user, including their profile attributes. Optionally filter by display name or by attribute names (members having any of them).',
+        inputSchema: z.object({
+          query: z.string().trim().max(100).optional(),
+          attributeNames: z.array(z.string().trim().min(1).max(20)).max(10).optional(),
+          includeInactive: z.boolean().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ query, attributeNames, includeInactive, limit }) => {
+        const url = new URL('http://cairn.local/api/research/members')
+        if (query) url.searchParams.set('query', query)
+        for (const name of attributeNames ?? []) url.searchParams.append('attribute', name)
+        if (includeInactive !== undefined) url.searchParams.set('includeInactive', String(includeInactive))
+        if (limit) url.searchParams.set('limit', String(limit))
+        return routeResult(listMembersRoute(new Request(url)))
+      },
+    )
+
+    server.registerTool(
+      'get_member_history',
+      {
+        title: 'Get member history',
+        description:
+          'Get the project history of up to 50 members at once: projects they joined, project roles, periods, statuses and files attached to each project. Read file bodies with read_file.',
+        inputSchema: z.object({
+          userIds: z.array(z.uuid()).min(1).max(50),
+          includeFiles: z.boolean().optional(),
+        }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ userIds, includeFiles }) => {
+        const url = new URL('http://cairn.local/api/research/members/history')
+        for (const userId of userIds) url.searchParams.append('userId', userId)
+        if (includeFiles !== undefined) url.searchParams.set('includeFiles', String(includeFiles))
+        return routeResult(getMemberHistoryRoute(new Request(url)))
+      },
+    )
   },
   {
-    serverInfo: { name: 'cairn', version: '0.2.0' },
+    serverInfo: { name: 'cairn', version: '0.3.0' },
     instructions:
       'These tools act on behalf of the human Cairn user who authorized the credential. Read and write access is limited to its fixed workspace.',
   },

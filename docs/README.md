@@ -16,7 +16,7 @@
 | プロフィール属性・メンバー表示 | `profile-attributes-design.md`（現行） | `user-deactivation-design.md`（非活性メンバー。実装済み） |
 | マイルストーン | `milestone-design.md`（実装状況・設計判断・残課題） | — |
 | 課金 | `billing-implementation-design.md`（Phase 1/2 実装済み） | `pricing-plan-design.md`（プラン意図）、`billing-minigame-design.md`（Phase 3 構想）、`prototypes/stone-stacking-sandbox.html` |
-| `/ai`・AI メンバー | `10_ai_member_design.md`（3つの AI サーフェスの責務境界） | `scheduled-jobs-design.md`（ユーザー定義 cron・投票の構想） |
+| `/ai`・AI メンバー | `10_ai_member_design.md`（3つの AI サーフェスの責務境界） | `ai-automation-design.md`（Skill / cron / heartbeat の構想）、`scheduled-jobs-design.md`（投票の元設計。定期ジョブは `ai-automation-design.md` が置き換え） |
 | `/ai` のプロダクトヘルプ | `../apps/web/src/lib/ai/product-help.ts`（正本。方式と更新ルールは冒頭コメント） | — |
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |

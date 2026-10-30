@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
+import { chatTabUnreadCount } from '../lib/chat-tab-unread'
 import { supabase } from '../lib/supabase'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
@@ -84,22 +85,11 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const current = state.routes[state.index]?.name ?? 'chats/index'
   const projectsActive = current.startsWith('projects/')
   const chatsActive = current.startsWith('chats/')
-  // チャットタブのバッジは一覧画面（chats/index.tsx）が表示する3系統
-  // （プロジェクトチャンネル・ワークスペースチャンネル・DM）すべてを合算する。
-  // アーカイブ済みのチャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
-  // 折りたたみで隠れているため含めない
-  const archivedParentIds = new Set(
-    (workspaceChannels ?? [])
-      .filter((channel) => channel.archived === true && channel.parentChannelId == null)
-      .map((channel) => channel.id),
-  )
-  const unreadCount =
-    (channels ?? []).reduce((total, channel) => total + channel.unreadCount, 0) +
-    (workspaceChannels ?? [])
-      .filter((channel) => channel.archived !== true)
-      .filter((channel) => channel.parentChannelId == null || !archivedParentIds.has(channel.parentChannelId))
-      .reduce((total, channel) => total + channel.unreadCount, 0) +
-    (dms ?? []).reduce((total, dm) => total + dm.unreadCount, 0)
+  const unreadCount = chatTabUnreadCount({
+    projectChannels: channels ?? [],
+    workspaceChannels: workspaceChannels ?? [],
+    dms: dms ?? [],
+  })
   const closeOverlays = () => {
     setMenuOpen(false)
     setPickerOpen(false)

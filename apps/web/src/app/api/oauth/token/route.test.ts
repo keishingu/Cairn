@@ -86,7 +86,7 @@ function tokenRequest(values: Record<string, string>) {
   return new Request('https://develop.oss-cairn.com/api/oauth/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(values),
+    body: new URLSearchParams(values).toString(),
   })
 }
 

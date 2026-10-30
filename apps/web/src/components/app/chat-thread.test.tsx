@@ -13,6 +13,8 @@ import {
   ChatThread,
   copyMessageContent,
   copyMessageLink,
+  findInsertedMention,
+  survivingMentionTokenIds,
   isNearMessageTimelineEnd,
   shouldFollowLatestMessage,
   fetchMessageTaskCandidates,
@@ -696,6 +698,49 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
   })
 })
 
+describe('ChatMessageのアバターからメンバー詳細を開く', () => {
+  const baseProps = {
+    messageId: 'message-1',
+    messageType: 'text' as const,
+    senderId: 'user-2',
+    currentUserId: 'user-1',
+    senderName: 'Alice',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    isEdited: false,
+    content: '相談です',
+    reactions: [],
+    attachments: [],
+    replyTo: null,
+    bookmarked: false,
+    onReact: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onCheckboxToggle: vi.fn(),
+    onReply: vi.fn(),
+    onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
+    onJumpToMessage: vi.fn(),
+    onCopyLink: vi.fn(),
+    onImageClick: vi.fn(),
+  }
+
+  it('導線を渡されたときはアバターを押すと送信者の ID で開く', async () => {
+    const user = userEvent.setup()
+    const onOpenSender = vi.fn()
+    render(<ChatMessage {...baseProps} onOpenSender={onOpenSender} />)
+
+    await user.click(screen.getByRole('button', { name: 'Alice さんのプロフィールを開く' }))
+
+    expect(onOpenSender).toHaveBeenCalledWith('user-2')
+  })
+
+  it('導線を渡されないときはアバターを押せない', () => {
+    render(<ChatMessage {...baseProps} />)
+
+    expect(screen.queryByRole('button', { name: 'Alice さんのプロフィールを開く' })).toBeNull()
+  })
+})
+
 describe('リアクションした人の表示', () => {
   it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
     const user = userEvent.setup()
@@ -1307,5 +1352,38 @@ describe('ChatThreadの送信キー切替', () => {
     expect(sendMessage).not.toHaveBeenCalled()
 
     view.unmount()
+  })
+})
+
+describe('findInsertedMention', () => {
+  it('本文に残っている @表示名 の位置を返す', () => {
+    expect(findInsertedMention('確認 @小川聡 よろしく', '小川聡')).toBe(3)
+  })
+
+  it('名前の途中で続く別人の名前はメンション済みとみなさない', () => {
+    expect(findInsertedMention('@小川聡太 よろしく', '小川聡')).toBeNull()
+  })
+
+  it('消したメンションはメンション済みとみなさない', () => {
+    expect(findInsertedMention('よろしく', '小川聡')).toBeNull()
+  })
+})
+
+describe('survivingMentionTokenIds', () => {
+  const ogawaA = { tokenId: 'user-a', displayName: '小川聡' }
+  const ogawaB = { tokenId: 'user-b', displayName: '小川聡' }
+
+  it('同名の2人を入れて1件消すと、先に入れた方だけを本文に残っているとみなす', () => {
+    expect(survivingMentionTokenIds('@小川聡 よろしく', [ogawaA, ogawaB])).toEqual(new Set(['user-a']))
+  })
+
+  it('同名の2人がどちらも本文に残っていれば両方を返す', () => {
+    expect(survivingMentionTokenIds('@小川聡 @小川聡 よろしく', [ogawaA, ogawaB])).toEqual(new Set(['user-a', 'user-b']))
+  })
+
+  it('人と役割のラベルが同じでも1件ずつ割り当てる', () => {
+    const role = { tokenId: 'role:design', displayName: 'デザイン' }
+    const user = { tokenId: 'user-c', displayName: 'デザイン' }
+    expect(survivingMentionTokenIds('@デザイン 確認', [role, user])).toEqual(new Set(['role:design']))
   })
 })
