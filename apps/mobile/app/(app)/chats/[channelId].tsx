@@ -38,6 +38,7 @@ import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -48,6 +49,7 @@ import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
+import type { ChatInfoFileDto } from '../../../hooks/use-chat-info'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
@@ -769,6 +771,7 @@ export default function ChatThreadScreen() {
   const [attachmentPreview, setAttachmentPreview] = React.useState<
     MessageDto['attachments'][number] | null
   >(null)
+  const [infoOpen, setInfoOpen] = React.useState(false)
   const previewViewer = attachmentPreview
     ? attachmentViewer(attachmentPreview.mimeType, attachmentPreview.fileName, Platform.OS)
     : null
@@ -1503,7 +1506,7 @@ export default function ChatThreadScreen() {
     })
   }
 
-  const openInfo = () => {
+  const openInfoActions = () => {
     if (!channelId) return
     router.push({
       pathname: '/(app)/chat-tools',
@@ -1517,6 +1520,15 @@ export default function ChatThreadScreen() {
         ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
       },
     })
+  }
+
+  const openInfoFile = (file: ChatInfoFileDto) => {
+    if (!attachmentAuth) return
+    if (isPreviewableAttachment(file.mimeType, file.fileName, Platform.OS)) {
+      setAttachmentPreview({ id: file.id, fileId: file.id, fileName: file.fileName, mimeType: file.mimeType, fileSize: file.fileSize, displayOrder: 0 })
+      return
+    }
+    void openAttachmentFile(file.id, file.fileName, file.mimeType, attachmentAuth, t)
   }
 
   const openMarkdownLink = React.useCallback(
@@ -1660,7 +1672,7 @@ export default function ChatThreadScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('Channel info')}
             style={styles.headerButton}
-            onPress={openInfo}
+            onPress={() => setInfoOpen(true)}
             hitSlop={6}
           >
             <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
@@ -2081,6 +2093,28 @@ export default function ChatThreadScreen() {
           </View>
         )}
 
+        {infoOpen && channelId && (
+          <ChatInfoDrawer
+            channelId={channelId}
+            channelName={channelName ?? t('Channels')}
+            channelType={channelType}
+            projectId={projectId}
+            isPrivate={isPrivate === '1'}
+            palette={palette}
+            onClose={() => setInfoOpen(false)}
+            onOpenActions={openInfoActions}
+            onOpenProject={(id) => router.push({ pathname: '/(app)/projects/[id]', params: { id } })}
+            onOpenFile={openInfoFile}
+            onOpenMember={(member) =>
+              openProfile({
+                userId: member.userId,
+                displayName: member.displayName,
+                avatarUrl: member.avatarUrl,
+                blockedEitherWay: false,
+              })
+            }
+          />
+        )}
         <Modal
           transparent
           visible={actionTarget !== null}
