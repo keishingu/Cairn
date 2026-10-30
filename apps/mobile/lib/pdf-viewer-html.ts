@@ -238,6 +238,7 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
         wanted: false,
         canvas: null,
         renderedScale: 0,
+        renderedWidth: 0,
         renderTask: null,
         textLayer: null,
         links: null,
@@ -288,6 +289,8 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
       })
       .then(function () {
         busy = false
+        // スクロールが止まった後に描き終えたページは、その時点の確認から漏れるため、描き終えるたびに確かめ直す
+        if (queue.size === 0) refreshRenderedPages()
         pump()
       })
   }
@@ -311,6 +314,13 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
     return Math.max(1, Math.min(scale, limit))
   }
 
+  // 描いた後に幅（回転など）や必要な解像度（拡大中にスクロールして画面に入ったなど）が変わったページは描き直す
+  function needsRerender(entry) {
+    if (entry.renderedWidth !== layoutWidth) return true
+    var outputScale = outputScaleFor(entry)
+    return Math.abs(entry.renderedScale - outputScale) / outputScale >= 0.15
+  }
+
   async function renderPage(entry) {
     if (!entry.wanted) return
     if (!entry.page) {
@@ -328,7 +338,7 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
     // 描画の途中で release されても、このページの処理は同じ page で終える
     var page = entry.page
     var outputScale = outputScaleFor(entry)
-    if (entry.canvas && Math.abs(entry.renderedScale - outputScale) / outputScale < 0.15) return
+    if (entry.canvas && !needsRerender(entry)) return
 
     var viewport = page.getViewport({ scale: cssScaleOf(entry) })
     var canvas = document.createElement('canvas')
@@ -360,6 +370,7 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
     entry.div.insertBefore(canvas, entry.div.firstChild)
     entry.canvas = canvas
     entry.renderedScale = outputScale
+    entry.renderedWidth = layoutWidth
 
     if (!entry.textLayer) {
       var textDiv = document.createElement('div')
@@ -448,6 +459,7 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
       entry.links = null
     }
     entry.renderedScale = 0
+    entry.renderedWidth = 0
     if (entry.page) {
       entry.page.cleanup()
       entry.page = null
@@ -498,8 +510,26 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
     }
   }
 
+  // 拡大・スクロール・回転が落ち着いたら、描いてあるページのうち描き直しが要るものだけを描き直す
+  var settleTimer = 0
+  function refreshRenderedPages() {
+    clearTimeout(settleTimer)
+    settleTimer = setTimeout(function () {
+      // 画面の回転などで幅が変わったら並べ直す（ピンチの拡大では変わらない）
+      var width = availableWidth()
+      if (width !== layoutWidth) {
+        layoutWidth = width
+        pages.forEach(applySize)
+      }
+      pages.forEach(function (entry) {
+        if (entry.wanted && entry.canvas && needsRerender(entry)) enqueue(entry)
+      })
+    }, 250)
+  }
+
   var frameRequested = false
   function onScroll() {
+    refreshRenderedPages()
     if (frameRequested) return
     frameRequested = true
     requestAnimationFrame(function () {
@@ -508,21 +538,8 @@ const PDF_VIEWER_SCRIPT = String.raw`(function () {
     })
   }
 
-  var zoomTimer = 0
   function onViewportResize() {
     onScroll()
-    clearTimeout(zoomTimer)
-    zoomTimer = setTimeout(function () {
-      // 画面の回転などで幅が変わったら並べ直す（ピンチの拡大では変わらない）
-      var width = availableWidth()
-      if (width !== layoutWidth) {
-        layoutWidth = width
-        pages.forEach(applySize)
-      }
-      pages.forEach(function (entry) {
-        if (entry.wanted && entry.canvas) enqueue(entry)
-      })
-    }, 250)
   }
 
   async function start() {
