@@ -33,7 +33,7 @@ export function useAppIconSync(
   const pendingRef = React.useRef(false)
   // iOS は確認表示を短時間に何度も出させず、前面に戻るたびの再試行も失敗し続けることがある。
   // 同じアイコンへの失敗は 1 回だけ知らせる
-  const alertedRef = React.useRef<string | null | undefined>(undefined)
+  const alertedRef = React.useRef(new Set<string | null>())
 
   const apply = React.useCallback(() => {
     const name = targetRef.current
@@ -47,8 +47,8 @@ export function useAppIconSync(
     changeIcon(name, IOS_RETRY_COUNT)
       .catch((error: unknown) => {
         console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
-        if (alertedRef.current === name) return
-        alertedRef.current = name
+        if (alertedRef.current.has(name)) return
+        alertedRef.current.add(name)
         Alert.alert(t('Could not change the app icon.'))
       })
       .finally(() => {
