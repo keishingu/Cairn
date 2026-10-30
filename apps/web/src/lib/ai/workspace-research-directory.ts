@@ -18,6 +18,7 @@ import {
   fileEvidence,
   isResearchTruncated,
   memberEvidence,
+  memberHistoryFilesPerProject,
   messageEvidence,
   projectEvidence,
   type ResearchEvidence,
@@ -508,6 +509,13 @@ export interface ResearchMemberHistoryProject {
   startDate: string | null
   endDate: string | null
   archived: boolean
+  evidence: ResearchEvidence[]
+}
+
+// 同じプロジェクトに複数人が参加していても、添付ファイルはプロジェクト単位で1回だけ返す
+export interface ResearchMemberHistoryProjectFiles {
+  projectId: string
+  title: string
   files: Array<{ id: string; name: string; fileType: string; createdAt: string }>
   filesTruncated: boolean
   evidence: ResearchEvidence[]
@@ -576,6 +584,7 @@ export async function getResearchMemberHistory(
     return {
       ok: true as const,
       items: [] satisfies ResearchMemberHistory[],
+      projectFiles: [] satisfies ResearchMemberHistoryProjectFiles[],
       returnedCount: 0,
       notFoundUserIds,
       truncated: requestedIds.length > userIds.length,
@@ -613,7 +622,16 @@ export async function getResearchMemberHistory(
     )
     .orderBy(sql`${projects.startDate} desc nulls last`, desc(projects.createdAt))
 
-  const projectIds = [...new Set(projectRows.map((row) => row.projectId))]
+  // 1人あたりの上限で切った後のプロジェクトだけを返すので、ファイルもその範囲で取る
+  const selectedByUser = new Map<string, typeof projectRows>()
+  for (const member of visibleMembers) {
+    selectedByUser.set(
+      member.userId,
+      projectRows.filter((row) => row.userId === member.userId).slice(0, AI_RESEARCH_LIMITS.memberHistoryProjects),
+    )
+  }
+  const projectIds = [...new Set([...selectedByUser.values()].flat().map((row) => row.projectId))]
+  const maxFilesPerProject = memberHistoryFilesPerProject(projectIds.length)
   // プロジェクトの添付ファイル。画面のファイル一覧と同じく、ギャラリーの写真は除く
   const fileRows =
     includeFiles && projectIds.length > 0
@@ -648,30 +666,41 @@ export async function getResearchMemberHistory(
 
   let anyTruncated = requestedIds.length > userIds.length
   const items: ResearchMemberHistory[] = visibleMembers.map((member) => {
-    const ownProjects = projectRows.filter((row) => row.userId === member.userId)
-    const selected = ownProjects.slice(0, AI_RESEARCH_LIMITS.memberHistoryProjects)
-    const projectsTruncated = ownProjects.length > selected.length
+    const selected = selectedByUser.get(member.userId) ?? []
+    const projectsTruncated = projectRows.filter((row) => row.userId === member.userId).length > selected.length
     if (projectsTruncated) anyTruncated = true
     return {
       userId: member.userId,
       name: member.name,
       membershipStatus: member.membershipStatus,
       profileAttributes: (attributes.get(member.userId) ?? []).map(({ id, name }) => ({ id, name })),
-      projects: selected.map((row) => {
-        const projectFiles = filesByProject.get(row.projectId) ?? []
-        const shownFiles = projectFiles.slice(0, AI_RESEARCH_LIMITS.memberHistoryFilesPerProject)
-        const filesTruncated = projectFiles.length > shownFiles.length
+      projects: selected.map((row) => ({
+        projectId: row.projectId,
+        title: row.title,
+        status: row.status ?? null,
+        role: row.role,
+        roleId: row.roleId ?? null,
+        roleName: row.roleName ?? LEGACY_PROJECT_ROLE_NAMES[row.role],
+        startDate: row.startDate,
+        endDate: row.endDate,
+        archived: row.archived,
+        evidence: [projectEvidence(row.projectId, row.title)],
+      })),
+      projectsTruncated,
+      evidence: [memberEvidence(member.userId, member.name)],
+    }
+  })
+  const projectTitles = new Map(projectRows.map((row) => [row.projectId, row.title]))
+  const projectFiles: ResearchMemberHistoryProjectFiles[] = includeFiles
+    ? projectIds.map((projectId) => {
+        const title = projectTitles.get(projectId) ?? ''
+        const allFiles = filesByProject.get(projectId) ?? []
+        const shownFiles = allFiles.slice(0, maxFilesPerProject)
+        const filesTruncated = allFiles.length > shownFiles.length
         if (filesTruncated) anyTruncated = true
         return {
-          projectId: row.projectId,
-          title: row.title,
-          status: row.status ?? null,
-          role: row.role,
-          roleId: row.roleId ?? null,
-          roleName: row.roleName ?? LEGACY_PROJECT_ROLE_NAMES[row.role],
-          startDate: row.startDate,
-          endDate: row.endDate,
-          archived: row.archived,
+          projectId,
+          title,
           files: shownFiles.map((file) => ({
             id: file.id,
             name: file.name,
@@ -679,29 +708,24 @@ export async function getResearchMemberHistory(
             createdAt: toIso(file.createdAt),
           })),
           filesTruncated,
-          evidence: [
-            projectEvidence(row.projectId, row.title),
-            ...shownFiles.map((file) =>
-              fileEvidence({
-                id: file.id,
-                label: file.name,
-                projectId: row.projectId,
-                externalUrl:
-                  file.fileType === 'link'
-                    ? safeExternalUrl(((file.metadata ?? {}) as Record<string, unknown>)['externalUrl'])
-                    : null,
-              }),
-            ),
-          ],
+          evidence: shownFiles.map((file) =>
+            fileEvidence({
+              id: file.id,
+              label: file.name,
+              projectId,
+              externalUrl:
+                file.fileType === 'link'
+                  ? safeExternalUrl(((file.metadata ?? {}) as Record<string, unknown>)['externalUrl'])
+                  : null,
+            }),
+          ),
         }
-      }),
-      projectsTruncated,
-      evidence: [memberEvidence(member.userId, member.name)],
-    }
-  })
+      })
+    : []
   return {
     ok: true as const,
     items,
+    projectFiles,
     returnedCount: items.length,
     notFoundUserIds,
     truncated: anyTruncated,
@@ -709,7 +733,8 @@ export async function getResearchMemberHistory(
       includeFiles,
       maxUsers: AI_RESEARCH_LIMITS.memberHistoryUsers,
       maxProjectsPerUser: AI_RESEARCH_LIMITS.memberHistoryProjects,
-      maxFilesPerProject: AI_RESEARCH_LIMITS.memberHistoryFilesPerProject,
+      // 返したプロジェクト数から決めた、今回の1プロジェクトあたりのファイル上限
+      maxFilesPerProject,
     },
   }
 }
