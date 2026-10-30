@@ -36,6 +36,7 @@
     "expo": "~55.0.0",
     "expo-apple-authentication": "~55.0.17",
     "expo-application": "~55.0.19",
+    "expo-clipboard": "~55.0.17",
     "expo-constants": "~55.0.17",
     "expo-crypto": "~55.0.19",
     "expo-dev-client": "~55.0.40",
@@ -65,7 +66,7 @@
     "react-native": "0.83.10",
     "react-native-blob-util": "0.24.7",
     "react-native-enriched-markdown": "1.1.0",
-    "react-native-pdf": "7.0.4",
+    "react-native-pdf": "7.0.5",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-webview": "13.16.0"
