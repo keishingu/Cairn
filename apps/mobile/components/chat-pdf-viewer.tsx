@@ -1,7 +1,6 @@
 import React from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import Pdf from 'react-native-pdf'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ensureCachedAttachment,
@@ -11,6 +10,7 @@ import {
 import type { AttachmentAuth } from '../lib/attachment-auth'
 import { ViewerAction } from './chat-image-viewer'
 import { useT } from './locale-provider'
+import { PdfDocumentView } from './pdf-document-view'
 
 type LoadState =
   | { kind: 'downloading' }
@@ -18,7 +18,7 @@ type LoadState =
   | { kind: 'failed'; message: string }
 
 // 添付 PDF をアプリ内で表示する。取得は共有シートと同じキャッシュを使い、
-// 一度開いた PDF は保存・共有でも再ダウンロードしない
+// 一度開いた PDF は保存・共有でも再ダウンロードしない。描画は iOS が PDFKit、Android が pdf.js（PdfDocumentView）
 export function ChatPdfViewer({
   fileUrl,
   fileId,
@@ -75,7 +75,7 @@ export function ChatPdfViewer({
     // t は言語切替で変わるが、取得し直す必要はないため依存に含めない
   }, [attempt, fileId, fileName, fileUrl])
 
-  const handleRenderError = (error: object) => {
+  const handleRenderError = (error: unknown) => {
     console.error('[chat] PDF を表示できませんでした:', error)
     // 再試行は refresh で必ず取り直すため、ここでの削除は保存・共有など他の経路で
     // 壊れたファイルを使わないための後始末。失敗しても再試行には影響しないが、黙って捨てない
@@ -153,13 +153,9 @@ export function ChatPdfViewer({
               </Pressable>
             </View>
           ) : loadState.kind === 'ready' ? (
-            <Pdf
+            <PdfDocumentView
               key={attempt}
-              source={{ uri: loadState.localUri }}
-              style={styles.pdf}
-              trustAllCerts={false}
-              // 読み込み中は下の共通スピナーを出すため、ライブラリ既定の進捗テキストは描画しない
-              renderActivityIndicator={() => <View />}
+              uri={loadState.localUri}
               onLoadComplete={(numberOfPages) => {
                 setRendered(true)
                 setPage((current) => ({ current: current?.current ?? 1, total: numberOfPages }))
@@ -221,7 +217,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pdf: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000' },
   spinner: { position: 'absolute' },
   failure: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   failureText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', textAlign: 'center' },
