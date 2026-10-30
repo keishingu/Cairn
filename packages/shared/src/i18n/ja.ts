@@ -332,6 +332,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not link Google. Please try again in a moment.': 'Google との連携に失敗しました。しばらくしてからもう一度お試しください。',
   'Could not load': '取得に失敗しました',
   'Could not load account info ({status})': 'ユーザー情報の取得に失敗しました ({status})',
+  'Could not change the app icon.': 'アプリアイコンを変更できませんでした。',
   'Could not load API tokens': 'APIトークンの取得に失敗しました',
   'Could not load billing': '請求情報を取得できませんでした',
   'Could not load billing information': '請求情報の取得に失敗しました',

@@ -332,6 +332,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not link Google. Please try again in a moment.': 'Google 연동에 실패했습니다. 잠시 후 다시 시도해 주세요.',
   'Could not load': '불러오지 못했습니다',
   'Could not load account info ({status})': '사용자 정보를 불러오지 못했습니다 ({status})',
+  'Could not change the app icon.': '앱 아이콘을 변경하지 못했습니다.',
   'Could not load API tokens': 'API 토큰을 불러오지 못했습니다',
   'Could not load billing': '결제 정보를 불러오지 못했습니다',
   'Could not load billing information': '결제 정보를 불러오지 못했습니다',

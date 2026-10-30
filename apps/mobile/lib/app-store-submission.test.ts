@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { resolveAppAssets } from '../app.config'
 
 const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8')) as {
-  expo: { ios: { bundleIdentifier: string; icon: string; usesAppleSignIn: boolean; infoPlist: Record<string, unknown> }; plugins: unknown[] }
+  expo: { ios: { bundleIdentifier: string; usesAppleSignIn: boolean; infoPlist: Record<string, unknown> }; plugins: unknown[] }
 }
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8')) as {
   build: { production: { autoIncrement: boolean; environment: string; channel: string } }
@@ -24,7 +25,7 @@ const workflow = readFileSync(new URL('../.eas/workflows/submit-ios.yml', import
 describe('iOS App Store申請設定', () => {
   it('本番Bundle IDと非透過用iOSアイコンを使う', () => {
     expect(app.expo.ios.bundleIdentifier).toBe('com.oss-cairn')
-    expect(app.expo.ios.icon).toBe('./assets/icon-ios.png')
+    expect(resolveAppAssets('production').icon).toBe('./assets/app-icons/emerald-dark-ios.png')
     expect(app.expo.ios.usesAppleSignIn).toBe(true)
     expect(app.expo.ios.infoPlist['ITSAppUsesNonExemptEncryption']).toBe(false)
     expect(app.expo.plugins).toContain('expo-apple-authentication')

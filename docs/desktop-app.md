@@ -20,6 +20,8 @@ pnpm --filter @cairn/desktop generate-icons  # apps/web/public/ の PNG から .
 
 アイコンは `apps/desktop/resources/icons/{prod,dev}/` に生成される。
 
+実行中の Dock / タスクバーのアイコンは Web の外観設定（テーマ・アクセント）に連動する。Web が `cairnDesktop.setAppIcon` で設定を送り、main（`src/app-icon.js`）が `src/assets/app-icons/` の PNG を選んで差し替える。初期値（システム＋エメラルド）のままなら上の表の環境別アイコンを使う。Finder・Launchpad・スタートメニューに出る同梱アイコンは変わらない。
+
 ## Web Push の確認
 
 1. `pnpm desktop:dev` で起動する

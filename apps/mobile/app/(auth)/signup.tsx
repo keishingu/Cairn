@@ -13,6 +13,7 @@ import {
   CONSENT_LINK_LABELS,
 } from '../../lib/account-consent'
 import { useT } from '../../components/locale-provider'
+import { AUTH_BUTTON_BACKGROUND, AUTH_PALETTE as palette } from '../../lib/auth-palette'
 
 export default function SignupScreen() {
   const t = useT()
@@ -73,6 +74,7 @@ export default function SignupScreen() {
       <View style={styles.form}>
         <TextInput
           style={styles.input}
+          placeholderTextColor={palette.text3}
           placeholder={t('Display name')}
           value={displayName}
           onChangeText={setDisplayName}
@@ -80,6 +82,7 @@ export default function SignupScreen() {
         />
         <TextInput
           style={styles.input}
+          placeholderTextColor={palette.text3}
           placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
@@ -89,6 +92,7 @@ export default function SignupScreen() {
         />
         <TextInput
           style={styles.input}
+          placeholderTextColor={palette.text3}
           placeholder={t('Password (at least 8 characters)')}
           value={password}
           onChangeText={setPassword}
@@ -104,7 +108,7 @@ export default function SignupScreen() {
 
         <TouchableOpacity style={styles.button} onPress={handleSignup} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={palette.onAccent} />
           ) : (
             <Text style={styles.buttonText}>{t('Create account')}</Text>
           )}
@@ -151,16 +155,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: palette.bg,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 8,
+    color: palette.text,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: palette.text3,
     marginBottom: 32,
   },
   form: {
@@ -169,10 +174,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: palette.border,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    color: palette.text,
+    backgroundColor: palette.card,
   },
   errorBox: {
     backgroundColor: '#fef2f2',
@@ -186,14 +193,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#0070f3',
+    backgroundColor: AUTH_BUTTON_BACKGROUND,
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',
     marginTop: 4,
   },
   buttonText: {
-    color: '#fff',
+    color: palette.onAccent,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -206,25 +213,25 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: palette.border,
   },
   dividerText: {
-    color: '#999',
+    color: palette.text4,
     fontSize: 13,
   },
   link: {
     marginTop: 24,
-    color: '#0070f3',
+    color: palette.accentText,
     fontSize: 14,
   },
   legalText: {
     marginTop: 4,
-    color: '#666',
+    color: palette.text3,
     fontSize: 12,
     textAlign: 'center',
   },
   legalLink: {
-    color: '#0070f3',
+    color: palette.accentText,
     fontSize: 12,
   },
 })

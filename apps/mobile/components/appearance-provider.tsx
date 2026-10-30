@@ -4,6 +4,7 @@ import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { DEFAULT_ACCENT_ID, DEFAULT_APPEARANCE_THEME } from '@cairn/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, type MeDto } from '../hooks/use-account'
+import { useAppIconSync } from '../hooks/use-app-icon-sync'
 import { createThemePalette, type ResolvedTheme, type ThemePalette } from '../lib/theme'
 
 type AppearanceContextValue = {
@@ -34,6 +35,8 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     () => createThemePalette(resolvedTheme, accentId),
     [resolvedTheme, accentId],
   )
+
+  useAppIconSync(meQuery.data ? { theme, accentId } : null, systemTheme)
 
   // 設定WebViewから戻った場合や別端末で変更した場合も、前面復帰時にDB設定へ追従する。
   React.useEffect(() => {

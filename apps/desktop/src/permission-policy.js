@@ -28,4 +28,4 @@ function registerPermissionPolicy(electronSession, appUrl) {
   })
 }
 
-module.exports = { isPermissionAllowed, registerPermissionPolicy }
+module.exports = { isPermissionAllowed, isSameOrigin, registerPermissionPolicy }

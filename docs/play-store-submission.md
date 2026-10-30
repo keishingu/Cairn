@@ -6,8 +6,9 @@ iOS は App Store 公開済み。Android は株式会社オリカタ（orikata, 
 
 ## リポジトリ内で準備済みのもの
 
+- `apps/mobile/app.config.ts`
+  - `android.adaptiveIcon`: 本番は `assets/app-icons/emerald-dark-android.png`（透過の前景、1024×1024、セーフゾーン内にロゴ）+ 背景色 `#0B1622`。Play のアイコン審査（マスク形状で切れない）に対応
 - `apps/mobile/app.json`
-  - `android.adaptiveIcon`: `assets/adaptive-icon.png`（前景、1024×1024、セーフゾーン内にロゴ）+ 背景色 `#0B1622`。Play のアイコン審査（マスク形状で切れない）に対応
   - `android.blockedPermissions`: Expo のテンプレートが足す `RECORD_AUDIO` / `SYSTEM_ALERT_WINDOW` を除去。Cairn は録音もオーバーレイも使わないため、Data safety とマニフェスト審査で説明不要にする
   - `expo-notifications` plugin: ステータスバー用の単色通知アイコン `assets/notification-icon.png` とアクセント色。未設定だとアプリアイコンが白い四角として表示される
   - 残る権限は `INTERNET` / `ACCESS_NETWORK_STATE` / `VIBRATE` / `DOWNLOAD_WITHOUT_NOTIFICATION`（添付ファイルの保存）/ Android 12 以下限定の `READ_EXTERNAL_STORAGE` `WRITE_EXTERNAL_STORAGE`（`maxSdkVersion=32`）。Android 13 以降は写真ピッカーを使うため `READ_MEDIA_*` を要求せず、Play の「写真と動画の権限」ポリシーの申告対象にならない
@@ -87,7 +88,7 @@ pnpm build:production:android
 
 [`apps/mobile/store/play-listing.ja.md`](../apps/mobile/store/play-listing.ja.md) の文面と素材を Play Console に入力する。EAS Metadata（`store.config.json`）は App Store 専用で Play には同期できない。
 
-- アプリアイコン 512×512（`assets/icon.png`）
+- アプリアイコン 512×512（`assets/app-icons/emerald-dark-ios.png` を 512px に縮小）
 - フィーチャー グラフィック 1024×500（**必須**。まだ作っていない）
 - スマートフォン用スクリーンショット 2〜8 枚（内部テスト版の本番ビルドから撮る）
 - カテゴリ「仕事効率化」、連絡先メール、ウェブサイト、プライバシー ポリシー URL
