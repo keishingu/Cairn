@@ -12,7 +12,12 @@ export const AI_RESEARCH_LIMITS = {
   members: 200,
   memberHistoryUsers: 50,
   memberHistoryProjects: 100,
-  memberHistoryFilesPerProject: 10,
+  // 経歴の添付ファイルは、予算を返すプロジェクト数で割って1プロジェクトの上限を決める（少人数なら多く読める）。
+  // 予算は配分の基準で、合計の上限ではない。30プロジェクトを超えると下限10件が勝ち、合計は予算を超える
+  // （従来の固定10件と同じ量で、大人数の調査で今より読めるファイルを減らさないため）
+  memberHistoryFileBudget: 300,
+  memberHistoryFilesPerProjectMin: 10,
+  memberHistoryFilesPerProjectMax: 50,
   fileChunks: 10,
   messageLookbackDefaultDays: 30,
   messageLookbackMaxDays: 90,
@@ -29,6 +34,16 @@ export const AI_RESEARCH_LIMITS = {
 export function clampResearchLimit(requested: number | undefined, maximum: number): number {
   if (!Number.isFinite(requested)) return maximum
   return Math.max(1, Math.min(Math.floor(requested ?? maximum), maximum))
+}
+
+export function memberHistoryFilesPerProject(projectCount: number): number {
+  const { memberHistoryFileBudget, memberHistoryFilesPerProjectMin, memberHistoryFilesPerProjectMax } =
+    AI_RESEARCH_LIMITS
+  if (projectCount <= 0) return memberHistoryFilesPerProjectMax
+  return Math.max(
+    memberHistoryFilesPerProjectMin,
+    Math.min(Math.floor(memberHistoryFileBudget / projectCount), memberHistoryFilesPerProjectMax),
+  )
 }
 
 export function isResearchTruncated(

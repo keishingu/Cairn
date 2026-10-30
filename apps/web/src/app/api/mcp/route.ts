@@ -326,7 +326,7 @@ const mcpHandler = createMcpHandler(
       {
         title: 'Get member history',
         description:
-          'Get the project history of up to 50 members at once: projects they joined, project roles, periods, statuses and files attached to each project. Read file bodies with read_file.',
+          'Get the project history of up to 50 members at once: projects they joined, project roles, periods, statuses and files attached to each project. Files are listed once per project in projectFiles (newest first, 10-50 per project depending on how many projects are returned; filesTruncated means older files remain). Read file bodies with read_file.',
         inputSchema: z.object({
           userIds: z.array(z.uuid()).min(1).max(50),
           includeFiles: z.boolean().optional(),
