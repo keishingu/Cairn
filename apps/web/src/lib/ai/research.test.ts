@@ -8,6 +8,7 @@ import {
   detectProjectDeadlineRisk,
   detectResearchTaskRisks,
   isResearchTruncated,
+  memberHistoryFilesPerProject,
   type ResearchTaskInput,
 } from './research'
 
@@ -107,6 +108,17 @@ describe('AI横断調査の取得上限', () => {
 
   test('tool callingは最大8ステップに固定する', () => {
     expect(AI_RESEARCH_LIMITS.toolSteps).toBe(8)
+  })
+
+  test('経歴の添付ファイルは返すプロジェクトが少ないほど1プロジェクトあたり多く返す', () => {
+    // 少人数の調査では上限50件まで読める
+    expect(memberHistoryFilesPerProject(1)).toBe(50)
+    expect(memberHistoryFilesPerProject(6)).toBe(50)
+    expect(memberHistoryFilesPerProject(22)).toBe(13)
+    // 大人数でも各プロジェクト10件は保証する
+    expect(memberHistoryFilesPerProject(100)).toBe(10)
+    expect(memberHistoryFilesPerProject(5000)).toBe(10)
+    expect(memberHistoryFilesPerProject(0)).toBe(50)
   })
 
   test('上限超過と本文切り詰めをtruncatedとして返す', () => {
