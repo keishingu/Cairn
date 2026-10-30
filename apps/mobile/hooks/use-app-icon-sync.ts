@@ -41,29 +41,64 @@ export function useAppIconSync(
     }
     if (getAppIconName() === name) return
     inFlightRef.current = true
-    setAlternateAppIcon(name)
+    changeIcon(name)
       .catch((error: unknown) => {
         console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
+        if (alertedIconNames.has(name)) return
+        alertedIconNames.add(name)
         Alert.alert(t('Could not change the app icon.'))
       })
       .finally(() => {
         inFlightRef.current = false
         if (pendingRef.current) {
           pendingRef.current = false
-          apply()
+          // iOS は前面でしか変更できない。前面でなければ次に前面へ戻ったときの schedule に任せる
+          if (Platform.OS !== 'ios' || AppState.currentState === 'active') apply()
         }
       })
   }, [t])
 
+  // iOS は起動直後に他の確認表示と重なると変更に失敗することがあるため、前面に戻ってから少し待って呼ぶ
+  const scheduleRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const schedule = React.useCallback(() => {
+    if (Platform.OS !== 'ios') {
+      apply()
+      return
+    }
+    if (scheduleRef.current) clearTimeout(scheduleRef.current)
+    scheduleRef.current = setTimeout(() => {
+      scheduleRef.current = null
+      if (AppState.currentState === 'active') apply()
+    }, IOS_SETTLE_MS)
+  }, [apply])
+  React.useEffect(() => () => {
+    if (scheduleRef.current) clearTimeout(scheduleRef.current)
+  }, [])
+
   React.useEffect(() => {
-    if (Platform.OS === 'ios' && AppState.currentState === 'active') apply()
-  }, [target, apply])
+    if (Platform.OS === 'ios' && AppState.currentState === 'active') schedule()
+  }, [target, schedule])
 
   React.useEffect(() => {
     const trigger: AppStateStatus = Platform.OS === 'ios' ? 'active' : 'background'
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === trigger) apply()
+      if (state === trigger) schedule()
     })
     return () => sub.remove()
-  }, [apply])
+  }, [schedule])
+}
+
+const IOS_SETTLE_MS = 1000
+
+// iOS が変更を受け付けない間は、前面に戻るたびの切り替えが失敗し続けることがある。
+// 同じアイコンへの失敗は、ログインし直しても 1 回だけ知らせる
+const alertedIconNames = new Set<string | null>()
+
+// 失敗が返っても実際には切り替わっている場合があるため、現在のアイコンで成否を判断する
+async function changeIcon(name: string | null): Promise<void> {
+  try {
+    await setAlternateAppIcon(name)
+  } catch (error) {
+    if (getAppIconName() !== name) throw error
+  }
 }
