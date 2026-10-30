@@ -54,6 +54,7 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **ストア版への OTA**（`.github/workflows/mobile-production-update.yml`）は `main` への push ごとに自動実行し（paths は変更ファイル 300 件までしか見ず大きなリリースで起動漏れするため絞らない）、実行開始時点の `main` の先頭を EAS の `production` 環境の接続先で `production` channel へ配信する（手動実行も可）。届くのは `runtimeVersion` が一致するストア版だけなので、ネイティブモジュールを変えた PR は `runtimeVersion` を上げてから `main` へ入れ、ストア版を作り直す。`EXPO_TOKEN` は GitHub の `production` Environment に置く
 - **アイコン・スプラッシュ・未ログイン画面の配色は環境で分ける**（`development` / `preview` は白＋青、`production` は紺＋緑）。`app.config.ts` がビルド環境から既定アイコン（`assets/app-icons/`）とスプラッシュを選び、ログイン・サインアップ画面は `lib/auth-palette.ts` の同じ配色を使う。画像は `node scripts/generate-icons.mjs` で再生成する
 - **ログイン後のホーム画面アイコンは外観設定（テーマ・アクセント）に連動する**（`expo-alternate-app-icons`、14 種をネイティブに同梱）。初期値（システム＋エメラルド）は未設定と区別できないため環境別の既定アイコンのまま。テーマが「システム」なら OS のライト／ダークに合わせる。iOS は前面にいる間に切り替え、そのたびに OS のアラートが出る。Android は使用中に起動口を切り替えるとタスクが閉じることがあるため、バックグラウンドへ移るときに反映する。別アイコン中は `MainActivity` が無効になるので、OAuth のリダイレクト用 scheme を `android.intentFilters` で activity-alias にも付けている
+- **`app.json` の `userInterfaceStyle` は `automatic`**（Android は `expo-system-ui` が必要）。`light` に固定すると `useColorScheme()` が常に light を返し、テーマ「システム」が OS のダークモードに追従しない。ステータスバーの文字色は `AppearanceProvider` がテーマに合わせる
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
 
 ## オフライン・送信

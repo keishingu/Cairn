@@ -4,6 +4,7 @@
     "slug": "cairn",
     "scheme": "cairn",
     "version": "1.1.0",
+    "userInterfaceStyle": "automatic",
     "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "com.oss-cairn",
@@ -53,7 +54,7 @@
       }
     },
     "owner": "keishingu",
-    "runtimeVersion": "1.7.0",
+    "runtimeVersion": "1.8.0",
     "updates": {
       "url": "https://u.expo.dev/46195650-8dc8-4c73-9b32-c1b5134c0326"
     }

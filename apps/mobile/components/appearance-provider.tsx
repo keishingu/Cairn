@@ -1,5 +1,5 @@
 import React from 'react'
-import { AppState, useColorScheme } from 'react-native'
+import { AppState, StatusBar, useColorScheme } from 'react-native'
 import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { DEFAULT_ACCENT_ID, DEFAULT_APPEARANCE_THEME } from '@cairn/shared'
 import { useQueryClient } from '@tanstack/react-query'
@@ -60,7 +60,12 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     [palette, resolvedTheme, theme, accentId, updateAppearance],
   )
 
-  return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>
+  return (
+    <AppearanceContext.Provider value={value}>
+      <StatusBar barStyle={resolvedTheme === 'dark' ? 'light-content' : 'dark-content'} />
+      {children}
+    </AppearanceContext.Provider>
+  )
 }
 
 export function useAppAppearance(): AppearanceContextValue {
