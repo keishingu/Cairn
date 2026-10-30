@@ -115,7 +115,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'messages' || table === 'message_reactions' || table === 'tasks' || table === 'message_blocks') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
-          if (table === 'messages') void invalidateChannelListQueries(queryClient)
+          if (table === 'messages') {
+            void invalidateChannelListQueries(queryClient)
+            // チャット情報のファイル一覧。添付はメッセージと一緒に増える
+            void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+          }
+          // チャット情報のタスク一覧
+          if (table === 'tasks') void queryClient.invalidateQueries({ queryKey: ['tasks'] })
         })
       channel.subscribe((status, error) => {
         if (cancelled) return
