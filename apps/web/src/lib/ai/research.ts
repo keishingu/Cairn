@@ -12,7 +12,9 @@ export const AI_RESEARCH_LIMITS = {
   members: 200,
   memberHistoryUsers: 50,
   memberHistoryProjects: 100,
-  // 経歴の添付ファイルは1回の結果全体の予算を、返すプロジェクト数で割って配分する（少人数なら多く読める）
+  // 経歴の添付ファイルは、予算を返すプロジェクト数で割って1プロジェクトの上限を決める（少人数なら多く読める）。
+  // 予算は配分の基準で、合計の上限ではない。30プロジェクトを超えると下限10件が勝ち、合計は予算を超える
+  // （従来の固定10件と同じ量で、大人数の調査で今より読めるファイルを減らさないため）
   memberHistoryFileBudget: 300,
   memberHistoryFilesPerProjectMin: 10,
   memberHistoryFilesPerProjectMax: 50,
