@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -53,6 +52,7 @@ export function ChatInfoDrawer({
   onOpenActions,
   onOpenProject,
   onOpenFile,
+  onOpenLink,
   onOpenMember,
 }: {
   channelId: string
@@ -65,6 +65,7 @@ export function ChatInfoDrawer({
   onOpenActions: () => void
   onOpenProject: (projectId: string) => void
   onOpenFile: (file: ChatInfoFileDto) => void
+  onOpenLink: (url: string) => void
   onOpenMember: (member: ChannelMemberDto) => void
 }) {
   const t = useT()
@@ -165,11 +166,8 @@ export function ChatInfoDrawer({
             palette={palette}
             t={t}
             onOpenFile={(file) => {
-              if (file.fileType === 'link' && file.externalUrl) {
-                void Linking.openURL(file.externalUrl)
-                return
-              }
-              close(() => onOpenFile(file))
+              const url = file.fileType === 'link' ? file.externalUrl : undefined
+              close(() => (url ? onOpenLink(url) : onOpenFile(file)))
             }}
           />
           <MembersSection

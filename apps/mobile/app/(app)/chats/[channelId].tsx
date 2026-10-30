@@ -2105,6 +2105,7 @@ export default function ChatThreadScreen() {
             onOpenActions={openInfoActions}
             onOpenProject={(id) => router.push({ pathname: '/(app)/projects/[id]', params: { id } })}
             onOpenFile={openInfoFile}
+            onOpenLink={openMarkdownLink}
             onOpenMember={(member) =>
               openProfile({
                 userId: member.userId,
