@@ -51,6 +51,9 @@ export const patchMilestoneSchema = z.object({
   { message: 'At least one field is required' },
 )
 
+/** 1 件のメッセージに添付できるファイル数の上限（Web / モバイル / API で共通） */
+export const MAX_MESSAGE_ATTACHMENTS = 10
+
 export const postMessageSchema = z
   .object({
     channelId: z.string().uuid(),
@@ -58,7 +61,7 @@ export const postMessageSchema = z
     messageType: z.enum(['text', 'html']).default('text'),
     clientMessageId: z.string().uuid().optional(),
     parentMessageId: z.string().uuid().optional(),
-    attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
+    attachmentFileIds: z.array(z.string().uuid()).max(MAX_MESSAGE_ATTACHMENTS).optional(),
   })
   .refine(
     (d) => d.content.length > 0 || (d.attachmentFileIds?.length ?? 0) > 0,

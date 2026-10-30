@@ -23,7 +23,7 @@ const TABS: {
 }[] = [
   {
     id: 'chats',
-    route: 'chats/index',
+    route: 'chats',
     icon: 'chatbubble-outline',
     label: 'Chats',
   },
@@ -82,9 +82,9 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
 
-  const current = state.routes[state.index]?.name ?? 'chats/index'
+  const current = state.routes[state.index]?.name ?? 'chats'
   const projectsActive = current.startsWith('projects/')
-  const chatsActive = current.startsWith('chats/')
+  const chatsActive = current === 'chats'
   const unreadCount = chatTabUnreadCount({
     projectChannels: channels ?? [],
     workspaceChannels: workspaceChannels ?? [],
@@ -97,7 +97,9 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
 
   const navigate = (route: string) => {
     closeOverlays()
-    navigation.navigate(route)
+    // チャットのタブは詳細を開いていても一覧へ戻す
+    if (route === 'chats') navigation.navigate(route, { screen: 'index' })
+    else navigation.navigate(route)
   }
 
   const signOut = async () => {

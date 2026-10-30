@@ -187,10 +187,10 @@ ${body}
 </html>`
 }
 
-export type ImageViewerMessage = 'loaded' | 'error'
+export type ImageViewerMessage = 'loaded' | 'error' | 'zoomed' | 'fit'
 
 export function parseImageViewerMessage(data: string): ImageViewerMessage | null {
-  return data === 'loaded' || data === 'error' ? data : null
+  return data === 'loaded' || data === 'error' || data === 'zoomed' || data === 'fit' ? data : null
 }
 
 export function buildImageViewerHtml(imageUri: string, background: string): string {
@@ -208,6 +208,18 @@ export function buildImageViewerHtml(imageUri: string, background: string): stri
   img { display: block; max-width: 100%; max-height: 100%; }
 </style>
 </head>
-<body><img src="${src}" alt="" onload="window.ReactNativeWebView.postMessage('loaded')" onerror="window.ReactNativeWebView.postMessage('error')"></body>
+<body><img src="${src}" alt="" onload="window.ReactNativeWebView.postMessage('loaded')" onerror="window.ReactNativeWebView.postMessage('error')">
+<script>
+  // 拡大中かどうかをアプリへ知らせる（等倍のときだけ横スワイプで画像を送るため）
+  if (window.visualViewport) {
+    var zoomed = false;
+    window.visualViewport.addEventListener('resize', function () {
+      var now = window.visualViewport.scale > 1.01;
+      if (now === zoomed) return;
+      zoomed = now;
+      window.ReactNativeWebView.postMessage(now ? 'zoomed' : 'fit');
+    });
+  }
+</script></body>
 </html>`
 }

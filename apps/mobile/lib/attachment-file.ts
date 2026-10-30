@@ -2,6 +2,17 @@ export function isImageMime(mimeType: string | null | undefined): boolean {
   return typeof mimeType === 'string' && mimeType.startsWith('image/')
 }
 
+// チャットの画像サムネイルの最大辺。Web の ChatMessage（chat-thread.tsx）と同じく、1枚だけなら 280、複数なら 160
+export const CHAT_IMAGE_MAX_SINGLE = 280
+export const CHAT_IMAGE_MAX_MULTI = 160
+
+// 縦横比を保って max 四方に収める。Web の maxWidth / maxHeight（auto）と同じく拡大はしない
+export function fitImageSize(width: number, height: number, max: number): { width: number; height: number } | null {
+  if (!(width > 0) || !(height > 0)) return null
+  const scale = Math.min(1, max / width, max / height)
+  return { width: width * scale, height: height * scale }
+}
+
 export function isPdfMime(mimeType: string | null | undefined): boolean {
   return mimeType === 'application/pdf'
 }
