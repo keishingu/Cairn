@@ -31,9 +31,6 @@ export function useAppIconSync(
   // 実行中は 1 回にまとめ、終わってから最新の設定と照らし合わせる
   const inFlightRef = React.useRef(false)
   const pendingRef = React.useRef(false)
-  // iOS は確認表示を短時間に何度も出させず、前面に戻るたびの再試行も失敗し続けることがある。
-  // 同じアイコンへの失敗は 1 回だけ知らせる
-  const alertedRef = React.useRef(new Set<string | null>())
 
   const apply = React.useCallback(() => {
     const name = targetRef.current
@@ -44,23 +41,24 @@ export function useAppIconSync(
     }
     if (getAppIconName() === name) return
     inFlightRef.current = true
-    changeIcon(name, IOS_RETRY_COUNT)
+    changeIcon(name)
       .catch((error: unknown) => {
         console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
-        if (alertedRef.current.has(name)) return
-        alertedRef.current.add(name)
+        if (alertedIconNames.has(name)) return
+        alertedIconNames.add(name)
         Alert.alert(t('Could not change the app icon.'))
       })
       .finally(() => {
         inFlightRef.current = false
         if (pendingRef.current) {
           pendingRef.current = false
-          apply()
+          // iOS は前面でしか変更できない。前面でなければ次に前面へ戻ったときの schedule に任せる
+          if (Platform.OS !== 'ios' || AppState.currentState === 'active') apply()
         }
       })
   }, [t])
 
-  // iOS は前面に戻った直後に変更すると「リソースが一時的に使用できません」で失敗するため、少し待ってから呼ぶ
+  // iOS は起動直後に他の確認表示と重なると変更に失敗することがあるため、前面に戻ってから少し待って呼ぶ
   const scheduleRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const schedule = React.useCallback(() => {
     if (Platform.OS !== 'ios') {
@@ -91,18 +89,16 @@ export function useAppIconSync(
 }
 
 const IOS_SETTLE_MS = 1000
-const IOS_RETRY_COUNT = 1
 
-// 一時的な失敗（他の確認表示と重なったときなど）は前面にいる間に 1 回だけ再試行する。
+// iOS が変更を受け付けない間は、前面に戻るたびの切り替えが失敗し続けることがある。
+// 同じアイコンへの失敗は、ログインし直しても 1 回だけ知らせる
+const alertedIconNames = new Set<string | null>()
+
 // 失敗が返っても実際には切り替わっている場合があるため、現在のアイコンで成否を判断する
-async function changeIcon(name: string | null, retriesLeft: number): Promise<void> {
+async function changeIcon(name: string | null): Promise<void> {
   try {
     await setAlternateAppIcon(name)
   } catch (error) {
-    if (getAppIconName() === name) return
-    if (Platform.OS !== 'ios' || retriesLeft <= 0) throw error
-    await new Promise((resolve) => setTimeout(resolve, IOS_SETTLE_MS))
-    if (AppState.currentState !== 'active') return
-    await changeIcon(name, retriesLeft - 1)
+    if (getAppIconName() !== name) throw error
   }
 }
