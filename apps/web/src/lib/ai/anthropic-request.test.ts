@@ -6,6 +6,8 @@ import { generateObject, streamText, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 import { ClaudeRefusalError, withAnthropicCompat } from './anthropic-compat-middleware'
+import { summarizeChatCacheUsage } from './cache-usage'
+import { toChatSystemMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 
 // Claude 5.5 系は temperature / top_p / top_k / thinking / assistant prefill を既定以外で受け付けない。
 // 実 API には接続せず、AI SDK が送るリクエスト本文と、空の thinking ブロックを含むレスポンスの処理を確認する。
@@ -240,5 +242,52 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
     expect(parts).toContain('error')
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBeInstanceOf(ClaudeRefusalError)
+  })
+
+  it('チャットの system は2ブロックで送り、変わらない側にだけ cache_control を付け、キャッシュの読み書きを集計できる', async () => {
+    const requests: Record<string, unknown>[] = []
+    const anthropic = createAnthropic({
+      apiKey: 'test-key',
+      fetch: (async (_url: unknown, init?: { body?: unknown }) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return sse([
+          {
+            event: 'message_start',
+            data: {
+              type: 'message_start',
+              message: {
+                id: 'msg_cache',
+                model: 'claude-sonnet-5-5',
+                usage: { input_tokens: 30, output_tokens: 1, cache_read_input_tokens: 18000, cache_creation_input_tokens: 0 },
+              },
+            },
+          },
+          ...emptyThinkingBlock(0),
+          ...messageEnd('end_turn'),
+        ])
+      }) as unknown as typeof fetch,
+    })
+    let finishedSteps: Parameters<typeof summarizeChatCacheUsage>[0] = []
+    const result = streamText({
+      model: withAnthropicCompat(anthropic('claude-sonnet-5-5')),
+      messages: [
+        ...toChatSystemMessages({ stable: '変わらない指示', dynamic: '現在日時: 2026年10月31日' }),
+        { role: 'user', content: 'こんにちは' },
+      ],
+      onFinish: ({ steps }) => {
+        finishedSteps = steps
+      },
+    })
+    for await (const part of result.fullStream) void part
+
+    expect(requests[0]?.['system']).toEqual([
+      { type: 'text', text: '変わらない指示', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: '現在日時: 2026年10月31日' },
+    ])
+    expect(summarizeChatCacheUsage(finishedSteps)).toMatchObject({
+      steps: 1,
+      cacheReadInputTokens: 18000,
+      cacheCreationInputTokens: 0,
+    })
   })
 })

@@ -7,7 +7,7 @@
 import { generateText } from 'ai'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { isAiChatModel } from '@cairn/shared'
-import { buildChatSystemPrompt } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
+import { buildChatSystemPrompt, toChatSystemMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -102,15 +102,17 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
     const result = await generateText({
       model: chatLanguageModel(workspace.aiChatModel),
-      system: buildChatSystemPrompt({
-        now,
-        role: ctx.role,
-        contextSection: '',
-        hasWebSearch: false,
-        workspaceInstructions: workspace.aiChatSystemPrompt,
-        skill,
-      }),
-      messages: [{ role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` }],
+      messages: [
+        ...toChatSystemMessages(buildChatSystemPrompt({
+          now,
+          role: ctx.role,
+          contextSection: '',
+          hasWebSearch: false,
+          workspaceInstructions: workspace.aiChatSystemPrompt,
+          skill,
+        })),
+        { role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` },
+      ],
       tools: {
         ...createResearchTools(ctx),
         ...createProposalTools(ctx, null, { allowed: skill.writeActions, dryRun }),
