@@ -412,7 +412,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not share the image': '画像を共有できませんでした',
   'Could not share the PDF': 'PDFを共有できませんでした',
   'Could not share the file': 'ファイルを共有できませんでした',
-  'Could not share the message': 'メッセージを共有できませんでした',
   'Could not show who reacted': 'このリアクションを付けた人を表示できませんでした',
   'Could not sign in with Apple. Please try again in a moment.': 'Appleでのサインインに失敗しました。しばらくしてからもう一度お試しください。',
   'Could not start native linking': 'ネイティブ連携を開始できませんでした',
