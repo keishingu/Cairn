@@ -13,7 +13,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -741,7 +740,7 @@ export default function ChatThreadScreen() {
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [selectableText, setSelectableText] = React.useState<string | null>(null)
-  const [copiedNotice, setCopiedNotice] = React.useState(false)
+  const [copiedNotice, setCopiedNotice] = React.useState<string | null>(null)
   const copiedNoticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   React.useEffect(() => () => {
     if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
@@ -1580,17 +1579,31 @@ export default function ChatThreadScreen() {
     [openMarkdownLink, t],
   )
 
+  const showCopiedNotice = (label: string) => {
+    if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
+    setCopiedNotice(label)
+    copiedNoticeTimer.current = setTimeout(() => setCopiedNotice(null), 1600)
+  }
+
   const copyMessageText = async (message: MessageDto) => {
     setActionTarget(null)
     const body = parseMentions(message.content, t)
     if (body.trim().length === 0) return
     try {
       await Clipboard.setStringAsync(body)
-      if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
-      setCopiedNotice(true)
-      copiedNoticeTimer.current = setTimeout(() => setCopiedNotice(false), 1600)
+      showCopiedNotice(t('Copied the message'))
     } catch {
       setSendError(t('Could not copy the message'))
+    }
+  }
+
+  const copyMessageLink = async (message: MessageDto) => {
+    setActionTarget(null)
+    try {
+      await Clipboard.setStringAsync(`${API_BASE_URL}/chats/${channelId}?m=${message.id}`)
+      showCopiedNotice(t('Copied the link'))
+    } catch {
+      setSendError(t('Could not copy the link'))
     }
   }
 
@@ -1602,28 +1615,6 @@ export default function ChatThreadScreen() {
     // onDismiss は iOS でしか呼ばれない。Android はそのまま開ける
     if (Platform.OS === 'ios') pendingSelectTextRef.current = text
     else setSelectableText(text)
-  }
-
-  const openShareSheet = async (content: string) => {
-    try {
-      await Share.share({ message: content })
-    } catch (shareError) {
-      setSendError(
-        shareError instanceof Error ? shareError.message : t('Could not share the message'),
-      )
-    }
-  }
-
-  // 共有シートも閉じかけの操作メニューの上に出すと、メニューと一緒に閉じられて何も表示されないため、閉じ終えてから開く
-  const pendingShareRef = React.useRef<string | null>(null)
-  const shareMessage = (message: MessageDto) => {
-    setActionTarget(null)
-    const body = parseMentions(message.content, t).trim()
-    const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
-    const content = body ? `${body}\n${url}` : url
-    // onDismiss は iOS でしか呼ばれない。Android はそのまま開ける
-    if (Platform.OS === 'ios') pendingShareRef.current = content
-    else void openShareSheet(content)
   }
 
   return (
@@ -2125,9 +2116,6 @@ export default function ChatThreadScreen() {
             const pending = pendingSelectTextRef.current
             pendingSelectTextRef.current = null
             if (pending !== null) setSelectableText(pending)
-            const pendingShare = pendingShareRef.current
-            pendingShareRef.current = null
-            if (pendingShare !== null) void openShareSheet(pendingShare)
           }}
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
@@ -2207,10 +2195,10 @@ export default function ChatThreadScreen() {
                 }}
               />
               <ActionButton
-                icon="share-outline"
-                label={t('Share')}
+                icon="link-outline"
+                label={t('Copy link')}
                 palette={palette}
-                onPress={() => actionTarget && shareMessage(actionTarget)}
+                onPress={() => actionTarget && copyMessageLink(actionTarget)}
               />
               {actionTarget &&
                 canMoveMessageToThread({
@@ -2253,10 +2241,10 @@ export default function ChatThreadScreen() {
 
         <TextSelectSheet text={selectableText} palette={palette} onClose={() => setSelectableText(null)} />
 
-        {copiedNotice && (
+        {copiedNotice !== null && (
           <View pointerEvents="none" style={styles.copiedNoticeWrap}>
             <View style={[styles.copiedNotice, { backgroundColor: palette.text }]}>
-              <Text style={[styles.copiedNoticeLabel, { color: palette.bg }]}>{t('Copied the message')}</Text>
+              <Text style={[styles.copiedNoticeLabel, { color: palette.bg }]}>{copiedNotice}</Text>
             </View>
           </View>
         )}

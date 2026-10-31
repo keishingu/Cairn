@@ -412,7 +412,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not share the image': '이미지를 공유하지 못했습니다',
   'Could not share the PDF': 'PDF를 공유하지 못했습니다',
   'Could not share the file': '파일을 공유하지 못했습니다',
-  'Could not share the message': '메시지를 공유하지 못했습니다',
   'Could not show who reacted': '반응한 사람을 표시하지 못했습니다',
   'Could not sign in with Apple. Please try again in a moment.': 'Apple로 로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'Could not start native linking': '네이티브 연동을 시작하지 못했습니다',
