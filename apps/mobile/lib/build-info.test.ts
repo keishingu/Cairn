@@ -9,19 +9,44 @@ describe('ビルド情報の表記', () => {
         buildNumber: '42',
         runtimeVersion: '1.8.0',
         updateId: 'a24dff0b-0528-4c4c-90a6-0b0e2b0fb9e8',
+        isEmbeddedLaunch: false,
       }),
     ).toBe('v1.1.0 (42) · runtime 1.8.0 · OTA a24dff0b')
   })
 
-  it('OTA がなければビルド内蔵と分かるようにする', () => {
+  it('ビルド内蔵の JS で動いているときは ID があっても OTA と表示しない', () => {
     expect(
-      formatBuildInfo({ version: '1.1.0', buildNumber: '42', runtimeVersion: '1.8.0', updateId: null }),
+      formatBuildInfo({
+        version: '1.1.0',
+        buildNumber: '42',
+        runtimeVersion: '1.8.0',
+        updateId: 'a24dff0b-0528-4c4c-90a6-0b0e2b0fb9e8',
+        isEmbeddedLaunch: true,
+      }),
+    ).toBe('v1.1.0 (42) · runtime 1.8.0 · embedded')
+  })
+
+  it('開発ビルドのように ID がなければビルド内蔵と分かるようにする', () => {
+    expect(
+      formatBuildInfo({
+        version: '1.1.0',
+        buildNumber: '42',
+        runtimeVersion: '1.8.0',
+        updateId: null,
+        isEmbeddedLaunch: false,
+      }),
     ).toBe('v1.1.0 (42) · runtime 1.8.0 · embedded')
   })
 
   it('取得できない項目は省く', () => {
     expect(
-      formatBuildInfo({ version: null, buildNumber: null, runtimeVersion: null, updateId: null }),
+      formatBuildInfo({
+        version: null,
+        buildNumber: null,
+        runtimeVersion: null,
+        updateId: null,
+        isEmbeddedLaunch: false,
+      }),
     ).toBe('embedded')
   })
 })

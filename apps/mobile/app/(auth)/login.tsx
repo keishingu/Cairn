@@ -101,6 +101,7 @@ export default function LoginScreen() {
           buildNumber: Application.nativeBuildVersion,
           runtimeVersion: Updates.runtimeVersion ?? Constants.expoConfig?.runtimeVersion?.toString() ?? null,
           updateId: Updates.updateId,
+          isEmbeddedLaunch: Updates.isEmbeddedLaunch,
         })}
       </Text>
     </View>
