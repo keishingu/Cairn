@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { formatBuildInfo } from './build-info'
 
 describe('ビルド情報の表記', () => {
-  it('OTA で動いているときは ID の先頭を出す', () => {
+  it('OTA で動いているときは Expo で検索できるよう ID の全体を出す', () => {
     expect(
       formatBuildInfo({
         version: '1.1.0',
@@ -11,7 +11,7 @@ describe('ビルド情報の表記', () => {
         updateId: 'a24dff0b-0528-4c4c-90a6-0b0e2b0fb9e8',
         isEmbeddedLaunch: false,
       }),
-    ).toBe('v1.1.0 (42) · runtime 1.8.0 · OTA a24dff0b')
+    ).toBe('v1.1.0 (42) · runtime 1.8.0 · OTA a24dff0b-0528-4c4c-90a6-0b0e2b0fb9e8')
   })
 
   it('ビルド内蔵の JS で動いているときは ID があっても OTA と表示しない', () => {
