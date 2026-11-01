@@ -86,7 +86,7 @@ stripe_events              Webhook 冪等性（Stripe event id）
 
 - **`/ai`**: モデル呼び出し前に独立トランザクションで `ai_consumption` を記帳して予約し（`reserveCreditsForActiveBenefit`）、生成・ストリーム・応答保存の失敗時は `adjustment` で冪等に返金する（`refundActiveBenefitReservation`）。応答保存とデビットは同一トランザクションではない
 - **AI PMO**: Phase 1/2 ともナッジ配信時に `consumeCreditsForPassiveBenefit` で記帳し、残高がなければ配信しない。ルール巡回・Jev 一次判定・RAG の embedding 検索は消費しない
-- 単位は「1依頼 / 1配信 = N クレジット」（初期仮値はともに 10）。モデル別係数・実測原価への対応は内部で吸収する
+- 単位は「1依頼 / 1配信 = N クレジット」。`/ai` の1依頼はモデルごとに決める（`BILLING_CONFIG.aiChatRequestCreditsByModel`。初期仮値は GPT-5・Claude Sonnet 5.5 が 10、原価が約2倍の Claude Opus 5.5 が 20）。モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行い、スキルのテスト実行は既定モデルの値を使う。AI PMO の1配信は 10（初期仮値）
 
 ### アップロード時の判定
 

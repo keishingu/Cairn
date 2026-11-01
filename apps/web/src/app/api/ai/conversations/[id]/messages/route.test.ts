@@ -72,6 +72,28 @@ vi.mock('@cairn/db', () => {
   }
 })
 
+const ALL_MODELS = ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']
+
+// 会話の存在確認（会話のモデル）、履歴、ワークスペースのモデル設定の順に select される。
+// 会話のモデルを省くと、会話とワークスペースの既定を同じモデルにする
+const queueDbResults = (
+  aiChatModel: string,
+  aiChatSystemPrompt: string | null = null,
+  options: { conversationModel?: string | null; allowedModels?: string[]; aiSearchRecencyWeight?: string } = {},
+) => {
+  const conversationModel = options.conversationModel === undefined ? aiChatModel : options.conversationModel
+  dbSelectResults.push(
+    [{ id: 'conv-1', model: conversationModel }],
+    [],
+    [{
+      aiChatModel,
+      aiChatAllowedModels: options.allowedModels ?? ALL_MODELS,
+      aiChatSystemPrompt,
+      aiSearchRecencyWeight: options.aiSearchRecencyWeight ?? 'none',
+    }],
+  )
+}
+
 describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
@@ -138,6 +160,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       isActiveSupporter: false,
       workspaceState: 'funded',
     })
+    queueDbResults('gpt-5')
     const { POST } = await import('./route')
 
     const response = await POST(
@@ -162,6 +185,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       isActiveSupporter: true,
       creditBalance: 9,
     })
+    queueDbResults('gpt-5')
     const { POST } = await import('./route')
 
     const response = await POST(
@@ -191,14 +215,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     )
   }
 
-  // 会話の存在確認、履歴、ワークスペースのモデル設定の順に select される。
-  const queueDbResults = (
-    aiChatModel: string,
-    aiChatSystemPrompt: string | null = null,
-    aiSearchRecencyWeight: string = 'none',
-  ) => {
-    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel, aiChatSystemPrompt, aiSearchRecencyWeight }])
-  }
+
 
   const streamedSystemPrompt = async (aiChatModel: string, aiChatSystemPrompt: string | null) => {
     process.env['ANTHROPIC_API_KEY'] = 'test-key'
@@ -327,6 +344,68 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(shouldPersistFinishedAssistantMessage(false)).toBe(true)
   })
 
+  it('会話で選んだモデルで回答し、ワークスペースの既定モデルには切り替えない', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults('gpt-5', null, { conversationModel: 'claude-sonnet-5-5' })
+
+    const response = await postQuestion()
+    await response.text()
+
+    expect(response.status).toBe(200)
+    const { model } = mockStreamText.mock.calls[0]![0] as { model: { modelId: string } }
+    expect(model.modelId).toBe('claude-sonnet-5-5')
+  })
+
+  it('モデルを持たない旧い会話は、ワークスペースの既定モデルで回答する', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults('claude-opus-5-5', null, { conversationModel: null })
+
+    const response = await postQuestion()
+    await response.text()
+
+    const { model } = mockStreamText.mock.calls[0]![0] as { model: { modelId: string } }
+    expect(model.modelId).toBe('claude-opus-5-5')
+  })
+
+  it('owner が選べるモデルから外したモデルの会話は、課金も回答もせず 409 で選び直しを求める', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    queueDbResults('gpt-5', null, { conversationModel: 'claude-opus-5-5', allowedModels: ['gpt-5'] })
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: 'この会話のモデルはワークスペースで使えなくなりました。入力欄のモデルを選び直してください。',
+    })
+    expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+    expect(mockStreamText).not.toHaveBeenCalled()
+  })
+
+  it('Opus の会話は、モデルごとのクレジット（20）で残高を確かめて予約する', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    process.env['ANTHROPIC_API_KEY'] = 'test-key'
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 15 })
+    queueDbResults('gpt-5', null, { conversationModel: 'claude-opus-5-5' })
+
+    const short = await postQuestion()
+    expect(short.status).toBe(402)
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 25 })
+    mockReserveCredits.mockResolvedValue(true)
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults('gpt-5', null, { conversationModel: 'claude-opus-5-5' })
+
+    const enough = await postQuestion()
+    await enough.text()
+
+    expect(enough.status).toBe(200)
+    expect(mockReserveCredits).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000010', 20, expect.any(String))
+  })
   it('/ai を使えないロールの依頼は、課金も回答もせず 403 を返す', async () => {
     mockIsBillingEnabled.mockReturnValue(true)
     const { NextResponse } = await import('next/server')
@@ -343,7 +422,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   })
   it('資料検索の新しさの重みは課金前に読み、RAG に渡す', async () => {
     mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
-    queueDbResults('gpt-5', null, 'medium')
+    queueDbResults('gpt-5', null, { aiSearchRecencyWeight: 'medium' })
 
     const response = await postQuestion()
     await response.text()
@@ -358,7 +437,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   it('資料検索の新しさの重みが不正なら、RAG なしで続けず課金前に 500 を返す', async () => {
     mockIsBillingEnabled.mockReturnValue(true)
     mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 100 })
-    queueDbResults('gpt-5', null, 'max')
+    queueDbResults('gpt-5', null, { aiSearchRecencyWeight: 'max' })
 
     const response = await postQuestion()
 
