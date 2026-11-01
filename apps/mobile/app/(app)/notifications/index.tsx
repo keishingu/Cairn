@@ -18,6 +18,7 @@ import {
   type NotificationDto,
 } from '../../../hooks/use-notifications'
 import { followNotification } from '../../../lib/follow-notification'
+import { haptics } from '../../../lib/haptics'
 import { routeFromNotification } from '../../../lib/notification-routing'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { OfflineBanner } from '../../../components/offline-banner'
@@ -171,9 +172,10 @@ export default function NotificationsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
-            onRefresh={() =>
+            onRefresh={() => {
+              haptics.refreshStart()
               void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
-            }
+            }}
             tintColor={palette.accent}
           />
         }

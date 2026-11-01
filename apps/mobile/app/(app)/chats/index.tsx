@@ -37,6 +37,7 @@ import {
 import type { DmChannelDto, WorkspaceChannelDto } from '../../../hooks/use-chat-channels'
 import type { ThemePalette } from '../../../lib/theme'
 import { formatChannelPeriod } from '../../../lib/channel-period'
+import { haptics } from '../../../lib/haptics'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { useNotificationPanel } from '../../../components/notification-panel-provider'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
@@ -76,7 +77,10 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
       }
       {...(onOpenActions
         ? {
-            onLongPress: onOpenActions,
+            onLongPress: () => {
+              haptics.longPressMenu()
+              onOpenActions()
+            },
             delayLongPress: 350,
             accessibilityHint: t('Long-press for the menu'),
           }
@@ -153,7 +157,10 @@ function WorkspaceChannelItem({
       }
       {...(onOpenActions
         ? {
-            onLongPress: onOpenActions,
+            onLongPress: () => {
+              haptics.longPressMenu()
+              onOpenActions()
+            },
             delayLongPress: 350,
             accessibilityHint: t('Long-press for the menu'),
           }

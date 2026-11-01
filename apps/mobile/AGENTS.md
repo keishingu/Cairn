@@ -12,4 +12,5 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - サインアウトと別ユーザーへの入れ替えでは QueryClient を破棄する。query key にユーザー ID は含めず、この境界だけをアカウントの切り替えにする（Web の QueryProvider と同じ）
 - 端末キャッシュ（`lib/offline-cache.ts`）はオフライン・取得失敗時の表示専用で、オンライン時の代替値にしない。React Query のデータへ混ぜない（既読化が古いデータで動く）
 - `offline_schema_migrations` の版は 1 から増やさない。既存バンドルが起動不能になるため、schema の版は `PRAGMA user_version` で持ち、DB の失敗で起動を止めない
+- ジェスチャーは Gesture Handler + Reanimated で書き、`PanResponder` を新規に使わない。`Modal` の中にも `GestureHandlerRootView` を置く（Android で反応しなくなる）
 - アプリだけの機能・導線を変えたときも、`/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）の更新が要るか確認する

@@ -86,7 +86,11 @@ export function reactionSheetSwipe(dy: number, vy: number, expanded: boolean): R
   return null
 }
 
-/** タップを奪わないよう、縦に十分動いてから応答する */
+/**
+ * タップを奪わないよう、縦に十分動いてから応答する。
+ * アプリではジェスチャーの開始判定として UI スレッドで動くため worklet にしている（Web では何もしない指示）
+ */
 export function isVerticalSheetDrag(dx: number, dy: number): boolean {
+  'worklet'
   return Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)
 }

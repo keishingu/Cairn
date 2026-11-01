@@ -18,7 +18,9 @@ export function resolveViewerImages<T extends ViewerImage>(
   return index >= 0 ? { images, index } : { images: [current], index: 0 }
 }
 
+// ジェスチャーの開始判定として UI スレッドで動く
 export function isHorizontalDrag(dx: number, dy: number): boolean {
+  'worklet'
   return Math.abs(dx) > DRAG_SLOP && Math.abs(dx) > Math.abs(dy)
 }
 
