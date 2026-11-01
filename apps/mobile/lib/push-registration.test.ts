@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   sessionUserId: 'user-1' as string | null,
   channelImportance: 3 as number | null,
   getNotificationChannelAsync: vi.fn(async () => (mocks.channelImportance === null ? null : { importance: mocks.channelImportance })),
+  isDeviceOffline: vi.fn(async () => false),
 }))
 
 vi.mock('react-native', () => ({
@@ -31,6 +32,7 @@ vi.mock('expo-notifications', () => ({
 }))
 vi.mock('expo-constants', () => ({ default: { appOwnership: null, easConfig: { projectId: 'project-1' } } }))
 vi.mock('./api-fetch', () => ({ apiFetch: mocks.apiFetch }))
+vi.mock('./device-offline', () => ({ isDeviceOffline: mocks.isDeviceOffline }))
 vi.mock('./supabase', () => ({
   supabase: {
     auth: {
@@ -41,7 +43,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { ANDROID_NOTIFICATION_CHANNEL_ID, ensureAndroidNotificationChannel, isAndroidNotificationChannelDisabled, registerPushToken, unregisterPushToken } from './push-registration'
+import { ANDROID_NOTIFICATION_CHANNEL_ID, ensureAndroidNotificationChannel, isAndroidNotificationChannelDisabled, registerPushToken, unregisterPushToken, unregisterPushTokenForSignOut } from './push-registration'
 
 describe('Android の通知チャンネル', () => {
   beforeEach(() => {
@@ -229,5 +231,74 @@ describe('アカウントの切り替え', () => {
       expect.objectContaining({ method: 'POST' }),
       { user: { id: 'user-1' } },
     )
+  })
+})
+
+describe('サインアウト時の解除', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.platformOS = 'ios'
+    mocks.sessionUserId = 'user-1'
+    mocks.apiFetch.mockResolvedValue({ ok: true, status: 200 })
+    mocks.isDeviceOffline.mockResolvedValue(false)
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  test('セッションのあるうちにこの端末のトークンを外す', async () => {
+    await unregisterPushTokenForSignOut('user-1')
+
+    expect(mocks.apiFetch).toHaveBeenCalledWith(
+      '/api/push/subscribe',
+      expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ deviceType: 'expo', expoToken: 'ExponentPushToken[x]' }) }),
+      { user: { id: 'user-1' } },
+    )
+  })
+
+  test('先に始まった登録が終わってから解除する', async () => {
+    mocks.apiFetch.mockImplementation(async (_path, init) => {
+      mocks.calls.push(init?.method ?? '')
+      return { ok: true, status: 200 }
+    })
+    mocks.calls = []
+
+    await Promise.all([
+      registerPushToken('user-1', async () => true),
+      unregisterPushTokenForSignOut('user-1'),
+    ])
+
+    expect(mocks.calls.filter((call) => call === 'POST' || call === 'DELETE')).toEqual(['POST', 'DELETE'])
+  })
+
+  test('解除に失敗しても例外を投げず、ログに残す', async () => {
+    mocks.apiFetch.mockResolvedValue({ ok: false, status: 500 })
+
+    await expect(unregisterPushTokenForSignOut('user-1')).resolves.toBeUndefined()
+    expect(console.warn).toHaveBeenCalled()
+  })
+
+  test('明示的に圏外なら送らず、ログに残す', async () => {
+    mocks.isDeviceOffline.mockResolvedValue(true)
+
+    await expect(unregisterPushTokenForSignOut('user-1')).resolves.toBeUndefined()
+    expect(mocks.getExpoPushTokenAsync).not.toHaveBeenCalled()
+    expect(mocks.apiFetch).not.toHaveBeenCalled()
+    expect(console.warn).toHaveBeenCalled()
+  })
+
+  test('トークン取得が決着しなくても 5 秒でサインアウトへ進める', async () => {
+    vi.useFakeTimers()
+    try {
+      mocks.getExpoPushTokenAsync.mockImplementationOnce(() => new Promise(() => undefined))
+      const signOut = unregisterPushTokenForSignOut('user-1')
+
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      await expect(signOut).resolves.toBeUndefined()
+      expect(console.warn).toHaveBeenCalled()
+      // 列を止めている取得の時間切れを過ぎてから戻し、後続のテストへ影響させない
+      await vi.advanceTimersByTimeAsync(20_000)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
