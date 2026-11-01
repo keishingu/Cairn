@@ -9,7 +9,7 @@ import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channel
 import { chatTabUnreadCount } from '../lib/chat-tab-unread'
 import { unregisterPushTokenForSignOut } from '../lib/push-registration'
 import { useSession } from '../lib/session-context'
-import { supabase } from '../lib/supabase'
+import { signOutFromDevice } from '../lib/sign-out'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
 import { useNotificationPanel } from './notification-panel-provider'
@@ -108,7 +108,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const signOut = async () => {
     closeOverlays()
     if (userId) await unregisterPushTokenForSignOut(userId)
-    await supabase.auth.signOut().catch(() => undefined)
+    await signOutFromDevice()
   }
 
   const pressTab = (tab: (typeof TABS)[number]) => {

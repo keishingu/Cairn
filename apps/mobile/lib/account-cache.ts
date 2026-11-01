@@ -9,3 +9,8 @@ export function shouldClearAccountCache(
   if (event === 'SIGNED_OUT') return true
   return previousUserId !== null && previousUserId !== nextUserId
 }
+
+/** 通信できず更新に失敗しただけの null はサインアウトではない（保存は残っている） */
+export function isSessionConfirmedAbsent(hasSession: boolean, networkFailed: boolean): boolean {
+  return !hasSession && !networkFailed
+}

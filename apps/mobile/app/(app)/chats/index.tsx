@@ -18,6 +18,9 @@ import { useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
+import { useOfflineRead } from '../../../hooks/use-offline-read'
+import { OfflineBanner } from '../../../components/offline-banner'
+import { oldestSyncedAt } from '../../../lib/offline-cache'
 import type { ProjectChannelDto } from '../../../hooks/use-projects'
 import {
   useCreateWorkspaceChannel,
@@ -240,15 +243,23 @@ export default function ChatsScreen() {
   const t = useT()
   const router = useRouter()
   const navigation = useNavigation()
-  const {
-    data: channels,
-    isLoading,
-    isFetching: isFetchingProjectChannels,
-    error,
-    refetch: refetchProjectChannels,
-  } = useProjectChannels()
+  const projectChannelsQuery = useProjectChannels()
+  const { isFetching: isFetchingProjectChannels, refetch: refetchProjectChannels } =
+    projectChannelsQuery
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
+  const projectChannelsRead = useOfflineRead(
+    { type: 'channel-list', kind: 'project' },
+    projectChannelsQuery,
+  )
+  const workspaceChannelsRead = useOfflineRead(
+    { type: 'channel-list', kind: 'workspace' },
+    workspaceChannelsQuery,
+  )
+  const dmsRead = useOfflineRead({ type: 'channel-list', kind: 'dm' }, dmsQuery, FEATURE_FLAGS.dm)
+  const channels = projectChannelsRead.data
+  const workspaceChannels = workspaceChannelsRead.data
+  const dms = dmsRead.data
   const membersQuery = useWorkspaceMembers()
   const createChannel = useCreateWorkspaceChannel()
   const createDm = useCreateWorkspaceDm()
@@ -322,7 +333,7 @@ export default function ChatsScreen() {
   // Web の ChannelList と同じく、アーカイブしたスレッドは親チャンネルの下に（既定は畳んで）並べ、
   // アーカイブ済みチャンネルは配下スレッドごと専用の欄に分ける。
   const { workspaceChannelGroups, archivedChannels } = React.useMemo(() => {
-    const allChannels = workspaceChannelsQuery.data ?? []
+    const allChannels = workspaceChannels ?? []
     const parents = allChannels.filter((channel) => channel.parentChannelId == null)
     return {
       workspaceChannelGroups: parents
@@ -337,7 +348,7 @@ export default function ChatsScreen() {
         }),
       archivedChannels: parents.filter((channel) => channel.archived === true),
     }
-  }, [workspaceChannelsQuery.data])
+  }, [workspaceChannels])
 
   const openChatTool = (path: string, title: string) => {
     router.push({ pathname: '/(app)/chat-tools', params: { path, title } })
@@ -390,7 +401,7 @@ export default function ChatsScreen() {
 
   const confirmDeleteChannel = (channel: WorkspaceChannelDto) => {
     const isThread = channel.parentChannelId != null
-    const childThreadCount = (workspaceChannelsQuery.data ?? []).filter(
+    const childThreadCount = (workspaceChannels ?? []).filter(
       (candidate) => candidate.parentChannelId === channel.id,
     ).length
     const copy = workspaceChannelDeleteCopy({
@@ -447,7 +458,16 @@ export default function ChatsScreen() {
     )
   }
 
-  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading || meQuery.isLoading) {
+  const showingCachedLists =
+    projectChannelsRead.stale || workspaceChannelsRead.stale || dmsRead.stale
+  const listsSyncedAt = oldestSyncedAt([projectChannelsRead, workspaceChannelsRead, dmsRead])
+  // 圏外の起動では /api/me を取れないため、キャッシュを見せるときはアカウント情報を待たない
+  if (
+    projectChannelsRead.loading ||
+    workspaceChannelsRead.loading ||
+    dmsRead.loading ||
+    (meQuery.isLoading && !showingCachedLists)
+  ) {
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <ActivityIndicator size="large" color={palette.accent} />
@@ -455,14 +475,24 @@ export default function ChatsScreen() {
     )
   }
 
+  const isRetrying =
+    isFetchingProjectChannels ||
+    workspaceChannelsQuery.isFetching ||
+    dmsQuery.isFetching ||
+    meQuery.isFetching
+  const retryLists = () =>
+    void Promise.all([
+      refetchProjectChannels(),
+      workspaceChannelsQuery.refetch(),
+      dmsQuery.refetch(),
+      meQuery.refetch(),
+    ])
   const fetchError =
-    error ?? workspaceChannelsQuery.error ?? dmsQuery.error ?? (me ? null : meQuery.error)
+    projectChannelsRead.error ??
+    workspaceChannelsRead.error ??
+    dmsRead.error ??
+    (me || showingCachedLists ? null : meQuery.error)
   if (fetchError) {
-    const isRetrying =
-      isFetchingProjectChannels ||
-      workspaceChannelsQuery.isFetching ||
-      dmsQuery.isFetching ||
-      meQuery.isFetching
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <Text style={[styles.errorText, { color: palette.redText }]}>{fetchError.message}</Text>
@@ -470,14 +500,7 @@ export default function ChatsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('Reload chats')}
           disabled={isRetrying}
-          onPress={() =>
-            void Promise.all([
-              refetchProjectChannels(),
-              workspaceChannelsQuery.refetch(),
-              dmsQuery.refetch(),
-              meQuery.refetch(),
-            ])
-          }
+          onPress={retryLists}
           style={[styles.memberRetry, { borderColor: palette.border }]}
         >
           {isRetrying ? (
@@ -556,6 +579,9 @@ export default function ChatsScreen() {
           )}
         </View>
       </View>
+      {showingCachedLists && listsSyncedAt !== null && (
+        <OfflineBanner syncedAt={listsSyncedAt} retrying={isRetrying} onRetry={retryLists} />
+      )}
       <FlatList
         data={projectGroups}
         keyExtractor={({ channel }) => channel.channelId}
@@ -707,7 +733,7 @@ export default function ChatsScreen() {
             {FEATURE_FLAGS.dm && (
               <>
                 <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Direct messages')}</Text>
-                {(dmsQuery.data ?? []).map((channel) => (
+                {(dms ?? []).map((channel) => (
                   <DirectMessageItem key={channel.id} channel={channel} />
                 ))}
               </>

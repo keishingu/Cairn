@@ -104,6 +104,8 @@ import {
 import type { ProfileSheetAction, ProfileSheetTarget } from '../../../lib/user-profile-actions'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useAppLocale, useT } from '../../../components/locale-provider'
+import { OfflineBanner } from '../../../components/offline-banner'
+import { useOfflineRead } from '../../../hooks/use-offline-read'
 import { ReactionPicker } from '../../../components/reaction-picker'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
@@ -686,6 +688,11 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
+  const messagesRead = useOfflineRead(
+    { type: 'messages', channelId: channelId ?? '' },
+    messagesQuery,
+    !!channelId,
+  )
   const markRead = useMarkChannelRead(channelId ?? '')
   const toggleReaction = useToggleMessageReaction(channelId ?? '')
   const editMessage = useEditMessage(channelId ?? '')
@@ -809,7 +816,7 @@ export default function ChatThreadScreen() {
     }
   }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
-  const messages = messagesQuery.data ?? []
+  const messages = messagesRead.data ?? []
   // 開いた画像と同じメッセージの画像だけをビューアで前後に移動できるようにする
   const previewImages = React.useMemo(
     () =>
@@ -1058,6 +1065,7 @@ export default function ChatThreadScreen() {
       !isAppActive ||
       messagesQuery.isFetching ||
       messagesQuery.isError ||
+      messagesRead.stale ||
       messages.length === 0
     )
       return
@@ -1071,7 +1079,7 @@ export default function ChatThreadScreen() {
         lastReadMessageIdRef.current = lastId
       },
     })
-  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused, isAppActive])
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, messagesRead.stale, isFocused, isAppActive])
 
   async function handleSend() {
     const content = serializeMentions(draft, mentionSelectionsRef.current).trim()
@@ -1680,7 +1688,7 @@ export default function ChatThreadScreen() {
           </Pressable>
         </View>
 
-        {messagesQuery.isLoading ? (
+        {messagesRead.loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={palette.accent} />
           </View>
@@ -1698,7 +1706,14 @@ export default function ChatThreadScreen() {
           </View>
         ) : (
           <View style={styles.messageListContainer}>
-            {messagesQuery.error && (
+            {messagesRead.stale && messagesRead.syncedAt !== null && (
+              <OfflineBanner
+                syncedAt={messagesRead.syncedAt}
+                retrying={messagesQuery.isFetching}
+                onRetry={() => void messagesQuery.refetch()}
+              />
+            )}
+            {messagesRead.error && (
               <View
                 accessibilityRole="alert"
                 style={[
@@ -1711,7 +1726,7 @@ export default function ChatThreadScreen() {
                   style={[styles.refreshErrorText, { color: palette.redText }]}
                   numberOfLines={2}
                 >
-                  {messagesQuery.error.message}
+                  {messagesRead.error.message}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -1786,7 +1801,7 @@ export default function ChatThreadScreen() {
                 ) : null
               }
               ListEmptyComponent={
-                messagesQuery.error ? null : (
+                messagesRead.error || messagesRead.stale ? null : (
                   <Text style={[styles.empty, { color: palette.text4 }]}>{t('No messages yet. Send the first one.')}</Text>
                 )
               }

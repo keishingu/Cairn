@@ -354,6 +354,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load milestones': 'マイルストーンの取得に失敗しました',
   'Could not load milestones. Reload and try again.': 'マイルストーンの取得に失敗しました。時間をおいて再読み込みしてください。',
   'Could not load notifications': '通知を読み込めませんでした',
+  'Offline · Last synced {time}': 'オフライン・最終同期 {time}',
   'Could not load nudges': 'ナッジの取得に失敗しました',
   'Could not load OAuth connections': 'OAuth接続の取得に失敗しました',
   'Could not load older messages': '過去のメッセージを取得できませんでした',
@@ -376,6 +377,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load the workspace': 'ワークスペースを読み込めませんでした',
   'Could not load the workspace list ({status})': 'ワークスペース一覧の取得に失敗しました ({status})',
   'Could not load this page': '読み込みに失敗しました',
+  'This page is not available offline. Connect to the internet and try again.':
+    'この画面はオフラインでは使えません。インターネットに接続して再試行してください',
   'Could not load unsent messages from this device': '未送信メッセージを端末から読み込めませんでした',
   'Could not load workspace info': 'ワークスペース情報の取得に失敗しました',
   'Could not load workspace info ({status})': 'ワークスペース情報の取得に失敗しました ({status})',
