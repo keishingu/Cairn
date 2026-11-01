@@ -109,6 +109,7 @@ import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
+import { haptics } from '../../../lib/haptics'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -1079,10 +1080,12 @@ export default function ChatThreadScreen() {
       setSendError(null)
       try {
         await editMessage.mutateAsync({ messageId: editingMessage.id, content })
+        haptics.messageSent()
         setDraft('')
         setEditingMessage(null)
         mentionSelectionsRef.current = []
       } catch (error) {
+        haptics.sendFailed()
         setSendError(error instanceof Error ? error.message : t('Could not edit the message'))
       }
       return
@@ -1132,11 +1135,17 @@ export default function ChatThreadScreen() {
       setReplyTarget(null)
       upload.clearUploads()
     } catch {
+      haptics.sendFailed()
       if (channelIdRef.current !== sendingChannelId) return
       setSendError(t('Could not save unsent messages on this device. Send again.'))
     } finally {
       setIsQueueing(false)
     }
+  }
+
+  const openMessageActions = (message: MessageDto) => {
+    haptics.longPressMenu()
+    setActionTarget(message)
   }
 
   const beginReply = (message: MessageDto) => {
@@ -1335,6 +1344,7 @@ export default function ChatThreadScreen() {
   const handleToggleReaction = (messageId: string, emoji: string) => {
     const request = toggleReaction.mutateAsync({ messageId, emoji })
     void queueReactionHistory(request, async () => {
+      haptics.reactionAdded()
       await reactionHistory.record(emoji).catch(() => setSendError(t('Could not save recent reactions')))
     }).catch((err: unknown) => {
       setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
@@ -1742,7 +1752,7 @@ export default function ChatThreadScreen() {
                     onAddReaction={setReactionTarget}
                     onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                     onLinkPress={openMarkdownLink}
-                    onOpenActions={setActionTarget}
+                    onOpenActions={openMessageActions}
                     onOpenProfile={openProfile}
                     onOpenPreview={setAttachmentPreview}
                     onOpenTask={openTask}
