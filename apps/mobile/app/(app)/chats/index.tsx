@@ -40,7 +40,7 @@ import { formatChannelPeriod } from '../../../lib/channel-period'
 import { haptics } from '../../../lib/haptics'
 import { firstParam } from '../../../lib/quick-actions'
 import { useAppAppearance } from '../../../components/appearance-provider'
-import { useNotificationPanel } from '../../../components/notification-panel-provider'
+import { NotificationButton } from '../../../components/native-app-header'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
 import { useT } from '../../../components/locale-provider'
@@ -273,7 +273,6 @@ export default function ChatsScreen() {
   const me = meQuery.data
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
-  const { openNotifications } = useNotificationPanel()
   const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | 'rename' | null>(
     null,
   )
@@ -537,14 +536,7 @@ export default function ChatsScreen() {
         <WorkspaceSwitcherButton />
         <Text style={[styles.heading, { color: palette.text }]}>{t('Chats')}</Text>
         <View style={styles.headerActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('Notifications')}
-            style={styles.headerAction}
-            onPress={openNotifications}
-          >
-            <Ionicons name="notifications-outline" size={19} color={palette.text3} />
-          </Pressable>
+          <NotificationButton style={styles.headerAction} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('Bookmarks')}
