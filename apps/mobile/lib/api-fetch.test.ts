@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from '@supabase/supabase-js'
 
-const { mockGetSession, mockGetSelectedWorkspace } = vi.hoisted(() => ({
+const { mockGetSession, mockGetSelectedWorkspace, mockIsDeviceOffline } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockGetSelectedWorkspace: vi.fn(),
+  mockIsDeviceOffline: vi.fn(),
 }))
 
 vi.mock('./supabase', () => ({
@@ -16,10 +17,39 @@ vi.mock('./workspace-selection', () => ({
   getSelectedWorkspaceId: mockGetSelectedWorkspace,
 }))
 
+vi.mock('./device-offline', () => ({ isDeviceOffline: mockIsDeviceOffline }))
+
 describe('apiFetch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetSelectedWorkspace.mockResolvedValue(null)
+    mockIsDeviceOffline.mockResolvedValue(false)
+  })
+
+  it('明示的に圏外なら getSession を呼ばず fetch と同じ形で失敗する', async () => {
+    mockIsDeviceOffline.mockResolvedValue(true)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { apiFetch } = await import('./api-fetch')
+
+    await expect(apiFetch('/api/channels')).rejects.toBeInstanceOf(TypeError)
+
+    expect(mockGetSession).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('圏外でなければ getSession のセッションで送る', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'token', user: { id: 'user-1' } } },
+    })
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { apiFetch } = await import('./api-fetch')
+
+    await apiFetch('/api/channels')
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect((init.headers as Headers).get('Authorization')).toBe('Bearer token')
   })
 
   it('認証直後に渡されたセッションのBearerトークンを使う', async () => {

@@ -38,6 +38,7 @@ pnpm Workspace + Turborepo。`pnpm dev` / `build` / `typecheck` / `lint` / `test
 ## ブランチ・デプロイ
 
 - **デフォルトブランチは `develop`**。`feat/` `fix/` `refactor/` 等を `develop` から切り、PR も `develop` 宛て。`main` は本番（`develop` → `main` の PR で反映）。どちらにも直接コミットしない
+- **他の PR に依存する PR は `gh stack` の Stacked PR にする**（`gh stack init --base develop` か `gh stack link --base develop`）。`gh pr create --base <別ブランチ>` で手動で積まない。下の PR をマージしても base が `develop` へ切り替わらず、上の PR が `develop` に入らないまま閉じる
 - merge で Vercel が自動デプロイし、`migrate.yml` が DB マイグレーションを自動適用する。詳細は [`docs/production-deployment.md`](docs/production-deployment.md)
 
 ## コミットメッセージ
