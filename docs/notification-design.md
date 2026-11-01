@@ -33,7 +33,7 @@
 | チャンネル発言（ユーザー / `@all` / `@project_members` / 属性メンション） | 展開後の到達可能な active メンバーへ送信 | 同左に記録（`type='mention'`） |
 | DM 発言（メンション有無問わず） | 参加者全員へ送信 | 参加者全員に記録（`type='dm'`） |
 
-- **閲覧中の Push**: DM・メンションの Push は 10 秒の猶予後に `channel_read_states` を再確認する。DM は対象メッセージを既読済みの受信者には送らない。メンションは閲覧中でも送り、既読済みなら Web のアプリアイコンバッジを更新しない（アプリ内通知とチャンネル未読は自動既読で解消される）
+- **閲覧中の Push**: DM・メンションの Push は 10 秒の猶予後に `channel_read_states` を再確認する。DM は対象メッセージを既読済みの受信者には送らない。メンションは閲覧中でも送り、既読済みなら Web・Expo のアプリアイコンバッジを更新しない（アプリ内通知とチャンネル未読は自動既読で解消される）
 - 個別メンションは **チャンネルメンバーに限定しない**。チャンネルにアクセスできるワークスペースメンバーなら通知対象（チャンネル未参加の member 以上も可）。guest は上記のとおり到達可能な場合のみ
 - DM は `check-dm` ステップで早期リターンするが、Push に加えてアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
 - Push の遷移先 URL は実ルート `/chats/{channelId}` に統一する（DM・メンション共通）
@@ -45,6 +45,12 @@
 
 - 閲覧中 Push の判定（`classifyPushRecipients`）も同じファイル。10 秒猶予（`PUSH_GRACE_PERIOD`、Inngest `step.sleep`）後に既読を `last_read_at >= created_at` または `last_read_message_id` 一致で判定し、猶予中に削除されたメッセージの Push も送らない。タスク割り当て Push は対象外
 - 未実装: チャンネル別通知レベル・ミュート・DND、時間ベースのリマインダー、ファイル添付通知の廃止（バッジのみ化）。構想は [`archive/notification-ux-redesign.md`](./archive/notification-ux-redesign.md)
+
+## アプリアイコンのバッジ
+
+- **数字はワークスペースを問わない未読のアプリ内通知の数**（`apps/web/src/lib/notifications/badge.ts` の `getUnreadNotificationCount`。非活性ワークスペースの通知は既読にできないため除く）。チャットの未読は混ぜない
+- Push の送信時に同じ集計を Web Push の `badgeCount` と Expo Push の `badge` に載せる（`apps/web/src/lib/push/send.ts`）。Web・Expo のどちらかの購読があれば集計し、VAPID が未設定でも Expo には載せる。集計に失敗したら載せずに通知本体だけを送る。`updateAppBadge: false` ならどちらにも載せない
+- 前面では `GET /api/notifications/badge-count` の値へ追従する。Web は `AppBadgeSync`、Expo は `useAppBadgeSync`（[`mobile-app.md`](./mobile-app.md#アプリアイコンのバッジ)）。取得に失敗したら 0 にせず今の数字を据え置く
 
 ## Realtime 配信
 

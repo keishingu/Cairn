@@ -73,6 +73,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           void invalidateChannelListQueries(queryClient)
+          // 切断中の既読・新着を取り直す。背景から戻った直後の再取得は再接続より先に走りうる
+          void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
           void queryClient.invalidateQueries({ queryKey: ['app-views'] })
         } else if (shouldRetryRealtime(status, error)) {
