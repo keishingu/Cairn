@@ -21,7 +21,9 @@ vi.mock('@cairn/db', () => {
   }
   return { db: { select: chain }, aiAutomations: {}, workspaces: {} }
 })
-vi.mock('@cairn/core/billing', () => ({ BILLING_CONFIG: { activeAiRequestCredits: 1 } }))
+vi.mock('@cairn/core/billing', () => ({
+  BILLING_CONFIG: { activeAiRequestCredits: 1, aiChatRequestCreditsByModel: { 'gpt-5': 1, 'claude-sonnet-5-5': 1, 'claude-opus-5-5': 2 } },
+}))
 vi.mock('@/lib/billing/credits', () => ({ reserveCreditsForActiveBenefit: mockReserveCredits, refundActiveBenefitReservation: vi.fn() }))
 vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockEntitlements }))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: mockIsBillingEnabled }))

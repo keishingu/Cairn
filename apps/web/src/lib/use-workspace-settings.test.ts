@@ -23,6 +23,8 @@ describe('mergePatchedFields', () => {
     aiNudgesPhaseOneEnabled: true,
     aiNudgesPhaseTwoEnabled: false,
     aiChatModel: 'gpt-5',
+    aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
+    aiChatRequestCredits: null,
     aiChatSystemPrompt: '新しいプロンプト',
     aiChatAccess: 'member',
   }

@@ -188,12 +188,24 @@ export const patchProfileAttributesSchema = z.object({
     }),
 })
 
+// /ai の会話で使うモデルを切り替える（PATCH /api/ai/conversations/[id]）
+export const patchAiConversationSchema = z.object({
+  model: z.enum(AI_CHAT_MODELS),
+})
+
 export const patchWorkspaceSettingsSchema = z.object({
   // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
   projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
   aiNudgesPhaseOneEnabled: z.boolean().optional(),
   aiNudgesPhaseTwoEnabled: z.boolean().optional(),
   aiChatModel: z.enum(AI_CHAT_MODELS).optional(),
+  // メンバーが会話ごとに選べるモデル。重複は除き、並びは AI_CHAT_MODELS の順にそろえる。
+  // 既定モデル（aiChatModel）を含むかは保存済みの値と合わせて見る必要があるため、API 側で確かめる
+  aiChatAllowedModels: z
+    .array(z.enum(AI_CHAT_MODELS))
+    .min(1)
+    .transform(models => AI_CHAT_MODELS.filter(model => models.includes(model)))
+    .optional(),
   aiChatAccess: z.enum(AI_CHAT_ACCESS_LEVELS).optional(),
   // 空白だけの入力は「未設定」に戻す意図なので null にし、チャットへ空の指示ブロックを渡さない。
   aiChatSystemPrompt: z.string().trim().max(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH).transform(value => value || null).nullable().optional(),

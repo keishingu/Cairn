@@ -57,12 +57,17 @@ export const aiConversations = pgTable(
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     agentId: uuid('agent_id').references(() => aiAgents.id, { onDelete: 'cascade' }),
     title: text('title'),
+    // 会話で選んだモデル。null は旧データで、ワークスペースの既定モデル（workspaces.ai_chat_model）を使う
+    model: text('model'),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => profiles.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('idx_ai_conversations_workspace').on(t.workspaceId)],
+  (t) => [
+    index('idx_ai_conversations_workspace').on(t.workspaceId),
+    check('ai_conversations_model_check', sql`${t.model} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`),
+  ],
 )
 
 export const aiMessages = pgTable('ai_messages', {

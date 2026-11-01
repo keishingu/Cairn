@@ -11,6 +11,7 @@ const { mockGetAuthContext, mockUpdateSet, workspaceRow } = vi.hoisted(() => ({
     aiNudgesPhaseOneEnabled: true,
     aiNudgesPhaseTwoEnabled: false,
     aiChatModel: 'gpt-5',
+    aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
     aiChatSystemPrompt: '敬体で答える',
     aiChatAccess: 'member',
     aiNudgesPhaseTwoInputTokens: 0,
@@ -118,6 +119,53 @@ describe('/api/workspaces/settings のシステムプロンプト', () => {
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({ aiChatSystemPrompt: expect.anything() }))
   })
 
+  it('GET は owner 以外にもメンバーが選べるモデルを返す', async () => {
+    authAs('member')
+    const { GET } = await import('./route')
+
+    const response = await GET()
+
+    await expect(response.json()).resolves.toMatchObject({
+      aiChatModel: 'gpt-5',
+      aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
+    })
+  })
+
+  it('owner は選べるモデルを絞れる', async () => {
+    authAs('owner')
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiChatAllowedModels: ['claude-sonnet-5-5', 'gpt-5'] }))
+
+    expect(response.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5'] }),
+    )
+  })
+
+  it('既定モデルを選べるモデルから外す更新は、保存せず 422 にする', async () => {
+    authAs('owner')
+    const { PATCH } = await import('./route')
+
+    const removedDefault = await PATCH(patch({ aiChatAllowedModels: ['claude-opus-5-5'] }))
+    expect(removedDefault.status).toBe(422)
+
+    const notAllowedDefault = await PATCH(
+      patch({ aiChatModel: 'claude-sonnet-5-5', aiChatAllowedModels: ['gpt-5'] }),
+    )
+    expect(notAllowedDefault.status).toBe(422)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
+  it.each(['admin', 'member', 'guest'] as const)('%s は選べるモデルを変更できない', async (role) => {
+    authAs(role)
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiChatAllowedModels: ['gpt-5'] }))
+
+    expect(response.status).toBe(403)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
   it('GET は owner 以外にも /ai を使えるロールの範囲を返す', async () => {
     authAs('guest')
     const { GET } = await import('./route')

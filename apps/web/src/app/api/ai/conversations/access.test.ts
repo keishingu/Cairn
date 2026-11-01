@@ -29,6 +29,12 @@ vi.mock('@/lib/ai/attachments', () => ({
   prepareAttachmentsForSend: async () => [],
 }))
 
+// ワークスペースのモデル設定はこのテストの対象外（既定の GPT-5 だけを使うワークスペースとして扱う）
+vi.mock('@/lib/ai/chat-model', () => ({
+  loadWorkspaceChatModels: async () => ({ defaultModel: 'gpt-5', allowedModels: ['gpt-5'] }),
+  resolveConversationModel: (stored: string | null) => stored ?? 'gpt-5',
+}))
+
 vi.mock('@cairn/db', () => ({
   db: { select: mockSelect },
   aiConversations: {
