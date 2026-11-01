@@ -7,10 +7,12 @@ import { StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { shouldClearAccountCache } from '../lib/account-cache'
+import { shouldClearAppBadge } from '../lib/app-badge'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
 import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
+import { setAppBadge } from '../hooks/use-app-badge-sync'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -32,6 +34,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     if (previousUserId !== undefined && shouldClearAccountCache(event, previousUserId, nextUserId)) {
       queryClient.clear()
     }
+    if (shouldClearAppBadge(event, previousUserId, nextUserId)) void setAppBadge(0)
     knownUserId.current = nextUserId
     setSession(newSession)
   }, [])

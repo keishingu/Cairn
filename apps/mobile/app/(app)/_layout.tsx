@@ -12,6 +12,7 @@ import { NotificationPanelProvider } from '../../components/notification-panel-p
 import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
 import { useQuickActionNavigation } from '../../hooks/use-quick-actions'
+import { useAppBadgeSync } from '../../hooks/use-app-badge-sync'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 import { completePendingRemoval, loadPushEnabled, loadPushSetting } from '../../lib/push-preference'
@@ -100,6 +101,8 @@ export default function AppLayout() {
   React.useEffect(() => {
     if (userId) void requestAndRegisterPush(userId)
   }, [userId])
+
+  useAppBadgeSync(userId)
 
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
   React.useEffect(() => {
