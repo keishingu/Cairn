@@ -62,20 +62,32 @@ vi.mock('@/lib/notifications/badge', () => ({
   getUnreadNotificationCount: mockGetUnreadNotificationCount,
 }))
 
+const webSubscription = {
+  id: 'subscription-1',
+  deviceType: 'web',
+  endpoint: 'https://push.example.test/subscription-1',
+  keys: { p256dh: 'p256dh', auth: 'auth' },
+  expoToken: null,
+}
+
+const expoSubscription = {
+  id: 'expo-1',
+  deviceType: 'expo',
+  endpoint: null,
+  keys: null,
+  expoToken: 'ExpoPushToken[abc]',
+}
+
+function firstExpoMessage() {
+  return (mockChunkPushNotifications.mock.calls[0]![0] as unknown[])[0]
+}
+
 describe('sendPushToUser', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.stubEnv('VAPID_PUBLIC_KEY', 'public-key')
     vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key')
-    mockWhere.mockResolvedValue([
-      {
-        id: 'subscription-1',
-        deviceType: 'web',
-        endpoint: 'https://push.example.test/subscription-1',
-        keys: { p256dh: 'p256dh', auth: 'auth' },
-        expoToken: null,
-      },
-    ])
+    mockWhere.mockResolvedValue([webSubscription])
     mockGetUnreadNotificationCount.mockResolvedValue(3)
     mockSendNotification.mockResolvedValue(undefined)
   })
@@ -123,9 +135,68 @@ describe('sendPushToUser', () => {
         title: 'メンション',
         body: '本文',
         data: { url: '/chats/ch-1', workspaceId: 'ws-1' },
+        badge: 3,
       },
     ])
     expect(mockSendNotification).not.toHaveBeenCalled()
+  })
+
+  test('VAPID が未設定でも Expo には未読数のバッジを送る', async () => {
+    vi.stubEnv('VAPID_PUBLIC_KEY', '')
+    vi.stubEnv('VAPID_PRIVATE_KEY', '')
+    mockWhere.mockResolvedValue([expoSubscription])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(mockGetUnreadNotificationCount).toHaveBeenCalledWith('user-1')
+    expect(firstExpoMessage()).toMatchObject({ badge: 3 })
+  })
+
+  test('未読が0件なら Expo のバッジを消すため 0 を送る', async () => {
+    mockWhere.mockResolvedValue([expoSubscription])
+    mockGetUnreadNotificationCount.mockResolvedValue(0)
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(firstExpoMessage()).toMatchObject({ badge: 0 })
+  })
+
+  test('Web と Expo の両方の購読があっても未読数の集計は1回で同じ値を送る', async () => {
+    mockWhere.mockResolvedValue([webSubscription, expoSubscription])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(mockGetUnreadNotificationCount).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(mockSendNotification.mock.calls[0]![1] as string)).toMatchObject({ badgeCount: 3 })
+    expect(firstExpoMessage()).toMatchObject({ badge: 3 })
+  })
+
+  test('バッジ更新なしのPushは Expo でも badge を送らず未読数を取得しない', async () => {
+    mockWhere.mockResolvedValue([expoSubscription])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' }, { updateAppBadge: false })
+
+    expect(mockGetUnreadNotificationCount).not.toHaveBeenCalled()
+    expect(firstExpoMessage()).not.toHaveProperty('badge')
+  })
+
+  test('未読数の集計に失敗しても Expo の通知は badge なしで送る', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockWhere.mockResolvedValue([expoSubscription])
+    mockGetUnreadNotificationCount.mockRejectedValue(new Error('db down'))
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(firstExpoMessage()).toEqual({
+      to: 'ExpoPushToken[abc]',
+      title: 'タイトル',
+      body: '本文',
+    })
   })
 
   test('バッジ更新なしのPushは通知だけを送り未読数を取得しない', async () => {
