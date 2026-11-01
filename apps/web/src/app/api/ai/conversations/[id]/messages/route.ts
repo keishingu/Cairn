@@ -3,9 +3,14 @@
 
 import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText } from 'ai'
-import { BILLING_CONFIG } from '@cairn/core/billing'
-import { isAiChatModel, type AiChatModel } from '@cairn/shared'
+import type { AiChatModel } from '@cairn/shared'
 import { apiKeyEnvForChatModel, chatLanguageModel } from '@/lib/ai/client'
+import {
+  chatRequestCredits,
+  parseWorkspaceChatModels,
+  resolveConversationModel,
+  type WorkspaceChatModels,
+} from '@/lib/ai/chat-model'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -189,34 +194,6 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
   }
 
-  const assistantMessageId = crypto.randomUUID()
-  // クライアントが決めた ID があればそのまま使う（クライアントは保存されたかをこの ID で確かめる）
-  const userMessageId = requestedMessageId ?? crypto.randomUUID()
-  let activeCreditReservationPending = false
-  let activeCreditReservationFailed = false
-  // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
-  let streamErrored = false
-  if (isBillingEnabled()) {
-    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-    if (!entitlements.isActiveSupporter) {
-      return NextResponse.json(
-        {
-          error:
-            'AIへの依頼は、石を積んでいるメンバーのみ利用できます。設定の請求から石を積んでください。',
-        },
-        { status: 403 },
-      )
-    }
-    if (entitlements.creditBalance < BILLING_CONFIG.activeAiRequestCredits) {
-      return NextResponse.json(
-        {
-          error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
-        },
-        { status: 402 },
-      )
-    }
-  }
-
   let historyMessages: StoredConversationMessage[] = []
   let chatModel: AiChatModel
   let chatSystemPrompt: string | null
@@ -224,7 +201,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     const { db, aiConversations, aiMessages, workspaces } = await import('@cairn/db')
     const { eq, and, desc } = await import('drizzle-orm')
     const [conv] = await db
-      .select({ id: aiConversations.id })
+      .select({ id: aiConversations.id, model: aiConversations.model })
       .from(aiConversations)
       .where(
         and(
@@ -250,20 +227,36 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     historyMessages = normalizeStoredConversationMessages<StoredMessageRow>(rows)
 
-    // 使うモデルはワークスペース設定で決まる。値が不正でも既定のモデルへ黙って切り替えず、エラーにする。
+    // 使うモデルは会話ごとに利用者が選んだもの（旧い会話はワークスペースの既定モデル）。
+    // 値が不正でも既定のモデルへ黙って切り替えず、エラーにする。
     const [workspace] = await db
-      .select({ aiChatModel: workspaces.aiChatModel, aiChatSystemPrompt: workspaces.aiChatSystemPrompt })
+      .select({
+        aiChatModel: workspaces.aiChatModel,
+        aiChatAllowedModels: workspaces.aiChatAllowedModels,
+        aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+      })
       .from(workspaces)
       .where(eq(workspaces.id, ctx.workspaceId))
       .limit(1)
-    if (!workspace || !isAiChatModel(workspace.aiChatModel)) {
-      console.error('[AI chat] invalid workspace ai_chat_model', workspace?.aiChatModel)
+    let models: WorkspaceChatModels
+    try {
+      if (!workspace) throw new Error('workspace not found')
+      models = parseWorkspaceChatModels(workspace)
+      chatModel = resolveConversationModel(conv.model, models)
+    } catch (err) {
+      console.error('[AI chat] invalid ai chat model settings', err)
       return NextResponse.json(
         { error: 'ワークスペースの AI モデル設定を読み込めませんでした' },
         { status: 500 },
       )
     }
-    chatModel = workspace.aiChatModel
+    // owner が選べるモデルから外したモデルの会話は、別のモデルへ黙って切り替えず、選び直してもらう（課金前に止める）
+    if (!models.allowedModels.includes(chatModel)) {
+      return NextResponse.json(
+        { error: 'この会話のモデルはワークスペースで使えなくなりました。入力欄のモデルを選び直してください。' },
+        { status: 409 },
+      )
+    }
     // モデルに関係なく同じ system prompt へ入れるため、GPT-5 / Claude のどちらでも効く。
     chatSystemPrompt = workspace.aiChatSystemPrompt
   }
@@ -274,6 +267,38 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (!process.env[requiredApiKeyEnv]) {
     return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
+
+  // この依頼で消費するクレジット（モデルごとに違う）
+  const requestCredits = chatRequestCredits(chatModel)
+
+  const assistantMessageId = crypto.randomUUID()
+  // クライアントが決めた ID があればそのまま使う（クライアントは保存されたかをこの ID で確かめる）
+  const userMessageId = requestedMessageId ?? crypto.randomUUID()
+  let activeCreditReservationPending = false
+  let activeCreditReservationFailed = false
+  // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
+  let streamErrored = false
+  if (isBillingEnabled()) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.isActiveSupporter) {
+      return NextResponse.json(
+        {
+          error:
+            'AIへの依頼は、石を積んでいるメンバーのみ利用できます。設定の請求から石を積んでください。',
+        },
+        { status: 403 },
+      )
+    }
+    if (entitlements.creditBalance < requestCredits) {
+      return NextResponse.json(
+        {
+          error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。',
+        },
+        { status: 402 },
+      )
+    }
+  }
+
 
   // 依頼のメッセージ ID は課金より前に、まだ使われていないことを確かめる。使用済みの ID を指定すると
   // 回答の後の保存が重複で失敗し、保存の失敗として返金されて、回答だけを無料で受け取れてしまうため
@@ -304,7 +329,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     if (
       !(await reserveCreditsForActiveBenefit(
         ctx.workspaceId,
-        BILLING_CONFIG.activeAiRequestCredits,
+        requestCredits,
         assistantMessageId,
       ))
     ) {
@@ -408,7 +433,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       try {
         await refundActiveBenefitReservation(
           ctx.workspaceId,
-          BILLING_CONFIG.activeAiRequestCredits,
+          requestCredits,
           assistantMessageId,
         )
         // 返金記帳に成功した場合だけ完了扱いにし、失敗時は後続のエラー経路でも再試行する。
@@ -476,7 +501,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                   return typeof id === 'string' ? [id] : []
                 }),
               },
-              creditsUsed: isBillingEnabled() ? BILLING_CONFIG.activeAiRequestCredits : null,
+              creditsUsed: isBillingEnabled() ? requestCredits : null,
             })
             if (
               !lastUserContent ||

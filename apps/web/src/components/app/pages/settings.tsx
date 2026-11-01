@@ -32,6 +32,7 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
+  AI_CHAT_MODEL_LABELS,
   AI_CHAT_MODELS,
   AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
   DEFAULT_CALENDAR_WEEK_START,
@@ -1324,14 +1325,8 @@ const SettingsWorkflow = () => {
   )
 }
 
-const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
-  'gpt-5': 'GPT-5 (default)',
-  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
-  'claude-opus-5-5': 'Claude Opus 5.5',
-}
-
 const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
-  'gpt-5': 'OpenAI · default',
+  'gpt-5': 'OpenAI',
   'claude-sonnet-5-5': 'Anthropic · balanced speed and quality',
   'claude-opus-5-5': 'Anthropic · most capable, higher cost',
 }
@@ -1371,9 +1366,9 @@ const SettingsAI = () => {
     )}
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Default model for new conversations')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
-        {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
+        {t('New conversations start with this model. Members can switch models in each conversation, among the models allowed below. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
       </p>
       <div
         className="card"
@@ -1383,13 +1378,15 @@ const SettingsAI = () => {
       >
         {AI_CHAT_MODELS.map((model) => {
           const on = model === selectedModel
+          // 既定にできるのは、メンバーが選べるモデルだけ
+          const notAllowed = !(wsSettings?.aiChatAllowedModels ?? []).includes(model)
           return (
             <button
               key={model}
               type="button"
               role="radio"
               aria-checked={on}
-              disabled={disabled}
+              disabled={disabled || notAllowed}
               title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
               onClick={() => {
                 if (!on) updateSettings.mutate({ aiChatModel: model })
@@ -1412,7 +1409,7 @@ const SettingsAI = () => {
                   size={14}
                   color={on ? 'var(--accent-text)' : 'var(--text-3)'}
                 />
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_MODEL_LABELS[model])}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
                 {on && (
                   <span
                     style={{
@@ -1438,8 +1435,69 @@ const SettingsAI = () => {
       )}
     </section>
 
+    <AiAllowedModelsSection />
+
     <AiChatSystemPromptSection />
   </div>
+  )
+}
+
+// メンバーが会話ごとに選べるモデル。既定モデルは外せず、1つは残す（サーバーも 422 で断る）。
+// 既定モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiAllowedModelsSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  const allowed = wsSettings?.aiChatAllowedModels
+  const credits = wsSettings?.aiChatRequestCredits ?? null
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Models members can choose')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {credits
+          ? t('Members can switch to these models in each conversation. Each request uses credits depending on the model.')
+          : t('Members can switch to these models in each conversation.')}
+      </p>
+      <div className="card" role="group" aria-label={t('Models members can choose')} style={{ padding: 14, display: 'grid', gap: 10 }}>
+        {AI_CHAT_MODELS.map((model) => {
+          const checked = allowed?.includes(model) ?? false
+          const isDefault = model === wsSettings?.aiChatModel
+          const locked = isDefault || (checked && allowed?.length === 1)
+          return (
+            <label
+              key={model}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : isDefault ? t('The default model cannot be removed') : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: readOnly || locked ? 'not-allowed' : 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={readOnly || locked || updateSettings.isPending || allowed === undefined}
+                onChange={(e) => {
+                  if (!allowed) return
+                  const next = e.target.checked ? [...allowed, model] : allowed.filter((m) => m !== model)
+                  updateSettings.mutate({ aiChatAllowedModels: next })
+                }}
+              />
+              <span style={{ fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
+              {credits && (
+                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {t('{credits} credits per request', { credits: credits[model] })}
+                </span>
+              )}
+              {isDefault && (
+                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {t('Default')}</span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
   )
 }
 

@@ -12,6 +12,9 @@ import { SkillSuggestions } from '../ai-skill-suggestions'
 import { useAiMemberMentions } from '../ai-member-mentions'
 import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
 import { useAiAttachments } from '@/hooks/use-ai-attachments'
+import { AiModelPicker, isConversationModelUnavailable } from '../ai-model-picker'
+import { useWorkspaceSettings } from '@/lib/use-workspace-settings'
+import type { AiChatModel } from '@cairn/shared'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { InlineError } from '../inline-error'
@@ -296,10 +299,13 @@ const SUGGESTIONS = [
 
 function ChatView({
   conversationId,
+  model,
   initialMessages,
   isMobile,
 }: {
   conversationId: string
+  // この会話で使うモデル（入力欄の下で切り替えられる）
+  model: AiChatModel
   initialMessages: MessageDto[]
   isMobile?: boolean
 }) {
@@ -353,8 +359,11 @@ function ChatView({
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
+  // owner が選べるモデルから外したモデルの会話は、選び直すまで送らない（送ってもサーバーが 409 で断る）
+  const { data: workspaceSettings } = useWorkspaceSettings()
+  const modelUnavailable = isConversationModelUnavailable(model, workspaceSettings?.aiChatAllowedModels)
   // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
-  const ready = !isLoading && attachments.blocker === null
+  const ready = !isLoading && attachments.blocker === null && !modelUnavailable
 
   // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
   const send = (content: string) => {
@@ -565,6 +574,7 @@ function ChatView({
               </button>
             </div>
           </form>
+          <AiModelPicker conversationId={conversationId} model={model} disabled={isLoading}/>
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
             {t('AI can be wrong. Check important decisions with a lead.')}
           </div>
@@ -598,7 +608,18 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   // 会話を開いている途中・開けなかったときの本文（会話の中身が無いのに最初の画面を出さない）
   const conversationBody = (mobile: boolean) => {
     if (!activeId) return null
-    if (initialMessages) return <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile={mobile}/>
+    // 会話のモデルは一覧から引く（一覧が読めなければ、モデルを推測して送らせない）
+    const activeConversation = conversations.find(conversation => conversation.id === activeId)
+    if (initialMessages && activeConversation) {
+      return <ChatView key={activeId} conversationId={activeId} model={activeConversation.model} initialMessages={initialMessages} isMobile={mobile}/>
+    }
+    if (conversationsQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+        </div>
+      )
+    }
     if (messagesQuery.isError) {
       return (
         <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>

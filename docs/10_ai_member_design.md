@@ -120,6 +120,16 @@ owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` �
 - モデルに関係なく同じ `system` に入れるため、GPT-5 / Claude のどちらを選んでも効く。未設定（空）のときは従来とまったく同じ文面になる
 - `ai_agents.system_prompt` / `agents_md` は使わない。`ai_agents` は §4 のAIメンバー用（スコープ・名前・モデル・作成者が必須の複数行）で、ワークスペースに1つの `/ai` 向け設定とは粒度が違い、モデルも `workspaces.ai_chat_model` と二重管理になるため
 
+#### 会話ごとのモデル
+
+`/ai` のモデル（`gpt-5` / `claude-sonnet-5-5` / `claude-opus-5-5`）はメンバーが会話ごとに選ぶ（Claude Code の `/model` と同じく、会話の途中でも切り替えられ、次の依頼から反映する）。
+
+- 会話のモデルは `ai_conversations.model`。新しい会話は `workspaces.ai_chat_model`（owner が決める既定モデル）で作り、`PATCH /api/ai/conversations/[id]` で本人が切り替える。null は会話ごとのモデルを持つ前の旧い会話で、既定モデルを使う
+- 選べるモデルは owner が `workspaces.ai_chat_allowed_models` で決める（既定は3つすべて）。既定モデルは必ず含め、空にしない（API の 422 と CHECK 制約の両方）
+- owner が外したモデルの会話は、別のモデルへ黙って切り替えず、課金前に 409 で選び直しを求める。画面も送信を止め、入力欄の下のモデル欄で選び直させる
+- 1依頼の消費クレジットはモデルごと（[`billing-implementation-design.md`](./billing-implementation-design.md) の AI 消費）。課金が有効なときだけ、設定画面とモデル欄に表示する
+- モデルを切り替えるとプロンプトキャッシュはモデルごとなので一度外れる（同じモデルを使い続ける間は効く）
+
 #### 会話への添付
 
 `/ai`（Web）では、入力欄のクリップ・ドラッグ＆ドロップ・貼り付けで、その会話だけで使うファイルを添付できる。ファイル一覧（`files`）には登録しない。
