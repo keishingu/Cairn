@@ -3,7 +3,7 @@
     "name": "Cairn",
     "slug": "cairn",
     "scheme": "cairn",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "userInterfaceStyle": "automatic",
     "platforms": ["ios", "android"],
     "ios": {
