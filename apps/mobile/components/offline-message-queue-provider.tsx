@@ -4,8 +4,9 @@ import { useNetworkState } from 'expo-network'
 import React from 'react'
 import { AppState } from 'react-native'
 import { apiFetch } from '../lib/api-fetch'
-import { invalidateChannelListQueries } from '../lib/channel-list-queries'
+import { invalidateChannelListQueries, invalidateOfflineReadQueries } from '../lib/channel-list-queries'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
+import { isNetworkRecovery } from '../lib/offline-cache'
 import {
   isRetryableSendError,
   parseStoredMessageQueue,
@@ -26,6 +27,7 @@ interface QueueContextValue {
 }
 
 const QueueContext = React.createContext<QueueContextValue | null>(null)
+const CanUseNetworkContext = React.createContext(true)
 const STORAGE_PREFIX = 'cairn:offline-message-queue:v1:'
 const RETRY_INTERVAL_MS = 8_000
 
@@ -165,6 +167,21 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     }
   }, [canUseNetwork, flush, ready])
 
+  // 圏外の間に取れなかった表示を、回線復帰と前面復帰で取り直す（タイマーでは取り直さない）。
+  const wasOnlineRef = React.useRef(canUseNetwork)
+  React.useEffect(() => {
+    const wasOnline = wasOnlineRef.current
+    wasOnlineRef.current = canUseNetwork
+    if (isNetworkRecovery(wasOnline, canUseNetwork)) void invalidateOfflineReadQueries(qc)
+  }, [canUseNetwork, qc])
+
+  React.useEffect(() => {
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && wasOnlineRef.current) void invalidateOfflineReadQueries(qc)
+    })
+    return () => appState.remove()
+  }, [qc])
+
   const value = React.useMemo<QueueContextValue>(
     () => ({
       ready,
@@ -210,7 +227,16 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     [flush, messages, ready, restoreError, updateMessages],
   )
 
-  return <QueueContext.Provider value={value}>{children}</QueueContext.Provider>
+  return (
+    <CanUseNetworkContext.Provider value={canUseNetwork}>
+      <QueueContext.Provider value={value}>{children}</QueueContext.Provider>
+    </CanUseNetworkContext.Provider>
+  )
+}
+
+/** 明示的に圏外と判定できた間だけ false。起動直後の未確定は true */
+export function useCanUseNetwork(): boolean {
+  return React.useContext(CanUseNetworkContext)
 }
 
 export function useOfflineMessageQueue(): QueueContextValue {

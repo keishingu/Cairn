@@ -10,4 +10,6 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - チャットを変えるときは Web の `/chats` にも同じ変更が要るか確認する
 - 表示言語は Web と同じ `profiles.locale` と i18next のカタログ。タブ、ログイン、ネイティブチャットは `useT()`。設定 WebView の変更は `locale-changed` で追従する。未ログイン時は `['me']` を言語に使わない
 - サインアウトと別ユーザーへの入れ替えでは QueryClient を破棄する。query key にユーザー ID は含めず、この境界だけをアカウントの切り替えにする（Web の QueryProvider と同じ）
+- 端末キャッシュ（`lib/offline-cache.ts`）はオフライン・取得失敗時の表示専用で、オンライン時の代替値にしない。React Query のデータへ混ぜない（既読化が古いデータで動く）
+- `offline_schema_migrations` の版は 1 から増やさない。既存バンドルが起動不能になるため、schema の版は `PRAGMA user_version` で持ち、DB の失敗で起動を止めない
 - アプリだけの機能・導線を変えたときも、`/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）の更新が要るか確認する

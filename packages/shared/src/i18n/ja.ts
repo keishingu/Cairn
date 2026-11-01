@@ -354,6 +354,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load milestones': 'マイルストーンの取得に失敗しました',
   'Could not load milestones. Reload and try again.': 'マイルストーンの取得に失敗しました。時間をおいて再読み込みしてください。',
   'Could not load notifications': '通知を読み込めませんでした',
+  'Offline · Last synced {time}': 'オフライン・最終同期 {time}',
   'Could not load nudges': 'ナッジの取得に失敗しました',
   'Could not load OAuth connections': 'OAuth接続の取得に失敗しました',
   'Could not load older messages': '過去のメッセージを取得できませんでした',

@@ -354,6 +354,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load milestones': '마일스톤을 불러오지 못했습니다',
   'Could not load milestones. Reload and try again.': '마일스톤을 불러오지 못했습니다. 잠시 후 다시 로드해 주세요.',
   'Could not load notifications': '알림을 불러오지 못했습니다',
+  'Offline · Last synced {time}': '오프라인 · 마지막 동기화 {time}',
   'Could not load nudges': '넛지를 불러오지 못했습니다',
   'Could not load OAuth connections': 'OAuth 연결을 불러오지 못했습니다',
   'Could not load older messages': '이전 메시지를 불러오지 못했습니다',
