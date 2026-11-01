@@ -107,11 +107,13 @@ import { useAppLocale, useT } from '../../../components/locale-provider'
 import { OfflineBanner } from '../../../components/offline-banner'
 import { useOfflineRead } from '../../../hooks/use-offline-read'
 import { ReactionPicker } from '../../../components/reaction-picker'
+import { SwipeToReply } from '../../../components/swipe-to-reply'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
 import { haptics } from '../../../lib/haptics'
+import { canReplyToMessage, canSwipeReply } from '../../../lib/swipe-reply'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -1759,21 +1761,27 @@ export default function ChatThreadScreen() {
                     onCancel={() => offlineQueue.cancel(item.message.id)}
                   />
                 ) : (
-                  <ChatMessageRow
-                    message={item.message}
+                  <SwipeToReply
+                    enabled={canSwipeReply(item.message)}
                     palette={palette}
-                    mentionNames={mentionNames}
-                    onToggleReaction={handleToggleReaction}
-                    onAddReaction={setReactionTarget}
-                    onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
-                    onLinkPress={openMarkdownLink}
-                    onOpenActions={openMessageActions}
-                    onOpenProfile={openProfile}
-                    onOpenPreview={setAttachmentPreview}
-                    onOpenTask={openTask}
-                    onShowTasks={setLinkedTasksSheet}
-                    {...(attachmentAuth ? { attachmentAuth } : {})}
-                  />
+                    onReply={() => beginReply(item.message)}
+                  >
+                    <ChatMessageRow
+                      message={item.message}
+                      palette={palette}
+                      mentionNames={mentionNames}
+                      onToggleReaction={handleToggleReaction}
+                      onAddReaction={setReactionTarget}
+                      onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
+                      onLinkPress={openMarkdownLink}
+                      onOpenActions={openMessageActions}
+                      onOpenProfile={openProfile}
+                      onOpenPreview={setAttachmentPreview}
+                      onOpenTask={openTask}
+                      onShowTasks={setLinkedTasksSheet}
+                      {...(attachmentAuth ? { attachmentAuth } : {})}
+                    />
+                  </SwipeToReply>
                 )
               }
               contentContainerStyle={styles.list}
@@ -2157,12 +2165,14 @@ export default function ChatThreadScreen() {
             <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
             {/* 項目が多く横向きなど縦の短い画面では収まらないため、シートの高さを抑えて一覧をスクロールさせる */}
             <ScrollView style={styles.actionList} bounces={false}>
-              <ActionButton
-                icon="arrow-undo-outline"
-                label={t('Reply')}
-                palette={palette}
-                onPress={() => actionTarget && beginReply(actionTarget)}
-              />
+              {actionTarget && canReplyToMessage(actionTarget) && (
+                <ActionButton
+                  icon="arrow-undo-outline"
+                  label={t('Reply')}
+                  palette={palette}
+                  onPress={() => beginReply(actionTarget)}
+                />
+              )}
               {actionTarget?.blocked && (
                 <ActionButton
                   icon="eye-outline"
