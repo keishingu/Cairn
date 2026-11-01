@@ -12,6 +12,7 @@ const { mockGetAuthContext, mockUpdateSet, workspaceRow } = vi.hoisted(() => ({
     aiNudgesPhaseTwoEnabled: false,
     aiChatModel: 'gpt-5',
     aiChatSystemPrompt: '敬体で答える',
+    aiSearchRecencyWeight: 'none',
     aiNudgesPhaseTwoInputTokens: 0,
     aiNudgesPhaseTwoOutputTokens: 0,
     aiNudgesPhaseTwoTotalTokens: 0,
@@ -115,5 +116,35 @@ describe('/api/workspaces/settings のシステムプロンプト', () => {
     await PATCH(patch({ aiChatModel: 'claude-opus-5-5' }))
 
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({ aiChatSystemPrompt: expect.anything() }))
+  })
+
+  it('GET は owner 以外にも資料検索の新しさの重みを返す', async () => {
+    authAs('member')
+    const { GET } = await import('./route')
+
+    const response = await GET()
+
+    await expect(response.json()).resolves.toMatchObject({ aiSearchRecencyWeight: 'none' })
+  })
+
+  it('owner は資料検索の新しさの重みを更新でき、他の AI 設定は書き換えない', async () => {
+    authAs('owner')
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiSearchRecencyWeight: 'medium' }))
+
+    expect(response.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ aiSearchRecencyWeight: 'medium' }))
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({ aiChatSystemPrompt: expect.anything() }))
+  })
+
+  it.each(['admin', 'member', 'guest'] as const)('%s は資料検索の新しさの重みを更新できない', async (role) => {
+    authAs(role)
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiSearchRecencyWeight: 'strong' }))
+
+    expect(response.status).toBe(403)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
   })
 })

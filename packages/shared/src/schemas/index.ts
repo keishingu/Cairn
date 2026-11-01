@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
 import { AI_CHAT_MODELS, AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
+import { AI_SEARCH_RECENCY_WEIGHTS } from '../config/ai-search-recency'
 import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { LOCALE_PREFERENCES } from '../config/locale'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
@@ -195,6 +196,7 @@ export const patchWorkspaceSettingsSchema = z.object({
   aiChatModel: z.enum(AI_CHAT_MODELS).optional(),
   // 空白だけの入力は「未設定」に戻す意図なので null にし、チャットへ空の指示ブロックを渡さない。
   aiChatSystemPrompt: z.string().trim().max(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH).transform(value => value || null).nullable().optional(),
+  aiSearchRecencyWeight: z.enum(AI_SEARCH_RECENCY_WEIGHTS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },
