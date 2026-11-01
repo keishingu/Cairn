@@ -7,9 +7,19 @@ import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
 import { callBotApi } from './bot-client'
-import { createPendingPoll, renderPollExclusively } from './polls'
+import { addPollOption, createPendingPoll, renderPollExclusively } from './polls'
 import { pollInputErrors } from './validate'
-import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, parsePollSubmission } from './render'
+import {
+  ADD_OPTION_ACTION_ID,
+  ADD_OPTION_CALLBACK_ID,
+  addOptionModal,
+  CREATE_POLL_CALLBACK_ID,
+  createPollModal,
+  onlyCreatorCanAddOptionModal,
+  onlyCreatorCanCloseModal,
+  parseAddOptionSubmission,
+  parsePollSubmission,
+} from './render'
 
 // 投票アプリの Request URL。外部アプリと同じく、署名付きで届くインタラクションだけを受ける（docs/app-platform-design.md §7）
 
@@ -67,6 +77,7 @@ export async function handlePollsRequest(req: Request): Promise<Response> {
 }
 
 async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Response> {
+  if (payload.view.callback_id === ADD_OPTION_CALLBACK_ID) return handleAddOptionSubmission(payload)
   if (payload.view.callback_id !== CREATE_POLL_CALLBACK_ID) return new NextResponse('', { status: 200 })
   const locale = actorLocale(payload.cairn?.locale)
   const parsed = parsePollSubmission(payload.view.state.values, locale)
@@ -100,6 +111,26 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
   return new NextResponse('', { status: 200 })
 }
 
+async function handleAddOptionSubmission(payload: ViewSubmissionPayload): Promise<Response> {
+  const locale = actorLocale(payload.cairn?.locale)
+  const { pollId } = JSON.parse(payload.view.private_metadata ?? '{}') as { pollId?: string }
+  if (!pollId || !UUID.test(pollId)) return NextResponse.json({ response_action: 'errors', errors: { option: translate(locale, 'This poll no longer exists') } })
+  // view ID で同じ送信の再送を見分ける。UUID でなければ uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
+  if (!UUID.test(payload.view.id)) return new NextResponse('invalid view.id', { status: 400 })
+  // 作成者・ワークスペース・締切・上限・重複は、足すトランザクションの中で投票の今の状態と合わせて確かめる
+  const result = await addPollOption({
+    pollId,
+    workspaceId: payload.team.id,
+    userId: payload.user.id,
+    label: parseAddOptionSubmission(payload.view.state.values),
+    locale,
+    submissionId: payload.view.id,
+  })
+  if (!result.ok) return NextResponse.json({ response_action: 'errors', errors: { option: result.error } })
+  renderAfterResponse(pollId)
+  return new NextResponse('', { status: 200 })
+}
+
 async function handleBlockActions(payload: BlockActionsPayload): Promise<Response> {
   const action = payload.actions[0]
   const interactionId = payload.cairn?.interaction_id
@@ -121,6 +152,12 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   if (action.action_id === 'close' && poll.createdBy !== payload.user.id) {
     // カードは全員に同じなので、押した本人にだけ知らせるにはモーダルを使う
     openViewAfterResponse(payload.team.id, payload.trigger_id, onlyCreatorCanCloseModal(actorLocale(payload.cairn?.locale)))
+    return new NextResponse('', { status: 200 })
+  }
+  if (action.action_id === ADD_OPTION_ACTION_ID) {
+    // モーダルを開くだけで票は変えない。締切・上限は送信時に確かめる（開いている間に締め切られることもあるため）
+    const locale = actorLocale(payload.cairn?.locale)
+    openViewAfterResponse(payload.team.id, payload.trigger_id, poll.createdBy === payload.user.id ? addOptionModal(poll.id, locale) : onlyCreatorCanAddOptionModal(locale))
     return new NextResponse('', { status: 200 })
   }
 
