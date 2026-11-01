@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import { useSearchParams } from 'next/navigation'
 import { useChat } from 'ai/react'
 import type { JSONValue, Message, ToolInvocation } from 'ai'
 import { useQueryClient } from '@tanstack/react-query'
@@ -32,7 +31,9 @@ import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { useOneShotRequest } from '@/lib/one-shot-request'
 import { buildAiRequestBody } from './ai-request-body'
+import { nextAiFocusStep } from './ai-focus-step'
 import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
 
 // ---- ソースチップ ----
@@ -637,8 +638,7 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
   const messagesQuery = useAiConversationMessages(activeId)
   const initialMessages = messagesQuery.data
 
-  const searchParams = useSearchParams()
-  const focusRequestRef = React.useRef<string | null>(null)
+  const [focusRequested, setFocusRequested] = React.useState(false)
   const focusNextConversationRef = React.useRef(false)
   const [focusConversationId, setFocusConversationId] = React.useState<string | null>(null)
 
@@ -653,14 +653,23 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
   const { mutate: startConversation } = createConversation
 
   // ?focus=1 はアプリのホーム画面のクイックアクション。入力欄は会話の中にしかないので、
-  // 新しい会話を始めて入力欄へフォーカスする（アプリは押すたびに open を変えて送る）
+  // 直近の空の会話か新しい会話を開いて入力欄へフォーカスする
+  useOneShotRequest('focus', () => setFocusRequested(true))
   React.useEffect(() => {
-    const requestKey = searchParams.toString()
-    if (searchParams.get('focus') !== '1' || focusRequestRef.current === requestKey) return
-    focusRequestRef.current = requestKey
-    focusNextConversationRef.current = true
-    startConversation()
-  }, [searchParams, startConversation])
+    if (!focusRequested) return
+    const step = nextAiFocusStep({ conversations: conversationsQuery.data, activeId, activeMessages: initialMessages })
+    if (step.kind === 'open') {
+      setActiveId(step.conversationId)
+      if (isMobile) setMobilePane('chat')
+    } else if (step.kind === 'focus') {
+      setFocusRequested(false)
+      setFocusConversationId(step.conversationId)
+    } else if (step.kind === 'create') {
+      setFocusRequested(false)
+      focusNextConversationRef.current = true
+      startConversation()
+    }
+  }, [activeId, conversationsQuery.data, focusRequested, initialMessages, isMobile, startConversation])
 
   // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
   const conversationsError = conversationsQuery.isError ? (

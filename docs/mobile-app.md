@@ -81,8 +81,9 @@ iOS の Home Screen Quick Actions / Android の App Shortcuts に「タスクを
 - **固定の非ランチャー alias を宛先にしない**。`expo-alternate-app-icons` は起動に使われた activity の名前から現在のアイコンを判定し、切り替え時にその activity を無効化するため、別の入口から起動するとアイコンの判定が壊れる
 - 動的ショートカットは登録時点の起動口に結び付き、切り替えで無効になる（OS の仕様）。アイコンの切り替え成功時（`use-app-icon-sync.ts`）と Android の前面復帰時に登録し直す。バックグラウンドでの登録に失敗しても前面復帰で戻る
 - 押された操作は `use-quick-actions.ts` が預かり、`(app)` レイアウトがログイン後に `followNotification` の経路で開く（未ログインならログインとオンボーディングの後に再開する）。冷起動の `initial` はプロセス中ずっと同じ値を返すので 1 回だけ読む
-- タスク作成は `/(app)/tasks?new=1&open=<nonce>` → Web `/tasks?new=1` で作成モーダルを開く。`open` は既存の `taskId` と同じく、もう一度押したときに開き直させるための値
-- AI は `/(app)/ai?focus=1&open=<nonce>` → Web `/ai?focus=1`。入力欄は会話の中にしかないため、新しい会話を始めて入力欄へフォーカスする（「新しい会話を開始」を押したのと同じで、押すたびに会話が 1 件増える）。iOS は `keyboardDisplayRequiresUserAction` を外してキーボードを出す。Android の WebView は操作なしの `focus()` でキーボードを出さないことがあり、その場合は入力欄をタップする
+- タスク作成は `/(app)/tasks?new=1&open=<nonce>` → Web `/tasks?new=1` で作成モーダルを開く
+- **`new=1` / `focus=1` は一度きりの指示で、Web が `open` を消費する**（`apps/web/src/lib/one-shot-request.ts`）。ネイティブで params を消すと WebView の path が変わって再読み込みされ、開いたモーダルや会話が閉じるため、消さない。URL はタブに残って WebView を作り直すと再び読み込まれるので、実行済みの `open` を localStorage に記録して同じ値では実行しない。押すたびに `open` が変わるので、もう一度押せば開き直す。`taskId` は対象を開くだけの指示で従来どおり
+- AI は `/(app)/ai?focus=1&open=<nonce>` → Web `/ai?focus=1`。入力欄は会話の中にしかないため、直近の会話が空ならそれを使い回し、空でなければ新しい会話を始めて入力欄へフォーカスする（`ai-focus-step.ts`）。iOS は `keyboardDisplayRequiresUserAction` を外してキーボードを出す。Android の WebView は操作なしの `focus()` でキーボードを出さないことがあり、その場合は入力欄をタップする
 - DM は `/(app)/chats?dm=1&open=<nonce>` でチャット一覧の相手選択シートを開く（`POST /api/workspaces/dms` の既存の流れ）。`FEATURE_FLAGS.dm` が無効なら項目を登録しない。ブロックなどの最終判定はサーバー
 
 ## オフライン・送信
