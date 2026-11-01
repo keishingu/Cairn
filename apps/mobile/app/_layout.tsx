@@ -3,6 +3,8 @@ import { Slot, useRouter, useSegments } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { SQLiteProvider } from 'expo-sqlite'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { StyleSheet } from 'react-native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { shouldClearAccountCache } from '../lib/account-cache'
 import { queryClient } from '../lib/query-client'
@@ -73,16 +75,22 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <SQLiteProvider databaseName={OFFLINE_DATABASE_NAME} onInit={initializeOfflineDatabase}>
-        <QueryClientProvider client={queryClient}>
-          <AuthGuard>
-            <LocaleProvider>
-              <Slot />
-            </LocaleProvider>
-          </AuthGuard>
-        </QueryClientProvider>
-      </SQLiteProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <SQLiteProvider databaseName={OFFLINE_DATABASE_NAME} onInit={initializeOfflineDatabase}>
+          <QueryClientProvider client={queryClient}>
+            <AuthGuard>
+              <LocaleProvider>
+                <Slot />
+              </LocaleProvider>
+            </AuthGuard>
+          </QueryClientProvider>
+        </SQLiteProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   )
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+})

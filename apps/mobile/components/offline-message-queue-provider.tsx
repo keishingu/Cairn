@@ -5,6 +5,7 @@ import React from 'react'
 import { AppState } from 'react-native'
 import { apiFetch } from '../lib/api-fetch'
 import { invalidateChannelListQueries } from '../lib/channel-list-queries'
+import { haptics } from '../lib/haptics'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
 import {
   isRetryableSendError,
@@ -97,6 +98,9 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const flush = React.useCallback(async () => {
     if (!ready || !storageKey || !canUseNetwork || flushingRef.current) return
     flushingRef.current = true
+    // 復帰時にまとめて送ることがあるので、振動は1メッセージごとではなく1回の送信処理につき1度にする
+    let sent = false
+    let failed = false
     try {
       const pending = messagesRef.current.filter((message) => message.status === 'waiting')
       for (const item of pending) {
@@ -127,6 +131,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             throw error
           }
           await updateMessages((current) => current.filter((message) => message.id !== item.id))
+          sent = true
           await qc.invalidateQueries({ queryKey: ['messages', item.channelId] })
           await invalidateChannelListQueries(qc)
         } catch (error) {
@@ -144,12 +149,16 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             ),
           )
           // 同じ回線で後続メッセージだけ成功すると順序が入れ替わるため、通信障害時はここで止める。
+          // 自動で再送する通信障害は失敗として知らせない（圏外の間、再送のたびに振動してしまう）
           if (retryable) break
+          failed = true
         }
       }
     } finally {
       flushingRef.current = false
     }
+    if (failed) haptics.sendFailed()
+    else if (sent) haptics.messageSent()
   }, [canUseNetwork, qc, ready, storageKey, t, updateMessages])
 
   React.useEffect(() => {

@@ -64,6 +64,13 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **`app.json` の `userInterfaceStyle` は `automatic`**（Android は `expo-system-ui` が必要）。`light` に固定すると `useColorScheme()` が常に light を返し、テーマ「システム」が OS のダークモードに追従しない。ステータスバーの文字色は `AppearanceProvider` がテーマに合わせる
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
 
+## ジェスチャーとハプティクス
+
+- **ジェスチャーは Gesture Handler、アニメーションは Reanimated。`PanResponder` を新規に使わない**。ルートに `GestureHandlerRootView` を置き、`Modal` の中にも置く（Android の `Modal` は別のウィンドウなのでルートの分が届かない）
+- タップを奪わず条件を満たしてから応答するドラッグは `hooks/use-drag-pan.ts` を使う。手動の `activate` は JS スレッドから呼ぶと効かない（`runOnJS(true)` が使えない）ため、開始判定は UI スレッドで動かす。判定の純関数には `'worklet'` を付ける（`isVerticalSheetDrag` は `@cairn/shared` にあるが、Web では意味を持たない）。離したときの速度は `PanResponder` と同じ px/ms で渡す（Gesture Handler の値は px/s）
+- `react-native-worklets` の Babel プラグインは `babel-preset-expo` が自動で入れるため、`babel.config.js` は置かない
+- **ハプティクスは `lib/haptics.ts` の用途別の関数から鳴らす**（`expo-haptics` を画面から直接呼ばない）。長押しメニューの表示・スワイプ返信の閾値は軽い衝撃、リアクション追加の成功・プルリフレッシュの開始は選択、送信完了は成功、送信失敗はエラー。タブ切替では鳴らさない。送信はオフラインキューの実際の完了で鳴らし、自動で再送する通信障害では鳴らさない。まとめて再送したときも1回の処理につき1度だけ。Web とテストでは何もせず、再生の失敗で画面を止めない（ログだけ残す）
+
 ## オフライン・送信
 
 - **端末キャッシュ基盤は `expo-sqlite`、回線復帰検知は `expo-network`**。SQLite は WAL / foreign keys を初期化し、メッセージキャッシュ・全チャンネル検索は schema migration で追加する
