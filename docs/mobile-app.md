@@ -85,7 +85,7 @@ Android の共有メニューから Cairn へ画像・書類・URL・テキス�
 - **ジェスチャーは Gesture Handler、アニメーションは Reanimated。`PanResponder` を新規に使わない**。ルートに `GestureHandlerRootView` を置き、`Modal` の中にも置く（Android の `Modal` は別のウィンドウなのでルートの分が届かない）
 - タップを奪わず条件を満たしてから応答するドラッグは `hooks/use-drag-pan.ts` を使う。手動の `activate` は JS スレッドから呼ぶと効かない（`runOnJS(true)` が使えない）ため、開始判定は UI スレッドで動かす。判定の純関数には `'worklet'` を付ける（`isVerticalSheetDrag` は `@cairn/shared` にあるが、Web では意味を持たない）。離したときの速度は `PanResponder` と同じ px/ms で渡す（Gesture Handler の値は px/s）
 - `react-native-worklets` の Babel プラグインは `babel-preset-expo` が自動で入れるため、`babel.config.js` は置かない
-- **メッセージを右へスワイプすると返信を始める**（`components/swipe-to-reply.tsx`）。56pt で軽く振動し、離すとスプリングで戻る。縦に動いたら一覧のスクロールに譲り、画面左端（24pt）から始まる指は iOS の標準のスワイプ戻りに譲る。閾値と条件は `lib/swipe-reply.ts`。長押しメニューの「返信」とスワイプは同じ `canReplyToMessage` で決め、本文を隠しているブロック中のメッセージだけは長押しメニューからの返信に限る。削除済みのメッセージは API が返さない。Web の `/chats` はホバーの「返信」ボタンのままで、変更しない
+- **メッセージを左へスワイプすると返信を始める**（`components/swipe-to-reply.tsx`）。56pt で軽く振動し、離すとスプリングで戻る。縦に動いたら一覧のスクロールに譲り、画面右端（24pt）から始まる指は Android のジェスチャーナビの戻るに譲る。左向きなのは LINE などと同じ操作に揃え、iOS の標準のスワイプ戻りと向きを分けるため。閾値と条件は `lib/swipe-reply.ts`。長押しメニューの「返信」とスワイプは同じ `canReplyToMessage` で決め、本文を隠しているブロック中のメッセージだけは長押しメニューからの返信に限る。削除済みのメッセージは API が返さない。Web の `/chats` はホバーの「返信」ボタンのままで、変更しない
 - **ハプティクスは `lib/haptics.ts` の用途別の関数から鳴らす**（`expo-haptics` を画面から直接呼ばない）。長押しメニューの表示・スワイプ返信の閾値は軽い衝撃、リアクション追加の成功・プルリフレッシュの開始は選択、送信完了は成功、送信失敗はエラー。タブ切替では鳴らさない。送信はオフラインキューの実際の完了で鳴らし、自動で再送する通信障害では鳴らさない。まとめて再送したときも1回の処理につき1度だけ。Web とテストでは何もせず、再生の失敗で画面を止めない（ログだけ残す）
 
 ## ホーム画面のクイックアクション
