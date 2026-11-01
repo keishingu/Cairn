@@ -44,6 +44,7 @@ import {
 } from './message-input'
 import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
 import { buildChatSystemPrompt, toChatSystemMessages } from './system-prompt'
+import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 // スキルの呼び出しは読む → 判断する → 実行案を作る、まで tool calling を重ね、数分かかる（GPT-5 で3〜4分を確認）。
 // Pro プランの既定・上限の範囲で、途中で打ち切られないよう明示する
@@ -71,6 +72,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
 
   try {
     const { db, aiMessages, aiConversations } = await import('@cairn/db')
@@ -143,6 +147,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
   if (!ctx) return NextResponse.json({ error: '認証情報を取得できませんでした' }, { status: 401 })
 
   const rawBody = await req.text()
