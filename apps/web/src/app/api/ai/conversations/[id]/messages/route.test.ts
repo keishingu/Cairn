@@ -198,7 +198,11 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     // ストリームを読み切り、execute 内の streamText 呼び出しを待つ。
     await response.text()
     expect(mockStreamText).toHaveBeenCalledTimes(1)
-    return (mockStreamText.mock.calls[0]![0] as { system: string }).system
+    const { messages } = mockStreamText.mock.calls[0]![0] as { messages: { role: string; content: unknown }[] }
+    return messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content as string)
+      .join('\n')
   }
 
   it.each(['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'])(
@@ -232,6 +236,20 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(response.status).toBe(409)
     expect(mockReserveCredits).not.toHaveBeenCalled()
     expect(mockStreamText).not.toHaveBeenCalled()
+  })
+
+  it('system は先頭の2つの system メッセージで渡し、変わらない側にだけキャッシュの区切りを置く', async () => {
+    await streamedSystemPrompt('claude-sonnet-5-5', null)
+
+    const { system, messages } = mockStreamText.mock.calls[0]![0] as {
+      system?: string
+      messages: { role: string; providerOptions?: unknown }[]
+    }
+    expect(system).toBeUndefined()
+    expect(messages.slice(0, 2).map((message) => message.role)).toEqual(['system', 'system'])
+    expect(messages[0]!.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
+    expect(messages[1]!.providerOptions).toBeUndefined()
+    expect(messages.slice(2).every((message) => message.role !== 'system')).toBe(true)
   })
 
   it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {

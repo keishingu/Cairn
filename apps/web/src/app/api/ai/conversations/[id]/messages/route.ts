@@ -21,6 +21,7 @@ import {
 } from '@/lib/ai/attachments'
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
+import { summarizeChatCacheUsage } from '@/lib/ai/cache-usage'
 import { createProposalTools } from '@/lib/ai/proposal-tools'
 import {
   SkillRunError,
@@ -42,7 +43,7 @@ import {
   type StoredConversationMessage,
 } from './message-input'
 import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
-import { buildChatSystemPrompt } from './system-prompt'
+import { buildChatSystemPrompt, toChatSystemMessages } from './system-prompt'
 
 // スキルの呼び出しは読む → 判断する → 実行案を作る、まで tool calling を重ね、数分かかる（GPT-5 で3〜4分を確認）。
 // Pro プランの既定・上限の範囲で、途中で打ち切られないよう明示する
@@ -446,8 +447,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         }
         const result = streamText({
           model: chatLanguageModel(chatModel),
-          system: systemPrompt,
-          messages,
+          // system は messages の先頭に2つの system として渡す（stable 側にキャッシュの区切りを置くため。system-prompt.ts）
+          messages: [...toChatSystemMessages(systemPrompt), ...messages],
           tools: {
             ...createResearchTools(ctx),
             // 書き込みの実行案を作る tool は、スキルで許可された種類だけを渡す
@@ -461,6 +462,8 @@ export async function POST(req: Request, { params }: RouteContext) {
             await finishRun({ status: 'failed', error: 'stream_failed' })
           },
           onFinish: async ({ text, steps }) => {
+            // プロンプトキャッシュが効いているかを本番ログで確かめられるようにする（cacheReadInputTokens が毎回 0 なら外れている）
+            console.log('[AI chat] usage', { chatModel, ...summarizeChatCacheUsage(steps) })
             const toolResults = steps.flatMap((step) => step.toolResults.map((r) => r.result as unknown))
             await finishRun({
               status: streamErrored ? 'failed' : 'success',

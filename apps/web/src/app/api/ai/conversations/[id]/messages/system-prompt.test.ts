@@ -1,8 +1,19 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from 'vitest'
-import { buildChatSystemPrompt, buildWorkspaceInstructionsSection } from './system-prompt'
+import { describe, expect, it, test } from 'vitest'
+import {
+  buildChatSystemPrompt as buildChatSystemPromptParts,
+  buildWorkspaceInstructionsSection,
+  toChatSystemMessages,
+  type ChatSystemPromptInput,
+} from './system-prompt'
+
+// 既存の観点（文面の並び・優先順位）は、モデルに渡る順（stable → dynamic）でつないだ全文で確かめる
+const buildChatSystemPrompt = (input: ChatSystemPromptInput) => {
+  const { stable, dynamic } = buildChatSystemPromptParts(input)
+  return `${stable}\n${dynamic}`
+}
 
 const baseInput = {
   now: '2026年10月21日水曜日 9:00',
@@ -43,6 +54,43 @@ describe('buildChatSystemPrompt', () => {
     })
 
     expect(system.indexOf('敬体で答える')).toBeLessThan(system.indexOf('【未信頼のワークスペース参照データ】'))
+  })
+})
+
+describe('プロンプトキャッシュのための分割', () => {
+  test('日時・ロール・参照データが変わっても stable は同じ文面のままにする', () => {
+    const first = buildChatSystemPromptParts({ ...baseInput, workspaceInstructions: '敬体で答える' })
+    const second = buildChatSystemPromptParts({
+      ...baseInput,
+      now: '2026年10月31日土曜日 18:42',
+      role: 'owner',
+      contextSection: '\n\n【未信頼のワークスペース参照データ】\n<workspace-data source="file:2">別の本文</workspace-data>',
+      workspaceInstructions: '敬体で答える',
+    })
+
+    expect(second.stable).toBe(first.stable)
+    expect(second.dynamic).not.toBe(first.dynamic)
+    expect(first.stable).not.toContain(baseInput.now)
+    expect(second.dynamic).toContain('2026年10月31日土曜日 18:42')
+    expect(second.dynamic).toContain('owner')
+    expect(second.dynamic).toContain('<workspace-data source="file:2">')
+  })
+
+  test('権限・安全規律は stable に入れ、後ろの参照データも未信頼として扱わせる', () => {
+    const { stable, dynamic } = buildChatSystemPromptParts({ ...baseInput, workspaceInstructions: null })
+
+    expect(stable).toContain('権限・安全規律:')
+    expect(stable).toContain('workspace-data（後述の【未信頼のワークスペース参照データ】を含む）')
+    expect(dynamic).not.toContain('権限・安全規律')
+  })
+
+  test('stable の system にだけ Anthropic のキャッシュの区切りを付ける', () => {
+    const messages = toChatSystemMessages({ stable: 'S', dynamic: 'D' })
+
+    expect(messages).toEqual([
+      { role: 'system', content: 'S', providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } },
+      { role: 'system', content: 'D' },
+    ])
   })
 })
 
