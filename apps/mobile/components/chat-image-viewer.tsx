@@ -4,7 +4,6 @@ import {
   Alert,
   Image,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +14,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as FileSystem from 'expo-file-system/legacy'
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView, type WebViewNavigation } from 'react-native-webview'
 import {
@@ -25,6 +25,7 @@ import {
 import { attachmentRequestHeaders, type AttachmentAuth } from '../lib/attachment-auth'
 import { buildImageViewerHtml, parseImageViewerMessage } from '../lib/attachment-viewer-html'
 import { isHorizontalDrag, resolveSwipe, stepImageIndex } from '../lib/image-viewer-navigation'
+import { useDragPan } from '../hooks/use-drag-pan'
 import { useT } from './locale-provider'
 
 // 拡大の上限は PDF・Office ビューアの WebView（maximum-scale）と揃える
@@ -61,8 +62,6 @@ export function ChatImageViewer({
   const [failed, setFailed] = React.useState(false)
   const [zoomed, setZoomed] = React.useState(false)
   const [busyAction, setBusyAction] = React.useState<'save' | 'share' | null>(null)
-  const zoomedRef = React.useRef(false)
-  zoomedRef.current = zoomed
   const indexRef = React.useRef(index)
   indexRef.current = index
   const countRef = React.useRef(images.length)
@@ -79,22 +78,14 @@ export function ChatImageViewer({
   }, [])
 
   // 等倍のときだけ 1 本指の横ドラッグを奪って画像送りにする。拡大中は子（ScrollView / WebView）のパンに任せる
-  const swipe = React.useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (event, gesture) =>
-          !zoomedRef.current &&
-          countRef.current > 1 &&
-          event.nativeEvent.touches.length === 1 &&
-          isHorizontalDrag(gesture.dx, gesture.dy),
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderRelease: (_event, gesture) => {
-          const direction = resolveSwipe(gesture.dx, gesture.dy)
-          if (direction) go(direction)
-        },
-      }),
-    [go],
-  )
+  const swipe = useDragPan({
+    enabled: !zoomed && images.length > 1,
+    shouldActivate: isHorizontalDrag,
+    onRelease: ({ dx, dy }) => {
+      const direction = resolveSwipe(dx, dy)
+      if (direction) go(direction)
+    },
+  })
 
   const runFileAction = async (action: 'save' | 'share') => {
     if (busyAction) return
@@ -121,7 +112,8 @@ export function ChatImageViewer({
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.root}>
+      {/* Android の Modal は別のウィンドウなので、ルートの GestureHandlerRootView が届かない */}
+      <GestureHandlerRootView style={styles.root}>
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable
             accessibilityRole="button"
@@ -140,7 +132,8 @@ export function ChatImageViewer({
           )}
         </View>
 
-        <View style={styles.stage} {...swipe.panHandlers}>
+        <GestureDetector gesture={swipe}>
+        <View style={styles.stage}>
           {failed ? (
             <View style={styles.failure}>
               <Text style={styles.failureText}>{t('Could not display the image')}</Text>
@@ -202,6 +195,7 @@ export function ChatImageViewer({
             </>
           )}
         </View>
+        </GestureDetector>
 
         <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
           <ViewerAction
@@ -219,7 +213,7 @@ export function ChatImageViewer({
             onPress={() => void runFileAction('share')}
           />
         </View>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   )
 }
