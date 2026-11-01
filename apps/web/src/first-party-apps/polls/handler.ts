@@ -115,8 +115,17 @@ async function handleAddOptionSubmission(payload: ViewSubmissionPayload): Promis
   const locale = actorLocale(payload.cairn?.locale)
   const { pollId } = JSON.parse(payload.view.private_metadata ?? '{}') as { pollId?: string }
   if (!pollId || !UUID.test(pollId)) return NextResponse.json({ response_action: 'errors', errors: { option: translate(locale, 'This poll no longer exists') } })
+  // view ID で同じ送信の再送を見分ける。UUID でなければ uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
+  if (!UUID.test(payload.view.id)) return new NextResponse('invalid view.id', { status: 400 })
   // 作成者・ワークスペース・締切・上限・重複は、足すトランザクションの中で投票の今の状態と合わせて確かめる
-  const result = await addPollOption({ pollId, workspaceId: payload.team.id, userId: payload.user.id, label: parseAddOptionSubmission(payload.view.state.values), locale })
+  const result = await addPollOption({
+    pollId,
+    workspaceId: payload.team.id,
+    userId: payload.user.id,
+    label: parseAddOptionSubmission(payload.view.state.values),
+    locale,
+    submissionId: payload.view.id,
+  })
   if (!result.ok) return NextResponse.json({ response_action: 'errors', errors: { option: result.error } })
   renderAfterResponse(pollId)
   return new NextResponse('', { status: 200 })

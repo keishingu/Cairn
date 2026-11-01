@@ -319,14 +319,16 @@ export async function renderPollExclusively(pollId: string): Promise<RenderResul
 
 /**
  * 作った後で選択肢を1つ足す（入れ忘れの補完）。足せるのは作成者だけで、締め切り後・上限に達した後は足せない。
- * 足したら版を進め、呼び出し元がカードを描き直す。足せなければ利用者に見せる理由を返す
+ * 足したら版を進め、呼び出し元がカードを描き直す。足せなければ利用者に見せる理由を返す。
+ * submissionId（モーダルの view ID）を足すのと同じトランザクションで記録し、応答が失われて同じ送信が再送されても、
+ * 二重に足したり「同じ選択肢がすでにあります」と断ったりせず成功として返す
  */
-export async function addPollOption(input: { pollId: string; workspaceId: string; userId: string; label: string; locale: AppLocale }): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function addPollOption(input: { pollId: string; workspaceId: string; userId: string; label: string; locale: AppLocale; submissionId: string }): Promise<{ ok: true } | { ok: false; error: string }> {
   const t = (message: string, values?: Record<string, string | number>) => translate(input.locale, message, values)
   const labelError = pollOptionLabelError(input.label, input.locale)
   if (labelError) return { ok: false, error: labelError }
 
-  const { db, polls, pollOptions, appInstallations } = await import('@cairn/db')
+  const { db, polls, pollOptions, pollProcessedInteractions, appInstallations } = await import('@cairn/db')
   const { eq, sql } = await import('drizzle-orm')
   return db.transaction(async (tx) => {
     // 票の受付と同じく投票ごとに直列化し、同時に足しても position・上限がずれないようにする
@@ -344,6 +346,13 @@ export async function addPollOption(input: { pollId: string; workspaceId: string
     // 別ワークスペースの投票は存在しないものとして扱う
     if (!poll || poll.workspaceId !== input.workspaceId) return { ok: false as const, error: t('This poll no longer exists') }
     if (poll.createdBy !== input.userId) return { ok: false as const, error: t('Only the person who created the poll can add options.') }
+    // 同じ送信の再送。前の送信で足し終えているので、今の状態（重複・上限・締切）で断らず成功として閉じる
+    const [processed] = await tx
+      .select({ id: pollProcessedInteractions.interactionId })
+      .from(pollProcessedInteractions)
+      .where(eq(pollProcessedInteractions.interactionId, input.submissionId))
+      .limit(1)
+    if (processed) return { ok: true as const }
     if (poll.status === 'closed' || poll.status === 'post_failed' || poll.pastDeadline) return { ok: false as const, error: t('This poll is closed') }
 
     const existing = await tx.select({ label: pollOptions.label, position: pollOptions.position }).from(pollOptions).where(eq(pollOptions.pollId, input.pollId))
@@ -352,6 +361,7 @@ export async function addPollOption(input: { pollId: string; workspaceId: string
 
     const position = Math.max(-1, ...existing.map((option) => option.position)) + 1
     await tx.insert(pollOptions).values({ pollId: input.pollId, label: input.label, position })
+    await tx.insert(pollProcessedInteractions).values({ interactionId: input.submissionId, pollId: input.pollId })
     await tx.update(polls).set({ version: sql`${polls.version} + 1`, updatedAt: sql`now()` }).where(eq(polls.id, input.pollId))
     return { ok: true as const }
   })
