@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { normalizeMessageBlocks, prepareMessageBlocks, prepareModalView } from '@cairn/shared'
-import { createPollModal, onlyCreatorCanCloseModal, parsePollSubmission, renderPollCard, type PollForRender } from './render'
+import { addOptionModal, createPollModal, onlyCreatorCanAddOptionModal, onlyCreatorCanCloseModal, parseAddOptionSubmission, parsePollSubmission, renderPollCard, type PollForRender } from './render'
+import { pollOptionLabelError } from './validate'
 
 type Block = { type: string; text?: { type: string; text: string }; accessory?: unknown; elements?: Array<{ text: string }> }
 
@@ -130,5 +131,37 @@ describe('投票を作る前の確認', () => {
     expect(pollInputErrors('いつ？', ['土曜'], 'ja')).toMatchObject({ options: expect.any(String) })
     expect(pollInputErrors('いつ？', ['土曜', '土曜'], 'ja')).toMatchObject({ options: '選択肢が重複しています' })
     expect(pollInputErrors('副業で月10万円保証、DMください', ['はい', 'いいえ'], 'ja')).toMatchObject({ question: expect.any(String) })
+  })
+})
+
+describe('選択肢の追加', () => {
+  it('締め切り前のカードに「選択肢を追加」ボタンを出し、締め切ったら外す', () => {
+    expect(JSON.stringify(renderPollCard(poll).blocks)).toContain('"action_id":"add-option"')
+    expect(JSON.stringify(renderPollCard({ ...poll, status: 'closed' }).blocks)).not.toContain('add-option')
+  })
+
+  it('選択肢が上限に達したらボタンを出さない', () => {
+    const options = Array.from({ length: 10 }, (_, index) => ({ id: `o${index}`, label: `案${index}`, position: index }))
+    const card = renderPollCard({ ...poll, options, votes: [] })
+    expect(JSON.stringify(card.blocks)).not.toContain('add-option')
+    expect(prepareMessageBlocks(card.blocks).ok).toBe(true)
+  })
+
+  it('追加のモーダルと、作成者以外への案内のモーダルは Cairn の受理判定を通る', () => {
+    const modal = addOptionModal('p1', 'ja')
+    expect(prepareModalView(modal).ok).toBe(true)
+    expect(JSON.parse(modal.private_metadata)).toEqual({ pollId: 'p1' })
+    expect(prepareModalView(onlyCreatorCanAddOptionModal('ja')).ok).toBe(true)
+  })
+
+  it('送信値の前後の空白を除く', () => {
+    expect(parseAddOptionSubmission({ option: { value: { value: '  どちらも不参加 ' } } })).toBe('どちらも不参加')
+    expect(parseAddOptionSubmission({})).toBe('')
+  })
+
+  it('空・長すぎる選択肢は、操作した人の言語の理由で断る', () => {
+    expect(pollOptionLabelError('', 'ja')).toBe('選択肢を入力してください')
+    expect(pollOptionLabelError('あ'.repeat(101), 'ja')).toBe('選択肢は1つ100文字までです')
+    expect(pollOptionLabelError('どちらも不参加', 'ja')).toBeNull()
   })
 })

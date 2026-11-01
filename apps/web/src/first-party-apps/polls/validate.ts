@@ -31,3 +31,12 @@ export function pollInputErrors(question: string, options: string[], locale: App
   }
   return Object.keys(errors).length > 0 ? (errors as Record<'question' | 'options', string>) : null
 }
+
+/** 後から足す選択肢1つの確認。作成時と同じ長さの上限と投稿の安全フィルタにかける（重複・個数は投票の今の選択肢と合わせて確かめる） */
+export function pollOptionLabelError(label: string, locale: AppLocale): string | null {
+  const t = (message: string, values?: Record<string, string | number>) => translate(locale, message, values)
+  if (!label.trim()) return t('Enter an option')
+  if (label.length > POLL_OPTION_LIMITS.labelMax) return t('Each option can be up to {max} characters', { max: POLL_OPTION_LIMITS.labelMax })
+  if (unsafeMessageError(label)) return t('This content cannot be posted for safety reasons. Please revise the wording.')
+  return null
+}
