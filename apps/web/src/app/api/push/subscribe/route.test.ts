@@ -30,6 +30,7 @@ vi.mock('@cairn/db', () => ({
 vi.mock('drizzle-orm', () => ({
   and: (...conditions: unknown[]) => ({ and: conditions }),
   eq: (column: unknown, value: unknown) => ({ eq: [column, value] }),
+  ne: (column: unknown, value: unknown) => ({ ne: [column, value] }),
 }))
 
 import { DELETE, POST } from './route'
@@ -82,6 +83,19 @@ describe('Push購読の登録', () => {
 
     expect(response.status).toBe(422)
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  test('同じExpoトークンの他ユーザーの登録を消してから自分の登録を保存する', async () => {
+    const expoToken = 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]'
+
+    const response = await subscribe({ deviceType: 'expo', expoToken })
+
+    expect(response.status).toBe(200)
+    expect(mockDelete).toHaveBeenCalledOnce()
+    expect(mockWhere).toHaveBeenCalledWith({
+      and: [{ eq: ['expo_token', expoToken] }, { ne: ['user_id', 'user-1'] }],
+    })
+    expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(mockInsert.mock.invocationCallOrder[0]!)
   })
 
   test('Web Pushの購読は従来どおり保存する', async () => {

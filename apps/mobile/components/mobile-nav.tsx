@@ -7,6 +7,8 @@ import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { chatTabUnreadCount } from '../lib/chat-tab-unread'
+import { unregisterPushTokenForSignOut } from '../lib/push-registration'
+import { useSession } from '../lib/session-context'
 import { signOutFromDevice } from '../lib/sign-out'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
@@ -76,6 +78,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: channels } = useProjectChannels()
   const { data: workspaceChannels } = useWorkspaceChannels()
   const { data: dms } = useWorkspaceDms()
+  const userId = useSession()?.user.id
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -104,6 +107,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
 
   const signOut = async () => {
     closeOverlays()
+    if (userId) await unregisterPushTokenForSignOut(userId)
     await signOutFromDevice()
   }
 

@@ -9,9 +9,11 @@ import { StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { isSessionConfirmedAbsent, shouldClearAccountCache } from '../lib/account-cache'
+import { shouldClearAppBadge } from '../lib/app-badge'
 import { queryClient } from '../lib/query-client'
 import { loadStoredSession, supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
+import { setAppBadge } from '../hooks/use-app-badge-sync'
 import { SessionContext } from '../lib/session-context'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
 import {
@@ -45,6 +47,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
       if (previousUserId) deleteOfflineCacheForUser(previousUserId)
     }
     if (event === 'SIGNED_OUT') deleteAllOfflineCache()
+    if (shouldClearAppBadge(event, previousUserId, nextUserId)) void setAppBadge(0)
     knownUserId.current = nextUserId
     setOfflineCacheUser(nextUserId)
     setSession(newSession)
