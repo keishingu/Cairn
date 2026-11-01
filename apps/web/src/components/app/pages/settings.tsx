@@ -32,6 +32,7 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
+  AI_CHAT_ACCESS_LEVELS,
   AI_CHAT_MODEL_LABELS,
   AI_CHAT_MODELS,
   AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
@@ -40,6 +41,7 @@ import {
   formatAppDate,
   isCalendarWeekStart,
   type AccentId,
+  type AiChatAccessLevel,
   type AiChatModel,
   type CalendarWeekStart,
   type LocalePreference,
@@ -1437,6 +1439,8 @@ const SettingsAI = () => {
 
     <AiAllowedModelsSection />
 
+    <AiChatAccessSection />
+
     <AiChatSystemPromptSection />
   </div>
   )
@@ -1491,6 +1495,88 @@ const AiAllowedModelsSection = () => {
                 <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {t('Default')}</span>
               )}
             </label>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
+  )
+}
+
+const AI_CHAT_ACCESS_LABELS: Record<AiChatAccessLevel, string> = {
+  owner: 'Owner only',
+  admin: 'Admins and above',
+  member: 'Members too',
+}
+
+const AI_CHAT_ACCESS_DESCRIPTIONS: Record<AiChatAccessLevel, string> = {
+  owner: 'Only the workspace owner',
+  admin: 'Owners and admins',
+  member: 'All members, including guests (default)',
+}
+
+// /ai を使えるロール。経験の浅いメンバーが AI に頼りすぎないよう、owner が絞れる。
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiChatAccessSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selected = wsSettings?.aiChatAccess
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Who can use the AI assistant')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('Limit the AI assistant to experienced roles if you want newer members to work things out themselves. Members who cannot use it do not see the AI assistant. AI PMO notifications and external AI connected through MCP are not affected.')}
+      </p>
+      <div
+        className="card"
+        role="radiogroup"
+        aria-label={t('Who can use the AI assistant')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}
+      >
+        {AI_CHAT_ACCESS_LEVELS.map((level) => {
+          const on = level === selected
+          return (
+            <button
+              key={level}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiChatAccess: level })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_ACCESS_LABELS[level])}</span>
+                {on && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_CHAT_ACCESS_DESCRIPTIONS[level])}
+              </div>
+            </button>
           )
         })}
       </div>

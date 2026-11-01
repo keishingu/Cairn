@@ -7,6 +7,7 @@ import { AiAttachmentError, createAiAttachmentUpload } from '@/lib/ai/attachment
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -21,6 +22,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
 
   const parsed = schema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {

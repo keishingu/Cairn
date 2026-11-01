@@ -861,6 +861,59 @@ describe('AIエージェントのメンバーが選べるモデル', () => {
   })
 })
 
+describe('AIエージェントを使える人', () => {
+  function renderAiSection(wsRole: 'owner' | 'member') {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAccess: 'member' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAccess: body.aiChatAccess ?? 'member' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('保存済みの範囲を選択中として表示し、owner が「管理者以上」を選ぶと保存する', async () => {
+    renderAiSection('owner')
+
+    const group = await screen.findByRole('radiogroup', { name: 'AIアシスタントを使える人' })
+    await waitFor(() => expect(within(group).getByRole('radio', { name: /メンバーも可/ })).toHaveAttribute('aria-checked', 'true'))
+    const admins = within(group).getByRole('radio', { name: /管理者以上/ })
+    await waitFor(() => expect(admins).toBeEnabled())
+
+    fireEvent.click(admins)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatAccess: 'admin' }) }),
+      ),
+    )
+    await waitFor(() => expect(admins).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  it('owner 以外は使える人を変更できない', async () => {
+    renderAiSection('member')
+
+    const group = await screen.findByRole('radiogroup', { name: 'AIアシスタントを使える人' })
+    await waitFor(() => expect(within(group).getByRole('radio', { name: /メンバーも可/ })).toHaveAttribute('aria-checked', 'true'))
+    expect(within(group).getByRole('radio', { name: /オーナーのみ/ })).toBeDisabled()
+  })
+})
+
 describe('AIエージェントのシステムプロンプト', () => {
   function renderAiSection(wsRole: 'owner' | 'member', patchResponse?: Response) {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {

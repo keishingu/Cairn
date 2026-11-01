@@ -4,10 +4,13 @@
 import { NextResponse } from 'next/server'
 import {
   AI_CHAT_MODELS,
+  DEFAULT_AI_CHAT_ACCESS,
   DEFAULT_AI_CHAT_MODEL,
   FEATURE_FLAGS,
+  isAiChatAccessLevel,
   isAiChatModel,
   patchWorkspaceSettingsSchema,
+  type AiChatAccessLevel,
   type AiChatModel,
 } from '@cairn/shared'
 import { BILLING_CONFIG } from '@cairn/core/billing'
@@ -34,6 +37,8 @@ export type WorkspaceSettingsDto = WorkspaceSettings & {
   aiChatRequestCredits: Record<AiChatModel, number> | null
   // AI チャットへ毎回渡す追加指示。null は未設定。owner 以外にも読み取り専用で表示する。
   aiChatSystemPrompt: string | null
+  // /ai を使えるロールの範囲。全ロールに返し、使えない人には入口を出さない（判定の正はサーバー）
+  aiChatAccess: AiChatAccessLevel
   // 利用量はワークスペース owner にだけ公開する。
   aiNudgesPhaseTwoUsage?: AiNudgesPhaseTwoUsageDto
 }
@@ -46,6 +51,7 @@ function toSettingsDto(
     aiChatModel: string
     aiChatAllowedModels: string[]
     aiChatSystemPrompt: string | null
+    aiChatAccess: string
     aiNudgesPhaseTwoInputTokens: number
     aiNudgesPhaseTwoOutputTokens: number
     aiNudgesPhaseTwoTotalTokens: number
@@ -60,6 +66,9 @@ function toSettingsDto(
   if (workspace && !workspace.aiChatAllowedModels.every(isAiChatModel)) {
     throw new Error(`Invalid workspaces.ai_chat_allowed_models: ${workspace.aiChatAllowedModels.join(',')}`)
   }
+  if (workspace && !isAiChatAccessLevel(workspace.aiChatAccess)) {
+    throw new Error(`Invalid workspaces.ai_chat_access: ${workspace.aiChatAccess}`)
+  }
   return {
     ...(workspace?.settings ?? {}),
     aiNudgesPhaseOneEnabled: workspace?.aiNudgesPhaseOneEnabled ?? true,
@@ -68,6 +77,7 @@ function toSettingsDto(
     aiChatAllowedModels: workspace ? workspace.aiChatAllowedModels.filter(isAiChatModel) : [...AI_CHAT_MODELS],
     aiChatRequestCredits: isBillingEnabled() ? { ...BILLING_CONFIG.aiChatRequestCreditsByModel } : null,
     aiChatSystemPrompt: workspace?.aiChatSystemPrompt ?? null,
+    aiChatAccess: workspace && isAiChatAccessLevel(workspace.aiChatAccess) ? workspace.aiChatAccess : DEFAULT_AI_CHAT_ACCESS,
     ...(includeUsage && workspace ? {
       aiNudgesPhaseTwoUsage: {
         inputTokens: workspace.aiNudgesPhaseTwoInputTokens,
@@ -96,6 +106,7 @@ export async function GET() {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -150,6 +161,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -165,6 +177,7 @@ export async function PATCH(req: Request) {
       aiChatModel,
       aiChatAllowedModels,
       aiChatSystemPrompt,
+      aiChatAccess,
       ...settingsPatch
     } = patch
     // 既定モデルは選べるモデルに含める（CHECK 制約もあるが、500 ではなく理由を返す）
@@ -188,6 +201,7 @@ export async function PATCH(req: Request) {
         ...(aiChatModel === undefined ? {} : { aiChatModel }),
         ...(aiChatAllowedModels === undefined ? {} : { aiChatAllowedModels }),
         ...(aiChatSystemPrompt === undefined ? {} : { aiChatSystemPrompt }),
+        ...(aiChatAccess === undefined ? {} : { aiChatAccess }),
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, ctx.workspaceId))
@@ -198,6 +212,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,

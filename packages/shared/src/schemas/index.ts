@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
 import { AI_CHAT_MODELS, AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
+import { AI_CHAT_ACCESS_LEVELS } from '../config/ai-chat-access'
 import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { LOCALE_PREFERENCES } from '../config/locale'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
@@ -205,6 +206,7 @@ export const patchWorkspaceSettingsSchema = z.object({
     .min(1)
     .transform(models => AI_CHAT_MODELS.filter(model => models.includes(model)))
     .optional(),
+  aiChatAccess: z.enum(AI_CHAT_ACCESS_LEVELS).optional(),
   // 空白だけの入力は「未設定」に戻す意図なので null にし、チャットへ空の指示ブロックを渡さない。
   aiChatSystemPrompt: z.string().trim().max(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH).transform(value => value || null).nullable().optional(),
 }).refine(

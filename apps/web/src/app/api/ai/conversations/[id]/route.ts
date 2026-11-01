@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { patchAiConversationSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { loadWorkspaceChatModels } from '@/lib/ai/chat-model'
+import { requireAiChatAccess } from '@/lib/ai/chat-access'
 import type { ConversationDto } from '../route'
 
 // 会話で使うモデルを切り替える。以降の依頼から反映され、送信済みのやり取りはそのまま残す。
@@ -13,6 +14,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
 
   let body: unknown
   try {

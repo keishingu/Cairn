@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const USER_ID = '00000000-0000-0000-0000-000000000001'
 const WORKSPACE_ID = '00000000-0000-0000-0000-000000000010'
@@ -16,6 +16,8 @@ const { mockUpdateSet, mockReturning, mockEq } = vi.hoisted(() => ({
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: vi.fn().mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WORKSPACE_ID }, error: null }),
 }))
+const { mockRequireAiChatAccess } = vi.hoisted(() => ({ mockRequireAiChatAccess: vi.fn() }))
+vi.mock('@/lib/ai/chat-access', () => ({ requireAiChatAccess: mockRequireAiChatAccess }))
 vi.mock('@/lib/ai/chat-model', () => ({
   loadWorkspaceChatModels: async () => ({ defaultModel: 'gpt-5', allowedModels: ['gpt-5', 'claude-sonnet-5-5'] }),
 }))
@@ -43,7 +45,19 @@ const patch = (body: unknown) =>
 const params = { params: Promise.resolve({ id: CONVERSATION_ID }) }
 
 describe('PATCH /api/ai/conversations/[id]', () => {
+  beforeEach(() => mockRequireAiChatAccess.mockResolvedValue(null))
   afterEach(() => vi.clearAllMocks())
+
+  test('/ai を使えないロールはモデルを切り替えられない', async () => {
+    const { NextResponse } = await import('next/server')
+    mockRequireAiChatAccess.mockResolvedValue(NextResponse.json({ error: 'denied' }, { status: 403 }))
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ model: 'gpt-5' }), params)
+
+    expect(response.status).toBe(403)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
 
   test('許可されたモデルに切り替え、本人の会話だけを更新する', async () => {
     mockReturning.mockResolvedValueOnce([{ id: CONVERSATION_ID, title: '計画', createdAt: new Date('2026-11-01T00:00:00Z') }])
