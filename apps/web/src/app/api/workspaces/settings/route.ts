@@ -6,12 +6,15 @@ import {
   AI_CHAT_MODELS,
   DEFAULT_AI_CHAT_ACCESS,
   DEFAULT_AI_CHAT_MODEL,
+  DEFAULT_AI_SEARCH_RECENCY_WEIGHT,
   FEATURE_FLAGS,
   isAiChatAccessLevel,
   isAiChatModel,
+  isAiSearchRecencyWeight,
   patchWorkspaceSettingsSchema,
   type AiChatAccessLevel,
   type AiChatModel,
+  type AiSearchRecencyWeight,
 } from '@cairn/shared'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -37,6 +40,8 @@ export type WorkspaceSettingsDto = WorkspaceSettings & {
   aiChatRequestCredits: Record<AiChatModel, number> | null
   // AI チャットへ毎回渡す追加指示。null は未設定。owner 以外にも読み取り専用で表示する。
   aiChatSystemPrompt: string | null
+  // /ai の資料検索で新しいプロジェクト・ファイルを優先する重み。owner 以外にも読み取り専用で表示する。
+  aiSearchRecencyWeight: AiSearchRecencyWeight
   // /ai を使えるロールの範囲。全ロールに返し、使えない人には入口を出さない（判定の正はサーバー）
   aiChatAccess: AiChatAccessLevel
   // 利用量はワークスペース owner にだけ公開する。
@@ -51,6 +56,7 @@ function toSettingsDto(
     aiChatModel: string
     aiChatAllowedModels: string[]
     aiChatSystemPrompt: string | null
+    aiSearchRecencyWeight: string
     aiChatAccess: string
     aiNudgesPhaseTwoInputTokens: number
     aiNudgesPhaseTwoOutputTokens: number
@@ -62,6 +68,9 @@ function toSettingsDto(
   // DB の CHECK 制約で保証される値。壊れていても既定へ黙って置き換えず、500 として表面化させる。
   if (workspace && !isAiChatModel(workspace.aiChatModel)) {
     throw new Error(`Invalid workspaces.ai_chat_model: ${workspace.aiChatModel}`)
+  }
+  if (workspace && !isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)) {
+    throw new Error(`Invalid workspaces.ai_search_recency_weight: ${workspace.aiSearchRecencyWeight}`)
   }
   if (workspace && !workspace.aiChatAllowedModels.every(isAiChatModel)) {
     throw new Error(`Invalid workspaces.ai_chat_allowed_models: ${workspace.aiChatAllowedModels.join(',')}`)
@@ -77,6 +86,9 @@ function toSettingsDto(
     aiChatAllowedModels: workspace ? workspace.aiChatAllowedModels.filter(isAiChatModel) : [...AI_CHAT_MODELS],
     aiChatRequestCredits: isBillingEnabled() ? { ...BILLING_CONFIG.aiChatRequestCreditsByModel } : null,
     aiChatSystemPrompt: workspace?.aiChatSystemPrompt ?? null,
+    aiSearchRecencyWeight: workspace && isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)
+      ? workspace.aiSearchRecencyWeight
+      : DEFAULT_AI_SEARCH_RECENCY_WEIGHT,
     aiChatAccess: workspace && isAiChatAccessLevel(workspace.aiChatAccess) ? workspace.aiChatAccess : DEFAULT_AI_CHAT_ACCESS,
     ...(includeUsage && workspace ? {
       aiNudgesPhaseTwoUsage: {
@@ -106,6 +118,7 @@ export async function GET() {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
         aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
@@ -161,6 +174,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
         aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
@@ -177,6 +191,7 @@ export async function PATCH(req: Request) {
       aiChatModel,
       aiChatAllowedModels,
       aiChatSystemPrompt,
+      aiSearchRecencyWeight,
       aiChatAccess,
       ...settingsPatch
     } = patch
@@ -201,6 +216,7 @@ export async function PATCH(req: Request) {
         ...(aiChatModel === undefined ? {} : { aiChatModel }),
         ...(aiChatAllowedModels === undefined ? {} : { aiChatAllowedModels }),
         ...(aiChatSystemPrompt === undefined ? {} : { aiChatSystemPrompt }),
+        ...(aiSearchRecencyWeight === undefined ? {} : { aiSearchRecencyWeight }),
         ...(aiChatAccess === undefined ? {} : { aiChatAccess }),
         updatedAt: new Date(),
       })
@@ -212,6 +228,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatAllowedModels: workspaces.aiChatAllowedModels,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
         aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,

@@ -300,6 +300,15 @@ describe('ワークスペース設定更新スキーマ', () => {
     expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: atLimit }).success).toBe(true)
     expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: `${atLimit}あ` }).success).toBe(false)
   })
+
+  it('資料検索の新しさの重みは選択肢の段階だけ受け入れる', () => {
+    for (const aiSearchRecencyWeight of ['none', 'weak', 'medium', 'strong']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiSearchRecencyWeight }).success).toBe(true)
+    }
+    for (const aiSearchRecencyWeight of ['', 'off', 'max', 365, null]) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiSearchRecencyWeight }).success).toBe(false)
+    }
+  })
 })
 
 describe('postMessageSchema', () => {

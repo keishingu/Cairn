@@ -131,4 +131,38 @@ describe('searchChunks', () => {
       },
     ])
   })
+
+  it('新しさの半減期を指定したときは候補を広げて取り、新しい資料を上にして件数どおり返す', async () => {
+    mockExecute.mockResolvedValueOnce({
+      rows: [
+        { source_type: 'project', source_id: 'p-old', content: '古い計画', similarity: '0.8', source_date: '2024-11-01T00:00:00Z' },
+        { source_type: 'file', source_id: 'f-new', content: '新しい資料', similarity: '0.7', source_date: '2026-10-25T00:00:00Z' },
+        { source_type: 'member', source_id: 'm-1', content: 'メンバー', similarity: '0.6', source_date: null },
+      ],
+    })
+
+    const result = await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+      limit: 2,
+      recencyHalfLifeDays: 365,
+      now: new Date('2026-11-01T00:00:00Z'),
+    })
+
+    const query = String(mockExecute.mock.calls[0]?.[0])
+    expect(query).toContain('LIMIT 8')
+    expect(result.map((match) => match.sourceId)).toEqual(['f-new', 'm-1'])
+    expect(result[0]).toMatchObject({ similarity: 0.7 })
+    expect(result[0]).not.toHaveProperty('sourceDate')
+  })
+
+  it('新しさを指定しないときは従来どおりの件数で取り、点数を付けない', async () => {
+    await searchChunks('検索語', '11111111-1111-1111-1111-111111111111', {
+      userId: '22222222-2222-2222-2222-222222222222',
+      role: 'member',
+      limit: 2,
+    })
+
+    expect(String(mockExecute.mock.calls[0]?.[0])).toContain('LIMIT 2')
+  })
 })

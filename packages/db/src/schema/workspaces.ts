@@ -96,6 +96,8 @@ export const workspaces = pgTable('workspaces', {
   // AI チャットへ毎回渡す、owner が書くワークスペース固有の追加指示（AGENTS.md 相当）。null は未設定。
   // 上限は @cairn/shared の AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH と同じ。
   aiChatSystemPrompt: text('ai_chat_system_prompt'),
+  // /ai の資料検索で新しいプロジェクト・ファイルを優先する重み。値の集合は @cairn/shared の AI_SEARCH_RECENCY_WEIGHTS と同じ。
+  aiSearchRecencyWeight: text('ai_search_recency_weight').notNull().default('none'),
   // /ai を使えるロールの範囲（owner / admin / member。member はゲストを含む全員）。値は @cairn/shared の AI_CHAT_ACCESS_LEVELS と同じ
   aiChatAccess: text('ai_chat_access').notNull().default('member'),
   createdBy: uuid('created_by')
@@ -119,6 +121,10 @@ export const workspaces = pgTable('workspaces', {
   check(
     'workspaces_ai_chat_system_prompt_length_check',
     sql`char_length(${t.aiChatSystemPrompt}) <= 10000`,
+  ),
+  check(
+    'workspaces_ai_search_recency_weight_check',
+    sql`${t.aiSearchRecencyWeight} in ('none', 'weak', 'medium', 'strong')`,
   ),
 ])
 

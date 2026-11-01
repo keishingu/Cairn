@@ -5,12 +5,15 @@ import { embed } from 'ai'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import type { WorkspaceRole } from '@/lib/access/membership'
 import { openai, EMBEDDING_MODEL } from './client'
+import { RECENCY_CANDIDATE_MULTIPLIER, rankByRecency } from './search-recency'
 
 export interface ChunkMatch {
   sourceType: string
   sourceId: string
   content: string
   similarity: number
+  // 新しさで並べ替えたときの点数（意味の近さ × 新しさの係数）。新しさを使わないときは付けない
+  score?: number
 }
 
 export async function searchChunks(
@@ -22,9 +25,13 @@ export async function searchChunks(
     limit?: number
     minSimilarity?: number
     allowedProjectIds?: string[] | null
+    // 新しさの半減期（日）。null・未指定なら従来どおり意味の近さだけで並べる
+    recencyHalfLifeDays?: number | null
+    now?: Date
   },
 ): Promise<ChunkMatch[]> {
-  const { limit = 5, minSimilarity = 0.5, allowedProjectIds = null } = opts
+  const { limit = 5, minSimilarity = 0.5, allowedProjectIds = null, recencyHalfLifeDays = null } = opts
+  const candidateLimit = recencyHalfLifeDays ? limit * RECENCY_CANDIDATE_MULTIPLIER : limit
 
   const { embedding } = await embed({
     model: openai.embedding(EMBEDDING_MODEL),
@@ -197,9 +204,14 @@ export async function searchChunks(
     source_id: string
     content: string
     similarity: number
+    source_date: Date | string | null
   }>(sql`
     SELECT source_type, source_id, content,
-      1 - (embedding <=> ${vectorStr}::vector) AS similarity
+      1 - (embedding <=> ${vectorStr}::vector) AS similarity,
+      CASE source_type
+        WHEN 'project' THEN (SELECT recency_project.updated_at FROM projects recency_project WHERE recency_project.id = document_chunks.source_id)
+        WHEN 'file' THEN (SELECT recency_file.created_at FROM files recency_file WHERE recency_file.id = document_chunks.source_id)
+      END AS source_date
     FROM document_chunks
     WHERE workspace_id = ${workspaceId}::uuid
       AND embedding IS NOT NULL
@@ -208,13 +220,32 @@ export async function searchChunks(
       ${fileAccessScope}
       ${dmFileScope}
     ORDER BY embedding <=> ${vectorStr}::vector
-    LIMIT ${limit}
+    LIMIT ${candidateLimit}
   `)
 
-  return result.rows.map(r => ({
+  const matches = result.rows.map(r => ({
     sourceType: r.source_type,
     sourceId: r.source_id,
     content: r.content,
     similarity: Number(r.similarity),
+  }))
+  if (!recencyHalfLifeDays) return matches
+
+  // 新しさの基準: プロジェクトは更新日、ファイルは登録日（ファイルに更新日の列は無い）。
+  // チャンクの作成日は全体の再インデックスで一斉に新しくなるため使わない
+  const ranked = rankByRecency(
+    matches.map((match, index) => {
+      const raw = result.rows[index]!.source_date
+      return { ...match, sourceDate: raw == null ? null : new Date(raw) }
+    }),
+    recencyHalfLifeDays,
+    opts.now ?? new Date(),
+  )
+  return ranked.slice(0, limit).map((match) => ({
+    sourceType: match.sourceType,
+    sourceId: match.sourceId,
+    content: match.content,
+    similarity: match.similarity,
+    score: match.score,
   }))
 }

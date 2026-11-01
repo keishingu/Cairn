@@ -120,6 +120,16 @@ owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` �
 - モデルに関係なく同じ `system` に入れるため、GPT-5 / Claude のどちらを選んでも効く。未設定（空）のときは従来とまったく同じ文面になる
 - `ai_agents.system_prompt` / `agents_md` は使わない。`ai_agents` は §4 のAIメンバー用（スコープ・名前・モデル・作成者が必須の複数行）で、ワークスペースに1つの `/ai` 向け設定とは粒度が違い、モデルも `workspaces.ai_chat_model` と二重管理になるため
 
+#### 資料検索の新しさの重み
+
+owner は設定の「AIエージェント」の「新しい資料を優先」で、`/ai` の資料検索（RAG と `search_workspace_documents` tool。どちらも `searchResearchDocuments`）が新しいプロジェクト・ファイルをどれだけ優先するかを選べる。保存先は `workspaces.ai_search_recency_weight`（`none` / `weak` / `medium` / `strong`、既定 `none`、CHECK 制約あり）。
+
+- 点数 = 意味の近さ（コサイン類似度）× 0.5^(経過日数 / 半減期)。半減期は弱 3年・中 1年・強 半年（`@cairn/shared` の `AI_SEARCH_RECENCY_HALF_LIFE_DAYS`）。`none` は従来どおり類似度だけで並べる
+- 類似度の下限（0.5）は元の類似度に掛けるので、関連の薄い資料が新しさだけで入ることはない。新しさで並べ替えるときは類似度の上位から件数の4倍の候補を取り、その中で並べ替える（`lib/ai/search-recency.ts`）
+- 新しさの基準はプロジェクトが `projects.updated_at`、ファイルが `files.created_at`（ファイルに更新日の列は無い）。`document_chunks.created_at` は全体の再インデックスで一斉に新しくなるため使わない。メンバーなど日付を持たない資料には係数を掛けない
+- アーカイブ済みのプロジェクトも他と同じ基準で扱う（過去の記録を探す質問の精度を落とさないため）
+- チャットの RAG では、重みを課金前にワークスペース設定と一緒に読む。値が不正なら RAG なしで続けず 500 にする（RAG の検索自体の失敗は従来どおり参照データなしで回答を続ける）
+
 #### 会話ごとのモデル
 
 `/ai` のモデル（`gpt-5` / `claude-sonnet-5-5` / `claude-opus-5-5`）はメンバーが会話ごとに選ぶ（Claude Code の `/model` と同じく、会話の途中でも切り替えられ、次の依頼から反映する）。

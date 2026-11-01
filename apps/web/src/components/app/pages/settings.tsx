@@ -36,6 +36,7 @@ import {
   AI_CHAT_MODEL_LABELS,
   AI_CHAT_MODELS,
   AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
+  AI_SEARCH_RECENCY_WEIGHTS,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
@@ -43,6 +44,7 @@ import {
   type AccentId,
   type AiChatAccessLevel,
   type AiChatModel,
+  type AiSearchRecencyWeight,
   type CalendarWeekStart,
   type LocalePreference,
 } from '@cairn/shared'
@@ -1439,6 +1441,8 @@ const SettingsAI = () => {
 
     <AiAllowedModelsSection />
 
+    <AiSearchRecencySection />
+
     <AiChatAccessSection />
 
     <AiChatSystemPromptSection />
@@ -1495,6 +1499,90 @@ const AiAllowedModelsSection = () => {
                 <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {t('Default')}</span>
               )}
             </label>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
+  )
+}
+
+const AI_SEARCH_RECENCY_LABELS: Record<AiSearchRecencyWeight, string> = {
+  none: 'Off',
+  weak: 'Weak',
+  medium: 'Medium',
+  strong: 'Strong',
+}
+
+// 段階の中身（半減期）は @cairn/shared の AI_SEARCH_RECENCY_HALF_LIFE_DAYS と揃える。
+const AI_SEARCH_RECENCY_DESCRIPTIONS: Record<AiSearchRecencyWeight, string> = {
+  none: 'Rank by relevance only',
+  weak: 'Score halves every 3 years',
+  medium: 'Score halves every year',
+  strong: 'Score halves every 6 months',
+}
+
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiSearchRecencySection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selected = wsSettings?.aiSearchRecencyWeight
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Prefer recent documents')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.')}
+      </p>
+      <div
+        className="card"
+        role="radiogroup"
+        aria-label={t('Prefer recent documents')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}
+      >
+        {AI_SEARCH_RECENCY_WEIGHTS.map((weight) => {
+          const on = weight === selected
+          return (
+            <button
+              key={weight}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiSearchRecencyWeight: weight })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_SEARCH_RECENCY_LABELS[weight])}</span>
+                {on && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_SEARCH_RECENCY_DESCRIPTIONS[weight])}
+              </div>
+            </button>
           )
         })}
       </div>

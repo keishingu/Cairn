@@ -26,6 +26,7 @@ describe('mergePatchedFields', () => {
     aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
     aiChatRequestCredits: null,
     aiChatSystemPrompt: '新しいプロンプト',
+    aiSearchRecencyWeight: 'none',
     aiChatAccess: 'member',
   }
 
