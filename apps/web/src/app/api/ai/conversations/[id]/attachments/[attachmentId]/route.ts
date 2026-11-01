@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { AiAttachmentError, deleteUnsentAiAttachment } from '@/lib/ai/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 type RouteContext = { params: Promise<{ id: string; attachmentId: string }> }
 
@@ -12,6 +13,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
   const { id: conversationId, attachmentId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
   try {
     await deleteUnsentAiAttachment(ctx, conversationId, attachmentId)
     return new NextResponse(null, { status: 204 })

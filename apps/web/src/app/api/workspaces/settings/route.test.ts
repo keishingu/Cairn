@@ -12,6 +12,7 @@ const { mockGetAuthContext, mockUpdateSet, workspaceRow } = vi.hoisted(() => ({
     aiNudgesPhaseTwoEnabled: false,
     aiChatModel: 'gpt-5',
     aiChatSystemPrompt: '敬体で答える',
+    aiChatAccess: 'member',
     aiSearchRecencyWeight: 'none',
     aiNudgesPhaseTwoInputTokens: 0,
     aiNudgesPhaseTwoOutputTokens: 0,
@@ -118,6 +119,45 @@ describe('/api/workspaces/settings のシステムプロンプト', () => {
     expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({ aiChatSystemPrompt: expect.anything() }))
   })
 
+  it('GET は owner 以外にも /ai を使えるロールの範囲を返す', async () => {
+    authAs('guest')
+    const { GET } = await import('./route')
+
+    const response = await GET()
+
+    await expect(response.json()).resolves.toMatchObject({ aiChatAccess: 'member' })
+  })
+
+  it('owner は /ai を使えるロールを「管理者以上」に変えられ、他の AI 設定は書き換えない', async () => {
+    authAs('owner')
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiChatAccess: 'admin' }))
+
+    expect(response.status).toBe(200)
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ aiChatAccess: 'admin' }))
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.not.objectContaining({ aiChatModel: expect.anything() }))
+  })
+
+  it('決まった段階以外は 422 にして保存しない', async () => {
+    authAs('owner')
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiChatAccess: 'guest' }))
+
+    expect(response.status).toBe(422)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
+  it.each(['admin', 'member', 'guest'] as const)('%s は /ai を使えるロールを変更できない', async (role) => {
+    authAs(role)
+    const { PATCH } = await import('./route')
+
+    const response = await PATCH(patch({ aiChatAccess: 'member' }))
+
+    expect(response.status).toBe(403)
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
   it('GET は owner 以外にも資料検索の新しさの重みを返す', async () => {
     authAs('member')
     const { GET } = await import('./route')

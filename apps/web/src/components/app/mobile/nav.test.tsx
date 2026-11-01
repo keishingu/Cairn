@@ -8,14 +8,19 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MobileNav } from './nav'
 
+const { navState } = vi.hoisted(() => ({
+  navState: { wsRole: undefined as string | undefined, aiChatAccess: undefined as string | undefined },
+}))
+
 vi.mock('@/lib/use-workspace-settings', () => ({
   useProjectLabel: () => 'プロジェクト',
+  useWorkspaceSettings: () => ({ data: navState.aiChatAccess ? { aiChatAccess: navState.aiChatAccess } : undefined }),
 }))
 
 vi.mock('@/lib/fetch-with-auth', () => ({
   fetchWithAuth: vi.fn(async (url: string) => {
     if (url === '/api/me') {
-      return new Response(JSON.stringify({ displayName: 'テストユーザー', avatarUrl: null }))
+      return new Response(JSON.stringify({ displayName: 'テストユーザー', avatarUrl: null, wsRole: navState.wsRole }))
     }
     if (url === '/api/workspaces') {
       return new Response(JSON.stringify({ name: 'テストワークスペース', logoUrl: null }))
@@ -73,5 +78,25 @@ describe('MobileNav', () => {
       left: 'calc(12px + env(safe-area-inset-left))',
       right: 'calc(12px + env(safe-area-inset-right))',
     })
+  })
+
+  it('owner が AI アシスタントを管理者以上に絞っていれば、member には AI のタブを出さない', async () => {
+    navState.wsRole = 'member'
+    navState.aiChatAccess = 'admin'
+    try {
+      renderMobileNav()
+
+      expect(await screen.findByRole('button', { name: /チャット|Chats/ })).toBeInTheDocument()
+      await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^AI$/ })).not.toBeInTheDocument())
+    } finally {
+      navState.wsRole = undefined
+      navState.aiChatAccess = undefined
+    }
+  })
+
+  it('設定を読み込む前は AI のタブを隠さない', () => {
+    renderMobileNav()
+
+    expect(screen.getByRole('button', { name: /^AI$/ })).toBeInTheDocument()
   })
 })

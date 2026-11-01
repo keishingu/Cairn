@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserStatus } from '@/lib/user-status'
 import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
+import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
@@ -166,6 +167,8 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   const router = useRouter()
   const t = useT()
   const projectLabel = useProjectLabel()
+  // owner が /ai を使えるロールを絞っていれば、使えない人には入口を出さない（判定の正はサーバー）
+  const aiChatAllowed = useAiChatAllowed()
   const { data: projectChannels = [] } = useProjectChannels()
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
@@ -326,7 +329,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
           <CollapsedNavItem icon="file"     label={t('Files')}       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
           <CollapsedNavItem icon="image"    label={t('Gallery')}     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
-          <CollapsedNavItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
+          {aiChatAllowed !== false && (
+            <CollapsedNavItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
+          )}
           <div style={{ margin: '6px 0', height: 1, background: 'var(--divider)' }}/>
           <CollapsedNavItem icon="users"    label={t('Members')}       active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
           <CollapsedNavItem icon="settings" label={t('Settings')}           active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
@@ -465,7 +470,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <SidebarItem icon="file"     label={t('Files')}       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
           <SidebarItem icon="image"    label={t('Gallery')}     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
-          <SidebarItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
+          {aiChatAllowed !== false && (
+            <SidebarItem icon="sparkles" label={t('AI assistant')} active={page === 'ai'}      onClick={() => setPage('ai')} onPrefetch={() => prefetchPage?.('ai')}/>
+          )}
         </div>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase',

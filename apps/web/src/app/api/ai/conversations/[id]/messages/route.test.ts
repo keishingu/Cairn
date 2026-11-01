@@ -28,6 +28,9 @@ const {
   }),
 )
 
+// /ai の利用ロールの判定。既定は全員が使えるワークスペースとして扱い、拒否のテストだけ差し替える
+const { mockRequireAiChatAccess } = vi.hoisted(() => ({ mockRequireAiChatAccess: vi.fn() }))
+vi.mock('@/lib/ai/chat-access', () => ({ requireAiChatAccess: mockRequireAiChatAccess }))
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: mockIsBillingEnabled }))
 vi.mock('@/lib/billing/entitlements', () => ({
@@ -73,6 +76,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
     mockIsBillingEnabled.mockReturnValue(false)
+    mockRequireAiChatAccess.mockResolvedValue(null)
     mockSearchResearchDocuments.mockResolvedValue({ items: [] })
   })
 
@@ -323,6 +327,20 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(shouldPersistFinishedAssistantMessage(false)).toBe(true)
   })
 
+  it('/ai を使えないロールの依頼は、課金も回答もせず 403 を返す', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    const { NextResponse } = await import('next/server')
+    mockRequireAiChatAccess.mockResolvedValue(
+      NextResponse.json({ error: 'このワークスペースでは、AIアシスタントはオーナーだけが利用できます。' }, { status: 403 }),
+    )
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(403)
+    expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+    expect(mockStreamText).not.toHaveBeenCalled()
+  })
   it('資料検索の新しさの重みは課金前に読み、RAG に渡す', async () => {
     mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
     queueDbResults('gpt-5', null, 'medium')

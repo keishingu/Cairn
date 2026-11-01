@@ -11,6 +11,7 @@ import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
 import { useAiMemberMentions } from '../ai-member-mentions'
 import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
+import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import { useAiAttachments } from '@/hooks/use-ai-attachments'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
@@ -577,6 +578,27 @@ function ChatView({
 // ---- メインコンポーネント ----
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
+  const aiChatAllowed = useAiChatAllowed()
+  // owner が /ai を使えるロールを絞っていて自分が対象外なら、会話を読み込まず理由を出す（URL を直接開いたとき）
+  if (aiChatAllowed === false) return <AiChatNotAllowed isMobile={isMobile}/>
+  return <PageAIContent isMobile={isMobile}/>
+}
+
+function AiChatNotAllowed({ isMobile }: { isMobile?: boolean | undefined }) {
+  const t = useT()
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 16 : 28 }}>
+      <div style={{ maxWidth: 420, textAlign: 'center', color: 'var(--text-3)', fontSize: 13, lineHeight: 1.7 }}>
+        <Icon name="sparkles" size={24} color="var(--text-4)"/>
+        <p style={{ margin: '10px 0 0' }}>
+          {t('The workspace owner has limited who can use the AI assistant in this workspace. Ask the owner if you need access.')}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
   const t = useT()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')

@@ -3,12 +3,15 @@
 
 import { NextResponse } from 'next/server'
 import {
+  DEFAULT_AI_CHAT_ACCESS,
   DEFAULT_AI_CHAT_MODEL,
   DEFAULT_AI_SEARCH_RECENCY_WEIGHT,
   FEATURE_FLAGS,
+  isAiChatAccessLevel,
   isAiChatModel,
   isAiSearchRecencyWeight,
   patchWorkspaceSettingsSchema,
+  type AiChatAccessLevel,
   type AiChatModel,
   type AiSearchRecencyWeight,
 } from '@cairn/shared'
@@ -31,6 +34,8 @@ export type WorkspaceSettingsDto = WorkspaceSettings & {
   aiChatSystemPrompt: string | null
   // /ai の資料検索で新しいプロジェクト・ファイルを優先する重み。owner 以外にも読み取り専用で表示する。
   aiSearchRecencyWeight: AiSearchRecencyWeight
+  // /ai を使えるロールの範囲。全ロールに返し、使えない人には入口を出さない（判定の正はサーバー）
+  aiChatAccess: AiChatAccessLevel
   // 利用量はワークスペース owner にだけ公開する。
   aiNudgesPhaseTwoUsage?: AiNudgesPhaseTwoUsageDto
 }
@@ -43,6 +48,7 @@ function toSettingsDto(
     aiChatModel: string
     aiChatSystemPrompt: string | null
     aiSearchRecencyWeight: string
+    aiChatAccess: string
     aiNudgesPhaseTwoInputTokens: number
     aiNudgesPhaseTwoOutputTokens: number
     aiNudgesPhaseTwoTotalTokens: number
@@ -57,6 +63,9 @@ function toSettingsDto(
   if (workspace && !isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)) {
     throw new Error(`Invalid workspaces.ai_search_recency_weight: ${workspace.aiSearchRecencyWeight}`)
   }
+  if (workspace && !isAiChatAccessLevel(workspace.aiChatAccess)) {
+    throw new Error(`Invalid workspaces.ai_chat_access: ${workspace.aiChatAccess}`)
+  }
   return {
     ...(workspace?.settings ?? {}),
     aiNudgesPhaseOneEnabled: workspace?.aiNudgesPhaseOneEnabled ?? true,
@@ -66,6 +75,7 @@ function toSettingsDto(
     aiSearchRecencyWeight: workspace && isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)
       ? workspace.aiSearchRecencyWeight
       : DEFAULT_AI_SEARCH_RECENCY_WEIGHT,
+    aiChatAccess: workspace && isAiChatAccessLevel(workspace.aiChatAccess) ? workspace.aiChatAccess : DEFAULT_AI_CHAT_ACCESS,
     ...(includeUsage && workspace ? {
       aiNudgesPhaseTwoUsage: {
         inputTokens: workspace.aiNudgesPhaseTwoInputTokens,
@@ -94,6 +104,7 @@ export async function GET() {
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -148,6 +159,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -163,6 +175,7 @@ export async function PATCH(req: Request) {
       aiChatModel,
       aiChatSystemPrompt,
       aiSearchRecencyWeight,
+      aiChatAccess,
       ...settingsPatch
     } = patch
     const merged: WorkspaceSettings = { ...(ws?.settings ?? {}) }
@@ -177,6 +190,7 @@ export async function PATCH(req: Request) {
         ...(aiChatModel === undefined ? {} : { aiChatModel }),
         ...(aiChatSystemPrompt === undefined ? {} : { aiChatSystemPrompt }),
         ...(aiSearchRecencyWeight === undefined ? {} : { aiSearchRecencyWeight }),
+        ...(aiChatAccess === undefined ? {} : { aiChatAccess }),
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, ctx.workspaceId))
@@ -187,6 +201,7 @@ export async function PATCH(req: Request) {
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
         aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,

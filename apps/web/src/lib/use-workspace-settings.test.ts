@@ -25,6 +25,7 @@ describe('mergePatchedFields', () => {
     aiChatModel: 'gpt-5',
     aiChatSystemPrompt: '新しいプロンプト',
     aiSearchRecencyWeight: 'none',
+    aiChatAccess: 'member',
   }
 
   it('送った項目だけを応答で反映し、並行して保存した別項目を古い応答で戻さない', () => {
