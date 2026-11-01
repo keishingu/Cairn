@@ -28,7 +28,7 @@ export interface PushPayload {
 }
 
 export interface PushDeliveryOptions {
-  /** false の場合、通知は送るが Web のアプリアイコンバッジは更新しない。 */
+  /** false の場合、通知は送るが Web・Expo のアプリアイコンバッジは更新しない。 */
   updateAppBadge?: boolean
 }
 
@@ -70,28 +70,31 @@ export async function sendPushToUser(
 
   if (subs.length === 0) return
 
-  // Web Push
-  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-    ensureVapid()
-    const webSubs = subs.filter(
-      (s) => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth,
-    )
-    const expiredIds: string[] = []
+  const webSubs =
+    VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY
+      ? subs.filter((s) => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth)
+      : []
+  const expoSubs = subs.filter((s) => s.deviceType === 'expo' && s.expoToken)
 
-    // ホーム画面 PWA のアイコンに出す未読バッジ数（badgeCount は Web Push 専用）。
-    // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる。
-    // best-effort: 集計に失敗しても通知本体（と後段の Expo push）は送る
-    let badgeCount: number | undefined
-    if (webSubs.length > 0 && updateAppBadge) {
-      try {
-        const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
-        badgeCount = await getUnreadNotificationCount(userId)
-      } catch (err) {
-        console.error('[sendPushToUser] badge count query failed', {
-          message: (err as Error).message,
-        })
-      }
+  // PWA と Expo アプリのアイコンに出す未読バッジ数。VAPID が未設定でも Expo には届ける。
+  // Push 送信時点で通知行は既に作成済みのため、この件数に新着分も含まれる。
+  // best-effort: 集計に失敗しても通知本体は送る
+  let badgeCount: number | undefined
+  if ((webSubs.length > 0 || expoSubs.length > 0) && updateAppBadge) {
+    try {
+      const { getUnreadNotificationCount } = await import('@/lib/notifications/badge')
+      badgeCount = await getUnreadNotificationCount(userId)
+    } catch (err) {
+      console.error('[sendPushToUser] badge count query failed', {
+        message: (err as Error).message,
+      })
     }
+  }
+
+  // Web Push
+  if (webSubs.length > 0) {
+    ensureVapid()
+    const expiredIds: string[] = []
     const message: PushMessage = {
       title: payload.title,
       body: payload.body,
@@ -128,10 +131,8 @@ export async function sendPushToUser(
   }
 
   // Expo Push
-  // 注: ネイティブ（Expo）アプリのランチャーバッジ（setBadgeCountAsync）は
-  // 既読時に減算・クリアする同期経路が apps/mobile 側に必要になるため、本 PR では
-  // 付与しない（Web PWA バッジに範囲を限定）。Expo バッジ対応は別ブランチで行う。
-  const expoSubs = subs.filter((s) => s.deviceType === 'expo' && s.expoToken)
+  // badge は iOS のアイコンの数字をアプリ非起動のまま更新する（省略すると OS の数字は変わらない）。
+  // 既読時の減算・クリアは apps/mobile の useAppBadgeSync が badge-count API の値で行う
   if (expoSubs.length > 0) {
     const messages = expoSubs.map((s) => {
       const msg: Parameters<typeof expo.chunkPushNotifications>[0][number] = {
@@ -141,6 +142,7 @@ export async function sendPushToUser(
       }
       const data = expoPushData(payload)
       if (data) msg.data = data
+      if (badgeCount !== undefined) msg.badge = badgeCount
       return msg
     })
     const chunks = expo.chunkPushNotifications(messages)

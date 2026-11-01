@@ -60,6 +60,15 @@ export async function POST(req: Request) {
           set: { keys: parsed.data.keys },
         })
     } else {
+      const { and, eq, ne } = await import('drizzle-orm')
+      // 一意制約は (user_id, expo_token) なので、別のユーザーがログインした端末には前のユーザーの行が残り、
+      // その人宛ての通知と未読数が届き続ける。端末を使っているのは今登録したユーザーだけとする
+      await db
+        .delete(pushSubscriptions)
+        .where(and(
+          eq(pushSubscriptions.expoToken, parsed.data.expoToken),
+          ne(pushSubscriptions.userId, ctx.userId),
+        ))
       await db
         .insert(pushSubscriptions)
         .values({

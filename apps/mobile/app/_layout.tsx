@@ -7,11 +7,13 @@ import { StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { shouldClearAccountCache } from '../lib/account-cache'
+import { shouldClearAppBadge } from '../lib/app-badge'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
 import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
 import { discardReceivedShare, useShareReceiveIntake } from '../hooks/use-share-receive'
+import { setAppBadge } from '../hooks/use-app-badge-sync'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -35,6 +37,7 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
       // 預かった共有も前のユーザーのもの。ログイン前に受け取った共有はこの境界を通らないので残る
       discardReceivedShare()
     }
+    if (shouldClearAppBadge(event, previousUserId, nextUserId)) void setAppBadge(0)
     knownUserId.current = nextUserId
     setSession(newSession)
   }, [])
