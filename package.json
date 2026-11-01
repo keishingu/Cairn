@@ -31,7 +31,8 @@
   },
   "pnpm": {
     "patchedDependencies": {
-      "expo-quick-actions@6.0.2": "patches/expo-quick-actions@6.0.2.patch"
+      "expo-quick-actions@6.0.2": "patches/expo-quick-actions@6.0.2.patch",
+      "expo-sharing@55.0.24": "patches/expo-sharing@55.0.24.patch"
     }
   }
 }

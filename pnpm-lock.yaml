@@ -8,6 +8,9 @@ patchedDependencies:
   expo-quick-actions@6.0.2:
     hash: v6geyoczkcs7yrbqbnhmb7q3bu
     path: patches/expo-quick-actions@6.0.2.patch
+  expo-sharing@55.0.24:
+    hash: 7lhdsmh4vcz3ed7axsypleh4dm
+    path: patches/expo-sharing@55.0.24.patch
 
 importers:
 
@@ -126,7 +129,7 @@ importers:
         version: 55.0.18(expo@55.0.31)
       expo-sharing:
         specifier: ~55.0.24
-        version: 55.0.24(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
+        version: 55.0.24(patch_hash=7lhdsmh4vcz3ed7axsypleh4dm)(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
       expo-splash-screen:
         specifier: ~55.0.25
         version: 55.0.25(expo@55.0.31)(typescript@5.9.3)
@@ -14784,7 +14787,7 @@ snapshots:
 
   expo-server@55.0.12: {}
 
-  expo-sharing@55.0.24(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
+  expo-sharing@55.0.24(patch_hash=7lhdsmh4vcz3ed7axsypleh4dm)(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
     dependencies:
       '@expo/config-plugins': 55.0.11
       '@expo/config-types': 55.0.6

@@ -11,6 +11,7 @@ import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
 import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
+import { discardReceivedShare, useShareReceiveIntake } from '../hooks/use-share-receive'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -31,6 +32,8 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     const previousUserId = knownUserId.current
     if (previousUserId !== undefined && shouldClearAccountCache(event, previousUserId, nextUserId)) {
       queryClient.clear()
+      // 預かった共有も前のユーザーのもの。ログイン前に受け取った共有はこの境界を通らないので残る
+      discardReceivedShare()
     }
     knownUserId.current = nextUserId
     setSession(newSession)
@@ -80,6 +83,12 @@ function QuickActionsHost(): null {
   return null
 }
 
+// 未ログインでも受け取って預かり、ログイン後に受け取り画面を開く
+function ShareReceiveHost(): null {
+  useShareReceiveIntake()
+  return null
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -89,6 +98,7 @@ export default function RootLayout() {
             <AuthGuard>
               <LocaleProvider>
                 <QuickActionsHost />
+                <ShareReceiveHost />
                 <Slot />
               </LocaleProvider>
             </AuthGuard>

@@ -12,6 +12,7 @@ import { NotificationPanelProvider } from '../../components/notification-panel-p
 import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
 import { useQuickActionNavigation } from '../../hooks/use-quick-actions'
+import { useShareReceiveNavigation } from '../../hooks/use-share-receive'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 import { completePendingRemoval, loadPushEnabled, loadPushSetting } from '../../lib/push-preference'
@@ -115,6 +116,7 @@ export default function AppLayout() {
   }, [router])
 
   useQuickActionNavigation()
+  useShareReceiveNavigation()
 
   return (
     <RealtimeProvider>
@@ -133,6 +135,7 @@ export default function AppLayout() {
                 <Tabs.Screen name="ai/index" />
                 <Tabs.Screen name="projects/[id]" options={{ href: null }} />
                 <Tabs.Screen name="notifications/index" options={{ href: null }} />
+                <Tabs.Screen name="share/index" options={{ href: null }} />
                 <Tabs.Screen name="files/index" options={{ href: null }} />
                 <Tabs.Screen name="gallery/index" options={{ href: null }} />
                 <Tabs.Screen name="members/index" options={{ href: null }} />

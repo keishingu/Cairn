@@ -64,6 +64,21 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **`app.json` の `userInterfaceStyle` は `automatic`**（Android は `expo-system-ui` が必要）。`light` に固定すると `useColorScheme()` が常に light を返し、テーマ「システム」が OS のダークモードに追従しない。ステータスバーの文字色は `AppearanceProvider` がテーマに合わせる
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
 
+## 他アプリからの共有の受け取り（Android のみ）
+
+Android の共有メニューから Cairn へ画像・書類・URL・テキストを送る。ライブラリは `expo-sharing` の受け取り機能（SDK 55 では experimental）で、判定と受信箱は `lib/share-receive.ts`、ネイティブとの接続は `hooks/use-share-receive.ts`、画面は `app/(app)/share/index.tsx`。
+
+- **iOS は入れていない**。Share Extension から本体を開く手段は responder chain 経由の `UIApplication.open` しかなく、Apple はサポートしておらず（Expo の docs も非公式で将来壊れうると明記）、App Review Guideline 2.5.1 に触れるリスクがある。ストア版の審査を危険にさらすより Android だけで出すと判断した。plugin は `ios.enabled: false` なので、拡張ターゲット・App Group・`appExtensions` は生成されず、Apple Developer 側の作業も要らない。iOS では `+native-intent` が受け取り画面へ向けず、画面への導線もない
+- **`expo-share-intent` は採用しなかった**。SDK 55 対応の最終版（6.1.1）に path traversal の修正がなく（修正は SDK 57 向けの 8.0.1 以降）、共有のたびに該当処理が走る
+- **Intent は `app.config.ts` の `android.intentFilters` に書く**。plugin の filter は `MainActivity` にしか付かず、外観連動の別アイコン中は共有先に出ない。`android.intentFilters` は `expo-alternate-app-icons` が全 alias へ複製する。plugin の MIME を空にしているので `MainActivity` にデータなしの空の filter が残るが、MIME 付きの共有には一致しない。plugin を有効にしているのは `share_into_scheme`（共有時に開く URL の scheme）を生成するため
+- **`*/*` で受け、形式と大きさはアプリで判定する**（`shareRejectReason`）。絞ると画像と PDF を混ぜた複数共有が候補に出ない。許可外・50 MB 超・読めないファイル・添付の上限（10 件）を超えた分は、受け取り画面に理由を表示して送らない。形式と上限は `apps/web/src/lib/attachments.ts` に揃え、テストで一致を確認する。プランごとの上限はサーバーが判定する
+- **遷移**: 共有は `<scheme>://expo-sharing` で開き、`app/+native-intent.ts` が `/share` へ向ける。OAuth のコールバックや開発ビルドの URL は素通しする
+- **受信箱**: Intent はメモリにしかなくプロセス終了で消えるので、受け取ったらファイルを `documentDirectory/share-inbox` へ移し、内容を AsyncStorage（`cairn:share-inbox:v1`）に保存する。残すのは最後の 1 件で、新しい共有は未送信の前の共有を置き換える。送信後・取り消し・サインアウト・別ユーザーへの切り替えで消す。ログイン前に受けた共有はログイン後に、送らずに終了した共有は次の起動で画面が開く
+- **ファイルの解決は共有がファイルのときだけ**。`getResolvedSharedPayloadsAsync` は URL も取得しに行くので、`useIncomingShare` は使わない
+- **`patches/expo-sharing@55.0.24.patch`**: 共有元が決める表示名でキャッシュ外へ書き込めないよう、basename 化・`""` `.` `..` の拒否・`canonicalPath` の確認を入れた。同名ファイルが上書きし合わないようファイルごとに別ディレクトリへコピーし、コピーの失敗を握りつぶさず JS へ返す。`EXTRA_TEXT` のない `text/plain`（.txt ファイルの共有）もファイルとして読む
+- **送信**: 添付は `useAttachmentUpload`、本文はオフラインキューの既存経路。ローカル添付の後送は未対応なので、圏外や失敗ではキューへ入れず画面にエラーを出す。ファイルは受信箱に残り、送信を押し直すと成功済みを除いて再開する。本文だけならキューが圏外でも預かる
+- **宛先の並び**: 一覧 API は最終投稿日時を返さないため、端末に保存した直近の共有先（ユーザーごとに 10 件）、未読のある宛先の順に出す。アクティブなワークスペースのチャットだけが対象
+
 ## ジェスチャーとハプティクス
 
 - **ジェスチャーは Gesture Handler、アニメーションは Reanimated。`PanResponder` を新規に使わない**。ルートに `GestureHandlerRootView` を置き、`Modal` の中にも置く（Android の `Modal` は別のウィンドウなのでルートの分が届かない）
@@ -90,7 +105,7 @@ iOS の Home Screen Quick Actions / Android の App Shortcuts に「タスクを
 
 - **端末キャッシュ基盤は `expo-sqlite`、回線復帰検知は `expo-network`**。SQLite は WAL / foreign keys を初期化し、メッセージキャッシュ・全チャンネル検索は schema migration で追加する
 - **本文・返信の送信は必ずオフラインキューを経由する**。初回 POST より前にユーザー別 AsyncStorage へ保存し、保存完了後に即時送信、失敗時は8秒間隔・前面復帰時に自動再送する。`expo-network` が明示的に圏外なら POST を抑止し、復帰イベントで即時再送する
-- クライアント生成 UUID を `messages.id` として API へ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応
+- クライアント生成 UUID を `messages.id` として API へ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応（共有の受け取りも同じ）
 
 ## 認証
 

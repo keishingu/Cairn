@@ -1,0 +1,85 @@
+diff --git a/android/src/main/java/expo/modules/sharing/dataParsers/ResolvingShareIntentDataParser.kt b/android/src/main/java/expo/modules/sharing/dataParsers/ResolvingShareIntentDataParser.kt
+index 5f4d9423acc2999c1f1209181c95c37138155b5d..24e4c1c01e0f1954be06d3866f42cf4a03122794 100644
+--- a/android/src/main/java/expo/modules/sharing/dataParsers/ResolvingShareIntentDataParser.kt
++++ b/android/src/main/java/expo/modules/sharing/dataParsers/ResolvingShareIntentDataParser.kt
+@@ -9,6 +9,7 @@ import java.io.File
+ import java.io.FileOutputStream
+ import java.net.HttpURLConnection
+ import java.net.URL
++import java.util.UUID
+ import kotlin.text.indexOf
+ import kotlin.text.substring
+ 
+@@ -25,7 +26,8 @@ class ResolvingShareIntentDataParser {
+     }
+ 
+     private fun handleSendAction(context: Context, intent: Intent, type: String): List<ResolvedSharePayload> {
+-      return if (type == "text/plain") {
++      // 共有元によっては text/plain のファイルを EXTRA_TEXT なしの EXTRA_STREAM で渡す
++      return if (type == "text/plain" && intent.getStringExtra(Intent.EXTRA_TEXT) != null) {
+         extractTextPayload(intent)
+       } else {
+         val uri = intent.getParcelableExtraCompat<Uri>(Intent.EXTRA_STREAM)
+@@ -62,16 +64,12 @@ class ResolvingShareIntentDataParser {
+       val type = ShareType.fromMimeType(specificMimeType)
+ 
+       // Copy to cache dir to ensure access
+-      val file = File(context.cacheDir, fileName)
+-      try {
+-        contentResolver.openInputStream(uri)?.use { input ->
+-          FileOutputStream(file).use { output ->
+-            input.copyTo(output)
+-          }
++      val file = incomingCacheFile(context.cacheDir, fileName)
++      contentResolver.openInputStream(uri)?.use { input ->
++        FileOutputStream(file).use { output ->
++          input.copyTo(output)
+         }
+-      } catch (e: Exception) {
+-        e.printStackTrace()
+-      }
++      } ?: throw IllegalStateException("Could not open the shared content: $uri")
+ 
+       return ResolvedSharePayload().apply {
+         value = uri.toString()
+@@ -85,6 +83,24 @@ class ResolvingShareIntentDataParser {
+       }
+     }
+ 
++    // The display name comes from the sharing app, so it must not choose where the copy is written.
++    // Each file gets its own directory so that same-named files in one share do not overwrite each other.
++    private fun incomingCacheFile(cacheDir: File, displayName: String): File {
++      val name = File(displayName).name
++      if (name.isEmpty() || name == "." || name == "..") {
++        throw IllegalArgumentException("Invalid shared file name: $displayName")
++      }
++      val directory = File(File(cacheDir, "expo-sharing"), UUID.randomUUID().toString())
++      val file = File(directory, name)
++      if (!file.canonicalPath.startsWith(cacheDir.canonicalPath + File.separator)) {
++        throw IllegalArgumentException("Shared file escapes the cache directory: $displayName")
++      }
++      if (!directory.mkdirs()) {
++        throw IllegalStateException("Could not create a directory for the shared file")
++      }
++      return file
++    }
++
+     private fun getFileName(resolver: ContentResolver, uri: Uri): String? {
+       val cursor = resolver.query(uri, null, null, null, null)
+       val name = cursor?.use { cursor ->
+diff --git a/android/src/main/java/expo/modules/sharing/dataParsers/SimpleShareIntentDataParser.kt b/android/src/main/java/expo/modules/sharing/dataParsers/SimpleShareIntentDataParser.kt
+index 8dd50e8f04022d183884a57e4d61a7e1711b9e49..924c393d7855637f12e6a0a9678a00e019e00bf8 100644
+--- a/android/src/main/java/expo/modules/sharing/dataParsers/SimpleShareIntentDataParser.kt
++++ b/android/src/main/java/expo/modules/sharing/dataParsers/SimpleShareIntentDataParser.kt
+@@ -17,8 +17,9 @@ internal class SimpleShareIntentDataParser {
+     }
+ 
+     private fun handleSendAction(context: Context, intent: Intent, type: String): List<SharePayload> {
+-      return if (type == "text/plain") {
+-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return emptyList()
++      val text = intent.getStringExtra(Intent.EXTRA_TEXT)
++      // 共有元によっては text/plain のファイルを EXTRA_TEXT なしの EXTRA_STREAM で渡す
++      return if (type == "text/plain" && text != null) {
+         val isUrl = android.util.Patterns.WEB_URL.matcher(text).matches()
+ 
+         listOf(

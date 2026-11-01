@@ -1,3 +1,17 @@
+// 添付できる書類の形式（ピッカーの絞り込みと、共有の受け取りの判定で使う）
+export const ALLOWED_DOCUMENT_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/csv',
+  'text/plain',
+  'text/markdown',
+]
+
 export function isImageMime(mimeType: string | null | undefined): boolean {
   return typeof mimeType === 'string' && mimeType.startsWith('image/')
 }
