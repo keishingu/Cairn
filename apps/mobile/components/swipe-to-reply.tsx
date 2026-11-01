@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -21,7 +21,7 @@ import type { ThemePalette } from '../lib/theme'
 
 const playThresholdHaptic = haptics.swipeReplyThreshold
 
-// メッセージを右へ引いて離すと返信を始める。閾値に届いた時点で振動し、離すとスプリングで戻る
+// メッセージを左へ引いて離すと返信を始める。閾値に届いた時点で振動し、離すとスプリングで戻る
 export function SwipeToReply({
   enabled,
   palette,
@@ -32,6 +32,7 @@ export function SwipeToReply({
   palette: ThemePalette
   onReply: () => void
 }>) {
+  const { width: screenWidth } = useWindowDimensions()
   const offset = useSharedValue(0)
   const reached = useSharedValue(false)
   const onReplyRef = React.useRef(onReply)
@@ -42,13 +43,13 @@ export function SwipeToReply({
     () =>
       Gesture.Pan()
         .enabled(enabled)
-        .activeOffsetX(SWIPE_REPLY_ACTIVE_OFFSET)
-        .failOffsetX(-SWIPE_REPLY_ACTIVE_OFFSET)
+        .activeOffsetX(-SWIPE_REPLY_ACTIVE_OFFSET)
+        .failOffsetX(SWIPE_REPLY_ACTIVE_OFFSET)
         .failOffsetY([-SWIPE_REPLY_ACTIVE_OFFSET, SWIPE_REPLY_ACTIVE_OFFSET])
         .onTouchesDown((event, state) => {
           'worklet'
           const touch = event.allTouches[0]
-          if (event.numberOfTouches !== 1 || !touch || !isSwipeReplyStart(touch.absoluteX)) state.fail()
+          if (event.numberOfTouches !== 1 || !touch || !isSwipeReplyStart(touch.absoluteX, screenWidth)) state.fail()
         })
         .onUpdate((event) => {
           'worklet'
@@ -66,12 +67,12 @@ export function SwipeToReply({
           reached.value = false
           offset.value = withSpring(0)
         }),
-    [enabled, offset, reached, reply],
+    [enabled, offset, reached, reply, screenWidth],
   )
 
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: offset.value }] }))
   const iconStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(offset.value, [0, SWIPE_REPLY_THRESHOLD], [0, 1]),
+    opacity: interpolate(-offset.value, [0, SWIPE_REPLY_THRESHOLD], [0, 1]),
   }))
 
   return (
@@ -92,5 +93,5 @@ export function SwipeToReply({
 }
 
 const styles = StyleSheet.create({
-  icon: { position: 'absolute', top: 0, bottom: 0, left: 8, justifyContent: 'center' },
+  icon: { position: 'absolute', top: 0, bottom: 0, right: 8, justifyContent: 'center' },
 })

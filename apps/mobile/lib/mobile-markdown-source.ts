@@ -206,6 +206,25 @@ export type MarkdownSegment =
   | { type: 'markdown'; content: string }
   | { type: 'mermaid'; definition: string }
 
+function containsHorizontalScrollBlock(node: Parent, isRoot: boolean): boolean {
+  return node.children.some((child) => {
+    if (child.type === 'table') return true
+    if (child.type === 'code') return !(isRoot && child.lang?.toLowerCase() === 'mermaid')
+    return 'children' in child && containsHorizontalScrollBlock(child, false)
+  })
+}
+
+// 表とコードブロックはネイティブの横スクロールになる。最上位の mermaid は図のカードになるので含めない。
+// 一覧の行ごとに呼ばれるため、表・コードの記号が無い本文はパースしない（インデントのコードは引用やリストの中にもあるので、行頭に限らず見る）
+export function hasHorizontalScrollBlock(content: string): boolean {
+  if (!/[|`~\t]| {4}/.test(content)) return false
+  const tree: Root = fromMarkdown(content, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  })
+  return containsHorizontalScrollBlock(tree, true)
+}
+
 // 本文の最上位にある ```mermaid のコードブロックを図として分けて扱う。
 // 図はネイティブの Markdown 描画で表示できないため、タップで全画面の図を開く部品に置き換える。
 // 分割した本文どうしで参照リンクが切れないよう、参照定義は各本文の末尾にも付ける
