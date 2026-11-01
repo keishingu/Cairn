@@ -62,7 +62,23 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - **アイコン・スプラッシュ・未ログイン画面の配色は環境で分ける**（`development` / `preview` は白＋青、`production` は紺＋緑）。`app.config.ts` がビルド環境から既定アイコン（`assets/app-icons/`）とスプラッシュを選び、ログイン・サインアップ画面は `lib/auth-palette.ts` の同じ配色を使う。画像は `node scripts/generate-icons.mjs` で再生成する
 - **ログイン後のホーム画面アイコンは外観設定（テーマ・アクセント）に連動する**（`expo-alternate-app-icons`、14 種をネイティブに同梱）。初期値（システム＋エメラルド）は未設定と区別できないため環境別の既定アイコンのまま。テーマが「システム」なら OS のライト／ダークに合わせる。iOS は前面にいる間に切り替え、そのたびに OS のアラートが出る。Android は使用中に起動口を切り替えるとタスクが閉じることがあるため、バックグラウンドへ移るときに反映する。別アイコン中は `MainActivity` が無効になるので、OAuth のリダイレクト用 scheme を `android.intentFilters` で activity-alias にも付けている
 - **`app.json` の `userInterfaceStyle` は `automatic`**（Android は `expo-system-ui` が必要）。`light` に固定すると `useColorScheme()` が常に light を返し、テーマ「システム」が OS のダークモードに追従しない。ステータスバーの文字色は `AppearanceProvider` がテーマに合わせる
+- **Android の自動バックアップは無効（`android.allowBackup: false`）**。チャット本文を含む端末キャッシュ（SQLite）と共有の受信箱が平文のまま Google のバックアップへ載らないようにするため。端末を移行してもキャッシュと未送信の受信箱は引き継がれず、サインインからやり直す
 - App Store / TestFlight は `pnpm build:production:ios` / `pnpm submit:ios:latest` / `pnpm release:testflight:ios`。手順は [`app-store-submission.md`](./app-store-submission.md)
+
+## 他アプリからの共有の受け取り（Android のみ）
+
+Android の共有メニューから Cairn へ画像・書類・URL・テキストを送る。ライブラリは `expo-sharing` の受け取り機能（SDK 55 では experimental）で、判定と受信箱は `lib/share-receive.ts`、ネイティブとの接続は `hooks/use-share-receive.ts`、画面は `app/(app)/share/index.tsx`。
+
+- **iOS は入れていない**。Share Extension から本体を開く手段は responder chain 経由の `UIApplication.open` しかなく、Apple はサポートしておらず（Expo の docs も非公式で将来壊れうると明記）、App Review Guideline 2.5.1 に触れるリスクがある。ストア版の審査を危険にさらすより Android だけで出すと判断した。plugin は `ios.enabled: false` なので、拡張ターゲット・App Group・`appExtensions` は生成されず、Apple Developer 側の作業も要らない。iOS では `+native-intent` が受け取り画面へ向けず、画面への導線もない
+- **`expo-share-intent` は採用しなかった**。SDK 55 対応の最終版（6.1.1）に path traversal の修正がなく（修正は SDK 57 向けの 8.0.1 以降）、共有のたびに該当処理が走る
+- **Intent は `app.config.ts` の `android.intentFilters` に書く**。plugin の filter は `MainActivity` にしか付かず、外観連動の別アイコン中は共有先に出ない。`android.intentFilters` は `expo-alternate-app-icons` が全 alias へ複製する。plugin の MIME を空にしているので `MainActivity` にデータなしの空の filter が残るが、MIME 付きの共有には一致しない。plugin を有効にしているのは `share_into_scheme`（共有時に開く URL の scheme）を生成するため
+- **`*/*` で受け、形式と大きさはアプリで判定する**（`shareRejectReason`）。絞ると画像と PDF を混ぜた複数共有が候補に出ない。許可外・50 MB 超・読めないファイル・添付の上限（10 件）を超えた分は、受け取り画面に理由を表示して送らない。形式と上限は `apps/web/src/lib/attachments.ts` に揃え、テストで一致を確認する。プランごとの上限はサーバーが判定する
+- **遷移**: 共有は `<scheme>://expo-sharing` で開き、`app/+native-intent.ts` が `/share` へ向ける。OAuth のコールバックや開発ビルドの URL は素通しする
+- **受信箱**: Intent はメモリにしかなくプロセス終了で消えるので、受け取ったらファイルを `documentDirectory/share-inbox` へ移し、内容を AsyncStorage（`cairn:share-inbox:v1`）に保存する。残すのは最後の 1 件で、新しい共有は未送信の前の共有を置き換える。送信後・取り消し・サインアウト・別ユーザーへの切り替えで消す。ログイン前に受けた共有はログイン後に、送らずに終了した共有は次の起動で画面が開く
+- **ファイルの解決は共有がファイルのときだけ**。`getResolvedSharedPayloadsAsync` は URL も取得しに行くので、`useIncomingShare` は使わない
+- **`patches/expo-sharing@55.0.24.patch`**: 共有元が決める表示名でキャッシュ外へ書き込めないよう、basename 化・`""` `.` `..` の拒否・`canonicalPath` の確認を入れた。同名ファイルが上書きし合わないようファイルごとに別ディレクトリへコピーし、コピーの失敗を握りつぶさず JS へ返す。`EXTRA_TEXT` のない `text/plain`（.txt ファイルの共有）もファイルとして読む
+- **送信**: 添付は `useAttachmentUpload`、本文はオフラインキューの既存経路。ローカル添付の後送は未対応なので、圏外や失敗ではキューへ入れず画面にエラーを出す。ファイルは受信箱に残り、送信を押し直すと成功済みを除いて再開する。本文だけならキューが圏外でも預かる
+- **宛先の並び**: 一覧 API は最終投稿日時を返さないため、端末に保存した直近の共有先（ユーザーごとに 10 件）、未読のある宛先の順に出す。アクティブなワークスペースのチャットだけが対象
 
 ## ジェスチャーとハプティクス
 
@@ -71,6 +87,21 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - `react-native-worklets` の Babel プラグインは `babel-preset-expo` が自動で入れるため、`babel.config.js` は置かない
 - **メッセージを右へスワイプすると返信を始める**（`components/swipe-to-reply.tsx`）。56pt で軽く振動し、離すとスプリングで戻る。縦に動いたら一覧のスクロールに譲り、画面左端（24pt）から始まる指は iOS の標準のスワイプ戻りに譲る。閾値と条件は `lib/swipe-reply.ts`。長押しメニューの「返信」とスワイプは同じ `canReplyToMessage` で決め、本文を隠しているブロック中のメッセージだけは長押しメニューからの返信に限る。削除済みのメッセージは API が返さない。Web の `/chats` はホバーの「返信」ボタンのままで、変更しない
 - **ハプティクスは `lib/haptics.ts` の用途別の関数から鳴らす**（`expo-haptics` を画面から直接呼ばない）。長押しメニューの表示・スワイプ返信の閾値は軽い衝撃、リアクション追加の成功・プルリフレッシュの開始は選択、送信完了は成功、送信失敗はエラー。タブ切替では鳴らさない。送信はオフラインキューの実際の完了で鳴らし、自動で再送する通信障害では鳴らさない。まとめて再送したときも1回の処理につき1度だけ。Web とテストでは何もせず、再生の失敗で画面を止めない（ログだけ残す）
+
+## ホーム画面のクイックアクション
+
+iOS の Home Screen Quick Actions / Android の App Shortcuts に「タスクを作成」「AI に聞く」「DM を送る」を出す（`expo-quick-actions`、`lib/quick-actions.ts` / `hooks/use-quick-actions.ts`）。
+
+- **項目は動的登録（`setItems`）だけで作り、静的定義（iOS の `UIApplicationShortcutItems`、Android の `shortcuts.xml`）は使わない**。両 OS とも静的項目は動的項目で置き換えられず並んで出るため、`profiles.locale` に合わせた差し替えと両立しない。代わりに i18n カタログの文言を使え、`app.config.ts` に文言を持たずに済む。インストール後に一度も起動していない間は項目が出ない。未ログインでも端末の言語で登録し、サインアウトしても消さない
+- ID だけを OS に渡し、`cairn://` URL を使わないので 3 バリアントの scheme の違いに影響されない
+- **Android のショートカットは有効な起動口を指す必要がある**。外観連動の別アイコン中は `MainActivity` が無効で、`expo-quick-actions` の既定（`currentActivity` のクラス＝常に `MainActivity`）の Intent では起動できない。`patches/expo-quick-actions@6.0.2.patch` で宛先を `getLaunchIntentForPackage` の結果（いま有効な alias を含む起動口）に変えている。ライブラリを上げるときはパッチの要否を確認する
+- **固定の非ランチャー alias を宛先にしない**。`expo-alternate-app-icons` は起動に使われた activity の名前から現在のアイコンを判定し、切り替え時にその activity を無効化するため、別の入口から起動するとアイコンの判定が壊れる
+- 動的ショートカットは登録時点の起動口に結び付き、切り替えで無効になる（OS の仕様）。アイコンの切り替え成功時（`use-app-icon-sync.ts`）と Android の前面復帰時に登録し直す。バックグラウンドでの登録に失敗しても前面復帰で戻る
+- 押された操作は `use-quick-actions.ts` が預かり、`(app)` レイアウトがログイン後に `followNotification` の経路で開く（未ログインならログインとオンボーディングの後に再開する）。冷起動の `initial` はプロセス中ずっと同じ値を返すので 1 回だけ読む
+- タスク作成は `/(app)/tasks?new=1&open=<nonce>` → Web `/tasks?new=1` で作成モーダルを開く
+- **`new=1` / `focus=1` は一度きりの指示で、Web が `open` を消費する**（`apps/web/src/lib/one-shot-request.ts`）。ネイティブで params を消すと WebView の path が変わって再読み込みされ、開いたモーダルや会話が閉じるため、消さない。URL はタブに残って WebView を作り直すと再び読み込まれるので、実行済みの `open` を localStorage に記録して同じ値では実行しない。押すたびに `open` が変わるので、もう一度押せば開き直す。`taskId` は対象を開くだけの指示で従来どおり
+- AI は `/(app)/ai?focus=1&open=<nonce>` → Web `/ai?focus=1`。入力欄は会話の中にしかないため、直近の会話が空ならそれを使い回し、空でなければ新しい会話を始めて入力欄へフォーカスする（`ai-focus-step.ts`）。iOS は `keyboardDisplayRequiresUserAction` を外してキーボードを出す。Android の WebView は操作なしの `focus()` でキーボードを出さないことがあり、その場合は入力欄をタップする
+- DM は `/(app)/chats?dm=1&open=<nonce>` でチャット一覧の相手選択シートを開く（`POST /api/workspaces/dms` の既存の流れ）。`FEATURE_FLAGS.dm` が無効なら項目を登録しない。ブロックなどの最終判定はサーバー
 
 ## オフライン・送信
 
@@ -89,7 +120,7 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
   - 起動時のサインアウト: セッションが無いと確定したら（`SIGNED_OUT` か、通信失敗でない `getSession` の null）`cached_*` の全行を消す。前回の起動より後に失効した場合に行を残さないため。通信できず更新に失敗しただけのときと、圏外の起動で保存済みセッションを信用したときは消さない
 - **OTA を戻しても起動できるよう、schema の版は `PRAGMA user_version` で持つ**。ストア版の内蔵バンドルと既存の OTA は `offline_schema_migrations` の最大値が 1 を超えると例外を投げ、`SQLiteProvider` が描画中に再送出するため、この表へ 2 を書くと古いバンドルへ戻した端末が起動できなくなる。この表は 1 のまま増やさない（古いバンドルは `cached_*` の表を無視して動く）。アプリより新しい `user_version` はキャッシュを捨てて作り直す。`SQLiteProvider` は開けないと例外か空描画になるため使わず、`openDatabaseAsync` で起動と独立に開き、失敗してもキャッシュなしとして動かす
 - **本文・返信の送信は必ずオフラインキューを経由する**。初回 POST より前にユーザー別 AsyncStorage へ保存し、保存完了後に即時送信、失敗時は8秒間隔・前面復帰時に自動再送する。`expo-network` が明示的に圏外なら POST を抑止し、復帰イベントで即時再送する
-- クライアント生成 UUID を `messages.id` として API へ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応
+- クライアント生成 UUID を `messages.id` として API へ渡して再送を冪等化し、通信障害時は後続送信を止めて順序を維持する。完全オフラインで選択したローカル添付ファイルの後送は未対応（共有の受け取りも同じ）
 
 ## 認証
 

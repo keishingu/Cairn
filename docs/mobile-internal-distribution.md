@@ -72,7 +72,7 @@ pnpm build:internal:ios
 
 ## ネイティブ runtime と EAS Update
 
-現在の runtime version は `1.9.0`（Expo SDK 55 / React Native 0.83 + `react-native-pdf` 7.0.5 + `react-native-enriched-markdown` + `expo-clipboard` + `react-native-gesture-handler` / `react-native-reanimated` / `react-native-worklets` / `expo-haptics`）。Mobile Preview はモバイル関連 PR ごとに `preview` channel へ自動配信するため、ネイティブ依存を足す PR は積み重ねた PR であっても個別に runtime version を上げる。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
+現在の runtime version は `1.11.0`（Expo SDK 55 / React Native 0.83 + `react-native-pdf` 7.0.5 + `react-native-enriched-markdown` + `expo-clipboard` + `react-native-gesture-handler` / `react-native-reanimated` / `react-native-worklets` / `expo-haptics` + `expo-quick-actions` 6.0.2 + Android の共有の受け取り（`expo-sharing` の plugin、`patches/expo-sharing@55.0.24.patch`）。Mobile Preview はモバイル関連 PR ごとに `preview` channel へ自動配信するため、ネイティブ依存を足す PR は積み重ねた PR であっても個別に runtime version を上げる。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
 
 1. `app.json` の `runtimeVersion` を上げる
 2. Development Build / Internal Distribution build を作り直して端末へ再インストールする

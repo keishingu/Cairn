@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "com.oss_cairn",
+      "allowBackup": false,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW"
@@ -45,6 +46,25 @@
           "icon": "./assets/notification-icon.png",
           "color": "#3B82F6"
         }
+      ],
+      [
+        "expo-quick-actions",
+        {
+          "androidIcons": {
+            "shortcut_task": {
+              "foregroundImage": "./assets/quick-actions/task.png",
+              "backgroundColor": "#FFFFFF"
+            },
+            "shortcut_ai": {
+              "foregroundImage": "./assets/quick-actions/ai.png",
+              "backgroundColor": "#FFFFFF"
+            },
+            "shortcut_dm": {
+              "foregroundImage": "./assets/quick-actions/dm.png",
+              "backgroundColor": "#FFFFFF"
+            }
+          }
+        }
       ]
     ],
     "extra": {
@@ -54,7 +74,7 @@
       }
     },
     "owner": "keishingu",
-    "runtimeVersion": "1.9.0",
+    "runtimeVersion": "1.11.0",
     "updates": {
       "url": "https://u.expo.dev/46195650-8dc8-4c73-9b32-c1b5134c0326"
     }

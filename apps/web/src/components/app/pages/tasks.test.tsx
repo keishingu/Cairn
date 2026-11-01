@@ -31,7 +31,13 @@ vi.mock('../task-detail-panel', () => ({
 vi.mock('../task-delete-dialog', () => ({
   TaskDeleteDialog: ({ task }: { task: { id: string } | null }) => (task ? <div data-testid="task-delete-dialog" data-task-id={task.id} /> : null),
 }))
-vi.mock('./create-task-modal', () => ({ CreateTaskModal: () => null }))
+vi.mock('./create-task-modal', () => ({
+  CreateTaskModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="create-task-modal">
+      <button type="button" onClick={onClose}>close-create</button>
+    </div>
+  ),
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 function makeTask(overrides: Partial<TaskDto> = {}): TaskDto {
@@ -160,6 +166,48 @@ describe('PageTasks のタスク詳細パネル導線', () => {
     renderPage()
 
     expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'task-2')
+  })
+
+  describe('?new=1 の作成モーダル', () => {
+    function requestCreate(open: string) {
+      mockSearchParamsGet.mockImplementation((key: string) => ({ new: '1', open })[key] ?? null)
+      mockSearchParamsToString.mockReturnValue(`new=1&open=${open}`)
+    }
+    const page = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <PageTasks />
+      </QueryClientProvider>
+    )
+
+    it('付けて開くと作成モーダルを自動で開く', () => {
+      requestCreate('a')
+
+      renderPage()
+
+      expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
+    })
+
+    it('閉じた後は open が変わるまで開き直さない', async () => {
+      requestCreate('a')
+      const view = renderPage()
+
+      await userEvent.click(screen.getByText('close-create'))
+      view.rerender(page())
+      expect(screen.queryByTestId('create-task-modal')).not.toBeInTheDocument()
+
+      requestCreate('b')
+      view.rerender(page())
+      expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
+    })
+
+    it('WebView の再読み込みで同じ open が来ても開き直さない', () => {
+      requestCreate('a')
+      renderPage().unmount()
+
+      renderPage()
+
+      expect(screen.queryByTestId('create-task-modal')).not.toBeInTheDocument()
+    })
   })
 
   it('閉じた後に同じタスクを開き直す要求（open が変わる）で再び詳細パネルを開く', async () => {

@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useNavigation, useRouter } from 'expo-router'
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
@@ -38,6 +38,7 @@ import type { DmChannelDto, WorkspaceChannelDto } from '../../../hooks/use-chat-
 import type { ThemePalette } from '../../../lib/theme'
 import { formatChannelPeriod } from '../../../lib/channel-period'
 import { haptics } from '../../../lib/haptics'
+import { firstParam } from '../../../lib/quick-actions'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { useNotificationPanel } from '../../../components/notification-panel-provider'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
@@ -293,6 +294,18 @@ export default function ChatsScreen() {
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
   const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
   const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
+
+  // ホーム画面のクイックアクション「DM を送る」。開いたら params を消し、戻ってきたときに開き直さない
+  const { dm: dmRequest, open: dmRequestKey } = useLocalSearchParams<{
+    dm?: string | string[]
+    open?: string | string[]
+  }>()
+  React.useEffect(() => {
+    if (firstParam(dmRequest) !== '1' || !FEATURE_FLAGS.dm) return
+    setCreateError(null)
+    setCreateMode('dm')
+    router.setParams({ dm: undefined, open: undefined })
+  }, [dmRequest, dmRequestKey, router])
 
   React.useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {

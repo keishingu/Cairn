@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveAppAssets, resolveAppVariant } from '../app.config'
+import appConfig, { resolveAppAssets, resolveAppVariant } from '../app.config'
 
 describe('モバイルアプリの配布環境別設定', () => {
   it('未指定時は本番アプリを上書きしない開発版になる', () => {
@@ -40,5 +40,28 @@ describe('モバイルアプリの配布環境別設定', () => {
       adaptiveIcon: { foregroundImage: './assets/app-icons/emerald-dark-android.png', backgroundColor: '#0B1622' },
       splash: { image: './assets/app-icons/splash-emerald.png', backgroundColor: '#0B1622' },
     })
+  })
+
+  it('別アイコンの alias でも受けられるよう、共有の Intent を android.intentFilters に宣言する', () => {
+    const config = appConfig({ config: {} } as Parameters<typeof appConfig>[0])
+
+    expect(config.android?.intentFilters).toEqual(
+      expect.arrayContaining([
+        { action: 'SEND', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
+        { action: 'SEND_MULTIPLE', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
+      ]),
+    )
+  })
+
+  it('iOS の共有拡張を生成しない', () => {
+    const config = appConfig({ config: {} } as Parameters<typeof appConfig>[0])
+
+    expect(config.plugins).toContainEqual([
+      'expo-sharing',
+      {
+        ios: { enabled: false },
+        android: { enabled: true, singleShareMimeTypes: [], multipleShareMimeTypes: [] },
+      },
+    ])
   })
 })

@@ -11,6 +11,8 @@ import { OfflineMessageQueueProvider } from '../../components/offline-message-qu
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
 import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
+import { useQuickActionNavigation } from '../../hooks/use-quick-actions'
+import { useShareReceiveNavigation } from '../../hooks/use-share-receive'
 import { useAppBadgeSync } from '../../hooks/use-app-badge-sync'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
@@ -116,6 +118,9 @@ export default function AppLayout() {
     return () => sub.remove()
   }, [router])
 
+  useQuickActionNavigation()
+  useShareReceiveNavigation()
+
   return (
     <RealtimeProvider>
       <OfflineMessageQueueProvider>
@@ -133,6 +138,7 @@ export default function AppLayout() {
                 <Tabs.Screen name="ai/index" />
                 <Tabs.Screen name="projects/[id]" options={{ href: null }} />
                 <Tabs.Screen name="notifications/index" options={{ href: null }} />
+                <Tabs.Screen name="share/index" options={{ href: null }} />
                 <Tabs.Screen name="files/index" options={{ href: null }} />
                 <Tabs.Screen name="gallery/index" options={{ href: null }} />
                 <Tabs.Screen name="members/index" options={{ href: null }} />

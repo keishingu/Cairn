@@ -14,4 +14,7 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - 端末キャッシュ（`lib/offline-cache.ts`）はオフライン・取得失敗時の表示専用で、オンライン時の代替値にしない。React Query のデータへ混ぜない（既読化が古いデータで動く）
 - `offline_schema_migrations` の版は 1 から増やさない。既存バンドルが起動不能になるため、schema の版は `PRAGMA user_version` で持ち、DB の失敗で起動を止めない
 - ジェスチャーは Gesture Handler + Reanimated で書き、`PanResponder` を新規に使わない。`Modal` の中にも `GestureHandlerRootView` を置く（Android で反応しなくなる）
+- クイックアクションは動的登録（`setItems`）だけで作る。静的定義は動的項目と並んで重複する。Android の宛先は有効な起動口（`patches/expo-quick-actions@6.0.2.patch`）で、MainActivity に固定すると別アイコン中に起動できない
 - アプリだけの機能・導線を変えたときも、`/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）の更新が要るか確認する
+- Android の Intent を増やすときは `android.intentFilters` に書く。plugin が足す filter は `MainActivity` だけに付き、別アイコン中は受けられない
+- `getResolvedSharedPayloadsAsync` は共有がファイルのときだけ呼ぶ（URL をネイティブが取得しに行く）。`expo-sharing` を上げるときは `patches/` の path traversal 修正が upstream に入ったか確認する

@@ -102,6 +102,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           category: ['DEFAULT', 'BROWSABLE'],
           data: [{ scheme: variant.scheme }],
         },
+        // 他アプリからの共有も同じ理由で alias に要る（expo-sharing の plugin は MainActivity にしか付けない）。
+        // 形式で絞らず受け、許可外は受け取り画面でエラーを表示する（lib/share-receive.ts）
+        { action: 'SEND', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
+        { action: 'SEND_MULTIPLE', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
       ],
       // Android の Push 通知（FCM）に必要な google-services.json。Firebase の設定ファイルは
       // リポジトリへ置かず、EAS の各 Environment に file 型のシークレットとして登録して渡す。
@@ -117,6 +121,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         { image: assets.splash.image, imageWidth: 200, resizeMode: 'contain', backgroundColor: assets.splash.backgroundColor },
       ],
       ['expo-alternate-app-icons', ALTERNATE_APP_ICONS],
+      // Android の共有の受け取り。MIME は上の intentFilters に書くのでここでは空にし、plugin には scheme の受け渡しだけを任せる。
+      // iOS の共有拡張は入れない（理由は docs/mobile-app.md）
+      ['expo-sharing', { ios: { enabled: false }, android: { enabled: true, singleShareMimeTypes: [], multipleShareMimeTypes: [] } }],
     ],
   }
 }

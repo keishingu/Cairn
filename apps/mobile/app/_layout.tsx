@@ -13,6 +13,8 @@ import { shouldClearAppBadge } from '../lib/app-badge'
 import { queryClient } from '../lib/query-client'
 import { loadStoredSession, supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
+import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
+import { discardReceivedShare, useShareReceiveIntake } from '../hooks/use-share-receive'
 import { setAppBadge } from '../hooks/use-app-badge-sync'
 import { SessionContext } from '../lib/session-context'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
@@ -44,6 +46,8 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     const previousUserId = knownUserId.current
     if (previousUserId !== undefined && shouldClearAccountCache(event, previousUserId, nextUserId)) {
       queryClient.clear()
+      // 預かった共有も前のユーザーのもの。ログイン前に受け取った共有はこの境界を通らないので残る
+      discardReceivedShare()
       if (previousUserId) deleteOfflineCacheForUser(previousUserId)
     }
     if (event === 'SIGNED_OUT') deleteAllOfflineCache()
@@ -115,6 +119,18 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>
 }
 
+// 未ログインでも受け取れるよう、ログインの内外をまたぐルートに置く。useT を使うので LocaleProvider の中で動かす
+function QuickActionsHost(): null {
+  useQuickActionsRegistration()
+  return null
+}
+
+// 未ログインでも受け取って預かり、ログイン後に受け取り画面を開く
+function ShareReceiveHost(): null {
+  useShareReceiveIntake()
+  return null
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -122,6 +138,8 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthGuard>
             <LocaleProvider>
+              <QuickActionsHost />
+              <ShareReceiveHost />
               <Slot />
             </LocaleProvider>
           </AuthGuard>

@@ -4,25 +4,13 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import { File } from 'expo-file-system'
 import { apiFetch } from '../lib/api-fetch'
+import { ALLOWED_DOCUMENT_TYPES } from '../lib/attachment-file'
 import { AttachmentFinalizeError, finalizeAttachment } from '../lib/attachment-finalize'
 import { MAX_MESSAGE_ATTACHMENTS } from '@cairn/shared'
 import { remainingAttachmentSlots } from '../lib/attachment-limit'
 import { hasFailedUploads } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
 import { useT } from '../components/locale-provider'
-
-const ALLOWED_DOCUMENT_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/csv',
-  'text/plain',
-  'text/markdown',
-]
 
 export interface PendingUpload {
   id: string
@@ -34,7 +22,7 @@ export interface PendingUpload {
   retryFinalize?: (() => Promise<{ fileId: string }>) | undefined
 }
 
-type PickedFile = {
+export type PickedFile = {
   uri: string
   fileName: string
   mimeType: string
@@ -103,6 +91,7 @@ export function useAttachmentUpload(channelId: string) {
           fileSize: picked.fileSize,
         }, t('Could not register the upload'))
         patchUpload(id, { status: 'done', fileId: finalized.fileId })
+        return finalized.fileId
       } catch (error) {
         console.error('[useAttachmentUpload] アップロードに失敗:', error)
         patchUpload(id, {
@@ -110,6 +99,7 @@ export function useAttachmentUpload(channelId: string) {
           error: error instanceof Error ? error.message : t('Upload failed'),
           retryFinalize: error instanceof AttachmentFinalizeError ? error.retryFinalize : undefined,
         })
+        return null
       }
     },
     [channelId, patchUpload, t],
@@ -129,7 +119,9 @@ export function useAttachmentUpload(channelId: string) {
           status: 'uploading' as const,
         })),
       ])
-      for (const [i, picked] of pickedFiles.entries()) await uploadOne(picked, ids[i]!)
+      const fileIds: (string | null)[] = []
+      for (const [i, picked] of pickedFiles.entries()) fileIds.push(await uploadOne(picked, ids[i]!))
+      return fileIds
     },
     [channelId, uploadOne],
   )
@@ -223,6 +215,7 @@ export function useAttachmentUpload(channelId: string) {
 
   return {
     uploads,
+    uploadFiles,
     pickImage,
     pickDocument,
     removeUpload,
