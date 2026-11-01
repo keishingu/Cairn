@@ -22,6 +22,9 @@ export type CardAction =
  * カードの操作を送る。届いたら true、失敗したら false（選択肢の表示を元に戻すため）。
  * link は URL ボタンの押下の通知（Slack と同じく block_actions を送る）。リンクは開いた後なので、カードの書き換えを待たない
  */
+/** 送信中・書き換え待ちのボタン */
+type PendingAction = { blockId: string; actionId: string }
+
 type CardRun = (action: CardAction, options?: { link?: boolean }) => Promise<boolean>
 
 /** 操作が届いた後、アプリのカードの書き換えを待つ上限 */
@@ -45,12 +48,15 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
   const [busy, setBusy] = React.useState(false)
+  // 送信中・書き換え待ちの操作。押したボタンだけを「送信中」の見た目にし、押せたことがすぐ分かるようにする
+  const [pendingAction, setPendingAction] = React.useState<PendingAction | null>(null)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const stopWaiting = React.useCallback(() => {
     if (waitTimer.current) clearTimeout(waitTimer.current)
     waitTimer.current = null
     setBusy(false)
+    setPendingAction(null)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
   // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
@@ -80,6 +86,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
         }
       }
       setBusy(true)
+      setPendingAction({ blockId: action.blockId, actionId: action.actionId })
       setActionError(null)
       try {
         await onAction(action)
@@ -114,7 +121,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
       {card.blocks.map((block) => (
         // 送信中は同じカードの操作を止め、二重に押させない
         // URL ボタンの押下の通知は、ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため）
-        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} onLinkAction={run} />
+        <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} onLinkAction={run} pendingAction={pendingAction} />
       ))}
       {actionError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{actionError}</div>}
     </div>
@@ -122,7 +129,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
 })
 
 /** モーダルの中の入力欄以外のブロックも同じ見た目で描くため、外から使えるようにする */
-export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
+export function CardBlock({ block, mentionNames, onAction, onLinkAction, pendingAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined; pendingAction?: PendingAction | null | undefined }) {
   switch (block.type) {
     case 'header':
       return <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
@@ -137,13 +144,13 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { blo
               </div>
             )}
           </div>
-          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} /></div>}
+          {block.accessory && <div style={{ flexShrink: 0 }}><CardElement element={block.accessory} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} pendingAction={pendingAction} /></div>}
         </div>
       )
     case 'actions':
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} />)}
+          {block.elements.map((element, index) => <CardElement key={index} element={element} blockId={block.blockId} mentionNames={mentionNames} onAction={onAction} onLinkAction={onLinkAction} pendingAction={pendingAction} />)}
         </div>
       )
     case 'context':
@@ -170,10 +177,12 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction }: { blo
   }
 }
 
-function CardElement({ element, blockId, mentionNames, onAction, onLinkAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined }) {
+function CardElement({ element, blockId, mentionNames, onAction, onLinkAction, pendingAction }: { element: RenderElement; blockId: string; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined; pendingAction?: PendingAction | null | undefined }) {
   switch (element.type) {
     case 'button': {
-      const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : ''].filter(Boolean).join(' ')
+      // block_id はカード内で一意で、ブロック内の action_id も一意なので、2つで押したボタンが決まる
+      const pending = !element.url && pendingAction?.blockId === blockId && pendingAction.actionId === element.actionId
+      const className = ['btn', 'btn-sm', element.style === 'primary' ? 'btn-primary' : element.style === 'danger' ? 'btn-danger' : '', pending ? 'btn-pending' : ''].filter(Boolean).join(' ')
       // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
       const action = { type: 'button' as const, blockId, actionId: element.actionId }
       const notifyLink = () => { void (onLinkAction ?? onAction)?.(action, { link: true }) }
@@ -185,7 +194,8 @@ function CardElement({ element, blockId, mentionNames, onAction, onLinkAction }:
           {(request) => element.url && !element.confirm ? (
             <a className={className} href={element.url} target="_blank" rel="noopener noreferrer" onClick={notifyLink}>{element.text}</a>
           ) : (
-            <button type="button" className={className} disabled={!element.url && !onAction} onClick={request}>
+            <button type="button" className={className} disabled={!element.url && !onAction} aria-busy={pending || undefined} onClick={request}>
+              {pending && <span className="btn-spinner" aria-hidden="true" />}
               {element.text}
             </button>
           )}

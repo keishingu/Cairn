@@ -3,7 +3,7 @@
 
 import { inngest } from '@/lib/inngest/client'
 import { POLL_RENDER_EVENT } from './handler'
-import { renderPoll } from './polls'
+import { renderPollExclusively } from './polls'
 
 /**
  * アプリを取り外した（インストールを取り消した）ワークスペースの投票は、Bot トークンが取れず投稿も描き直しも必ず失敗する。
@@ -15,11 +15,18 @@ async function activeInstallationFilter() {
   return inArray(polls.installationId, db.select({ id: appInstallations.id }).from(appInstallations).where(isNull(appInstallations.revokedAt)))
 }
 
-// カードの描き直し。投票ごとに1本ずつ実行し、常に commit 済みの最新の集計から描く。chat.update の失敗は Inngest が再試行する
+// カードの描き直し（応答後のその場の描画で描けなかった分と、cron の拾い直し）。常に commit 済みの最新の集計から描き、
+// その場の描画と重ならないよう投票ごとのリースを取る。chat.update の失敗は Inngest が再試行する
 export const pollsCardRender = inngest.createFunction(
   { id: 'polls-card-render', concurrency: { key: 'event.data.pollId', limit: 1 } },
   { event: POLL_RENDER_EVENT },
-  async ({ event, step }) => step.run('render', () => renderPoll((event.data as { pollId: string }).pollId)),
+  async ({ event, step }) => {
+    const pollId = (event.data as { pollId: string }).pollId
+    const result = await step.run('render', () => renderPollExclusively(pollId))
+    // 票が入り続けて描き切れなかったら、続きを次の実行に回す
+    if (result === 'incomplete') await step.sendEvent('continue', { name: POLL_RENDER_EVENT, data: { pollId } })
+    return result
+  },
 )
 
 // commit 後にイベントを送る前に止まった・投稿の途中で失敗した投票を拾い直す（§7.3）。

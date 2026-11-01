@@ -40,6 +40,9 @@ export const polls = pgTable(
     clientMsgId: uuid('client_msg_id').notNull().defaultRandom(),
     version: integer('version').notNull().default(0),
     renderedVersion: integer('rendered_version').notNull().default(-1),
+    // カードを描いている処理のリース。応答後のその場の描画と Inngest の拾い直しが同時に描いて、古い集計が後勝ちしないよう投票ごとに1本にする
+    renderLeaseToken: uuid('render_lease_token'),
+    renderLeaseUntil: timestamp('render_lease_until', { withTimezone: true }),
     closesAt: timestamp('closes_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
