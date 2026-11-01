@@ -357,6 +357,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load milestones': '마일스톤을 불러오지 못했습니다',
   'Could not load milestones. Reload and try again.': '마일스톤을 불러오지 못했습니다. 잠시 후 다시 로드해 주세요.',
   'Could not load notifications': '알림을 불러오지 못했습니다',
+  'Offline · Last synced {time}': '오프라인 · 마지막 동기화 {time}',
   'Could not load nudges': '넛지를 불러오지 못했습니다',
   'Could not load OAuth connections': 'OAuth 연결을 불러오지 못했습니다',
   'Could not load older messages': '이전 메시지를 불러오지 못했습니다',
@@ -379,6 +380,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load the workspace': '워크스페이스를 불러오지 못했습니다',
   'Could not load the workspace list ({status})': '워크스페이스 목록을 불러오지 못했습니다 ({status})',
   'Could not load this page': '불러오지 못했습니다',
+  'This page is not available offline. Connect to the internet and try again.':
+    '이 화면은 오프라인에서 사용할 수 없습니다. 인터넷에 연결한 뒤 다시 시도해 주세요',
   'Could not load unsent messages from this device': '이 기기의 미전송 메시지를 불러오지 못했습니다',
   'Could not load workspace info': '워크스페이스 정보를 불러오지 못했습니다',
   'Could not load workspace info ({status})': '워크스페이스 정보를 불러오지 못했습니다 ({status})',

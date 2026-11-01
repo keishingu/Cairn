@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS, translate } from '@cairn/shared'
 import type { ChannelListItem, DmListItem, WorkspaceChannelListItem } from './channel-open-params'
 import { fetchApiJson } from './fetch-api-json'
+import { fetchWithOfflineCache } from './offline-cache-store'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
@@ -11,16 +12,28 @@ export const projectChannelsQueryKey = ['project-channels'] as const
 export const workspaceChannelsQueryKey = ['workspace-channels'] as const
 export const workspaceDmsQueryKey = ['workspace-dms'] as const
 
-export function fetchProjectChannels<T>(t: Translate = translateJa): Promise<T> {
-  return fetchApiJson<T>('/api/projects/channels', t('Could not load channels ({status})'))
+export function fetchProjectChannels<T extends unknown[]>(t: Translate = translateJa): Promise<T> {
+  return fetchWithOfflineCache(
+    { type: 'channel-list', kind: 'project' },
+    () => fetchApiJson<T>('/api/projects/channels', t('Could not load channels ({status})')),
+    (channels) => channels,
+  )
 }
 
-export function fetchWorkspaceChannels<T>(t: Translate = translateJa): Promise<T> {
-  return fetchApiJson<T>('/api/workspaces/channels', t('Could not load channels ({status})'))
+export function fetchWorkspaceChannels<T extends unknown[]>(t: Translate = translateJa): Promise<T> {
+  return fetchWithOfflineCache(
+    { type: 'channel-list', kind: 'workspace' },
+    () => fetchApiJson<T>('/api/workspaces/channels', t('Could not load channels ({status})')),
+    (channels) => channels,
+  )
 }
 
-export function fetchWorkspaceDms<T>(t: Translate = translateJa): Promise<T> {
-  return fetchApiJson<T>('/api/workspaces/dms', t('Could not load direct messages ({status})'))
+export function fetchWorkspaceDms<T extends unknown[]>(t: Translate = translateJa): Promise<T> {
+  return fetchWithOfflineCache(
+    { type: 'channel-list', kind: 'dm' },
+    () => fetchApiJson<T>('/api/workspaces/dms', t('Could not load direct messages ({status})')),
+    (dms) => dms,
+  )
 }
 
 export function invalidateChannelListQueries(
@@ -30,6 +43,19 @@ export function invalidateChannelListQueries(
     client.invalidateQueries({ queryKey: projectChannelsQueryKey }),
     client.invalidateQueries({ queryKey: workspaceChannelsQueryKey }),
     client.invalidateQueries({ queryKey: workspaceDmsQueryKey }),
+  ]).then(() => undefined)
+}
+
+/** 回線復帰・前面復帰で、圏外の間に取れなかった表示を取り直す */
+export function invalidateOfflineReadQueries(
+  client: Pick<QueryClient, 'invalidateQueries'>,
+): Promise<void> {
+  return Promise.all([
+    invalidateChannelListQueries(client),
+    client.invalidateQueries({ queryKey: ['messages'] }),
+    client.invalidateQueries({ queryKey: ['notifications'] }),
+    client.invalidateQueries({ queryKey: ['me'] }),
+    client.invalidateQueries({ queryKey: ['workspace'] }),
   ]).then(() => undefined)
 }
 

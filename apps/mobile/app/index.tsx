@@ -1,8 +1,11 @@
 import React from 'react'
 import { Redirect } from 'expo-router'
+import { getNetworkStateAsync } from 'expo-network'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSession } from '../lib/session-context'
 import { apiFetch } from '../lib/api-fetch'
+import { shouldAttemptNetworkRequest } from '../lib/network-state'
+import { hasOfflineCache } from '../lib/offline-cache-store'
 import { useT } from '../components/locale-provider'
 
 export default function Index() {
@@ -15,13 +18,39 @@ export default function Index() {
   React.useEffect(() => {
     if (!session) return
     setSetupFailed(false)
-    void apiFetch('/api/auth/setup', { method: 'POST', body: JSON.stringify({}) })
-      .then(async (res) => {
+    const userId = session.user.id
+    let cancelled = false
+
+    void (async () => {
+      // 端末キャッシュがあるユーザーは設定済みなので、通信できなければ確認せず一覧へ進む。
+      // キャッシュが無ければ確認の失敗を出す
+      const networkState = await getNetworkStateAsync().catch(() => ({}))
+      if (!shouldAttemptNetworkRequest(networkState) && (await hasOfflineCache(userId))) {
+        if (!cancelled) setNeedsWorkspace(false)
+        return
+      }
+      let res: Response
+      try {
+        res = await apiFetch('/api/auth/setup', { method: 'POST', body: JSON.stringify({}) })
+      } catch {
+        const cached = await hasOfflineCache(userId)
+        if (cancelled) return
+        if (cached) setNeedsWorkspace(false)
+        else setSetupFailed(true)
+        return
+      }
+      try {
         if (!res.ok) throw new Error('setup check failed')
-        return res.json() as Promise<{ needsWorkspace?: boolean }>
-      })
-      .then((body: { needsWorkspace?: boolean }) => setNeedsWorkspace(body.needsWorkspace === true))
-      .catch(() => setSetupFailed(true))
+        const body = (await res.json()) as { needsWorkspace?: boolean }
+        if (!cancelled) setNeedsWorkspace(body.needsWorkspace === true)
+      } catch {
+        if (!cancelled) setSetupFailed(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [retry, session])
 
   // AuthGuard が復元完了までルートを描画しないため通常ここには来ないが、念のため

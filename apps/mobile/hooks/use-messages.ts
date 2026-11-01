@@ -10,6 +10,7 @@ import type {
 import { apiFetch } from '../lib/api-fetch'
 import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { mergeChatMessages, nextMessagePageCursor } from '../lib/mobile-chat-state'
+import { fetchWithOfflineCache } from '../lib/offline-cache-store'
 import { useT } from '../components/locale-provider'
 
 export interface MessageDto {
@@ -112,7 +113,15 @@ export function useMessages(channelId: string | null) {
   const t = useT()
   return useInfiniteQuery({
     queryKey: ['messages', channelId],
-    queryFn: ({ pageParam }) => fetchMessagePage(channelId!, pageParam, t),
+    // 端末に残すのは直近の分だけなので、先頭ページの取得結果で書き換える
+    queryFn: ({ pageParam }) =>
+      pageParam === null
+        ? fetchWithOfflineCache(
+            { type: 'messages', channelId: channelId! },
+            () => fetchMessagePage(channelId!, null, t),
+            (page) => page.messages,
+          )
+        : fetchMessagePage(channelId!, pageParam, t),
     initialPageParam: null as string | null,
     getNextPageParam: nextMessagePageCursor,
     select: (data) => mergeChatMessages(...data.pages.map((page) => page.messages)),

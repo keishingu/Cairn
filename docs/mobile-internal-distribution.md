@@ -89,7 +89,7 @@ pnpm ios
 
 ## オフライン基盤
 
-- `expo-sqlite`: `cairn-offline.db` を起動時に開き、WAL と foreign keys を有効化する。現在は schema migration の土台までで、メッセージキャッシュと FTS 検索テーブルは次の機能 PR で追加する。FTS はネイティブ build で有効化済み
+- `expo-sqlite`: `cairn-offline.db` を起動時に開き、WAL と foreign keys を有効化する。チャンネル一覧・直近のメッセージ・通知のキャッシュを持ち、読み出しは圏外・取得失敗時だけ。schema の版は `PRAGMA user_version`（現在 2）で持ち、OTA を古いバンドルへ戻しても起動できるよう `offline_schema_migrations` は 1 のまま増やさない。設計は [`mobile-app.md`](./mobile-app.md#オフライン送信)。FTS 検索テーブルは未実装で、FTS はネイティブ build で有効化済み
 - `expo-network`: 明示的に圏外またはインターネット到達不可の間は、送信 outbox の無駄な POST を抑止する。回線復帰イベントを受けたら8秒の定期処理を待たず即時再送する
 - AsyncStorage: 既存の未送信本文・返信 outbox はこのPRでは移行しない。POST より先に保存する現在の保証を保ち、SQLite への移行はデータ移行とロールバックを設計してから行う
 
