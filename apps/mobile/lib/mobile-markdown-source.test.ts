@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { insertLineTaskMarkers } from '@cairn/shared'
-import { isMentionLink, splitMermaidSegments, taskIdFromLink, toEnrichedMarkdown } from './mobile-markdown-source'
+import { hasHorizontalScrollBlock, isMentionLink, splitMermaidSegments, taskIdFromLink, toEnrichedMarkdown } from './mobile-markdown-source'
 
 const WJ = '⁠'
 const names: Record<string, string> = { 'user-1': '山田 太郎' }
@@ -208,5 +208,29 @@ describe('行末のタスクラベル', () => {
 
   test('lineTasks が無い（行に対応しない）ときは何も付けない', () => {
     expect(withLabels('a\nb', [{ id: 'task-1', status: 'todo', lineIndex: null as unknown as number }])).not.toContain('cairn-task')
+  })
+})
+
+describe('hasHorizontalScrollBlock', () => {
+  test('表とコードブロックを検出する', () => {
+    expect(hasHorizontalScrollBlock('| a | b |\n| - | - |\n| 1 | 2 |')).toBe(true)
+    expect(hasHorizontalScrollBlock('```ts\nconst a = 1\n```')).toBe(true)
+    expect(hasHorizontalScrollBlock('~~~\nconst a = 1\n~~~')).toBe(true)
+    expect(hasHorizontalScrollBlock('    const a = 1')).toBe(true)
+  })
+
+  test('リストや引用の中の表とコードブロックも検出する', () => {
+    expect(hasHorizontalScrollBlock('- 項目\n\n  ```\n  code\n  ```')).toBe(true)
+    expect(hasHorizontalScrollBlock('> | a |\n> | - |\n> | 1 |')).toBe(true)
+  })
+
+  test('横スクロールにならない本文は検出しない', () => {
+    expect(hasHorizontalScrollBlock('ふつうの本文')).toBe(false)
+    expect(hasHorizontalScrollBlock('`インライン` と a|b と ~取り消し~')).toBe(false)
+    expect(hasHorizontalScrollBlock('```mermaid\ngraph TD\n```')).toBe(false)
+  })
+
+  test('リストの中の mermaid はコードブロックとして検出する', () => {
+    expect(hasHorizontalScrollBlock('- 図\n\n  ```mermaid\n  graph TD\n  ```')).toBe(true)
   })
 })

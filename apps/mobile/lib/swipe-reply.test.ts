@@ -26,15 +26,20 @@ describe('canReplyToMessage', () => {
 
 describe('canSwipeReply', () => {
   test('返信できるメッセージはスワイプできる', () => {
-    expect(canSwipeReply({ messageType: 'text', blocked: false })).toBe(true)
+    expect(canSwipeReply({ messageType: 'text', blocked: false, content: '了解です' })).toBe(true)
   })
 
   test('システムメッセージはスワイプできない', () => {
-    expect(canSwipeReply({ messageType: 'system' })).toBe(false)
+    expect(canSwipeReply({ messageType: 'system', content: '参加しました' })).toBe(false)
   })
 
   test('本文を隠しているブロック中のメッセージはスワイプできない', () => {
-    expect(canSwipeReply({ messageType: 'text', blocked: true })).toBe(false)
+    expect(canSwipeReply({ messageType: 'text', blocked: true, content: '本文' })).toBe(false)
+  })
+
+  test('横スクロールで読む表とコードブロックはスワイプできない', () => {
+    expect(canSwipeReply({ messageType: 'text', content: '| a | b |\n| - | - |\n| 1 | 2 |' })).toBe(false)
+    expect(canSwipeReply({ messageType: 'text', content: '```\nconst a = 1\n```' })).toBe(false)
   })
 })
 
