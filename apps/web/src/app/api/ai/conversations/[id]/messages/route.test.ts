@@ -42,8 +42,11 @@ vi.mock('ai', async (importOriginal) => ({
   ...(await importOriginal<typeof import('ai')>()),
   streamText: mockStreamText,
 }))
+const { mockSearchResearchDocuments } = vi.hoisted(() => ({
+  mockSearchResearchDocuments: vi.fn(),
+}))
 vi.mock('@/lib/ai/workspace-research', () => ({
-  searchResearchDocuments: vi.fn().mockResolvedValue({ items: [] }),
+  searchResearchDocuments: mockSearchResearchDocuments,
 }))
 vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), desc: vi.fn(), asc: vi.fn() }))
@@ -70,6 +73,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
     mockIsBillingEnabled.mockReturnValue(false)
+    mockSearchResearchDocuments.mockResolvedValue({ items: [] })
   })
 
   afterEach(() => {
@@ -184,8 +188,12 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   }
 
   // 会話の存在確認、履歴、ワークスペースのモデル設定の順に select される。
-  const queueDbResults = (aiChatModel: string, aiChatSystemPrompt: string | null = null) => {
-    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel, aiChatSystemPrompt }])
+  const queueDbResults = (
+    aiChatModel: string,
+    aiChatSystemPrompt: string | null = null,
+    aiSearchRecencyWeight: string = 'none',
+  ) => {
+    dbSelectResults.push([{ id: 'conv-1' }], [], [{ aiChatModel, aiChatSystemPrompt, aiSearchRecencyWeight }])
   }
 
   const streamedSystemPrompt = async (aiChatModel: string, aiChatSystemPrompt: string | null) => {
@@ -313,5 +321,32 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
 
     expect(shouldPersistFinishedAssistantMessage(true)).toBe(false)
     expect(shouldPersistFinishedAssistantMessage(false)).toBe(true)
+  })
+
+  it('資料検索の新しさの重みは課金前に読み、RAG に渡す', async () => {
+    mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+    queueDbResults('gpt-5', null, 'medium')
+
+    const response = await postQuestion()
+    await response.text()
+
+    expect(response.status).toBe(200)
+    expect(mockSearchResearchDocuments).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ recencyWeight: 'medium' }),
+    )
+  })
+
+  it('資料検索の新しさの重みが不正なら、RAG なしで続けず課金前に 500 を返す', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 100 })
+    queueDbResults('gpt-5', null, 'max')
+
+    const response = await postQuestion()
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ error: 'ワークスペースの資料検索の設定を読み込めませんでした' })
+    expect(mockReserveCredits).not.toHaveBeenCalled()
+    expect(mockStreamText).not.toHaveBeenCalled()
   })
 })

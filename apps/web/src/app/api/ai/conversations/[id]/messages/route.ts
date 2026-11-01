@@ -4,7 +4,12 @@
 import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText } from 'ai'
 import { BILLING_CONFIG } from '@cairn/core/billing'
-import { isAiChatModel, type AiChatModel } from '@cairn/shared'
+import {
+  isAiChatModel,
+  isAiSearchRecencyWeight,
+  type AiChatModel,
+  type AiSearchRecencyWeight,
+} from '@cairn/shared'
 import { apiKeyEnvForChatModel, chatLanguageModel } from '@/lib/ai/client'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
@@ -220,6 +225,7 @@ export async function POST(req: Request, { params }: RouteContext) {
   let historyMessages: StoredConversationMessage[] = []
   let chatModel: AiChatModel
   let chatSystemPrompt: string | null
+  let searchRecencyWeight: AiSearchRecencyWeight
   {
     const { db, aiConversations, aiMessages, workspaces } = await import('@cairn/db')
     const { eq, and, desc } = await import('drizzle-orm')
@@ -252,7 +258,11 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     // 使うモデルはワークスペース設定で決まる。値が不正でも既定のモデルへ黙って切り替えず、エラーにする。
     const [workspace] = await db
-      .select({ aiChatModel: workspaces.aiChatModel, aiChatSystemPrompt: workspaces.aiChatSystemPrompt })
+      .select({
+        aiChatModel: workspaces.aiChatModel,
+        aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight,
+      })
       .from(workspaces)
       .where(eq(workspaces.id, ctx.workspaceId))
       .limit(1)
@@ -264,6 +274,15 @@ export async function POST(req: Request, { params }: RouteContext) {
       )
     }
     chatModel = workspace.aiChatModel
+    // 資料検索の新しさの重みも課金前に読む。RAG の失敗は回答を続けるが、設定の不正は隠さずエラーにする
+    if (!isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)) {
+      console.error('[AI chat] invalid workspace ai_search_recency_weight', workspace.aiSearchRecencyWeight)
+      return NextResponse.json(
+        { error: 'ワークスペースの資料検索の設定を読み込めませんでした' },
+        { status: 500 },
+      )
+    }
+    searchRecencyWeight = workspace.aiSearchRecencyWeight
     // モデルに関係なく同じ system prompt へ入れるため、GPT-5 / Claude のどちらでも効く。
     chatSystemPrompt = workspace.aiChatSystemPrompt
   }
@@ -353,6 +372,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         // メンバーの記法（`<@userId|名前>`）は `@名前` に戻して検索する（ID は本文の検索の手がかりにならない）
         query: stripMentionsToText(lastUserContent),
         limit: 5,
+        recencyWeight: searchRecencyWeight,
       })
       console.log(
         `[AI chat] RAG: query="${lastUserContent.slice(0, 50)}" chunks=${result.items.length}`,

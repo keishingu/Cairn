@@ -798,11 +798,12 @@ async function getAiSearchRecencyWeight(workspaceId: string): Promise<AiSearchRe
 
 export async function searchResearchDocuments(
   ctx: AuthContext,
-  input: { query: string; limit?: number | undefined },
+  // recencyWeight はチャットの API が課金前に読んだ値を渡す。tool から呼ぶときは省き、ここで読む
+  input: { query: string; limit?: number | undefined; recencyWeight?: AiSearchRecencyWeight },
 ) {
   const scope = await resolveScope(ctx)
   const limit = clampResearchLimit(input.limit, AI_RESEARCH_LIMITS.documents)
-  const recencyWeight = await getAiSearchRecencyWeight(ctx.workspaceId)
+  const recencyWeight = input.recencyWeight ?? (await getAiSearchRecencyWeight(ctx.workspaceId))
   const chunks = await searchChunks(input.query, ctx.workspaceId, {
     limit: limit + 1,
     minSimilarity: 0.5,

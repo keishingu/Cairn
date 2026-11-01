@@ -1476,7 +1476,7 @@ const AiSearchRecencySection = () => {
     <section style={{ marginBottom: 24 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Prefer recent documents')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
-        {t('How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Relevance still comes first, and archived projects are treated like any other.')}
+        {t('How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.')}
       </p>
       <div
         className="card"

@@ -607,7 +607,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Anthropic · balanced speed and quality': 'Anthropic・速度と品質のバランス',
   'Anthropic · most capable, higher cost': 'Anthropic・最高性能（高コスト）',
   'Prefer recent documents': '新しい資料を優先',
-  'How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Relevance still comes first, and archived projects are treated like any other.': 'AIアシスタントがワークスペースの資料を探すとき、最近更新されたプロジェクトや最近追加されたファイルをどれだけ優先するかを選びます。質問との関連の強さが最優先で、アーカイブ済みのプロジェクトも同じように扱います。',
+  'How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.': 'AIアシスタントがワークスペースの資料を探すとき、最近更新されたプロジェクトや最近追加されたファイルをどれだけ優先するかを選びます。質問に関連する資料を、関連の強さに新しさを掛け合わせた点数で並べるため、少し関連が強い古い資料より新しい資料が上に来ることがあります。質問に関連しない資料が新しさだけで選ばれることはありません。アーカイブ済みのプロジェクトも同じように扱います。',
   Off: 'なし',
   Weak: '弱',
   Strong: '強',

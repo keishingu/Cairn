@@ -607,7 +607,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Anthropic · balanced speed and quality': 'Anthropic·속도와 품질의 균형',
   'Anthropic · most capable, higher cost': 'Anthropic·최고 성능(고비용)',
   'Prefer recent documents': '최근 자료 우선',
-  'How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Relevance still comes first, and archived projects are treated like any other.': 'AI 어시스턴트가 워크스페이스 자료를 검색할 때 최근에 업데이트된 프로젝트와 최근에 추가된 파일을 얼마나 우선할지 선택합니다. 질문과의 관련성이 가장 우선이며, 보관된 프로젝트도 똑같이 취급합니다.',
+  'How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.': 'AI 어시스턴트가 워크스페이스 자료를 검색할 때 최근에 업데이트된 프로젝트와 최근에 추가된 파일을 얼마나 우선할지 선택합니다. 질문과 관련된 자료를 관련성에 최신성을 곱한 점수로 정렬하므로, 관련성이 조금 더 높은 오래된 자료보다 새 자료가 위에 올 수 있습니다. 질문과 관련 없는 자료가 새롭다는 이유만으로 선택되지는 않습니다. 보관된 프로젝트도 똑같이 취급합니다.',
   Off: '없음',
   Weak: '약',
   Strong: '강',
