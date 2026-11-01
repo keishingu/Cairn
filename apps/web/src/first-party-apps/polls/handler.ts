@@ -7,7 +7,7 @@ import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
 import { callBotApi } from './bot-client'
-import { createPendingPoll } from './polls'
+import { createPendingPoll, renderPollExclusively } from './polls'
 import { pollInputErrors } from './validate'
 import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, parsePollSubmission } from './render'
 
@@ -89,7 +89,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     locale,
     idempotencyKey: `view:${payload.view.id}`,
   })
-  sendRenderEvent(pollId)
+  renderAfterResponse(pollId)
   if (!sameInput) {
     // 前の送信は応答が届かなかっただけで作成済み。直した内容で作り直したように見せず、作成済みであることを伝える
     return NextResponse.json({
@@ -163,17 +163,29 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   })
 
   // カードの描き直しは commit の後
-  if (changed) sendRenderEvent(poll.id)
+  if (changed) renderAfterResponse(poll.id)
   return new NextResponse('', { status: 200 })
 }
 
-// 応答を返した後に送る。Inngest が遅くても3秒の配信期限を使わせない。送れなくても、投稿待ち・描画待ちの投票は cron が拾い直す（§7.3）
-function sendRenderEvent(pollId: string): void {
-  after(() =>
-    inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
-      console.warn('[polls] card render event failed (Inngest not running?):', err)
-    }),
-  )
+// 応答を返した後に、その場でカードを投稿・描き直す。Inngest の待ち行列を通すと押してから表示が変わるまでに数秒掛かるため。
+// 3秒の配信期限は使わない。描けなかった（失敗・票が入り続けた）分は Inngest に任せ、イベントも送れなければ
+// 投稿待ち・描画待ちの投票を cron が拾い直す（§7.3）。他の処理が描いている（busy）なら、その処理が最新の版まで描く
+function renderAfterResponse(pollId: string): void {
+  after(async () => {
+    try {
+      const result = await renderPollExclusively(pollId)
+      if (result !== 'incomplete') return
+    } catch (err) {
+      console.warn(`[polls] rendering poll ${pollId} after the response failed; handing over to Inngest:`, err)
+    }
+    await sendRenderEvent(pollId)
+  })
+}
+
+function sendRenderEvent(pollId: string): Promise<unknown> {
+  return inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
+    console.warn('[polls] card render event failed (Inngest not running?):', err)
+  })
 }
 
 // views.open は応答を返した後に呼ぶ。Bot API が遅くても3秒の配信期限を使わせず、起動が app_timeout になって押し直しで二重に開くのを防ぐ。
