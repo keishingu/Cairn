@@ -215,9 +215,9 @@ function containsHorizontalScrollBlock(node: Parent, isRoot: boolean): boolean {
 }
 
 // 表とコードブロックはネイティブの横スクロールになる。最上位の mermaid は図のカードになるので含めない。
-// 一覧の行ごとに呼ばれるため、表・コードの記号が無い本文はパースしない
+// 一覧の行ごとに呼ばれるため、表・コードの記号が無い本文はパースしない（インデントのコードは引用やリストの中にもあるので、行頭に限らず見る）
 export function hasHorizontalScrollBlock(content: string): boolean {
-  if (!/[|`~]|^(?: {4}|\t)/m.test(content)) return false
+  if (!/[|`~\t]| {4}/.test(content)) return false
   const tree: Root = fromMarkdown(content, {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],

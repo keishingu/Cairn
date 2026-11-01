@@ -222,6 +222,8 @@ describe('hasHorizontalScrollBlock', () => {
   test('リストや引用の中の表とコードブロックも検出する', () => {
     expect(hasHorizontalScrollBlock('- 項目\n\n  ```\n  code\n  ```')).toBe(true)
     expect(hasHorizontalScrollBlock('> | a |\n> | - |\n> | 1 |')).toBe(true)
+    expect(hasHorizontalScrollBlock('>     very_long_code_line')).toBe(true)
+    expect(hasHorizontalScrollBlock('-     very_long_code_line')).toBe(true)
   })
 
   test('横スクロールにならない本文は検出しない', () => {
