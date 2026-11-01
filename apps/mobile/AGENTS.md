@@ -11,4 +11,5 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - 表示言語は Web と同じ `profiles.locale` と i18next のカタログ。タブ、ログイン、ネイティブチャットは `useT()`。設定 WebView の変更は `locale-changed` で追従する。未ログイン時は `['me']` を言語に使わない
 - サインアウトと別ユーザーへの入れ替えでは QueryClient を破棄する。query key にユーザー ID は含めず、この境界だけをアカウントの切り替えにする（Web の QueryProvider と同じ）
 - ジェスチャーは Gesture Handler + Reanimated で書き、`PanResponder` を新規に使わない。`Modal` の中にも `GestureHandlerRootView` を置く（Android で反応しなくなる）
+- クイックアクションは動的登録（`setItems`）だけで作る。静的定義は動的項目と並んで重複する。Android の宛先は有効な起動口（`patches/expo-quick-actions@6.0.2.patch`）で、MainActivity に固定すると別アイコン中に起動できない
 - アプリだけの機能・導線を変えたときも、`/ai` のプロダクトヘルプ（`apps/web/src/lib/ai/product-help.ts`）の更新が要るか確認する

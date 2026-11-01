@@ -21,7 +21,7 @@ export type NotificationScreenPath = (typeof SCREEN_PATHS)[number]
 
 export type NotificationDestination =
   | { kind: 'channel'; channelId: string; messageId?: string }
-  | { kind: 'screen'; path: NotificationScreenPath }
+  | { kind: 'screen'; path: NotificationScreenPath; params?: Record<string, string> }
 
 const CHANNEL_NOTIFICATION_TYPES = new Set<NotificationType>(['mention', 'dm', 'file', 'reaction'])
 

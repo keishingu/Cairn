@@ -31,7 +31,13 @@ vi.mock('../task-detail-panel', () => ({
 vi.mock('../task-delete-dialog', () => ({
   TaskDeleteDialog: ({ task }: { task: { id: string } | null }) => (task ? <div data-testid="task-delete-dialog" data-task-id={task.id} /> : null),
 }))
-vi.mock('./create-task-modal', () => ({ CreateTaskModal: () => null }))
+vi.mock('./create-task-modal', () => ({
+  CreateTaskModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="create-task-modal">
+      <button type="button" onClick={onClose}>close-create</button>
+    </div>
+  ),
+}))
 vi.mock('@/lib/command-registry', () => ({ useCommand: vi.fn() }))
 
 function makeTask(overrides: Partial<TaskDto> = {}): TaskDto {
@@ -160,6 +166,35 @@ describe('PageTasks のタスク詳細パネル導線', () => {
     renderPage()
 
     expect(screen.getByTestId('task-detail-panel')).toHaveAttribute('data-task-id', 'task-2')
+  })
+
+  it('?new=1 付きで開くと作成モーダルを自動で開く', () => {
+    mockSearchParamsGet.mockImplementation((key: string) => (key === 'new' ? '1' : null))
+    mockSearchParamsToString.mockReturnValue('new=1&open=a')
+
+    renderPage()
+
+    expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
+  })
+
+  it('閉じた後の作成モーダルは、open が変わるまで開き直さない', async () => {
+    mockSearchParamsGet.mockImplementation((key: string) => (key === 'new' ? '1' : null))
+    mockSearchParamsToString.mockReturnValue('new=1&open=a')
+    const view = renderPage()
+    const rerender = () =>
+      view.rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <PageTasks />
+        </QueryClientProvider>,
+      )
+
+    await userEvent.click(screen.getByText('close-create'))
+    rerender()
+    expect(screen.queryByTestId('create-task-modal')).not.toBeInTheDocument()
+
+    mockSearchParamsToString.mockReturnValue('new=1&open=b')
+    rerender()
+    expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
   })
 
   it('閉じた後に同じタスクを開き直す要求（open が変わる）で再び詳細パネルを開く', async () => {

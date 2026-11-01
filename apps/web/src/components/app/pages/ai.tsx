@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useChat } from 'ai/react'
 import type { JSONValue, Message, ToolInvocation } from 'ai'
 import { useQueryClient } from '@tanstack/react-query'
@@ -308,12 +309,14 @@ function ChatView({
   model,
   initialMessages,
   isMobile,
+  autoFocusInput = false,
 }: {
   conversationId: string
   // この会話で使うモデル（入力欄の下で切り替えられる）
   model: AiChatModel
   initialMessages: MessageDto[]
   isMobile?: boolean
+  autoFocusInput?: boolean
 }) {
   const t = useT()
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -363,6 +366,9 @@ function ChatView({
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
+  React.useEffect(() => {
+    if (autoFocusInput) textareaRef.current?.focus()
+  }, [autoFocusInput])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
   // owner が選べるモデルから外したモデルの会話は、選び直すまで送らない（送ってもサーバーが 409 で断る）
@@ -631,10 +637,30 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
   const messagesQuery = useAiConversationMessages(activeId)
   const initialMessages = messagesQuery.data
 
+  const searchParams = useSearchParams()
+  const focusRequestRef = React.useRef<string | null>(null)
+  const focusNextConversationRef = React.useRef(false)
+  const [focusConversationId, setFocusConversationId] = React.useState<string | null>(null)
+
   const createConversation = useCreateAiConversation(conv => {
     setActiveId(conv.id)
     if (isMobile) setMobilePane('chat')
+    if (focusNextConversationRef.current) {
+      focusNextConversationRef.current = false
+      setFocusConversationId(conv.id)
+    }
   })
+  const { mutate: startConversation } = createConversation
+
+  // ?focus=1 はアプリのホーム画面のクイックアクション。入力欄は会話の中にしかないので、
+  // 新しい会話を始めて入力欄へフォーカスする（アプリは押すたびに open を変えて送る）
+  React.useEffect(() => {
+    const requestKey = searchParams.toString()
+    if (searchParams.get('focus') !== '1' || focusRequestRef.current === requestKey) return
+    focusRequestRef.current = requestKey
+    focusNextConversationRef.current = true
+    startConversation()
+  }, [searchParams, startConversation])
 
   // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
   const conversationsError = conversationsQuery.isError ? (
@@ -646,7 +672,7 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
     // 会話のモデルは一覧から引く（一覧が読めなければ、モデルを推測して送らせない）
     const activeConversation = conversations.find(conversation => conversation.id === activeId)
     if (initialMessages && activeConversation) {
-      return <ChatView key={activeId} conversationId={activeId} model={activeConversation.model} initialMessages={initialMessages} isMobile={mobile}/>
+      return <ChatView key={activeId} conversationId={activeId} model={activeConversation.model} initialMessages={initialMessages} isMobile={mobile} autoFocusInput={activeId === focusConversationId}/>
     }
     if (conversationsQuery.isError) {
       return (

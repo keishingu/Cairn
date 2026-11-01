@@ -10,6 +10,7 @@ import { shouldClearAccountCache } from '../lib/account-cache'
 import { queryClient } from '../lib/query-client'
 import { supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
+import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
 import { SessionContext } from '../lib/session-context'
 import { initializeOfflineDatabase, OFFLINE_DATABASE_NAME } from '../lib/offline-database'
 import { isPostAuthNavigationPending } from '../lib/auth-navigation'
@@ -73,6 +74,12 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>
 }
 
+// 未ログインでも受け取れるよう、ログインの内外をまたぐルートに置く。useT を使うので LocaleProvider の中で動かす
+function QuickActionsHost(): null {
+  useQuickActionsRegistration()
+  return null
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -81,6 +88,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <AuthGuard>
               <LocaleProvider>
+                <QuickActionsHost />
                 <Slot />
               </LocaleProvider>
             </AuthGuard>

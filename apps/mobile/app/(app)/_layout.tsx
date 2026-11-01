@@ -11,6 +11,7 @@ import { OfflineMessageQueueProvider } from '../../components/offline-message-qu
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
 import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
+import { useQuickActionNavigation } from '../../hooks/use-quick-actions'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 import { completePendingRemoval, loadPushEnabled, loadPushSetting } from '../../lib/push-preference'
@@ -112,6 +113,8 @@ export default function AppLayout() {
     const sub = Notifications.addNotificationResponseReceivedListener(route)
     return () => sub.remove()
   }, [router])
+
+  useQuickActionNavigation()
 
   return (
     <RealtimeProvider>

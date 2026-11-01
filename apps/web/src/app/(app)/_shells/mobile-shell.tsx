@@ -126,7 +126,13 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
       </React.Suspense>
     </div>
   )
-  if (page === 'ai') return <PageAI isMobile />
+  if (page === 'ai') {
+    return (
+      <React.Suspense fallback={null}>
+        <PageAI isMobile />
+      </React.Suspense>
+    )
+  }
   if (page === 'settings') return settingsSection ? <MobileSettingsDetail section={settingsSection} /> : <MobileSettings />
   if (page === 'members') return <PageMembers isMobile {...(initialMemberId ? { initialUserId: initialMemberId } : {})} />
   if (page === 'files') return (

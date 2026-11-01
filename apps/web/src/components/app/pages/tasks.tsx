@@ -255,6 +255,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
   const searchParams = useSearchParams()
   const openedTaskIdRef = React.useRef<string | null>(null)
+  const openedCreateRequestRef = React.useRef<string | null>(null)
   const [filter, setFilterState] = React.useState<FilterKey>(() => loadStored(STORAGE_KEYS.tasks_status_filter, FILTER_KEYS, 'todo'))
   const setFilter = (next: FilterKey) => { setFilterState(next); storeValue(STORAGE_KEYS.tasks_status_filter, next) }
   // 既定は自分が担当のタスク（ページ名も「マイタスク」）
@@ -290,6 +291,15 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     if (!taskId || openedTaskIdRef.current === requestKey) return
     openedTaskIdRef.current = requestKey
     setDetailTaskId(taskId)
+  }, [searchParams])
+
+  // アプリのホーム画面のクイックアクションから、作成モーダルを開いた状態で来る。
+  // 閉じた後にもう一度押したとき（アプリは open を変えて送る）も開き直す
+  React.useEffect(() => {
+    const requestKey = searchParams.toString()
+    if (searchParams.get('new') !== '1' || openedCreateRequestRef.current === requestKey) return
+    openedCreateRequestRef.current = requestKey
+    setShowAddModal(true)
   }, [searchParams])
 
   const handleToggle = (id: string, current: TaskDto['status']) => {

@@ -84,7 +84,7 @@ describe('通知からチャットを開く', () => {
   it('キャッシュが空でも一覧を取得してからチャンネルを開く', async () => {
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
+    await followNotification({ push, navigate: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
 
     expect(mockApiFetch).toHaveBeenCalledWith('/api/projects/channels')
     expect(mockApiFetch).toHaveBeenCalledWith('/api/workspaces/channels')
@@ -109,7 +109,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
       { t, onUnavailable },
     )
@@ -123,7 +123,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'channel', channelId: 'project-channel', messageId: 'missing' },
       { t, onUnavailable },
     )
@@ -144,7 +144,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
       { t, onUnavailable },
     )
@@ -158,7 +158,7 @@ describe('通知からチャットを開く', () => {
     queryClient.setQueryData(workspaceChannelsQueryKey, [])
     queryClient.setQueryData(workspaceDmsQueryKey, [])
 
-    await followNotification({ push: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
+    await followNotification({ push: vi.fn(), navigate: vi.fn() }, { kind: 'channel', channelId: 'project-channel' }, { t, onUnavailable })
 
     expect(mockApiFetch).not.toHaveBeenCalled()
   })
@@ -180,7 +180,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'channel', channelId: 'project-channel' },
       { workspaceId: 'ws-b', t, onUnavailable },
     )
@@ -204,7 +204,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'screen', path: '/(app)/tasks' },
       { workspaceId: 'ws-x', t, onUnavailable },
     )
@@ -219,7 +219,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'screen', path: '/(app)/tasks' },
       { workspaceId: 'ws-b', t, onUnavailable },
     )
@@ -233,7 +233,7 @@ describe('通知からチャットを開く', () => {
     const push = vi.fn()
 
     await followNotification(
-      { push },
+      { push, navigate: vi.fn() },
       { kind: 'screen', path: '/(app)/tasks' },
       { workspaceId: 'ws-b', t, onUnavailable },
     )
@@ -243,11 +243,25 @@ describe('通知からチャットを開く', () => {
     expect(push).toHaveBeenCalledWith('/(app)/tasks')
   })
 
+  it('params のある画面は navigate で開き、同じ画面を重ねない', async () => {
+    const push = vi.fn()
+    const navigate = vi.fn()
+
+    await followNotification(
+      { push, navigate },
+      { kind: 'screen', path: '/(app)/chats', params: { dm: '1', open: 'a' } },
+      { t, onUnavailable },
+    )
+
+    expect(navigate).toHaveBeenCalledWith({ pathname: '/(app)/chats', params: { dm: '1', open: 'a' } })
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('一覧の取得に失敗してもチャンネル自体は開く', async () => {
     mockApiFetch.mockRejectedValue(new Error('offline'))
     const push = vi.fn()
 
-    await followNotification({ push }, { kind: 'channel', channelId: 'missing' }, { t, onUnavailable })
+    await followNotification({ push, navigate: vi.fn() }, { kind: 'channel', channelId: 'missing' }, { t, onUnavailable })
 
     expect(push).toHaveBeenCalledWith({
       pathname: '/chats/[channelId]',

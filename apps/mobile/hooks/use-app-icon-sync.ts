@@ -4,6 +4,7 @@ import { getAppIconName, setAlternateAppIcon, supportsAlternateIcons } from 'exp
 import { resolveAppIconVariant, type AccentId, type AppearanceTheme } from '@cairn/shared'
 import { useT } from '../components/locale-provider'
 import { DEFAULT_APP_ICON_VARIANT, toAlternateIconName } from '../lib/app-icon'
+import { refreshQuickActions } from './use-quick-actions'
 import type { ResolvedTheme } from '../lib/theme'
 
 /**
@@ -42,6 +43,10 @@ export function useAppIconSync(
     if (getAppIconName() === name) return
     inFlightRef.current = true
     changeIcon(name)
+      // Android のショートカットは起動口の activity に結び付くため、切り替えのたびに登録し直す
+      .then(() => {
+        if (Platform.OS === 'android') void refreshQuickActions()
+      })
       .catch((error: unknown) => {
         console.error(`[app-icon] ${name ?? 'default'} への変更に失敗`, error)
         if (alertedIconNames.has(name)) return

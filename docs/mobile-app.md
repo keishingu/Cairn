@@ -71,6 +71,20 @@ pnpm dev       # 2回目以降、ネイティブ依存に変更がなければ M
 - `react-native-worklets` の Babel プラグインは `babel-preset-expo` が自動で入れるため、`babel.config.js` は置かない
 - **ハプティクスは `lib/haptics.ts` の用途別の関数から鳴らす**（`expo-haptics` を画面から直接呼ばない）。長押しメニューの表示・スワイプ返信の閾値は軽い衝撃、リアクション追加の成功・プルリフレッシュの開始は選択、送信完了は成功、送信失敗はエラー。タブ切替では鳴らさない。送信はオフラインキューの実際の完了で鳴らし、自動で再送する通信障害では鳴らさない。まとめて再送したときも1回の処理につき1度だけ。Web とテストでは何もせず、再生の失敗で画面を止めない（ログだけ残す）
 
+## ホーム画面のクイックアクション
+
+iOS の Home Screen Quick Actions / Android の App Shortcuts に「タスクを作成」「AI に聞く」「DM を送る」を出す（`expo-quick-actions`、`lib/quick-actions.ts` / `hooks/use-quick-actions.ts`）。
+
+- **項目は動的登録（`setItems`）だけで作り、静的定義（iOS の `UIApplicationShortcutItems`、Android の `shortcuts.xml`）は使わない**。両 OS とも静的項目は動的項目で置き換えられず並んで出るため、`profiles.locale` に合わせた差し替えと両立しない。代わりに i18n カタログの文言を使え、`app.config.ts` に文言を持たずに済む。インストール後に一度も起動していない間は項目が出ない。未ログインでも端末の言語で登録し、サインアウトしても消さない
+- ID だけを OS に渡し、`cairn://` URL を使わないので 3 バリアントの scheme の違いに影響されない
+- **Android のショートカットは有効な起動口を指す必要がある**。外観連動の別アイコン中は `MainActivity` が無効で、`expo-quick-actions` の既定（`currentActivity` のクラス＝常に `MainActivity`）の Intent では起動できない。`patches/expo-quick-actions@6.0.2.patch` で宛先を `getLaunchIntentForPackage` の結果（いま有効な alias を含む起動口）に変えている。ライブラリを上げるときはパッチの要否を確認する
+- **固定の非ランチャー alias を宛先にしない**。`expo-alternate-app-icons` は起動に使われた activity の名前から現在のアイコンを判定し、切り替え時にその activity を無効化するため、別の入口から起動するとアイコンの判定が壊れる
+- 動的ショートカットは登録時点の起動口に結び付き、切り替えで無効になる（OS の仕様）。アイコンの切り替え成功時（`use-app-icon-sync.ts`）と Android の前面復帰時に登録し直す。バックグラウンドでの登録に失敗しても前面復帰で戻る
+- 押された操作は `use-quick-actions.ts` が預かり、`(app)` レイアウトがログイン後に `followNotification` の経路で開く（未ログインならログインとオンボーディングの後に再開する）。冷起動の `initial` はプロセス中ずっと同じ値を返すので 1 回だけ読む
+- タスク作成は `/(app)/tasks?new=1&open=<nonce>` → Web `/tasks?new=1` で作成モーダルを開く。`open` は既存の `taskId` と同じく、もう一度押したときに開き直させるための値
+- AI は `/(app)/ai?focus=1&open=<nonce>` → Web `/ai?focus=1`。入力欄は会話の中にしかないため、新しい会話を始めて入力欄へフォーカスする（「新しい会話を開始」を押したのと同じで、押すたびに会話が 1 件増える）。iOS は `keyboardDisplayRequiresUserAction` を外してキーボードを出す。Android の WebView は操作なしの `focus()` でキーボードを出さないことがあり、その場合は入力欄をタップする
+- DM は `/(app)/chats?dm=1&open=<nonce>` でチャット一覧の相手選択シートを開く（`POST /api/workspaces/dms` の既存の流れ）。`FEATURE_FLAGS.dm` が無効なら項目を登録しない。ブロックなどの最終判定はサーバー
+
 ## オフライン・送信
 
 - **端末キャッシュ基盤は `expo-sqlite`、回線復帰検知は `expo-network`**。SQLite は WAL / foreign keys を初期化し、メッセージキャッシュ・全チャンネル検索は schema migration で追加する

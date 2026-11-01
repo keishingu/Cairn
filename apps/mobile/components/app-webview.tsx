@@ -47,6 +47,8 @@ export interface AppWebViewProps {
   allowChatRoutes?: boolean
   includeSafeAreaTop?: boolean
   onNativeHeaderChange?: (header: NativeHeaderDescriptor) => void
+  /** Web 側の focus() でキーボードを出せるようにする（iOS の WebView は既定でユーザー操作を要求する） */
+  allowProgrammaticFocus?: boolean
 }
 
 export function webUrl(path: string): string {
@@ -54,7 +56,15 @@ export function webUrl(path: string): string {
 }
 
 export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(function AppWebView(
-  { path, onLoadEnd, onWebPathChange, allowChatRoutes = false, includeSafeAreaTop = true, onNativeHeaderChange },
+  {
+    path,
+    onLoadEnd,
+    onWebPathChange,
+    allowChatRoutes = false,
+    includeSafeAreaTop = true,
+    onNativeHeaderChange,
+    allowProgrammaticFocus = false,
+  },
   ref,
 ) {
   const t = useT()
@@ -369,6 +379,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         javaScriptCanOpenWindowsAutomatically={false}
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
+        keyboardDisplayRequiresUserAction={!allowProgrammaticFocus}
         onLoadEnd={handleLoadEnd}
         onMessage={handleMessage}
         onNavigationStateChange={handleNavigationStateChange}
