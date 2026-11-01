@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 export interface ConversationDto {
   id: string
@@ -13,6 +14,9 @@ export interface ConversationDto {
 export async function GET() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
 
   try {
     const { db, aiConversations } = await import('@cairn/db')
@@ -45,6 +49,9 @@ export async function GET() {
 export async function POST() {
   const { ctx, error } = await getAuthContext()
   if (error) return error
+  // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
+  const aiAccessDenied = await requireAiChatAccess(ctx)
+  if (aiAccessDenied) return aiAccessDenied
 
   try {
     const { db, aiConversations } = await import('@cairn/db')

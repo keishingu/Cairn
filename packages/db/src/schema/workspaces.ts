@@ -91,6 +91,8 @@ export const workspaces = pgTable('workspaces', {
   // AI チャットへ毎回渡す、owner が書くワークスペース固有の追加指示（AGENTS.md 相当）。null は未設定。
   // 上限は @cairn/shared の AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH と同じ。
   aiChatSystemPrompt: text('ai_chat_system_prompt'),
+  // /ai を使えるロールの範囲（owner / admin / member。member はゲストを含む全員）。値は @cairn/shared の AI_CHAT_ACCESS_LEVELS と同じ
+  aiChatAccess: text('ai_chat_access').notNull().default('member'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
@@ -100,6 +102,10 @@ export const workspaces = pgTable('workspaces', {
   check(
     'workspaces_ai_chat_model_check',
     sql`${t.aiChatModel} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`,
+  ),
+  check(
+    'workspaces_ai_chat_access_check',
+    sql`${t.aiChatAccess} in ('owner', 'admin', 'member')`,
   ),
   check(
     'workspaces_ai_chat_system_prompt_length_check',

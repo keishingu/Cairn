@@ -2,7 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { DEFAULT_AI_CHAT_MODEL, FEATURE_FLAGS, isAiChatModel, patchWorkspaceSettingsSchema, type AiChatModel } from '@cairn/shared'
+import {
+  DEFAULT_AI_CHAT_ACCESS,
+  DEFAULT_AI_CHAT_MODEL,
+  FEATURE_FLAGS,
+  isAiChatAccessLevel,
+  isAiChatModel,
+  patchWorkspaceSettingsSchema,
+  type AiChatAccessLevel,
+  type AiChatModel,
+} from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import type { AiNudgeDetector, WorkspaceSettings } from '@cairn/db'
@@ -20,6 +29,8 @@ export type WorkspaceSettingsDto = WorkspaceSettings & {
   aiChatModel: AiChatModel
   // AI チャットへ毎回渡す追加指示。null は未設定。owner 以外にも読み取り専用で表示する。
   aiChatSystemPrompt: string | null
+  // /ai を使えるロールの範囲。全ロールに返し、使えない人には入口を出さない（判定の正はサーバー）
+  aiChatAccess: AiChatAccessLevel
   // 利用量はワークスペース owner にだけ公開する。
   aiNudgesPhaseTwoUsage?: AiNudgesPhaseTwoUsageDto
 }
@@ -31,6 +42,7 @@ function toSettingsDto(
     aiNudgesPhaseTwoEnabled: boolean
     aiChatModel: string
     aiChatSystemPrompt: string | null
+    aiChatAccess: string
     aiNudgesPhaseTwoInputTokens: number
     aiNudgesPhaseTwoOutputTokens: number
     aiNudgesPhaseTwoTotalTokens: number
@@ -42,12 +54,16 @@ function toSettingsDto(
   if (workspace && !isAiChatModel(workspace.aiChatModel)) {
     throw new Error(`Invalid workspaces.ai_chat_model: ${workspace.aiChatModel}`)
   }
+  if (workspace && !isAiChatAccessLevel(workspace.aiChatAccess)) {
+    throw new Error(`Invalid workspaces.ai_chat_access: ${workspace.aiChatAccess}`)
+  }
   return {
     ...(workspace?.settings ?? {}),
     aiNudgesPhaseOneEnabled: workspace?.aiNudgesPhaseOneEnabled ?? true,
     aiNudgesPhaseTwoEnabled: workspace?.aiNudgesPhaseTwoEnabled ?? false,
     aiChatModel: workspace && isAiChatModel(workspace.aiChatModel) ? workspace.aiChatModel : DEFAULT_AI_CHAT_MODEL,
     aiChatSystemPrompt: workspace?.aiChatSystemPrompt ?? null,
+    aiChatAccess: workspace && isAiChatAccessLevel(workspace.aiChatAccess) ? workspace.aiChatAccess : DEFAULT_AI_CHAT_ACCESS,
     ...(includeUsage && workspace ? {
       aiNudgesPhaseTwoUsage: {
         inputTokens: workspace.aiNudgesPhaseTwoInputTokens,
@@ -75,6 +91,7 @@ export async function GET() {
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -128,6 +145,7 @@ export async function PATCH(req: Request) {
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
@@ -137,7 +155,14 @@ export async function PATCH(req: Request) {
       .where(eq(workspaces.id, ctx.workspaceId))
       .limit(1)
 
-    const { aiNudgesPhaseOneEnabled, aiNudgesPhaseTwoEnabled, aiChatModel, aiChatSystemPrompt, ...settingsPatch } = patch
+    const {
+      aiNudgesPhaseOneEnabled,
+      aiNudgesPhaseTwoEnabled,
+      aiChatModel,
+      aiChatSystemPrompt,
+      aiChatAccess,
+      ...settingsPatch
+    } = patch
     const merged: WorkspaceSettings = { ...(ws?.settings ?? {}) }
     if (settingsPatch.projectLabel !== undefined) merged.projectLabel = settingsPatch.projectLabel
 
@@ -149,6 +174,7 @@ export async function PATCH(req: Request) {
         ...(aiNudgesPhaseTwoEnabled === undefined ? {} : { aiNudgesPhaseTwoEnabled }),
         ...(aiChatModel === undefined ? {} : { aiChatModel }),
         ...(aiChatSystemPrompt === undefined ? {} : { aiChatSystemPrompt }),
+        ...(aiChatAccess === undefined ? {} : { aiChatAccess }),
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, ctx.workspaceId))
@@ -158,6 +184,7 @@ export async function PATCH(req: Request) {
         aiNudgesPhaseTwoEnabled: workspaces.aiNudgesPhaseTwoEnabled,
         aiChatModel: workspaces.aiChatModel,
         aiChatSystemPrompt: workspaces.aiChatSystemPrompt,
+        aiChatAccess: workspaces.aiChatAccess,
         aiNudgesPhaseTwoInputTokens: workspaces.aiNudgesPhaseTwoInputTokens,
         aiNudgesPhaseTwoOutputTokens: workspaces.aiNudgesPhaseTwoOutputTokens,
         aiNudgesPhaseTwoTotalTokens: workspaces.aiNudgesPhaseTwoTotalTokens,
