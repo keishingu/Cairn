@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite'
 import {
+  deleteAllCacheStatements,
   deleteCacheStatement,
   deleteOtherUsersCacheStatements,
   deleteUserCacheStatements,
@@ -63,6 +64,11 @@ export function setOfflineCacheUser(userId: string | null): void {
 
 export function deleteOfflineCacheForUser(userId: string): void {
   enqueue((database) => runStatements(database, deleteUserCacheStatements(userId)))
+}
+
+/** サインアウトが確定したとき。起動時はどのユーザーの行が残っているか分からないので全行を消す */
+export function deleteAllOfflineCache(): void {
+  enqueue((database) => runStatements(database, deleteAllCacheStatements()))
 }
 
 async function currentScope(): Promise<OfflineCacheScope | null> {

@@ -3,9 +3,11 @@ import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-nati
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
+import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import type { WebViewProps, WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
+import { isDeviceOffline } from '../lib/device-offline'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { mobileHandoffUrl, webPath } from '../lib/webview-path'
 import { isAccentId, isAppearanceTheme, isLocalePreference } from '@cairn/shared'
@@ -60,7 +62,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   const t = useT()
   const webViewRef = React.useRef<WebView>(null)
   const [uri, setUri] = React.useState<string | null>(null)
-  const [error, setError] = React.useState(false)
+  const [error, setError] = React.useState<'offline' | 'failed' | null>(null)
   const insets = useSafeAreaInsets()
   const { palette, updateAppearance } = useAppAppearance()
   const { updateLocale } = useAppLocale()
@@ -94,12 +96,24 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
 
   const performHandoff = React.useCallback(
     async (targetPath: string) => {
-      setError(false)
+      setError(null)
+
+      // WebView は通信が前提。圏外で getSession を待つとトークン切れの更新失敗で止まる
+      if (await isDeviceOffline()) {
+        setError('offline')
+        return
+      }
 
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession()
       if (!session) {
+        // 更新が届かなかっただけならサインアウトではない（保存は残っている）
+        if (sessionError && isAuthRetryableFetchError(sessionError)) {
+          setError('offline')
+          return
+        }
         // 通常は AuthGuard がセッションを保証するため到達しない
         router.replace('/(auth)/login')
         return
@@ -133,7 +147,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       } catch (err) {
         // 失敗理由が Metro ログで追えるように必ず出力する
         console.error('[AppWebView] ハンドオフに失敗:', err)
-        setError(true)
+        setError('failed')
       }
     },
     [router],
@@ -335,7 +349,11 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
           { backgroundColor: bg, paddingTop: includeSafeAreaTop ? insets.top : 0 },
         ]}
       >
-        <Text style={[styles.errorText, { color: palette.text3 }]}>{t('Could not load this page')}</Text>
+        <Text style={[styles.errorText, { color: palette.text3 }]}>
+          {error === 'offline'
+            ? t('This page is not available offline. Connect to the internet and try again.')
+            : t('Could not load this page')}
+        </Text>
         <Pressable
           style={[styles.retryButton, { backgroundColor: palette.accent }]}
           onPress={() => void performHandoff(pathRef.current)}

@@ -185,13 +185,13 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={t('Mark all notifications as read')}
-                    disabled={markRead.isPending || unreadCount === 0}
+                    disabled={notificationsRead.stale || markRead.isPending || unreadCount === 0}
                     onPress={() => markRead.mutate(null)}
                     style={({ pressed }) => [
                       styles.markReadButton,
                       {
                         backgroundColor: palette.accentSoft,
-                        opacity: unreadCount === 0 ? 0.45 : 1,
+                        opacity: notificationsRead.stale || unreadCount === 0 ? 0.45 : 1,
                       },
                       pressed && styles.pressed,
                     ]}

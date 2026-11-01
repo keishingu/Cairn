@@ -24,6 +24,16 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 })
 
+/**
+ * 通信せずに端末のセッションだけを消す。signOut は scope: 'local' でも保存があるとサーバーへ送り、
+ * 届かないと保存を残すため、先に保存を消して通信なしで SIGNED_OUT まで進める。
+ */
+export async function clearDeviceSession(): Promise<void> {
+  await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY)
+  const { error } = await supabase.auth.signOut({ scope: 'local' })
+  if (error) throw error
+}
+
 export async function loadStoredSession(): Promise<Session | null> {
   return parseStoredSession(await SecureStore.getItemAsync(AUTH_STORAGE_KEY))
 }

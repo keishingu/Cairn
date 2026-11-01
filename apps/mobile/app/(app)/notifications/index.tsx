@@ -145,7 +145,7 @@ export default function NotificationsScreen() {
         </Pressable>
         <Text style={[styles.heading, { color: palette.text }]}>{t('Notifications')}</Text>
         <Pressable
-          disabled={markRead.isPending || unreadCount === 0}
+          disabled={notificationsRead.stale || markRead.isPending || unreadCount === 0}
           onPress={() => markRead.mutate(null)}
           style={({ pressed }) => [
             styles.markAllButton,

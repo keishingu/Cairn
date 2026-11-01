@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canFallBackToCache,
   deleteCacheStatement,
+  deleteAllCacheStatements,
   deleteOtherUsersCacheStatements,
   deleteUserCacheStatements,
   formatLastSynced,
@@ -82,6 +83,34 @@ describe('表示するデータの決定', () => {
       cached: { data: ['古い'], syncedAt: 50 },
     })
     expect(read).toEqual({ data: ['古い'], stale: true, syncedAt: 50, error: null, loading: false })
+  })
+
+  it('再取得に失敗したら、取得済みのデータを古いものとして見せる', () => {
+    const read = resolveOfflineRead({ ...base, data: ['既存'], dataUpdatedAt: 100, error: networkError })
+    expect(read).toEqual({ data: ['既存'], stale: true, syncedAt: 100, error: null, loading: false })
+  })
+
+  it('追加ページの失敗では、オンラインならオフライン扱いにしない', () => {
+    const read = resolveOfflineRead({
+      ...base,
+      data: ['既存'],
+      dataUpdatedAt: 100,
+      error: networkError,
+      isFetchNextPageError: true,
+    })
+    expect(read).toEqual({ data: ['既存'], stale: false, syncedAt: null, error: null, loading: false })
+  })
+
+  it('追加ページの失敗でも、圏外ならオフライン扱いにする', () => {
+    const read = resolveOfflineRead({
+      ...base,
+      online: false,
+      data: ['既存'],
+      dataUpdatedAt: 100,
+      error: networkError,
+      isFetchNextPageError: true,
+    })
+    expect(read.stale).toBe(true)
   })
 
   it('キャッシュが無ければ空配列にせず、取得エラーを返す', () => {
@@ -238,6 +267,14 @@ describe('キャッシュのSQL', () => {
       'DELETE FROM cached_notifications WHERE user_id = ?',
     ])
     expect(statements.every((statement) => statement.params[0] === 'user-1')).toBe(true)
+  })
+
+  it('サインアウトの確定では全ユーザーの行を消す', () => {
+    expect(deleteAllCacheStatements()).toEqual([
+      { sql: 'DELETE FROM cached_channel_lists', params: [] },
+      { sql: 'DELETE FROM cached_messages', params: [] },
+      { sql: 'DELETE FROM cached_notifications', params: [] },
+    ])
   })
 
   it('別ユーザーへの切り替えでは今のユーザー以外の行を消す', () => {

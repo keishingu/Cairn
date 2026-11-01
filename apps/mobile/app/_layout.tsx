@@ -6,13 +6,14 @@ import { getNetworkStateAsync } from 'expo-network'
 import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { shouldClearAccountCache } from '../lib/account-cache'
+import { isSessionConfirmedAbsent, shouldClearAccountCache } from '../lib/account-cache'
 import { queryClient } from '../lib/query-client'
 import { loadStoredSession, supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
 import { SessionContext } from '../lib/session-context'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
 import {
+  deleteAllOfflineCache,
   deleteOfflineCacheForUser,
   setOfflineCacheUser,
   startOfflineCache,
@@ -41,17 +42,20 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
       queryClient.clear()
       if (previousUserId) deleteOfflineCacheForUser(previousUserId)
     }
+    if (event === 'SIGNED_OUT') deleteAllOfflineCache()
     knownUserId.current = nextUserId
     setOfflineCacheUser(nextUserId)
     setSession(newSession)
   }, [])
 
   React.useEffect(() => {
-    const applyInitialSession = (session: Session | null) => {
+    const applyInitialSession = (session: Session | null, confirmedAbsent = false) => {
       if (knownUserId.current === undefined) applySession('INITIAL_SESSION', session)
+      // 前回の起動より後にセッションが失効していると、SIGNED_OUT を受け取れず行が残る
+      if (confirmedAbsent && knownUserId.current === null) deleteAllOfflineCache()
     }
 
-    // アクセストークンが切れていると、圏外の getSession は更新の再試行で最大 30 秒止まる。
+    // アクセストークンが切れていると、圏外の getSession は更新の再試行で約 25 秒止まる。
     // 明示的に圏外なら保存済みセッションで先に進み、キャッシュを表示できるようにする
     void getNetworkStateAsync()
       .then(async (state) => {
@@ -64,11 +68,9 @@ function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElem
     void supabase.auth
       .getSession()
       .then(async ({ data, error }) => {
-        // 通信できず更新に失敗しただけなら、サインアウト扱いにしない（保存は残っている）
-        const session =
-          data.session ??
-          (error && isAuthRetryableFetchError(error) ? await loadStoredSession() : null)
-        applyInitialSession(session)
+        const networkFailed = !!error && isAuthRetryableFetchError(error)
+        const session = data.session ?? (networkFailed ? await loadStoredSession() : null)
+        applyInitialSession(session, isSessionConfirmedAbsent(!!data.session, networkFailed))
       })
       .catch((error: unknown) => {
         console.error('[auth] セッションを復元できませんでした:', error)

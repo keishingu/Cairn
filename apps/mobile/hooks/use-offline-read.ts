@@ -16,6 +16,7 @@ interface QueryLike<T> {
   dataUpdatedAt: number
   error: unknown
   isLoading: boolean
+  isFetchNextPageError?: boolean
 }
 
 /**
@@ -60,6 +61,7 @@ export function useOfflineRead<T>(
     dataUpdatedAt: query.dataUpdatedAt,
     error: query.error,
     isLoading: query.isLoading,
+    isFetchNextPageError: query.isFetchNextPageError === true,
     cached: !shouldRead || scopeFailed ? null : cacheQuery.data,
   })
 }

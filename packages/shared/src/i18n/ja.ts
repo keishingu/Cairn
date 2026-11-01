@@ -377,6 +377,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load the workspace': 'ワークスペースを読み込めませんでした',
   'Could not load the workspace list ({status})': 'ワークスペース一覧の取得に失敗しました ({status})',
   'Could not load this page': '読み込みに失敗しました',
+  'This page is not available offline. Connect to the internet and try again.':
+    'この画面はオフラインでは使えません。インターネットに接続して再試行してください',
   'Could not load unsent messages from this device': '未送信メッセージを端末から読み込めませんでした',
   'Could not load workspace info': 'ワークスペース情報の取得に失敗しました',
   'Could not load workspace info ({status})': 'ワークスペース情報の取得に失敗しました ({status})',

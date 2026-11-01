@@ -157,6 +157,10 @@ export function deleteOtherUsersCacheStatements(userId: string): CacheStatement[
   }))
 }
 
+export function deleteAllCacheStatements(): CacheStatement[] {
+  return CACHE_TABLES.map((table) => ({ sql: `DELETE FROM ${table}`, params: [] }))
+}
+
 export function hasUserCacheStatement(userId: string): CacheStatement {
   return {
     sql: 'SELECT 1 AS found FROM cached_channel_lists WHERE user_id = ? LIMIT 1',
@@ -225,12 +229,14 @@ export function resolveOfflineRead<T>(input: {
   dataUpdatedAt: number
   error: unknown
   isLoading: boolean
+  /** 追加ページの失敗は読み込み済みのデータの鮮度と関係ない */
+  isFetchNextPageError?: boolean
   cached: CachedEntry<T> | null | undefined
 }): OfflineRead<T> {
-  const { online, data, dataUpdatedAt, error, isLoading, cached } = input
+  const { online, data, dataUpdatedAt, error, isLoading, isFetchNextPageError, cached } = input
   const blockingError = error && !canFallBackToCache(error) ? toError(error) : null
   if (data !== undefined) {
-    const stale = !blockingError && (!online || !!error)
+    const stale = !blockingError && (!online || (!!error && !isFetchNextPageError))
     return {
       data,
       stale,
