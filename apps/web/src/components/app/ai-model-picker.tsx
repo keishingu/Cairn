@@ -10,7 +10,6 @@ import React from 'react'
 import { AI_CHAT_MODEL_LABELS, AI_CHAT_MODELS, type AiChatModel } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { useWorkspaceSettings } from '@/lib/use-workspace-settings'
-import { useSetAiConversationModel } from '@/hooks/use-ai-conversations'
 import { InlineError } from './inline-error'
 
 /** 会話のモデルを、owner が選べるモデルから外していたら true（その会話からは送れない） */
@@ -18,18 +17,23 @@ export function isConversationModelUnavailable(model: AiChatModel, allowedModels
   return allowedModels !== undefined && !allowedModels.includes(model)
 }
 
+// 切り替えの保存（PATCH）は呼び出し側（ChatView）が持つ。保存中は送信も止め、古いモデルで回答・課金させないため
 export function AiModelPicker({
   conversationId,
   model,
   disabled,
+  changing,
+  onChange,
 }: {
   conversationId: string
   model: AiChatModel
   disabled?: boolean
+  // モデルの切り替えを保存している途中
+  changing: boolean
+  onChange: (model: AiChatModel) => void
 }) {
   const t = useT()
-  const { data: settings } = useWorkspaceSettings()
-  const setModel = useSetAiConversationModel(conversationId)
+  const { data: settings, isError: settingsFailed, refetch, isFetching } = useWorkspaceSettings()
   const allowed = settings?.aiChatAllowedModels
   const credits = settings?.aiChatRequestCredits ?? null
   const unavailable = isConversationModelUnavailable(model, allowed)
@@ -48,8 +52,8 @@ export function AiModelPicker({
         <select
           id={`ai-model-${conversationId}`}
           value={model}
-          disabled={disabled || setModel.isPending || !allowed}
-          onChange={e => setModel.mutate(e.target.value as AiChatModel)}
+          disabled={disabled || changing || !allowed}
+          onChange={e => onChange(e.target.value as AiChatModel)}
           className="form-control"
           style={{ height: 26, padding: '0 6px', fontSize: 11.5, width: 'auto' }}
         >
@@ -60,6 +64,21 @@ export function AiModelPicker({
           ))}
         </select>
       </div>
+      {/* 選べるモデルを読み込めなかったときは、読み込み中のように見せず理由と再試行を出す */}
+      {settingsFailed && !allowed && (
+        <InlineError style={{ marginTop: 6 }}>
+          {t('Could not load the models you can choose.')}{' '}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            style={{ height: 24, padding: '0 8px', fontSize: 11.5, marginLeft: 4 }}
+          >
+            {t('Retry')}
+          </button>
+        </InlineError>
+      )}
       {unavailable && (
         <InlineError style={{ marginTop: 6 }}>
           {t('The workspace owner no longer allows this model. Choose another model to continue.')}

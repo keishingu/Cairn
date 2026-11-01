@@ -18,7 +18,12 @@ import type { AiChatModel } from '@cairn/shared'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { InlineError } from '../inline-error'
-import { useAiConversationMessages, useAiConversations, useCreateAiConversation } from '@/hooks/use-ai-conversations'
+import {
+  useAiConversationMessages,
+  useAiConversations,
+  useCreateAiConversation,
+  useSetAiConversationModel,
+} from '@/hooks/use-ai-conversations'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
@@ -362,8 +367,10 @@ function ChatView({
   // owner が選べるモデルから外したモデルの会話は、選び直すまで送らない（送ってもサーバーが 409 で断る）
   const { data: workspaceSettings } = useWorkspaceSettings()
   const modelUnavailable = isConversationModelUnavailable(model, workspaceSettings?.aiChatAllowedModels)
+  // モデルの切り替えを保存している間は送らない（保存前に送ると、切り替える前のモデルで回答・課金される）
+  const setModel = useSetAiConversationModel(conversationId)
   // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
-  const ready = !isLoading && attachments.blocker === null && !modelUnavailable
+  const ready = !isLoading && attachments.blocker === null && !modelUnavailable && !setModel.isPending
 
   // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
   const send = (content: string) => {
@@ -574,7 +581,13 @@ function ChatView({
               </button>
             </div>
           </form>
-          <AiModelPicker conversationId={conversationId} model={model} disabled={isLoading}/>
+          <AiModelPicker
+            conversationId={conversationId}
+            model={model}
+            disabled={isLoading}
+            changing={setModel.isPending}
+            onChange={next => setModel.mutate(next)}
+          />
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
             {t('AI can be wrong. Check important decisions with a lead.')}
           </div>

@@ -606,6 +606,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'OpenAI · default': 'OpenAI·기본',
   'Anthropic · balanced speed and quality': 'Anthropic·속도와 품질의 균형',
   'Anthropic · most capable, higher cost': 'Anthropic·최고 성능(고비용)',
+  'Could not load the models you can choose.': '선택할 수 있는 모델을 불러올 수 없습니다.',
   'Could not change the model': '모델을 변경할 수 없습니다',
   '{model} (unavailable)': '{model}(사용 불가)',
   '{model} · {credits} credits': '{model}·{credits} 크레딧',

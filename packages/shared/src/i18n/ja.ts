@@ -606,6 +606,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'OpenAI · default': 'OpenAI・既定',
   'Anthropic · balanced speed and quality': 'Anthropic・速度と品質のバランス',
   'Anthropic · most capable, higher cost': 'Anthropic・最高性能（高コスト）',
+  'Could not load the models you can choose.': '選べるモデルを読み込めませんでした。',
   'Could not change the model': 'モデルを変更できませんでした',
   '{model} (unavailable)': '{model}（使用不可）',
   '{model} · {credits} credits': '{model}・{credits} クレジット',

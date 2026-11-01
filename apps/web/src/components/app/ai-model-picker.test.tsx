@@ -6,6 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AiModelPicker, isConversationModelUnavailable } from './ai-model-picker'
+import { useSetAiConversationModel } from '@/hooks/use-ai-conversations'
+
+// ChatView と同じく、切り替えの保存は呼び出し側が持ってピッカーに渡す
+function Harness({ model }: { model: 'gpt-5' | 'claude-opus-5-5' }) {
+  const setModel = useSetAiConversationModel('conv-1')
+  return <AiModelPicker conversationId="conv-1" model={model} changing={setModel.isPending} onChange={next => setModel.mutate(next)}/>
+}
 
 const { fetchWithAuth, toastError } = vi.hoisted(() => ({ fetchWithAuth: vi.fn(), toastError: vi.fn() }))
 vi.mock('@/lib/fetch-with-auth', () => ({ fetchWithAuth }))
@@ -13,9 +20,15 @@ vi.mock('@/lib/toast', () => ({ toast: { error: toastError, success: vi.fn() } }
 
 const CREDITS = { 'gpt-5': 10, 'claude-sonnet-5-5': 10, 'claude-opus-5-5': 20 }
 
-function renderPicker(model: 'gpt-5' | 'claude-opus-5-5', allowed: string[], patchStatus = 200) {
+function renderPicker(
+  model: 'gpt-5' | 'claude-opus-5-5',
+  allowed: string[],
+  patchStatus = 200,
+  settingsStatus: () => number = () => 200,
+) {
   fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
     if (input === '/api/workspaces/settings' && !init) {
+      if (settingsStatus() !== 200) return new Response(JSON.stringify({ error: 'failed' }), { status: settingsStatus() })
       return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: allowed, aiChatRequestCredits: CREDITS }))
     }
     if (input === '/api/ai/conversations/conv-1' && init?.method === 'PATCH') {
@@ -30,7 +43,7 @@ function renderPicker(model: 'gpt-5' | 'claude-opus-5-5', allowed: string[], pat
   queryClient.setQueryData(['ai-conversations'], [{ id: 'conv-1', title: null, model, createdAt: '2026-11-01T00:00:00.000Z' }])
   render(
     <QueryClientProvider client={queryClient}>
-      <AiModelPicker conversationId="conv-1" model={model}/>
+      <Harness model={model}/>
     </QueryClientProvider>,
   )
   return queryClient
@@ -87,6 +100,20 @@ describe('AiModelPicker', () => {
 
     expect(await screen.findByText(/このモデルはワークスペースの owner により使えなくなりました/)).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Claude Opus 5\.5（使用不可）/ })).toBeDisabled()
+  })
+
+  it('選べるモデルを読み込めなければ、読み込み中のように見せず理由と再試行を出す', async () => {
+    let status = 500
+    renderPicker('gpt-5', ['gpt-5', 'claude-opus-5-5'], 200, () => status)
+
+    expect(await screen.findByText(/選べるモデルを読み込めませんでした。/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'モデル' })).toBeDisabled()
+
+    status = 200
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'モデル' })).toBeEnabled())
+    expect(screen.queryByText(/選べるモデルを読み込めませんでした。/)).not.toBeInTheDocument()
   })
 })
 
