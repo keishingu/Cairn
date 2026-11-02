@@ -5,9 +5,9 @@
 // 実行案は保存せず承認カードも出さない。結果は設定画面にだけ返し、run にも残す。クレジットと実行回数は消費する。
 
 import { generateText } from 'ai'
-import { BILLING_CONFIG } from '@cairn/core/billing'
+import { chatRequestCredits } from './chat-model'
 import { isAiChatModel } from '@cairn/shared'
-import { buildChatSystemPrompt } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
+import { buildChatSystemPrompt, toChatSystemMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -84,7 +84,8 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
   }
 
   const triggerKey = `dry:${crypto.randomUUID()}`
-  const credits = BILLING_CONFIG.activeAiRequestCredits
+  // テスト実行はワークスペースの既定モデルで行い、そのモデルのクレジットを消費する
+  const credits = chatRequestCredits(workspace.aiChatModel)
   if (!(await reserveCreditsForActiveBenefit(ctx.workspaceId, credits, triggerKey))) {
     throw new DryRunError(402, 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。')
   }
@@ -102,15 +103,17 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
     const result = await generateText({
       model: chatLanguageModel(workspace.aiChatModel),
-      system: buildChatSystemPrompt({
-        now,
-        role: ctx.role,
-        contextSection: '',
-        hasWebSearch: false,
-        workspaceInstructions: workspace.aiChatSystemPrompt,
-        skill,
-      }),
-      messages: [{ role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` }],
+      messages: [
+        ...toChatSystemMessages(buildChatSystemPrompt({
+          now,
+          role: ctx.role,
+          contextSection: '',
+          hasWebSearch: false,
+          workspaceInstructions: workspace.aiChatSystemPrompt,
+          skill,
+        })),
+        { role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` },
+      ],
       tools: {
         ...createResearchTools(ctx),
         ...createProposalTools(ctx, null, { allowed: skill.writeActions, dryRun }),

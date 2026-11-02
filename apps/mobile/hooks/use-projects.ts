@@ -7,7 +7,8 @@ export interface ProjectDto {
   id: string
   title: string
   description: string | null
-  statusName: 'plan' | 'review' | 'active' | 'done'
+  statusName: string | null
+  statusColor: string | null
   startDate: string | null
   endDate: string | null
   memberCount: number

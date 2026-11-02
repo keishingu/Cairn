@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   AppState,
   BackHandler,
   FlatList,
@@ -12,10 +11,8 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
-  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -38,9 +35,10 @@ import {
 } from '../../../hooks/use-messages'
 import type { MessageDto } from '../../../hooks/use-messages'
 import type { ThemePalette } from '../../../lib/theme'
-import { isEdgeBackSwipe } from '../../../lib/edge-back-swipe'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
+import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
+import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
 import { ChatPdfViewer } from '../../../components/chat-pdf-viewer'
@@ -50,6 +48,7 @@ import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
+import type { ChatInfoFileDto } from '../../../hooks/use-chat-info'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
 import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
@@ -57,7 +56,14 @@ import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/atta
 import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
 import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
-import { attachmentViewer, isImageMime, isPreviewableAttachment } from '../../../lib/attachment-file'
+import {
+  attachmentViewer,
+  CHAT_IMAGE_MAX_MULTI,
+  CHAT_IMAGE_MAX_SINGLE,
+  fitImageSize,
+  isImageMime,
+  isPreviewableAttachment,
+} from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
@@ -87,6 +93,8 @@ import {
 } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { MoveToThreadSheet } from '../../../components/move-to-thread-sheet'
+import { TextSelectSheet } from '../../../components/text-select-sheet'
+import * as Clipboard from 'expo-clipboard'
 import { UserProfileSheet } from '../../../components/user-profile-sheet'
 import {
   canMentionUser,
@@ -96,11 +104,16 @@ import {
 import type { ProfileSheetAction, ProfileSheetTarget } from '../../../lib/user-profile-actions'
 import { canMoveMessageToThread } from '../../../lib/move-to-thread'
 import { useAppLocale, useT } from '../../../components/locale-provider'
+import { OfflineBanner } from '../../../components/offline-banner'
+import { useOfflineRead } from '../../../hooks/use-offline-read'
 import { ReactionPicker } from '../../../components/reaction-picker'
+import { SwipeToReply } from '../../../components/swipe-to-reply'
 import { useReactionHistory } from '../../../hooks/use-reaction-history'
 import { createReactionHistoryQueue } from '../../../lib/reaction-history'
 import { UserAvatar } from '../../../components/user-avatar'
 import { chatInputSubmitBehavior, loadChatSendOnEnter, saveChatSendOnEnter } from '../../../lib/chat-send-key'
+import { haptics } from '../../../lib/haptics'
+import { canReplyToMessage, canSwipeReply } from '../../../lib/swipe-reply'
 
 type Palette = ThemePalette
 type IoniconName = React.ComponentProps<typeof Ionicons>['name']
@@ -147,57 +160,109 @@ async function openAttachmentFile(
   }
 }
 
-function AttachmentChip({
+// 画像はファイル名を出さずサムネイルだけを大きく表示する（Web の ChatMessage と同じ）。
+// 寸法はサーバーから届かないため、読み込み前は 4:3 の枠を確保し、読み込み後に実寸の縦横比へ合わせる
+function AttachmentImage({
   attachment,
   palette,
   auth,
-  onOpenPreview,
+  maxSize,
+  onPress,
+  accessibilityLabel,
 }: {
   attachment: MessageDto['attachments'][number]
   palette: Palette
-  auth?: AttachmentAuth
-  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+  auth: AttachmentAuth
+  maxSize: number
+  onPress: () => void
+  accessibilityLabel: string
 }) {
-  const t = useT()
-  const isImage = isImageMime(attachment.mimeType)
-  const isPreviewable = isPreviewableAttachment(attachment.mimeType, attachment.fileName, Platform.OS)
+  const [size, setSize] = React.useState<{ width: number; height: number } | null>(null)
+  const [failed, setFailed] = React.useState(false)
+  const box = size ?? { width: maxSize, height: maxSize * 0.75 }
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={
-        isPreviewable ? t('View {name}', { name: attachment.fileName }) : t('Open {name}', { name: attachment.fileName })
-      }
-      disabled={!auth}
-      onPress={() => {
-        if (!auth) return
-        if (isPreviewable) {
-          onOpenPreview(attachment)
-          return
-        }
-        void openAttachmentFile(
-          attachment.fileId,
-          attachment.fileName,
-          attachment.mimeType,
-          auth,
-          t,
-        )
-      }}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
       style={({ pressed }) => [
-        styles.attachmentChip,
-        { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
+        styles.attachmentImageBox,
+        { width: box.width, aspectRatio: box.width / box.height, backgroundColor: palette.card2, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      {isImage && auth ? (
+      {failed ? (
+        <Ionicons name="image-outline" size={24} color={palette.text3} />
+      ) : (
         <Image
           source={{
             uri: attachmentUrl(attachment.fileId),
             headers: attachmentRequestHeaders(auth),
           }}
-          style={styles.attachmentImage}
+          style={styles.attachmentImageFill}
+          resizeMode="cover"
+          onLoad={(event) => {
+            const { width, height } = event.nativeEvent.source
+            const fitted = fitImageSize(width, height, maxSize)
+            if (fitted) setSize(fitted)
+          }}
+          onError={() => setFailed(true)}
         />
-      ) : (
-        <Ionicons name={attachmentIcon(attachment.mimeType)} size={20} color={palette.text3} />
       )}
+    </Pressable>
+  )
+}
+
+function AttachmentChip({
+  attachment,
+  palette,
+  auth,
+  imageMaxSize,
+  onOpenPreview,
+}: {
+  attachment: MessageDto['attachments'][number]
+  palette: Palette
+  auth?: AttachmentAuth
+  imageMaxSize: number
+  onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
+}) {
+  const t = useT()
+  const isImage = isImageMime(attachment.mimeType)
+  const isPreviewable = isPreviewableAttachment(attachment.mimeType, attachment.fileName, Platform.OS)
+  const accessibilityLabel = isPreviewable
+    ? t('View {name}', { name: attachment.fileName })
+    : t('Open {name}', { name: attachment.fileName })
+  const open = () => {
+    if (!auth) return
+    if (isPreviewable) {
+      onOpenPreview(attachment)
+      return
+    }
+    void openAttachmentFile(attachment.fileId, attachment.fileName, attachment.mimeType, auth, t)
+  }
+  if (isImage && auth) {
+    return (
+      <AttachmentImage
+        attachment={attachment}
+        palette={palette}
+        auth={auth}
+        maxSize={imageMaxSize}
+        onPress={open}
+        accessibilityLabel={accessibilityLabel}
+      />
+    )
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      disabled={!auth}
+      onPress={open}
+      style={({ pressed }) => [
+        styles.attachmentChip,
+        { backgroundColor: palette.card2, borderColor: palette.border, opacity: pressed ? 0.7 : 1 },
+      ]}
+    >
+      <Ionicons name={attachmentIcon(attachment.mimeType)} size={20} color={palette.text3} />
       <Text style={[styles.attachmentText, { color: palette.text2 }]} numberOfLines={1}>
         {attachment.fileName}
       </Text>
@@ -414,6 +479,7 @@ function ChatMessageRow({
                   key={attachment.id}
                   attachment={attachment}
                   palette={palette}
+                  imageMaxSize={message.attachments.length === 1 ? CHAT_IMAGE_MAX_SINGLE : CHAT_IMAGE_MAX_MULTI}
                   onOpenPreview={onOpenPreview}
                   {...(attachmentAuth ? { auth: attachmentAuth } : {})}
                 />
@@ -624,6 +690,11 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
+  const messagesRead = useOfflineRead(
+    { type: 'messages', channelId: channelId ?? '' },
+    messagesQuery,
+    !!channelId,
+  )
   const markRead = useMarkChannelRead(channelId ?? '')
   const toggleReaction = useToggleMessageReaction(channelId ?? '')
   const editMessage = useEditMessage(channelId ?? '')
@@ -678,6 +749,12 @@ export default function ChatThreadScreen() {
   const [sendKeyPreferenceError, setSendKeyPreferenceError] = React.useState<string | null>(null)
   const [isQueueing, setIsQueueing] = React.useState(false)
   const [sendError, setSendError] = React.useState<string | null>(null)
+  const [selectableText, setSelectableText] = React.useState<string | null>(null)
+  const [copiedNotice, setCopiedNotice] = React.useState<string | null>(null)
+  const copiedNoticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => () => {
+    if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
+  }, [])
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
@@ -703,6 +780,7 @@ export default function ChatThreadScreen() {
   const [attachmentPreview, setAttachmentPreview] = React.useState<
     MessageDto['attachments'][number] | null
   >(null)
+  const [infoOpen, setInfoOpen] = React.useState(false)
   const previewViewer = attachmentPreview
     ? attachmentViewer(attachmentPreview.mimeType, attachmentPreview.fileName, Platform.OS)
     : null
@@ -740,7 +818,19 @@ export default function ChatThreadScreen() {
     }
   }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
-  const messages = messagesQuery.data ?? []
+  const messages = messagesRead.data ?? []
+  // 開いた画像と同じメッセージの画像だけをビューアで前後に移動できるようにする
+  const previewImages = React.useMemo(
+    () =>
+      attachmentPreview
+        ? resolveViewerImages(
+            messages.find((message) => message.attachments.some((a) => a.id === attachmentPreview.id))
+              ?.attachments,
+            attachmentPreview,
+          )
+        : { images: [], index: 0 },
+    [attachmentPreview, messages],
+  )
   const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
   const reactionPeopleSummary = reactionPeople && reactionPeopleMessage
     ? getReactionPeopleSummary(reactionPeopleMessage.reactions, reactionPeople.selectedEmoji)
@@ -850,36 +940,12 @@ export default function ChatThreadScreen() {
   const draftRef = React.useRef(draft)
   draftRef.current = draft
 
-  // chats/[channelId] は chats/index と同じ Tab Navigator 内の兄弟タブ（href: null）のため、
-  // 他のタブへ切り替えても既定では画面がアンマウントされない。
+  // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
-  const swipeX = React.useRef(new Animated.Value(0)).current
   const goBackToList = React.useCallback(() => {
-    swipeX.setValue(0)
-    router.replace('/(app)/chats')
-  }, [router, swipeX])
-  const backSwipe = React.useMemo(
-    () =>
-      PanResponder.create({
-        // 左端から右へ動かしたときだけ一覧へ戻す。縦スクロールと戻るボタンのタップは奪わない。
-        onMoveShouldSetPanResponderCapture: (_event, gesture) => isEdgeBackSwipe(gesture),
-        onPanResponderMove: (_event, gesture) => {
-          swipeX.setValue(Math.max(0, gesture.dx))
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dx > 72 || gesture.vx > 0.75) {
-            goBackToList()
-            return
-          }
-          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
-        },
-        onPanResponderTerminate: () => {
-          Animated.timing(swipeX, { toValue: 0, duration: 160, useNativeDriver: true }).start()
-        },
-      }),
-    [goBackToList, swipeX],
-  )
+    router.dismissTo('/(app)/chats')
+  }, [router])
   const channelListsSettled = projectChannelsQuery.isSuccess && !projectChannelsQuery.isFetching
     && workspaceChannelsQuery.isSuccess && !workspaceChannelsQuery.isFetching
     && (!FEATURE_FLAGS.dm || (dmsQuery.isSuccess && !dmsQuery.isFetching))
@@ -904,15 +970,12 @@ export default function ChatThreadScreen() {
 
   React.useEffect(() => {
     const unsubFocus = navigation.addListener('focus', () => setIsFocused(true))
-    const unsubBlur = navigation.addListener('blur', () => {
-      setIsFocused(false)
-      swipeX.setValue(0)
-    })
+    const unsubBlur = navigation.addListener('blur', () => setIsFocused(false))
     return () => {
       unsubFocus()
       unsubBlur()
     }
-  }, [navigation, swipeX])
+  }, [navigation])
 
   React.useEffect(() => {
     if (!isFocused) return
@@ -949,8 +1012,7 @@ export default function ChatThreadScreen() {
   markReadRef.current = markRead
   const lastReadMessageIdRef = React.useRef<string | null>(null)
 
-  // chats/[channelId] は隠しタブとして常駐するため、一覧に戻って別チャンネルを開いても
-  // コンポーネントは再マウントされない。channelId が変わったら下書き・エラー・既読化の
+  // 同じ画面のまま params だけが変わった場合に備える。channelId が変わったら下書き・エラー・既読化の
   // 状態を初期化しないと、A に入力した下書きが B に誤送信されてしまう。
   // また refetchOnMount: 'always' はコンポーネント自体の再マウント時にしか働かないため、
   // 常駐したまま queryKey だけが切り替わるこのケースでは staleTime 内のキャッシュが
@@ -1005,6 +1067,7 @@ export default function ChatThreadScreen() {
       !isAppActive ||
       messagesQuery.isFetching ||
       messagesQuery.isError ||
+      messagesRead.stale ||
       messages.length === 0
     )
       return
@@ -1018,7 +1081,7 @@ export default function ChatThreadScreen() {
         lastReadMessageIdRef.current = lastId
       },
     })
-  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, isFocused, isAppActive])
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, messagesRead.stale, isFocused, isAppActive])
 
   async function handleSend() {
     const content = serializeMentions(draft, mentionSelectionsRef.current).trim()
@@ -1027,10 +1090,12 @@ export default function ChatThreadScreen() {
       setSendError(null)
       try {
         await editMessage.mutateAsync({ messageId: editingMessage.id, content })
+        haptics.messageSent()
         setDraft('')
         setEditingMessage(null)
         mentionSelectionsRef.current = []
       } catch (error) {
+        haptics.sendFailed()
         setSendError(error instanceof Error ? error.message : t('Could not edit the message'))
       }
       return
@@ -1080,11 +1145,17 @@ export default function ChatThreadScreen() {
       setReplyTarget(null)
       upload.clearUploads()
     } catch {
+      haptics.sendFailed()
       if (channelIdRef.current !== sendingChannelId) return
       setSendError(t('Could not save unsent messages on this device. Send again.'))
     } finally {
       setIsQueueing(false)
     }
+  }
+
+  const openMessageActions = (message: MessageDto) => {
+    haptics.longPressMenu()
+    setActionTarget(message)
   }
 
   const beginReply = (message: MessageDto) => {
@@ -1216,8 +1287,20 @@ export default function ChatThreadScreen() {
       }),
       t('Could not submit the report'),
     )
-    if (error) setSendError(error)
-    else Alert.alert(t('Reported'), t('The moderators will review it.'))
+    if (error) {
+      setSendError(error)
+      return
+    }
+    // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
+    // アプリ（Bot）はユーザーではないのでブロックの対象にしない
+    if (message.senderId === me?.id || message.blocked || message.senderApp) {
+      Alert.alert(t('Reported'), t('The moderators will review it.'))
+      return
+    }
+    Alert.alert(t('Reported'), t('The moderators will review it.'), [
+      { text: t('Block this user'), style: 'destructive', onPress: () => void blockUser(message.senderId) },
+      { text: t('Close'), style: 'cancel' },
+    ])
   }
   const reportMenu = (message: MessageDto) =>
     Alert.alert(t('Report reason'), t('Choose a reason'), [
@@ -1271,6 +1354,7 @@ export default function ChatThreadScreen() {
   const handleToggleReaction = (messageId: string, emoji: string) => {
     const request = toggleReaction.mutateAsync({ messageId, emoji })
     void queueReactionHistory(request, async () => {
+      haptics.reactionAdded()
       await reactionHistory.record(emoji).catch(() => setSendError(t('Could not save recent reactions')))
     }).catch((err: unknown) => {
       setSendError(err instanceof Error ? err.message : t('Could not update the reaction'))
@@ -1441,7 +1525,7 @@ export default function ChatThreadScreen() {
     })
   }
 
-  const openInfo = () => {
+  const openInfoActions = () => {
     if (!channelId) return
     router.push({
       pathname: '/(app)/chat-tools',
@@ -1455,6 +1539,15 @@ export default function ChatThreadScreen() {
         ...(isPrivate ? { returnIsPrivate: isPrivate } : {}),
       },
     })
+  }
+
+  const openInfoFile = (file: ChatInfoFileDto) => {
+    if (!attachmentAuth) return
+    if (isPreviewableAttachment(file.mimeType, file.fileName, Platform.OS)) {
+      setAttachmentPreview({ id: file.id, fileId: file.id, fileName: file.fileName, mimeType: file.mimeType, fileSize: file.fileSize, displayOrder: 0 })
+      return
+    }
+    void openAttachmentFile(file.id, file.fileName, file.mimeType, attachmentAuth, t)
   }
 
   const openMarkdownLink = React.useCallback(
@@ -1506,17 +1599,42 @@ export default function ChatThreadScreen() {
     [openMarkdownLink, t],
   )
 
-  const shareMessage = async (message: MessageDto) => {
+  const showCopiedNotice = (label: string) => {
+    if (copiedNoticeTimer.current) clearTimeout(copiedNoticeTimer.current)
+    setCopiedNotice(label)
+    copiedNoticeTimer.current = setTimeout(() => setCopiedNotice(null), 1600)
+  }
+
+  const copyMessageText = async (message: MessageDto) => {
     setActionTarget(null)
-    const body = parseMentions(message.content, t).trim()
-    const url = `${API_BASE_URL}/chats/${channelId}?m=${message.id}`
+    const body = parseMentions(message.content, t)
+    if (body.trim().length === 0) return
     try {
-      await Share.share({ message: body ? `${body}\n${url}` : url })
-    } catch (shareError) {
-      setSendError(
-        shareError instanceof Error ? shareError.message : t('Could not share the message'),
-      )
+      await Clipboard.setStringAsync(body)
+      showCopiedNotice(t('Copied the message'))
+    } catch {
+      setSendError(t('Could not copy the message'))
     }
+  }
+
+  const copyMessageLink = async (message: MessageDto) => {
+    setActionTarget(null)
+    try {
+      await Clipboard.setStringAsync(`${API_BASE_URL}/chats/${channelId}?m=${message.id}`)
+      showCopiedNotice(t('Copied the link'))
+    } catch {
+      setSendError(t('Could not copy the link'))
+    }
+  }
+
+  // iOS は閉じかけの操作メニューの上に別の Modal を出すと表示が捨てられるため、メニューが閉じ終えてから（onDismiss で）開く
+  const pendingSelectTextRef = React.useRef<string | null>(null)
+  const beginSelectText = (message: MessageDto) => {
+    setActionTarget(null)
+    const text = parseMentions(message.content, t)
+    // onDismiss は iOS でしか呼ばれない。Android はそのまま開ける
+    if (Platform.OS === 'ios') pendingSelectTextRef.current = text
+    else setSelectableText(text)
   }
 
   return (
@@ -1525,9 +1643,8 @@ export default function ChatThreadScreen() {
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
       behavior="padding"
-      {...backSwipe.panHandlers}
     >
-      <Animated.View style={[styles.swipeContent, { transform: [{ translateX: swipeX }] }]}>
+      <View style={styles.screenContent}>
         <View
           style={[
             styles.header,
@@ -1566,14 +1683,14 @@ export default function ChatThreadScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('Channel info')}
             style={styles.headerButton}
-            onPress={openInfo}
+            onPress={() => setInfoOpen(true)}
             hitSlop={6}
           >
             <Ionicons name="information-circle-outline" size={20} color={palette.text3} />
           </Pressable>
         </View>
 
-        {messagesQuery.isLoading ? (
+        {messagesRead.loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={palette.accent} />
           </View>
@@ -1591,7 +1708,14 @@ export default function ChatThreadScreen() {
           </View>
         ) : (
           <View style={styles.messageListContainer}>
-            {messagesQuery.error && (
+            {messagesRead.stale && messagesRead.syncedAt !== null && (
+              <OfflineBanner
+                syncedAt={messagesRead.syncedAt}
+                retrying={messagesQuery.isFetching}
+                onRetry={() => void messagesQuery.refetch()}
+              />
+            )}
+            {messagesRead.error && (
               <View
                 accessibilityRole="alert"
                 style={[
@@ -1604,7 +1728,7 @@ export default function ChatThreadScreen() {
                   style={[styles.refreshErrorText, { color: palette.redText }]}
                   numberOfLines={2}
                 >
-                  {messagesQuery.error.message}
+                  {messagesRead.error.message}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
@@ -1637,21 +1761,27 @@ export default function ChatThreadScreen() {
                     onCancel={() => offlineQueue.cancel(item.message.id)}
                   />
                 ) : (
-                  <ChatMessageRow
-                    message={item.message}
+                  <SwipeToReply
+                    enabled={canSwipeReply(item.message)}
                     palette={palette}
-                    mentionNames={mentionNames}
-                    onToggleReaction={handleToggleReaction}
-                    onAddReaction={setReactionTarget}
-                    onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
-                    onLinkPress={openMarkdownLink}
-                    onOpenActions={setActionTarget}
-                    onOpenProfile={openProfile}
-                    onOpenPreview={setAttachmentPreview}
-                    onOpenTask={openTask}
-                    onShowTasks={setLinkedTasksSheet}
-                    {...(attachmentAuth ? { attachmentAuth } : {})}
-                  />
+                    onReply={() => beginReply(item.message)}
+                  >
+                    <ChatMessageRow
+                      message={item.message}
+                      palette={palette}
+                      mentionNames={mentionNames}
+                      onToggleReaction={handleToggleReaction}
+                      onAddReaction={setReactionTarget}
+                      onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
+                      onLinkPress={openMarkdownLink}
+                      onOpenActions={openMessageActions}
+                      onOpenProfile={openProfile}
+                      onOpenPreview={setAttachmentPreview}
+                      onOpenTask={openTask}
+                      onShowTasks={setLinkedTasksSheet}
+                      {...(attachmentAuth ? { attachmentAuth } : {})}
+                    />
+                  </SwipeToReply>
                 )
               }
               contentContainerStyle={styles.list}
@@ -1679,7 +1809,7 @@ export default function ChatThreadScreen() {
                 ) : null
               }
               ListEmptyComponent={
-                messagesQuery.error ? null : (
+                messagesRead.error || messagesRead.stale ? null : (
                   <Text style={[styles.empty, { color: palette.text4 }]}>{t('No messages yet. Send the first one.')}</Text>
                 )
               }
@@ -1987,11 +2117,39 @@ export default function ChatThreadScreen() {
           </View>
         )}
 
+        {infoOpen && channelId && (
+          <ChatInfoDrawer
+            channelId={channelId}
+            channelName={channelName ?? t('Channels')}
+            channelType={channelType}
+            projectId={projectId}
+            isPrivate={isPrivate === '1'}
+            palette={palette}
+            onClose={() => setInfoOpen(false)}
+            onOpenActions={openInfoActions}
+            onOpenProject={(id) => router.push({ pathname: '/(app)/projects/[id]', params: { id } })}
+            onOpenFile={openInfoFile}
+            onOpenLink={openMarkdownLink}
+            onOpenMember={(member) =>
+              openProfile({
+                userId: member.userId,
+                displayName: member.displayName,
+                avatarUrl: member.avatarUrl,
+                blockedEitherWay: false,
+              })
+            }
+          />
+        )}
         <Modal
           transparent
           visible={actionTarget !== null}
           animationType="fade"
           onRequestClose={() => setActionTarget(null)}
+          onDismiss={() => {
+            const pending = pendingSelectTextRef.current
+            pendingSelectTextRef.current = null
+            if (pending !== null) setSelectableText(pending)
+          }}
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setActionTarget(null)} />
           <View
@@ -2005,104 +2163,97 @@ export default function ChatThreadScreen() {
             ]}
           >
             <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
-            <ActionButton
-              icon="arrow-undo-outline"
-              label={t('Reply')}
-              palette={palette}
-              onPress={() => actionTarget && beginReply(actionTarget)}
-            />
-            {actionTarget?.blocked && (
-              <ActionButton
-                icon="eye-outline"
-                label={t('Show message temporarily')}
-                palette={palette}
-                onPress={() => {
-                  Alert.alert(t('Message from a blocked user'), actionTarget.content)
-                  setActionTarget(null)
-                }}
-              />
-            )}
-            {actionTarget?.senderId !== me?.id && (
-              <>
+            {/* 項目が多く横向きなど縦の短い画面では収まらないため、シートの高さを抑えて一覧をスクロールさせる */}
+            <ScrollView style={styles.actionList} bounces={false}>
+              {actionTarget && canReplyToMessage(actionTarget) && (
                 <ActionButton
-                  icon="flag-outline"
-                  label={t('Report')}
+                  icon="arrow-undo-outline"
+                  label={t('Reply')}
                   palette={palette}
-                  onPress={() => actionTarget && reportMenu(actionTarget)}
+                  onPress={() => beginReply(actionTarget)}
                 />
-                {/* アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す） */}
-                {!actionTarget?.senderApp && <ActionButton
-                  icon="person-remove-outline"
-                  label={t('Block')}
-                  palette={palette}
-                  destructive
-                  onPress={() =>
-                    actionTarget &&
-                    Alert.alert(t('Block this user?'), t('DMs and notifications with this person will also be stopped.'), [
-                      { text: t('Cancel'), style: 'cancel' },
-                      {
-                        text: t('Block'),
-                        style: 'destructive',
-                        onPress: () => void blockUser(actionTarget.senderId),
-                      },
-                    ])
-                  }
-                />}
-              </>
-            )}
-            <ActionButton
-              icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
-              label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
-              palette={palette}
-              onPress={() => actionTarget && handleBookmark(actionTarget)}
-            />
-            <ActionButton
-              icon="checkbox-outline"
-              label={t('Make a task')}
-              palette={palette}
-              onPress={() => actionTarget && void makeTask(actionTarget)}
-            />
-            <ActionButton
-              icon="happy-outline"
-              label={t('Add reaction')}
-              palette={palette}
-              onPress={() => {
-                setReactionTarget(actionTarget)
-                setActionTarget(null)
-              }}
-            />
-            <ActionButton
-              icon="share-outline"
-              label={t('Share')}
-              palette={palette}
-              onPress={() => actionTarget && void shareMessage(actionTarget)}
-            />
-            {actionTarget &&
-              canMoveMessageToThread({
-                channelType,
-                workspaceChannel,
-                role: me?.wsRole,
-                messageType: actionTarget.messageType,
-              }) && (
+              )}
+              {actionTarget?.blocked && (
                 <ActionButton
-                  icon="arrow-redo-outline"
-                  label={t('Move to thread')}
+                  icon="eye-outline"
+                  label={t('Show message temporarily')}
                   palette={palette}
                   onPress={() => {
-                    setMoveError(null)
-                    setMoveTarget(actionTarget)
+                    Alert.alert(t('Message from a blocked user'), actionTarget.content)
                     setActionTarget(null)
                   }}
                 />
               )}
-            {actionTarget?.senderId === me?.id && (
-              <>
+              {actionTarget?.senderId === me?.id && (
                 <ActionButton
                   icon="create-outline"
                   label={t('Edit')}
                   palette={palette}
                   onPress={() => actionTarget && beginEdit(actionTarget)}
                 />
+              )}
+              {actionTarget && !actionTarget.blocked && actionTarget.content.trim().length > 0 && (
+                <>
+                  <ActionButton
+                    icon="copy-outline"
+                    label={t('Copy text')}
+                    palette={palette}
+                    onPress={() => void copyMessageText(actionTarget)}
+                  />
+                  <ActionButton
+                    icon="text-outline"
+                    label={t('Select text')}
+                    palette={palette}
+                    onPress={() => beginSelectText(actionTarget)}
+                  />
+                </>
+              )}
+              <ActionButton
+                icon="checkbox-outline"
+                label={t('Make a task')}
+                palette={palette}
+                onPress={() => actionTarget && void makeTask(actionTarget)}
+              />
+              <ActionButton
+                icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
+                label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
+                palette={palette}
+                onPress={() => actionTarget && handleBookmark(actionTarget)}
+              />
+              <ActionButton
+                icon="happy-outline"
+                label={t('Add reaction')}
+                palette={palette}
+                onPress={() => {
+                  setReactionTarget(actionTarget)
+                  setActionTarget(null)
+                }}
+              />
+              <ActionButton
+                icon="link-outline"
+                label={t('Copy link')}
+                palette={palette}
+                onPress={() => actionTarget && copyMessageLink(actionTarget)}
+              />
+              {actionTarget &&
+                canMoveMessageToThread({
+                  channelType,
+                  workspaceChannel,
+                  role: me?.wsRole,
+                  messageType: actionTarget.messageType,
+                }) && (
+                  <ActionButton
+                    icon="arrow-redo-outline"
+                    label={t('Move to thread')}
+                    palette={palette}
+                    onPress={() => {
+                      setMoveError(null)
+                      setMoveTarget(actionTarget)
+                      setActionTarget(null)
+                    }}
+                  />
+                )}
+              {actionTarget?.senderId === me?.id ? (
                 <ActionButton
                   icon="trash-outline"
                   label={t('Delete')}
@@ -2110,11 +2261,28 @@ export default function ChatThreadScreen() {
                   destructive
                   onPress={() => actionTarget && confirmDelete(actionTarget)}
                 />
-              </>
-            )}
+              ) : (
+                <ActionButton
+                  icon="flag-outline"
+                  label={t('Report')}
+                  palette={palette}
+                  destructive
+                  onPress={() => actionTarget && reportMenu(actionTarget)}
+                />
+              )}
+            </ScrollView>
           </View>
         </Modal>
 
+        <TextSelectSheet text={selectableText} palette={palette} onClose={() => setSelectableText(null)} />
+
+        {copiedNotice !== null && (
+          <View pointerEvents="none" style={styles.copiedNoticeWrap}>
+            <View style={[styles.copiedNotice, { backgroundColor: palette.text }]}>
+              <Text style={[styles.copiedNoticeLabel, { color: palette.bg }]}>{copiedNotice}</Text>
+            </View>
+          </View>
+        )}
         <UserProfileSheet
           target={profileTarget}
           member={profileMember}
@@ -2254,10 +2422,9 @@ export default function ChatThreadScreen() {
             />
           ) : previewViewer === 'image' ? (
             <ChatImageViewer
-              fileUrl={attachmentUrl(attachmentPreview.fileId)}
-              fileId={attachmentPreview.fileId}
-              fileName={attachmentPreview.fileName}
-              mimeType={attachmentPreview.mimeType}
+              images={previewImages.images}
+              initialIndex={previewImages.index}
+              fileUrlFor={attachmentUrl}
               auth={attachmentAuth}
               onClose={() => setAttachmentPreview(null)}
             />
@@ -2283,14 +2450,14 @@ export default function ChatThreadScreen() {
             />
           ) : null
         )}
-      </Animated.View>
+      </View>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  swipeContent: { flex: 1 },
+  screenContent: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2360,9 +2527,10 @@ const styles = StyleSheet.create({
   },
   replySender: { fontSize: 11.5, fontWeight: '600', flexShrink: 0 },
   replyText: { fontSize: 11.5, flex: 1 },
-  attachments: { gap: 6 },
+  attachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   attachmentsWithContent: { marginTop: 8 },
   attachmentChip: {
+    width: '100%',
     maxWidth: 240,
     minHeight: 44,
     flexDirection: 'row',
@@ -2373,7 +2541,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  attachmentImage: { width: 72, height: 54, borderRadius: 6 },
+  attachmentImageBox: { maxWidth: '100%', borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  attachmentImageFill: { width: '100%', height: '100%' },
   attachmentText: { flex: 1, fontSize: 12.5 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reaction: {
@@ -2541,7 +2710,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
     paddingTop: 8,
     paddingHorizontal: 12,
+    maxHeight: '85%',
   },
+  actionList: { flexGrow: 0, flexShrink: 1 },
+  copiedNoticeWrap: { position: 'absolute', left: 0, right: 0, bottom: 96, alignItems: 'center' },
+  copiedNotice: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
+  copiedNoticeLabel: { fontSize: 13, fontWeight: '600' },
   sheetGrip: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 6 },
   actionButton: {
     minHeight: 48,

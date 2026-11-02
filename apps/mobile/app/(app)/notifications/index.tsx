@@ -18,8 +18,11 @@ import {
   type NotificationDto,
 } from '../../../hooks/use-notifications'
 import { followNotification } from '../../../lib/follow-notification'
+import { haptics } from '../../../lib/haptics'
 import { routeFromNotification } from '../../../lib/notification-routing'
 import { useAppAppearance } from '../../../components/appearance-provider'
+import { OfflineBanner } from '../../../components/offline-banner'
+import { useOfflineRead } from '../../../hooks/use-offline-read'
 import type { ThemePalette } from '../../../lib/theme'
 import { useT } from '../../../components/locale-provider'
 import { PushPermissionBanner } from '../../../components/push-permission-banner'
@@ -76,13 +79,11 @@ export default function NotificationsScreen() {
   const unreadCountQuery = useUnreadNotificationCount()
   const markRead = useMarkNotificationsRead()
   const { palette } = useAppAppearance()
-  const notifications = notificationsQuery.data ?? []
+  const notificationsRead = useOfflineRead({ type: 'notifications' }, notificationsQuery)
+  const notifications = notificationsRead.data ?? []
   const unreadCount =
     unreadCountQuery.data ?? notifications.filter((item) => item.readAt === null).length
-  const errorMessage =
-    notificationsQuery.error instanceof Error
-      ? notificationsQuery.error.message
-      : t('Could not load the notification list')
+  const errorMessage = notificationsRead.error?.message ?? t('Could not load the notification list')
 
   function handlePress(item: NotificationDto) {
     if (!item.readAt) {
@@ -94,7 +95,7 @@ export default function NotificationsScreen() {
     })
   }
 
-  if (notificationsQuery.isLoading) {
+  if (notificationsRead.loading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: palette.bg }]}>
         <ActivityIndicator size="small" color={palette.accent} />
@@ -102,7 +103,7 @@ export default function NotificationsScreen() {
     )
   }
 
-  if (notificationsQuery.error) {
+  if (notificationsRead.error) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: palette.bg }]}>
         <View style={styles.errorState}>
@@ -145,7 +146,7 @@ export default function NotificationsScreen() {
         </Pressable>
         <Text style={[styles.heading, { color: palette.text }]}>{t('Notifications')}</Text>
         <Pressable
-          disabled={markRead.isPending || unreadCount === 0}
+          disabled={notificationsRead.stale || markRead.isPending || unreadCount === 0}
           onPress={() => markRead.mutate(null)}
           style={({ pressed }) => [
             styles.markAllButton,
@@ -157,6 +158,13 @@ export default function NotificationsScreen() {
         </Pressable>
       </View>
       <PushPermissionBanner />
+      {notificationsRead.stale && notificationsRead.syncedAt !== null && (
+        <OfflineBanner
+          syncedAt={notificationsRead.syncedAt}
+          retrying={notificationsQuery.isFetching}
+          onRetry={() => void notificationsQuery.refetch()}
+        />
+      )}
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}
@@ -164,9 +172,10 @@ export default function NotificationsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
-            onRefresh={() =>
+            onRefresh={() => {
+              haptics.refreshStart()
               void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
-            }
+            }}
             tintColor={palette.accent}
           />
         }

@@ -7,9 +7,19 @@ import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
 import { callBotApi } from './bot-client'
-import { createPendingPoll } from './polls'
+import { addPollOption, createPendingPoll, renderPollExclusively } from './polls'
 import { pollInputErrors } from './validate'
-import { CREATE_POLL_CALLBACK_ID, createPollModal, onlyCreatorCanCloseModal, parsePollSubmission } from './render'
+import {
+  ADD_OPTION_ACTION_ID,
+  ADD_OPTION_CALLBACK_ID,
+  addOptionModal,
+  CREATE_POLL_CALLBACK_ID,
+  createPollModal,
+  onlyCreatorCanAddOptionModal,
+  onlyCreatorCanCloseModal,
+  parseAddOptionSubmission,
+  parsePollSubmission,
+} from './render'
 
 // 投票アプリの Request URL。外部アプリと同じく、署名付きで届くインタラクションだけを受ける（docs/app-platform-design.md §7）
 
@@ -67,6 +77,7 @@ export async function handlePollsRequest(req: Request): Promise<Response> {
 }
 
 async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Response> {
+  if (payload.view.callback_id === ADD_OPTION_CALLBACK_ID) return handleAddOptionSubmission(payload)
   if (payload.view.callback_id !== CREATE_POLL_CALLBACK_ID) return new NextResponse('', { status: 200 })
   const locale = actorLocale(payload.cairn?.locale)
   const parsed = parsePollSubmission(payload.view.state.values, locale)
@@ -89,7 +100,7 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
     locale,
     idempotencyKey: `view:${payload.view.id}`,
   })
-  sendRenderEvent(pollId)
+  renderAfterResponse(pollId)
   if (!sameInput) {
     // 前の送信は応答が届かなかっただけで作成済み。直した内容で作り直したように見せず、作成済みであることを伝える
     return NextResponse.json({
@@ -97,6 +108,26 @@ async function handleViewSubmission(payload: ViewSubmissionPayload): Promise<Res
       errors: { question: translate(locale, 'A poll was already created from this form (it will be posted with the previous content). Cancel to close.') },
     })
   }
+  return new NextResponse('', { status: 200 })
+}
+
+async function handleAddOptionSubmission(payload: ViewSubmissionPayload): Promise<Response> {
+  const locale = actorLocale(payload.cairn?.locale)
+  const { pollId } = JSON.parse(payload.view.private_metadata ?? '{}') as { pollId?: string }
+  if (!pollId || !UUID.test(pollId)) return NextResponse.json({ response_action: 'errors', errors: { option: translate(locale, 'This poll no longer exists') } })
+  // view ID で同じ送信の再送を見分ける。UUID でなければ uuid 列との比較で DB エラーにせず、署名済みの不正な要求として断る
+  if (!UUID.test(payload.view.id)) return new NextResponse('invalid view.id', { status: 400 })
+  // 作成者・ワークスペース・締切・上限・重複は、足すトランザクションの中で投票の今の状態と合わせて確かめる
+  const result = await addPollOption({
+    pollId,
+    workspaceId: payload.team.id,
+    userId: payload.user.id,
+    label: parseAddOptionSubmission(payload.view.state.values),
+    locale,
+    submissionId: payload.view.id,
+  })
+  if (!result.ok) return NextResponse.json({ response_action: 'errors', errors: { option: result.error } })
+  renderAfterResponse(pollId)
   return new NextResponse('', { status: 200 })
 }
 
@@ -121,6 +152,12 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   if (action.action_id === 'close' && poll.createdBy !== payload.user.id) {
     // カードは全員に同じなので、押した本人にだけ知らせるにはモーダルを使う
     openViewAfterResponse(payload.team.id, payload.trigger_id, onlyCreatorCanCloseModal(actorLocale(payload.cairn?.locale)))
+    return new NextResponse('', { status: 200 })
+  }
+  if (action.action_id === ADD_OPTION_ACTION_ID) {
+    // モーダルを開くだけで票は変えない。締切・上限は送信時に確かめる（開いている間に締め切られることもあるため）
+    const locale = actorLocale(payload.cairn?.locale)
+    openViewAfterResponse(payload.team.id, payload.trigger_id, poll.createdBy === payload.user.id ? addOptionModal(poll.id, locale) : onlyCreatorCanAddOptionModal(locale))
     return new NextResponse('', { status: 200 })
   }
 
@@ -163,17 +200,29 @@ async function handleBlockActions(payload: BlockActionsPayload): Promise<Respons
   })
 
   // カードの描き直しは commit の後
-  if (changed) sendRenderEvent(poll.id)
+  if (changed) renderAfterResponse(poll.id)
   return new NextResponse('', { status: 200 })
 }
 
-// 応答を返した後に送る。Inngest が遅くても3秒の配信期限を使わせない。送れなくても、投稿待ち・描画待ちの投票は cron が拾い直す（§7.3）
-function sendRenderEvent(pollId: string): void {
-  after(() =>
-    inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
-      console.warn('[polls] card render event failed (Inngest not running?):', err)
-    }),
-  )
+// 応答を返した後に、その場でカードを投稿・描き直す。Inngest の待ち行列を通すと押してから表示が変わるまでに数秒掛かるため。
+// 3秒の配信期限は使わない。描けなかった（失敗・票が入り続けた）分は Inngest に任せ、イベントも送れなければ
+// 投稿待ち・描画待ちの投票を cron が拾い直す（§7.3）。他の処理が描いている（busy）なら、その処理が最新の版まで描く
+function renderAfterResponse(pollId: string): void {
+  after(async () => {
+    try {
+      const result = await renderPollExclusively(pollId)
+      if (result !== 'incomplete') return
+    } catch (err) {
+      console.warn(`[polls] rendering poll ${pollId} after the response failed; handing over to Inngest:`, err)
+    }
+    await sendRenderEvent(pollId)
+  })
+}
+
+function sendRenderEvent(pollId: string): Promise<unknown> {
+  return inngest.send({ name: POLL_RENDER_EVENT, data: { pollId } }).catch((err: unknown) => {
+    console.warn('[polls] card render event failed (Inngest not running?):', err)
+  })
 }
 
 // views.open は応答を返した後に呼ぶ。Bot API が遅くても3秒の配信期限を使わせず、起動が app_timeout になって押し直しで二重に開くのを防ぐ。

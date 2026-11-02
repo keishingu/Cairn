@@ -11,18 +11,29 @@ import { PendingActionCards } from '../ai-pending-action-card'
 import { SkillSuggestions } from '../ai-skill-suggestions'
 import { useAiMemberMentions } from '../ai-member-mentions'
 import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
+import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import { useAiAttachments } from '@/hooks/use-ai-attachments'
+import { AiModelPicker, isConversationModelUnavailable } from '../ai-model-picker'
+import { useWorkspaceSettings } from '@/lib/use-workspace-settings'
+import type { AiChatModel } from '@cairn/shared'
 import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
 import { InlineError } from '../inline-error'
-import { useAiConversationMessages, useAiConversations, useCreateAiConversation } from '@/hooks/use-ai-conversations'
+import {
+  useAiConversationMessages,
+  useAiConversations,
+  useCreateAiConversation,
+  useSetAiConversationModel,
+} from '@/hooks/use-ai-conversations'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
 import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { useOneShotRequest } from '@/lib/one-shot-request'
 import { buildAiRequestBody } from './ai-request-body'
+import { nextAiFocusStep } from './ai-focus-step'
 import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
 
 // ---- ソースチップ ----
@@ -296,12 +307,17 @@ const SUGGESTIONS = [
 
 function ChatView({
   conversationId,
+  model,
   initialMessages,
   isMobile,
+  autoFocusInput = false,
 }: {
   conversationId: string
+  // この会話で使うモデル（入力欄の下で切り替えられる）
+  model: AiChatModel
   initialMessages: MessageDto[]
   isMobile?: boolean
+  autoFocusInput?: boolean
 }) {
   const t = useT()
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -351,10 +367,18 @@ function ChatView({
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const mentions = useAiMemberMentions({ input, setInput, textareaRef })
+  React.useEffect(() => {
+    if (autoFocusInput) textareaRef.current?.focus()
+  }, [autoFocusInput])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
+  // owner が選べるモデルから外したモデルの会話は、選び直すまで送らない（送ってもサーバーが 409 で断る）
+  const { data: workspaceSettings } = useWorkspaceSettings()
+  const modelUnavailable = isConversationModelUnavailable(model, workspaceSettings?.aiChatAllowedModels)
+  // モデルの切り替えを保存している間は送らない（保存前に送ると、切り替える前のモデルで回答・課金される）
+  const setModel = useSetAiConversationModel(conversationId)
   // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
-  const ready = !isLoading && attachments.blocker === null
+  const ready = !isLoading && attachments.blocker === null && !modelUnavailable && !setModel.isPending
 
   // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
   const send = (content: string) => {
@@ -565,6 +589,13 @@ function ChatView({
               </button>
             </div>
           </form>
+          <AiModelPicker
+            conversationId={conversationId}
+            model={model}
+            disabled={isLoading}
+            changing={setModel.isPending}
+            onChange={next => setModel.mutate(next)}
+          />
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
             {t('AI can be wrong. Check important decisions with a lead.')}
           </div>
@@ -577,6 +608,27 @@ function ChatView({
 // ---- メインコンポーネント ----
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
+  const aiChatAllowed = useAiChatAllowed()
+  // owner が /ai を使えるロールを絞っていて自分が対象外なら、会話を読み込まず理由を出す（URL を直接開いたとき）
+  if (aiChatAllowed === false) return <AiChatNotAllowed isMobile={isMobile}/>
+  return <PageAIContent isMobile={isMobile}/>
+}
+
+function AiChatNotAllowed({ isMobile }: { isMobile?: boolean | undefined }) {
+  const t = useT()
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 16 : 28 }}>
+      <div style={{ maxWidth: 420, textAlign: 'center', color: 'var(--text-3)', fontSize: 13, lineHeight: 1.7 }}>
+        <Icon name="sparkles" size={24} color="var(--text-4)"/>
+        <p style={{ margin: '10px 0 0' }}>
+          {t('The workspace owner has limited who can use the AI assistant in this workspace. Ask the owner if you need access.')}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
   const t = useT()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
@@ -586,10 +638,38 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   const messagesQuery = useAiConversationMessages(activeId)
   const initialMessages = messagesQuery.data
 
+  const [focusRequested, setFocusRequested] = React.useState(false)
+  const focusNextConversationRef = React.useRef(false)
+  const [focusConversationId, setFocusConversationId] = React.useState<string | null>(null)
+
   const createConversation = useCreateAiConversation(conv => {
     setActiveId(conv.id)
     if (isMobile) setMobilePane('chat')
+    if (focusNextConversationRef.current) {
+      focusNextConversationRef.current = false
+      setFocusConversationId(conv.id)
+    }
   })
+  const { mutate: startConversation } = createConversation
+
+  // ?focus=1 はアプリのホーム画面のクイックアクション。入力欄は会話の中にしかないので、
+  // 直近の空の会話か新しい会話を開いて入力欄へフォーカスする
+  useOneShotRequest('focus', () => setFocusRequested(true))
+  React.useEffect(() => {
+    if (!focusRequested) return
+    const step = nextAiFocusStep({ conversations: conversationsQuery.data, activeId, activeMessages: initialMessages })
+    if (step.kind === 'open') {
+      setActiveId(step.conversationId)
+      if (isMobile) setMobilePane('chat')
+    } else if (step.kind === 'focus') {
+      setFocusRequested(false)
+      setFocusConversationId(step.conversationId)
+    } else if (step.kind === 'create') {
+      setFocusRequested(false)
+      focusNextConversationRef.current = true
+      startConversation()
+    }
+  }, [activeId, conversationsQuery.data, focusRequested, initialMessages, isMobile, startConversation])
 
   // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
   const conversationsError = conversationsQuery.isError ? (
@@ -598,7 +678,18 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
   // 会話を開いている途中・開けなかったときの本文（会話の中身が無いのに最初の画面を出さない）
   const conversationBody = (mobile: boolean) => {
     if (!activeId) return null
-    if (initialMessages) return <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile={mobile}/>
+    // 会話のモデルは一覧から引く（一覧が読めなければ、モデルを推測して送らせない）
+    const activeConversation = conversations.find(conversation => conversation.id === activeId)
+    if (initialMessages && activeConversation) {
+      return <ChatView key={activeId} conversationId={activeId} model={activeConversation.model} initialMessages={initialMessages} isMobile={mobile} autoFocusInput={activeId === focusConversationId}/>
+    }
+    if (conversationsQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+        </div>
+      )
+    }
     if (messagesQuery.isError) {
       return (
         <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>

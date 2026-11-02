@@ -1,11 +1,9 @@
 import React from 'react'
 import {
-  Animated,
   FlatList,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +12,12 @@ import {
   View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { emojiCategories, reactionEmojis } from '../lib/reaction-emoji-catalog'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useT } from './locale-provider'
+import { useDragPan } from '../hooks/use-drag-pan'
 import type { ThemePalette } from '../lib/theme'
 import { isVerticalSheetDrag, quickReactions, reactionSheetSwipe, REACTION_EMOJI_CATEGORY_LABELS, SKIN_TONE_SAMPLES } from '@cairn/shared'
 
@@ -58,23 +59,26 @@ export function ReactionPicker({
     setExpanded(next)
   }, [])
   // シート上部（つまみ〜「もっと見る」）の縦スワイプ。下方向だけ指に追従させ、離したら元の位置へ戻す
-  const dragY = React.useRef(new Animated.Value(0)).current
-  const expandedRef = React.useRef(expanded)
-  expandedRef.current = expanded
-  const onCloseRef = React.useRef(onClose)
-  onCloseRef.current = onClose
-  const panResponder = React.useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => isVerticalSheetDrag(gesture.dx, gesture.dy),
-    onPanResponderMove: (_event, gesture) => dragY.setValue(Math.max(0, gesture.dy)),
-    onPanResponderRelease: (_event, gesture) => {
-      const action = reactionSheetSwipe(gesture.dy, gesture.vy, expandedRef.current)
-      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start()
+  const dragY = useSharedValue(0)
+  const dragStyle = useAnimatedStyle(() => ({ transform: [{ translateY: dragY.value }] }))
+  const followDrag = React.useCallback((_dx: number, dy: number) => {
+    'worklet'
+    dragY.value = Math.max(0, dy)
+  }, [dragY])
+  const sheetDrag = useDragPan({
+    shouldActivate: isVerticalSheetDrag,
+    onDrag: followDrag,
+    onRelease: ({ dy, vy }) => {
+      const action = reactionSheetSwipe(dy, vy, expanded)
+      dragY.value = withSpring(0)
       if (action === 'expand') setExpandedAnimated(true)
       else if (action === 'collapse') setExpandedAnimated(false)
-      else if (action === 'close') onCloseRef.current()
+      else if (action === 'close') onClose()
     },
-    onPanResponderTerminate: () => Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start(),
-  }), [dragY, setExpandedAnimated])
+    onCancel: () => {
+      dragY.value = withSpring(0)
+    },
+  })
   const button = (emoji: string) => (
     <Pressable
       key={emoji}
@@ -88,6 +92,8 @@ export function ReactionPicker({
   )
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      {/* Android の Modal は別のウィンドウなので、ルートの GestureHandlerRootView が届かない */}
+      <GestureHandlerRootView style={styles.root}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior="padding"
@@ -105,11 +111,12 @@ export function ReactionPicker({
               backgroundColor: palette.card,
               borderColor: palette.border,
               paddingBottom: insets.bottom + 16,
-              transform: [{ translateY: dragY }],
             },
+            dragStyle,
           ]}
         >
-          <View {...panResponder.panHandlers}>
+          <GestureDetector gesture={sheetDrag}>
+          <View>
           <View style={styles.handleArea}>
             <View style={[styles.handle, { backgroundColor: palette.border }]} />
           </View>
@@ -138,6 +145,7 @@ export function ReactionPicker({
             <Ionicons name={expanded ? 'chevron-down' : 'chevron-up'} size={16} color={palette.text2} />
           </Pressable>
           </View>
+          </GestureDetector>
           {historyError && (
             <Text accessibilityRole="alert" style={{ color: palette.text2 }}>
               {t('Could not load recent reactions')}
@@ -226,11 +234,13 @@ export function ReactionPicker({
           )}
         </Animated.View>
       </KeyboardAvoidingView>
+      </GestureHandlerRootView>
     </Modal>
   )
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#0008' },
   sheet: {
     borderTopWidth: 1,

@@ -10,6 +10,7 @@ import { DUE_SOON_DAYS, STALLED_DAYS } from '@/lib/ai-nudges/rules'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasTaskChannelSchema } from '@/lib/tasks/schema-readiness'
 import { taskChannelVisibilityCondition } from '@/lib/tasks/visibility'
+import { AI_SEARCH_RECENCY_HALF_LIFE_DAYS, isAiSearchRecencyWeight, type AiSearchRecencyWeight } from '@cairn/shared'
 import { searchChunks } from './search-chunks'
 import {
   AI_RESEARCH_LIMITS,
@@ -779,15 +780,34 @@ export interface ResearchDocument {
   evidence: ResearchEvidence
 }
 
+// owner が設定した資料検索の新しさの重み。CHECK 制約で守られる値なので、読めない・不正なときは既定へ黙って戻さずエラーにする
+async function getAiSearchRecencyWeight(workspaceId: string): Promise<AiSearchRecencyWeight> {
+  const { db, workspaces } = await import('@cairn/db')
+  const { eq } = await import('drizzle-orm')
+  const [workspace] = await db
+    .select({ aiSearchRecencyWeight: workspaces.aiSearchRecencyWeight })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1)
+  if (!workspace) throw new ResearchAccessError('ワークスペースが見つかりません')
+  if (!isAiSearchRecencyWeight(workspace.aiSearchRecencyWeight)) {
+    throw new Error(`Invalid workspaces.ai_search_recency_weight: ${workspace.aiSearchRecencyWeight}`)
+  }
+  return workspace.aiSearchRecencyWeight
+}
+
 export async function searchResearchDocuments(
   ctx: AuthContext,
-  input: { query: string; limit?: number | undefined },
+  // recencyWeight はチャットの API が課金前に読んだ値を渡す。tool から呼ぶときは省き、ここで読む
+  input: { query: string; limit?: number | undefined; recencyWeight?: AiSearchRecencyWeight },
 ) {
   const scope = await resolveScope(ctx)
   const limit = clampResearchLimit(input.limit, AI_RESEARCH_LIMITS.documents)
+  const recencyWeight = input.recencyWeight ?? (await getAiSearchRecencyWeight(ctx.workspaceId))
   const chunks = await searchChunks(input.query, ctx.workspaceId, {
     limit: limit + 1,
     minSimilarity: 0.5,
+    recencyHalfLifeDays: AI_SEARCH_RECENCY_HALF_LIFE_DAYS[recencyWeight],
     allowedProjectIds: scope.guestProjectIds,
     userId: ctx.userId,
     role: scope.role,
@@ -869,6 +889,6 @@ export async function searchResearchDocuments(
     items,
     returnedCount: items.length,
     truncated: chunks.length > limit || items.some((item) => item.contentTruncated),
-    appliedFilters: { query: input.query, limit, minSimilarity: 0.5 },
+    appliedFilters: { query: input.query, limit, minSimilarity: 0.5, recencyWeight },
   }
 }

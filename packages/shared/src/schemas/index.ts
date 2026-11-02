@@ -4,6 +4,8 @@
 import { z } from 'zod'
 import { ACCENT_IDS, APPEARANCE_THEMES } from '../config/appearance'
 import { AI_CHAT_MODELS, AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH } from '../config/ai-chat-model'
+import { AI_SEARCH_RECENCY_WEIGHTS } from '../config/ai-search-recency'
+import { AI_CHAT_ACCESS_LEVELS } from '../config/ai-chat-access'
 import { CALENDAR_WEEK_STARTS } from '../config/calendar'
 import { LOCALE_PREFERENCES } from '../config/locale'
 import { PROFILE_ATTRIBUTE_COLOR_IDS } from '../config/profile-attributes'
@@ -51,6 +53,9 @@ export const patchMilestoneSchema = z.object({
   { message: 'At least one field is required' },
 )
 
+/** 1 件のメッセージに添付できるファイル数の上限（Web / モバイル / API で共通） */
+export const MAX_MESSAGE_ATTACHMENTS = 10
+
 export const postMessageSchema = z
   .object({
     channelId: z.string().uuid(),
@@ -58,7 +63,7 @@ export const postMessageSchema = z
     messageType: z.enum(['text', 'html']).default('text'),
     clientMessageId: z.string().uuid().optional(),
     parentMessageId: z.string().uuid().optional(),
-    attachmentFileIds: z.array(z.string().uuid()).max(10).optional(),
+    attachmentFileIds: z.array(z.string().uuid()).max(MAX_MESSAGE_ATTACHMENTS).optional(),
   })
   .refine(
     (d) => d.content.length > 0 || (d.attachmentFileIds?.length ?? 0) > 0,
@@ -184,14 +189,28 @@ export const patchProfileAttributesSchema = z.object({
     }),
 })
 
+// /ai の会話で使うモデルを切り替える（PATCH /api/ai/conversations/[id]）
+export const patchAiConversationSchema = z.object({
+  model: z.enum(AI_CHAT_MODELS),
+})
+
 export const patchWorkspaceSettingsSchema = z.object({
   // 空欄はUIの既定表示「プロジェクト」へ戻す意図なので、DBには null として保存する。
   projectLabel: z.string().trim().max(100).transform(value => value || null).nullable().optional(),
   aiNudgesPhaseOneEnabled: z.boolean().optional(),
   aiNudgesPhaseTwoEnabled: z.boolean().optional(),
   aiChatModel: z.enum(AI_CHAT_MODELS).optional(),
+  // メンバーが会話ごとに選べるモデル。重複は除き、並びは AI_CHAT_MODELS の順にそろえる。
+  // 既定モデル（aiChatModel）を含むかは保存済みの値と合わせて見る必要があるため、API 側で確かめる
+  aiChatAllowedModels: z
+    .array(z.enum(AI_CHAT_MODELS))
+    .min(1)
+    .transform(models => AI_CHAT_MODELS.filter(model => models.includes(model)))
+    .optional(),
+  aiChatAccess: z.enum(AI_CHAT_ACCESS_LEVELS).optional(),
   // 空白だけの入力は「未設定」に戻す意図なので null にし、チャットへ空の指示ブロックを渡さない。
   aiChatSystemPrompt: z.string().trim().max(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH).transform(value => value || null).nullable().optional(),
+  aiSearchRecencyWeight: z.enum(AI_SEARCH_RECENCY_WEIGHTS).optional(),
 }).refine(
   data => Object.values(data).some(value => value !== undefined),
   { message: 'At least one field is required' },

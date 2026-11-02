@@ -32,14 +32,19 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import {
+  AI_CHAT_ACCESS_LEVELS,
+  AI_CHAT_MODEL_LABELS,
   AI_CHAT_MODELS,
   AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH,
+  AI_SEARCH_RECENCY_WEIGHTS,
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
   isCalendarWeekStart,
   type AccentId,
+  type AiChatAccessLevel,
   type AiChatModel,
+  type AiSearchRecencyWeight,
   type CalendarWeekStart,
   type LocalePreference,
 } from '@cairn/shared'
@@ -1324,14 +1329,8 @@ const SettingsWorkflow = () => {
   )
 }
 
-const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
-  'gpt-5': 'GPT-5 (default)',
-  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
-  'claude-opus-5-5': 'Claude Opus 5.5',
-}
-
 const AI_CHAT_MODEL_DESCRIPTIONS: Record<AiChatModel, string> = {
-  'gpt-5': 'OpenAI · default',
+  'gpt-5': 'OpenAI',
   'claude-sonnet-5-5': 'Anthropic · balanced speed and quality',
   'claude-opus-5-5': 'Anthropic · most capable, higher cost',
 }
@@ -1371,9 +1370,9 @@ const SettingsAI = () => {
     )}
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Model')}</h2>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Default model for new conversations')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
-        {t('The model the AI assistant uses to answer in this workspace. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
+        {t('New conversations start with this model. Members can switch models in each conversation, among the models allowed below. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
       </p>
       <div
         className="card"
@@ -1383,13 +1382,15 @@ const SettingsAI = () => {
       >
         {AI_CHAT_MODELS.map((model) => {
           const on = model === selectedModel
+          // 既定にできるのは、メンバーが選べるモデルだけ
+          const notAllowed = !(wsSettings?.aiChatAllowedModels ?? []).includes(model)
           return (
             <button
               key={model}
               type="button"
               role="radio"
               aria-checked={on}
-              disabled={disabled}
+              disabled={disabled || notAllowed}
               title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
               onClick={() => {
                 if (!on) updateSettings.mutate({ aiChatModel: model })
@@ -1412,7 +1413,7 @@ const SettingsAI = () => {
                   size={14}
                   color={on ? 'var(--accent-text)' : 'var(--text-3)'}
                 />
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_MODEL_LABELS[model])}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
                 {on && (
                   <span
                     style={{
@@ -1438,8 +1439,239 @@ const SettingsAI = () => {
       )}
     </section>
 
+    <AiAllowedModelsSection />
+
+    <AiSearchRecencySection />
+
+    <AiChatAccessSection />
+
     <AiChatSystemPromptSection />
   </div>
+  )
+}
+
+// メンバーが会話ごとに選べるモデル。既定モデルは外せず、1つは残す（サーバーも 422 で断る）。
+// 既定モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiAllowedModelsSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  const allowed = wsSettings?.aiChatAllowedModels
+  const credits = wsSettings?.aiChatRequestCredits ?? null
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Models members can choose')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {credits
+          ? t('Members can switch to these models in each conversation. Each request uses credits depending on the model.')
+          : t('Members can switch to these models in each conversation.')}
+      </p>
+      <div className="card" role="group" aria-label={t('Models members can choose')} style={{ padding: 14, display: 'grid', gap: 10 }}>
+        {AI_CHAT_MODELS.map((model) => {
+          const checked = allowed?.includes(model) ?? false
+          const isDefault = model === wsSettings?.aiChatModel
+          const locked = isDefault || (checked && allowed?.length === 1)
+          return (
+            <label
+              key={model}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : isDefault ? t('The default model cannot be removed') : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: readOnly || locked ? 'not-allowed' : 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={readOnly || locked || updateSettings.isPending || allowed === undefined}
+                onChange={(e) => {
+                  if (!allowed) return
+                  const next = e.target.checked ? [...allowed, model] : allowed.filter((m) => m !== model)
+                  updateSettings.mutate({ aiChatAllowedModels: next })
+                }}
+              />
+              <span style={{ fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
+              {credits && (
+                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {t('{credits} credits per request', { credits: credits[model] })}
+                </span>
+              )}
+              {isDefault && (
+                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {t('Default')}</span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
+  )
+}
+
+const AI_SEARCH_RECENCY_LABELS: Record<AiSearchRecencyWeight, string> = {
+  none: 'Off',
+  weak: 'Weak',
+  medium: 'Medium',
+  strong: 'Strong',
+}
+
+// 段階の中身（半減期）は @cairn/shared の AI_SEARCH_RECENCY_HALF_LIFE_DAYS と揃える。
+const AI_SEARCH_RECENCY_DESCRIPTIONS: Record<AiSearchRecencyWeight, string> = {
+  none: 'Rank by relevance only',
+  weak: 'Score halves every 3 years',
+  medium: 'Score halves every year',
+  strong: 'Score halves every 6 months',
+}
+
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiSearchRecencySection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selected = wsSettings?.aiSearchRecencyWeight
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Prefer recent documents')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.')}
+      </p>
+      <div
+        className="card"
+        role="radiogroup"
+        aria-label={t('Prefer recent documents')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}
+      >
+        {AI_SEARCH_RECENCY_WEIGHTS.map((weight) => {
+          const on = weight === selected
+          return (
+            <button
+              key={weight}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiSearchRecencyWeight: weight })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_SEARCH_RECENCY_LABELS[weight])}</span>
+                {on && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_SEARCH_RECENCY_DESCRIPTIONS[weight])}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
+  )
+}
+
+const AI_CHAT_ACCESS_LABELS: Record<AiChatAccessLevel, string> = {
+  owner: 'Owner only',
+  admin: 'Admins and above',
+  member: 'Members too',
+}
+
+const AI_CHAT_ACCESS_DESCRIPTIONS: Record<AiChatAccessLevel, string> = {
+  owner: 'Only the workspace owner',
+  admin: 'Owners and admins',
+  member: 'All members, including guests (default)',
+}
+
+// /ai を使えるロール。経験の浅いメンバーが AI に頼りすぎないよう、owner が絞れる。
+// モデル欄と保存エラーの表示先を分けるため、ミューテーションを別に持つ。
+const AiChatAccessSection = () => {
+  const t = useT()
+  const { data: wsSettings } = useWorkspaceSettings()
+  const updateSettings = useUpdateWorkspaceSettings()
+  const { isOwner } = useWorkspacePermissions()
+  const readOnly = !isOwner
+  // 読み込み前は選択中を出さない（既定値を選択済みとして見せない）
+  const selected = wsSettings?.aiChatAccess
+  const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Who can use the AI assistant')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+        {t('Limit the AI assistant to experienced roles if you want newer members to work things out themselves. Members who cannot use it do not see the AI assistant. AI PMO notifications and external AI connected through MCP are not affected.')}
+      </p>
+      <div
+        className="card"
+        role="radiogroup"
+        aria-label={t('Who can use the AI assistant')}
+        style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}
+      >
+        {AI_CHAT_ACCESS_LEVELS.map((level) => {
+          const on = level === selected
+          return (
+            <button
+              key={level}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              title={readOnly ? t('Changing workspace settings requires the owner role') : undefined}
+              onClick={() => {
+                if (!on) updateSettings.mutate({ aiChatAccess: level })
+              }}
+              style={{
+                padding: 12,
+                borderRadius: 8,
+                border: `2px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'var(--accent-soft)' : 'var(--card-2)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: readOnly && !on ? 0.5 : 1,
+                textAlign: 'left',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_ACCESS_LABELS[level])}</span>
+                {on && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                    {t('Selected')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                {t(AI_CHAT_ACCESS_DESCRIPTIONS[level])}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      {updateSettings.isError && (
+        <InlineError style={{ marginTop: 8 }}>{(updateSettings.error as Error).message}</InlineError>
+      )}
+    </section>
   )
 }
 

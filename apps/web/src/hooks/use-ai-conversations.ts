@@ -5,6 +5,7 @@
 // 取得に失敗したら、エラーの中身を会話として扱ったり、黙って最初の画面に戻したりせず、エラーとして返す
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { AiChatModel } from '@cairn/shared'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
 import { useT } from '@/components/locale-provider'
@@ -64,6 +65,29 @@ export function useCreateAiConversation(onCreated: (conversation: ConversationDt
     onSuccess: conversation => {
       queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conversation, ...(prev ?? [])])
       onCreated(conversation)
+    },
+    onError: error => toast.error(error.message),
+  })
+}
+
+/** 会話で使うモデルを切り替える。以降の依頼から反映される。失敗したら理由をトーストで知らせ、表示中のモデルは変えない */
+export function useSetAiConversationModel(conversationId: string) {
+  const t = useT()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (model: AiChatModel) => readJson<ConversationDto>(
+      await fetchWithAuth(`/api/ai/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      }),
+      t('Could not change the model'),
+      t,
+    ),
+    onSuccess: updated => {
+      queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev =>
+        prev?.map(conversation => (conversation.id === updated.id ? { ...conversation, model: updated.model } : conversation)),
+      )
     },
     onError: error => toast.error(error.message),
   })

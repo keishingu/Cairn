@@ -9,7 +9,7 @@ export default function ProjectDetailScreen() {
 
   return (
     <NativeWebViewScreen
-      path={`/projects?open=${id}`}
+      path={`/projects?open=project-${id}`}
       title={t('Projects')}
       onBack={() => router.replace('/(app)/projects')}
     />

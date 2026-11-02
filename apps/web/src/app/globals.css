@@ -194,6 +194,11 @@
 .app .btn-sm { height:28px; padding:0 10px; font-size:12px; border-radius:7px; gap:5px; }
 .app .btn-lg { height:40px; padding:0 16px; font-size:14px; }
 .app .btn-block { display:flex; width:100%; }
+/* カードで押したボタン。書き換えを待つ間はカード全体を押せなくするが、押したボタンだけは薄くせず回転する印を出す */
+.app .btn.btn-pending:disabled { opacity:1; cursor:progress; }
+.app .btn-spinner { width:11px; height:11px; border-radius:50%; border:1.5px solid currentColor; border-right-color:transparent; animation: btnSpin .7s linear infinite; flex-shrink:0; }
+@keyframes btnSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .app .btn-spinner { animation-duration: 2s; } }
 /* アイコンだけのボタン。JS の onMouseEnter で背景を塗り替えず、これを使う */
 .app .icon-btn { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:28px; height:28px; padding:0; border:none; border-radius:7px; background:transparent; color:var(--text-3); cursor:pointer; font-family:inherit; transition: background .12s, color .12s; }
 .app .icon-btn:not(:disabled):hover, .app .icon-btn[aria-expanded="true"] { background: var(--card-hover); color: var(--text); }

@@ -746,10 +746,10 @@ describe('AIエージェントのモデル選択', () => {
         return new Response(JSON.stringify({ id: USER_ID, wsRole }))
       }
       if (input === '/api/workspaces/settings' && !init) {
-        return new Response(JSON.stringify({ aiChatModel: 'gpt-5' }))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] }))
       }
       if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
-        return new Response(JSON.stringify({ aiChatModel: 'claude-sonnet-5-5' }))
+        return new Response(JSON.stringify({ aiChatModel: 'claude-sonnet-5-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] }))
       }
       return new Response(JSON.stringify({}))
     })
@@ -795,6 +795,182 @@ describe('AIエージェントのモデル選択', () => {
   })
 })
 
+describe('AIエージェントのメンバーが選べるモデル', () => {
+  function renderAiSection(wsRole: 'owner' | 'member', allowed = ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({
+          aiChatModel: 'gpt-5',
+          aiChatAllowedModels: allowed,
+          aiChatRequestCredits: { 'gpt-5': 10, 'claude-sonnet-5-5': 10, 'claude-opus-5-5': 20 },
+        }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: body.aiChatAllowedModels ?? allowed }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('owner は Opus を外せ、モデルごとの消費クレジットを表示する', async () => {
+    renderAiSection('owner')
+
+    const group = await screen.findByRole('group', { name: 'メンバーが選べるモデル' })
+    expect(await within(group).findByText('1回 20 クレジット')).toBeInTheDocument()
+    const opus = within(group).getByRole('checkbox', { name: /Claude Opus 5\.5/ })
+    await waitFor(() => expect(opus).toBeEnabled())
+
+    fireEvent.click(opus)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5'] }) }),
+      ),
+    )
+  })
+
+  it('既定モデルは外せず、選べないモデルは既定にできない', async () => {
+    renderAiSection('owner', ['gpt-5', 'claude-sonnet-5-5'])
+
+    const group = await screen.findByRole('group', { name: 'メンバーが選べるモデル' })
+    await waitFor(() => expect(within(group).getByRole('checkbox', { name: /Claude Opus 5\.5/ })).not.toBeChecked())
+    expect(within(group).getByRole('checkbox', { name: /GPT-5/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Claude Opus 5\.5/ })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /Claude Sonnet 5\.5/ })).toBeEnabled()
+  })
+
+  it('owner 以外は選べるモデルを変更できない', async () => {
+    renderAiSection('member')
+
+    const group = await screen.findByRole('group', { name: 'メンバーが選べるモデル' })
+    await waitFor(() => expect(within(group).getByRole('checkbox', { name: /Claude Opus 5\.5/ })).toBeChecked())
+    expect(within(group).getByRole('checkbox', { name: /Claude Opus 5\.5/ })).toBeDisabled()
+  })
+})
+
+describe('AIエージェントの新しい資料の優先', () => {
+  function renderAiSection(wsRole: 'owner' | 'member') {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) {
+        return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      }
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiSearchRecencyWeight: 'none' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiSearchRecencyWeight: 'medium' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('保存済みの段階を選択中として表示し、owner が「中」を選ぶと保存する', async () => {
+    renderAiSection('owner')
+
+    const group = await screen.findByRole('radiogroup', { name: '新しい資料を優先' })
+    const off = within(group).getByRole('radio', { name: /なし/ })
+    await waitFor(() => expect(off).toHaveAttribute('aria-checked', 'true'))
+    const medium = within(group).getByRole('radio', { name: /1年ごとに点数が半分/ })
+    await waitFor(() => expect(medium).toBeEnabled())
+
+    fireEvent.click(medium)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiSearchRecencyWeight: 'medium' }) }),
+      ),
+    )
+    await waitFor(() => expect(medium).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  it('owner 以外は段階を変更できない', async () => {
+    renderAiSection('member')
+
+    const group = await screen.findByRole('radiogroup', { name: '新しい資料を優先' })
+    await waitFor(() => expect(within(group).getByRole('radio', { name: /なし/ })).toHaveAttribute('aria-checked', 'true'))
+    expect(within(group).getByRole('radio', { name: /半年ごとに点数が半分/ })).toBeDisabled()
+  })
+})
+
+describe('AIエージェントを使える人', () => {
+  function renderAiSection(wsRole: 'owner' | 'member') {
+    fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input === '/api/me' && !init) return new Response(JSON.stringify({ id: USER_ID, wsRole }))
+      if (input === '/api/workspaces/settings' && !init) {
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAccess: 'member' }))
+      }
+      if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAccess: body.aiChatAccess ?? 'member' }))
+      }
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsSectionContent section="ai" />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('保存済みの範囲を選択中として表示し、owner が「管理者以上」を選ぶと保存する', async () => {
+    renderAiSection('owner')
+
+    const group = await screen.findByRole('radiogroup', { name: 'AIアシスタントを使える人' })
+    await waitFor(() => expect(within(group).getByRole('radio', { name: /メンバーも可/ })).toHaveAttribute('aria-checked', 'true'))
+    const admins = within(group).getByRole('radio', { name: /管理者以上/ })
+    await waitFor(() => expect(admins).toBeEnabled())
+
+    fireEvent.click(admins)
+
+    await waitFor(() =>
+      expect(fetchWithAuth).toHaveBeenCalledWith(
+        '/api/workspaces/settings',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ aiChatAccess: 'admin' }) }),
+      ),
+    )
+    await waitFor(() => expect(admins).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  it('owner 以外は使える人を変更できない', async () => {
+    renderAiSection('member')
+
+    const group = await screen.findByRole('radiogroup', { name: 'AIアシスタントを使える人' })
+    await waitFor(() => expect(within(group).getByRole('radio', { name: /メンバーも可/ })).toHaveAttribute('aria-checked', 'true'))
+    expect(within(group).getByRole('radio', { name: /オーナーのみ/ })).toBeDisabled()
+  })
+})
+
 describe('AIエージェントのシステムプロンプト', () => {
   function renderAiSection(wsRole: 'owner' | 'member', patchResponse?: Response) {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
@@ -802,12 +978,13 @@ describe('AIエージェントのシステムプロンプト', () => {
         return new Response(JSON.stringify({ id: USER_ID, wsRole }))
       }
       if (input === '/api/workspaces/settings' && !init) {
-        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'], aiChatSystemPrompt: '敬体で答える' }))
       }
       if (input === '/api/workspaces/settings' && init?.method === 'PATCH') {
         const body = JSON.parse(String(init.body))
         return patchResponse ?? new Response(JSON.stringify({
           aiChatModel: body.aiChatModel ?? 'gpt-5',
+          aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'],
           aiChatSystemPrompt: 'aiChatSystemPrompt' in body ? (body.aiChatSystemPrompt.trim() || null) : '敬体で答える',
         }))
       }
@@ -917,7 +1094,7 @@ describe('AIエージェントのシステムプロンプト', () => {
       if (input === '/api/workspaces/settings' && !init) {
         return failing
           ? new Response(JSON.stringify({ error: 'failed' }), { status: 500 })
-          : new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+          : new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'], aiChatSystemPrompt: '敬体で答える' }))
       }
       return new Response(JSON.stringify({}))
     })
@@ -947,7 +1124,7 @@ describe('AIエージェントのシステムプロンプト', () => {
         return new Promise<Response>((resolve) => { resolvePatch = resolve })
       }
       if (input === '/api/workspaces/settings') {
-        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '敬体で答える' }))
+        return new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'], aiChatSystemPrompt: '敬体で答える' }))
       }
       return new Response(JSON.stringify({}))
     })
@@ -959,7 +1136,7 @@ describe('AIエージェントのシステムプロンプト', () => {
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith('/api/workspaces/settings', expect.objectContaining({ method: 'PATCH' })))
 
     fireEvent.change(textarea, { target: { value: '送信した内容と書き足し' } })
-    resolvePatch(new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatSystemPrompt: '送信した内容' })))
+    resolvePatch(new Response(JSON.stringify({ aiChatModel: 'gpt-5', aiChatAllowedModels: ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5'], aiChatSystemPrompt: '送信した内容' })))
 
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeEnabled())
     expect(textarea).toHaveValue('送信した内容と書き足し')

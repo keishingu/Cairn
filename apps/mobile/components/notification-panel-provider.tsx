@@ -23,9 +23,12 @@ import {
   type NotificationDto,
 } from '../hooks/use-notifications'
 import { followNotification } from '../lib/follow-notification'
+import { haptics } from '../lib/haptics'
 import { routeFromNotification } from '../lib/notification-routing'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
+import { OfflineBanner } from './offline-banner'
+import { useOfflineRead } from '../hooks/use-offline-read'
 import { PushPermissionBanner } from './push-permission-banner'
 
 interface NotificationPanelContextValue {
@@ -57,7 +60,8 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
   const [visible, setVisible] = React.useState(false)
   const [reduceMotion, setReduceMotion] = React.useState(false)
   const progress = React.useRef(new Animated.Value(1)).current
-  const notifications = notificationsQuery.data ?? []
+  const notificationsRead = useOfflineRead({ type: 'notifications' }, notificationsQuery)
+  const notifications = notificationsRead.data ?? []
   const unreadCount =
     unreadCountQuery.data ?? notifications.filter((item) => item.readAt === null).length
   const panelWidth = Math.min(400, Math.max(0, width - 24))
@@ -182,13 +186,13 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={t('Mark all notifications as read')}
-                    disabled={markRead.isPending || unreadCount === 0}
+                    disabled={notificationsRead.stale || markRead.isPending || unreadCount === 0}
                     onPress={() => markRead.mutate(null)}
                     style={({ pressed }) => [
                       styles.markReadButton,
                       {
                         backgroundColor: palette.accentSoft,
-                        opacity: unreadCount === 0 ? 0.45 : 1,
+                        opacity: notificationsRead.stale || unreadCount === 0 ? 0.45 : 1,
                       },
                       pressed && styles.pressed,
                     ]}
@@ -209,16 +213,24 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
 
               <PushPermissionBanner />
 
-              {notificationsQuery.isLoading ? (
+              {notificationsRead.stale && notificationsRead.syncedAt !== null && (
+                <OfflineBanner
+                  syncedAt={notificationsRead.syncedAt}
+                  retrying={notificationsQuery.isFetching}
+                  onRetry={() => void notificationsQuery.refetch()}
+                />
+              )}
+
+              {notificationsRead.loading ? (
                 <View style={styles.center}>
                   <ActivityIndicator size="small" color={palette.accent} />
                 </View>
-              ) : notificationsQuery.error ? (
+              ) : notificationsRead.error ? (
                 <View style={styles.center}>
                   <Ionicons name="cloud-offline-outline" size={24} color={palette.text3} />
                   <Text style={[styles.errorTitle, { color: palette.text }]}>{t('Could not load notifications')}</Text>
                   <Text style={[styles.errorBody, { color: palette.text3 }]}>
-                    {notificationsQuery.error.message}
+                    {notificationsRead.error.message}
                   </Text>
                   <Pressable
                     accessibilityRole="button"
@@ -238,9 +250,10 @@ export function NotificationPanelProvider({ children }: React.PropsWithChildren)
                   refreshControl={
                     <RefreshControl
                       refreshing={notificationsQuery.isRefetching || unreadCountQuery.isRefetching}
-                      onRefresh={() =>
+                      onRefresh={() => {
+                        haptics.refreshStart()
                         void Promise.all([notificationsQuery.refetch(), unreadCountQuery.refetch()])
-                      }
+                      }}
                       tintColor={palette.accent}
                     />
                   }

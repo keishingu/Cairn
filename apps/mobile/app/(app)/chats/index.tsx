@@ -14,10 +14,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useNavigation, useRouter } from 'expo-router'
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
+import { useOfflineRead } from '../../../hooks/use-offline-read'
+import { OfflineBanner } from '../../../components/offline-banner'
+import { oldestSyncedAt } from '../../../lib/offline-cache'
 import type { ProjectChannelDto } from '../../../hooks/use-projects'
 import {
   useCreateWorkspaceChannel,
@@ -34,8 +37,10 @@ import {
 import type { DmChannelDto, WorkspaceChannelDto } from '../../../hooks/use-chat-channels'
 import type { ThemePalette } from '../../../lib/theme'
 import { formatChannelPeriod } from '../../../lib/channel-period'
+import { haptics } from '../../../lib/haptics'
+import { firstParam } from '../../../lib/quick-actions'
 import { useAppAppearance } from '../../../components/appearance-provider'
-import { useNotificationPanel } from '../../../components/notification-panel-provider'
+import { NotificationButton } from '../../../components/native-app-header'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
 import { useT } from '../../../components/locale-provider'
@@ -73,7 +78,10 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
       }
       {...(onOpenActions
         ? {
-            onLongPress: onOpenActions,
+            onLongPress: () => {
+              haptics.longPressMenu()
+              onOpenActions()
+            },
             delayLongPress: 350,
             accessibilityHint: t('Long-press for the menu'),
           }
@@ -150,7 +158,10 @@ function WorkspaceChannelItem({
       }
       {...(onOpenActions
         ? {
-            onLongPress: onOpenActions,
+            onLongPress: () => {
+              haptics.longPressMenu()
+              onOpenActions()
+            },
             delayLongPress: 350,
             accessibilityHint: t('Long-press for the menu'),
           }
@@ -233,15 +244,23 @@ export default function ChatsScreen() {
   const t = useT()
   const router = useRouter()
   const navigation = useNavigation()
-  const {
-    data: channels,
-    isLoading,
-    isFetching: isFetchingProjectChannels,
-    error,
-    refetch: refetchProjectChannels,
-  } = useProjectChannels()
+  const projectChannelsQuery = useProjectChannels()
+  const { isFetching: isFetchingProjectChannels, refetch: refetchProjectChannels } =
+    projectChannelsQuery
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
+  const projectChannelsRead = useOfflineRead(
+    { type: 'channel-list', kind: 'project' },
+    projectChannelsQuery,
+  )
+  const workspaceChannelsRead = useOfflineRead(
+    { type: 'channel-list', kind: 'workspace' },
+    workspaceChannelsQuery,
+  )
+  const dmsRead = useOfflineRead({ type: 'channel-list', kind: 'dm' }, dmsQuery, FEATURE_FLAGS.dm)
+  const channels = projectChannelsRead.data
+  const workspaceChannels = workspaceChannelsRead.data
+  const dms = dmsRead.data
   const membersQuery = useWorkspaceMembers()
   const createChannel = useCreateWorkspaceChannel()
   const createDm = useCreateWorkspaceDm()
@@ -254,7 +273,6 @@ export default function ChatsScreen() {
   const me = meQuery.data
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
-  const { openNotifications } = useNotificationPanel()
   const [createMode, setCreateMode] = React.useState<'menu' | 'channel' | 'dm' | 'thread' | 'rename' | null>(
     null,
   )
@@ -275,6 +293,18 @@ export default function ChatsScreen() {
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
   const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
   const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
+
+  // ホーム画面のクイックアクション「DM を送る」。開いたら params を消し、戻ってきたときに開き直さない
+  const { dm: dmRequest, open: dmRequestKey } = useLocalSearchParams<{
+    dm?: string | string[]
+    open?: string | string[]
+  }>()
+  React.useEffect(() => {
+    if (firstParam(dmRequest) !== '1' || !FEATURE_FLAGS.dm) return
+    setCreateError(null)
+    setCreateMode('dm')
+    router.setParams({ dm: undefined, open: undefined })
+  }, [dmRequest, dmRequestKey, router])
 
   React.useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -315,7 +345,7 @@ export default function ChatsScreen() {
   // Web の ChannelList と同じく、アーカイブしたスレッドは親チャンネルの下に（既定は畳んで）並べ、
   // アーカイブ済みチャンネルは配下スレッドごと専用の欄に分ける。
   const { workspaceChannelGroups, archivedChannels } = React.useMemo(() => {
-    const allChannels = workspaceChannelsQuery.data ?? []
+    const allChannels = workspaceChannels ?? []
     const parents = allChannels.filter((channel) => channel.parentChannelId == null)
     return {
       workspaceChannelGroups: parents
@@ -330,7 +360,7 @@ export default function ChatsScreen() {
         }),
       archivedChannels: parents.filter((channel) => channel.archived === true),
     }
-  }, [workspaceChannelsQuery.data])
+  }, [workspaceChannels])
 
   const openChatTool = (path: string, title: string) => {
     router.push({ pathname: '/(app)/chat-tools', params: { path, title } })
@@ -383,7 +413,7 @@ export default function ChatsScreen() {
 
   const confirmDeleteChannel = (channel: WorkspaceChannelDto) => {
     const isThread = channel.parentChannelId != null
-    const childThreadCount = (workspaceChannelsQuery.data ?? []).filter(
+    const childThreadCount = (workspaceChannels ?? []).filter(
       (candidate) => candidate.parentChannelId === channel.id,
     ).length
     const copy = workspaceChannelDeleteCopy({
@@ -440,7 +470,16 @@ export default function ChatsScreen() {
     )
   }
 
-  if (isLoading || workspaceChannelsQuery.isLoading || dmsQuery.isLoading || meQuery.isLoading) {
+  const showingCachedLists =
+    projectChannelsRead.stale || workspaceChannelsRead.stale || dmsRead.stale
+  const listsSyncedAt = oldestSyncedAt([projectChannelsRead, workspaceChannelsRead, dmsRead])
+  // 圏外の起動では /api/me を取れないため、キャッシュを見せるときはアカウント情報を待たない
+  if (
+    projectChannelsRead.loading ||
+    workspaceChannelsRead.loading ||
+    dmsRead.loading ||
+    (meQuery.isLoading && !showingCachedLists)
+  ) {
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <ActivityIndicator size="large" color={palette.accent} />
@@ -448,14 +487,24 @@ export default function ChatsScreen() {
     )
   }
 
+  const isRetrying =
+    isFetchingProjectChannels ||
+    workspaceChannelsQuery.isFetching ||
+    dmsQuery.isFetching ||
+    meQuery.isFetching
+  const retryLists = () =>
+    void Promise.all([
+      refetchProjectChannels(),
+      workspaceChannelsQuery.refetch(),
+      dmsQuery.refetch(),
+      meQuery.refetch(),
+    ])
   const fetchError =
-    error ?? workspaceChannelsQuery.error ?? dmsQuery.error ?? (me ? null : meQuery.error)
+    projectChannelsRead.error ??
+    workspaceChannelsRead.error ??
+    dmsRead.error ??
+    (me || showingCachedLists ? null : meQuery.error)
   if (fetchError) {
-    const isRetrying =
-      isFetchingProjectChannels ||
-      workspaceChannelsQuery.isFetching ||
-      dmsQuery.isFetching ||
-      meQuery.isFetching
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <Text style={[styles.errorText, { color: palette.redText }]}>{fetchError.message}</Text>
@@ -463,14 +512,7 @@ export default function ChatsScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('Reload chats')}
           disabled={isRetrying}
-          onPress={() =>
-            void Promise.all([
-              refetchProjectChannels(),
-              workspaceChannelsQuery.refetch(),
-              dmsQuery.refetch(),
-              meQuery.refetch(),
-            ])
-          }
+          onPress={retryLists}
           style={[styles.memberRetry, { borderColor: palette.border }]}
         >
           {isRetrying ? (
@@ -494,14 +536,7 @@ export default function ChatsScreen() {
         <WorkspaceSwitcherButton />
         <Text style={[styles.heading, { color: palette.text }]}>{t('Chats')}</Text>
         <View style={styles.headerActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('Notifications')}
-            style={styles.headerAction}
-            onPress={openNotifications}
-          >
-            <Ionicons name="notifications-outline" size={19} color={palette.text3} />
-          </Pressable>
+          <NotificationButton style={styles.headerAction} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('Bookmarks')}
@@ -549,6 +584,9 @@ export default function ChatsScreen() {
           )}
         </View>
       </View>
+      {showingCachedLists && listsSyncedAt !== null && (
+        <OfflineBanner syncedAt={listsSyncedAt} retrying={isRetrying} onRetry={retryLists} />
+      )}
       <FlatList
         data={projectGroups}
         keyExtractor={({ channel }) => channel.channelId}
@@ -700,7 +738,7 @@ export default function ChatsScreen() {
             {FEATURE_FLAGS.dm && (
               <>
                 <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Direct messages')}</Text>
-                {(dmsQuery.data ?? []).map((channel) => (
+                {(dms ?? []).map((channel) => (
                   <DirectMessageItem key={channel.id} channel={channel} />
                 ))}
               </>

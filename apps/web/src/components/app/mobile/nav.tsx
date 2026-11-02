@@ -3,6 +3,7 @@
 
 'use client'
 
+import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
@@ -47,7 +48,11 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [projectsPickerOpen, setProjectsPickerOpen] = React.useState(false)
   const projectLabel = useProjectLabel()
-  const TABS = BASE_TABS.map((tab) => ({ ...tab, label: tab.label ? t(tab.label) : projectLabel }))
+  // owner が /ai を使えるロールを絞っていれば、使えない人には AI のタブを出さない（判定の正はサーバー）
+  const aiChatAllowed = useAiChatAllowed()
+  const TABS = BASE_TABS
+    .filter((tab) => tab.id !== 'ai' || aiChatAllowed !== false)
+    .map((tab) => ({ ...tab, label: tab.label ? t(tab.label) : projectLabel }))
 
   const { data: me } = useCurrentUser()
   const { data: workspace } = useQuery<WorkspaceDto>({

@@ -7,7 +7,9 @@ import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { chatTabUnreadCount } from '../lib/chat-tab-unread'
-import { supabase } from '../lib/supabase'
+import { unregisterPushTokenForSignOut } from '../lib/push-registration'
+import { useSession } from '../lib/session-context'
+import { signOutFromDevice } from '../lib/sign-out'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
 import { useNotificationPanel } from './notification-panel-provider'
@@ -23,7 +25,7 @@ const TABS: {
 }[] = [
   {
     id: 'chats',
-    route: 'chats/index',
+    route: 'chats',
     icon: 'chatbubble-outline',
     label: 'Chats',
   },
@@ -76,15 +78,16 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: channels } = useProjectChannels()
   const { data: workspaceChannels } = useWorkspaceChannels()
   const { data: dms } = useWorkspaceDms()
+  const userId = useSession()?.user.id
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [navHeight, setNavHeight] = React.useState(64 + insets.bottom)
 
-  const current = state.routes[state.index]?.name ?? 'chats/index'
+  const current = state.routes[state.index]?.name ?? 'chats'
   const projectsActive = current.startsWith('projects/')
-  const chatsActive = current.startsWith('chats/')
+  const chatsActive = current === 'chats'
   const unreadCount = chatTabUnreadCount({
     projectChannels: channels ?? [],
     workspaceChannels: workspaceChannels ?? [],
@@ -97,12 +100,15 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
 
   const navigate = (route: string) => {
     closeOverlays()
-    navigation.navigate(route)
+    // チャットのタブは詳細を開いていても一覧へ戻す。pop がないと一覧が積み増され、戻ると閉じた詳細が再び開く
+    if (route === 'chats') navigation.navigate(route, { screen: 'index', pop: true })
+    else navigation.navigate(route)
   }
 
   const signOut = async () => {
     closeOverlays()
-    await supabase.auth.signOut().catch(() => undefined)
+    if (userId) await unregisterPushTokenForSignOut(userId)
+    await signOutFromDevice()
   }
 
   const pressTab = (tab: (typeof TABS)[number]) => {

@@ -99,7 +99,7 @@ async function currentChannelOfMessage(
 }
 
 async function openNotification(
-  router: Pick<Router, 'push'>,
+  router: Pick<Router, 'push' | 'navigate'>,
   destination: NotificationDestination,
   workspaceId: string | undefined,
   t: Translate,
@@ -127,7 +127,9 @@ async function openNotification(
       })
       return
     }
-    router.push(destination.path)
+    // 同じ画面が前面にあれば、push で重ねず params だけを更新する
+    if (destination.params) router.navigate({ pathname: destination.path, params: destination.params })
+    else router.push(destination.path)
   } catch (error) {
     console.warn('[notification] 通知先を開けませんでした', error)
   }
@@ -136,7 +138,7 @@ async function openNotification(
 let notificationNavigation: Promise<void> = Promise.resolve()
 
 export function followNotification(
-  router: Pick<Router, 'push'>,
+  router: Pick<Router, 'push' | 'navigate'>,
   destination: NotificationDestination,
   options: { workspaceId?: string; t: Translate; onUnavailable: (message: string) => void },
 ): Promise<void> {

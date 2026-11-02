@@ -2,9 +2,11 @@ const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = requi
 const path = require('path')
 const pkg = require('../package.json')
 const { registerExternalNavigation } = require('./external-navigation')
-const { registerPermissionPolicy } = require('./permission-policy')
+const { isSameOrigin, registerPermissionPolicy } = require('./permission-policy')
+const { resolveAppIconFile } = require('./app-icon')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
+const DEPLOYMENT_ENV = pkg.config?.deploymentEnv || 'development'
 const isDev = process.env.NODE_ENV === 'development'
 const isMac = process.platform === 'darwin'
 
@@ -88,6 +90,28 @@ function registerBadgeBridge() {
   })
 }
 
+// Web の外観設定（テーマ・アクセント）に合わせて Dock / タスクバーのアイコンを差し替える。
+// Finder やスタートメニューに出る同梱アイコンは変えられないため、実行中の表示だけが追従する。
+function registerAppIconBridge() {
+  ipcMain.on('cairn:set-app-icon', (event, appearance) => {
+    // 外部サイトへ遷移したフレームからはアプリのアイコンを変えさせない
+    if (!isSameOrigin(event.senderFrame?.url ?? '', APP_URL)) return
+    const file = resolveAppIconFile(appearance, DEPLOYMENT_ENV)
+    if (!file) return
+    const image = nativeImage.createFromPath(file)
+    if (image.isEmpty()) {
+      console.error(`アプリアイコンを読み込めませんでした: ${file}`)
+      return
+    }
+    if (isMac) {
+      app.dock?.setIcon(image)
+    } else {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (win && !win.isDestroyed()) win.setIcon(image)
+    }
+  })
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -123,6 +147,7 @@ app.whenReady().then(() => {
   registerPermissionPolicy(session.defaultSession, APP_URL)
 
   registerBadgeBridge()
+  registerAppIconBridge()
   buildMenu()
   createWindow()
 

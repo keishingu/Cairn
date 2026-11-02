@@ -222,7 +222,7 @@ export function createResearchTools(ctx: AuthContext) {
 
     get_member_history: tool({
       description:
-        'メンバーの経歴（参加プロジェクト・プロジェクトの役割・期間・ステータス・各プロジェクトの添付ファイル）を最大50人まとめて取得します。経歴の比較表は、list_membersで対象を決めてからこれを1回呼んで作ってください。添付ファイルの本文はread_fileで読みます。',
+        'メンバーの経歴（参加プロジェクト・プロジェクトの役割・期間・ステータス・各プロジェクトの添付ファイル）を最大50人まとめて取得します。経歴の比較表は、list_membersで対象を決めてからこれを1回呼んで作ってください。添付ファイルは参加者ごとではなくprojectFilesにプロジェクト単位で1回だけ入ります。1プロジェクトあたりの件数は返すプロジェクト数に応じて10〜50件（新しい順）で、appliedFilters.maxFilesPerProjectが今回の上限、filesTruncatedがtrueなら古いファイルが残っています。添付ファイルの本文はread_fileで読みます。',
       parameters: z.object({
         userIds: z.array(z.string().uuid()).describe('list_members等で取得したユーザーID。最大50人（超えた分は返さずtruncatedになります）'),
         includeFiles: z.boolean().nullable().describe('各プロジェクトの添付ファイル一覧を含めるか。既定はtrue。指定しない場合はnull'),

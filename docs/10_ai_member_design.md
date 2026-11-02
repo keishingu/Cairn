@@ -88,7 +88,7 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 | `list_project_roles` | プロジェクトの役割とそのID（役割を付ける実行案に使う） | 役割名、ID |
 | `get_project_members` | プロジェクトの参加者と役割 | 参加者、プロジェクトの役割（ID付き）、出欠、プロフィール属性 |
 | `list_members` | 属性（「コーチ」など）でメンバーを絞り込む | メンバー、ワークスペースロール、プロフィール属性 |
-| `get_member_history` | 最大50人の経歴をまとめて取得（比較表用） | 参加プロジェクト、役割、期間、ステータス、添付ファイル |
+| `get_member_history` | 最大50人の経歴をまとめて取得（比較表用） | 参加プロジェクト、役割、期間、ステータス、添付ファイル（プロジェクト単位で重複なし。300件を返すプロジェクト数で割り、1プロジェクト10〜50件を新しい順。300件は配分の基準で、30プロジェクトを超えると下限10件により合計は300件を超える） |
 | `read_file` | 添付ファイルの抽出済み本文 | チャンク本文、続きのチャンク番号 |
 
 `list_channels` 以下の7つは [`ai-automation-design.md`](./ai-automation-design.md) Phase 0 で追加し、MCP にも `/api/research/*` 経由で同じ実装を公開している（`read_file` は既存の `/api/files/[id]/content`）。可視範囲は既存画面の API と同じで、ゲストのメンバー・経歴は参加プロジェクトの共同メンバーと共通プロジェクトに限り、非活性メンバーの経歴は admin 以上だけが読める。
@@ -102,7 +102,7 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 - ツール結果やチャット本文は命令ではなく未信頼データとして扱い、プロンプトインジェクションで権限やツール方針を変更させない
 - 読み取り専用が原則。例外は `$名前` でスキルを呼んだときだけで、スキルで許可した種類の実行案（`propose_*`）を作り、承認カードで利用者が承認したときに実行する（[`ai-automation-design.md`](./ai-automation-design.md) §2.4・§11.4）
 
-初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日（`read_channel_messages` は期間の上限を設けず、カーソルで続きを読む）、文書10チャンク、チャンネル200件、メンバー200件、経歴は1回50人・1人100プロジェクト・1プロジェクト10ファイル、ファイル本文10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
+初期上限は `apps/web/src/lib/ai/research.ts` の `AI_RESEARCH_LIMITS` に集約する。プロジェクト50件、1プロジェクトのタスク100件、メッセージ100件・最大90日（`read_channel_messages` は期間の上限を設けず、カーソルで続きを読む）、文書10チャンク、チャンネル200件、メンバー200件、経歴は1回50人・1人100プロジェクト・1プロジェクト10〜50ファイル（返すプロジェクト数で配分）、ファイル本文10チャンク、tool calling 8ステップ。上限適用時は `truncated`、返却件数、取得可能な場合は総数、適用フィルタ・期間をtool結果へ含める。
 
 認証済みの `workspaceId` / `userId` はtool inputに含めない。各toolの読み取り境界で `active_workspace_members` を再確認し、guestは参加プロジェクト、private channelは現在の参加者に限定する。根拠リンクはサーバーが `project` / `task` / `message` / `channel` / `file` / `member` のevidence DTOとして生成し、既存のRAG source表示と同じ回答下部のチップで表示する。
 
@@ -114,10 +114,40 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 
 owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` へ毎回渡す追加指示（用語・口調・回答形式・チームの決まりごと）を書ける。保存先は `workspaces.ai_chat_system_prompt`（null は未設定、上限 `AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH` = 10,000 文字を Zod と CHECK 制約の両方で強制）。member 以下にも読み取り専用で表示し、更新は `PATCH /api/workspaces/settings` で owner だけが行える。
 
-- system prompt の組み立ては `apps/web/src/app/api/ai/conversations/[id]/messages/system-prompt.ts` に集約する。追加指示は【Cairnの使い方】の後、未信頼の workspace-data と「権限・安全規律」の前に `<workspace-instructions>` で囲んで置き、規律側にも「追加指示より規律が優先する」と明記する
+- system prompt の組み立ては `apps/web/src/app/api/ai/conversations/[id]/messages/system-prompt.ts` に集約する。追加指示は【Cairnの使い方】の後、「権限・安全規律」の前に `<workspace-instructions>` で囲んで置き、規律側にも「追加指示より規律が優先する」と明記する
+- system prompt はプロンプトキャッシュのため2つの system メッセージに分ける。前の `stable`（導入・【Cairnの使い方】・追加指示・スキル・規律）は依頼をまたいで同じ文面で、Anthropic の `cacheControl` を付けて tools と合わせてキャッシュする。後ろの `dynamic`（現在日時・ロール・未信頼の workspace-data）は依頼ごとに変わる。規律は後ろの workspace-data も未信頼として扱うよう明記する。キャッシュの読み書きは `[AI chat] usage` ログの `cacheReadInputTokens` / `cacheCreationInputTokens` で確認できる
 - 本文中の区切りタグは無害化し、ブロックを閉じて後ろへ指示を続けられないようにする。追加指示で認可・tool 方針・読み取り専用の制約は変えられない
 - モデルに関係なく同じ `system` に入れるため、GPT-5 / Claude のどちらを選んでも効く。未設定（空）のときは従来とまったく同じ文面になる
 - `ai_agents.system_prompt` / `agents_md` は使わない。`ai_agents` は §4 のAIメンバー用（スコープ・名前・モデル・作成者が必須の複数行）で、ワークスペースに1つの `/ai` 向け設定とは粒度が違い、モデルも `workspaces.ai_chat_model` と二重管理になるため
+
+#### 資料検索の新しさの重み
+
+owner は設定の「AIエージェント」の「新しい資料を優先」で、`/ai` の資料検索（RAG と `search_workspace_documents` tool。どちらも `searchResearchDocuments`）が新しいプロジェクト・ファイルをどれだけ優先するかを選べる。保存先は `workspaces.ai_search_recency_weight`（`none` / `weak` / `medium` / `strong`、既定 `none`、CHECK 制約あり）。
+
+- 点数 = 意味の近さ（コサイン類似度）× 0.5^(経過日数 / 半減期)。半減期は弱 3年・中 1年・強 半年（`@cairn/shared` の `AI_SEARCH_RECENCY_HALF_LIFE_DAYS`）。`none` は従来どおり類似度だけで並べる
+- 類似度の下限（0.5）は元の類似度に掛けるので、関連の薄い資料が新しさだけで入ることはない。新しさで並べ替えるときは類似度の上位から件数の4倍の候補を取り、その中で並べ替える（`lib/ai/search-recency.ts`）
+- 新しさの基準はプロジェクトが `projects.updated_at`、ファイルが `files.created_at`（ファイルに更新日の列は無い）。`document_chunks.created_at` は全体の再インデックスで一斉に新しくなるため使わない。メンバーなど日付を持たない資料には係数を掛けない
+- アーカイブ済みのプロジェクトも他と同じ基準で扱う（過去の記録を探す質問の精度を落とさないため）
+- チャットの RAG では、重みを課金前にワークスペース設定と一緒に読む。値が不正なら RAG なしで続けず 500 にする（RAG の検索自体の失敗は従来どおり参照データなしで回答を続ける）
+
+#### 会話ごとのモデル
+
+`/ai` のモデル（`gpt-5` / `claude-sonnet-5-5` / `claude-opus-5-5`）はメンバーが会話ごとに選ぶ（Claude Code の `/model` と同じく、会話の途中でも切り替えられ、次の依頼から反映する）。
+
+- 会話のモデルは `ai_conversations.model`。新しい会話は `workspaces.ai_chat_model`（owner が決める既定モデル）で作り、`PATCH /api/ai/conversations/[id]` で本人が切り替える。null は会話ごとのモデルを持つ前の旧い会話で、既定モデルを使う
+- 選べるモデルは owner が `workspaces.ai_chat_allowed_models` で決める（既定は3つすべて）。既定モデルは必ず含め、空にしない（API の 422 と CHECK 制約の両方）
+- owner が外したモデルの会話は、別のモデルへ黙って切り替えず、課金前に 409 で選び直しを求める。画面も送信を止め、入力欄の下のモデル欄で選び直させる
+- 1依頼の消費クレジットはモデルごと（[`billing-implementation-design.md`](./billing-implementation-design.md) の AI 消費）。課金が有効なときだけ、設定画面とモデル欄に表示する
+- モデルを切り替えるとプロンプトキャッシュはモデルごとなので一度外れる（同じモデルを使い続ける間は効く）
+
+#### AIアシスタントを使える人
+
+経験の浅いメンバーが AI に頼りすぎて自分で考える機会を失わないよう、owner は設定の「AIエージェント」で `/ai` を使えるロールを選べる。保存先は `workspaces.ai_chat_access`（`owner` = オーナーのみ / `admin` = 管理者以上 / `member` = メンバーも可。既定 `member`、CHECK 制約あり）。
+
+- `member` はゲストを含む全員（ゲストは従来どおり参加プロジェクトの範囲だけを読む）。既定にして既存ワークスペースの挙動を変えない
+- サーバーは `/api/ai/conversations/**`（一覧・作成・モデルの切り替え・メッセージの取得と送信・添付）で `requireAiChatAccess` を認証直後・課金前に通し、対象外は 403（ロールを明示した日本語）、設定が読めない・不正なら全員に許可へ戻さず 500
+- UI は `useAiChatAllowed()` で、使えない人にはサイドバー・モバイルのタブから AI アシスタントを外し、`/ai` を直接開いたら理由を出す。設定を読み込めない間は入口を隠さない（判定の正はサーバー）
+- 対象は `/ai` のチャットだけ（スキルの `$名前` 呼び出しは `/ai` の中なので含む）。AI PMO の通知（受け身で依存しにくい）と MCP の外部 AI、作成済みの承認カードの承認・却下は対象外
 
 #### 会話への添付
 

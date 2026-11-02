@@ -79,6 +79,8 @@ export function renderPollCard(poll: PollForRender): { text: string; blocks: unk
       block_id: 'controls',
       elements: [
         { type: 'button', action_id: 'clear-vote', text: { type: 'plain_text', text: t('Remove my vote') } },
+        // 作った後で選択肢の入れ忘れ（「どちらも不参加」など）に気づいたときのため。押せるのは作成者だけ（押したときに確かめる）
+        ...(options.length < POLL_OPTION_LIMITS.max ? [{ type: 'button', action_id: ADD_OPTION_ACTION_ID, text: { type: 'plain_text', text: t('Add option') } }] : []),
         {
           type: 'button',
           action_id: 'close',
@@ -99,6 +101,8 @@ export function renderPollCard(poll: PollForRender): { text: string; blocks: unk
 }
 
 export const CREATE_POLL_CALLBACK_ID = 'create-poll'
+export const ADD_OPTION_CALLBACK_ID = 'add-poll-option'
+export const ADD_OPTION_ACTION_ID = 'add-option'
 export const POLL_OPTION_LIMITS = { min: 2, max: 10, labelMax: 100 } as const
 
 export function createPollModal(channelId: string, locale: AppLocale) {
@@ -148,6 +152,37 @@ export function onlyCreatorCanCloseModal(locale: AppLocale) {
   }
 }
 
+/** 選択肢を1つ足すモーダル。どの投票かは private_metadata で持ち回る（送信時に作成者・ワークスペースを確かめ直す） */
+export function addOptionModal(pollId: string, locale: AppLocale) {
+  const t = (message: string, values?: Record<string, string | number>) => translate(locale, message, values)
+  return {
+    type: 'modal',
+    callback_id: ADD_OPTION_CALLBACK_ID,
+    private_metadata: JSON.stringify({ pollId }),
+    title: { type: 'plain_text', text: t('Add an option') },
+    submit: { type: 'plain_text', text: t('Add') },
+    close: { type: 'plain_text', text: t('Cancel') },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'option',
+        label: { type: 'plain_text', text: t('Option') },
+        element: { type: 'plain_text_input', action_id: 'value', max_length: POLL_OPTION_LIMITS.labelMax },
+      },
+    ],
+  }
+}
+
+/** 作成した人以外が選択肢を足そうとしたときに見せるモーダル */
+export function onlyCreatorCanAddOptionModal(locale: AppLocale) {
+  return {
+    type: 'modal',
+    title: { type: 'plain_text', text: translate(locale, "Can't add an option") },
+    close: { type: 'plain_text', text: translate(locale, 'Close') },
+    blocks: [{ type: 'section', text: { type: 'plain_text', text: translate(locale, 'Only the person who created the poll can add options.') } }],
+  }
+}
+
 export type ParsedPollInput = { ok: true; question: string; options: string[]; allowMultiple: boolean } | { ok: false; errors: Record<string, string> }
 
 type StateValues = Record<string, Record<string, { value?: string | null; selected_option?: { value: string } | null }>>
@@ -168,4 +203,9 @@ export function parsePollSubmission(values: StateValues, locale: AppLocale): Par
   else if (options.some((option) => option.length > POLL_OPTION_LIMITS.labelMax)) errors['options'] = t('Each option can be up to {max} characters', { max: POLL_OPTION_LIMITS.labelMax })
   if (Object.keys(errors).length > 0) return { ok: false, errors }
   return { ok: true, question, options, allowMultiple: values['mode']?.['value']?.selected_option?.value === 'multiple' }
+}
+
+/** 足す選択肢の送信値。前後の空白を除いた文字を返す（長さ・重複・安全フィルタは足すときに投票の今の選択肢と合わせて確かめる） */
+export function parseAddOptionSubmission(values: StateValues): string {
+  return (values['option']?.['value']?.value ?? '').trim()
 }

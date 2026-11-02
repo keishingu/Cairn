@@ -1,9 +1,10 @@
 import React from 'react'
-import { AppState, useColorScheme } from 'react-native'
+import { AppState, StatusBar, useColorScheme } from 'react-native'
 import type { AccentId, AppearanceTheme } from '@cairn/shared'
 import { DEFAULT_ACCENT_ID, DEFAULT_APPEARANCE_THEME } from '@cairn/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMe, type MeDto } from '../hooks/use-account'
+import { useAppIconSync } from '../hooks/use-app-icon-sync'
 import { createThemePalette, type ResolvedTheme, type ThemePalette } from '../lib/theme'
 
 type AppearanceContextValue = {
@@ -35,6 +36,8 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     [resolvedTheme, accentId],
   )
 
+  useAppIconSync(meQuery.data ? { theme, accentId } : null, systemTheme)
+
   // 設定WebViewから戻った場合や別端末で変更した場合も、前面復帰時にDB設定へ追従する。
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -57,7 +60,12 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     [palette, resolvedTheme, theme, accentId, updateAppearance],
   )
 
-  return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>
+  return (
+    <AppearanceContext.Provider value={value}>
+      <StatusBar barStyle={resolvedTheme === 'dark' ? 'light-content' : 'dark-content'} />
+      {children}
+    </AppearanceContext.Provider>
+  )
 }
 
 export function useAppAppearance(): AppearanceContextValue {

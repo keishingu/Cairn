@@ -8,6 +8,13 @@ export type AiChatModel = (typeof AI_CHAT_MODELS)[number]
 
 export const DEFAULT_AI_CHAT_MODEL: AiChatModel = 'gpt-5'
 
+// 画面に出すモデル名（製品名なので訳さない）。設定画面と /ai のモデル切り替えで共有する
+export const AI_CHAT_MODEL_LABELS: Record<AiChatModel, string> = {
+  'gpt-5': 'GPT-5',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-opus-5-5': 'Claude Opus 5.5',
+}
+
 // ワークスペースのシステムプロンプト（workspaces.ai_chat_system_prompt）の最大文字数。
 // 毎回のチャットの入力に乗るため、AGENTS.md 程度の分量に収める。CHECK 制約と同じ値。
 export const AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH = 10000

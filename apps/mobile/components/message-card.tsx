@@ -4,7 +4,7 @@
 // ネイティブモジュールを足さず既存の react-native の部品だけで描き、runtimeVersion を上げずに EAS Update で配信できるようにする。
 
 import React from 'react'
-import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   cardActionErrorMessage,
   mrkdwnToPlainText,
@@ -42,6 +42,8 @@ export type CardContext = {
   onAction: CardRun | undefined
   /** URL ボタンの押下の通知。ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため） */
   onLinkAction?: CardRun | undefined
+  /** 送信中・書き換え待ちのボタン。押したボタンだけを「送信中」の見た目にし、押せたことがすぐ分かるようにする */
+  pendingAction?: { blockId: string; actionId: string } | null | undefined
 }
 
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' })
@@ -72,12 +74,14 @@ export function MessageCard({
   const t = useT()
   const card = React.useMemo(() => normalizeMessageBlocks(blocks), [blocks])
   const [busy, setBusy] = React.useState(false)
+  const [pendingAction, setPendingAction] = React.useState<{ blockId: string; actionId: string } | null>(null)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const waitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const stopWaiting = React.useCallback(() => {
     if (waitTimer.current) clearTimeout(waitTimer.current)
     waitTimer.current = null
     setBusy(false)
+    setPendingAction(null)
   }, [])
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
   // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
@@ -107,6 +111,7 @@ export function MessageCard({
         }
       }
       setBusy(true)
+      setPendingAction({ blockId: action.blockId, actionId: action.actionId })
       setActionError(null)
       try {
         await onAction(action)
@@ -127,7 +132,7 @@ export function MessageCard({
     }
   }, [onAction, t, stopWaiting])
   // 送信中は同じカードの操作を止め、二重に押させない
-  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run, onLinkAction: run }
+  const context: CardContext = { palette, mentionNames, onLinkPress, onAction: busy ? undefined : run, onLinkAction: run, pendingAction }
 
   if (card.nothingRenderable) {
     return (
@@ -235,10 +240,13 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
       const filled = element.style === 'primary' ? palette.accent : element.style === 'danger' ? palette.redText : null
       // URL ボタンはリンクとして開き、Slack と同じく押下もアプリへ知らせる（block_actions）
       const disabled = !element.url && !onAction
+      // block_id はカード内で一意で、ブロック内の action_id も一意なので、2つで押したボタンが決まる
+      const pending = !element.url && context.pendingAction?.blockId === blockId && context.pendingAction.actionId === element.actionId
+      const textColor = filled ? palette.onAccent : palette.text
       return (
         <Pressable
           accessibilityRole={element.url ? 'link' : 'button'}
-          accessibilityState={{ disabled }}
+          accessibilityState={{ disabled, busy: pending }}
           disabled={disabled}
           onPress={() => {
             const url = element.url
@@ -252,10 +260,11 @@ function CardElement({ element, blockId, context }: { element: RenderElement; bl
           style={({ pressed }) => [
             styles.button,
             filled ? { backgroundColor: filled, borderColor: filled } : { backgroundColor: palette.card, borderColor: palette.border },
-            (pressed || disabled) && styles.buttonDimmed,
+            (pressed || disabled) && !pending && styles.buttonDimmed,
           ]}
         >
-          <Text style={[styles.buttonText, { color: filled ? palette.onAccent : palette.text }]} numberOfLines={1}>
+          {pending && <ActivityIndicator size="small" color={textColor} style={styles.buttonSpinner} />}
+          <Text style={[styles.buttonText, { color: textColor }]} numberOfLines={1}>
             {element.text}
           </Text>
         </Pressable>
@@ -512,7 +521,8 @@ const styles = StyleSheet.create({
   meter: { width: 96, height: 8, borderRadius: 4, overflow: 'hidden' },
   meterFill: { height: '100%', borderRadius: 4 },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  button: { minHeight: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
+  button: { minHeight: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
+  buttonSpinner: { marginRight: 6, transform: [{ scale: 0.7 }] },
   buttonText: { fontSize: 13, fontWeight: '600' },
   buttonDimmed: { opacity: 0.55 },
   select: { minHeight: 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 240 },

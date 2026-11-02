@@ -174,6 +174,20 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
+  it('書き換えを待つ間は押したボタンだけを送信中にし、書き換えが来たら戻す', async () => {
+    const onAction = vi.fn(() => Promise.resolve())
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[1]!) })
+    const [first, second] = screen.getAllByRole('button', { name: '投票' })
+    expect(second).toHaveAttribute('aria-busy', 'true')
+    expect(second).toHaveClass('btn-pending')
+    expect(first).not.toHaveAttribute('aria-busy')
+    expect(screen.getByRole('button', { name: '締め切る' })).not.toHaveClass('btn-pending')
+
+    rerender(<MessageCard blocks={JSON.parse(JSON.stringify(pollCardFixture))} fallbackText="" onAction={onAction} />)
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toHaveAttribute('aria-busy')
+  })
+
   it('見えない値だけの書き換えで blocks が同じでも、版が変われば待つのをやめる', async () => {
     const onAction = vi.fn(() => Promise.resolve())
     const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)

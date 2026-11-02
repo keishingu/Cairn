@@ -8,7 +8,7 @@ Design notes and task-specific references are in [`docs/README.md`](docs/README.
 
 ## Local development
 
-Required tools: Node.js 20+ / pnpm 9+ / [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) / Docker (used by the Supabase CLI)
+Required tools: Node.js 22.x (>=22.23.4), 24.x (>=24.22.1), or 26.x (>=26.12.1) / pnpm 9+ / [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) / Docker (used by the Supabase CLI)
 
 Run commands from the repository root.
 

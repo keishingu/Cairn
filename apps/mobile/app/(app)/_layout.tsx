@@ -11,6 +11,9 @@ import { OfflineMessageQueueProvider } from '../../components/offline-message-qu
 import { NotificationPanelProvider } from '../../components/notification-panel-provider'
 import { AppModalHost } from '../../components/app-modal-host'
 import { useT } from '../../components/locale-provider'
+import { useQuickActionNavigation } from '../../hooks/use-quick-actions'
+import { useShareReceiveNavigation } from '../../hooks/use-share-receive'
+import { useAppBadgeSync } from '../../hooks/use-app-badge-sync'
 import { followNotification } from '../../lib/follow-notification'
 import { readPushNotificationData, routeFromPushUrl } from '../../lib/notification-routing'
 import { completePendingRemoval, loadPushEnabled, loadPushSetting } from '../../lib/push-preference'
@@ -100,6 +103,8 @@ export default function AppLayout() {
     if (userId) void requestAndRegisterPush(userId)
   }, [userId])
 
+  useAppBadgeSync(userId)
+
   // 通知タップでの遷移。起動時（コールドスタート）とアプリ起動中の両方を処理する
   React.useEffect(() => {
     if (!supportsNotifications) return
@@ -113,6 +118,9 @@ export default function AppLayout() {
     return () => sub.remove()
   }, [router])
 
+  useQuickActionNavigation()
+  useShareReceiveNavigation()
+
   return (
     <RealtimeProvider>
       <OfflineMessageQueueProvider>
@@ -123,14 +131,14 @@ export default function AppLayout() {
                 screenOptions={{ headerShown: false }}
                 tabBar={(props) => <MobileNav {...props} />}
               >
-                <Tabs.Screen name="chats/index" />
+                <Tabs.Screen name="chats" />
                 <Tabs.Screen name="projects/index" />
-                <Tabs.Screen name="chats/[channelId]" options={{ href: null }} />
                 <Tabs.Screen name="chat-tools/index" options={{ href: null }} />
                 <Tabs.Screen name="tasks/index" />
                 <Tabs.Screen name="ai/index" />
                 <Tabs.Screen name="projects/[id]" options={{ href: null }} />
                 <Tabs.Screen name="notifications/index" options={{ href: null }} />
+                <Tabs.Screen name="share/index" options={{ href: null }} />
                 <Tabs.Screen name="files/index" options={{ href: null }} />
                 <Tabs.Screen name="gallery/index" options={{ href: null }} />
                 <Tabs.Screen name="members/index" options={{ href: null }} />

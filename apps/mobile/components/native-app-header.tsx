@@ -1,5 +1,5 @@
 import React from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAppAppearance } from './appearance-provider'
@@ -16,7 +16,7 @@ interface NativeAppHeaderProps {
   showNotifications?: boolean
 }
 
-function NotificationButton() {
+export function NotificationButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const t = useT()
   const { palette } = useAppAppearance()
   const { unreadCount, openNotifications } = useNotificationPanel()
@@ -26,7 +26,7 @@ function NotificationButton() {
       accessibilityRole="button"
       accessibilityLabel={unreadCount > 0 ? t('Notifications, {count} unread', { count: unreadCount }) : t('Notifications')}
       onPress={openNotifications}
-      style={styles.notificationButton}
+      style={[styles.notificationButton, style]}
       hitSlop={6}
     >
       <Ionicons name="notifications-outline" size={19} color={palette.text3} />

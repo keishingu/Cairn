@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   attachmentCacheFileName,
   attachmentViewer,
+  fitImageSize,
   isImageMime,
   isMarkdownDocument,
   isOfficeDocument,
@@ -77,5 +78,24 @@ describe('添付ファイルの表示とキャッシュ', () => {
     expect(shouldReuseCachedFile({ exists: true, size: 12 })).toBe(true)
     expect(shouldReuseCachedFile({ exists: true, size: 0 })).toBe(false)
     expect(shouldReuseCachedFile({ exists: false })).toBe(false)
+  })
+})
+
+describe('fitImageSize', () => {
+  it('横長の画像は幅を上限に縦横比を保って縮小する', () => {
+    expect(fitImageSize(2000, 1000, 280)).toEqual({ width: 280, height: 140 })
+  })
+
+  it('縦長の画像は高さを上限に縦横比を保って縮小する', () => {
+    expect(fitImageSize(1000, 4000, 280)).toEqual({ width: 70, height: 280 })
+  })
+
+  it('上限より小さい画像は拡大しない', () => {
+    expect(fitImageSize(100, 50, 280)).toEqual({ width: 100, height: 50 })
+  })
+
+  it('寸法が不正なら null を返す', () => {
+    expect(fitImageSize(0, 100, 280)).toBeNull()
+    expect(fitImageSize(100, Number.NaN, 280)).toBeNull()
   })
 })

@@ -72,7 +72,7 @@ pnpm build:internal:ios
 
 ## ネイティブ runtime と EAS Update
 
-現在の runtime version は `1.5.0`（Expo SDK 55 / React Native 0.83 + `react-native-pdf` + `react-native-enriched-markdown`）。Mobile Preview はモバイル関連 PR ごとに `preview` channel へ自動配信するため、ネイティブ依存を足す PR は積み重ねた PR であっても個別に runtime version を上げる。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
+現在の runtime version は `1.11.0`（Expo SDK 55 / React Native 0.83 + `react-native-pdf` 7.0.5 + `react-native-enriched-markdown` + `expo-clipboard` + `react-native-gesture-handler` / `react-native-reanimated` / `react-native-worklets` / `expo-haptics` + `expo-quick-actions` 6.0.2 + Android の共有の受け取り（`expo-sharing` の plugin、`patches/expo-sharing@55.0.24.patch`）。Mobile Preview はモバイル関連 PR ごとに `preview` channel へ自動配信するため、ネイティブ依存を足す PR は積み重ねた PR であっても個別に runtime version を上げる。ネイティブ依存または `app.json` のネイティブ設定を変更した場合は、次の両方が必要になる。
 
 1. `app.json` の `runtimeVersion` を上げる
 2. Development Build / Internal Distribution build を作り直して端末へ再インストールする
@@ -89,7 +89,7 @@ pnpm ios
 
 ## オフライン基盤
 
-- `expo-sqlite`: `cairn-offline.db` を起動時に開き、WAL と foreign keys を有効化する。現在は schema migration の土台までで、メッセージキャッシュと FTS 検索テーブルは次の機能 PR で追加する。FTS はネイティブ build で有効化済み
+- `expo-sqlite`: `cairn-offline.db` を起動時に開き、WAL と foreign keys を有効化する。チャンネル一覧・直近のメッセージ・通知のキャッシュを持ち、読み出しは圏外・取得失敗時だけ。schema の版は `PRAGMA user_version`（現在 2）で持ち、OTA を古いバンドルへ戻しても起動できるよう `offline_schema_migrations` は 1 のまま増やさない。設計は [`mobile-app.md`](./mobile-app.md#オフライン送信)。FTS 検索テーブルは未実装で、FTS はネイティブ build で有効化済み
 - `expo-network`: 明示的に圏外またはインターネット到達不可の間は、送信 outbox の無駄な POST を抑止する。回線復帰イベントを受けたら8秒の定期処理を待たず即時再送する
 - AsyncStorage: 既存の未送信本文・返信 outbox はこのPRでは移行しない。POST より先に保存する現在の保証を保ち、SQLite への移行はデータ移行とロールバックを設計してから行う
 

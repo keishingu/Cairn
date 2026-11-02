@@ -12,6 +12,8 @@ const { mockSelect, mockAnd, mockEq } = vi.hoisted(() => ({
   mockEq: vi.fn((column, value) => ({ column, value })),
 }))
 
+// /ai の利用ロールの判定はこのテストの対象外（全員が使えるワークスペースとして扱う）
+vi.mock('@/lib/ai/chat-access', () => ({ requireAiChatAccess: async () => null }))
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: vi.fn().mockResolvedValue({
     ctx: { userId: USER_ID, workspaceId: WORKSPACE_ID },
@@ -25,6 +27,12 @@ vi.mock('@/lib/ai/attachments', () => ({
   listMessageAttachments: async () => new Map(),
   loadHistoryAttachments: async () => new Map(),
   prepareAttachmentsForSend: async () => [],
+}))
+
+// ワークスペースのモデル設定はこのテストの対象外（既定の GPT-5 だけを使うワークスペースとして扱う）
+vi.mock('@/lib/ai/chat-model', () => ({
+  loadWorkspaceChatModels: async () => ({ defaultModel: 'gpt-5', allowedModels: ['gpt-5'] }),
+  resolveConversationModel: (stored: string | null) => stored ?? 'gpt-5',
 }))
 
 vi.mock('@cairn/db', () => ({

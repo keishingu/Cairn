@@ -4,8 +4,10 @@ import { useNetworkState } from 'expo-network'
 import React from 'react'
 import { AppState } from 'react-native'
 import { apiFetch } from '../lib/api-fetch'
-import { invalidateChannelListQueries } from '../lib/channel-list-queries'
+import { invalidateChannelListQueries, invalidateOfflineReadQueries } from '../lib/channel-list-queries'
+import { haptics } from '../lib/haptics'
 import { shouldAttemptNetworkRequest } from '../lib/network-state'
+import { isNetworkRecovery } from '../lib/offline-cache'
 import {
   isRetryableSendError,
   parseStoredMessageQueue,
@@ -26,6 +28,7 @@ interface QueueContextValue {
 }
 
 const QueueContext = React.createContext<QueueContextValue | null>(null)
+const CanUseNetworkContext = React.createContext(true)
 const STORAGE_PREFIX = 'cairn:offline-message-queue:v1:'
 const RETRY_INTERVAL_MS = 8_000
 
@@ -97,6 +100,9 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const flush = React.useCallback(async () => {
     if (!ready || !storageKey || !canUseNetwork || flushingRef.current) return
     flushingRef.current = true
+    // 復帰時にまとめて送ることがあるので、振動は1メッセージごとではなく1回の送信処理につき1度にする
+    let sent = false
+    let failed = false
     try {
       const pending = messagesRef.current.filter((message) => message.status === 'waiting')
       for (const item of pending) {
@@ -127,6 +133,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             throw error
           }
           await updateMessages((current) => current.filter((message) => message.id !== item.id))
+          sent = true
           await qc.invalidateQueries({ queryKey: ['messages', item.channelId] })
           await invalidateChannelListQueries(qc)
         } catch (error) {
@@ -144,12 +151,16 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             ),
           )
           // 同じ回線で後続メッセージだけ成功すると順序が入れ替わるため、通信障害時はここで止める。
+          // 自動で再送する通信障害は失敗として知らせない（圏外の間、再送のたびに振動してしまう）
           if (retryable) break
+          failed = true
         }
       }
     } finally {
       flushingRef.current = false
     }
+    if (failed) haptics.sendFailed()
+    else if (sent) haptics.messageSent()
   }, [canUseNetwork, qc, ready, storageKey, t, updateMessages])
 
   React.useEffect(() => {
@@ -164,6 +175,21 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
       appState.remove()
     }
   }, [canUseNetwork, flush, ready])
+
+  // 圏外の間に取れなかった表示を、回線復帰と前面復帰で取り直す（タイマーでは取り直さない）。
+  const wasOnlineRef = React.useRef(canUseNetwork)
+  React.useEffect(() => {
+    const wasOnline = wasOnlineRef.current
+    wasOnlineRef.current = canUseNetwork
+    if (isNetworkRecovery(wasOnline, canUseNetwork)) void invalidateOfflineReadQueries(qc)
+  }, [canUseNetwork, qc])
+
+  React.useEffect(() => {
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && wasOnlineRef.current) void invalidateOfflineReadQueries(qc)
+    })
+    return () => appState.remove()
+  }, [qc])
 
   const value = React.useMemo<QueueContextValue>(
     () => ({
@@ -210,7 +236,16 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     [flush, messages, ready, restoreError, updateMessages],
   )
 
-  return <QueueContext.Provider value={value}>{children}</QueueContext.Provider>
+  return (
+    <CanUseNetworkContext.Provider value={canUseNetwork}>
+      <QueueContext.Provider value={value}>{children}</QueueContext.Provider>
+    </CanUseNetworkContext.Provider>
+  )
+}
+
+/** 明示的に圏外と判定できた間だけ false。起動直後の未確定は true */
+export function useCanUseNetwork(): boolean {
+  return React.useContext(CanUseNetworkContext)
 }
 
 export function useOfflineMessageQueue(): QueueContextValue {

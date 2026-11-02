@@ -13,6 +13,7 @@ import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { ThemeCookieSync } from '@/components/theme-cookie-sync'
 import { DynamicAppleTouchIcon } from '@/components/dynamic-apple-touch-icon'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
+import { DesktopAppIconSync } from '@/components/desktop-app-icon-sync'
 import { PostHogProvider } from '@/components/posthog-provider'
 import { translate } from '@cairn/shared'
 import { readRequestLocale } from '@/lib/i18n/request-locale'
@@ -68,6 +69,7 @@ export default async function RootLayout({
               <ThemeCookieSync />
               <DynamicAppleTouchIcon />
               <DynamicFavicon />
+              <DesktopAppIconSync />
             </AccentColorProvider>
           </PostHogProvider>
           <Toaster placement={isMobile ? 'top' : 'bottom-right'} />

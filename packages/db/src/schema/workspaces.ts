@@ -86,11 +86,20 @@ export const workspaces = pgTable('workspaces', {
   aiNudgesPhaseTwoRequestCount: bigint('ai_nudges_phase_two_request_count', { mode: 'number' })
     .notNull()
     .default(0),
-  // AI チャット（/ai）が使うモデル。値の集合は @cairn/shared の AI_CHAT_MODELS と同じ。
+  // AI チャット（/ai）で新しい会話を始めたときの既定モデル。値の集合は @cairn/shared の AI_CHAT_MODELS と同じ。
   aiChatModel: text('ai_chat_model').notNull().default('gpt-5'),
+  // メンバーが会話ごとに選べるモデル。空にせず、既定モデル（ai_chat_model）を必ず含む（CHECK 制約）
+  aiChatAllowedModels: text('ai_chat_allowed_models')
+    .array()
+    .notNull()
+    .default(sql`ARRAY['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']::text[]`),
   // AI チャットへ毎回渡す、owner が書くワークスペース固有の追加指示（AGENTS.md 相当）。null は未設定。
   // 上限は @cairn/shared の AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH と同じ。
   aiChatSystemPrompt: text('ai_chat_system_prompt'),
+  // /ai の資料検索で新しいプロジェクト・ファイルを優先する重み。値の集合は @cairn/shared の AI_SEARCH_RECENCY_WEIGHTS と同じ。
+  aiSearchRecencyWeight: text('ai_search_recency_weight').notNull().default('none'),
+  // /ai を使えるロールの範囲（owner / admin / member。member はゲストを含む全員）。値は @cairn/shared の AI_CHAT_ACCESS_LEVELS と同じ
+  aiChatAccess: text('ai_chat_access').notNull().default('member'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => profiles.id),
@@ -102,8 +111,20 @@ export const workspaces = pgTable('workspaces', {
     sql`${t.aiChatModel} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`,
   ),
   check(
+    'workspaces_ai_chat_allowed_models_check',
+    sql`cardinality(${t.aiChatAllowedModels}) > 0 and ${t.aiChatAllowedModels} <@ ARRAY['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']::text[] and ${t.aiChatModel} = any(${t.aiChatAllowedModels})`,
+  ),
+  check(
+    'workspaces_ai_chat_access_check',
+    sql`${t.aiChatAccess} in ('owner', 'admin', 'member')`,
+  ),
+  check(
     'workspaces_ai_chat_system_prompt_length_check',
     sql`char_length(${t.aiChatSystemPrompt}) <= 10000`,
+  ),
+  check(
+    'workspaces_ai_search_recency_weight_check',
+    sql`${t.aiSearchRecencyWeight} in ('none', 'weak', 'medium', 'strong')`,
   ),
 ])
 

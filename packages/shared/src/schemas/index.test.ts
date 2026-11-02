@@ -277,6 +277,15 @@ describe('ワークスペース設定更新スキーマ', () => {
     }
   })
 
+  it('メンバーが選べるモデルは重複を除いて決まった順にそろえ、空は受け入れない', () => {
+    const result = patchWorkspaceSettingsSchema.safeParse({
+      aiChatAllowedModels: ['claude-opus-5-5', 'gpt-5', 'claude-opus-5-5'],
+    })
+    expect(result.success && result.data.aiChatAllowedModels).toEqual(['gpt-5', 'claude-opus-5-5'])
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatAllowedModels: [] }).success).toBe(false)
+    expect(patchWorkspaceSettingsSchema.safeParse({ aiChatAllowedModels: ['claude-haiku-5-5'] }).success).toBe(false)
+  })
+
   it('AIチャットのシステムプロンプトは前後の空白を除き、空なら未設定（null）に戻す', () => {
     const trimmed = patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: '\n 敬体で答える \n' })
     expect(trimmed.success && trimmed.data.aiChatSystemPrompt).toBe('敬体で答える')
@@ -290,6 +299,15 @@ describe('ワークスペース設定更新スキーマ', () => {
     const atLimit = 'あ'.repeat(AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH)
     expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: atLimit }).success).toBe(true)
     expect(patchWorkspaceSettingsSchema.safeParse({ aiChatSystemPrompt: `${atLimit}あ` }).success).toBe(false)
+  })
+
+  it('資料検索の新しさの重みは選択肢の段階だけ受け入れる', () => {
+    for (const aiSearchRecencyWeight of ['none', 'weak', 'medium', 'strong']) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiSearchRecencyWeight }).success).toBe(true)
+    }
+    for (const aiSearchRecencyWeight of ['', 'off', 'max', 365, null]) {
+      expect(patchWorkspaceSettingsSchema.safeParse({ aiSearchRecencyWeight }).success).toBe(false)
+    }
   })
 })
 

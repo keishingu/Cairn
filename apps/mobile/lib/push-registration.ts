@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import Constants from 'expo-constants'
 import { apiFetch } from './api-fetch'
+import { isDeviceOffline } from './device-offline'
 import { supabase } from './supabase'
 import { withTimeout } from './with-timeout'
 
@@ -109,4 +110,28 @@ export function unregisterPushToken(userId: string): Promise<void> {
   return enqueueSubscriptionChange(async () => {
     await sendSubscription('DELETE', await getPushToken(), userId)
   })
+}
+
+// 解除は最善の努力なので、利用者のサインアウトを長く待たせない
+const SIGN_OUT_UNREGISTER_TIMEOUT_MS = 5_000
+
+/**
+ * サインアウトの直前に、セッションがあるうちにこの端末の登録を外す。残すと前のユーザー宛ての通知とバッジが届き続ける。
+ * 失敗・圏外・時間切れでもサインアウトは止めず、ログだけ残す（残った登録は次に別のユーザーが登録したときサーバーが消す）
+ */
+export async function unregisterPushTokenForSignOut(userId: string): Promise<void> {
+  if (!supportsNotifications) return
+  try {
+    if (await isDeviceOffline()) {
+      console.warn('[push] 圏外のためサインアウト時の Push 解除を送れませんでした')
+      return
+    }
+    await withTimeout(
+      unregisterPushToken(userId),
+      SIGN_OUT_UNREGISTER_TIMEOUT_MS,
+      'Timed out unregistering push token before sign-out',
+    )
+  } catch (error) {
+    console.warn('[push] サインアウト時の Push 解除に失敗しました:', error)
+  }
 }

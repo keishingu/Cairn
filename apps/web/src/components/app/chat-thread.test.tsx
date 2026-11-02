@@ -698,6 +698,49 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
   })
 })
 
+describe('ChatMessageのアバターからメンバー詳細を開く', () => {
+  const baseProps = {
+    messageId: 'message-1',
+    messageType: 'text' as const,
+    senderId: 'user-2',
+    currentUserId: 'user-1',
+    senderName: 'Alice',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    isEdited: false,
+    content: '相談です',
+    reactions: [],
+    attachments: [],
+    replyTo: null,
+    bookmarked: false,
+    onReact: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onCheckboxToggle: vi.fn(),
+    onReply: vi.fn(),
+    onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
+    onJumpToMessage: vi.fn(),
+    onCopyLink: vi.fn(),
+    onImageClick: vi.fn(),
+  }
+
+  it('導線を渡されたときはアバターを押すと送信者の ID で開く', async () => {
+    const user = userEvent.setup()
+    const onOpenSender = vi.fn()
+    render(<ChatMessage {...baseProps} onOpenSender={onOpenSender} />)
+
+    await user.click(screen.getByRole('button', { name: 'Alice さんのプロフィールを開く' }))
+
+    expect(onOpenSender).toHaveBeenCalledWith('user-2')
+  })
+
+  it('導線を渡されないときはアバターを押せない', () => {
+    render(<ChatMessage {...baseProps} />)
+
+    expect(screen.queryByRole('button', { name: 'Alice さんのプロフィールを開く' })).toBeNull()
+  })
+})
+
 describe('リアクションした人の表示', () => {
   it('先頭の絵文字に名前がなければ、名前のある絵文字からシートを開く', async () => {
     const user = userEvent.setup()

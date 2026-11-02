@@ -73,6 +73,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (status === 'SUBSCRIBED') {
           setAuthenticated(true)
           void invalidateChannelListQueries(queryClient)
+          // 切断中の既読・新着を取り直す。背景から戻った直後の再取得は再接続より先に走りうる
+          void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
           void queryClient.invalidateQueries({ queryKey: ['app-views'] })
         } else if (shouldRetryRealtime(status, error)) {
@@ -115,7 +117,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'messages' || table === 'message_reactions' || table === 'tasks' || table === 'message_blocks') {
             void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
           }
-          if (table === 'messages') void invalidateChannelListQueries(queryClient)
+          if (table === 'messages') {
+            void invalidateChannelListQueries(queryClient)
+            // チャット情報のファイル一覧。添付はメッセージと一緒に増える
+            void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+          }
+          // チャット情報のタスク一覧
+          if (table === 'tasks') void queryClient.invalidateQueries({ queryKey: ['tasks'] })
         })
       channel.subscribe((status, error) => {
         if (cancelled) return

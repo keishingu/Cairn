@@ -13,6 +13,7 @@ import { PageToolbar, ScopeToggle } from './page-toolbar'
 import { loadStored, storeValue } from '@/lib/stored-value'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
+import { useOneShotRequest } from '@/lib/one-shot-request'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
@@ -291,6 +292,9 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
     openedTaskIdRef.current = requestKey
     setDetailTaskId(taskId)
   }, [searchParams])
+
+  // アプリのホーム画面のクイックアクションから、作成モーダルを開いた状態で来る
+  useOneShotRequest('new', () => setShowAddModal(true))
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'

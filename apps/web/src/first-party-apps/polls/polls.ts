@@ -1,11 +1,12 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { isAppLocale, type AppLocale } from '@cairn/shared'
+import { randomUUID } from 'node:crypto'
+import { isAppLocale, translate, type AppLocale } from '@cairn/shared'
 import { getFirstPartyInstallationId } from '@/lib/apps/first-party'
 import { callBotApi, PollsBotApiError } from './bot-client'
-import { renderPollCard, type PollForRender } from './render'
-import { pollInputErrors } from './validate'
+import { POLL_OPTION_LIMITS, renderPollCard, type PollForRender } from './render'
+import { pollInputErrors, pollOptionLabelError } from './validate'
 
 // 投票の作成・投稿・カードの再描画。外部 HTTP（Bot API）はトランザクションの外で呼び、
 // DB の状態（status・version・rendered_version）から再試行が同じ結果に収束するようにする（docs/app-platform-design.md §7.3・§7.4）
@@ -251,4 +252,117 @@ export async function renderPoll(pollId: string): Promise<'posted' | 'updated' |
     .set({ renderedVersion: sql`greatest(${polls.renderedVersion}, ${poll.version})`, updatedAt: sql`now()` })
     .where(eq(polls.id, pollId))
   return 'updated'
+}
+
+/** リースの長さ。投稿（chat.postMessage）と描き直し（chat.update）がそれぞれ Bot API の時間切れ（10秒）まで掛かっても切れない長さにする */
+const RENDER_LEASE_SECONDS = 60
+/** 描いている間に票が入り続けても、1本の処理が描き続けて終わらないことがないよう、続けて描く回数の上限 */
+const MAX_RENDER_ROUNDS = 10
+
+type RenderResult = Awaited<ReturnType<typeof renderPoll>>
+/** 描き直しが進まない結果。リースを持ったまま描き直しても同じ結果になるので、版が進んでいても続けない */
+const STALLED_RESULTS = new Set<RenderResult>(['post_failed_or_deferred', 'update_deferred'])
+
+/**
+ * 投票ごとに1本だけカードを描く。応答後のその場の描画と Inngest の拾い直しの両方がこれを通る。
+ * - 他の処理が描いていれば 'busy'。描いている側がリースを返す前に版の進みを確かめて描き直すので、この票も描かれる
+ * - 'incomplete' は上限まで描き直しても票が入り続けた場合。呼び出し元が Inngest に描き直しを任せる
+ * リースの解放は「描いた版が最新」のときだけ成功する（1つの UPDATE で確かめる）ので、
+ * 票の commit とリースの解放がどの順で起きても、どちらかが必ず最新の版を描く
+ */
+export async function renderPollExclusively(pollId: string): Promise<RenderResult | 'busy' | 'incomplete'> {
+  const { db, polls } = await import('@cairn/db')
+  const { and, eq, isNull, lt, or, sql } = await import('drizzle-orm')
+  const token = randomUUID()
+  const leaseUntil = sql`now() + ${`${RENDER_LEASE_SECONDS} seconds`}::interval`
+  const ours = and(eq(polls.id, pollId), eq(polls.renderLeaseToken, token))
+  const release = (condition?: ReturnType<typeof sql>) =>
+    db
+      .update(polls)
+      .set({ renderLeaseToken: null, renderLeaseUntil: null })
+      .where(condition ? and(ours, condition) : ours)
+      .returning({ id: polls.id })
+
+  // updated_at は動かさない（cron が拾う順と、元に戻り得る失敗で空けた間隔を崩さない）
+  const acquired = await db
+    .update(polls)
+    .set({ renderLeaseToken: token, renderLeaseUntil: leaseUntil })
+    .where(and(eq(polls.id, pollId), or(isNull(polls.renderLeaseUntil), lt(polls.renderLeaseUntil, sql`now()`))))
+    .returning({ id: polls.id })
+  if (acquired.length === 0) {
+    const [exists] = await db.select({ id: polls.id }).from(polls).where(eq(polls.id, pollId)).limit(1)
+    return exists ? 'busy' : 'skipped'
+  }
+
+  try {
+    for (let round = 0; round < MAX_RENDER_ROUNDS; round++) {
+      const result = await renderPoll(pollId)
+      if (STALLED_RESULTS.has(result)) {
+        await release()
+        return result
+      }
+      // 描いている間に新しい票が commit されていなければ、ここで返して終わる
+      const released = await release(sql`${polls.version} <= ${polls.renderedVersion} and ${polls.messageId} is not null`)
+      if (released.length > 0) return result
+      // 新しい票がある。リースを延ばして描き直す（延ばせなければ、リースが切れて他の処理が描いている）
+      const extended = await db.update(polls).set({ renderLeaseUntil: leaseUntil }).where(ours).returning({ id: polls.id })
+      if (extended.length === 0) return result
+    }
+    await release()
+    return 'incomplete'
+  } catch (err) {
+    // 失敗したら次の処理（Inngest の再試行・cron の拾い直し）がすぐ描けるよう、リースを返す
+    await release().catch((releaseErr: unknown) => console.error(`[polls] failed to release render lease of poll ${pollId}:`, releaseErr))
+    throw err
+  }
+}
+
+/**
+ * 作った後で選択肢を1つ足す（入れ忘れの補完）。足せるのは作成者だけで、締め切り後・上限に達した後は足せない。
+ * 足したら版を進め、呼び出し元がカードを描き直す。足せなければ利用者に見せる理由を返す。
+ * submissionId（モーダルの view ID）を足すのと同じトランザクションで記録し、応答が失われて同じ送信が再送されても、
+ * 二重に足したり「同じ選択肢がすでにあります」と断ったりせず成功として返す
+ */
+export async function addPollOption(input: { pollId: string; workspaceId: string; userId: string; label: string; locale: AppLocale; submissionId: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const t = (message: string, values?: Record<string, string | number>) => translate(input.locale, message, values)
+  const labelError = pollOptionLabelError(input.label, input.locale)
+  if (labelError) return { ok: false, error: labelError }
+
+  const { db, polls, pollOptions, pollProcessedInteractions, appInstallations } = await import('@cairn/db')
+  const { eq, sql } = await import('drizzle-orm')
+  return db.transaction(async (tx) => {
+    // 票の受付と同じく投票ごとに直列化し、同時に足しても position・上限がずれないようにする
+    const [poll] = await tx
+      .select({
+        createdBy: polls.createdBy,
+        status: polls.status,
+        workspaceId: appInstallations.workspaceId,
+        pastDeadline: sql<boolean>`coalesce(${polls.closesAt} <= now(), false)`,
+      })
+      .from(polls)
+      .innerJoin(appInstallations, eq(appInstallations.id, polls.installationId))
+      .where(eq(polls.id, input.pollId))
+      .for('update', { of: polls })
+    // 別ワークスペースの投票は存在しないものとして扱う
+    if (!poll || poll.workspaceId !== input.workspaceId) return { ok: false as const, error: t('This poll no longer exists') }
+    if (poll.createdBy !== input.userId) return { ok: false as const, error: t('Only the person who created the poll can add options.') }
+    // 同じ送信の再送。前の送信で足し終えているので、今の状態（重複・上限・締切）で断らず成功として閉じる
+    const [processed] = await tx
+      .select({ id: pollProcessedInteractions.interactionId })
+      .from(pollProcessedInteractions)
+      .where(eq(pollProcessedInteractions.interactionId, input.submissionId))
+      .limit(1)
+    if (processed) return { ok: true as const }
+    if (poll.status === 'closed' || poll.status === 'post_failed' || poll.pastDeadline) return { ok: false as const, error: t('This poll is closed') }
+
+    const existing = await tx.select({ label: pollOptions.label, position: pollOptions.position }).from(pollOptions).where(eq(pollOptions.pollId, input.pollId))
+    if (existing.length >= POLL_OPTION_LIMITS.max) return { ok: false as const, error: t('You can add up to {max} options', { max: POLL_OPTION_LIMITS.max }) }
+    if (existing.some((option) => option.label === input.label)) return { ok: false as const, error: t('This option already exists') }
+
+    const position = Math.max(-1, ...existing.map((option) => option.position)) + 1
+    await tx.insert(pollOptions).values({ pollId: input.pollId, label: input.label, position })
+    await tx.insert(pollProcessedInteractions).values({ interactionId: input.submissionId, pollId: input.pollId })
+    await tx.update(polls).set({ version: sql`${polls.version} + 1`, updatedAt: sql`now()` }).where(eq(polls.id, input.pollId))
+    return { ok: true as const }
+  })
 }
