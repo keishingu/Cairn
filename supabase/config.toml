@@ -162,8 +162,8 @@ enabled = true
 authorization_url_path = "/oauth/consent"
 allow_dynamic_registration = false
 
-# 外部アプリ向けのアクセストークンだけ session_id と aud を書き換え、Supabase Auth の API で
-# パスワード変更（再認証が必要になる）や MFA の登録をできなくする（supabase/migrations の
+# 外部アプリ向けのアクセストークンだけ session_id（実在しないランダムな UUID）と aud を書き換え、
+# Supabase Auth の API（/user・/factors・/logout など）で使えなくする（supabase/migrations の
 # restrict_external_app_tokens）。本番はダッシュボード「Authentication > Hooks」で同じ関数を指定する
 [auth.hook.custom_access_token]
 enabled = true

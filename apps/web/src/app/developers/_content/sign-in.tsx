@@ -80,6 +80,7 @@ export const signInPage: DocPage = {
             <>
               <p>JWKS で署名を検証し、<code>iss</code> と <code>aud</code>（= client ID）を確かめたうえで、<code>sub</code> を Cairn のユーザー ID として使います。</p>
               <Code>{verifyExample}</Code>
+              <Note>検証が済んだ ID トークンは保存せずに捨て、ほかへ送らないでください。UserInfo エンドポイントはアクセストークンでは使えないので、利用者の情報は ID トークンから取ってください。</Note>
               <p>
                 <code>name</code> / <code>picture</code> は Cairn のアカウント情報で、ワークスペースごとの表示名・アイコンとは異なる場合があります。ワークスペースでの表示名は Bot の Web API から取ってください。
               </p>
@@ -150,6 +151,7 @@ export const signInPage: DocPage = {
             <>
               <p>Verify the signature with the JWKS, check <code>iss</code> and <code>aud</code> (your client ID), then use <code>sub</code> as the Cairn user ID.</p>
               <Code>{verifyExampleEn}</Code>
+              <Note>Discard the ID token after verifying it. Do not store it or send it anywhere else. The UserInfo endpoint does not accept the access token, so read user information from the ID token.</Note>
               <p>
                 <code>name</code> / <code>picture</code> come from the Cairn account and may differ from the display name and icon in each workspace. Get the workspace display name from the Bot Web API.
               </p>
