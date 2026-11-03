@@ -123,7 +123,13 @@ async function openNotification(
       const lists = await loadChannelLists(queryClient)
       router.push({
         pathname: '/chats/[channelId]',
-        params: channelRouteParams(channelId, lists, t),
+        params: {
+          ...channelRouteParams(channelId, lists, t),
+          // 同じメッセージへもう一度移るときも画面が反応するよう、移動ごとに jumpKey を変える
+          ...(destination.messageId
+            ? { messageId: destination.messageId, jumpKey: Date.now().toString(36) }
+            : {}),
+        },
       })
       return
     }

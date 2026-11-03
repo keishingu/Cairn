@@ -29,11 +29,39 @@ describe('verifyAccessToken', () => {
   })
 
   it('検証成功時は claims.sub を返す', async () => {
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     const result = await verifyAccessToken(makeAuth(getClaims) as never, 'tok')
 
     expect(result).toBe('user-9')
+  })
+
+  it('外部アプリに発行されたトークン（client_id 付き）は署名検証を通っても null を返す', async () => {
+    const getClaims = vi.fn().mockResolvedValue({
+      data: { claims: { sub: 'user-9', client_id: 'external-app' } },
+      error: null,
+    })
+
+    expect(await verifyAccessToken(makeAuth(getClaims) as never, 'tok')).toBeNull()
+  })
+
+  it('外部アプリの ID トークン（aud が client ID、role なし）は署名検証を通っても null を返す', async () => {
+    // OAuth 2.1 Server の ID トークンは Cairn と同じ鍵で署名され、client_id クレームを持たない
+    const getClaims = vi.fn().mockResolvedValue({
+      data: { claims: { sub: 'user-9', aud: 'external-app-client-id', iss: 'http://localhost:54321/auth/v1' } },
+      error: null,
+    })
+
+    expect(await verifyAccessToken(makeAuth(getClaims) as never, 'tok')).toBeNull()
+  })
+
+  it('aud が authenticated でも role が authenticated でないトークンは null を返す', async () => {
+    const getClaims = vi.fn().mockResolvedValue({
+      data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'anon' } },
+      error: null,
+    })
+
+    expect(await verifyAccessToken(makeAuth(getClaims) as never, 'tok')).toBeNull()
   })
 
   it('error 時は null を返す', async () => {
@@ -47,7 +75,7 @@ describe('verifyAccessToken', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const token = fakeJwt({ alg: 'HS256', typ: 'JWT' })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     const result = await verifyAccessToken(makeAuth(getClaims) as never, token)
 
@@ -60,7 +88,7 @@ describe('verifyAccessToken', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const token = fakeJwt({ alg: 'ES256', typ: 'JWT' })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     await verifyAccessToken(makeAuth(getClaims) as never, token)
 
@@ -71,7 +99,7 @@ describe('verifyAccessToken', () => {
     const keys = [{ kid: 'abc', kty: 'EC', key_ops: ['verify'] }]
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ keys }) }))
     const token = fakeJwt({ alg: 'ES256', kid: 'abc', typ: 'JWT' })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     await verifyAccessToken(makeAuth(getClaims) as never, token)
 
@@ -83,7 +111,7 @@ describe('verifyAccessToken', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ keys }) })
     vi.stubGlobal('fetch', fetchMock)
     const token = fakeJwt({ alg: 'ES256', kid: 'abc', typ: 'JWT' })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     await verifyAccessToken(makeAuth(getClaims) as never, token)
     await verifyAccessToken(makeAuth(getClaims) as never, token)
@@ -94,7 +122,7 @@ describe('verifyAccessToken', () => {
   it('JWKS 取得失敗でもフェイルクローズせず getClaims の検証に委ねる', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
     const token = fakeJwt({ alg: 'ES256', kid: 'abc', typ: 'JWT' })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     const result = await verifyAccessToken(makeAuth(getClaims) as never, token)
 
@@ -106,7 +134,7 @@ describe('verifyAccessToken', () => {
   it('デコード不能なトークンは JWKS を取得せず getClaims にそのまま委ねる', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     await verifyAccessToken(makeAuth(getClaims) as never, 'not-a-jwt')
 
@@ -116,7 +144,7 @@ describe('verifyAccessToken', () => {
   it('token 省略時は getSession でトークンを解決してから検証する', async () => {
     const token = fakeJwt({ alg: 'HS256', typ: 'JWT' })
     const getSession = vi.fn().mockResolvedValue({ data: { session: { access_token: token } }, error: null })
-    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9' } }, error: null })
+    const getClaims = vi.fn().mockResolvedValue({ data: { claims: { sub: 'user-9', aud: 'authenticated', role: 'authenticated' } }, error: null })
 
     const result = await verifyAccessToken(makeAuth(getClaims, getSession) as never)
 

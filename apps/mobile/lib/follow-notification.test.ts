@@ -119,6 +119,43 @@ describe('通知からチャットを開く', () => {
     }))
   })
 
+  it('メッセージを指す行き先は、チャットがその位置へ移れるようメッセージ ID と移動ごとのキーを渡す', async () => {
+    const base = mockApiFetch.getMockImplementation()!
+    mockApiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/messages/msg-1/location') return jsonResponse({ channelId: 'project-channel' })
+      return base(path)
+    })
+    const push = vi.fn()
+
+    await followNotification(
+      { push, navigate: vi.fn() },
+      { kind: 'channel', channelId: 'project-channel', messageId: 'msg-1' },
+      { t, onUnavailable },
+    )
+
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        channelId: 'project-channel',
+        messageId: 'msg-1',
+        jumpKey: expect.any(String),
+      }),
+    }))
+  })
+
+  it('メッセージを指さない行き先にはメッセージ ID を付けない', async () => {
+    const push = vi.fn()
+
+    await followNotification(
+      { push, navigate: vi.fn() },
+      { kind: 'channel', channelId: 'project-channel' },
+      { t, onUnavailable },
+    )
+
+    const params = push.mock.calls[0]?.[0]?.params as Record<string, string>
+    expect(params).not.toHaveProperty('messageId')
+    expect(params).not.toHaveProperty('jumpKey')
+  })
+
   it('削除済み・閲覧できないメッセージの Push は遷移せず、見つからないことを伝える', async () => {
     const push = vi.fn()
 

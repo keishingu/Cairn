@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   decideWebViewNavigation,
-  messageTargetChatPath,
   WEBVIEW_ORIGIN_WHITELIST,
 } from './webview-navigation'
 
@@ -91,30 +90,63 @@ describe('WebViewのナビゲーション判定', () => {
     ).toBe('open-native-chat')
   })
 
-  it('チャット補助画面ではチャットURLをWebView内で許可する', () => {
+  it('メッセージを指すチャットURLとチャット一覧もネイティブチャットへ委譲する', () => {
+    for (const url of [`${trustedOrigin}/chats/channel-1?m=message-1`, `${trustedOrigin}/chats`, `${trustedOrigin}/chats?dm=1`]) {
+      expect(
+        decideWebViewNavigation({ url, trustedOrigin, allowChatRoutes: false, isTopFrame: true }),
+      ).toBe('open-native-chat')
+    }
+  })
+
+  it('開発ビルドでは同じポートのlocalhostのチャットURLもネイティブチャットへ委譲する', () => {
+    const devOrigin = 'http://192.168.0.10:3128'
+    const url = 'http://localhost:3128/chats/channel-1'
+    expect(
+      decideWebViewNavigation({ url, trustedOrigin: devOrigin, allowChatRoutes: false, isTopFrame: true, development: true }),
+    ).toBe('open-native-chat')
+    expect(
+      decideWebViewNavigation({ url, trustedOrigin: devOrigin, allowChatRoutes: false, isTopFrame: true }),
+    ).toBe('open-external')
+  })
+
+  it('別環境のチャットURLはネイティブチャットへ委譲せずブラウザへ渡す', () => {
     expect(
       decideWebViewNavigation({
-        url: `${trustedOrigin}/chats/search`,
+        url: 'https://another-env.example.com/chats/channel-1',
+        trustedOrigin,
+        allowChatRoutes: false,
+        isTopFrame: true,
+      }),
+    ).toBe('open-external')
+  })
+
+  it('チャット補助画面では補助画面のチャットURLをWebView内で許可する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: `${trustedOrigin}/chats/channel-1?nativeAux=1&panel=search`,
+        trustedOrigin,
+        allowChatRoutes: true,
+        isTopFrame: true,
+      }),
+    ).toBe('allow')
+    expect(
+      decideWebViewNavigation({
+        url: `${trustedOrigin}/chats?nativeAux=1&panel=bookmarks`,
         trustedOrigin,
         allowChatRoutes: true,
         isTopFrame: true,
       }),
     ).toBe('allow')
   })
-})
 
-describe('messageTargetChatPath', () => {
-  const origin = 'https://app.example.com'
-
-  it('特定メッセージを指すチャットURLはチャット補助画面用のパスを返す', () => {
-    expect(messageTargetChatPath(`${origin}/chats/channel-1?m=message-1`, origin)).toBe(
-      '/chats/channel-1?m=message-1&nativeAux=1',
-    )
-  })
-
-  it('メッセージ指定のないチャットURLや別オリジンは null を返す', () => {
-    expect(messageTargetChatPath(`${origin}/chats/channel-1`, origin)).toBeNull()
-    expect(messageTargetChatPath(`${origin}/chats?m=message-1`, origin)).toBeNull()
-    expect(messageTargetChatPath(`https://evil.example.com/chats/channel-1?m=message-1`, origin)).toBeNull()
+  it('チャット補助画面からのチャンネル・メッセージのリンクはネイティブチャットへ委譲する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: `${trustedOrigin}/chats/channel-1?m=message-1`,
+        trustedOrigin,
+        allowChatRoutes: true,
+        isTopFrame: true,
+      }),
+    ).toBe('open-native-chat')
   })
 })

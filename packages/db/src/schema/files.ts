@@ -39,4 +39,4 @@ export const files = pgTable(
     // 同じストレージオブジェクトを再試行で二重に確定しない。
     uniqueIndex('files_workspace_storage_path_unique').on(t.workspaceId, t.storagePath),
   ],
-)
+).enableRLS()

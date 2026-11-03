@@ -28,4 +28,4 @@ export const milestones = pgTable(
   (t) => [
     index('idx_milestones_project').on(t.projectId, t.startDate),
   ],
-)
+).enableRLS()

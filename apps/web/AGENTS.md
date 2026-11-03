@@ -9,6 +9,7 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 - 権限チェックは `src/lib/permissions.ts` の関数を使い、独自の判定を書かない。ワークスペース単位の操作は `requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`、プロジェクト・チャンネル・ファイルなど参加者の guest も使うリソースは `requireProjectAccess` / `requireChannelAccess` / `canAccessFile`（`requireWorkspaceMember` にすると guest が全員弾かれる）。403 はロールを明示した日本語メッセージにし、フロントに生の 401/403 を出さない。UI は `useWorkspacePermissions()` で事前に disable・非表示にする
 - 認可目的の membership 参照は `src/lib/access/membership.ts` を経由する。発言者・担当者など履歴上の行為者の表示 join だけは `workspace_members` を直接引き、非活性でも本人名義で残す（[`docs/user-deactivation-design.md`](../../docs/user-deactivation-design.md)）
 - MCP（`/api/mcp`）の OAuth token は同一 request context 内だけで有効。通常 REST の資格情報にしない（[`docs/mcp-server-design.md`](../../docs/mcp-server-design.md)）
+- **「Cairn でログイン」（OIDC）で外部アプリに発行された JWT は、どの API でも受け付けない**。アクセストークンは `client_id` クレームを持ち、ID トークンは `aud` が外部アプリの client ID になる。どちらも Cairn と同じ鍵で署名され、`getClaims()` は `aud` を検証しないため、本人の判定は必ず `getAuthContext()` / `getAuthUser()` / `verifyAccessToken()`（`isCairnSessionClaims`）を通す。`supabase.auth.getUser()` や `getClaims()` の結果だけで本人と判定しない（[`docs/oidc-design.md`](../../docs/oidc-design.md) §5）
 
 ## 画面
 

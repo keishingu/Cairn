@@ -1,5 +1,5 @@
 import React from 'react'
-import { Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-native'
+import { Alert, Linking, Platform, View, Text, Pressable, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
@@ -18,7 +18,9 @@ import {
   parseNativeHeaderDescriptor,
   type NativeHeaderDescriptor,
 } from '../lib/native-header-bridge'
-import { decideWebViewNavigation, messageTargetChatPath, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
+import { decideWebViewNavigation, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
+import { chatLinkTarget, type ChatLinkTarget } from '../lib/chat-link'
+import { followNotification } from '../lib/follow-notification'
 import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
   finishNativeAccountDeletion,
@@ -222,6 +224,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       title?: unknown
       subtitle?: unknown
       canGoBack?: unknown
+      path?: unknown
     } | null = null
     try {
       msg = JSON.parse(event.nativeEvent.data) as {
@@ -232,6 +235,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         title?: unknown
         subtitle?: unknown
         canGoBack?: unknown
+        path?: unknown
       }
     } catch {
       return
@@ -286,7 +290,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       return
     }
     if (msg?.type === 'open-chats') {
-      router.push('/(app)/chats')
+      // Next.js の <Link> による画面内遷移は onShouldStartLoadWithRequest を通らないため、Web が行き先のパスを送ってくる。
+      // path を送らない古い Web では一覧を開く
+      const target = typeof msg.path === 'string' ? chatLinkTarget(msg.path, WEB_BASE, __DEV__) : null
+      openChatLink(target ?? { kind: 'list' })
     }
     if (msg?.type === 'native-header') {
       const descriptor = parseNativeHeaderDescriptor(msg)
@@ -322,6 +329,22 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
   }
 
+  // チャンネル・メッセージへのリンクは通知と同じ経路で開く（スレッドへ移ったメッセージの移動先も辿る）
+  function openChatLink(target: ChatLinkTarget) {
+    if (target.kind === 'list') {
+      router.push('/(app)/chats')
+      return
+    }
+    if (target.kind === 'invalid') {
+      Alert.alert(t('This link cannot be opened.'))
+      return
+    }
+    void followNotification(router, target, {
+      t,
+      onUnavailable: (message) => Alert.alert(message),
+    })
+  }
+
   // WebView 内のチャット導線は、Web ではなくネイティブのチャットタブへ委譲する。
   function handleShouldStartLoadWithRequest(request: ShouldStartLoadRequest) {
     const decision = decideWebViewNavigation({
@@ -330,15 +353,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       allowChatRoutes,
       isTopFrame: request.isTopFrame,
       isAndroid: Platform.OS === 'android',
+      development: __DEV__,
     })
     if (decision === 'open-native-chat') {
-      // タスクの出典メッセージなど特定メッセージへのリンクは、位置を保てるチャット補助画面（WebView）で開く
-      const messagePath = messageTargetChatPath(request.url, trustedOrigin)
-      if (messagePath) {
-        router.push({ pathname: '/(app)/chat-tools', params: { path: messagePath, title: t('Chats') } })
-        return false
-      }
-      router.push('/(app)/chats')
+      openChatLink(chatLinkTarget(request.url, trustedOrigin, __DEV__) ?? { kind: 'list' })
       return false
     }
     if (decision === 'open-external') {

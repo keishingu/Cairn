@@ -123,7 +123,7 @@ jobs:
         if: steps.commits.outputs.has_changes == 'true'
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.121.0
 
       # 本番DBへ dry-run し、マージ時に適用されるマイグレーションを事前に確認する。
       # 接続不可・履歴不整合ならリリースPRを作らずここで中断する（マージ後に

@@ -13,6 +13,10 @@ const { mockUser, mockSupabase, mockDb, mockHeaders } = vi.hoisted(() => {
   const mockSupabase = {
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: mockUser }, error: null }),
+      // getAuthUser は getUser の前に verifyAccessToken（getSession → getClaims）で
+      // 外部アプリのトークン（client_id 付き）でないことを確かめる
+      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'session-token' } }, error: null }),
+      getClaims: vi.fn().mockResolvedValue({ data: { claims: { sub: mockUser.id, aud: 'authenticated', role: 'authenticated' } }, error: null }),
     },
   }
   const mockDb = {

@@ -72,4 +72,4 @@ export const pushSubscriptions = pgTable(
     unique('uniq_push_expo').on(t.userId, t.expoToken),
     index('idx_push_subscriptions_user').on(t.userId),
   ],
-)
+).enableRLS()

@@ -30,7 +30,7 @@ export const galleryItems = pgTable(
     index('idx_gallery_project').on(t.projectId),
     index('idx_gallery_taken_at').on(t.takenAt),
   ],
-)
+).enableRLS()
 
 export const galleryComments = pgTable('gallery_comments', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -42,7 +42,7 @@ export const galleryComments = pgTable('gallery_comments', {
     .references(() => profiles.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const galleryLikes = pgTable(
   'gallery_likes',
@@ -57,4 +57,4 @@ export const galleryLikes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.galleryItemId, t.userId)],
-)
+).enableRLS()

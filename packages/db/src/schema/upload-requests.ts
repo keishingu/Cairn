@@ -36,4 +36,4 @@ export const uploadRequests = pgTable(
     index('idx_upload_requests_expiration').on(t.expiresAt),
     index('idx_upload_requests_project_pending').on(t.projectId, t.finalizedAt),
   ],
-)
+).enableRLS()
