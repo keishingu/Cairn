@@ -66,7 +66,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 
 | 層 | やること |
 |---|---|
-| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` は Bearer トークンも Cookie のセッションも `getUser()` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。外部アプリは自分のトークンを Supabase のセッション Cookie に入れて送ることもできるため、Bearer・Cookie のどちらの経路でも先に `verifyAccessToken()` で検証し、通ったものだけ `getUser()` で最新のユーザー情報を取る。`/api/` は middleware の対象外なので、API 側の判定だけに頼る。middleware も `verifyAccessToken` を通るので同じ判定になる |
+| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）で、`client_id` がなく `aud` と `role` がともに `authenticated` の通常のセッションだけを本人として扱い、それ以外は `null`（401）。外部アプリの ID トークンは同じ鍵で署名され、`aud` が client ID で `client_id` を持たないため、`client_id` を見るだけでは通ってしまう（`getClaims()` は `aud` を検証しない）。`getAuthUser()` は Bearer トークンも Cookie のセッションも `getUser()` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。外部アプリは自分のトークンを Supabase のセッション Cookie に入れて送ることもできるため、Bearer・Cookie のどちらの経路でも先に `verifyAccessToken()` で検証し、通ったものだけ `getUser()` で最新のユーザー情報を取る。`/api/` は middleware の対象外なので、API 側の判定だけに頼る。middleware も `verifyAccessToken` を通るので同じ判定になる |
 | PostgREST（テーブル・ビュー） | Cairn はデータの読み書きをすべて Route Handlers（Drizzle / service role）経由で行い、PostgREST を使っていない。そこで `public` のテーブル・ビューは `anon` / `authenticated` から権限を外して閉じる。あわせて、全テーブルで RLS を有効にする（ポリシーは書かない。権限が誤って戻っても0行しか見えない二重の守りになり、`postgres` / `service_role` は RLS を無視するのでサーバーには影響しない）。ビューには RLS がかからないので、権限を外すことで閉じる。今後作るテーブル・ビューにも権限が付かないよう、既定の権限（`ALTER DEFAULT PRIVILEGES`）からも外す |
 | PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
 | Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
@@ -130,5 +130,5 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
    - 確認待ちで止まった: メールアドレスの変更（`double_confirm_changes` により旧・新両方の確認が要る）
    - 試せなかった: TOTP の MFA 登録（ローカルでは TOTP の登録が無効）。本番の MFA 設定で確かめる
    - 拒否されたもの（Cairn 側の封じ込みが効いている）: Cairn の API（401）、PostgREST のテーブル・ビュー・権限判定の関数（42501）、Storage（RLS で拒否）。Realtime の権限判定は false
-   - 拒否する方法の候補: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `aud` などを書き換え、Auth の `/user` が受け付けない形にできるか。ID トークンには影響しないかもあわせて確かめる。外部アプリに発行するアクセストークンの有効期限を短くできるかも確認する
+   - 拒否する方法の候補: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `aud` などを書き換え、Auth の `/user` が受け付けない形にできるか。ID トークンには影響しないかもあわせて確かめる。ID トークンでも Auth の `/user` を呼べるかを確かめる（同じ鍵で署名されているため）。外部アプリに発行するアクセストークンの有効期限を短くできるかも確認する
    - ID トークンの `name` には、`email` スコープを許可していなくてもメールアドレスが入っていた（表示名を持たない利用者の場合）。外部アプリにメールアドレスを渡さない方針なら、これも塞ぐ必要がある
