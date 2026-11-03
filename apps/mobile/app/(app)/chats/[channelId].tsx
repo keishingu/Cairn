@@ -837,9 +837,12 @@ export default function ChatThreadScreen() {
   }, [channelId, messageIdParam, jumpKey])
   const jumpMessageId = jumpRequest?.messageId ?? null
   const latestMessageIds = React.useMemo(() => messages.map((message) => message.id), [messages])
+  // 再取得に失敗しても取得済みのデータは残り isSuccess だけが false になる。一時的な失敗で履歴の表示を抜けないよう、
+  // 一度でも取得できたかで判断する
+  const latestLoaded = messagesQuery.data !== undefined
   const { needsHistory } = resolveMessageJumpView({
     jumpMessageId,
-    latestLoaded: messagesQuery.isSuccess,
+    latestLoaded,
     latestMessageIds,
     historyLoaded: false,
     historyMessageCount: 0,
@@ -847,7 +850,7 @@ export default function ChatThreadScreen() {
   const historyQuery = useMessageHistory(channelId ?? null, needsHistory ? jumpMessageId : null)
   const { historyUnavailable, isHistoryView } = resolveMessageJumpView({
     jumpMessageId,
-    latestLoaded: messagesQuery.isSuccess,
+    latestLoaded,
     latestMessageIds,
     historyLoaded: historyQuery.isSuccess,
     historyMessageCount: historyQuery.data?.length ?? 0,
