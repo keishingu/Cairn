@@ -1,7 +1,7 @@
 # 「Cairn でログイン」（OIDC）設計書
 
 作成日: 2026-11-03
-ステータス: 設計段階（未実装）。論点は §9 の未決事項を参照
+ステータス: 設計段階（未実装）。論点は 2026-11-03 に決定済み → §9
 
 [`app-platform-design.md`](./app-platform-design.md) §10 で第3段階として位置づけた「Cairn でログイン」の設計。Cairn の外にある画面（PWA など）を持つ外部アプリが、利用者を Cairn のユーザーとして識別できるようにする。
 
@@ -70,7 +70,7 @@ issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-au
 
 **ID トークン**（JWT、ES256、Cairn 専用の鍵）
 - クレーム: `iss`、`sub`（Cairn のユーザー ID）、`aud`（client ID）、`exp`、`iat`、`auth_time`、`nonce`（リクエストにあれば）
-- `profile` を許可した場合: `name` と `picture`（Cairn のプロフィール。§9 の2）
+- `profile` を許可した場合: `name` と `picture`。ワークスペースによらないアカウントの値（`profiles` の表示名・アイコン）を入れる。ワークスペースごとの表示名・アイコンが要る外部アプリは、Bot の Web API や MCP から取る
 - `email` を許可した場合: `email` と `email_verified`
 - 有効期限は5分。ログインの瞬間に確かめるためだけのもの
 - 許可していないスコープの情報は入れない
@@ -78,6 +78,7 @@ issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-au
 **アクセストークン**（opaque。`cairn_oidc_at_` で始まる乱数）
 - OIDC の仕様でトークンの応答に必須のため発行する。使えるのは `/api/oidc/userinfo` だけで、Cairn のほかの API には使えない（`getAuthContext()` は JWT としても PAT としても受け付けない）
 - 有効期限は5分。DB には SHA-256 のハッシュだけを保存する
+- レート制限は MCP のトークンと同じく、トークンごとに1分あたり120回（`MCP_RATE_LIMIT_PER_MINUTE`。`api-tokens.ts` と同じ DB のカウンターの仕組み）
 
 **リフレッシュトークン**は発行しない。外部アプリは自分のセッションを自分で管理し、Cairn のログインが要るときはもう一度認可を受ける（許可済みなら同意画面は出ない）。
 
@@ -97,15 +98,18 @@ issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-au
 
 1. **プロバイダー本体**: §5 のエンドポイント、§7 のテーブル、署名と JWKS
 2. **同意画面 `/oidc/authorize`**: アプリ名・接続元のドメイン・共有する情報（スコープを利用者の言葉で）・ログイン中のアカウント・許可 / 拒否。他サイトの iframe に埋め込ませない（`frame-ancestors 'none'`）。許可・拒否はサーバーアクションで受け、同じ origin からの送信だけを受け付ける
-3. **クライアントの登録**: 当面は Cairn の運営者がスクリプトで登録する（client secret は発行時に一度だけ表示し、ハッシュだけ保存）。動的登録は作らない。機密クライアント（サーバーを持つアプリ）と公開クライアント（サーバーを持たない PWA など）の両方に対応し、どちらも PKCE（S256）を必須にする
+3. **クライアントの登録**: Cairn の運営者がスクリプト（`pnpm --filter @cairn/web oidc:client` など）で登録・無効化する。client secret は発行時に一度だけ表示し、ハッシュだけ保存する。管理画面は作らず、動的登録も作らない。機密クライアント（サーバーを持つアプリ）と公開クライアント（サーバーを持たない PWA など）の両方に対応し、どちらも PKCE（S256）を必須にする
 4. **設定の「連携」**: 「Cairn でログインを使っているアプリ」の一覧と取り消し。取り消すと次のログインで同意画面が出る（発行済みの ID トークンは5分で切れる）
 5. **公開ドキュメント**: `/developers` の「Cairn でログイン」（日英）を、この方式の issuer・エンドポイント・トークンに合わせる
-6. **API の判定**: `verifyAccessToken`（`lib/auth-jwt.ts`）は引き続き、`client_id` がなく `aud` と `role` がともに `authenticated` の通常のセッションだけを本人として扱う（`isCairnSessionClaims`）。Cairn の ID トークンは Supabase の鍵で署名されていないので、その手前の署名検証で拒否される
+6. **鍵の入れ替え**: 年1回と、漏えいが疑われたときに行う。手順は (1) 新しい鍵を `OIDC_SIGNING_KEYS` の先頭に足して再デプロイ（以降の ID トークンは新しい鍵で署名され、JWKS には新旧両方が載る）、(2) 旧鍵で署名した ID トークンの有効期限（5分）が過ぎてから旧鍵を外して再デプロイ。漏えい時は (2) を待たずに旧鍵を外す（その間にログイン中だった利用者は、外部アプリでログインし直しになる）
+7. **API の判定**: `verifyAccessToken`（`lib/auth-jwt.ts`）は引き続き、`client_id` がなく `aud` と `role` がともに `authenticated` の通常のセッションだけを本人として扱う（`isCairnSessionClaims`）。Cairn の ID トークンは Supabase の鍵で署名されていないので、その手前の署名検証で拒否される
 
-## 9. 未決事項
+## 9. 決定事項（2026-11-03）
 
-1. **鍵の入れ替えの手順**: 新しい鍵を配列の先頭に足し、旧鍵は ID トークンの有効期限（5分）が過ぎるまで JWKS に残す。入れ替えの頻度と、鍵が漏れた場合の手順を決める
-2. **`name` / `picture` の出どころ**: Cairn の表示名・アイコンはワークスペースごとに違うことがある。ID トークンにはワークスペースによらない `profiles` の値を入れるか、`profile` スコープ自体を出さず、外部アプリには Bot の Web API や MCP から取ってもらうか
-3. **ゲストの扱い**: ID トークンにはワークスペースの所属もロールも入らない。特定のワークスペースのメンバーだけを入れたい外部アプリは、Bot の Web API（`users.info`）や MCP で `sub` が active なメンバーかを確かめる。ゲストにも「Cairn でログイン」を許すか
-4. **クライアント登録の UI**: 当面はスクリプト。アプリ基盤の `apps` と同じ行に紐づけて、アプリの管理画面から登録できるようにするか（[`app-platform-design.md`](./app-platform-design.md) §10）
-5. **レート制限**: `/api/oidc/token` と `/oidc/authorize` の制限値。MCP 用 OAuth の制限に揃えるか
+| 論点 | 決定 |
+|---|---|
+| `name` / `picture` の出どころ | ワークスペースによらない `profiles` の表示名・アイコン（§6） |
+| ゲストの扱い | 許す。Cairn のアカウントがあれば誰でもログインでき、所属・ロールでの絞り込みは外部アプリが Bot の Web API（`users.info`）や MCP で行う |
+| 鍵の入れ替え | 年1回と漏えいが疑われたとき。手順は §8 の6 |
+| クライアントの登録 | 運営者のスクリプト。管理画面・動的登録は作らない（§8 の3） |
+| レート制限 | UserInfo のアクセストークンは MCP と同じくトークンごとに1分120回。`/oidc/authorize` と `/api/oidc/token` には MCP 用 OAuth と同じく専用の制限を置かない（コードは1回限り・5分・PKCE に縛られるため） |
