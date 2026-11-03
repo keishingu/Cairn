@@ -31,6 +31,8 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
+import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
+import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
 import {
   AI_CHAT_ACCESS_LEVELS,
   AI_CHAT_MODEL_LABELS,
@@ -2572,6 +2574,80 @@ const McpOAuthConnectionSettings = () => {
   )
 }
 
+// 「Cairn でログイン」（OIDC）で許可したアプリの一覧と取り消し（通信は useCairnLoginGrants）
+const CairnLoginGrantSettings = () => {
+  const t = useT()
+  const { locale } = useLocale()
+  const [revokeTarget, setRevokeTarget] = React.useState<OidcGrantDto | null>(null)
+  const { data: grants = [], isLoading, error } = useCairnLoginGrants()
+  const revoke = useRevokeCairnLoginGrant()
+  const revokeGrant = async (clientId: string) => {
+    try {
+      await revoke.mutateAsync(clientId)
+      toast.success(t('Access revoked'))
+    } catch (revokeError) {
+      // ダイアログを閉じずにその場でエラーを見せ、再試行できるようにする
+      throw new Error(t((revokeError as Error).message))
+    }
+  }
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Apps using Sign in with Cairn')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        {t('These apps receive only the information you allowed, such as your account ID. They cannot read or change your projects, conversations, or files.')}
+      </p>
+      <div className="card" style={{ padding: 16 }}>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+        ) : error ? (
+          <InlineError>{t((error as Error).message)}</InlineError>
+        ) : grants.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No apps use Sign in with Cairn.')}</div>
+        ) : (
+          grants.map((grant) => (
+            <div
+              key={grant.clientId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: '1px solid var(--divider)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{grant.clientName}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {t('Allowed {date}', { date: formatAppDate(locale, grant.grantedAt) })}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ color: 'var(--red-text)' }}
+                disabled={revoke.isPending}
+                onClick={() => setRevokeTarget(grant)}
+              >
+                {t('Revoke access')}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke access for "{name}"?', { name: revokeTarget?.clientName ?? '' })}
+        message={t('You will need to allow access again to sign in to this app with Cairn.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revokeGrant(revokeTarget.clientId) }}
+        onClose={() => setRevokeTarget(null)}
+      />
+    </section>
+  )
+}
+
 const SettingsIntegrations = () => {
   const t = useT()
   // ── iCal 出力 ──────────────────────────────────────────────────────
@@ -2705,6 +2781,7 @@ const SettingsIntegrations = () => {
       </p>
 
       <McpOAuthConnectionSettings />
+      <CairnLoginGrantSettings />
       <ApiTokenSettings />
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}

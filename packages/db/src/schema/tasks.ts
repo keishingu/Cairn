@@ -39,4 +39,4 @@ export const tasks = pgTable('tasks', {
   uniqueIndex('uniq_tasks_message_task_line')
     .on(t.sourceMessageId, t.sourceLine)
     .where(sql`${t.sourceMessageId} is not null and ${t.sourceCheckboxIndex} is null and ${t.sourceLine} is not null`),
-])
+]).enableRLS()

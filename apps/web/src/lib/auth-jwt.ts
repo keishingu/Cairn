@@ -69,6 +69,10 @@ function needsJwks(header: { alg?: string; kid?: string } | null): boolean {
  * token を省略すると Cookie のセッションから検証する。getSession を明示的に呼んで
  * トークンを解決してから getClaims に渡すため、期限切れ時のリフレッシュ副作用は維持しつつ、
  * header を見て JWKS が要るかどうかを事前判定できる。
+ *
+ * 「Cairn でログイン」（OIDC）で外部アプリに発行されたトークン（`client_id` クレーム付き）は、
+ * 通常ログインと同じユーザー JWT なので署名検証は通る。外部アプリに Cairn の API を使わせないため、
+ * Bearer・Cookie のどちらで届いても null にする（docs/oidc-design.md §5）。
  */
 export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Promise<string | null> {
   let resolvedToken = token
@@ -82,7 +86,24 @@ export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Pro
   const keys = needsJwks(header) ? await getCachedJwks() : []
   const { data, error } = await auth.getClaims(resolvedToken, keys.length > 0 ? { jwks: { keys } } : undefined)
   if (error || !data?.claims?.sub) return null
+  if (!isCairnSessionClaims(data.claims)) return null
   return data.claims.sub
+}
+
+/**
+ * Cairn の利用者本人のセッション（通常ログインのアクセストークン）か。
+ * OAuth 2.1 Server が外部アプリに発行するトークンは同じ鍵で署名されるため、署名検証だけでは見分けられない。
+ * - 外部アプリのアクセストークン: `client_id` クレームを持つ
+ * - 外部アプリの ID トークン: `aud` が外部アプリの client ID で、`client_id` も `role` も持たない
+ * getClaims は aud を検証しないので、aud が authenticated で role も authenticated のものだけを本人として扱う
+ */
+export function isCairnSessionClaims(claims: Record<string, unknown>): boolean {
+  const clientId = claims['client_id']
+  if (clientId !== undefined && clientId !== null) return false
+  const aud = claims['aud']
+  const audiences = Array.isArray(aud) ? aud : [aud]
+  if (audiences.length !== 1 || audiences[0] !== 'authenticated') return false
+  return claims['role'] === 'authenticated'
 }
 
 /** テスト用: モジュールレベルの JWKS キャッシュをリセットする */

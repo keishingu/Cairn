@@ -31,6 +31,23 @@ const nextConfig: NextConfig = {
         source: '/sw.js',
         headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
       },
+      {
+        // OAuth の認可・同意画面（MCP の /oauth/authorize、Cairn でログインの /oidc/authorize）を
+        // 他サイトの iframe に埋め込ませない。埋め込まれると、透明な枠の上で「許可」を押させる
+        // クリックジャッキングで、本人の知らないうちに外部アプリへの許可が出せてしまう
+        source: '/oauth/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
+        ],
+      },
+      {
+        source: '/oidc/authorize',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
+        ],
+      },
     ]
   },
 }

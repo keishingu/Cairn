@@ -35,4 +35,4 @@ export const documentChunks = pgTable(
     index('idx_document_chunks_workspace').on(t.workspaceId),
     index('idx_document_chunks_source').on(t.sourceType, t.sourceId),
   ],
-)
+).enableRLS()

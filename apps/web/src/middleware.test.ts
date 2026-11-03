@@ -12,7 +12,7 @@ vi.mock('@supabase/ssr', () => ({
 
 // 認証済み / 未認証を getClaims の返り値で表現する
 function authed(sub = 'u1') {
-  return { data: { claims: { sub } }, error: null }
+  return { data: { claims: { sub, aud: 'authenticated', role: 'authenticated' } }, error: null }
 }
 function unauthed() {
   return { data: null, error: null }

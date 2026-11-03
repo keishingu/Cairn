@@ -91,6 +91,8 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
 - **`SUPABASE_SERVICE_ROLE_KEY`**: **Legacy service_role JWT（`eyJ...`）** を使う。
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
+- **`OIDC_SIGNING_KEYS`**: 「Cairn でログイン」の ID トークンの署名鍵（kid 付きの ES256 秘密鍵 JWK の配列）。Production と Preview で別の鍵にし、Sensitive として登録する。未設定だとトークンの交換と JWKS がエラーになる。作り方は `apps/web/.env.local.example`、入れ替えの手順は [`oidc-design.md`](./oidc-design.md) §8 の6。
+- **「Cairn でログイン」のクライアント登録**: 運営者が対象環境の `DATABASE_URL` を指定して `node scripts/oidc-client.mjs create` で登録する（[`oidc-design.md`](./oidc-design.md) §8 の3）。
 
 ### 環境設定と Feature Flag の境界
 

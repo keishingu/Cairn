@@ -34,7 +34,7 @@ export const channels = pgTable(
     uniqueIndex('idx_channels_milestone_unique').on(t.milestoneId),
     check('channels_parent_not_self', sql`${t.parentChannelId} is null or ${t.parentChannelId} <> ${t.id}`),
   ],
-)
+).enableRLS()
 
 export const channelMembers = pgTable(
   'channel_members',
@@ -49,7 +49,7 @@ export const channelMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.channelId, t.userId)],
-)
+).enableRLS()
 
 export const messages = pgTable(
   'messages',
@@ -122,7 +122,7 @@ export const messageAttachments = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('idx_message_attachments_message').on(t.messageId)],
-)
+).enableRLS()
 
 // メッセージの個人ブックマーク（チーム共通のピン留めではなく、各ユーザーが「後で見返す」ための保存）
 export const messageBookmarks = pgTable(
@@ -141,7 +141,7 @@ export const messageBookmarks = pgTable(
     unique().on(t.messageId, t.userId),
     index('idx_message_bookmarks_user').on(t.userId, t.createdAt),
   ],
-)
+).enableRLS()
 
 export const userBlocks = pgTable(
   'user_blocks',
