@@ -5,14 +5,17 @@ import { describe, expect, it } from 'vitest'
 import { describeOidcScopes, parseAuthorizationId } from './oidc-consent'
 
 describe('parseAuthorizationId', () => {
-  it('UUID の形の authorization_id だけを受け付ける', () => {
-    expect(parseAuthorizationId('3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90')).toBe('3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90')
+  it('Supabase が発行する英数字の authorization_id を受け付ける', () => {
+    // 実際にローカルの Supabase Auth（OAuth 2.1 Server）が同意画面へ渡した値の形
+    expect(parseAuthorizationId('4oyac733lgevzscx7jvbi2ufm3nvz2u4')).toBe('4oyac733lgevzscx7jvbi2ufm3nvz2u4')
   })
 
-  it('UUID でない値・配列・未指定は null にする', () => {
-    expect(parseAuthorizationId('not-a-uuid')).toBeNull()
-    expect(parseAuthorizationId('3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90/../x')).toBeNull()
-    expect(parseAuthorizationId(['3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90'])).toBeNull()
+  it('URL やパスに混ぜると危ない文字・長すぎる値・配列・未指定は null にする', () => {
+    expect(parseAuthorizationId('abc/../x')).toBeNull()
+    expect(parseAuthorizationId('abc?next=https://evil.example')).toBeNull()
+    expect(parseAuthorizationId('a'.repeat(129))).toBeNull()
+    expect(parseAuthorizationId('')).toBeNull()
+    expect(parseAuthorizationId(['4oyac733lgevzscx7jvbi2ufm3nvz2u4'])).toBeNull()
     expect(parseAuthorizationId(undefined)).toBeNull()
   })
 })

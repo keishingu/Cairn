@@ -20,7 +20,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { decideOidcAuthorization } from './actions'
 
-const AUTHORIZATION_ID = '3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90'
+const AUTHORIZATION_ID = '4oyac733lgevzscx7jvbi2ufm3nvz2u4'
 
 function form(values: Record<string, string>): FormData {
   const data = new FormData()
@@ -60,7 +60,7 @@ describe('decideOidcAuthorization', () => {
   })
 
   it('authorization_id が不正なら Supabase を呼ばずにエラーを返す', async () => {
-    const result = await decideOidcAuthorization(null, form({ authorization_id: 'bad', decision: 'approve' }))
+    const result = await decideOidcAuthorization(null, form({ authorization_id: 'bad/../x', decision: 'approve' }))
 
     expect(result).toEqual({ error: 'This sign-in request is invalid. Return to the app and try again.' })
     expect(mockOauth.approveAuthorization).not.toHaveBeenCalled()

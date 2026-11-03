@@ -5,8 +5,12 @@
 // 認可コード・トークン・ID トークンは Supabase Auth の OAuth 2.1 Server が発行し、
 // Cairn は同意画面で許可・拒否を Supabase に伝えるだけ。
 
-/** Supabase が同意画面へ付けて渡す authorization_id の形（UUID 以外は受け付けない） */
-const AUTHORIZATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/**
+ * Supabase が同意画面へ付けて渡す authorization_id の形。UUID ではなく英数字の乱数
+ * （例: 4oyac733lgevzscx7jvbi2ufm3nvz2u4）なので、URL やパスに混ぜても安全な文字と長さだけを許す。
+ * 正しいかどうかは Supabase の getAuthorizationDetails が判定する
+ */
+const AUTHORIZATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 export function parseAuthorizationId(value: unknown): string | null {
   if (typeof value !== 'string') return null
