@@ -71,7 +71,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 | PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
 | Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
 | Realtime | `realtime.messages` の認可ポリシーに同じ条件を足す |
-| Supabase Auth の API | 外部アプリのトークンでも `/auth/v1/user`（メールアドレス・パスワード・メタデータの変更）や `/auth/v1/factors`（MFA の登録）を呼べる可能性がある。パスワード変更は `secure_password_change` で再認証を必須にし、メールアドレスの変更は `double_confirm_changes` で旧・新両方の確認を必須にする。MFA の登録などそれ以外は §9 の検証が済むまで本番で OAuth Server を有効にしない |
+| Supabase Auth の API | **未解決（本番で OAuth Server を有効にしない理由）**。ローカルで確かめた結果、外部アプリのトークンで `/auth/v1/user` の読み取り（スコープ外のメールアドレス・メタデータまで返る）、メタデータの変更、**パスワードの変更**ができた。ログイン直後のトークンは「最近ログインした」扱いになるため、`secure_password_change` では止まらない。メールアドレスの変更は `double_confirm_changes` で旧・新両方の確認待ちになる。§9 の6で拒否する方法を決めるまで、本番で OAuth Server を有効にしない |
 | 同意画面 | 他サイトの iframe に埋め込ませない（`frame-ancestors 'none'` / `X-Frame-Options: DENY`）。埋め込まれると、透明な枠の上で「許可」を押させるクリックジャッキングで許可を出させられる |
 
 - テーブル・ビューの権限の剥奪と RLS の有効化はマイグレーションで行う。今の権限の状態をマイグレーションに残し、ローカル・Preview・本番を同じにする
@@ -125,4 +125,10 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 3. **ベータ機能への依存**: 仕様変更があった場合の追従方針
 4. **同意画面の対象**: ゲストにも「Cairn でログイン」を許すか（ID トークンには所属もロールも出ないため、判断は外部アプリ側になる）
 5. **`email` スコープ**: 利用者のメールアドレスを外部アプリに渡してよいか。最初の外部アプリは `email` なしで成り立つか確認する
-6. **Supabase Auth の API への外部アプリのトークン（本番で有効にする前に必ず決める）**: OAuth 2.1 Server が発行したトークンで `/auth/v1/user` の更新や `/auth/v1/factors` の MFA 登録ができるかを、ローカルで実際に確かめる。できる場合は、Auth Hook などで `client_id` 付きのトークンを拒否する方法を決める（MFA を勝手に登録されると、利用者がログインできなくなる恐れがある）。あわせて、外部アプリに発行するアクセストークンの有効期限を短くできるかも確認する
+6. **Supabase Auth の API への外部アプリのトークン（本番で有効にする前に必ず決める）**: 2026-11-03 にローカル（Supabase CLI 2.100.1、Auth v2.189.0）で確かめた結果は次のとおり。外部アプリは受け取ったアクセストークンだけで、利用者のパスワードを変えてアカウントを乗っ取れる
+   - できた: `GET /auth/v1/user`（メールアドレス・メタデータまで返る）、`PUT /auth/v1/user` によるメタデータの変更とパスワードの変更（変更後のパスワードでログインでき、元のパスワードでは入れなくなった）
+   - 確認待ちで止まった: メールアドレスの変更（`double_confirm_changes` により旧・新両方の確認が要る）
+   - 試せなかった: TOTP の MFA 登録（ローカルでは TOTP の登録が無効）。本番の MFA 設定で確かめる
+   - 拒否されたもの（Cairn 側の封じ込みが効いている）: Cairn の API（401）、PostgREST のテーブル・ビュー・権限判定の関数（42501）、Storage（RLS で拒否）。Realtime の権限判定は false
+   - 拒否する方法の候補: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `aud` などを書き換え、Auth の `/user` が受け付けない形にできるか。ID トークンには影響しないかもあわせて確かめる。外部アプリに発行するアクセストークンの有効期限を短くできるかも確認する
+   - ID トークンの `name` には、`email` スコープを許可していなくてもメールアドレスが入っていた（表示名を持たない利用者の場合）。外部アプリにメールアドレスを渡さない方針なら、これも塞ぐ必要がある
