@@ -5,21 +5,15 @@ import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OAuthGrant } from '@supabase/supabase-js'
-
-const { mockOauth } = vi.hoisted(() => ({
-  mockOauth: { listGrants: vi.fn(), revokeGrant: vi.fn() },
-}))
-
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({ auth: { oauth: mockOauth } }),
-}))
-
+import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import {
   CAIRN_LOGIN_GRANTS_QUERY_KEY,
   useCairnLoginGrants,
   useRevokeCairnLoginGrant,
 } from './use-cairn-login-grants'
+
+vi.mock('@/lib/fetch-with-auth')
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -30,29 +24,26 @@ function makeWrapper() {
   return { wrapper: Wrapper, queryClient }
 }
 
-function grant(clientId: string, name: string): OAuthGrant {
-  return {
-    client: { id: clientId, name, uri: '', logo_uri: '' },
-    scopes: ['openid'],
-    granted_at: '2026-11-03T00:00:00Z',
-  }
+function grant(clientId: string, clientName: string): OidcGrantDto {
+  return { clientId, clientName, scope: 'openid', grantedAt: '2026-11-03T00:00:00.000Z' }
 }
 
 describe('useCairnLoginGrants', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('許可したアプリの一覧を返す', async () => {
-    mockOauth.listGrants.mockResolvedValue({ data: [grant('a', 'App A')], error: null })
+    vi.mocked(fetchWithAuth).mockResolvedValue(Response.json([grant('a', 'App A')]))
     const { wrapper } = makeWrapper()
 
     const { result } = renderHook(() => useCairnLoginGrants(), { wrapper })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.map((item) => item.client.name)).toEqual(['App A'])
+    expect(fetchWithAuth).toHaveBeenCalledWith('/api/oidc/grants')
+    expect(result.current.data?.map((item) => item.clientName)).toEqual(['App A'])
   })
 
   it('一覧を取得できなければ翻訳キーのエラーにする', async () => {
-    mockOauth.listGrants.mockResolvedValue({ data: null, error: { message: 'oauth server disabled' } })
+    vi.mocked(fetchWithAuth).mockResolvedValue(new Response(null, { status: 500 }))
     const { wrapper } = makeWrapper()
 
     const { result } = renderHook(() => useCairnLoginGrants(), { wrapper })
@@ -66,7 +57,7 @@ describe('useRevokeCairnLoginGrant', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('取り消したアプリを一覧のキャッシュから外す', async () => {
-    mockOauth.revokeGrant.mockResolvedValue({ data: {}, error: null })
+    vi.mocked(fetchWithAuth).mockResolvedValue(new Response(null, { status: 204 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(CAIRN_LOGIN_GRANTS_QUERY_KEY, [grant('a', 'App A'), grant('b', 'App B')])
 
@@ -75,12 +66,12 @@ describe('useRevokeCairnLoginGrant', () => {
       await result.current.mutateAsync('a')
     })
 
-    expect(mockOauth.revokeGrant).toHaveBeenCalledWith({ clientId: 'a' })
-    expect(queryClient.getQueryData<OAuthGrant[]>(CAIRN_LOGIN_GRANTS_QUERY_KEY)?.map((item) => item.client.id)).toEqual(['b'])
+    expect(fetchWithAuth).toHaveBeenCalledWith('/api/oidc/grants/a', { method: 'DELETE' })
+    expect(queryClient.getQueryData<OidcGrantDto[]>(CAIRN_LOGIN_GRANTS_QUERY_KEY)?.map((item) => item.clientId)).toEqual(['b'])
   })
 
   it('取り消しに失敗したらキャッシュを変えずに翻訳キーのエラーにする', async () => {
-    mockOauth.revokeGrant.mockResolvedValue({ data: null, error: { message: 'boom' } })
+    vi.mocked(fetchWithAuth).mockResolvedValue(new Response(null, { status: 500 }))
     const { wrapper, queryClient } = makeWrapper()
     queryClient.setQueryData(CAIRN_LOGIN_GRANTS_QUERY_KEY, [grant('a', 'App A')])
 
@@ -89,6 +80,6 @@ describe('useRevokeCairnLoginGrant', () => {
       await expect(result.current.mutateAsync('a')).rejects.toThrow('Could not revoke access for this app')
     })
 
-    expect(queryClient.getQueryData<OAuthGrant[]>(CAIRN_LOGIN_GRANTS_QUERY_KEY)?.map((item) => item.client.id)).toEqual(['a'])
+    expect(queryClient.getQueryData<OidcGrantDto[]>(CAIRN_LOGIN_GRANTS_QUERY_KEY)?.map((item) => item.clientId)).toEqual(['a'])
   })
 })

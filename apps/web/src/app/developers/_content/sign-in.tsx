@@ -6,21 +6,22 @@ import { Code, Note, Table, type DocPage } from '../_components/doc'
 const verifyExample = `
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 
-// issuer はクライアント登録時にお知らせする URL（末尾は /auth/v1）
-const issuer = process.env.CAIRN_OIDC_ISSUER
-const jwks = createRemoteJWKSet(new URL(\`\${issuer}/.well-known/jwks.json\`))
+// issuer は https://oss-cairn.com/oidc
+const issuer = 'https://oss-cairn.com/oidc'
+const jwks = createRemoteJWKSet(new URL(\`\${issuer}/jwks.json\`))
 
 const { payload } = await jwtVerify(idToken, jwks, {
   issuer,
   audience: process.env.CAIRN_OIDC_CLIENT_ID,
+  algorithms: ['ES256'],
 })
+// 認可リクエストに付けた nonce と一致するかも確かめる
 const cairnUserId = payload.sub
 `
 
-const verifyExampleEn = verifyExample.replace(
-  '// issuer はクライアント登録時にお知らせする URL（末尾は /auth/v1）',
-  '// The issuer URL is shared when your client is registered (it ends with /auth/v1)',
-)
+const verifyExampleEn = verifyExample
+  .replace('// issuer は https://oss-cairn.com/oidc', '// The issuer is https://oss-cairn.com/oidc')
+  .replace('// 認可リクエストに付けた nonce と一致するかも確かめる', '// Also check that nonce matches the one you sent in the authorization request')
 
 export const signInPage: DocPage = {
   slug: 'sign-in',
@@ -28,7 +29,7 @@ export const signInPage: DocPage = {
     ja: {
       title: 'Cairn でログイン（OIDC）',
       description:
-        'Cairn の外に画面を持つアプリ（Web アプリ・PWA など）が、利用者を Cairn のユーザーとして識別するための OpenID Connect の仕様です。分かるのは「誰か」だけで、Cairn のデータの読み書きには使えません。',
+        'Cairn の外に画面を持つアプリ（Web アプリ・PWA など）が、利用者を Cairn のユーザーとして識別するための OpenID Connect の仕様です。アプリに渡るのは、利用者が許可した情報を載せた ID トークンだけで、Cairn のデータの読み書きには使えません。',
       sections: [
         {
           id: 'scope',
@@ -36,7 +37,7 @@ export const signInPage: DocPage = {
           content: (
             <>
               <p>
-                ID トークンの <code>sub</code> で、利用者の Cairn のユーザー ID が分かります。アクセストークンも発行されますが、Cairn の API・データ・ファイル・Realtime には使えません（すべて拒否されます）。保存せずに捨ててください。
+                ID トークンの <code>sub</code> で、利用者の Cairn のユーザー ID が分かります。ID トークンは Cairn の OIDC 専用の鍵で署名されていて、Cairn の API・データ・ファイル・Realtime には使えません。
               </p>
               <Table
                 head={['やりたいこと', '使う仕組み']}
@@ -54,7 +55,7 @@ export const signInPage: DocPage = {
           title: 'クライアントの登録',
           content: (
             <p>
-              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前、環境ごとのリダイレクト URI（https、完全一致）、サーバーを持つかどうかをお知らせください。サーバーを持つアプリは機密クライアントとして client ID・client secret・issuer の URL をお渡しします。client secret はサーバーだけに置いてください。ブラウザーだけで動くアプリ（サーバーを持たない PWA など）は、secret を安全に置けないため公開クライアントとして登録し、client ID と issuer の URL だけをお渡しします。どちらも PKCE は必須です。
+              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前、環境ごとのリダイレクト URI（https、完全一致）、サーバーを持つかどうかをお知らせください。サーバーを持つアプリは機密クライアントとして client ID と client secret をお渡しします。client secret はサーバーだけに置いてください。ブラウザーだけで動くアプリ（サーバーを持たない PWA など）は、secret を安全に置けないため公開クライアントとして登録し、client ID だけをお渡しします。どちらも PKCE（S256）は必須です。
             </p>
           ),
         },
@@ -64,12 +65,20 @@ export const signInPage: DocPage = {
           content: (
             <>
               <ol>
-                <li>認可コード + PKCE で認可リクエストを送ります。スコープは <code>openid</code> を基本に、必要なものだけ（<code>profile</code> / <code>email</code>）を足してください。</li>
-                <li><code>state</code> を必ず使います。推測できない値を作ってログイン開始時のセッションに保存し、コールバックで一致を確かめてください。一致しなければコードを交換しないでください。</li>
+                <li>認可コード + PKCE で <code>https://oss-cairn.com/oidc/authorize</code> に認可リクエストを送ります。スコープは <code>openid</code> を基本に、必要なものだけ（<code>profile</code> / <code>email</code>）を足してください。</li>
+                <li><code>state</code> を必ず使います。推測できない値を作ってログイン開始時のセッションに保存し、コールバックで一致を確かめてください。一致しなければコードを交換しないでください。<code>nonce</code> も付けることをおすすめします。</li>
                 <li>利用者は Cairn の同意画面で許可・拒否します。以前に同じスコープで許可していれば、同意画面は出ません。</li>
-                <li>コールバックで受け取ったコードを token エンドポイントで交換し、ID トークンを受け取ります。</li>
+                <li>コールバックで受け取ったコードを token エンドポイントで交換し、ID トークンを受け取ります。リフレッシュトークンは発行しません。Cairn のログインが要るたびに、もう一度認可リクエストを送ってください（許可済みなら同意画面は出ません）。</li>
               </ol>
-              <p>エンドポイントは <code>{'{issuer}/.well-known/openid-configuration'}</code> から読んでください。直書きしないでください。</p>
+              <p>エンドポイントは <code>https://oss-cairn.com/oidc/.well-known/openid-configuration</code> から読んでください。直書きしないでください。</p>
+              <Table
+                head={['スコープ', 'ID トークンに入る情報']}
+                rows={[
+                  [<code key="a">openid</code>, <><code>sub</code>（Cairn のユーザー ID）</>],
+                  [<code key="a">profile</code>, <><code>name</code>（Cairn のアカウントの表示名。ワークスペースごとの表示名とは異なる場合があります）</>],
+                  [<code key="a">email</code>, <><code>email</code> / <code>email_verified</code></>],
+                ]}
+              />
             </>
           ),
         },
@@ -78,12 +87,9 @@ export const signInPage: DocPage = {
           title: 'ID トークンの検証',
           content: (
             <>
-              <p>JWKS で署名を検証し、<code>iss</code> と <code>aud</code>（= client ID）を確かめたうえで、<code>sub</code> を Cairn のユーザー ID として使います。</p>
+              <p>JWKS で署名（ES256）を検証し、<code>iss</code> と <code>aud</code>（= client ID）と <code>nonce</code> を確かめたうえで、<code>sub</code> を Cairn のユーザー ID として使います。ID トークンの有効期限は5分です。</p>
               <Code>{verifyExample}</Code>
-              <Note>検証が済んだ ID トークンは保存せずに捨て、ほかへ送らないでください。UserInfo エンドポイントはアクセストークンでは使えないので、利用者の情報は ID トークンから取ってください。</Note>
-              <p>
-                <code>name</code> / <code>picture</code> は Cairn のアカウント情報で、ワークスペースごとの表示名・アイコンとは異なる場合があります。ワークスペースでの表示名は Bot の Web API から取ってください。
-              </p>
+              <Note>token エンドポイントはアクセストークンも返しますが、使えるのは UserInfo（5分で失効）だけです。Cairn のほかの API には使えません。</Note>
             </>
           ),
         },
@@ -99,7 +105,7 @@ export const signInPage: DocPage = {
     en: {
       title: 'Sign in with Cairn (OIDC)',
       description:
-        'OpenID Connect for apps with their own screens outside Cairn (web apps, PWAs, and so on) to identify users as Cairn users. It tells you who the user is, and nothing more. It cannot be used to read or write Cairn data.',
+        'OpenID Connect for apps with their own screens outside Cairn (web apps, PWAs, and so on) to identify users as Cairn users. Your app receives only an ID token with the information the user allowed. It cannot be used to read or write Cairn data.',
       sections: [
         {
           id: 'scope',
@@ -107,7 +113,7 @@ export const signInPage: DocPage = {
           content: (
             <>
               <p>
-                The ID token&apos;s <code>sub</code> is the user&apos;s Cairn user ID. An access token is also issued, but Cairn rejects it everywhere: the API, data, files, and Realtime. Discard it without storing it.
+                The ID token&apos;s <code>sub</code> is the user&apos;s Cairn user ID. ID tokens are signed with a key dedicated to Cairn&apos;s OIDC, and cannot be used with the Cairn API, data, files, or Realtime.
               </p>
               <Table
                 head={['Goal', 'Mechanism']}
@@ -125,7 +131,7 @@ export const signInPage: DocPage = {
           title: 'Registering a client',
           content: (
             <p>
-              The Cairn operators register clients. Dynamic registration is not supported. Send your app name, a redirect URI for each environment (https, exact match), and whether your app has a server. Apps with a server are registered as confidential clients and receive a client ID, a client secret, and the issuer URL. Keep the client secret on your server only. Apps that run only in the browser (such as a PWA without a server) cannot keep a secret safe, so they are registered as public clients and receive only a client ID and the issuer URL. PKCE is required for both.
+              The Cairn operators register clients. Dynamic registration is not supported. Send your app name, a redirect URI for each environment (https, exact match), and whether your app has a server. Apps with a server are registered as confidential clients and receive a client ID and a client secret. Keep the client secret on your server only. Apps that run only in the browser (such as a PWA without a server) cannot keep a secret safe, so they are registered as public clients and receive only a client ID. PKCE (S256) is required for both.
             </p>
           ),
         },
@@ -135,12 +141,20 @@ export const signInPage: DocPage = {
           content: (
             <>
               <ol>
-                <li>Send an authorization request with the authorization code flow and PKCE. Request <code>openid</code>, plus only the scopes you need (<code>profile</code> / <code>email</code>).</li>
-                <li>Always use <code>state</code>. Generate an unguessable value, store it in the session that starts sign-in, and check it on the callback. If it does not match, do not exchange the code.</li>
+                <li>Send an authorization request to <code>https://oss-cairn.com/oidc/authorize</code> with the authorization code flow and PKCE. Request <code>openid</code>, plus only the scopes you need (<code>profile</code> / <code>email</code>).</li>
+                <li>Always use <code>state</code>. Generate an unguessable value, store it in the session that starts sign-in, and check it on the callback. If it does not match, do not exchange the code. We also recommend <code>nonce</code>.</li>
                 <li>The user allows or denies the request on Cairn&apos;s consent screen. If they already allowed the same scopes, the consent screen is skipped.</li>
-                <li>Exchange the code from the callback at the token endpoint to receive the ID token.</li>
+                <li>Exchange the code from the callback at the token endpoint to receive the ID token. No refresh token is issued. Send a new authorization request whenever you need the user to sign in with Cairn again (the consent screen is skipped if already allowed).</li>
               </ol>
-              <p>Read the endpoints from <code>{'{issuer}/.well-known/openid-configuration'}</code>. Do not hard-code them.</p>
+              <p>Read the endpoints from <code>https://oss-cairn.com/oidc/.well-known/openid-configuration</code>. Do not hard-code them.</p>
+              <Table
+                head={['Scope', 'Claims in the ID token']}
+                rows={[
+                  [<code key="a">openid</code>, <><code>sub</code> (the Cairn user ID)</>],
+                  [<code key="a">profile</code>, <><code>name</code> (the Cairn account display name, which may differ from the display name in each workspace)</>],
+                  [<code key="a">email</code>, <><code>email</code> / <code>email_verified</code></>],
+                ]}
+              />
             </>
           ),
         },
@@ -149,12 +163,9 @@ export const signInPage: DocPage = {
           title: 'Verifying the ID token',
           content: (
             <>
-              <p>Verify the signature with the JWKS, check <code>iss</code> and <code>aud</code> (your client ID), then use <code>sub</code> as the Cairn user ID.</p>
+              <p>Verify the ES256 signature with the JWKS, check <code>iss</code>, <code>aud</code> (your client ID), and <code>nonce</code>, then use <code>sub</code> as the Cairn user ID. ID tokens expire after 5 minutes.</p>
               <Code>{verifyExampleEn}</Code>
-              <Note>Discard the ID token after verifying it. Do not store it or send it anywhere else. The UserInfo endpoint does not accept the access token, so read user information from the ID token.</Note>
-              <p>
-                <code>name</code> / <code>picture</code> come from the Cairn account and may differ from the display name and icon in each workspace. Get the workspace display name from the Bot Web API.
-              </p>
+              <Note>The token endpoint also returns an access token, but it only works for UserInfo (it expires after 5 minutes). It cannot be used with any other Cairn API.</Note>
             </>
           ),
         },

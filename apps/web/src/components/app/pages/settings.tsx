@@ -31,7 +31,7 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
-import type { OAuthGrant } from '@supabase/supabase-js'
+import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
 import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
 import {
   AI_CHAT_ACCESS_LEVELS,
@@ -2578,7 +2578,7 @@ const McpOAuthConnectionSettings = () => {
 const CairnLoginGrantSettings = () => {
   const t = useT()
   const { locale } = useLocale()
-  const [revokeTarget, setRevokeTarget] = React.useState<OAuthGrant | null>(null)
+  const [revokeTarget, setRevokeTarget] = React.useState<OidcGrantDto | null>(null)
   const { data: grants = [], isLoading, error } = useCairnLoginGrants()
   const revoke = useRevokeCairnLoginGrant()
   const revokeGrant = async (clientId: string) => {
@@ -2594,7 +2594,7 @@ const CairnLoginGrantSettings = () => {
     <section style={{ marginBottom: 32 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Apps using Sign in with Cairn')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-        {t('These apps can see your Cairn account information, such as your name and email address. They cannot read or change your projects, conversations, or files.')}
+        {t('These apps receive only the information you allowed, such as your account ID. They cannot read or change your projects, conversations, or files.')}
       </p>
       <div className="card" style={{ padding: 16 }}>
         {isLoading ? (
@@ -2606,7 +2606,7 @@ const CairnLoginGrantSettings = () => {
         ) : (
           grants.map((grant) => (
             <div
-              key={grant.client.id}
+              key={grant.clientId}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -2616,9 +2616,9 @@ const CairnLoginGrantSettings = () => {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{grant.client.name}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{grant.clientName}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  {t('Allowed {date}', { date: formatAppDate(locale, grant.granted_at) })}
+                  {t('Allowed {date}', { date: formatAppDate(locale, grant.grantedAt) })}
                 </div>
               </div>
               <button
@@ -2636,11 +2636,11 @@ const CairnLoginGrantSettings = () => {
       </div>
       <ConfirmDialog
         open={revokeTarget !== null}
-        title={t('Revoke access for "{name}"?', { name: revokeTarget?.client.name ?? '' })}
+        title={t('Revoke access for "{name}"?', { name: revokeTarget?.clientName ?? '' })}
         message={t('You will need to allow access again to sign in to this app with Cairn.')}
         confirmLabel={t('Revoke access')}
         busyLabel={t('Revoking access...')}
-        onConfirm={async () => { if (revokeTarget) await revokeGrant(revokeTarget.client.id) }}
+        onConfirm={async () => { if (revokeTarget) await revokeGrant(revokeTarget.clientId) }}
         onClose={() => setRevokeTarget(null)}
       />
     </section>

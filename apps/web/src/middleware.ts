@@ -60,6 +60,9 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute =
     pathname.startsWith('/invite') ||
     pathname.startsWith('/.well-known/') ||
+    // 「Cairn でログイン」のディスカバリーと公開鍵（外部アプリがログインなしで取得する）
+    pathname.startsWith('/oidc/.well-known/') ||
+    pathname === '/oidc/jwks.json' ||
     isLandingRoute ||
     isLandingAsset ||
     isLegalRoute ||
@@ -70,9 +73,9 @@ export async function middleware(request: NextRequest) {
 
   if (!userId && !isAuthRoute && !isPublicRoute) {
     const loginUrl = new URL('/auth/login', request.url)
-    // MCP の認可（/oauth/authorize）と「Cairn でログイン」の同意画面（/oauth/consent）は、
+    // MCP の認可（/oauth/authorize）と「Cairn でログイン」の同意画面（/oidc/authorize）は、
     // ログイン後に同じ画面へ戻す
-    if (pathname === '/oauth/authorize' || pathname === '/oauth/consent') {
+    if (pathname === '/oauth/authorize' || pathname === '/oidc/authorize') {
       loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
     }
     return NextResponse.redirect(loginUrl)
