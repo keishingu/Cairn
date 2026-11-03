@@ -60,7 +60,7 @@ export const profiles = pgTable(
       sql`${t.calendarWeekStart} in ('sunday', 'monday')`,
     ),
   ],
-)
+).enableRLS()
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -126,7 +126,7 @@ export const workspaces = pgTable('workspaces', {
     'workspaces_ai_search_recency_weight_check',
     sql`${t.aiSearchRecencyWeight} in ('none', 'weak', 'medium', 'strong')`,
   ),
-])
+]).enableRLS()
 
 export const workspaceMembers = pgTable(
   'workspace_members',
@@ -150,7 +150,7 @@ export const workspaceMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.userId)],
-)
+).enableRLS()
 
 // active membership の唯一の定義。「非活性化されたメンバーは所属していない」という
 // 不変条件をここ 1 箇所に閉じ込め、認可・一覧・通知などの読み取りはこのビューを経由する。
@@ -213,7 +213,7 @@ export const tags = pgTable(
     color: text('color'),
   },
   (t) => [unique().on(t.workspaceId, t.name)],
-)
+).enableRLS()
 
 export const workspaceInvites = pgTable('workspace_invites', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -231,7 +231,7 @@ export const workspaceInvites = pgTable('workspace_invites', {
   // ゲスト招待の場合、参加時に自動追加するプロジェクト（循環参照回避のため FK は migration SQL のみ）
   projectId: uuid('project_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const projectStatuses = pgTable(
   'project_statuses',
@@ -246,7 +246,7 @@ export const projectStatuses = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.workspaceId, t.name)],
-)
+).enableRLS()
 
 // プロジェクト内の業務上の役割。legacyRole は段階移行中の旧 enum との互換用で、
 // 表示名や色の共有元はこのテーブルとする。

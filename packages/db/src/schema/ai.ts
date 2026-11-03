@@ -47,7 +47,7 @@ export const aiAgents = pgTable('ai_agents', {
     .references(() => profiles.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const aiConversations = pgTable(
   'ai_conversations',
@@ -68,7 +68,7 @@ export const aiConversations = pgTable(
     index('idx_ai_conversations_workspace').on(t.workspaceId),
     check('ai_conversations_model_check', sql`${t.model} in ('gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5')`),
   ],
-)
+).enableRLS()
 
 export const aiMessages = pgTable('ai_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -80,7 +80,7 @@ export const aiMessages = pgTable('ai_messages', {
   annotations: jsonb('annotations').$type<unknown[]>(),
   toolInvocations: jsonb('tool_invocations').$type<unknown[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 // AIアシスタントの会話に添付したファイル（docs/10_ai_member_design.md「会話への添付」）。
 // ファイル一覧には出さず、会話の中だけで使う。本体は非公開の ai-attachments バケットに置き、会話を消すまで残す。

@@ -23,4 +23,4 @@ export const googleCalendarEvents = pgTable('google_calendar_events', {
   calendarColor: text('calendar_color'),
   htmlLink: text('html_link'),
   syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()

@@ -1,6 +1,7 @@
 # packages/db
 
 - スキーマは `src/schema/` が正。`pnpm --filter @cairn/db db:generate` で `supabase/migrations/` に SQL を生成し、`supabase migration up --local --include-all` で適用する（リポジトリルートで実行）
+- **新しいテーブルは `.enableRLS()` を付け、`anon` / `authenticated` に権限を付けない**（既定の権限からも外してある）。`authenticated` が実行できる `SECURITY DEFINER` の関数を足すときは、外部アプリのトークン（`client_id` 付き）を拒否する判定を入れる。崩れると `migration-check.yml` の封じ込みチェック（`supabase/checks/external-app-containment.sql`）が落ちる（[`docs/oidc-design.md`](../../docs/oidc-design.md) §5）
 - **生成ファイル名は timestamp を残し、ランダムな形容詞名を変更内容が分かる英語 snake_case に直す**（例: `20260804115423_add_api_tokens.sql`）
 - **マイグレーションは後方互換を基本とする**。merge 時の自動適用と Vercel デプロイの順序は保証されず、旧コードが新スキーマで動く時間がある。カラム削除・リネーム等の破壊的変更は2段階リリースにする（[`docs/production-deployment.md`](../../docs/production-deployment.md)）
 - **Supabase CLI はマイグレーションを文ごとにトランザクションなしで実行する**。`LOCK TABLE` などトランザクション前提の処理や、複数文をまとめて原子的に行いたい処理は1つの `DO` ブロックにまとめる（検証は PR の `migration-check.yml`）

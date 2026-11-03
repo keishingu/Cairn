@@ -14,6 +14,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/config.toml'
+      - 'supabase/checks/**'
       - '.github/workflows/migration-check.yml'
 
 permissions:
@@ -87,6 +88,14 @@ jobs:
           rm -rf supabase/migrations
           git checkout HEAD -- supabase/migrations
           supabase db push --local --include-all
+
+      - name: Check external app token containment
+        run: |
+          set -euo pipefail
+          # 外部アプリ（Cairn でログイン）のトークンで PostgREST・Storage・Realtime から
+          # データに触れられない状態が、新しいテーブル・ビュー・関数でも保たれているかを確かめる
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/checks/external-app-containment.sql
 
       - name: Stop local DB
         if: always()

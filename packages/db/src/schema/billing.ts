@@ -103,7 +103,7 @@ export const workspaceStorageUsage = pgTable('workspace_storage_usage', {
   lastRentAt: timestamp('last_rent_at', { withTimezone: true }).notNull().defaultNow(),
   lastReconciledAt: timestamp('last_reconciled_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 // Stripe の event id を処理済みとして記録し、Webhook の再送を冪等にする。
 export const stripeEvents = pgTable('stripe_events', {
