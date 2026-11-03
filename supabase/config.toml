@@ -128,6 +128,10 @@ enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
+# If enabled, users need to reauthenticate or have logged in recently to change their password.
+# 「Cairn でログイン」で外部アプリに発行されるトークンも Supabase Auth の /auth/v1/user を呼べるため、
+# パスワード変更には再認証を求める（docs/oidc-design.md §5）。本番も同じ設定にする
+secure_password_change = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
