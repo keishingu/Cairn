@@ -1154,8 +1154,9 @@ export default function ChatThreadScreen() {
       return
     const sendingChannelId = channelId
     const sendingDraft = draft
-    // 送った発言が見えるよう、過去のメッセージの表示から最新へ戻す
-    setJumpRequest(null)
+    // 送った発言が見えるよう、過去のメッセージの表示から最新へ戻す。
+    // 表示だけ入れ替えるとスクロール位置が残り、送った発言が画面外のままになるため先頭へも戻す
+    showLatestMessages()
     const parentMessageId = replyTarget?.id
     const clientMessageId = createClientMessageId()
     setSendError(null)
