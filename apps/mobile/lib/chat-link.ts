@@ -4,6 +4,11 @@ import { channelIdFromChatUrl, messageIdFromChatUrl } from './notification-routi
 export type ChatLinkTarget =
   | { kind: 'list' }
   | { kind: 'channel'; channelId: string; messageId?: string }
+  /** チャットのリンクだが ID が不正。開けないことを伝える */
+  | { kind: 'invalid' }
+
+// チャンネル・メッセージの ID は UUID。`%2F` などをデコードした `../` を API のパスへ入れないよう、形式で絞る
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -51,7 +56,8 @@ export function chatLinkTarget(
   if (!/^\/chats\/[^/]+\/?$/.test(pathname)) return { kind: 'list' }
 
   const channelId = channelIdFromChatUrl(pathname)
-  if (!channelId) return { kind: 'list' }
+  if (!channelId || !UUID_PATTERN.test(channelId)) return { kind: 'invalid' }
   const messageId = messageIdFromChatUrl(`${pathname}${url.search}`)
+  if (messageId && !UUID_PATTERN.test(messageId)) return { kind: 'invalid' }
   return messageId ? { kind: 'channel', channelId, messageId } : { kind: 'channel', channelId }
 }

@@ -335,6 +335,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       router.push('/(app)/chats')
       return
     }
+    if (target.kind === 'invalid') {
+      Alert.alert(t('This link cannot be opened.'))
+      return
+    }
     void followNotification(router, target, {
       t,
       onUnavailable: (message) => Alert.alert(message),

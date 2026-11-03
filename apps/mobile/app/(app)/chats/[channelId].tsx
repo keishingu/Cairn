@@ -1655,6 +1655,10 @@ export default function ChatThreadScreen() {
           goBackToList()
           return false
         }
+        if (chatTarget.kind === 'invalid') {
+          setSendError(t('This link cannot be opened.'))
+          return false
+        }
         // 表示中の会話の、読み込み済みのメッセージなら通信せずにその位置へ移る
         if (
           chatTarget.channelId === channelId &&
