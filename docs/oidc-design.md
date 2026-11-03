@@ -33,7 +33,7 @@
 
 ```
 [外部アプリ] 「Cairn でログイン」
-   │ 認可リクエスト（PKCE, scope=openid profile email）
+   │ 認可リクエスト（PKCE + state, scope=openid。profile / email は必要な場合だけ）
    ▼
 [Supabase] /auth/v1/oauth/authorize
    │ Site URL + 認可パスへリダイレクト（?authorization_id=...）
@@ -66,7 +66,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 
 | 層 | やること |
 |---|---|
-| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` の `getUser(token)` 経路にも同じ判定を入れる。middleware も `verifyAccessToken` を通るので同じ判定になる |
+| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` は Bearer トークンを `getUser(token)` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。Bearer 経路では先に `verifyAccessToken()` で検証し、通ったものだけ `getUser(token)` で最新のユーザー情報を取る（Cookie 経路は変えない）。middleware も `verifyAccessToken` を通るので同じ判定になる |
 | PostgREST（テーブル） | `authenticated` が読み書きできる `public` のテーブルすべてを対象にする。RLS を有効にしているテーブルには `(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す。RLS を有効にしていないテーブルは RESTRICTIVE ポリシーが効かないので、RLS を有効にする（`authenticated` 向けの許可ポリシーを足すか、PostgREST から使っていなければ `authenticated` の権限を外す）|
 | PostgREST（ビュー） | ビューは既定で所有者の権限で動き、下のテーブルの RLS を素通りする（例: `active_workspace_members`）。`security_invoker = true` にして呼び出し元の RLS を効かせるか、PostgREST から使っていなければ `authenticated` の権限を外す |
 | Storage | `storage.objects` の既存ポリシー（6 本のマイグレーション）と同じ対象に、同じ RESTRICTIVE ポリシーを足す |
@@ -96,6 +96,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 ## 7. 外部アプリ側の約束（公開ドキュメントに書く）
 
 - フロー: 認可コード + PKCE。スコープは `openid` と必要なものだけ（`profile` / `email`）
+- `state` を必ず使う。推測できない値を生成してログイン開始時のセッションに保存し、コールバックで一致を確かめる。一致しなければコードを交換しない（PKCE は認可コードの横取り対策で、認可レスポンスを開始したセッションに結び付ける `state` の代わりにはならない）
 - 設定はディスカバリー（`/auth/v1/.well-known/openid-configuration`）から読む
 - ID トークンは JWKS で署名を検証し、`iss` と `aud`（= client ID）を確かめて、`sub` を Cairn のユーザー ID として使う
 - アクセストークン・リフレッシュトークンは保存しない。Cairn の API には使えない（§5 で拒否される）
