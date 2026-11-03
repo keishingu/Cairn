@@ -7,129 +7,105 @@
 
 ## 1. 結論
 
-- **Supabase Auth の OAuth 2.1 Server（ベータ）を使い、Cairn の Supabase プロジェクトを OIDC のアイデンティティプロバイダーにする**。認可コード・トークン発行・ID トークン・JWKS・ディスカバリー・UserInfo は Supabase が持ち、Cairn が作るのは同意画面だけ
-- **外部アプリが受け取るアクセストークンは、Cairn のどの API・データにも通さない**。Supabase が発行するアクセストークンは通常ログインと同じユーザー JWT（`client_id` クレームが付くだけ）で、スコープで DB アクセスを絞れないため。Cairn 側で `client_id` 付きの JWT を一律に拒否する（§5）
-- 外部アプリが使うのは **ID トークン（利用者が誰か）だけ**。Cairn のデータの読み書きは、これまでどおり MCP（PAT / OAuth）か、アプリ基盤の Bot トークンで行う
+- **Cairn が自前で OIDC のプロバイダーになり、Cairn 専用の鍵で署名した ID トークンだけを外部アプリに渡す**。Supabase のトークン（アクセストークン・リフレッシュトークン）は外部アプリに一切渡さない
+- 利用者から見た流れは Google でログインと同じ。外部アプリの「Cairn でログイン」→ Cairn の同意画面（共有する情報を表示）→ 許可 → 外部アプリに戻る
+- 認可・コード発行・PKCE・リダイレクト URI の検証は、MCP 用の自前 OAuth（[`mcp-server-design.md`](./mcp-server-design.md)）の部品を流用する
+- 外部アプリが Cairn のデータを読み書きする手段は、これまでどおり MCP（PAT / OAuth）か、アプリ基盤の Bot トークンに限る。ID トークンは「利用者が誰か」を伝えるだけ
 
-## 2. 位置づけ
+## 2. Supabase の OAuth 2.1 Server を採らない理由
+
+最初は Supabase Auth の OAuth 2.1 Server（ベータ）で Cairn の Supabase プロジェクトを IdP にする設計だった。2026-11-03 にローカル（Supabase CLI 2.100.1、Auth v2.189.0）で実際に動かし、次の問題が分かったため採らない。
+
+- 外部アプリに渡るトークンは、すべて Supabase のプロジェクトの鍵で署名される。Supabase Auth 自身の API（`/auth/v1/user`・`/logout` など）は署名と `sub` だけを見て本人として受け付け、`aud` もトークンの種類も確かめない
+- アクセストークンでは、利用者のパスワードを変えてアカウントを乗っ取れた。Custom Access Token Hook で `session_id` を実在しない値に書き換えれば塞げた
+- **ID トークンはフックの対象外**で、ユーザー情報の読み取り・`user_metadata` の変更・`/logout` による利用者の全端末のログアウトができた。ID トークンは外部アプリに必ず渡るので、悪意ある外部アプリの操作を防げない
+- Cairn の自前の API は、`aud` と `role` を見て外部アプリのトークンを拒否するよう直せるが（`isCairnSessionClaims`）、Supabase Auth の API には同じ判定を足せない
+
+Cairn 専用の鍵で署名すれば、Supabase Auth も Cairn の API も、その ID トークンを署名の時点で受け付けない。外部アプリの手元にどのトークンが残っても、Cairn のアカウントやデータには触れられない。
+
+## 3. 位置づけ
 
 | 用途 | 仕組み | 資格情報 |
 |---|---|---|
-| 利用者が誰か（ログイン） | **本書**: OIDC | ID トークン（外部アプリが検証） |
-| Cairn のデータを読む（当面） | MCP（`/api/mcp`） | PAT / MCP 用 OAuth（[`mcp-server-design.md`](./mcp-server-design.md)） |
-| チャンネルへの投稿・カード | アプリ基盤の Bot Web API | Bot トークン（[`app-platform-design.md`](./app-platform-design.md) §3.3） |
+| 利用者が誰か（ログイン） | **本書**: Cairn の OIDC | Cairn 専用の鍵で署名した ID トークン |
+| Cairn のデータを読む（当面） | MCP（`/api/mcp`） | PAT / MCP 用 OAuth |
+| チャンネルへの投稿・カード | アプリ基盤の Bot Web API | Bot トークン |
 
-- 既存の `/oauth/authorize` と `/api/oauth/*` は **MCP 専用の自前 OAuth**（opaque token、`resource` = `/api/mcp` 固定）。本書の OIDC とは別物で、統合しない
-- MCP の設計方針「独自 JWT・独自暗号を実装しない」（[`mcp-server-design.md`](./mcp-server-design.md)）を守るため、ID トークンを自前で署名する案は採らない（§8）
-
-## 3. 前提の確認結果（2026-11-03）
-
-- **署名鍵**: ID トークンは非対称鍵が必須（HS256 では生成に失敗する）。本番プロジェクトの JWKS は ES256 で、条件を満たす
-- **Supabase CLI**: `[auth.oauth_server]` は v2.54.11 以上が必要。開発環境は 2.100.1
-- **料金**: 全プランで追加料金なし。OAuth 経由のログインも MAU に数える
-- **対応範囲**: 認可コード + PKCE とリフレッシュのみ（`client_credentials` / `password` なし）。スコープは `openid` / `email` / `profile` / `phone` だけで、独自スコープは作れない
+- MCP 用の OAuth（`/oauth/authorize`・`/api/oauth/*`、`resource` = `/api/mcp`）とは、エンドポイント・テーブル・クライアントを分ける。部品（ハッシュ・PKCE・リダイレクト URI の検証）だけを共有する
+- MCP の設計方針「独自 JWT・独自暗号を実装しない」は、MCP のアクセストークンを JWT にしない（opaque にする）という意味で守る。ID トークンは OIDC の仕様上 JWT が必須なので、署名は実績のあるライブラリ（`jose`）で標準の ES256 を使い、暗号処理は自作しない
 
 ## 4. 全体の流れ
 
 ```
 [外部アプリ] 「Cairn でログイン」
-   │ 認可リクエスト（PKCE + state, scope=openid。profile / email は必要な場合だけ）
+   │ 認可リクエスト（認可コード + PKCE + state + nonce、scope=openid。profile / email は必要な場合だけ）
    ▼
-[Supabase] /auth/v1/oauth/authorize
-   │ Site URL + 認可パスへリダイレクト（?authorization_id=...）
+[Cairn Web] /oidc/authorize（同意画面）
+   │ 未ログインなら /auth/login?next=... へ
+   │ クライアント・redirect_uri・スコープ・PKCE を検証
+   │ 同じスコープで許可済みなら同意画面を出さずにコードを発行
+   │ 未許可なら アプリ名・共有する情報を表示 → 許可 / 拒否
    ▼
-[Cairn Web] /oauth/consent
-   │ 未ログインなら /auth/login?next=/oauth/consent?authorization_id=... へ
-   │ getAuthorizationDetails → 同意済みなら即リダイレクト
-   │ 未同意なら アプリ名・スコープを表示 → approve / deny
+[外部アプリ] redirect_uri に code と state が届く
+   │ /api/oidc/token で code を交換（PKCE の verifier、機密クライアントは client secret も）
    ▼
-[Supabase] 外部アプリの redirect_uri へ（code）
+[Cairn] ID トークン（Cairn の鍵で署名）と、UserInfo 専用のアクセストークンを返す
    ▼
-[外部アプリのサーバー] /auth/v1/oauth/token で code を交換
-   → ID トークンを JWKS で検証し、sub を Cairn のユーザー ID として使う
-   → アクセストークン・リフレッシュトークンは保存しない
+[外部アプリ] ID トークンを JWKS で検証し、sub を Cairn のユーザー ID として使う
 ```
 
-## 5. 外部アプリのトークンを Cairn に通さない（封じ込み）
+## 5. エンドポイント
 
-### なぜ必要か
+issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-authorization-server`（issuer は origin）と混ざらないよう、OIDC は `/oidc` の下にまとめる。
 
-Supabase の OAuth アクセストークンは `aud: authenticated` の通常のユーザー JWT に `client_id` が付いたもの。ドキュメント上も「スコープは OIDC のデータを決めるだけで、DB アクセスは制限しない」「既存の RLS がそのまま適用される」とされている。何もしないと、外部アプリがこのトークンで次をすべて利用者本人として使える。
-
-- Cairn の API（`getAuthContext()` は Bearer の Supabase JWT をそのまま受け付ける。`getAuthUser()` も同様）
-- PostgREST・Storage（RLS は `auth.uid()` や `can_access_channel()` などで本人を判定しており、`client_id` はどこも見ていない）
-- Realtime（`realtime.messages` の認可）
-
-### 方針: `client_id` 付きの JWT を一律に拒否する
-
-外部アプリに Cairn のデータを触らせる手段は、MCP と Bot トークンに限る。OIDC のトークンには役割を持たせない。
-
-| 層 | やること |
+| エンドポイント | 役割 |
 |---|---|
-| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）で、`client_id` がなく `aud` と `role` がともに `authenticated` の通常のセッションだけを本人として扱い、それ以外は `null`（401）。外部アプリの ID トークンは同じ鍵で署名され、`aud` が client ID で `client_id` を持たないため、`client_id` を見るだけでは通ってしまう（`getClaims()` は `aud` を検証しない）。`getAuthUser()` は Bearer トークンも Cookie のセッションも `getUser()` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。外部アプリは自分のトークンを Supabase のセッション Cookie に入れて送ることもできるため、Bearer・Cookie のどちらの経路でも先に `verifyAccessToken()` で検証し、通ったものだけ `getUser()` で最新のユーザー情報を取る。`/api/` は middleware の対象外なので、API 側の判定だけに頼る。middleware も `verifyAccessToken` を通るので同じ判定になる |
-| PostgREST（テーブル・ビュー） | Cairn はデータの読み書きをすべて Route Handlers（Drizzle / service role）経由で行い、PostgREST を使っていない。そこで `public` のテーブル・ビューは `anon` / `authenticated` から権限を外して閉じる。あわせて、全テーブルで RLS を有効にする（ポリシーは書かない。権限が誤って戻っても0行しか見えない二重の守りになり、`postgres` / `service_role` は RLS を無視するのでサーバーには影響しない）。ビューには RLS がかからないので、権限を外すことで閉じる。今後作るテーブル・ビューにも権限が付かないよう、既定の権限（`ALTER DEFAULT PRIVILEGES`）からも外す |
-| PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
-| Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
-| Realtime | `realtime.messages` の認可ポリシーに同じ条件を足す |
-| Supabase Auth の API | Custom Access Token Hook（`restrict_external_app_tokens`）で、外部アプリ向けのアクセストークン（`client_id` 付き。リフレッシュ後も同じ）だけ `session_id` を発行のたびに実在しないランダムな UUID に、`aud` を `cairn-external-app` に書き換える。Auth はセッションを引けないため `/auth/v1/user`（読み取り・更新）・`/factors`・`/logout`・`/oauth/userinfo` を `session_not_found`（403）で拒否する。ゼロの UUID は「セッションなし」と扱われ、`/logout` で利用者の全端末のセッションが失効するので使わない。**ID トークンはフックの対象外**で、ユーザー情報の読み取り・`user_metadata` の変更・メールアドレス変更の開始（`double_confirm_changes` で旧・新両方の確認待ち）・全端末のログアウトができる（パスワード変更は再認証が必要）。そのため外部アプリには検証後の ID トークンを保存・送信しないよう求め、同意画面ではメールアドレスなどのアカウント情報を確認できると明示する |
-| 同意画面 | 他サイトの iframe に埋め込ませない（`frame-ancestors 'none'` / `X-Frame-Options: DENY`）。埋め込まれると、透明な枠の上で「許可」を押させるクリックジャッキングで許可を出させられる |
+| `GET /oidc/.well-known/openid-configuration` | ディスカバリー（issuer・各エンドポイント・対応スコープ・`id_token_signing_alg_values_supported: ["ES256"]` など） |
+| `GET /oidc/jwks.json` | ID トークンを検証するための公開鍵（入れ替え中は旧鍵も載せる） |
+| `/oidc/authorize` | 認可リクエストの検証と同意画面（Web のページ） |
+| `POST /api/oidc/token` | コードの交換。`authorization_code` だけに対応し、`refresh_token` は発行しない |
+| `GET /api/oidc/userinfo` | UserInfo。下のアクセストークンでだけ使える |
 
-- テーブル・ビューの権限の剥奪と RLS の有効化はマイグレーションで行う。今の権限の状態をマイグレーションに残し、ローカル・Preview・本番を同じにする
-- 今後追加するテーブル・ビュー・関数も同じ状態を保つ必要がある。漏れを防ぐため、DB のカタログを見る確認テストを置く
-  - `public` の全テーブルで RLS が有効であること
-  - `anon` / `authenticated` が `public` のテーブル・ビューに権限を持たないこと
-  - `authenticated` が実行できる `SECURITY DEFINER` の関数はすべて、`client_id` を拒否する判定を持つこと（拡張機能の関数は対象外）
-  - `storage.objects` と `realtime.messages` に、`client_id` を拒否する RESTRICTIVE ポリシーがあること
-- API 側は、`client_id` 付きのトークンを Bearer で送った場合と Cookie のセッションに入れて送った場合の両方で、`getAuthContext()` と `getAuthUser()` が 401 を返すことをテストで確かめる
-- **代替案（要検証）**: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `role` を権限のない専用ロールに書き換えれば、RPC・Storage・Realtime を1か所で塞げる可能性がある。Supabase の各サービスが書き換えた `role` をどう扱うかを検証してから採否を決める（§9）
+## 6. トークン
 
-## 6. Cairn 側で作るもの
+**ID トークン**（JWT、ES256、Cairn 専用の鍵）
+- クレーム: `iss`、`sub`（Cairn のユーザー ID）、`aud`（client ID）、`exp`、`iat`、`auth_time`、`nonce`（リクエストにあれば）
+- `profile` を許可した場合: `name` と `picture`（Cairn のプロフィール。§9 の2）
+- `email` を許可した場合: `email` と `email_verified`
+- 有効期限は5分。ログインの瞬間に確かめるためだけのもの
+- 許可していないスコープの情報は入れない
 
-1. **OAuth Server の有効化**
-   - 本番: ダッシュボード「Authentication > OAuth Server」で有効化し、認可パスを `/oauth/consent` にする。同意画面の URL は Site URL + 認可パスになるので、Site URL が本番 Web の origin であることを確認する
-   - ローカル: `supabase/config.toml` に `[auth.oauth_server]`（`enabled = true`、`authorization_url_path = "/oauth/consent"`、`allow_dynamic_registration = false`）
-2. **同意画面 `/oauth/consent`**（Web のみ。モバイルアプリには作らない）
-   - `supabase.auth.oauth.getAuthorizationDetails` / `approveAuthorization` / `denyAuthorization` を使う
-   - 表示: アプリ名、要求されたスコープ（「名前とアイコン」「メールアドレス」など利用者の言葉で）、許可・拒否
-   - middleware: 未ログイン時に `next` を付けてログインへ送る対象に `/oauth/consent` を足す（今は `/oauth/authorize` だけ）
-   - 文言は i18next（`ja.ts` / `ko.ts`）
-3. **封じ込み**（§5）
-4. **連携中のアプリの一覧と取り消し**: `/settings/integrations` に、`getUserGrants()` の一覧と `revokeGrant(clientId)` を出す
-5. **クライアントの登録**: Cairn の運営者がダッシュボードか Admin API で登録する。動的登録は使わない
-   - 外部アプリはサーバーを持つ前提で、機密クライアント（client secret あり）にする
-   - リダイレクト URI は完全一致で、環境（本番・Preview・ローカル）ごとに別クライアントにする
-6. **ドキュメント**: 外部の開発者向けに、`/developers` に「Cairn でログイン」のページ（日英）を足す。ID トークンだけを使い、アクセストークンでは Cairn を呼べないことを明記する
+**アクセストークン**（opaque。`cairn_oidc_at_` で始まる乱数）
+- OIDC の仕様でトークンの応答に必須のため発行する。使えるのは `/api/oidc/userinfo` だけで、Cairn のほかの API には使えない（`getAuthContext()` は JWT としても PAT としても受け付けない）
+- 有効期限は5分。DB には SHA-256 のハッシュだけを保存する
 
-## 7. 外部アプリ側の約束（公開ドキュメントに書く）
+**リフレッシュトークン**は発行しない。外部アプリは自分のセッションを自分で管理し、Cairn のログインが要るときはもう一度認可を受ける（許可済みなら同意画面は出ない）。
 
-- フロー: 認可コード + PKCE。スコープは `openid` と必要なものだけ（`profile` / `email`）
-- `state` を必ず使う。推測できない値を生成してログイン開始時のセッションに保存し、コールバックで一致を確かめる。一致しなければコードを交換しない（PKCE は認可コードの横取り対策で、認可レスポンスを開始したセッションに結び付ける `state` の代わりにはならない）
-- 設定はディスカバリー（`/auth/v1/.well-known/openid-configuration`）から読む
-- ID トークンは JWKS で署名を検証し、`iss` と `aud`（= client ID）を確かめて、`sub` を Cairn のユーザー ID として使う
-- アクセストークン・リフレッシュトークンは保存しない。Cairn の API には使えない（§5 で拒否される）
-- **ワークスペースの所属は ID トークンに含まれない**。特定のワークスペースのメンバーだけを入れたいアプリは、MCP（`list_members`）か Bot Web API（`users.info`）で `sub` が active メンバーかを確かめる
-- ID トークンの `name` / `picture` は Supabase Auth のユーザーメタデータ由来で、Cairn のプロフィール（ワークスペースごとの表示名・アイコン）とは一致しない場合がある。表示名は Cairn のメンバー情報から取る
+## 7. データ
 
-## 8. 検討して採らなかった案
-
-| 案 | 採らない理由 |
+| テーブル | 中身 |
 |---|---|
-| 既存の MCP 用 OAuth（`/api/oauth/*`）に `openid` と ID トークンを足す | ID トークンの署名鍵を自前で持つことになり、「独自 JWT・独自暗号を実装しない」方針に反する。鍵のローテーションも自前になる |
-| 外部アプリに Cairn の DB（Supabase）へ直接つながせる | ワークスペースロール・`active_workspace_members` による認可を素通りし、service role の鍵を外に出すことになる |
-| Auth0 などの外部 IdP を Cairn の前に置く | 既存の Supabase Auth のユーザーと二重管理になる。今回の規模に対して大きすぎる |
+| `oidc_clients` | client ID、名前、リダイレクト URI の一覧（https、完全一致）、種別（公開 / 機密）、client secret のハッシュ（機密のみ）、無効化日時 |
+| `oidc_authorization_codes` | コードのハッシュ、クライアント、ユーザー、redirect_uri、スコープ、nonce、PKCE の challenge、有効期限（5分）、使用日時（1回だけ交換できる） |
+| `oidc_grants` | ユーザーとクライアントの組ごとの許可（スコープ、許可日時、取り消し日時）。同意画面を省くかの判定と、設定の「連携」の一覧に使う |
+| `oidc_access_tokens` | UserInfo 用アクセストークンのハッシュ、ユーザー、クライアント、スコープ、有効期限 |
+
+- どれも RLS を有効にし、`anon` / `authenticated` に権限を付けない（Route Handlers から Drizzle で読み書きする）
+- 署名鍵は DB に置かない。秘密鍵（JWK）を環境変数 `OIDC_SIGNING_KEYS` に、`kid` 付きの配列で持つ。先頭を署名に使い、残りは入れ替え中の旧鍵として JWKS にだけ載せる
+
+## 8. Cairn 側で作るもの
+
+1. **プロバイダー本体**: §5 のエンドポイント、§7 のテーブル、署名と JWKS
+2. **同意画面 `/oidc/authorize`**: アプリ名・接続元のドメイン・共有する情報（スコープを利用者の言葉で）・ログイン中のアカウント・許可 / 拒否。他サイトの iframe に埋め込ませない（`frame-ancestors 'none'`）。許可・拒否はサーバーアクションで受け、同じ origin からの送信だけを受け付ける
+3. **クライアントの登録**: 当面は Cairn の運営者がスクリプトで登録する（client secret は発行時に一度だけ表示し、ハッシュだけ保存）。動的登録は作らない。機密クライアント（サーバーを持つアプリ）と公開クライアント（サーバーを持たない PWA など）の両方に対応し、どちらも PKCE（S256）を必須にする
+4. **設定の「連携」**: 「Cairn でログインを使っているアプリ」の一覧と取り消し。取り消すと次のログインで同意画面が出る（発行済みの ID トークンは5分で切れる）
+5. **公開ドキュメント**: `/developers` の「Cairn でログイン」（日英）を、この方式の issuer・エンドポイント・トークンに合わせる
+6. **API の判定**: `verifyAccessToken`（`lib/auth-jwt.ts`）は引き続き、`client_id` がなく `aud` と `role` がともに `authenticated` の通常のセッションだけを本人として扱う（`isCairnSessionClaims`）。Cairn の ID トークンは Supabase の鍵で署名されていないので、その手前の署名検証で拒否される
 
 ## 9. 未決事項
 
-1. **封じ込みの方式**: §5 の「各層で `client_id` を拒否」と「Custom Access Token Hook で `role` を書き換える」のどちらにするか。前者はテーブル・ビューの権限の剥奪・RLS の有効化に加えて、`SECURITY DEFINER` の関数・Storage・Realtime に個別に手を入れる。後者は Supabase の PostgREST・Storage・Realtime が書き換えた `role` を受け入れるかの検証が先
-2. **取り消し直後のアクセストークン**: `revokeGrant` で発行済みのアクセストークンが即座に無効になるか、有効期限（1時間）まで残るかがドキュメントから読み取れない。§5 の封じ込みがあれば Cairn 側の影響はないが、外部アプリのセッションの切り方に関わる
-3. **ベータ機能への依存**: 仕様変更があった場合の追従方針
-4. **同意画面の対象**: ゲストにも「Cairn でログイン」を許すか（ID トークンには所属もロールも出ないため、判断は外部アプリ側になる）
-5. **`email` スコープ**: 利用者のメールアドレスを外部アプリに渡してよいか。最初の外部アプリは `email` なしで成り立つか確認する
-6. **Supabase Auth の API への外部アプリのトークン（アクセストークンは対応済み・ID トークンは一部残る）**: 2026-11-03 にローカル（Supabase CLI 2.100.1、Auth v2.189.0）で確かめた
-   - フックなし: 外部アプリのアクセストークンで `PUT /auth/v1/user` からパスワードを変えられた（ログイン直後は `secure_password_change` でも止まらない）
-   - `aud` の書き換えだけ: Auth の `/user` は `aud` を見ておらず、止まらなかった
-   - `session_id` をゼロの UUID に: パスワード変更は再認証が必要になったが、`/logout` で利用者の全端末のセッションが失効した
-   - `session_id` を実在しないランダムな UUID に（採用）: アクセストークンでは `/user`・`/factors`・`/logout`・`/oauth/userinfo` がすべて 403。元のパスワードのまま、通常ログインのセッション・リフレッシュ・ID トークンの発行は影響なし
-   - ID トークンで残るもの（フックの対象外）: `GET /auth/v1/user`、`user_metadata` の変更、メールアドレス変更の開始（旧・新両方の確認待ちで完了しない）、`/logout` による全端末のログアウト。パスワード変更は `reauthentication_needed`。外部アプリが ID トークンを漏らさない前提に頼る部分で、Supabase 側で ID トークンを Auth の API で受け付けない設定ができれば塞ぐ
-   - 本番では、ダッシュボードの Auth Hooks で `restrict_external_app_tokens` を指定し、`secure_password_change` と `double_confirm_changes` を有効にしてから OAuth Server を有効にする。フックはすべてのトークン発行で呼ばれ、失敗すると通常のログインもできなくなる
-   - ID トークンの `name` には、`email` スコープを許可していなくてもメールアドレスが入る（表示名を持たない利用者の場合）。メールアドレスは外部アプリに渡るものとして扱う
+1. **鍵の入れ替えの手順**: 新しい鍵を配列の先頭に足し、旧鍵は ID トークンの有効期限（5分）が過ぎるまで JWKS に残す。入れ替えの頻度と、鍵が漏れた場合の手順を決める
+2. **`name` / `picture` の出どころ**: Cairn の表示名・アイコンはワークスペースごとに違うことがある。ID トークンにはワークスペースによらない `profiles` の値を入れるか、`profile` スコープ自体を出さず、外部アプリには Bot の Web API や MCP から取ってもらうか
+3. **ゲストの扱い**: ID トークンにはワークスペースの所属もロールも入らない。特定のワークスペースのメンバーだけを入れたい外部アプリは、Bot の Web API（`users.info`）や MCP で `sub` が active なメンバーかを確かめる。ゲストにも「Cairn でログイン」を許すか
+4. **クライアント登録の UI**: 当面はスクリプト。アプリ基盤の `apps` と同じ行に紐づけて、アプリの管理画面から登録できるようにするか（[`app-platform-design.md`](./app-platform-design.md) §10）
+5. **レート制限**: `/api/oidc/token` と `/oidc/authorize` の制限値。MCP 用 OAuth の制限に揃えるか
