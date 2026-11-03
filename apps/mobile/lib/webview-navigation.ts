@@ -17,6 +17,14 @@ function isVercelToolbarUrl(url: string): boolean {
   }
 }
 
+function isNativeAuxUrl(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get('nativeAux') === '1'
+  } catch {
+    return false
+  }
+}
+
 export function decideWebViewNavigation({
   url,
   trustedOrigin,
@@ -36,8 +44,10 @@ export function decideWebViewNavigation({
   if (url === 'about:blank' || url.startsWith('about:')) return 'allow'
   if (isVercelToolbarUrl(url)) return 'block'
 
-  // 行き先は呼び出し側が chatLinkTarget で同じ規則から取り出す
-  if (!allowChatRoutes && chatLinkTarget(url, trustedOrigin, development)) {
+  // 行き先は呼び出し側が chatLinkTarget で同じ規則から取り出す。
+  // チャット補助画面（allowChatRoutes）でも WebView に読み込むのは補助画面の URL（nativeAux=1）だけで、
+  // そこから開くチャンネル・メッセージはネイティブのチャットで開く
+  if (chatLinkTarget(url, trustedOrigin, development) && !(allowChatRoutes && isNativeAuxUrl(url))) {
     return 'open-native-chat'
   }
 

@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { PageAI } from '@/components/app/pages/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
@@ -155,8 +155,23 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
+/**
+ * チャット補助画面（`nativeAux=1`。アプリの検索・ブックマーク・チャット情報など）の中で、
+ * パネルを離れてチャンネル・メッセージを開いたときにアプリへ渡す行き先。パネル表示中は null
+ */
+export function nativeAuxChatHandoffPath(pathname: string, search: string): string | null {
+  if (pathname !== '/chats' && !pathname.startsWith('/chats/')) return null
+  const params = new URLSearchParams(search)
+  if (params.has('panel')) return null
+  params.delete('nativeAux')
+  params.delete('nativeChatLinks')
+  const query = params.toString()
+  return `${pathname}${query ? `?${query}` : ''}`
+}
+
 function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; webView: boolean; overlay?: React.ReactNode }) {
   const pathname = usePathname()
+  const search = useSearchParams().toString()
   const router = useRouter()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
@@ -167,6 +182,12 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
     () =>
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('nativeAux') === '1',
+  )
+  // 補助画面の中の行き先をアプリへ渡せるのは、受け取れるアプリが付ける印があるときだけ（古いアプリは一覧を開いてしまう）
+  const [nativeChatLinks] = React.useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nativeChatLinks') === '1',
   )
   const [notifOpen, setNotifOpen] = React.useState(false)
 
@@ -185,6 +206,23 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
     }))
     router.back()
   }, [isNativeChatAux, isWebView, page, router])
+
+  // チャット補助画面の中の遷移（検索結果・ブックマークからのジャンプ、パネルを閉じる等）も、Web のチャットではなくアプリのチャットで開く。
+  // 渡した後は直前のパネルへ戻す。アプリは同じ補助画面を開き直しても WebView を読み直さないため、Web のチャットを残さない
+  const lastAuxPanelHrefRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!isWebView || !isNativeChatAux || !nativeChatLinks || page !== 'chats') return
+    const handoffPath = nativeAuxChatHandoffPath(pathname, search)
+    if (!handoffPath) {
+      lastAuxPanelHrefRef.current = `${pathname}${search ? `?${search}` : ''}`
+      return
+    }
+    const panelHref = lastAuxPanelHrefRef.current
+    // パネルを経ずに開いた補助画面は戻り先が無いため、そのまま表示する
+    if (!panelHref) return
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats', path: handoffPath }))
+    router.replace(panelHref, { scroll: false })
+  }, [isNativeChatAux, isWebView, nativeChatLinks, page, pathname, router, search])
 
   const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 

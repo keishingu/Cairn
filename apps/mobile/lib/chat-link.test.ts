@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { chatLinkTarget, isAppOrigin } from './chat-link'
+import { chatLinkTarget, isAppOrigin, withNativeChatLinks } from './chat-link'
 
 const appBaseUrl = 'https://develop.oss-cairn.com'
 const CHANNEL_ID = '0b9c2f4e-3d7a-4c1b-9e8f-1a2b3c4d5e6f'
@@ -78,5 +78,13 @@ describe('isAppOrigin', () => {
 
   test('接続先の URL が不正なら false を返す', () => {
     expect(isAppOrigin(new URL(`${appBaseUrl}/projects`), 'not a url', true)).toBe(false)
+  })
+})
+
+describe('withNativeChatLinks', () => {
+  test('チャット補助画面の URL にだけ印を付ける', () => {
+    expect(withNativeChatLinks('/chats?nativeAux=1&panel=bookmarks')).toBe('/chats?nativeAux=1&panel=bookmarks&nativeChatLinks=1')
+    expect(withNativeChatLinks('/chats/ch-1?nativeAux=1&panel=search#top')).toBe('/chats/ch-1?nativeAux=1&panel=search&nativeChatLinks=1#top')
+    expect(withNativeChatLinks('/tasks')).toBe('/tasks')
   })
 })

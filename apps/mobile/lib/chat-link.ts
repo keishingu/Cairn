@@ -61,3 +61,18 @@ export function chatLinkTarget(
   if (messageId && !UUID_PATTERN.test(messageId)) return { kind: 'invalid' }
   return messageId ? { kind: 'channel', channelId, messageId } : { kind: 'channel', channelId }
 }
+
+/**
+ * チャット補助画面の Web に、補助画面の中で開いたチャンネル・メッセージをアプリへ渡してよいと伝える印を付ける。
+ * 印の無い古いアプリは渡された行き先を読めず一覧を開いてしまうため、Web はこの印があるときだけ渡す
+ */
+export function withNativeChatLinks(path: string): string {
+  const hashIndex = path.indexOf('#')
+  const hash = hashIndex >= 0 ? path.slice(hashIndex) : ''
+  const withoutHash = hashIndex >= 0 ? path.slice(0, hashIndex) : path
+  const [pathname = withoutHash, search = ''] = withoutHash.split('?')
+  const params = new URLSearchParams(search)
+  if (params.get('nativeAux') !== '1') return path
+  params.set('nativeChatLinks', '1')
+  return `${pathname}?${params.toString()}${hash}`
+}

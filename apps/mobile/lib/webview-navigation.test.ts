@@ -120,14 +120,33 @@ describe('WebViewのナビゲーション判定', () => {
     ).toBe('open-external')
   })
 
-  it('チャット補助画面ではチャットURLをWebView内で許可する', () => {
+  it('チャット補助画面では補助画面のチャットURLをWebView内で許可する', () => {
     expect(
       decideWebViewNavigation({
-        url: `${trustedOrigin}/chats/search`,
+        url: `${trustedOrigin}/chats/channel-1?nativeAux=1&panel=search`,
         trustedOrigin,
         allowChatRoutes: true,
         isTopFrame: true,
       }),
     ).toBe('allow')
+    expect(
+      decideWebViewNavigation({
+        url: `${trustedOrigin}/chats?nativeAux=1&panel=bookmarks`,
+        trustedOrigin,
+        allowChatRoutes: true,
+        isTopFrame: true,
+      }),
+    ).toBe('allow')
+  })
+
+  it('チャット補助画面からのチャンネル・メッセージのリンクはネイティブチャットへ委譲する', () => {
+    expect(
+      decideWebViewNavigation({
+        url: `${trustedOrigin}/chats/channel-1?m=message-1`,
+        trustedOrigin,
+        allowChatRoutes: true,
+        isTopFrame: true,
+      }),
+    ).toBe('open-native-chat')
   })
 })
