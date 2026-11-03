@@ -217,6 +217,7 @@ describe('get-auth-context', () => {
 
   it('getAuthUser はAuthサーバーへ再照合して削除済みユーザーを許可しない', async () => {
     mockHeaders.mockResolvedValue(new Headers())
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
       error: null,
@@ -231,6 +232,7 @@ describe('get-auth-context', () => {
 
   it('getAuthUser は渡されたリクエストヘッダーを優先する', async () => {
     mockHeaders.mockResolvedValue(new Headers())
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
       error: null,
@@ -244,6 +246,7 @@ describe('get-auth-context', () => {
 
   it('getAuthUser はAuthから削除済みなら有効期限内のBearer JWTでも401を返す', async () => {
     mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer deleted-user-token' }))
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: null },
       error: { message: 'User not found' },
@@ -255,6 +258,61 @@ describe('get-auth-context', () => {
     expect(mockSupabase.auth.getUser).toHaveBeenCalledWith('deleted-user-token')
     expect(result.userId).toBeNull()
     expect(result.error?.status).toBe(401)
+  })
+
+  // 「Cairn でログイン」で外部アプリに発行されたトークン（client_id 付き）は、通常ログインと同じ
+  // ユーザー JWT として署名検証を通る。Cairn の API には Bearer・Cookie のどちらでも通さない
+  const externalClientClaims = { data: { claims: { sub: 'user-1', client_id: 'external-app' } }, error: null }
+
+  it('外部アプリのトークンは Bearer で送られても getAuthContext で 401 を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer external-token' }))
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(externalClientClaims)
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockDb.select).not.toHaveBeenCalled()
+  })
+
+  it('外部アプリのトークンはセッション Cookie に入れて送られても getAuthContext で 401 を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(externalClientClaims)
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(401)
+  })
+
+  it('外部アプリのトークンは Bearer で送られても getAuthUser で 401 を返し、Auth に再照合しない', async () => {
+    mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer external-token' }))
+    mockSupabase.auth.getClaims.mockResolvedValue(externalClientClaims)
+
+    const { getAuthUser } = await import('./get-auth-context')
+    const result = await getAuthUser()
+
+    expect(result.userId).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getUser).not.toHaveBeenCalled()
+  })
+
+  it('外部アプリのトークンはセッション Cookie に入れて送られても getAuthUser で 401 を返す', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockSupabase.auth.getClaims.mockResolvedValue(externalClientClaims)
+
+    const { getAuthUser } = await import('./get-auth-context')
+    const result = await getAuthUser()
+
+    expect(mockSupabase.auth.getClaims).toHaveBeenCalledWith(SESSION_TOKEN, undefined)
+    expect(result.userId).toBeNull()
+    expect(result.error?.status).toBe(401)
+    expect(mockSupabase.auth.getUser).not.toHaveBeenCalled()
   })
 
   it('非活性な preferred workspace cookie は無視して active 所属へフォールバックする', async () => {

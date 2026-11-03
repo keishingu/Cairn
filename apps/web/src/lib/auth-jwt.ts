@@ -69,6 +69,10 @@ function needsJwks(header: { alg?: string; kid?: string } | null): boolean {
  * token を省略すると Cookie のセッションから検証する。getSession を明示的に呼んで
  * トークンを解決してから getClaims に渡すため、期限切れ時のリフレッシュ副作用は維持しつつ、
  * header を見て JWKS が要るかどうかを事前判定できる。
+ *
+ * 「Cairn でログイン」（OIDC）で外部アプリに発行されたトークン（`client_id` クレーム付き）は、
+ * 通常ログインと同じユーザー JWT なので署名検証は通る。外部アプリに Cairn の API を使わせないため、
+ * Bearer・Cookie のどちらで届いても null にする（docs/oidc-design.md §5）。
  */
 export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Promise<string | null> {
   let resolvedToken = token
@@ -82,7 +86,14 @@ export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Pro
   const keys = needsJwks(header) ? await getCachedJwks() : []
   const { data, error } = await auth.getClaims(resolvedToken, keys.length > 0 ? { jwks: { keys } } : undefined)
   if (error || !data?.claims?.sub) return null
+  if (isExternalClientClaims(data.claims)) return null
   return data.claims.sub
+}
+
+/** OAuth 2.1 Server が外部アプリに発行したトークンか（`client_id` クレームを持つか） */
+export function isExternalClientClaims(claims: Record<string, unknown>): boolean {
+  const clientId = claims['client_id']
+  return clientId !== undefined && clientId !== null
 }
 
 /** テスト用: モジュールレベルの JWKS キャッシュをリセットする */

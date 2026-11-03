@@ -36,6 +36,15 @@ describe('verifyAccessToken', () => {
     expect(result).toBe('user-9')
   })
 
+  it('外部アプリに発行されたトークン（client_id 付き）は署名検証を通っても null を返す', async () => {
+    const getClaims = vi.fn().mockResolvedValue({
+      data: { claims: { sub: 'user-9', client_id: 'external-app' } },
+      error: null,
+    })
+
+    expect(await verifyAccessToken(makeAuth(getClaims) as never, 'tok')).toBeNull()
+  })
+
   it('error 時は null を返す', async () => {
     const getClaims = vi.fn().mockResolvedValue({ data: null, error: { message: 'bad' } })
 
