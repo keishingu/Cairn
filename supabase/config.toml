@@ -128,10 +128,6 @@ enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
-# If enabled, users need to reauthenticate or have logged in recently to change their password.
-# 「Cairn でログイン」で外部アプリに発行されるトークンも Supabase Auth の /auth/v1/user を呼べるため、
-# パスワード変更には再認証を求める（docs/oidc-design.md §5）。本番も同じ設定にする
-secure_password_change = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
@@ -151,23 +147,6 @@ max_frequency = "5s"
 
 [auth.mfa]
 max_enrolled_factors = 10
-
-# 「Cairn でログイン」（OIDC）。Supabase Auth を OAuth 2.1 / OIDC のアイデンティティプロバイダーにする
-# （docs/oidc-design.md）。同意画面は Site URL + authorization_url_path。クライアントは運営者が登録し、
-# 動的登録は使わない。本番はダッシュボード「Authentication > OAuth Server」で同じ設定にする。
-# ID トークンは非対称の署名鍵が必要（HS256 だと発行に失敗する）。ローカルで ID トークンまで試すときは
-# `supabase gen signing-key` で鍵を作り、[auth] の signing_keys_path に指定する
-[auth.oauth_server]
-enabled = true
-authorization_url_path = "/oauth/consent"
-allow_dynamic_registration = false
-
-# 外部アプリ向けのアクセストークンだけ session_id（実在しないランダムな UUID）と aud を書き換え、
-# Supabase Auth の API（/user・/factors・/logout など）で使えなくする（supabase/migrations の
-# restrict_external_app_tokens）。本番はダッシュボード「Authentication > Hooks」で同じ関数を指定する
-[auth.hook.custom_access_token]
-enabled = true
-uri = "pg-functions://postgres/public/restrict_external_app_tokens"
 
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `figma`, `github`, `gitlab`, `google`, `kakao`, `keycloak`, `linkedin_oidc`,

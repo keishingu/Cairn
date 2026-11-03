@@ -89,13 +89,13 @@ jobs:
           git checkout HEAD -- supabase/migrations
           supabase db push --local --include-all
 
-      - name: Check external app token containment
+      - name: Check public schema lockdown
         run: |
           set -euo pipefail
-          # 外部アプリ（Cairn でログイン）のトークンで PostgREST・Storage・Realtime から
-          # データに触れられない状態が、新しいテーブル・ビュー・関数でも保たれているかを確かめる
+          # PostgREST を使わないため閉じている public のテーブル・ビュー・関数が、
+          # 新しいマイグレーションでも anon / authenticated に開いていないかを確かめる
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
-            -f supabase/checks/external-app-containment.sql
+            -f supabase/checks/public-schema-lockdown.sql
 
       - name: Stop local DB
         if: always()
