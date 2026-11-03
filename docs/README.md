@@ -21,6 +21,7 @@
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
 | アプリ（プラグイン）基盤・Slack 互換 | `app-platform-design.md`（構想。Bot・Block Kit 互換カード・インタラクション、投票アプリ）。外部の開発者向けの公開仕様は `/developers`（`apps/web/src/app/developers/`） | `scheduled-jobs-design.md`（投票の元設計） |
+| 「Cairn でログイン」（OIDC） | `oidc-design.md`（構想。Supabase OAuth 2.1 Server で IdP になり、外部アプリのトークンは Cairn に通さない） | `app-platform-design.md` §10（位置づけ）、`mcp-server-design.md`（MCP 専用の OAuth との違い） |
 | キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |
 | LP・マーケティング | `lp-content-redesign.md`（現行） | `landing-page-routing-design.md`（`/` の LP 配信と middleware）、`../marketing/ad-30s/README.md`（30 秒広告の素材と書き出し手順） |
 | パフォーマンス | `performance-improvement-plan.md`（残作業） | — |
