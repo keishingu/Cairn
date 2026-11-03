@@ -65,6 +65,15 @@ begin
     problems := problems || format('外部アプリのトークンを拒否する RESTRICTIVE ポリシーがない: %s', r.rel);
   end loop;
 
+  -- 外部アプリ向けのトークンを書き換えるフック（restrict_external_app_tokens）があり、Supabase Auth 以外からは呼べないこと
+  if to_regprocedure('public.restrict_external_app_tokens(jsonb)') is null then
+    problems := problems || 'Custom Access Token Hook の関数がない: public.restrict_external_app_tokens(jsonb)'::text;
+  elsif has_function_privilege('authenticated', 'public.restrict_external_app_tokens(jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.restrict_external_app_tokens(jsonb)', 'EXECUTE')
+     or not has_function_privilege('supabase_auth_admin', 'public.restrict_external_app_tokens(jsonb)', 'EXECUTE') then
+    problems := problems || 'Custom Access Token Hook の関数の実行権限が supabase_auth_admin だけになっていない'::text;
+  end if;
+
   if array_length(problems, 1) > 0 then
     raise exception E'外部アプリのトークンの封じ込みが崩れています（docs/oidc-design.md §5）:\n%',
       array_to_string(problems, E'\n');
