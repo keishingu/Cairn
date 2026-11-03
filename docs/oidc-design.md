@@ -70,7 +70,7 @@ issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-au
 
 **ID トークン**（JWT、ES256、Cairn 専用の鍵）
 - クレーム: `iss`、`sub`（Cairn のユーザー ID）、`aud`（client ID）、`exp`、`iat`、`auth_time`、`nonce`（リクエストにあれば）
-- `profile` を許可した場合: `name` と `picture`。ワークスペースによらないアカウントの値（`profiles` の表示名・アイコン）を入れる。ワークスペースごとの表示名・アイコンが要る外部アプリは、Bot の Web API や MCP から取る
+- `profile` を許可した場合: `name`。ワークスペースによらないアカウントの値（`profiles` の表示名）を入れる。`profiles` にはワークスペースによらないアイコンが無いため `picture` は入れない。ワークスペースごとの表示名・アイコンが要る外部アプリは、Bot の Web API や MCP から取る
 - `email` を許可した場合: `email` と `email_verified`
 - 有効期限は5分。ログインの瞬間に確かめるためだけのもの
 - 許可していないスコープの情報は入れない
@@ -108,7 +108,7 @@ issuer は `https://<Cairn の origin>/oidc`。MCP 用の `/.well-known/oauth-au
 
 | 論点 | 決定 |
 |---|---|
-| `name` / `picture` の出どころ | ワークスペースによらない `profiles` の表示名・アイコン（§6） |
+| `name` の出どころ | ワークスペースによらない `profiles` の表示名。アカウント単位のアイコンが無いため `picture` は出さない（§6） |
 | ゲストの扱い | 許す。Cairn のアカウントがあれば誰でもログインでき、所属・ロールでの絞り込みは外部アプリが Bot の Web API（`users.info`）や MCP で行う |
 | 鍵の入れ替え | 年1回と漏えいが疑われたとき。手順は §8 の6 |
 | クライアントの登録 | 運営者のスクリプト。管理画面・動的登録は作らない（§8 の3） |
