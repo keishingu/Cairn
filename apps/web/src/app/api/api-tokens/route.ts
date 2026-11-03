@@ -86,7 +86,10 @@ export async function POST(req: Request) {
   try {
     const { db, apiTokens } = await import('@cairn/db')
     const generated = createApiToken()
-    const expiresAt = new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000)
+    // 作成日時を DB の既定値（now()）に任せると、ここで計算した期限より先に決まるため、
+    // 最長の365日では期限が「作成から1年以内」の制約を数ミリ秒超えて発行に失敗する。両方を同じ時刻から作る
+    const createdAt = new Date()
+    const expiresAt = new Date(createdAt.getTime() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000)
     const [row] = await db
       .insert(apiTokens)
       .values({
@@ -96,6 +99,7 @@ export async function POST(req: Request) {
         tokenHash: generated.hash,
         tokenPrefix: generated.prefix,
         scope: parsed.data.scope,
+        createdAt,
         expiresAt,
       })
       .returning({
