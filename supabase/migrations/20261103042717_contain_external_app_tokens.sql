@@ -28,7 +28,11 @@ begin
     execute format('revoke execute on function %s from public, anon, authenticated', r.signature);
   end loop;
 end $$;
-alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
+-- PostgreSQL は関数の作成時に PUBLIC へ EXECUTE を与える。これはスキーマ指定のない既定の権限なので、
+-- IN SCHEMA 付きの revoke では外れない。PUBLIC はスキーマ指定なしで、Supabase が public スキーマに
+-- 付けている anon / authenticated への既定の権限は IN SCHEMA public で外す
+alter default privileges for role postgres revoke execute on functions from public;
+alter default privileges for role postgres in schema public revoke execute on functions from anon, authenticated;
 
 -- 3. Realtime の認可ポリシー（realtime.messages）から呼ぶ権限判定だけ、authenticated に実行権限を戻す。
 --    権限判定の関数は、外部アプリのトークンなら常に false を返すようにする。
