@@ -73,7 +73,7 @@ export async function exchangeOidcAuthorizationCode(input: {
   redirectUri: string
   codeVerifier: string
 }): Promise<ExchangedOidcCode> {
-  const { db, oidcAccessTokens, oidcAuthorizationCodes } = await import('@cairn/db')
+  const { db, oidcAccessTokens, oidcAuthorizationCodes, oidcClients, oidcGrants } = await import('@cairn/db')
   const { and, eq, isNull } = await import('drizzle-orm')
   const accessToken = createOAuthSecret(OIDC_ACCESS_TOKEN_PREFIX)
 
@@ -92,9 +92,22 @@ export async function exchangeOidcAuthorizationCode(input: {
         usedAt: oidcAuthorizationCodes.usedAt,
       })
       .from(oidcAuthorizationCodes)
+      // コードを発行した後に許可が取り消された・クライアントが無効化された場合は交換させない
+      .innerJoin(
+        oidcClients,
+        and(eq(oidcClients.clientId, oidcAuthorizationCodes.clientId), isNull(oidcClients.disabledAt)),
+      )
+      .innerJoin(
+        oidcGrants,
+        and(
+          eq(oidcGrants.clientId, oidcAuthorizationCodes.clientId),
+          eq(oidcGrants.userId, oidcAuthorizationCodes.userId),
+          isNull(oidcGrants.revokedAt),
+        ),
+      )
       .where(eq(oidcAuthorizationCodes.codeHash, hashOAuthValue(input.code)))
       .limit(1)
-      .for('update')
+      .for('update', { of: oidcAuthorizationCodes })
     if (
       !row ||
       row.usedAt ||
@@ -135,12 +148,32 @@ export async function verifyOidcAccessToken(token: string): Promise<{ userId: st
   if (!token.startsWith(OIDC_ACCESS_TOKEN_PREFIX)) {
     throw new OidcTokenError(401, 'invalid_token', 'Invalid access token')
   }
-  const { db, oidcAccessTokens } = await import('@cairn/db')
-  const { and, eq, gt } = await import('drizzle-orm')
+  const { db, oidcAccessTokens, oidcClients, oidcGrants } = await import('@cairn/db')
+  const { and, eq, exists, gt, isNull } = await import('drizzle-orm')
   const [row] = await db
     .update(oidcAccessTokens)
     .set(buildApiTokenRateLimitUpdate(oidcAccessTokens))
-    .where(and(eq(oidcAccessTokens.tokenHash, hashOAuthValue(token)), gt(oidcAccessTokens.expiresAt, new Date())))
+    .where(
+      and(
+        eq(oidcAccessTokens.tokenHash, hashOAuthValue(token)),
+        gt(oidcAccessTokens.expiresAt, new Date()),
+        // 許可が取り消された・クライアントが無効化されたら、有効期限内のトークンでも使わせない
+        exists(
+          db
+            .select({ id: oidcGrants.id })
+            .from(oidcGrants)
+            .innerJoin(oidcClients, eq(oidcClients.clientId, oidcGrants.clientId))
+            .where(
+              and(
+                eq(oidcGrants.clientId, oidcAccessTokens.clientId),
+                eq(oidcGrants.userId, oidcAccessTokens.userId),
+                isNull(oidcGrants.revokedAt),
+                isNull(oidcClients.disabledAt),
+              ),
+            ),
+        ),
+      ),
+    )
     .returning({
       userId: oidcAccessTokens.userId,
       scope: oidcAccessTokens.scope,
