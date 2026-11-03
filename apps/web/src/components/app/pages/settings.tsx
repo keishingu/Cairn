@@ -2586,7 +2586,8 @@ const CairnLoginGrantSettings = () => {
       await revoke.mutateAsync(clientId)
       toast.success(t('Access revoked'))
     } catch (revokeError) {
-      toast.error(t((revokeError as Error).message))
+      // ダイアログを閉じずにその場でエラーを見せ、再試行できるようにする
+      throw new Error(t((revokeError as Error).message))
     }
   }
 

@@ -27,9 +27,14 @@ function readClientCredentials(
     const decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8')
     const separator = decoded.indexOf(':')
     if (separator <= 0) return null
-    return {
-      clientId: decodeURIComponent(decoded.slice(0, separator)),
-      clientSecret: decodeURIComponent(decoded.slice(separator + 1)),
+    // 不正なパーセントエンコーディングは 500 にせず、呼び出し側で invalid_client にする
+    try {
+      return {
+        clientId: decodeURIComponent(decoded.slice(0, separator)),
+        clientSecret: decodeURIComponent(decoded.slice(separator + 1)),
+      }
+    } catch {
+      return null
     }
   }
   const clientId = form.get('client_id')

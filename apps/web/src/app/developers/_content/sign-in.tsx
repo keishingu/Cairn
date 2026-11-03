@@ -15,13 +15,14 @@ const { payload } = await jwtVerify(idToken, jwks, {
   audience: process.env.CAIRN_OIDC_CLIENT_ID,
   algorithms: ['ES256'],
 })
-// 認可リクエストに付けた nonce と一致するかも確かめる
+// 認可リクエストに付けて保存した nonce と一致しなければログインさせない
+if (payload.nonce !== savedNonce) throw new Error('nonce mismatch')
 const cairnUserId = payload.sub
 `
 
 const verifyExampleEn = verifyExample
   .replace('// issuer は https://oss-cairn.com/oidc', '// The issuer is https://oss-cairn.com/oidc')
-  .replace('// 認可リクエストに付けた nonce と一致するかも確かめる', '// Also check that nonce matches the one you sent in the authorization request')
+  .replace('// 認可リクエストに付けて保存した nonce と一致しなければログインさせない', '// Reject the sign-in unless nonce matches the one you stored with the authorization request')
 
 export const signInPage: DocPage = {
   slug: 'sign-in',
@@ -55,7 +56,7 @@ export const signInPage: DocPage = {
           title: 'クライアントの登録',
           content: (
             <p>
-              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前、環境ごとのリダイレクト URI（https、完全一致）、サーバーを持つかどうかをお知らせください。サーバーを持つアプリは機密クライアントとして client ID と client secret をお渡しします。client secret はサーバーだけに置いてください。ブラウザーだけで動くアプリ（サーバーを持たない PWA など）は、secret を安全に置けないため公開クライアントとして登録し、client ID だけをお渡しします。どちらも PKCE（S256）は必須です。
+              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前、環境ごとのリダイレクト URI（https、完全一致。ローカル開発用の <code>http://localhost</code> / <code>http://127.0.0.1</code> も登録できます）、サーバーを持つかどうかをお知らせください。サーバーを持つアプリは機密クライアントとして client ID と client secret をお渡しします。client secret はサーバーだけに置いてください。ブラウザーだけで動くアプリ（サーバーを持たない PWA など）は、secret を安全に置けないため公開クライアントとして登録し、client ID だけをお渡しします。どちらも PKCE（S256）は必須です。
             </p>
           ),
         },
@@ -131,7 +132,7 @@ export const signInPage: DocPage = {
           title: 'Registering a client',
           content: (
             <p>
-              The Cairn operators register clients. Dynamic registration is not supported. Send your app name, a redirect URI for each environment (https, exact match), and whether your app has a server. Apps with a server are registered as confidential clients and receive a client ID and a client secret. Keep the client secret on your server only. Apps that run only in the browser (such as a PWA without a server) cannot keep a secret safe, so they are registered as public clients and receive only a client ID. PKCE (S256) is required for both.
+              The Cairn operators register clients. Dynamic registration is not supported. Send your app name, a redirect URI for each environment (https, exact match; <code>http://localhost</code> / <code>http://127.0.0.1</code> are also accepted for local development), and whether your app has a server. Apps with a server are registered as confidential clients and receive a client ID and a client secret. Keep the client secret on your server only. Apps that run only in the browser (such as a PWA without a server) cannot keep a secret safe, so they are registered as public clients and receive only a client ID. PKCE (S256) is required for both.
             </p>
           ),
         },
