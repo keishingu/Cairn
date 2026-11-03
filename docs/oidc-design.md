@@ -66,7 +66,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 
 | 層 | やること |
 |---|---|
-| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` は Bearer トークンを `getUser(token)` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。Bearer 経路では先に `verifyAccessToken()` で検証し、通ったものだけ `getUser(token)` で最新のユーザー情報を取る（Cookie 経路は変えない）。middleware も `verifyAccessToken` を通るので同じ判定になる |
+| Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` は Bearer トークンも Cookie のセッションも `getUser()` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。外部アプリは自分のトークンを Supabase のセッション Cookie に入れて送ることもできるため、Bearer・Cookie のどちらの経路でも先に `verifyAccessToken()` で検証し、通ったものだけ `getUser()` で最新のユーザー情報を取る。`/api/` は middleware の対象外なので、API 側の判定だけに頼る。middleware も `verifyAccessToken` を通るので同じ判定になる |
 | PostgREST（テーブル・ビュー） | Cairn はデータの読み書きをすべて Route Handlers（Drizzle / service role）経由で行い、PostgREST を使っていない。そこで `public` のテーブル・ビューは `anon` / `authenticated` から権限を外して閉じる。あわせて、全テーブルで RLS を有効にする（ポリシーは書かない。権限が誤って戻っても0行しか見えない二重の守りになり、`postgres` / `service_role` は RLS を無視するのでサーバーには影響しない）。ビューには RLS がかからないので、権限を外すことで閉じる。今後作るテーブル・ビューにも権限が付かないよう、既定の権限（`ALTER DEFAULT PRIVILEGES`）からも外す |
 | PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
 | Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
@@ -78,6 +78,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
   - `anon` / `authenticated` が `public` のテーブル・ビューに権限を持たないこと
   - `authenticated` が実行できる `SECURITY DEFINER` の関数はすべて、`client_id` を拒否する判定を持つこと（拡張機能の関数は対象外）
   - `storage.objects` と `realtime.messages` に、`client_id` を拒否する RESTRICTIVE ポリシーがあること
+- API 側は、`client_id` 付きのトークンを Bearer で送った場合と Cookie のセッションに入れて送った場合の両方で、`getAuthContext()` と `getAuthUser()` が 401 を返すことをテストで確かめる
 - **代替案（要検証）**: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `role` を権限のない専用ロールに書き換えれば、RPC・Storage・Realtime を1か所で塞げる可能性がある。Supabase の各サービスが書き換えた `role` をどう扱うかを検証してから採否を決める（§9）
 
 ## 6. Cairn 側で作るもの
