@@ -14,6 +14,17 @@ export const OIDC_AUTHORIZATION_CODE_TTL_SECONDS = 5 * 60
 export const OIDC_ID_TOKEN_TTL_SECONDS = 5 * 60
 export const OIDC_ACCESS_TOKEN_TTL_SECONDS = 5 * 60
 export const OIDC_SUPPORTED_SCOPES = ['openid', 'profile', 'email'] as const
+/** 認可リクエストで受け取るパラメータ。同意画面のフォームにはこれだけを埋める（decision などのフォームの値を外部アプリに足させない） */
+export const OIDC_AUTHORIZATION_PARAMS = [
+  'client_id',
+  'redirect_uri',
+  'response_type',
+  'scope',
+  'state',
+  'nonce',
+  'code_challenge',
+  'code_challenge_method',
+] as const
 
 /**
  * ディスカバリー・公開鍵・トークン・UserInfo は、サーバーを持たない PWA（公開クライアント）がブラウザから呼ぶ。

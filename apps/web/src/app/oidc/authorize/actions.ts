@@ -11,18 +11,7 @@ import {
   OidcAuthorizeError,
   validateOidcAuthorizationRequest,
 } from '@/lib/oidc/authorization'
-import { oidcAuthTime } from '@/lib/oidc/config'
-
-const AUTHORIZATION_KEYS = [
-  'client_id',
-  'redirect_uri',
-  'response_type',
-  'scope',
-  'state',
-  'nonce',
-  'code_challenge',
-  'code_challenge_method',
-] as const
+import { OIDC_AUTHORIZATION_PARAMS, oidcAuthTime } from '@/lib/oidc/config'
 
 export type OidcConsentState = { error: string } | null
 
@@ -35,7 +24,7 @@ export async function decideOidcAuthorization(
   formData: FormData,
 ): Promise<OidcConsentState> {
   const params = new URLSearchParams()
-  for (const key of AUTHORIZATION_KEYS) {
+  for (const key of OIDC_AUTHORIZATION_PARAMS) {
     const value = formData.get(key)
     if (typeof value === 'string') params.set(key, value)
   }
@@ -46,7 +35,9 @@ export async function decideOidcAuthorization(
   let destination: string
   try {
     const authorization = await validateOidcAuthorizationRequest(params)
-    if (formData.get('decision') !== 'approve') {
+    // 押したボタンの値1つだけを受け付ける。値が複数あれば許可として扱わない
+    const decisions = formData.getAll('decision')
+    if (decisions.length !== 1 || decisions[0] !== 'approve') {
       destination = buildOidcRedirect(authorization.redirectUri, {
         error: 'access_denied',
         state: authorization.state,

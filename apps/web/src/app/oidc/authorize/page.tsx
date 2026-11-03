@@ -12,7 +12,7 @@ import {
   OidcAuthorizeError,
   validateOidcAuthorizationRequest,
 } from '@/lib/oidc/authorization'
-import { describeOidcScopes, oidcAuthTime } from '@/lib/oidc/config'
+import { describeOidcScopes, OIDC_AUTHORIZATION_PARAMS, oidcAuthTime } from '@/lib/oidc/config'
 import { ConsentForm } from './consent-form'
 
 type TranslateFn = (message: string, values?: Record<string, string | number>) => string
@@ -29,8 +29,10 @@ export default async function OidcAuthorizePage({
 }) {
   const { locale } = await readRequestLocale()
   const t: TranslateFn = (message, values) => translate(locale, message, values)
+  const query = await searchParams
   const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(await searchParams)) {
+  for (const key of OIDC_AUTHORIZATION_PARAMS) {
+    const value = query[key]
     if (typeof value === 'string') params.set(key, value)
   }
 
