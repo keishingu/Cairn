@@ -71,6 +71,8 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 | PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
 | Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
 | Realtime | `realtime.messages` の認可ポリシーに同じ条件を足す |
+| Supabase Auth の API | 外部アプリのトークンでも `/auth/v1/user`（メールアドレス・パスワード・メタデータの変更）や `/auth/v1/factors`（MFA の登録）を呼べる可能性がある。パスワード変更は `secure_password_change` で再認証を必須にし、メールアドレスの変更は `double_confirm_changes` で旧・新両方の確認を必須にする。MFA の登録などそれ以外は §9 の検証が済むまで本番で OAuth Server を有効にしない |
+| 同意画面 | 他サイトの iframe に埋め込ませない（`frame-ancestors 'none'` / `X-Frame-Options: DENY`）。埋め込まれると、透明な枠の上で「許可」を押させるクリックジャッキングで許可を出させられる |
 
 - テーブル・ビューの権限の剥奪と RLS の有効化はマイグレーションで行う。今の権限の状態をマイグレーションに残し、ローカル・Preview・本番を同じにする
 - 今後追加するテーブル・ビュー・関数も同じ状態を保つ必要がある。漏れを防ぐため、DB のカタログを見る確認テストを置く
@@ -123,3 +125,4 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 3. **ベータ機能への依存**: 仕様変更があった場合の追従方針
 4. **同意画面の対象**: ゲストにも「Cairn でログイン」を許すか（ID トークンには所属もロールも出ないため、判断は外部アプリ側になる）
 5. **`email` スコープ**: 利用者のメールアドレスを外部アプリに渡してよいか。最初の外部アプリは `email` なしで成り立つか確認する
+6. **Supabase Auth の API への外部アプリのトークン（本番で有効にする前に必ず決める）**: OAuth 2.1 Server が発行したトークンで `/auth/v1/user` の更新や `/auth/v1/factors` の MFA 登録ができるかを、ローカルで実際に確かめる。できる場合は、Auth Hook などで `client_id` 付きのトークンを拒否する方法を決める（MFA を勝手に登録されると、利用者がログインできなくなる恐れがある）。あわせて、外部アプリに発行するアクセストークンの有効期限を短くできるかも確認する
