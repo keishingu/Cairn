@@ -71,7 +71,7 @@ export default async function OidcConsentPage({
         </div>
 
         <p style={{ color: 'var(--text-4)', fontSize: 11.5, lineHeight: 1.6 }}>
-          {t('This app can only identify who you are. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.')}
+          {t('This app can see your Cairn account information, such as your account ID, name, and email address. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.')}
         </p>
         <ConsentForm authorizationId={authorizationId} />
       </div>

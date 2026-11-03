@@ -2609,7 +2609,7 @@ const CairnLoginGrantSettings = () => {
     <section style={{ marginBottom: 32 }}>
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Apps using Sign in with Cairn')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
-        {t('These apps can only identify who you are. They cannot read or change your data in Cairn.')}
+        {t('These apps can see your Cairn account information, such as your name and email address. They cannot read or change your projects, conversations, or files.')}
       </p>
       <div className="card" style={{ padding: 16 }}>
         {isLoading ? (
