@@ -69,11 +69,12 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 | Cairn の API | `verifyAccessToken`（`lib/auth-jwt.ts`）でクレームに `client_id` があれば `null`（401）。`getAuthUser()` は Bearer トークンを `getUser(token)` に直接渡しており、`getUser()` の戻り値からは `client_id` を確かめられない。Bearer 経路では先に `verifyAccessToken()` で検証し、通ったものだけ `getUser(token)` で最新のユーザー情報を取る（Cookie 経路は変えない）。middleware も `verifyAccessToken` を通るので同じ判定になる |
 | PostgREST（テーブル） | `authenticated` が読み書きできる `public` のテーブルすべてを対象にする。RLS を有効にしているテーブルには `(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す。RLS を有効にしていないテーブルは RESTRICTIVE ポリシーが効かないので、RLS を有効にする（`authenticated` 向けの許可ポリシーを足すか、PostgREST から使っていなければ `authenticated` の権限を外す）|
 | PostgREST（ビュー） | ビューは既定で所有者の権限で動き、下のテーブルの RLS を素通りする（例: `active_workspace_members`）。`security_invoker = true` にして呼び出し元の RLS を効かせるか、PostgREST から使っていなければ `authenticated` の権限を外す |
+| PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（例: `can_access_ai_nudge`・`can_access_channel` などの権限判定）は所有者の権限で動くので、テーブルの制限を素通りして所属などを答えてしまう。関数の先頭で `client_id` 付きの呼び出しを拒否するか、RLS ポリシーなど DB 内部からだけ使う関数は `authenticated` から PostgREST 経由で呼べないようにする（RLS ポリシーから呼ぶ関数は実行権限が要るため、権限を外すなら呼び出し側の作りも合わせて見直す）|
 | Storage | `storage.objects` の既存ポリシー（6 本のマイグレーション）と同じ対象に、同じ RESTRICTIVE ポリシーを足す |
 | Realtime | `realtime.messages` の認可に同じ条件を足す |
 
 - PostgREST に公開しているスキーマ（`supabase/config.toml` の `[api] schemas`）のうち、`authenticated` が権限を持つリレーション（テーブル・ビュー・マテリアライズドビュー）が漏れなく対象になっていることが条件。RLS を有効にしたテーブルだけを見ると、RLS のないテーブルやビューが抜ける
-- 今後追加するテーブル・ビューにも同じ条件が要る。漏れを防ぐため、DB のカタログを見る確認テストを置く: 公開スキーマで `authenticated` が権限を持つリレーションはすべて、RLS が有効で RESTRICTIVE ポリシーがあるテーブルか、`security_invoker` のビューであること
+- 今後追加するテーブル・ビュー・関数にも同じ条件が要る。漏れを防ぐため、DB のカタログを見る確認テストを置く: 公開スキーマで `authenticated` が権限を持つリレーションはすべて、RLS が有効で RESTRICTIVE ポリシーがあるテーブルか、`security_invoker` のビューであること。`authenticated` が実行できる `SECURITY DEFINER` の関数はすべて、`client_id` を拒否する判定を持つか、許可した一覧に載っていること（拡張機能の関数は対象外）
 - **代替案（要検証）**: Custom Access Token Hook で OAuth 発行時（`authentication_method` が `oauth_provider/authorization_code`）だけ `role` を権限のない専用ロールに書き換えれば、PostgREST・Storage・Realtime を1か所で塞げる可能性がある。Supabase の各サービスが書き換えた `role` をどう扱うかを検証してから採否を決める（§9）
 
 ## 6. Cairn 側で作るもの
@@ -113,7 +114,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 
 ## 9. 未決事項
 
-1. **封じ込みの方式**: §5 の「各層で `client_id` を拒否」と「Custom Access Token Hook で `role` を書き換える」のどちらにするか。前者は RLS のないテーブルとビューまで手を入れる必要があり、対象が広い。後者は Supabase の PostgREST・Storage・Realtime が書き換えた `role` を受け入れるかの検証が先
+1. **封じ込みの方式**: §5 の「各層で `client_id` を拒否」と「Custom Access Token Hook で `role` を書き換える」のどちらにするか。前者は RLS のないテーブル・ビュー・`SECURITY DEFINER` の関数まで手を入れる必要があり、対象が広い。後者は Supabase の PostgREST・Storage・Realtime が書き換えた `role` を受け入れるかの検証が先
 2. **取り消し直後のアクセストークン**: `revokeGrant` で発行済みのアクセストークンが即座に無効になるか、有効期限（1時間）まで残るかがドキュメントから読み取れない。§5 の封じ込みがあれば Cairn 側の影響はないが、外部アプリのセッションの切り方に関わる
 3. **ベータ機能への依存**: 仕様変更があった場合の追従方針
 4. **同意画面の対象**: ゲストにも「Cairn でログイン」を許すか（ID トークンには所属もロールも出ないため、判断は外部アプリ側になる）
