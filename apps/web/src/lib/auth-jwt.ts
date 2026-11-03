@@ -86,14 +86,24 @@ export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Pro
   const keys = needsJwks(header) ? await getCachedJwks() : []
   const { data, error } = await auth.getClaims(resolvedToken, keys.length > 0 ? { jwks: { keys } } : undefined)
   if (error || !data?.claims?.sub) return null
-  if (isExternalClientClaims(data.claims)) return null
+  if (!isCairnSessionClaims(data.claims)) return null
   return data.claims.sub
 }
 
-/** OAuth 2.1 Server が外部アプリに発行したトークンか（`client_id` クレームを持つか） */
-export function isExternalClientClaims(claims: Record<string, unknown>): boolean {
+/**
+ * Cairn の利用者本人のセッション（通常ログインのアクセストークン）か。
+ * OAuth 2.1 Server が外部アプリに発行するトークンは同じ鍵で署名されるため、署名検証だけでは見分けられない。
+ * - 外部アプリのアクセストークン: `client_id` クレームを持つ
+ * - 外部アプリの ID トークン: `aud` が外部アプリの client ID で、`client_id` も `role` も持たない
+ * getClaims は aud を検証しないので、aud が authenticated で role も authenticated のものだけを本人として扱う
+ */
+export function isCairnSessionClaims(claims: Record<string, unknown>): boolean {
   const clientId = claims['client_id']
-  return clientId !== undefined && clientId !== null
+  if (clientId !== undefined && clientId !== null) return false
+  const aud = claims['aud']
+  const audiences = Array.isArray(aud) ? aud : [aud]
+  if (audiences.length !== 1 || audiences[0] !== 'authenticated') return false
+  return claims['role'] === 'authenticated'
 }
 
 /** テスト用: モジュールレベルの JWKS キャッシュをリセットする */
