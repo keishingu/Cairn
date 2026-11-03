@@ -54,7 +54,7 @@ export const signInPage: DocPage = {
           title: 'クライアントの登録',
           content: (
             <p>
-              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前と、環境ごとのリダイレクト URI（https、完全一致）をお知らせください。client ID・client secret・issuer の URL をお渡しします。client secret はサーバーだけに置いてください。
+              クライアントは Cairn の運営者が登録します（動的登録には対応していません）。アプリの名前、環境ごとのリダイレクト URI（https、完全一致）、サーバーを持つかどうかをお知らせください。サーバーを持つアプリは機密クライアントとして client ID・client secret・issuer の URL をお渡しします。client secret はサーバーだけに置いてください。ブラウザーだけで動くアプリ（サーバーを持たない PWA など）は、secret を安全に置けないため公開クライアントとして登録し、client ID と issuer の URL だけをお渡しします。どちらも PKCE は必須です。
             </p>
           ),
         },
@@ -124,7 +124,7 @@ export const signInPage: DocPage = {
           title: 'Registering a client',
           content: (
             <p>
-              The Cairn operators register clients. Dynamic registration is not supported. Send your app name and a redirect URI for each environment (https, exact match). You will receive a client ID, a client secret, and the issuer URL. Keep the client secret on your server only.
+              The Cairn operators register clients. Dynamic registration is not supported. Send your app name, a redirect URI for each environment (https, exact match), and whether your app has a server. Apps with a server are registered as confidential clients and receive a client ID, a client secret, and the issuer URL. Keep the client secret on your server only. Apps that run only in the browser (such as a PWA without a server) cannot keep a secret safe, so they are registered as public clients and receive only a client ID and the issuer URL. PKCE is required for both.
             </p>
           ),
         },
