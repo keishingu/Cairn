@@ -6,6 +6,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { NativeAppHeader } from '../../../components/native-app-header'
 import { API_BASE_URL } from '../../../lib/env'
 import { resolveInternalAppPath } from '../../../lib/mobile-chat-state'
+import { withNativeChatLinks } from '../../../lib/chat-link'
 import { useT } from '../../../components/locale-provider'
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -27,9 +28,7 @@ export default function ChatToolsScreen() {
   const { palette } = useAppAppearance()
   const requestedPath = firstParam(params.path)
   const safePath = requestedPath ? resolveInternalAppPath(requestedPath, API_BASE_URL) : null
-  const path = safePath
-    ? safePath
-    : '/chats?nativeAux=1&panel=global-search'
+  const path = withNativeChatLinks(safePath ?? '/chats?nativeAux=1&panel=global-search')
   const title = firstParam(params.title) ?? t('Chats')
   const returnChannelId = firstParam(params.returnChannelId)
   const returnChannelName = firstParam(params.returnChannelName)

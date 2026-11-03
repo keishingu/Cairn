@@ -133,6 +133,47 @@ export function useMessages(channelId: string | null) {
   })
 }
 
+/** リンク・通知の飛び先が直近のページの外にあるとき、その前後を中心にしたページを取得する（Web の `?around=` と同じ） */
+async function fetchMessagePageAround(
+  channelId: string,
+  messageId: string,
+  t: (message: string, values?: Record<string, string | number>) => string,
+): Promise<MessagePage> {
+  const res = await apiFetch(
+    `/api/channels/${channelId}/messages?around=${encodeURIComponent(messageId)}`,
+  )
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new ChannelMessagesError(
+      data.error ?? t('Could not load messages ({status})', { status: res.status }),
+      res.status,
+    )
+  }
+  const messages = (await res.json()) as MessageDto[]
+  // around の応答は古い側の続きの有無を返さない。続きは before で取りに行き、そのページの応答で確定させる
+  return { messages, hasMore: messages.length > 0 }
+}
+
+/**
+ * 飛び先のメッセージの前後を、直近のメッセージとは別のキャッシュで持つ（Web の履歴表示と同じ）。
+ * 直近のページに混ぜると間の欠けたタイムラインになるため。
+ * キーは ['messages', channelId] の下に置き、Realtime や送信後の invalidate で一緒に更新されるようにする。
+ */
+export function useMessageHistory(channelId: string | null, messageId: string | null) {
+  const t = useT()
+  return useInfiniteQuery({
+    queryKey: ['messages', channelId, 'history', messageId],
+    queryFn: ({ pageParam }) =>
+      pageParam === null
+        ? fetchMessagePageAround(channelId!, messageId!, t)
+        : fetchMessagePage(channelId!, pageParam, t),
+    initialPageParam: null as string | null,
+    getNextPageParam: nextMessagePageCursor,
+    select: (data) => mergeChatMessages(...data.pages.map((page) => page.messages)),
+    enabled: !!channelId && !!messageId,
+  })
+}
+
 export function useSendMessage(channelId: string) {
   const t = useT()
   const qc = useQueryClient()

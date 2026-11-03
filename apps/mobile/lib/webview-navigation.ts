@@ -1,3 +1,5 @@
+import { chatLinkTarget } from './chat-link'
+
 export const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:*']
 
 export type WebViewNavigationDecision =
@@ -15,27 +17,37 @@ function isVercelToolbarUrl(url: string): boolean {
   }
 }
 
+function isNativeAuxUrl(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get('nativeAux') === '1'
+  } catch {
+    return false
+  }
+}
+
 export function decideWebViewNavigation({
   url,
   trustedOrigin,
   allowChatRoutes,
   isTopFrame,
   isAndroid = false,
+  development = false,
 }: {
   url: string
   trustedOrigin: string
   allowChatRoutes: boolean
   isTopFrame: boolean | undefined
   isAndroid?: boolean
+  /** 開発ビルドか。PC のブラウザからコピーした localhost のチャットリンクも、接続先の Web と同じとみなす */
+  development?: boolean
 }): WebViewNavigationDecision {
   if (url === 'about:blank' || url.startsWith('about:')) return 'allow'
   if (isVercelToolbarUrl(url)) return 'block'
 
-  const chatsPath = `${trustedOrigin}/chats`
-  if (
-    !allowChatRoutes &&
-    (url === chatsPath || url.startsWith(`${chatsPath}/`) || url.startsWith(`${chatsPath}?`))
-  ) {
+  // 行き先は呼び出し側が chatLinkTarget で同じ規則から取り出す。
+  // チャット補助画面（allowChatRoutes）でも WebView に読み込むのは補助画面の URL（nativeAux=1）だけで、
+  // そこから開くチャンネル・メッセージはネイティブのチャットで開く
+  if (chatLinkTarget(url, trustedOrigin, development) && !(allowChatRoutes && isNativeAuxUrl(url))) {
     return 'open-native-chat'
   }
 
@@ -47,22 +59,4 @@ export function decideWebViewNavigation({
     return 'open-external'
   }
   return 'block'
-}
-
-/**
- * 特定メッセージを指すチャット URL（`/chats/<channelId>?m=<messageId>`）なら、その Web パスを返す。
- * ネイティブチャットはメッセージ位置へのジャンプを持たないため、呼び出し側は Web のチャット補助画面で開く。
- */
-export function messageTargetChatPath(url: string, trustedOrigin: string): string | null {
-  try {
-    const target = new URL(url)
-    if (target.origin !== trustedOrigin) return null
-    if (!/^\/chats\/[^/]+$/.test(target.pathname)) return null
-    if (!target.searchParams.get('m')) return null
-    // Web の /chats は nativeAux=1 が無いとネイティブチャットへ戻してしまうため付ける
-    target.searchParams.set('nativeAux', '1')
-    return `${target.pathname}${target.search}`
-  } catch {
-    return null
-  }
 }

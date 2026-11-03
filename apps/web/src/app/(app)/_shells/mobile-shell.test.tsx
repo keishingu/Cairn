@@ -4,7 +4,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, test, vi } from 'vitest'
 import React from 'react'
-import { MobileShell, mobileNavSpaceStyle, shouldRenderMobileNav } from './mobile-shell'
+import { MobileShell, mobileNavSpaceStyle, nativeAuxChatHandoffPath, shouldRenderMobileNav } from './mobile-shell'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/projects',
@@ -75,5 +75,24 @@ describe('mobileNavSpaceStyle', () => {
       '--mobile-nav-h': 'calc(65px + env(safe-area-inset-bottom))',
       '--mobile-nav-clearance': 'calc(80px + env(safe-area-inset-bottom))',
     })
+  })
+})
+
+describe('nativeAuxChatHandoffPath', () => {
+  it('パネルを表示している間はアプリへ渡さない', () => {
+    expect(nativeAuxChatHandoffPath('/chats', 'nativeAux=1&panel=bookmarks')).toBeNull()
+    expect(nativeAuxChatHandoffPath('/chats/ch-1', 'nativeAux=1&panel=search')).toBeNull()
+  })
+
+  it('パネルを離れてチャンネル・メッセージを開いたら、補助画面の印を外した行き先を返す', () => {
+    expect(nativeAuxChatHandoffPath('/chats/ch-1', 'm=msg-1')).toBe('/chats/ch-1?m=msg-1')
+    expect(nativeAuxChatHandoffPath('/chats/ch-1', 'nativeAux=1&nativeChatLinks=1&m=msg-1')).toBe('/chats/ch-1?m=msg-1')
+    expect(nativeAuxChatHandoffPath('/chats/ch-1', 'nativeAux=1')).toBe('/chats/ch-1')
+    expect(nativeAuxChatHandoffPath('/chats', 'nativeAux=1')).toBe('/chats')
+  })
+
+  it('チャット以外の画面は対象にしない', () => {
+    expect(nativeAuxChatHandoffPath('/tasks', '')).toBeNull()
+    expect(nativeAuxChatHandoffPath('/chatsearch', '')).toBeNull()
   })
 })
