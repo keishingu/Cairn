@@ -70,7 +70,9 @@ export async function middleware(request: NextRequest) {
 
   if (!userId && !isAuthRoute && !isPublicRoute) {
     const loginUrl = new URL('/auth/login', request.url)
-    if (pathname === '/oauth/authorize') {
+    // MCP の認可（/oauth/authorize）と「Cairn でログイン」の同意画面（/oauth/consent）は、
+    // ログイン後に同じ画面へ戻す
+    if (pathname === '/oauth/authorize' || pathname === '/oauth/consent') {
       loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
     }
     return NextResponse.redirect(loginUrl)

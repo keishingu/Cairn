@@ -31,6 +31,7 @@ import type { GcalStatusDto } from '@/app/api/calendar/google/status/route'
 import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
+import type { OAuthGrant } from '@supabase/supabase-js'
 import {
   AI_CHAT_ACCESS_LEVELS,
   AI_CHAT_MODEL_LABELS,
@@ -2572,6 +2573,95 @@ const McpOAuthConnectionSettings = () => {
   )
 }
 
+// 「Cairn でログイン」（OIDC）で許可したアプリ。許可の一覧と取り消しは Supabase Auth の
+// OAuth 2.1 Server が持つので、本人のセッションで直接呼ぶ（docs/oidc-design.md §6）
+const CairnLoginGrantSettings = () => {
+  const t = useT()
+  const { locale } = useLocale()
+  const queryClient = useQueryClient()
+  const [revokeTarget, setRevokeTarget] = React.useState<OAuthGrant | null>(null)
+  const {
+    data: grants = [],
+    isLoading,
+    error,
+  } = useQuery<OAuthGrant[]>({
+    queryKey: ['cairn-login-grants'],
+    queryFn: async () => {
+      const { data, error: grantsError } = await createSupabaseClient().auth.oauth.listGrants()
+      if (grantsError || !data) throw new Error(t('Could not load apps that use Sign in with Cairn'))
+      return data
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: async (clientId: string) => {
+      const { error: revokeError } = await createSupabaseClient().auth.oauth.revokeGrant({ clientId })
+      if (revokeError) throw new Error(t('Could not revoke access for this app'))
+    },
+    onSuccess: (_data, clientId) => {
+      toast.success(t('Access revoked'))
+      queryClient.setQueryData<OAuthGrant[]>(['cairn-login-grants'], (current) =>
+        current?.filter((grant) => grant.client.id !== clientId),
+      )
+    },
+  })
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Apps using Sign in with Cairn')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        {t('These apps can only identify who you are. They cannot read or change your data in Cairn.')}
+      </p>
+      <div className="card" style={{ padding: 16 }}>
+        {isLoading ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+        ) : error ? (
+          <InlineError>{(error as Error).message}</InlineError>
+        ) : grants.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No apps use Sign in with Cairn.')}</div>
+        ) : (
+          grants.map((grant) => (
+            <div
+              key={grant.client.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: '1px solid var(--divider)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{grant.client.name}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  {t('Allowed {date}', { date: formatAppDate(locale, grant.granted_at) })}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ color: 'var(--red-text)' }}
+                disabled={revoke.isPending}
+                onClick={() => setRevokeTarget(grant)}
+              >
+                {t('Revoke access')}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={t('Revoke access for "{name}"?', { name: revokeTarget?.client.name ?? '' })}
+        message={t('You will need to allow access again to sign in to this app with Cairn.')}
+        confirmLabel={t('Revoke access')}
+        busyLabel={t('Revoking access...')}
+        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.client.id) }}
+        onClose={() => setRevokeTarget(null)}
+      />
+    </section>
+  )
+}
+
 const SettingsIntegrations = () => {
   const t = useT()
   // ── iCal 出力 ──────────────────────────────────────────────────────
@@ -2705,6 +2795,7 @@ const SettingsIntegrations = () => {
       </p>
 
       <McpOAuthConnectionSettings />
+      <CairnLoginGrantSettings />
       <ApiTokenSettings />
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}

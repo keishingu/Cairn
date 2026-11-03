@@ -6,11 +6,12 @@ import { blocksPage } from './blocks'
 import { interactionsPage } from './interactions'
 import { modalsPage } from './modals'
 import { overviewPage } from './overview'
+import { signInPage } from './sign-in'
 import { slackDifferencesPage } from './slack-differences'
 import { webApiPage } from './web-api'
 
 /** サイドバーと前後のページ送りの順 */
-export const DOC_PAGES: DocPage[] = [overviewPage, blocksPage, webApiPage, interactionsPage, modalsPage, slackDifferencesPage]
+export const DOC_PAGES: DocPage[] = [overviewPage, blocksPage, webApiPage, interactionsPage, modalsPage, signInPage, slackDifferencesPage]
 
 export const DOCS_LOCALES: DocsLocale[] = ['ja', 'en']
 

@@ -148,6 +148,16 @@ max_frequency = "5s"
 [auth.mfa]
 max_enrolled_factors = 10
 
+# 「Cairn でログイン」（OIDC）。Supabase Auth を OAuth 2.1 / OIDC のアイデンティティプロバイダーにする
+# （docs/oidc-design.md）。同意画面は Site URL + authorization_url_path。クライアントは運営者が登録し、
+# 動的登録は使わない。本番はダッシュボード「Authentication > OAuth Server」で同じ設定にする。
+# ID トークンは非対称の署名鍵が必要（HS256 だと発行に失敗する）。ローカルで ID トークンまで試すときは
+# `supabase gen signing-key` で鍵を作り、[auth] の signing_keys_path に指定する
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = false
+
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `figma`, `github`, `gitlab`, `google`, `kakao`, `keycloak`, `linkedin_oidc`,
 # `notion`, `spotify`, `slack_oidc`, `twitch`, `twitter`, `workos`, `zoom`.
