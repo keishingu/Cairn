@@ -32,6 +32,7 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { OAuthGrant } from '@supabase/supabase-js'
+import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
 import {
   AI_CHAT_ACCESS_LEVELS,
   AI_CHAT_MODEL_LABELS,
@@ -2573,37 +2574,21 @@ const McpOAuthConnectionSettings = () => {
   )
 }
 
-// 「Cairn でログイン」（OIDC）で許可したアプリ。許可の一覧と取り消しは Supabase Auth の
-// OAuth 2.1 Server が持つので、本人のセッションで直接呼ぶ（docs/oidc-design.md §6）
+// 「Cairn でログイン」（OIDC）で許可したアプリの一覧と取り消し（通信は useCairnLoginGrants）
 const CairnLoginGrantSettings = () => {
   const t = useT()
   const { locale } = useLocale()
-  const queryClient = useQueryClient()
   const [revokeTarget, setRevokeTarget] = React.useState<OAuthGrant | null>(null)
-  const {
-    data: grants = [],
-    isLoading,
-    error,
-  } = useQuery<OAuthGrant[]>({
-    queryKey: ['cairn-login-grants'],
-    queryFn: async () => {
-      const { data, error: grantsError } = await createSupabaseClient().auth.oauth.listGrants()
-      if (grantsError || !data) throw new Error(t('Could not load apps that use Sign in with Cairn'))
-      return data
-    },
-  })
-  const revoke = useMutation({
-    mutationFn: async (clientId: string) => {
-      const { error: revokeError } = await createSupabaseClient().auth.oauth.revokeGrant({ clientId })
-      if (revokeError) throw new Error(t('Could not revoke access for this app'))
-    },
-    onSuccess: (_data, clientId) => {
+  const { data: grants = [], isLoading, error } = useCairnLoginGrants()
+  const revoke = useRevokeCairnLoginGrant()
+  const revokeGrant = async (clientId: string) => {
+    try {
+      await revoke.mutateAsync(clientId)
       toast.success(t('Access revoked'))
-      queryClient.setQueryData<OAuthGrant[]>(['cairn-login-grants'], (current) =>
-        current?.filter((grant) => grant.client.id !== clientId),
-      )
-    },
-  })
+    } catch (revokeError) {
+      toast.error(t((revokeError as Error).message))
+    }
+  }
 
   return (
     <section style={{ marginBottom: 32 }}>
@@ -2615,7 +2600,7 @@ const CairnLoginGrantSettings = () => {
         {isLoading ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
-          <InlineError>{(error as Error).message}</InlineError>
+          <InlineError>{t((error as Error).message)}</InlineError>
         ) : grants.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No apps use Sign in with Cairn.')}</div>
         ) : (
@@ -2655,7 +2640,7 @@ const CairnLoginGrantSettings = () => {
         message={t('You will need to allow access again to sign in to this app with Cairn.')}
         confirmLabel={t('Revoke access')}
         busyLabel={t('Revoking access...')}
-        onConfirm={async () => { if (revokeTarget) await revoke.mutateAsync(revokeTarget.client.id) }}
+        onConfirm={async () => { if (revokeTarget) await revokeGrant(revokeTarget.client.id) }}
         onClose={() => setRevokeTarget(null)}
       />
     </section>
