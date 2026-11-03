@@ -71,7 +71,7 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 | PostgREST（RPC） | `authenticated` が実行できる関数は `/rest/v1/rpc/<name>` から呼べる。`SECURITY DEFINER` の関数（`can_access_channel` などの権限判定や、Realtime への配信）は所有者の権限で動き、テーブルの権限や RLS を素通りする。関数の先頭で `client_id` 付きの呼び出しを拒否する（RLS ポリシーから呼ばれる関数があるため、実行権限を外すのではなく関数の中で判定する）|
 | Storage | `storage.objects` の既存ポリシーは `authenticated` に許可を出しているので、外部アプリのトークンも通る。`(auth.jwt() ->> 'client_id') IS NULL` の `AS RESTRICTIVE` ポリシーを足す |
 | Realtime | `realtime.messages` の認可ポリシーに同じ条件を足す |
-| Supabase Auth の API | Custom Access Token Hook（`restrict_external_app_tokens`）で、外部アプリ向けのアクセストークン（`client_id` 付き。リフレッシュ後も同じ）だけ `session_id` を存在しない値に、`aud` を `cairn-external-app` に書き換える。有効なセッションがないため、パスワード変更は再認証（本人のメールに届く nonce）が必要になり（`secure_password_change = true`）、MFA の登録はできない。メールアドレスの変更は `double_confirm_changes` で旧・新両方の確認が要る。ユーザー情報の読み取りと `user_metadata` の変更は防げない（ID トークンでも同じ）ため、同意画面ではメールアドレスなどのアカウント情報を確認できると明示する。`user_metadata` は初回の表示名の初期値にしか使っておらず、権限の判断には使わない |
+| Supabase Auth の API | Custom Access Token Hook（`restrict_external_app_tokens`）で、外部アプリ向けのアクセストークン（`client_id` 付き。リフレッシュ後も同じ）だけ `session_id` を発行のたびに実在しないランダムな UUID に、`aud` を `cairn-external-app` に書き換える。Auth はセッションを引けないため `/auth/v1/user`（読み取り・更新）・`/factors`・`/logout`・`/oauth/userinfo` を `session_not_found`（403）で拒否する。ゼロの UUID は「セッションなし」と扱われ、`/logout` で利用者の全端末のセッションが失効するので使わない。**ID トークンはフックの対象外**で、ユーザー情報の読み取り・`user_metadata` の変更・メールアドレス変更の開始（`double_confirm_changes` で旧・新両方の確認待ち）・全端末のログアウトができる（パスワード変更は再認証が必要）。そのため外部アプリには検証後の ID トークンを保存・送信しないよう求め、同意画面ではメールアドレスなどのアカウント情報を確認できると明示する |
 | 同意画面 | 他サイトの iframe に埋め込ませない（`frame-ancestors 'none'` / `X-Frame-Options: DENY`）。埋め込まれると、透明な枠の上で「許可」を押させるクリックジャッキングで許可を出させられる |
 
 - テーブル・ビューの権限の剥奪と RLS の有効化はマイグレーションで行う。今の権限の状態をマイグレーションに残し、ローカル・Preview・本番を同じにする
@@ -125,10 +125,11 @@ Supabase の OAuth アクセストークンは `aud: authenticated` の通常の
 3. **ベータ機能への依存**: 仕様変更があった場合の追従方針
 4. **同意画面の対象**: ゲストにも「Cairn でログイン」を許すか（ID トークンには所属もロールも出ないため、判断は外部アプリ側になる）
 5. **`email` スコープ**: 利用者のメールアドレスを外部アプリに渡してよいか。最初の外部アプリは `email` なしで成り立つか確認する
-6. **Supabase Auth の API への外部アプリのトークン（対応済み・本番で有効にする前に設定を揃える）**: 2026-11-03 にローカル（Supabase CLI 2.100.1、Auth v2.189.0）で確かめた
+6. **Supabase Auth の API への外部アプリのトークン（アクセストークンは対応済み・ID トークンは一部残る）**: 2026-11-03 にローカル（Supabase CLI 2.100.1、Auth v2.189.0）で確かめた
    - フックなし: 外部アプリのアクセストークンで `PUT /auth/v1/user` からパスワードを変えられた（ログイン直後は `secure_password_change` でも止まらない）
    - `aud` の書き換えだけ: Auth の `/user` は `aud` を見ておらず、止まらなかった
-   - `session_id` も書き換え（採用）: パスワード変更は `reauthentication_needed`、MFA の登録は失敗、元のパスワードのまま。ID トークンでもパスワード変更は `reauthentication_needed`。通常ログインのセッションは影響なし
-   - 防げないもの: `GET /auth/v1/user`（メールアドレス・メタデータ・連携 ID）と `user_metadata` の変更。アクセストークンでも ID トークンでもできる。メールアドレスの変更は旧・新両方の確認が要るので完了しない
+   - `session_id` をゼロの UUID に: パスワード変更は再認証が必要になったが、`/logout` で利用者の全端末のセッションが失効した
+   - `session_id` を実在しないランダムな UUID に（採用）: アクセストークンでは `/user`・`/factors`・`/logout`・`/oauth/userinfo` がすべて 403。元のパスワードのまま、通常ログインのセッション・リフレッシュ・ID トークンの発行は影響なし
+   - ID トークンで残るもの（フックの対象外）: `GET /auth/v1/user`、`user_metadata` の変更、メールアドレス変更の開始（旧・新両方の確認待ちで完了しない）、`/logout` による全端末のログアウト。パスワード変更は `reauthentication_needed`。外部アプリが ID トークンを漏らさない前提に頼る部分で、Supabase 側で ID トークンを Auth の API で受け付けない設定ができれば塞ぐ
    - 本番では、ダッシュボードの Auth Hooks で `restrict_external_app_tokens` を指定し、`secure_password_change` と `double_confirm_changes` を有効にしてから OAuth Server を有効にする。フックはすべてのトークン発行で呼ばれ、失敗すると通常のログインもできなくなる
-   - ID トークンの `name` には、`email` スコープを許可していなくてもメールアドレスが入る（表示名を持たない利用者の場合）。上のとおり Auth の API からも読めるので、メールアドレスは外部アプリに渡るものとして扱う
+   - ID トークンの `name` には、`email` スコープを許可していなくてもメールアドレスが入る（表示名を持たない利用者の場合）。メールアドレスは外部アプリに渡るものとして扱う
