@@ -1,4 +1,5 @@
 import { matchMentionQuery, translate } from '@cairn/shared'
+import { isAppOrigin } from './chat-link'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
 
@@ -227,6 +228,7 @@ function mobileChatToolPath(path: string, appBaseUrl: string) {
 export function resolveMobileMarkdownLink(
   rawUrl: string,
   appBaseUrl: string,
+  development = false,
 ): MobileMarkdownLink | null {
   const value = rawUrl.trim()
   if (!value || value.startsWith('//')) return null
@@ -243,7 +245,7 @@ export function resolveMobileMarkdownLink(
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
 
-    if (parsed.origin === new URL(appBaseUrl).origin) {
+    if (isAppOrigin(parsed, appBaseUrl, development)) {
       const path = resolveInternalAppPath(
         `${parsed.pathname}${parsed.search}${parsed.hash}`,
         appBaseUrl,

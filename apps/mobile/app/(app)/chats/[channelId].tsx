@@ -28,6 +28,7 @@ import {
   useMarkChannelRead,
   useDeleteMessage,
   useEditMessage,
+  useMessageHistory,
   useMessages,
   useMoveMessagesToThread,
   useToggleMessageBookmark,
@@ -65,6 +66,9 @@ import {
   isPreviewableAttachment,
 } from '../../../lib/attachment-file'
 import { API_BASE_URL } from '../../../lib/env'
+import { chatLinkTarget } from '../../../lib/chat-link'
+import { followNotification } from '../../../lib/follow-notification'
+import { MESSAGE_HIGHLIGHT_MS, resolveMessageJumpView } from '../../../lib/message-jump'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { apiActionError, apiFetch } from '../../../lib/api-fetch'
@@ -677,12 +681,16 @@ function ActionButton({
 
 export default function ChatThreadScreen() {
   const t = useT()
-  const { channelId, channelName, channelType, projectId, isPrivate } = useLocalSearchParams<{
+  const { channelId, channelName, channelType, projectId, isPrivate, messageId: messageIdParam, jumpKey } = useLocalSearchParams<{
     channelId: string
     channelName?: string
     channelType?: 'project' | 'workspace' | 'dm'
     projectId?: string
     isPrivate?: string
+    /** リンク・通知が指すメッセージ。この位置までスクロールして強調する */
+    messageId?: string
+    /** 同じメッセージへもう一度移るときも反応させるための、移動ごとのキー */
+    jumpKey?: string
   }>()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -819,19 +827,51 @@ export default function ChatThreadScreen() {
   }
   const mentionSelectionsRef = React.useRef<MentionSelection[]>([])
   const messages = messagesRead.data ?? []
+  // リンク・通知が指すメッセージへの移動。直近のページに無ければ、その前後を別キャッシュで取得して表示する（Web の履歴表示と同じ）
+  // 初回の描画から持たせ、飛び先を知らないまま直近の発言を既読化しないようにする
+  const [jumpRequest, setJumpRequest] = React.useState<{ messageId: string; key: string } | null>(() =>
+    messageIdParam ? { messageId: messageIdParam, key: jumpKey ?? messageIdParam } : null,
+  )
+  React.useEffect(() => {
+    setJumpRequest(messageIdParam ? { messageId: messageIdParam, key: jumpKey ?? messageIdParam } : null)
+  }, [channelId, messageIdParam, jumpKey])
+  const jumpMessageId = jumpRequest?.messageId ?? null
+  const latestMessageIds = React.useMemo(() => messages.map((message) => message.id), [messages])
+  const { needsHistory } = resolveMessageJumpView({
+    jumpMessageId,
+    latestLoaded: messagesQuery.isSuccess,
+    latestMessageIds,
+    historyLoaded: false,
+    historyMessageCount: 0,
+  })
+  const historyQuery = useMessageHistory(channelId ?? null, needsHistory ? jumpMessageId : null)
+  const { historyUnavailable, isHistoryView } = resolveMessageJumpView({
+    jumpMessageId,
+    latestLoaded: messagesQuery.isSuccess,
+    latestMessageIds,
+    historyLoaded: historyQuery.isSuccess,
+    historyMessageCount: historyQuery.data?.length ?? 0,
+  })
+  const displayedMessages = isHistoryView ? (historyQuery.data ?? []) : messages
+  // 飛び先が見つからない（削除済み・スレッドへ移動後に別チャンネル扱い等）ときは、黙って最新を見せず理由を出す
+  React.useEffect(() => {
+    if (!historyUnavailable) return
+    setSendError(translateRef.current('The message could not be found. It may have been deleted, or you may not have access.'))
+    setJumpRequest(null)
+  }, [historyUnavailable])
   // 開いた画像と同じメッセージの画像だけをビューアで前後に移動できるようにする
   const previewImages = React.useMemo(
     () =>
       attachmentPreview
         ? resolveViewerImages(
-            messages.find((message) => message.attachments.some((a) => a.id === attachmentPreview.id))
+            displayedMessages.find((message) => message.attachments.some((a) => a.id === attachmentPreview.id))
               ?.attachments,
             attachmentPreview,
           )
         : { images: [], index: 0 },
-    [attachmentPreview, messages],
+    [attachmentPreview, displayedMessages],
   )
-  const reactionPeopleMessage = messages.find(message => message.id === reactionPeople?.messageId)
+  const reactionPeopleMessage = displayedMessages.find(message => message.id === reactionPeople?.messageId)
   const reactionPeopleSummary = reactionPeople && reactionPeopleMessage
     ? getReactionPeopleSummary(reactionPeopleMessage.reactions, reactionPeople.selectedEmoji)
     : null
@@ -1068,6 +1108,8 @@ export default function ChatThreadScreen() {
       messagesQuery.isFetching ||
       messagesQuery.isError ||
       messagesRead.stale ||
+      // 過去のメッセージを見ている間は、まだ見ていない最新の発言まで既読にしない（Web と同じ）
+      isHistoryView ||
       messages.length === 0
     )
       return
@@ -1081,7 +1123,7 @@ export default function ChatThreadScreen() {
         lastReadMessageIdRef.current = lastId
       },
     })
-  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, messagesRead.stale, isFocused, isAppActive])
+  }, [channelId, messages, messagesQuery.isFetching, messagesQuery.isError, messagesRead.stale, isHistoryView, isFocused, isAppActive])
 
   async function handleSend() {
     const content = serializeMentions(draft, mentionSelectionsRef.current).trim()
@@ -1112,6 +1154,8 @@ export default function ChatThreadScreen() {
       return
     const sendingChannelId = channelId
     const sendingDraft = draft
+    // 送った発言が見えるよう、過去のメッセージの表示から最新へ戻す
+    setJumpRequest(null)
     const parentMessageId = replyTarget?.id
     const clientMessageId = createClientMessageId()
     setSendError(null)
@@ -1495,19 +1539,71 @@ export default function ChatThreadScreen() {
   }
 
   // FlatList を inverted 表示するため新しい順に並べ替える。
-  const reversedMessages = [...messages].reverse()
+  // 過去のメッセージの表示では、未送信の発言は最新の後ろに続くものなので並べない
+  const reversedMessages = [...displayedMessages].reverse()
   const listItems = [
-    ...queuedMessages
+    ...(isHistoryView ? [] : queuedMessages)
       .slice()
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((message) => ({ kind: 'queued' as const, message })),
     ...reversedMessages.map((message) => ({ kind: 'server' as const, message })),
   ]
+  const olderMessagesQuery = isHistoryView ? historyQuery : messagesQuery
 
   const loadOlderMessages = () => {
-    if (!channelId || !messagesQuery.hasNextPage || messagesQuery.isFetchingNextPage) return
-    void messagesQuery.fetchNextPage()
+    if (!channelId || !olderMessagesQuery.hasNextPage || olderMessagesQuery.isFetchingNextPage) return
+    void olderMessagesQuery.fetchNextPage()
   }
+
+  const listRef = React.useRef<FlatList<(typeof listItems)[number]>>(null)
+  const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null)
+  const handledJumpRef = React.useRef<string | null>(null)
+  const highlightTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollRetryCountRef = React.useRef(0)
+  React.useEffect(() => () => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+  }, [])
+  const jumpTargetIndex = jumpRequest
+    ? listItems.findIndex((item) => item.kind === 'server' && item.message.id === jumpRequest.messageId)
+    : -1
+  // 飛び先が一覧に並んだら、一度だけその位置へスクロールして強調する。
+  // 前後の表示から直近の表示へ切り替わった（直近の再取得で飛び先が入った）ときは位置が変わるので合わせ直す。
+  // 新着で index がずれても再実行しないよう、タイマーは ref で持ちアンマウント時だけ片付ける
+  React.useEffect(() => {
+    if (!jumpRequest || jumpTargetIndex < 0) return
+    const handledKey = `${jumpRequest.key}:${isHistoryView ? 'history' : 'latest'}`
+    if (handledJumpRef.current === handledKey) return
+    handledJumpRef.current = handledKey
+    scrollRetryCountRef.current = 0
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    // 一覧が描画されてからでないと位置を測れない
+    scrollTimerRef.current = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: jumpTargetIndex, viewPosition: 0.5, animated: true })
+    }, 0)
+    setHighlightedMessageId(jumpRequest.messageId)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightedMessageId(null), MESSAGE_HIGHLIGHT_MS)
+  }, [isHistoryView, jumpRequest, jumpTargetIndex])
+
+  // 未描画の行へは scrollToIndex できないため、平均の高さで近くまで動かし、描画を待ってから合わせ直す
+  const handleScrollToIndexFailed = (info: { index: number; averageItemLength: number }) => {
+    if (scrollRetryCountRef.current >= 5) return
+    scrollRetryCountRef.current += 1
+    listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false })
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    scrollTimerRef.current = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: info.index, viewPosition: 0.5, animated: true })
+    }, 80)
+  }
+
+  const showLatestMessages = React.useCallback(() => {
+    setJumpRequest(null)
+    setHighlightedMessageId(null)
+    // 前後の表示から戻るときは一覧ごと入れ替わるので、アニメーションせずに先頭へ置く
+    listRef.current?.scrollToOffset({ offset: 0, animated: !isHistoryView })
+  }, [isHistoryView])
 
   const openSearch = () => {
     if (!channelId) return
@@ -1552,7 +1648,31 @@ export default function ChatThreadScreen() {
 
   const openMarkdownLink = React.useCallback(
     (url: string) => {
-      const target = resolveMobileMarkdownLink(url, API_BASE_URL)
+      // チャンネル・メッセージへのリンクは WebView ではなくネイティブのチャットで開く
+      const chatTarget = chatLinkTarget(url, API_BASE_URL, __DEV__)
+      if (chatTarget) {
+        if (chatTarget.kind === 'list') {
+          goBackToList()
+          return false
+        }
+        // 表示中の会話の、読み込み済みのメッセージなら通信せずにその位置へ移る
+        if (
+          chatTarget.channelId === channelId &&
+          chatTarget.messageId &&
+          messages.some((message) => message.id === chatTarget.messageId)
+        ) {
+          setJumpRequest({ messageId: chatTarget.messageId, key: Date.now().toString(36) })
+          return false
+        }
+        if (chatTarget.channelId === channelId && !chatTarget.messageId) {
+          showLatestMessages()
+          return false
+        }
+        setSendError(null)
+        void followNotification(router, chatTarget, { t, onUnavailable: setSendError })
+        return false
+      }
+      const target = resolveMobileMarkdownLink(url, API_BASE_URL, __DEV__)
       if (!target) {
         setSendError(t('This link cannot be opened.'))
         return false
@@ -1576,7 +1696,7 @@ export default function ChatThreadScreen() {
       })
       return false
     },
-    [channelId, channelName, channelType, isPrivate, projectId, router, t],
+    [channelId, channelName, channelType, goBackToList, isPrivate, messages, projectId, router, showLatestMessages, t],
   )
 
   // PDF 内のリンクもチャット本文と同じ規則で開く。アプリ内の画面へ移るときは
@@ -1584,7 +1704,7 @@ export default function ChatThreadScreen() {
   // 送信欄のエラーはモーダルの裏に隠れるため、PDF 表示中の失敗は Alert で伝える
   const openDocumentLink = React.useCallback(
     (url: string) => {
-      const target = resolveMobileMarkdownLink(url, API_BASE_URL)
+      const target = resolveMobileMarkdownLink(url, API_BASE_URL, __DEV__)
       if (!target) {
         Alert.alert(t('This link cannot be opened.'))
         return
@@ -1745,10 +1865,43 @@ export default function ChatThreadScreen() {
                 </Pressable>
               </View>
             )}
+            {isHistoryView && historyQuery.isError && (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.refreshError,
+                  { backgroundColor: palette.card2, borderColor: palette.redText },
+                ]}
+              >
+                <Ionicons name="cloud-offline-outline" size={16} color={palette.redText} />
+                <Text
+                  style={[styles.refreshErrorText, { color: palette.redText }]}
+                  numberOfLines={2}
+                >
+                  {historyQuery.error.message}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Reload messages')}
+                  disabled={historyQuery.isFetching}
+                  onPress={() => void historyQuery.refetch()}
+                  hitSlop={6}
+                >
+                  {historyQuery.isFetching ? (
+                    <ActivityIndicator size="small" color={palette.redText} />
+                  ) : (
+                    <Text style={[styles.refreshErrorAction, { color: palette.redText }]}>{t('Retry')}</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
             <FlatList
+              ref={listRef}
               style={styles.messageList}
               data={listItems}
               inverted
+              extraData={highlightedMessageId}
+              onScrollToIndexFailed={handleScrollToIndexFailed}
               keyExtractor={(item) => `${item.kind}:${item.message.id}`}
               renderItem={({ item }) =>
                 item.kind === 'queued' ? (
@@ -1761,40 +1914,48 @@ export default function ChatThreadScreen() {
                     onCancel={() => offlineQueue.cancel(item.message.id)}
                   />
                 ) : (
-                  <SwipeToReply
-                    enabled={canSwipeReply(item.message)}
-                    palette={palette}
-                    onReply={() => beginReply(item.message)}
+                  <View
+                    style={
+                      item.message.id === highlightedMessageId
+                        ? [styles.highlightedMessage, { backgroundColor: palette.accentSoft }]
+                        : undefined
+                    }
                   >
-                    <ChatMessageRow
-                      message={item.message}
+                    <SwipeToReply
+                      enabled={canSwipeReply(item.message)}
                       palette={palette}
-                      mentionNames={mentionNames}
-                      onToggleReaction={handleToggleReaction}
-                      onAddReaction={setReactionTarget}
-                      onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
-                      onLinkPress={openMarkdownLink}
-                      onOpenActions={openMessageActions}
-                      onOpenProfile={openProfile}
-                      onOpenPreview={setAttachmentPreview}
-                      onOpenTask={openTask}
-                      onShowTasks={setLinkedTasksSheet}
-                      {...(attachmentAuth ? { attachmentAuth } : {})}
-                    />
-                  </SwipeToReply>
+                      onReply={() => beginReply(item.message)}
+                    >
+                      <ChatMessageRow
+                        message={item.message}
+                        palette={palette}
+                        mentionNames={mentionNames}
+                        onToggleReaction={handleToggleReaction}
+                        onAddReaction={setReactionTarget}
+                        onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
+                        onLinkPress={openMarkdownLink}
+                        onOpenActions={openMessageActions}
+                        onOpenProfile={openProfile}
+                        onOpenPreview={setAttachmentPreview}
+                        onOpenTask={openTask}
+                        onShowTasks={setLinkedTasksSheet}
+                        {...(attachmentAuth ? { attachmentAuth } : {})}
+                      />
+                    </SwipeToReply>
+                  </View>
                 )
               }
               contentContainerStyle={styles.list}
               onEndReached={() => void loadOlderMessages()}
               onEndReachedThreshold={0.25}
               ListFooterComponent={
-                messagesQuery.isFetchingNextPage ? (
+                olderMessagesQuery.isFetchingNextPage ? (
                   <ActivityIndicator
                     style={styles.olderLoading}
                     size="small"
                     color={palette.accent}
                   />
-                ) : messagesQuery.isFetchNextPageError ? (
+                ) : olderMessagesQuery.isFetchNextPageError ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={t('Reload older messages')}
@@ -1802,18 +1963,33 @@ export default function ChatThreadScreen() {
                     style={styles.olderError}
                   >
                     <Text style={[styles.olderErrorText, { color: palette.redText }]}>
-                      {messagesQuery.error?.message ?? t('Could not load older messages')}
+                      {olderMessagesQuery.error?.message ?? t('Could not load older messages')}
                       {t(' {action}', { action: t('Retry') })}
                     </Text>
                   </Pressable>
                 ) : null
               }
               ListEmptyComponent={
-                messagesRead.error || messagesRead.stale ? null : (
+                isHistoryView ? (
+                  historyQuery.isLoading ? (
+                    <ActivityIndicator style={styles.olderLoading} size="small" color={palette.accent} />
+                  ) : null
+                ) : messagesRead.error || messagesRead.stale ? null : (
                   <Text style={[styles.empty, { color: palette.text4 }]}>{t('No messages yet. Send the first one.')}</Text>
                 )
               }
             />
+            {isHistoryView && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('Go to the latest message')}
+                onPress={showLatestMessages}
+                style={[styles.latestButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+                hitSlop={6}
+              >
+                <Ionicons name="arrow-down" size={20} color={palette.text2} />
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -2604,6 +2780,24 @@ const styles = StyleSheet.create({
   // ここでも insets.bottom を足すと二重になり、入力欄の下に大きな隙間ができる
   composerArea: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
   messageListContainer: { flex: 1 },
+  // 行の左右の余白まで含めて強調する
+  highlightedMessage: { marginHorizontal: -16, paddingHorizontal: 16, borderRadius: 8 },
+  latestButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
   messageList: { flex: 1 },
   olderLoading: { marginVertical: 14 },
   olderError: { alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },

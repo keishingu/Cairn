@@ -178,7 +178,11 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
 
   React.useEffect(() => {
     if (!isWebView || page !== 'chats' || isNativeChatAux) return
-    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats' }))
+    // 画面内遷移はアプリの onShouldStartLoadWithRequest を通らないため、チャンネル・メッセージを開けるよう行き先を渡す
+    window.ReactNativeWebView?.postMessage(JSON.stringify({
+      type: 'open-chats',
+      path: `${window.location.pathname}${window.location.search}`,
+    }))
     router.back()
   }, [isNativeChatAux, isWebView, page, router])
 

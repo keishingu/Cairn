@@ -154,6 +154,18 @@ describe('モバイルチャット状態', () => {
       '/chats/channel-1',
     )
   })
+
+  it('開発ビルドでは同じポートのlocalhostのリンクもCairn内導線として扱う', () => {
+    const baseUrl = 'http://192.168.0.10:3128'
+    expect(resolveMobileMarkdownLink('http://localhost:3128/tasks', baseUrl, true)).toEqual({
+      kind: 'internal',
+      path: '/tasks',
+    })
+    expect(resolveMobileMarkdownLink('http://localhost:3128/tasks', baseUrl)).toEqual({
+      kind: 'external',
+      url: 'http://localhost:3128/tasks',
+    })
+  })
 })
 
 describe('全角＠のメンション', () => {
