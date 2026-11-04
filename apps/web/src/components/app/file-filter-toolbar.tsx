@@ -17,7 +17,8 @@ interface FilterOption {
 interface FileFilterToolbarProps {
   isMobile: boolean
   conditions: FileFilterConditions
-  counts: Record<FileTypeFilter, number>
+  /** 種類別の件数。集計の取得前は undefined で、件数を出さない */
+  counts: Record<FileTypeFilter, number> | undefined
   projects: FilterOption[]
   uploaders: FilterOption[]
   savedFilters: SavedFileFilterDto[]
@@ -170,7 +171,7 @@ export function FileFilterToolbar({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {t(filter.label)} ({counts[filter.id]})
+                {t(filter.label)}{counts ? ` (${counts[filter.id]})` : ''}
               </button>
             )
           })}

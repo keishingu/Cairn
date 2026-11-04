@@ -2,7 +2,6 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
@@ -12,26 +11,25 @@ import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
 import type { FileDto } from '@/app/api/files/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { useT } from '@/components/locale-provider'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { useRenameFile } from '@/hooks/use-rename-file'
 import { useSavedFileFilters } from '@/hooks/use-saved-file-filters'
+import { useDebounce } from '@/hooks/use-debounce'
+import {
+  useDeleteWorkspaceFile,
+  useFileTextPreview,
+  useReindexWorkspaceFile,
+  useWorkspaceFileFacets,
+  useWorkspaceFileList,
+} from '@/hooks/use-workspace-files'
+import { buildFileListSearchParams } from '@/lib/files/file-list-query'
 import {
   DEFAULT_FILE_FILTER_CONDITIONS,
   type FileFilterConditions,
   type FileTypeFilter,
 } from '@/lib/files/saved-file-filter'
-
-const DOC_MIME_TYPES = [
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/csv',
-]
 
 const REINDEXABLE_MIME_TYPES = new Set([
   'application/pdf',
@@ -43,8 +41,6 @@ const REINDEXABLE_MIME_TYPES = new Set([
   'text/csv',
 ])
 
-const PAGE_SIZE = 20
-
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return ''
   if (bytes < 1024) return `${bytes}B`
@@ -55,11 +51,6 @@ function formatFileSize(bytes: number | null): string {
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function localDate(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function isImageFile(file: FileDto): boolean {
@@ -84,14 +75,6 @@ function isPlainTextFile(file: FileDto): boolean {
 
 function isPreviewableTextFile(file: FileDto): boolean {
   return isMarkdownFile(file) || isPlainTextFile(file)
-}
-
-function matchesFilter(file: FileDto, filter: FileTypeFilter): boolean {
-  if (filter === 'all') return true
-  if (filter === 'pdf') return file.mimeType === 'application/pdf'
-  if (filter === 'img') return file.mimeType?.startsWith('image/') ?? false
-  if (filter === 'doc') return DOC_MIME_TYPES.includes(file.mimeType ?? '')
-  return true
 }
 
 // ─── FileRow ──────────────────────────────────────────────────────
@@ -301,7 +284,8 @@ const FileSection = ({
   children,
 }: {
   label: string
-  count: number
+  /** 絞り込み後の件数。集計の取得前は表示しない */
+  count: number | undefined
   open: boolean
   onToggle: () => void
   children: React.ReactNode
@@ -329,19 +313,21 @@ const FileSection = ({
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', flex: 1 }}>
         {label}
       </span>
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: 'var(--text-3)',
-          background: 'var(--card)',
-          border: '1px solid var(--border)',
-          padding: '1px 6px',
-          borderRadius: 999,
-        }}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: 'var(--text-3)',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            padding: '1px 6px',
+            borderRadius: 999,
+          }}
+        >
+          {count}
+        </span>
+      )}
     </button>
     {open && children}
   </section>
@@ -357,7 +343,6 @@ export const PageFiles = ({
   externalSearch?: string
 }) => {
   const t = useT()
-  const queryClient = useQueryClient()
   const renameFile = useRenameFile()
   const [conditions, setConditions] = React.useState<FileFilterConditions>(
     DEFAULT_FILE_FILTER_CONDITIONS,
@@ -365,16 +350,28 @@ export const PageFiles = ({
   const [activeSavedFilterId, setActiveSavedFilterId] = React.useState<string | null>(null)
   const [filterDeleteTarget, setFilterDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
-  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [textPreviewFile, setTextPreviewFile] = React.useState<FileDto | null>(null)
   const sentinelRef = React.useRef<HTMLDivElement>(null)
 
-  const { data: files = [], isLoading } = useQuery<FileDto[]>({
-    queryKey: ['files'],
-    queryFn: () => fetchWithAuth('/api/files').then((r) => r.json()),
-  })
+  // 検索語は入力のたびに問い合わせないよう少し待ってからサーバーへ渡す
+  const debouncedSearch = useDebounce(conditions.search, 300)
+  const debouncedExternalSearch = useDebounce(isMobile ? '' : (externalSearch ?? ''), 300)
+  const listParams = React.useMemo(
+    () =>
+      buildFileListSearchParams(
+        { ...conditions, search: debouncedSearch },
+        [debouncedExternalSearch],
+      ).toString(),
+    [conditions, debouncedSearch, debouncedExternalSearch],
+  )
+
+  const filesQuery = useWorkspaceFileList(listParams)
+  const { files, hasNextPage, isFetchingNextPage, fetchNextPage, loadedPageCount } = filesQuery
+
+  const facetsQuery = useWorkspaceFileFacets(listParams)
+  const facets = facetsQuery.data
 
   const {
     data: savedFilters = [],
@@ -388,40 +385,10 @@ export const PageFiles = ({
     data: textPreviewContent,
     isLoading: isTextPreviewLoading,
     isError: isTextPreviewError,
-  } = useQuery<string>({
-    queryKey: ['attachment-text-preview', textPreviewFile?.id],
-    enabled: textPreviewFile !== null,
-    queryFn: async () => {
-      if (!textPreviewFile) throw new Error(t('No text file to preview'))
-      const res = await fetchWithAuth(`/api/attachments/${textPreviewFile.id}`)
-      if (!res.ok) throw new Error(t('Could not fetch the text preview'))
-      return res.text()
-    },
-  })
+  } = useFileTextPreview(textPreviewFile?.id ?? null)
 
-  const deleteFile = useMutation({
-    mutationFn: (fileId: string) =>
-      fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw new Error(t('Could not delete the file'))
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['files'] })
-      void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-    },
-  })
-
-  const reindexFile = useMutation({
-    mutationFn: (fileId: string) =>
-      fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error(t('Could not reindex the file'))
-      }),
-    onMutate: (fileId: string) => {
-      queryClient.setQueryData<FileDto[]>(['files'], (prev) =>
-        prev?.map((f) => (f.id === fileId ? { ...f, indexingStatus: 'pending' } : f)),
-      )
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
-  })
+  const deleteFile = useDeleteWorkspaceFile()
+  const reindexFile = useReindexWorkspaceFile()
 
   const handleDelete = (fileId: string, fileName: string) => {
     setDeleteTarget({ id: fileId, name: fileName })
@@ -431,30 +398,8 @@ export const PageFiles = ({
     reindexFile.mutate(fileId)
   }
 
-  const filtered = React.useMemo(() => {
-    const q = conditions.search.trim().toLowerCase()
-    const externalQ = isMobile ? '' : (externalSearch ?? '').trim().toLowerCase()
-    return files.filter(
-      (f) =>
-        matchesFilter(f, conditions.type) &&
-        (conditions.projectId === 'all' ||
-          (conditions.projectId === 'none'
-            ? f.projectId === null
-            : f.projectId === conditions.projectId)) &&
-        (conditions.uploaderId === 'all' || f.uploaderId === conditions.uploaderId) &&
-        (!conditions.createdFrom || localDate(f.createdAt) >= conditions.createdFrom) &&
-        (!conditions.createdTo || localDate(f.createdAt) <= conditions.createdTo) &&
-        (!q ||
-          f.fileName.toLowerCase().includes(q) ||
-          (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(q)) &&
-        (!externalQ ||
-          f.fileName.toLowerCase().includes(externalQ) ||
-          (f.projectTitle ?? f.channelName ?? '').toLowerCase().includes(externalQ)),
-    )
-  }, [files, conditions, externalSearch, isMobile])
-
   // 現在の絞り込み結果に含まれる画像だけをライトボックスで前後送りできるようにする
-  const imageFiles = React.useMemo(() => filtered.filter(isImageFile), [filtered])
+  const imageFiles = React.useMemo(() => files.filter(isImageFile), [files])
   const lightboxImages = React.useMemo<LightboxImage[]>(
     () =>
       imageFiles.map((f) => ({
@@ -472,39 +417,28 @@ export const PageFiles = ({
     [imageFiles],
   )
 
-  React.useEffect(() => {
-    setVisibleCount(PAGE_SIZE)
-  }, [conditions, externalSearch])
-
+  // 末尾が見えたら次のページを読む。読み込み後も末尾が見えたままなら、observer を
+  // 張り直したときの初回通知で続けて読む（ページ数を依存に入れているのはそのため）。
+  // 次ページの取得に失敗したら自動では読み直さず、「再試行」を押すまで止める
+  // （末尾が見えたままだと、張り直した observer が同じ失敗を繰り返し続けるため）
+  const isFetchNextPageError = filesQuery.isFetchNextPageError
   React.useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel) return
+    if (!sentinel || !hasNextPage || isFetchingNextPage || isFetchNextPageError) return
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) setVisibleCount((c) => c + PAGE_SIZE)
+        if (entry?.isIntersecting) void fetchNextPage()
       },
       { rootMargin: '200px' },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [])
-
-  const counts = React.useMemo(
-    () => ({
-      all: files.length,
-      pdf: files.filter((f) => f.mimeType === 'application/pdf').length,
-      img: files.filter((f) => f.mimeType?.startsWith('image/') ?? false).length,
-      doc: files.filter((f) => DOC_MIME_TYPES.includes(f.mimeType ?? '')).length,
-    }),
-    [files],
-  )
-
-  const pagedFiles = filtered.slice(0, visibleCount)
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, loadedPageCount])
 
   const grouped = React.useMemo(() => {
     const projectOrder: string[] = []
     const projectMap = new Map<string, FileDto[]>()
-    for (const file of filtered) {
+    for (const file of files) {
       const key = file.projectId ?? 'none'
       if (!projectMap.has(key)) {
         projectMap.set(key, [])
@@ -512,19 +446,17 @@ export const PageFiles = ({
       }
       projectMap.get(key)!.push(file)
     }
-    const pagedIds = new Set(pagedFiles.map((file) => file.id))
-    return projectOrder
-      .map((projectId) => {
-        const allProjectFiles = projectMap.get(projectId)!
-        return {
-          key: projectId,
-          label: allProjectFiles[0]!.projectTitle ?? t('No project'),
-          count: allProjectFiles.length,
-          files: allProjectFiles.filter((file) => pagedIds.has(file.id)),
-        }
-      })
-      .filter((group) => group.files.length > 0)
-  }, [filtered, pagedFiles, t])
+    return projectOrder.map((projectId) => {
+      const projectFiles = projectMap.get(projectId)!
+      return {
+        key: projectId,
+        label: projectFiles[0]!.projectTitle ?? t('No project'),
+        // 未読み込みのページも含めた件数
+        count: facets?.projectCounts[projectId],
+        files: projectFiles,
+      }
+    })
+  }, [files, facets, t])
 
   const isSectionOpen = React.useCallback(
     (key: string, index: number) => sectionOverride[key] ?? index < 3,
@@ -596,23 +528,8 @@ export const PageFiles = ({
     setNavIdx(-1)
   }, [conditions, externalSearch, grouped.length, setNavIdx])
 
-  const projectOptions = React.useMemo(() => {
-    const projects = new Map<string, string>()
-    files.forEach((file) => {
-      if (file.projectId && file.projectTitle) projects.set(file.projectId, file.projectTitle)
-    })
-    return [...projects]
-      .map(([id, label]) => ({ id, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ja'))
-  }, [files])
-
-  const uploaderOptions = React.useMemo(() => {
-    const uploaders = new Map<string, string>()
-    files.forEach((file) => uploaders.set(file.uploaderId, file.uploaderName))
-    return [...uploaders]
-      .map(([id, label]) => ({ id, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ja'))
-  }, [files])
+  const projectOptions = facets?.projects ?? []
+  const uploaderOptions = facets?.uploaders ?? []
 
   const handleConditionsChange = (next: FileFilterConditions) => {
     setConditions(next)
@@ -635,7 +552,7 @@ export const PageFiles = ({
       <FileFilterToolbar
         isMobile={isMobile}
         conditions={conditions}
-        counts={counts}
+        counts={facets?.typeCounts}
         projects={projectOptions}
         uploaders={uploaderOptions}
         savedFilters={savedFilters}
@@ -665,7 +582,15 @@ export const PageFiles = ({
           paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
         }}
       >
-        {isLoading ? (
+        {facetsQuery.isError && (
+          <div
+            role="alert"
+            style={{ margin: isMobile ? 12 : '16px 20px 0', fontSize: 12.5, color: 'var(--danger)' }}
+          >
+            {facetsQuery.error.message}
+          </div>
+        )}
+        {filesQuery.isPending ? (
           <div
             style={{
               margin: isMobile ? 12 : '16px 20px',
@@ -678,7 +603,26 @@ export const PageFiles = ({
               <FileRowSkeleton key={i} />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filesQuery.isError && files.length === 0 ? (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '60%',
+              gap: 12,
+              color: 'var(--danger)',
+              fontSize: 13,
+            }}
+          >
+            {filesQuery.error.message}
+            <button className="btn" onClick={() => void filesQuery.refetch()}>
+              {t('Retry')}
+            </button>
+          </div>
+        ) : files.length === 0 ? (
           <div
             style={{
               display: 'flex',
@@ -706,7 +650,7 @@ export const PageFiles = ({
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No files')}</div>
             <div style={{ fontSize: 12.5 }}>
-              {files.length === 0
+              {listParams === ''
                 ? t('Files you send in chat show up here')
                 : t('No files match this filter')}
             </div>
@@ -757,6 +701,22 @@ export const PageFiles = ({
               ))}
             </div>
             <div ref={sentinelRef} />
+            {isFetchingNextPage && (
+              <div style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--text-3)' }}>
+                {t('Loading...')}
+              </div>
+            )}
+            {filesQuery.isFetchNextPageError && (
+              <div
+                role="alert"
+                style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--danger)' }}
+              >
+                {filesQuery.error?.message}{' '}
+                <button className="btn" onClick={() => void fetchNextPage()}>
+                  {t('Retry')}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
