@@ -27,3 +27,12 @@ export function resolveMessageJumpView(input: {
   const historyUnavailable = needsHistory && input.historyLoaded && input.historyMessageCount === 0
   return { needsHistory, historyUnavailable, isHistoryView: needsHistory && !historyUnavailable }
 }
+
+/**
+ * 返信の引用をタップしたときの飛び先（Web の `/chats` と同じく、返信元が削除済みなら飛ばない）。
+ */
+export function replyJumpTargetId(
+  replyTo: { id: string; isDeleted: boolean } | null | undefined,
+): string | null {
+  return replyTo && !replyTo.isDeleted ? replyTo.id : null
+}

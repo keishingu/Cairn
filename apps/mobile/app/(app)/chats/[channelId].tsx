@@ -68,7 +68,7 @@ import {
 import { API_BASE_URL } from '../../../lib/env'
 import { chatLinkTarget } from '../../../lib/chat-link'
 import { followNotification } from '../../../lib/follow-notification'
-import { MESSAGE_HIGHLIGHT_MS, resolveMessageJumpView } from '../../../lib/message-jump'
+import { MESSAGE_HIGHLIGHT_MS, replyJumpTargetId, resolveMessageJumpView } from '../../../lib/message-jump'
 import { createClientMessageId, type QueuedMessage } from '../../../lib/offline-message-queue'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { apiActionError, apiFetch } from '../../../lib/api-fetch'
@@ -288,6 +288,7 @@ function ChatMessageRow({
   onOpenPreview,
   onOpenTask,
   onShowTasks,
+  onJumpToMessage,
 }: {
   message: MessageDto
   palette: Palette
@@ -303,6 +304,8 @@ function ChatMessageRow({
   onOpenPreview: (attachment: MessageDto['attachments'][number]) => void
   onOpenTask: (taskId: string) => void
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
+  /** 返信の引用をタップしたときに、返信元のメッセージへ移動する */
+  onJumpToMessage: (messageId: string) => void
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -433,7 +436,23 @@ function ChatMessageRow({
           )}
 
           {message.replyTo && (
-            <View style={[styles.replyPreview, { borderLeftColor: palette.accent }]}>
+            <Pressable
+              accessibilityRole={replyJumpTargetId(message.replyTo) ? 'button' : undefined}
+              accessibilityLabel={
+                replyJumpTargetId(message.replyTo)
+                  ? t('Go to the message this replies to')
+                  : undefined
+              }
+              disabled={!replyJumpTargetId(message.replyTo)}
+              onPress={() => {
+                const targetId = replyJumpTargetId(message.replyTo)
+                if (targetId) onJumpToMessage(targetId)
+              }}
+              onLongPress={() => onOpenActions(message)}
+              delayLongPress={350}
+              hitSlop={{ top: 4, bottom: 4 }}
+              style={[styles.replyPreview, { borderLeftColor: palette.accent }]}
+            >
               <Ionicons name="arrow-undo-outline" size={13} color={palette.text4} />
               <Text style={[styles.replySender, { color: palette.text3 }]} numberOfLines={1}>
                 {message.replyTo.senderName}
@@ -443,7 +462,7 @@ function ChatMessageRow({
                   ? t('Deleted message')
                   : parseMentions(message.replyTo.content, t) || t('(Attachment)')}
               </Text>
-            </View>
+            </Pressable>
           )}
 
           {message.blocked ? (
@@ -1591,6 +1610,11 @@ export default function ChatThreadScreen() {
     highlightTimerRef.current = setTimeout(() => setHighlightedMessageId(null), MESSAGE_HIGHLIGHT_MS)
   }, [isHistoryView, jumpRequest, jumpTargetIndex])
 
+  // 返信の引用から返信元へ移動する。同じ返信元を続けてタップしても毎回移動できるよう、要求ごとに key を変える
+  const jumpToMessage = React.useCallback((messageId: string) => {
+    setJumpRequest({ messageId, key: `${messageId}:${Date.now()}` })
+  }, [])
+
   // 未描画の行へは scrollToIndex できないため、平均の高さで近くまで動かし、描画を待ってから合わせ直す
   const handleScrollToIndexFailed = (info: { index: number; averageItemLength: number }) => {
     if (scrollRetryCountRef.current >= 5) return
@@ -1947,6 +1971,7 @@ export default function ChatThreadScreen() {
                         onOpenPreview={setAttachmentPreview}
                         onOpenTask={openTask}
                         onShowTasks={setLinkedTasksSheet}
+                        onJumpToMessage={jumpToMessage}
                         {...(attachmentAuth ? { attachmentAuth } : {})}
                       />
                     </SwipeToReply>

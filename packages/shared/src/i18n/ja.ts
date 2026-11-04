@@ -666,6 +666,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Go to chat': 'チャットに移動',
   'Go to the latest message': '最新のメッセージへ移動',
   'Go to the message that created this task': 'タスクを登録したメッセージへ移動',
+  'Go to the message this replies to': '返信元のメッセージへ移動',
   'Go to the message where this was shared': '共有されたメッセージへ移動',
   'Google Calendar': 'Google カレンダー',
   'Google Calendar → Cairn (import events)': 'Google カレンダー → Cairn（イベント読み込み）',
