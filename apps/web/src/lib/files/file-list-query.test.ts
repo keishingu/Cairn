@@ -58,6 +58,7 @@ describe('parseFileListParams', () => {
     ['limit=0'],
     ['limit=101'],
     ['cursor=broken'],
+    ['q=a&q=b&q=c&q=d&q=e&q=f'],
   ])('不正な値（%s）はエラーにする', (query) => {
     expect(parseFileListParams(new URLSearchParams(query)).ok).toBe(false)
   })

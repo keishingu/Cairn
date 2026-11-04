@@ -18,6 +18,7 @@ export const DOC_MIME_TYPES = [
 
 export const FILE_LIST_DEFAULT_LIMIT = 50
 export const FILE_LIST_MAX_LIMIT = 100
+export const FILE_LIST_MAX_SEARCH_TERMS = 5
 
 export interface FileListCursor {
   /** files.created_at をマイクロ秒まで含む ISO 文字列（JS の Date に通すとミリ秒へ丸まり、境界の行を取りこぼす） */
@@ -89,7 +90,10 @@ export function parseFileListParams(params: URLSearchParams): ParsedFileListPara
   if (createdBefore && !createdBefore.success) return { ok: false, error: 'Invalid createdBefore' }
 
   const search = params.getAll('q').map(q => q.trim()).filter(Boolean)
-  if (search.some(q => q.length > 200)) return { ok: false, error: 'Invalid q' }
+  // 検索語ごとに部分一致の条件とサブクエリが増えるため、個数も絞る（画面が送るのは最大2個）
+  if (search.length > FILE_LIST_MAX_SEARCH_TERMS || search.some(q => q.length > 200)) {
+    return { ok: false, error: 'Invalid q' }
+  }
 
   const cursorRaw = params.get('cursor')
   const cursor = cursorRaw === null ? null : decodeFileListCursor(cursorRaw)
