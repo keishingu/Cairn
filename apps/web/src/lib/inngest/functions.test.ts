@@ -27,9 +27,15 @@ vi.mock('./client', () => ({
 }))
 
 vi.mock('@/lib/push/send', () => ({ sendPushToUser: vi.fn() }))
+vi.mock('@/lib/uploads/cleanup', () => ({ cleanupExpiredUploadRequests: vi.fn() }))
+vi.mock('@/lib/ai/attachments', () => ({ cleanupUnsentAiAttachments: vi.fn() }))
+vi.mock('@/first-party-apps/polls', () => ({ sweepStalePolls: vi.fn() }))
 
 import './functions'
 import { sendPushToUser } from '@/lib/push/send'
+import { cleanupExpiredUploadRequests } from '@/lib/uploads/cleanup'
+import { cleanupUnsentAiAttachments } from '@/lib/ai/attachments'
+import { sweepStalePolls } from '@/first-party-apps/polls'
 
 function stepNames(run: ReturnType<typeof vi.fn>) {
   return run.mock.calls.map(([name]) => name as string)
@@ -56,6 +62,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         case 'fetch-mentioned-members':
           return [{ userId: 'mentioned-user', displayName: 'メンバー' }]
         default:
@@ -106,6 +114,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -153,6 +163,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -199,6 +211,8 @@ describe('onMessageCreated', () => {
           return {}
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -242,10 +256,14 @@ describe('onMessageCreated', () => {
           return {}
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         case 'fetch-mentioned-members':
         case 'filter-mention-access':
         case 'filter-blocked-mentions':
           return [mentioned]
+        case 'resolve-recipient-locales':
+          return { 'mentioned-user': 'ja' }
         case 'create-mention-notifications':
           return undefined
         case 'filter-mention-push-targets':
@@ -279,5 +297,150 @@ describe('onMessageCreated', () => {
       expect.objectContaining({ url: '/chats/thread-id?m=message-id' }),
       { updateAppBadge: true },
     )
+  })
+
+  describe('返信の通知', () => {
+    function runReply(content: string, options: {
+      replyTargets: { userId: string; displayName: string }[]
+      mentioned?: { userId: string; displayName: string }[]
+      accessible?: { userId: string; displayName: string }[]
+      locales?: Record<string, string>
+    }) {
+      const handler = handlers.get('on-message-created')
+      const run = vi.fn(async (name: string, callback: () => unknown) => {
+        switch (name) {
+          case 'resolve-current-channel':
+          case 'resolve-push-channel':
+            return 'channel-id'
+          case 'fetch-members':
+          case 'filter-blocked-members':
+            return []
+          case 'check-dm':
+            return false
+          case 'fetch-reply-target':
+            return options.replyTargets
+          case 'fetch-mentioned-members':
+            return options.mentioned ?? []
+          case 'resolve-mention-preview-names':
+            return {}
+          case 'filter-mention-access':
+          case 'filter-blocked-mentions':
+            return options.accessible ?? [...options.replyTargets, ...(options.mentioned ?? [])]
+          case 'resolve-recipient-locales':
+            return options.locales ?? { author: 'ja' }
+          case 'create-mention-notifications':
+            return undefined
+          case 'filter-mention-push-targets':
+            return {
+              readRecipients: [],
+              unreadRecipients: options.accessible ?? [...options.replyTargets, ...(options.mentioned ?? [])],
+            }
+          case 'send-mention-push':
+            return callback()
+          default:
+            throw new Error(`Unexpected step: ${name}`)
+        }
+      })
+      const result = handler!({
+        event: {
+          data: {
+            messageId: 'message-id',
+            channelId: 'channel-id',
+            workspaceId: 'workspace-id',
+            senderId: 'sender-id',
+            senderName: '送信者',
+            content,
+            attachmentFileIds: [],
+          },
+        },
+        step: { run, sleep: vi.fn() },
+      })
+      return { run, result }
+    }
+
+    it('メンションがなくても返信元の投稿者に返信として通知する', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { run, result } = runReply('了解です', { replyTargets: [author] })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 1, fileNotifications: 0 })
+      expect(stepNames(run)).toContain('create-mention-notifications')
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 があなたのメッセージに返信しました' }),
+        { updateAppBadge: true },
+      )
+    })
+
+    it('返信元がメンションもされているときはメンションの文言で1件だけ通知する', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { result } = runReply('<@author> 了解です', {
+        replyTargets: [author],
+        mentioned: [author],
+        accessible: [author],
+      })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 1, fileNotifications: 0 })
+      expect(sendPushToUser).toHaveBeenCalledTimes(1)
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 があなたをメンションしました' }),
+        { updateAppBadge: true },
+      )
+    })
+
+    it('返信元がアクセス・ブロックの絞り込みで外れたら通知しない', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { run, result } = runReply('了解です', { replyTargets: [author], accessible: [] })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
+      expect(stepNames(run)).not.toContain('create-mention-notifications')
+      expect(sendPushToUser).not.toHaveBeenCalled()
+    })
+    it('返信の通知タイトルを受信者の表示言語で送る', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { result } = runReply('OK', { replyTargets: [author], locales: { author: 'en' } })
+
+      await result
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 replied to your message' }),
+        { updateAppBadge: true },
+      )
+    })
+  })
+})
+
+describe('runHourlyMaintenance', () => {
+  function runMaintenance() {
+    const handler = handlers.get('run-hourly-maintenance')
+    expect(handler).toBeDefined()
+    return handler!({ event: { data: {} as MessageCreatedEvent['data'] }, step: { run: vi.fn(), sleep: vi.fn() } })
+  }
+
+  it('毎時の後片付けと投票の拾い直しを1回の実行でまとめて行う', async () => {
+    vi.mocked(cleanupExpiredUploadRequests).mockResolvedValue({ removed: 1, failed: 0 })
+    vi.mocked(cleanupUnsentAiAttachments).mockResolvedValue({ removed: 2, failed: 0 })
+    vi.mocked(sweepStalePolls).mockResolvedValue({ closed: 0, requeued: 3 })
+
+    await expect(runMaintenance()).resolves.toEqual({
+      expiredUploadRequests: { removed: 1, failed: 0 },
+      unsentAiAttachments: { removed: 2, failed: 0 },
+      stalePolls: { closed: 0, requeued: 3 },
+    })
+  })
+
+  it('1つが失敗しても残りを実行し、失敗した処理の名前を付けて投げる', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(cleanupExpiredUploadRequests).mockRejectedValue(new Error('storage down'))
+    vi.mocked(cleanupUnsentAiAttachments).mockResolvedValue({ removed: 0, failed: 0 })
+    vi.mocked(sweepStalePolls).mockClear().mockResolvedValue({ closed: 1, requeued: 0 })
+
+    await expect(runMaintenance()).rejects.toThrow('hourly maintenance failed: expiredUploadRequests')
+    expect(sweepStalePolls).toHaveBeenCalledTimes(1)
+    consoleError.mockRestore()
   })
 })

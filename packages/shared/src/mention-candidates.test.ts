@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from 'vitest'
-import { filterMentionCandidates, matchMentionQuery } from './mention-candidates'
+import { filterMentionCandidates, matchMentionQuery, sortMentionCandidatesByProject } from './mention-candidates'
 
 const members = [
   { userId: 'owner-1', role: 'owner' as const },
@@ -36,6 +36,25 @@ describe('filterMentionCandidates', () => {
 
   test('チャンネルの種別が分からない間は、ゲストを候補に出さない', () => {
     expect(ids(filterMentionCandidates(members, { kind: 'unresolved' }))).toEqual(['owner-1', 'member-1'])
+  })
+})
+
+describe('sortMentionCandidatesByProject', () => {
+  test('プロジェクトメンバーを先頭に出し、それぞれを表示名の50音順に並べる', () => {
+    const list = [
+      { userId: 'u1', displayName: 'わたなべ' },
+      { userId: 'u2', displayName: 'さとう' },
+      { userId: 'u3', displayName: 'いとう' },
+      { userId: 'u4', displayName: 'たなか' },
+    ]
+    const result = sortMentionCandidatesByProject(list, new Set(['u1', 'u4']))
+    expect(ids(result)).toEqual(['u4', 'u1', 'u3', 'u2'])
+  })
+
+  test('元の配列は並べ替えない', () => {
+    const list = [{ userId: 'b', displayName: 'び' }, { userId: 'a', displayName: 'あ' }]
+    sortMentionCandidatesByProject(list, new Set())
+    expect(ids(list)).toEqual(['b', 'a'])
   })
 })
 

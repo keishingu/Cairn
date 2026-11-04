@@ -1534,4 +1534,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Your name': '名前',
   'This app receives only the information above. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.': 'このアプリに渡すのは上の情報だけです。Cairn のプロジェクト・会話・ファイルを読んだり変更したりはできません。許可は設定の「連携」からいつでも取り消せます。',
   'These apps receive only the information you allowed, such as your account ID. They cannot read or change your projects, conversations, or files.': 'これらのアプリに渡るのは、アカウント ID など許可した情報だけです。プロジェクト・会話・ファイルを読んだり変更したりはできません。',
+  '{name} replied to your message': '{name} があなたのメッセージに返信しました',
+  '{name} mentioned you': '{name} があなたをメンションしました',
 }

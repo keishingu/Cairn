@@ -7,7 +7,7 @@ import { firstPartySigningSecret } from '@/lib/apps/first-party'
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, verifyRequestSignature } from '@/lib/apps/signing'
 import { inngest } from '@/lib/inngest/client'
 import { callBotApi } from './bot-client'
-import { addPollOption, createPendingPoll, renderPollExclusively } from './polls'
+import { addPollOption, createPendingPoll, POLL_RENDER_EVENT, renderPollExclusively } from './polls'
 import { pollInputErrors } from './validate'
 import {
   ADD_OPTION_ACTION_ID,
@@ -22,8 +22,6 @@ import {
 } from './render'
 
 // 投票アプリの Request URL。外部アプリと同じく、署名付きで届くインタラクションだけを受ける（docs/app-platform-design.md §7）
-
-export const POLL_RENDER_EVENT = 'polls/card.render'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

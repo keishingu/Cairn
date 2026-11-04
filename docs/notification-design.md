@@ -24,6 +24,7 @@
 - **非活性メンバーには通知しない**（宛先は常に `active_workspace_members`）。
 - **guest** は `requireChannelAccess` と同じ範囲に限定する（通常 workspace は `channel_members`、project は `project_members`、private/DM は `channel_members`）。実装は `filterMentionRecipients`。
 - DM 内の `@all` / `@project_members` / 属性メンションは展開しない（DM は参加者通知で早期 return）。Web ピッカーでも DM ではこれらの候補を出さない（個別ユーザー候補のみ）。
+- **返信**（`messages.parent_message_id`）は、メンションがなくても返信元メッセージの投稿者へ `mention` 種別で通知する（タイトルは「◯◯ があなたのメッセージに返信しました」）。宛先はメンションと同じく active・アクセス可能・ブロックなしに絞り、送信者自身・削除済みの返信元・DM（参加者通知で足りる）は対象外。返信元がメンションもされている場合はメンションの文言で1件だけ通知し、未読メンション数にも1件として数える。
 
 ## シナリオ別の通知動作
 

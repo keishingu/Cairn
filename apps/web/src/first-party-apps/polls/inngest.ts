@@ -2,20 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { inngest } from '@/lib/inngest/client'
-import { POLL_RENDER_EVENT } from './handler'
-import { renderPollExclusively } from './polls'
+import { closeDuePolls, nextCloseCheck, POLL_CLOSE_EVENT, POLL_RENDER_EVENT, renderPollExclusively } from './polls'
 
-/**
- * アプリを取り外した（インストールを取り消した）ワークスペースの投票は、Bot トークンが取れず投稿も描き直しも必ず失敗する。
- * 拾い直しの対象から外し、失敗し続ける投票で毎回の拾い直しを埋めない（再インストールで取り消しが外れれば、また拾われる）
- */
-async function activeInstallationFilter() {
-  const { db, appInstallations, polls } = await import('@cairn/db')
-  const { inArray, isNull } = await import('drizzle-orm')
-  return inArray(polls.installationId, db.select({ id: appInstallations.id }).from(appInstallations).where(isNull(appInstallations.revokedAt)))
-}
-
-// カードの描き直し（応答後のその場の描画で描けなかった分と、cron の拾い直し）。常に commit 済みの最新の集計から描き、
+// カードの描き直し（応答後のその場の描画で描けなかった分と、毎時の拾い直し）。常に commit 済みの最新の集計から描き、
 // その場の描画と重ならないよう投票ごとのリースを取る。chat.update の失敗は Inngest が再試行する
 export const pollsCardRender = inngest.createFunction(
   { id: 'polls-card-render', concurrency: { key: 'event.data.pollId', limit: 1 } },
@@ -29,50 +18,36 @@ export const pollsCardRender = inngest.createFunction(
   },
 )
 
-// commit 後にイベントを送る前に止まった・投稿の途中で失敗した投票を拾い直す（§7.3）。
-// あわせて、30日より古い処理済みインタラクションを消す
-export const pollsCardSweep = inngest.createFunction(
-  { id: 'polls-card-sweep', concurrency: { limit: 1 } },
-  { cron: 'TZ=Asia/Tokyo */5 * * * *' },
-  async ({ step }) => {
-    // 締切を過ぎた投票を締める。版を進めるので、下の拾い直しで描き直される（締めるのは投稿済みのものだけ。冪等）
-    const closed = await step.run('close-due-polls', async () => {
-      const { db, polls } = await import('@cairn/db')
-      const { and, eq, isNotNull, lte, sql } = await import('drizzle-orm')
-      const activeInstallation = await activeInstallationFilter()
-      const rows = await db
-        .update(polls)
-        .set({ status: 'closed', closedAt: sql`now()`, version: sql`${polls.version} + 1`, updatedAt: sql`now() - interval '1 minute'` })
-        .where(and(eq(polls.status, 'posted'), isNotNull(polls.closesAt), lte(polls.closesAt, sql`now()`), activeInstallation))
-        .returning({ id: polls.id })
-      return rows.map((row) => row.id)
-    })
-    const pollIds = await step.run('find-stale-polls', async () => {
-      const { db, polls, pollProcessedInteractions } = await import('@cairn/db')
-      const { and, asc, inArray, lt, or, sql } = await import('drizzle-orm')
-      const activeInstallation = await activeInstallationFilter()
-      await db.delete(pollProcessedInteractions).where(lt(pollProcessedInteractions.createdAt, sql`now() - interval '30 days'`))
-      // 古いものから拾い、拾った投票は updated_at を進めて列の後ろへ回す。投稿し続けて失敗する投票があっても、
-      // 同じ投票ばかりを毎回拾って、イベントを失っただけの投票が拾われないままにならない
-      const stale = db
-        .select({ id: polls.id })
-        .from(polls)
-        .where(
-          and(
-            or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`),
-            sql`${polls.status} <> 'post_failed'`,
-            lt(polls.updatedAt, sql`now() - interval '1 minute'`),
-            activeInstallation,
-          ),
-        )
-        .orderBy(asc(polls.updatedAt))
-        .limit(200)
-      const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
-      return rows.map((row) => row.id)
-    })
-    if (pollIds.length > 0) {
-      await step.sendEvent('rerender', pollIds.map((pollId) => ({ name: POLL_RENDER_EVENT, data: { pollId } })))
+/**
+ * 1本の実行が眠る長さの上限。Inngest は眠っている時間も実行の長さに数え、プランごとに実行の長さと1回の眠りに上限がある
+ * （無料プランは眠り7日）。締切が遠ければ、上限の前に起きて新しい実行へ引き継ぐ（同じ実行で眠り直さない）
+ */
+const MAX_SLEEP_MS = 6 * 24 * 60 * 60 * 1000
+
+// 締切に締めてカードを描き直す。投稿時に投票ごとに1本予約し、締切まで眠る（眠っている間は実行数を使わない）。
+// 投票のために cron を回し続けないための仕組みで、予約を送れなかった投票は毎時の拾い直しが締める
+export const pollsCardClose = inngest.createFunction(
+  { id: 'polls-card-close' },
+  { event: POLL_CLOSE_EVENT },
+  async ({ event, step }) => {
+    const pollId = (event.data as { pollId: string }).pollId
+    // 締切は起きるたびに DB から読み直す（締め切りボタンで先に締められていれば、何もせずに終わる）
+    const first = await step.run('check-deadline', () => nextCloseCheck(pollId, MAX_SLEEP_MS))
+    if (first === null) return 'skipped'
+    if (first !== 'due') {
+      await step.sleepUntil('wait-for-deadline', first)
+      const next = await step.run('recheck-deadline', () => nextCloseCheck(pollId, MAX_SLEEP_MS))
+      if (next === null) return 'skipped'
+      if (next !== 'due') {
+        // 締切がまだ先。実行の長さの上限に掛からないよう、新しい実行に引き継いで終える（ID は起きた時刻ごとに変え、重複排除で落とさない）
+        await step.sendEvent('hand-over', { id: `poll-close-${pollId}-${first}`, name: POLL_CLOSE_EVENT, data: { pollId } })
+        return 'handed_over'
+      }
     }
-    return { closed: closed.length, requeued: pollIds.length }
+    const closed = await step.run('close', () => closeDuePolls(pollId))
+    if (closed.length === 0) return 'skipped'
+    const result = await step.run('render', () => renderPollExclusively(pollId))
+    if (result === 'incomplete') await step.sendEvent('continue-render', { name: POLL_RENDER_EVENT, data: { pollId } })
+    return result
   },
 )

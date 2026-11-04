@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, matchMentionQuery, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, matchMentionQuery, sortMentionCandidatesByProject, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
@@ -1893,13 +1893,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return filterMentionCandidates(others, { kind: 'project', projectMemberIds })
-        .sort((a, b) => {
-          const aIn = projectMemberIds.has(a.userId) ? 0 : 1
-          const bIn = projectMemberIds.has(b.userId) ? 0 : 1
-          if (aIn !== bIn) return aIn - bIn
-          return a.displayName.localeCompare(b.displayName, 'ja')
-        })
+      return sortMentionCandidatesByProject(
+        filterMentionCandidates(others, { kind: 'project', projectMemberIds }),
+        projectMemberIds,
+      )
     }
     // プロジェクトチャンネル一覧の取得前は、ここがプロジェクトチャンネルかどうか分からない。
     // その間に公開チャンネル扱いにすると、未参加のゲストまで候補に出てしまう
