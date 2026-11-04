@@ -4,9 +4,14 @@
 import { randomUUID } from 'node:crypto'
 import { isAppLocale, translate, type AppLocale } from '@cairn/shared'
 import { getFirstPartyInstallationId } from '@/lib/apps/first-party'
+import { inngest } from '@/lib/inngest/client'
 import { callBotApi, PollsBotApiError } from './bot-client'
 import { POLL_OPTION_LIMITS, renderPollCard, type PollForRender } from './render'
 import { pollInputErrors, pollOptionLabelError } from './validate'
+
+export const POLL_RENDER_EVENT = 'polls/card.render'
+/** 締切に締める遅延実行（polls-card-close）を起こすイベント。投稿できた時点で1回送る */
+export const POLL_CLOSE_EVENT = 'polls/card.close'
 
 // 投票の作成・投稿・カードの再描画。外部 HTTP（Bot API）はトランザクションの外で呼び、
 // DB の状態（status・version・rendered_version）から再試行が同じ結果に収束するようにする（docs/app-platform-design.md §7.3・§7.4）
@@ -22,7 +27,7 @@ export type CreatePollInput = {
   /** 呼び出し元ごとに一意（定期ジョブは run の ID、モーダルは view の ID）。再試行は既存の投票を返す */
   idempotencyKey: string
 } & (
-  | { createdBy: string; /** 締切。過ぎたら定期の処理（polls-card-sweep）が締め、カードを描き直す */ closesAt?: Date | null }
+  | { createdBy: string; /** 締切。投稿時に予約した遅延実行（polls-card-close）が締め、カードを描き直す */ closesAt?: Date | null }
   // 作成者のいない投票（定期ジョブ・AI）は誰も締め切りを押せないので、締切を必須にする（無いと票を受け付け続ける）
   | { createdBy: null; closesAt: Date }
 )
@@ -172,7 +177,7 @@ export async function postPoll(pollId: string): Promise<string | null> {
   } catch (err) {
     if (!(err instanceof PollsBotApiError)) throw err
     if (REVERSIBLE_POST_ERRORS.has(err.code)) {
-      // アーカイブの解除やアプリの再追加で投稿できるようになったら投稿する。5分ごとの cron が拾い直し続けないよう間隔を空ける
+      // アーカイブの解除やアプリの再追加で投稿できるようになったら投稿する。毎時の拾い直しが拾い続けないよう間隔を空ける
       console.warn(`[polls] poll ${pollId} cannot be posted now (${err.code}); retrying after ${REVERSIBLE_RETRY_INTERVAL}`)
       await db.update(polls).set({ postError: err.code, updatedAt: sql`now() + ${REVERSIBLE_RETRY_INTERVAL}::interval` }).where(eq(polls.id, pollId))
       return null
@@ -194,7 +199,21 @@ export async function postPoll(pollId: string): Promise<string | null> {
       updatedAt: sql`now()`,
     })
     .where(eq(polls.id, pollId))
+  if (status !== 'closed' && poll.closesAt) await scheduleClose(pollId, poll.closesAt)
   return result.ts
+}
+
+/**
+ * 締切に締める遅延実行を予約する。締切を待つ間は Inngest の実行数を使わないので、投票のために cron を回し続けずに済む。
+ * 投稿の再試行で何度呼ばれても、イベント ID で1本にまとまる。送れなくても投稿は済んでいるので失敗にはせず、
+ * 毎時の拾い直し（sweepStalePolls）が締める（締めが最大1時間遅れる）
+ */
+async function scheduleClose(pollId: string, closesAt: Date): Promise<void> {
+  try {
+    await inngest.send({ id: `poll-close-${pollId}`, name: POLL_CLOSE_EVENT, data: { pollId } })
+  } catch (err) {
+    console.error(`[polls] could not schedule closing poll ${pollId} at ${closesAt.toISOString()}; the hourly sweep will close it:`, err)
+  }
 }
 
 /**
@@ -229,7 +248,7 @@ export async function renderPoll(pollId: string): Promise<'posted' | 'updated' |
     if (!(err instanceof PollsBotApiError)) throw err
     if (REVERSIBLE_UPDATE_ERRORS.has(err.code)) {
       // アーカイブの解除などで書き換えられるようになったら、締切や票を描けるよう描画待ちのまま残す。
-      // 5分ごとの cron が拾い直し続けないよう、次に拾うまでの間隔を空ける（updated_at を先にずらす）
+      // 毎時の拾い直しが拾い続けないよう、次に拾うまでの間隔を空ける（updated_at を先にずらす）
       console.warn(`[polls] card of poll ${pollId} cannot be updated now (${err.code}); retrying after ${REVERSIBLE_RETRY_INTERVAL}`)
       await db
         .update(polls)
@@ -365,4 +384,74 @@ export async function addPollOption(input: { pollId: string; workspaceId: string
     await tx.update(polls).set({ version: sql`${polls.version} + 1`, updatedAt: sql`now()` }).where(eq(polls.id, input.pollId))
     return { ok: true as const }
   })
+}
+
+/**
+ * アプリを取り外した（インストールを取り消した）ワークスペースの投票は、Bot トークンが取れず投稿も描き直しも必ず失敗する。
+ * 締めや拾い直しの対象から外し、失敗し続ける投票で毎回の拾い直しを埋めない（再インストールで取り消しが外れれば、また拾われる）
+ */
+async function activeInstallationFilter() {
+  const { db, appInstallations, polls } = await import('@cairn/db')
+  const { inArray, isNull } = await import('drizzle-orm')
+  return inArray(polls.installationId, db.select({ id: appInstallations.id }).from(appInstallations).where(isNull(appInstallations.revokedAt)))
+}
+
+/**
+ * 締切を過ぎた投稿済みの投票を締め、締めた投票の ID を返す。版を進めるので描き直しの対象になる（冪等）。
+ * pollId を渡すとその投票だけを締める（締切の遅延実行）。updated_at を1分戻し、拾い直しがすぐ拾えるようにする
+ */
+export async function closeDuePolls(pollId?: string): Promise<string[]> {
+  const { db, polls } = await import('@cairn/db')
+  const { and, eq, isNotNull, lte, sql } = await import('drizzle-orm')
+  const activeInstallation = await activeInstallationFilter()
+  const rows = await db
+    .update(polls)
+    .set({ status: 'closed', closedAt: sql`now()`, version: sql`${polls.version} + 1`, updatedAt: sql`now() - interval '1 minute'` })
+    .where(and(eq(polls.status, 'posted'), isNotNull(polls.closesAt), lte(polls.closesAt, sql`now()`), activeInstallation, pollId ? eq(polls.id, pollId) : undefined))
+    .returning({ id: polls.id })
+  return rows.map((row) => row.id)
+}
+
+/** 締切の遅延実行が次に起きる時刻。締めなくてよい（締め済み・投稿できていない・締切なし）なら null、締切を過ぎていれば 'due' */
+export async function nextCloseCheck(pollId: string, maxWaitMs: number): Promise<string | 'due' | null> {
+  const { db, polls } = await import('@cairn/db')
+  const { eq } = await import('drizzle-orm')
+  const [poll] = await db.select({ status: polls.status, closesAt: polls.closesAt }).from(polls).where(eq(polls.id, pollId)).limit(1)
+  if (!poll || poll.status !== 'posted' || !poll.closesAt) return null
+  const now = Date.now()
+  if (poll.closesAt.getTime() <= now) return 'due'
+  // 1回に眠れる長さには上限があるので、締切が遠ければ途中で起きて眠り直す
+  return new Date(Math.min(poll.closesAt.getTime(), now + maxWaitMs)).toISOString()
+}
+
+/**
+ * 通常経路の取りこぼしを拾い直す（毎時の定期処理から呼ぶ。docs/app-platform-design.md §7.3）。
+ * - 締切の予約を送れなかった投票を締める
+ * - commit 後にイベントを送る前に止まった・投稿の途中で失敗した投票へ、描き直しのイベントを送り直す
+ * - 30日より古い処理済みインタラクションを消す
+ */
+export async function sweepStalePolls(): Promise<{ closed: number; requeued: number }> {
+  const closed = await closeDuePolls()
+  const { db, polls, pollProcessedInteractions } = await import('@cairn/db')
+  const { and, asc, inArray, lt, or, sql } = await import('drizzle-orm')
+  const activeInstallation = await activeInstallationFilter()
+  await db.delete(pollProcessedInteractions).where(lt(pollProcessedInteractions.createdAt, sql`now() - interval '30 days'`))
+  // 古いものから拾い、拾った投票は updated_at を進めて列の後ろへ回す。投稿し続けて失敗する投票があっても、
+  // 同じ投票ばかりを毎回拾って、イベントを失っただけの投票が拾われないままにならない
+  const stale = db
+    .select({ id: polls.id })
+    .from(polls)
+    .where(
+      and(
+        or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`),
+        sql`${polls.status} <> 'post_failed'`,
+        lt(polls.updatedAt, sql`now() - interval '1 minute'`),
+        activeInstallation,
+      ),
+    )
+    .orderBy(asc(polls.updatedAt))
+    .limit(200)
+  const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
+  if (rows.length > 0) await inngest.send(rows.map((row) => ({ name: POLL_RENDER_EVENT, data: { pollId: row.id } })))
+  return { closed: closed.length, requeued: rows.length }
 }
