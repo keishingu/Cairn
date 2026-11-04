@@ -2,14 +2,6 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  useQuery,
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-  keepPreviousData,
-  type InfiniteData,
-} from '@tanstack/react-query'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
@@ -18,15 +10,20 @@ import { FileFilterToolbar } from '../file-filter-toolbar'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
-import type { FileDto, FileListResponse } from '@/app/api/files/route'
-import type { FileFacetsResponse } from '@/app/api/files/facets/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import type { FileDto } from '@/app/api/files/route'
 import { useT } from '@/components/locale-provider'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useCommand } from '@/lib/command-registry'
 import { useRenameFile } from '@/hooks/use-rename-file'
 import { useSavedFileFilters } from '@/hooks/use-saved-file-filters'
 import { useDebounce } from '@/hooks/use-debounce'
+import {
+  useDeleteWorkspaceFile,
+  useFileTextPreview,
+  useReindexWorkspaceFile,
+  useWorkspaceFileFacets,
+  useWorkspaceFileList,
+} from '@/hooks/use-workspace-files'
 import { buildFileListSearchParams } from '@/lib/files/file-list-query'
 import {
   DEFAULT_FILE_FILTER_CONDITIONS,
@@ -346,7 +343,6 @@ export const PageFiles = ({
   externalSearch?: string
 }) => {
   const t = useT()
-  const queryClient = useQueryClient()
   const renameFile = useRenameFile()
   const [conditions, setConditions] = React.useState<FileFilterConditions>(
     DEFAULT_FILE_FILTER_CONDITIONS,
@@ -371,34 +367,10 @@ export const PageFiles = ({
     [conditions, debouncedSearch, debouncedExternalSearch],
   )
 
-  const filesQuery = useInfiniteQuery({
-    queryKey: ['files', 'list', listParams],
-    initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams(listParams)
-      if (pageParam) params.set('cursor', pageParam)
-      const res = await fetchWithAuth(`/api/files?${params.toString()}`)
-      if (!res.ok) throw new Error(t('Could not load files ({status})', { status: res.status }))
-      return res.json() as Promise<FileListResponse>
-    },
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    placeholderData: keepPreviousData,
-  })
-  const files = React.useMemo(
-    () => filesQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [filesQuery.data],
-  )
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = filesQuery
+  const filesQuery = useWorkspaceFileList(listParams)
+  const { files, hasNextPage, isFetchingNextPage, fetchNextPage, loadedPageCount } = filesQuery
 
-  const facetsQuery = useQuery<FileFacetsResponse>({
-    queryKey: ['files', 'facets', listParams],
-    queryFn: async () => {
-      const res = await fetchWithAuth(`/api/files/facets?${listParams}`)
-      if (!res.ok) throw new Error(t('Could not load files ({status})', { status: res.status }))
-      return res.json() as Promise<FileFacetsResponse>
-    },
-    placeholderData: keepPreviousData,
-  })
+  const facetsQuery = useWorkspaceFileFacets(listParams)
   const facets = facetsQuery.data
 
   const {
@@ -413,50 +385,10 @@ export const PageFiles = ({
     data: textPreviewContent,
     isLoading: isTextPreviewLoading,
     isError: isTextPreviewError,
-  } = useQuery<string>({
-    queryKey: ['attachment-text-preview', textPreviewFile?.id],
-    enabled: textPreviewFile !== null,
-    queryFn: async () => {
-      if (!textPreviewFile) throw new Error(t('No text file to preview'))
-      const res = await fetchWithAuth(`/api/attachments/${textPreviewFile.id}`)
-      if (!res.ok) throw new Error(t('Could not fetch the text preview'))
-      return res.text()
-    },
-  })
+  } = useFileTextPreview(textPreviewFile?.id ?? null)
 
-  const deleteFile = useMutation({
-    mutationFn: (fileId: string) =>
-      fetchWithAuth(`/api/attachments/${fileId}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw new Error(t('Could not delete the file'))
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['files'] })
-      void queryClient.invalidateQueries({ queryKey: ['project-files'] })
-    },
-  })
-
-  const reindexFile = useMutation({
-    mutationFn: (fileId: string) =>
-      fetchWithAuth(`/api/attachments/${fileId}/reindex`, { method: 'POST' }).then((r) => {
-        if (!r.ok) throw new Error(t('Could not reindex the file'))
-      }),
-    onMutate: (fileId: string) => {
-      queryClient.setQueriesData<InfiniteData<FileListResponse>>(
-        { queryKey: ['files', 'list'] },
-        (prev) =>
-          prev && {
-            ...prev,
-            pages: prev.pages.map((page) => ({
-              ...page,
-              items: page.items.map((f) =>
-                f.id === fileId ? { ...f, indexingStatus: 'pending' } : f,
-              ),
-            })),
-          },
-      )
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['files'] }),
-  })
+  const deleteFile = useDeleteWorkspaceFile()
+  const reindexFile = useReindexWorkspaceFile()
 
   const handleDelete = (fileId: string, fileName: string) => {
     setDeleteTarget({ id: fileId, name: fileName })
@@ -489,7 +421,6 @@ export const PageFiles = ({
   // 張り直したときの初回通知で続けて読む（ページ数を依存に入れているのはそのため）。
   // 次ページの取得に失敗したら自動では読み直さず、「再試行」を押すまで止める
   // （末尾が見えたままだと、張り直した observer が同じ失敗を繰り返し続けるため）
-  const loadedPageCount = filesQuery.data?.pages.length ?? 0
   const isFetchNextPageError = filesQuery.isFetchNextPageError
   React.useEffect(() => {
     const sentinel = sentinelRef.current
