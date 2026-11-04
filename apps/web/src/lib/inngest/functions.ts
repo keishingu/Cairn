@@ -681,9 +681,10 @@ export const runStorageDeletionJob = inngest.createFunction(
   },
 )
 
+// 実行してよい時刻を過ぎた削除ジョブと、イベントを送れなかったジョブを積み直す。消すのが遅れても利用者に影響しないので毎時で足りる
 export const requeueStorageDeletionJobs = inngest.createFunction(
   { id: 'requeue-storage-deletion-jobs' },
-  { cron: 'TZ=Asia/Tokyo */15 * * * *' },
+  { cron: 'TZ=Asia/Tokyo 5 * * * *' },
   async () => {
     const { db, storageDeletionJobs } = await import('@cairn/db')
     const { isNull, lte, or } = await import('drizzle-orm')
@@ -1453,27 +1454,40 @@ export const chargeStorageRentDaily = inngest.createFunction(
   },
 )
 
-// 署名付きURLだけが発行されて確定されなかった画像を定期回収する。
-export const cleanupExpiredUploadRequests = inngest.createFunction(
-  { id: 'cleanup-expired-upload-requests', concurrency: { limit: 1 } },
+// 毎時の後片付けと取りこぼしの拾い直しを1回の実行にまとめる。Inngest は実行とステップの数で課金枠を使うので、
+// 冪等な処理は cron を分けず step にも分けない（失敗したら全体を再試行する）。1つが失敗しても残りは実行し、最後に失敗を投げる
+// - 署名付きURLだけが発行されて確定されなかった画像を回収する
+// - AIアシスタントに添付したまま送られなかったファイル（送信に失敗したものを含む）を1日たったら回収する
+// - 投票の締切の予約・描き直しのイベントを取りこぼした投票を拾い直す
+export const runHourlyMaintenance = inngest.createFunction(
+  { id: 'run-hourly-maintenance', concurrency: { limit: 1 } },
   { cron: 'TZ=Asia/Tokyo 15 * * * *' },
-  async ({ step }) => {
-    return step.run('remove-expired-upload-objects', async () => {
-      const { cleanupExpiredUploadRequests: cleanup } = await import('@/lib/uploads/cleanup')
-      return cleanup()
+  async () => {
+    const tasks = {
+      expiredUploadRequests: async () => {
+        const { cleanupExpiredUploadRequests } = await import('@/lib/uploads/cleanup')
+        return cleanupExpiredUploadRequests()
+      },
+      unsentAiAttachments: async () => {
+        const { cleanupUnsentAiAttachments } = await import('@/lib/ai/attachments')
+        return cleanupUnsentAiAttachments()
+      },
+      stalePolls: async () => {
+        const { sweepStalePolls } = await import('@/first-party-apps/polls')
+        return sweepStalePolls()
+      },
+    }
+    const names = Object.keys(tasks) as Array<keyof typeof tasks>
+    const settled = await Promise.allSettled(names.map((name) => tasks[name]()))
+    const failures = names.flatMap((name, i) => {
+      const result = settled[i]!
+      return result.status === 'rejected' ? [{ name, reason: result.reason as unknown }] : []
     })
-  },
-)
-
-// AIアシスタントに添付したまま送られなかったファイル（送信に失敗したものを含む）を1日たったら回収する
-export const cleanupUnsentAiAttachments = inngest.createFunction(
-  { id: 'cleanup-unsent-ai-attachments', concurrency: { limit: 1 } },
-  { cron: 'TZ=Asia/Tokyo 25 * * * *' },
-  async ({ step }) => {
-    return step.run('remove-unsent-ai-attachments', async () => {
-      const { cleanupUnsentAiAttachments: cleanup } = await import('@/lib/ai/attachments')
-      return cleanup()
-    })
+    if (failures.length > 0) {
+      for (const { name, reason } of failures) console.error(`[hourly-maintenance] ${name} failed:`, reason)
+      throw new Error(`hourly maintenance failed: ${failures.map((f) => f.name).join(', ')}`)
+    }
+    return Object.fromEntries(names.map((name, i) => [name, (settled[i] as PromiseFulfilledResult<unknown>).value]))
   },
 )
 

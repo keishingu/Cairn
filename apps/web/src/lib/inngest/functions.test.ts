@@ -27,9 +27,15 @@ vi.mock('./client', () => ({
 }))
 
 vi.mock('@/lib/push/send', () => ({ sendPushToUser: vi.fn() }))
+vi.mock('@/lib/uploads/cleanup', () => ({ cleanupExpiredUploadRequests: vi.fn() }))
+vi.mock('@/lib/ai/attachments', () => ({ cleanupUnsentAiAttachments: vi.fn() }))
+vi.mock('@/first-party-apps/polls', () => ({ sweepStalePolls: vi.fn() }))
 
 import './functions'
 import { sendPushToUser } from '@/lib/push/send'
+import { cleanupExpiredUploadRequests } from '@/lib/uploads/cleanup'
+import { cleanupUnsentAiAttachments } from '@/lib/ai/attachments'
+import { sweepStalePolls } from '@/first-party-apps/polls'
 
 function stepNames(run: ReturnType<typeof vi.fn>) {
   return run.mock.calls.map(([name]) => name as string)
@@ -405,5 +411,36 @@ describe('onMessageCreated', () => {
         { updateAppBadge: true },
       )
     })
+  })
+})
+
+describe('runHourlyMaintenance', () => {
+  function runMaintenance() {
+    const handler = handlers.get('run-hourly-maintenance')
+    expect(handler).toBeDefined()
+    return handler!({ event: { data: {} as MessageCreatedEvent['data'] }, step: { run: vi.fn(), sleep: vi.fn() } })
+  }
+
+  it('毎時の後片付けと投票の拾い直しを1回の実行でまとめて行う', async () => {
+    vi.mocked(cleanupExpiredUploadRequests).mockResolvedValue({ removed: 1, failed: 0 })
+    vi.mocked(cleanupUnsentAiAttachments).mockResolvedValue({ removed: 2, failed: 0 })
+    vi.mocked(sweepStalePolls).mockResolvedValue({ closed: 0, requeued: 3 })
+
+    await expect(runMaintenance()).resolves.toEqual({
+      expiredUploadRequests: { removed: 1, failed: 0 },
+      unsentAiAttachments: { removed: 2, failed: 0 },
+      stalePolls: { closed: 0, requeued: 3 },
+    })
+  })
+
+  it('1つが失敗しても残りを実行し、失敗した処理の名前を付けて投げる', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(cleanupExpiredUploadRequests).mockRejectedValue(new Error('storage down'))
+    vi.mocked(cleanupUnsentAiAttachments).mockResolvedValue({ removed: 0, failed: 0 })
+    vi.mocked(sweepStalePolls).mockClear().mockResolvedValue({ closed: 1, requeued: 0 })
+
+    await expect(runMaintenance()).rejects.toThrow('hourly maintenance failed: expiredUploadRequests')
+    expect(sweepStalePolls).toHaveBeenCalledTimes(1)
+    consoleError.mockRestore()
   })
 })
