@@ -55,7 +55,7 @@ import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/attachment-auth'
 import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
-import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared } from '@cairn/shared'
+import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared, sortMentionCandidatesByProject } from '@cairn/shared'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import {
   attachmentViewer,
@@ -887,19 +887,19 @@ export default function ChatThreadScreen() {
   const mentionableMembers = React.useMemo(() => {
     if (channelType === 'dm') return []
     const channelMemberIds = new Set((channelMembers.data ?? []).map((member) => member.userId))
-    return isPrivate === '1'
-      ? (channelMembers.data ?? [])
-      : filterMentionCandidates(
-          workspaceMembers.data ?? [],
-          projectId
-            ? {
-                kind: 'project',
-                projectMemberIds: new Set((projectMembers.data ?? []).map((member) => member.userId)),
-              }
-            : channelType === 'workspace'
-              ? { kind: 'workspace', channelMemberIds }
-              : { kind: 'unresolved' },
-        )
+    if (isPrivate === '1') return channelMembers.data ?? []
+    // プロジェクトチャンネルは Web と同じく、プロジェクトメンバーを先頭に出す
+    if (projectId) {
+      const projectMemberIds = new Set((projectMembers.data ?? []).map((member) => member.userId))
+      return sortMentionCandidatesByProject(
+        filterMentionCandidates(workspaceMembers.data ?? [], { kind: 'project', projectMemberIds }),
+        projectMemberIds,
+      )
+    }
+    return filterMentionCandidates(
+      workspaceMembers.data ?? [],
+      channelType === 'workspace' ? { kind: 'workspace', channelMemberIds } : { kind: 'unresolved' },
+    )
   }, [
     channelMembers.data,
     channelType,
