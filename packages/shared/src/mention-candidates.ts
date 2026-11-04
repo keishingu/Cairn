@@ -32,6 +32,20 @@ export function filterMentionCandidates<T extends { userId: string; role: Worksp
   }
 }
 
+// プロジェクトチャンネルでは、そのプロジェクトのメンバーを先頭に出し、それぞれを表示名の50音順に並べる。
+// Web とモバイルで候補の並びを揃えるため、並べ方はここに一本化する
+export function sortMentionCandidatesByProject<T extends { userId: string; displayName: string }>(
+  members: ReadonlyArray<T>,
+  projectMemberIds: ReadonlySet<string>,
+): T[] {
+  return [...members].sort((a, b) => {
+    const aIn = projectMemberIds.has(a.userId) ? 0 : 1
+    const bIn = projectMemberIds.has(b.userId) ? 0 : 1
+    if (aIn !== bIn) return aIn - bIn
+    return a.displayName.localeCompare(b.displayName, 'ja')
+  })
+}
+
 // 日本語入力では全角の「＠」が入りやすいため、半角 @ と同じく候補を出すきっかけにする。
 // 選んだ後は半角 @ に置き換わるので、送信時の `<@id>` への変換は半角だけを見ればよい
 const MENTION_QUERY_PATTERN = /[@＠]([^\s@＠]*)$/
