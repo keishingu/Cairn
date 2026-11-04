@@ -64,11 +64,14 @@ const FILES_FIXTURE: FileDto[] = [
   },
 ]
 
+// 名前の変更などを反映する、テスト中のサーバー側のファイル
+let serverFiles: FileDto[] = []
+
 function filterFixture(params: URLSearchParams): FileDto[] {
   const projectId = params.get('projectId')
   const from = params.get('createdFrom')
   const before = params.get('createdBefore')
-  return FILES_FIXTURE.filter(
+  return serverFiles.filter(
     (file) =>
       (!projectId ||
         (projectId === 'none' ? file.projectId === null : file.projectId === projectId)) &&
@@ -133,6 +136,7 @@ function renderPageFiles() {
 describe('ファイル一覧ページ', () => {
   beforeEach(() => {
     process.env['TZ'] = 'Asia/Tokyo'
+    serverFiles = FILES_FIXTURE.map((file) => ({ ...file }))
     fetchWithAuthMock.mockReset()
     routerPushMock.mockReset()
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -158,6 +162,9 @@ describe('ファイル一覧ページ', () => {
       if (url === '/api/attachments/file-1') {
         if (init?.method === 'PATCH') {
           const body = JSON.parse(String(init.body)) as { fileName: string }
+          serverFiles = serverFiles.map((file) =>
+            file.id === 'file-1' ? { ...file, fileName: body.fileName } : file,
+          )
           return {
             ok: true,
             json: async () => ({ success: true, fileName: body.fileName }),
@@ -394,6 +401,46 @@ describe('ファイル一覧ページ', () => {
     expect(await screen.findByText('general.pdf')).toBeInTheDocument()
     expect(await screen.findByText('notes.txt')).toBeInTheDocument()
     expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/files?cursor=cursor-1')
+  })
+
+  it('次ページの取得に失敗したら自動では読み直さず、再試行で読み直す', async () => {
+    const fallback = fetchWithAuthMock.getMockImplementation()!
+    let failNextPage = true
+    fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/files?') {
+        return new Response(JSON.stringify({ items: [FILES_FIXTURE[1]], nextCursor: 'cursor-1' }), { status: 200 })
+      }
+      if (url === '/api/files?cursor=cursor-1') {
+        return failNextPage
+          ? new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+          : new Response(JSON.stringify({ items: [FILES_FIXTURE[0]], nextCursor: null }), { status: 200 })
+      }
+      return fallback(input, init)
+    })
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe() {
+        this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+    const nextPageCalls = () =>
+      fetchWithAuthMock.mock.calls.filter(([url]) => url === '/api/files?cursor=cursor-1')
+
+    renderPageFiles()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('ファイルの取得に失敗しました (500)')
+    // 末尾が見えたままでも、失敗した次ページを繰り返し取りに行かない
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(nextPageCalls()).toHaveLength(1)
+
+    failNextPage = false
+    await userEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+    expect(nextPageCalls()).toHaveLength(2)
   })
 
   it('ファイル一覧の取得に失敗したら、空の一覧ではなくエラーを表示する', async () => {

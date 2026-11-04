@@ -51,6 +51,8 @@ export function useRenameFile() {
             items: page.items.map(file => file.id === fileId ? { ...file, fileName } : file),
           })),
         })
+      // 一覧の検索・件数はサーバーで判定するため、新しい名前で絞り込み結果と件数を取り直す
+      void queryClient.invalidateQueries({ queryKey: ['files'] })
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['project-files'] }, updateFileList)
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['channel-files'] }, updateFileList)
       queryClient.setQueriesData<MessageDto[]>({ queryKey: chatQueryKeys.messagesRoot }, current =>

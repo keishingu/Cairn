@@ -486,11 +486,14 @@ export const PageFiles = ({
   )
 
   // 末尾が見えたら次のページを読む。読み込み後も末尾が見えたままなら、observer を
-  // 張り直したときの初回通知で続けて読む（ページ数を依存に入れているのはそのため）
+  // 張り直したときの初回通知で続けて読む（ページ数を依存に入れているのはそのため）。
+  // 次ページの取得に失敗したら自動では読み直さず、「再試行」を押すまで止める
+  // （末尾が見えたままだと、張り直した observer が同じ失敗を繰り返し続けるため）
   const loadedPageCount = filesQuery.data?.pages.length ?? 0
+  const isFetchNextPageError = filesQuery.isFetchNextPageError
   React.useEffect(() => {
     const sentinel = sentinelRef.current
-    if (!sentinel || !hasNextPage || isFetchingNextPage) return
+    if (!sentinel || !hasNextPage || isFetchingNextPage || isFetchNextPageError) return
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) void fetchNextPage()
@@ -499,7 +502,7 @@ export const PageFiles = ({
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, loadedPageCount])
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, loadedPageCount])
 
   const grouped = React.useMemo(() => {
     const projectOrder: string[] = []
