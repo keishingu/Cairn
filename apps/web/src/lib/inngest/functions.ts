@@ -208,7 +208,30 @@ export const onMessageCreated = inngest.createFunction(
     const hasAnyMentionTarget =
       mentionedIds.length > 0 || hasGroupMention(content)
 
-    if (members.length === 0 && !hasAnyMentionTarget)
+    // 返信は、メンションがなくても返信元の投稿者に届ける（Slack のスレッド返信と同じ期待に合わせる）。
+    // 宛先の絞り込み（チャンネルへのアクセス・ブロック）はメンションと同じ経路に乗せる。
+    const replyTargets = await step.run('fetch-reply-target', async () => {
+      const { db, messages, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+      const { eq, and, ne, isNull } = await import('drizzle-orm')
+      const { alias } = await import('drizzle-orm/pg-core')
+      const parent = alias(messages, 'parent_message')
+      return db
+        .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+        .from(messages)
+        .innerJoin(parent, and(eq(parent.id, messages.parentMessageId), isNull(parent.deletedAt)))
+        .innerJoin(
+          activeWorkspaceMembers,
+          and(
+            eq(activeWorkspaceMembers.userId, parent.senderId),
+            eq(activeWorkspaceMembers.workspaceId, workspaceId),
+          ),
+        )
+        .innerJoin(profiles, eq(profiles.id, parent.senderId))
+        .where(and(eq(messages.id, messageId), ne(parent.senderId, senderId)))
+        .limit(1)
+    })
+
+    if (members.length === 0 && !hasAnyMentionTarget && replyTargets.length === 0)
       return { mentionNotifications: 0, fileNotifications: 0 }
 
     const mentionedMembers =
@@ -274,13 +297,20 @@ export const onMessageCreated = inngest.createFunction(
       : []
 
     const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
-    const candidateMentioned = mergeMentionMembers(
+    const explicitlyMentioned = mergeMentionMembers(
       mentionedMembers,
       allMentionMembers,
       projectMentionMembers,
       attributeMentionMembers,
       roleMentionMembers,
     )
+    const candidateMentioned = mergeMentionMembers(replyTargets, explicitlyMentioned)
+    // メンションもされている返信元にはメンションの文言を優先し、返信だけの人には返信と分かる文言にする
+    const explicitlyMentionedIds = new Set(explicitlyMentioned.map((m) => m.userId))
+    const notificationTitle = (userId: string) =>
+      explicitlyMentionedIds.has(userId)
+        ? `${senderName} があなたをメンションしました`
+        : `${senderName} があなたのメッセージに返信しました`
 
     // 本文プレビューのメンションは送信時点の最新名で解決する
     const mentionNameMap = await step.run('resolve-mention-preview-names', async () => {
@@ -441,7 +471,7 @@ export const onMessageCreated = inngest.createFunction(
             userId: recipient.userId,
             workspaceId,
             type: 'mention' as const,
-            title: `${senderName} があなたをメンションしました`,
+            title: notificationTitle(recipient.userId),
             body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
             readAt: readUserIds.has(recipient.userId) ? now : null,
@@ -521,7 +551,7 @@ export const onMessageCreated = inngest.createFunction(
             sendPushToUser(
               recipient.userId,
               {
-                title: `${senderName} があなたをメンションしました`,
+                title: notificationTitle(recipient.userId),
                 body: mentionBody.slice(0, 100),
                 // 送信後に移動されても、パーマリンクの転送で移動先へ辿れるようメッセージIDを付ける。
                 url: `/chats/${pushChannelId}?m=${encodeURIComponent(messageId)}`,

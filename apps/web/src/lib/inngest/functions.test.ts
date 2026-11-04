@@ -56,6 +56,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         case 'fetch-mentioned-members':
           return [{ userId: 'mentioned-user', displayName: 'メンバー' }]
         default:
@@ -106,6 +108,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -153,6 +157,8 @@ describe('onMessageCreated', () => {
           return 'channel-id'
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -199,6 +205,8 @@ describe('onMessageCreated', () => {
           return {}
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         default:
           throw new Error(`Unexpected step: ${name}`)
       }
@@ -242,6 +250,8 @@ describe('onMessageCreated', () => {
           return {}
         case 'check-dm':
           return false
+        case 'fetch-reply-target':
+          return []
         case 'fetch-mentioned-members':
         case 'filter-mention-access':
         case 'filter-blocked-mentions':
@@ -279,5 +289,104 @@ describe('onMessageCreated', () => {
       expect.objectContaining({ url: '/chats/thread-id?m=message-id' }),
       { updateAppBadge: true },
     )
+  })
+
+  describe('返信の通知', () => {
+    function runReply(content: string, options: {
+      replyTargets: { userId: string; displayName: string }[]
+      mentioned?: { userId: string; displayName: string }[]
+      accessible?: { userId: string; displayName: string }[]
+    }) {
+      const handler = handlers.get('on-message-created')
+      const run = vi.fn(async (name: string, callback: () => unknown) => {
+        switch (name) {
+          case 'resolve-current-channel':
+          case 'resolve-push-channel':
+            return 'channel-id'
+          case 'fetch-members':
+          case 'filter-blocked-members':
+            return []
+          case 'check-dm':
+            return false
+          case 'fetch-reply-target':
+            return options.replyTargets
+          case 'fetch-mentioned-members':
+            return options.mentioned ?? []
+          case 'resolve-mention-preview-names':
+            return {}
+          case 'filter-mention-access':
+          case 'filter-blocked-mentions':
+            return options.accessible ?? [...options.replyTargets, ...(options.mentioned ?? [])]
+          case 'create-mention-notifications':
+            return undefined
+          case 'filter-mention-push-targets':
+            return {
+              readRecipients: [],
+              unreadRecipients: options.accessible ?? [...options.replyTargets, ...(options.mentioned ?? [])],
+            }
+          case 'send-mention-push':
+            return callback()
+          default:
+            throw new Error(`Unexpected step: ${name}`)
+        }
+      })
+      const result = handler!({
+        event: {
+          data: {
+            messageId: 'message-id',
+            channelId: 'channel-id',
+            workspaceId: 'workspace-id',
+            senderId: 'sender-id',
+            senderName: '送信者',
+            content,
+            attachmentFileIds: [],
+          },
+        },
+        step: { run, sleep: vi.fn() },
+      })
+      return { run, result }
+    }
+
+    it('メンションがなくても返信元の投稿者に返信として通知する', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { run, result } = runReply('了解です', { replyTargets: [author] })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 1, fileNotifications: 0 })
+      expect(stepNames(run)).toContain('create-mention-notifications')
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 があなたのメッセージに返信しました' }),
+        { updateAppBadge: true },
+      )
+    })
+
+    it('返信元がメンションもされているときはメンションの文言で1件だけ通知する', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { result } = runReply('<@author> 了解です', {
+        replyTargets: [author],
+        mentioned: [author],
+        accessible: [author],
+      })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 1, fileNotifications: 0 })
+      expect(sendPushToUser).toHaveBeenCalledTimes(1)
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 があなたをメンションしました' }),
+        { updateAppBadge: true },
+      )
+    })
+
+    it('返信元がアクセス・ブロックの絞り込みで外れたら通知しない', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { run, result } = runReply('了解です', { replyTargets: [author], accessible: [] })
+
+      await expect(result).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
+      expect(stepNames(run)).not.toContain('create-mention-notifications')
+      expect(sendPushToUser).not.toHaveBeenCalled()
+    })
   })
 })
