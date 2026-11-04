@@ -36,6 +36,8 @@ export const files = pgTable(
     // ストレージ使用量の workspace 単位集約（SUM(file_size)）用。
     // 詳細: docs/billing-implementation-design.md #4
     index('idx_files_workspace').on(t.workspaceId),
+    // ファイル一覧（GET /api/files）を新しい順にカーソルでページ分割して読む用。
+    index('idx_files_workspace_created_at_id').on(t.workspaceId, t.createdAt.desc(), t.id.desc()),
     // 同じストレージオブジェクトを再試行で二重に確定しない。
     uniqueIndex('files_workspace_storage_path_unique').on(t.workspaceId, t.storagePath),
   ],

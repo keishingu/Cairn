@@ -64,6 +64,49 @@ const FILES_FIXTURE: FileDto[] = [
   },
 ]
 
+function filterFixture(params: URLSearchParams): FileDto[] {
+  const projectId = params.get('projectId')
+  const from = params.get('createdFrom')
+  const before = params.get('createdBefore')
+  return FILES_FIXTURE.filter(
+    (file) =>
+      (!projectId ||
+        (projectId === 'none' ? file.projectId === null : file.projectId === projectId)) &&
+      (!from || file.createdAt >= from) &&
+      (!before || file.createdAt < before),
+  )
+}
+
+/** GET /api/files と /api/files/facets を、クエリパラメータの絞り込みを効かせて真似る */
+function fakeFilesApi(url: string): Response | null {
+  const [path, query = ''] = url.split('?')
+  const params = new URLSearchParams(query)
+  params.delete('cursor')
+  if (path === '/api/files') {
+    return new Response(JSON.stringify({ items: filterFixture(params), nextCursor: null }), { status: 200 })
+  }
+  if (path === '/api/files/facets') {
+    const projectCounts: Record<string, number> = {}
+    for (const file of filterFixture(params)) {
+      const key = file.projectId ?? 'none'
+      projectCounts[key] = (projectCounts[key] ?? 0) + 1
+    }
+    return new Response(
+      JSON.stringify({
+        typeCounts: { all: 2, pdf: 1, img: 0, doc: 0 },
+        projects: [{ id: 'project-1', label: '登山計画' }],
+        uploaders: [
+          { id: 'user-2', label: '佐藤 花子' },
+          { id: 'user-1', label: '山田 太郎' },
+        ],
+        projectCounts,
+      }),
+      { status: 200 },
+    )
+  }
+  return null
+}
+
 function createIntersectionObserverStub() {
   return class IntersectionObserver {
     observe() {}
@@ -94,12 +137,8 @@ describe('ファイル一覧ページ', () => {
     routerPushMock.mockReset()
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url === '/api/files') {
-        return {
-          ok: true,
-          json: async () => FILES_FIXTURE,
-        }
-      }
+      const filesResponse = fakeFilesApi(url)
+      if (filesResponse) return filesResponse
       if (url === '/api/files/filters' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as { name: string; conditions: unknown }
         return new Response(
@@ -270,7 +309,8 @@ describe('ファイル一覧ページ', () => {
   it('保存フィルターの取得エラーをスクロール領域外に表示する', async () => {
     fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url === '/api/files') return { ok: true, json: async () => FILES_FIXTURE }
+      const filesResponse = fakeFilesApi(url)
+      if (filesResponse) return filesResponse
       if (url === '/api/files/filters') {
         return new Response(JSON.stringify({ error: '取得に失敗しました' }), { status: 500 })
       }
@@ -326,5 +366,48 @@ describe('ファイル一覧ページ', () => {
     await userEvent.click(screen.getByRole('button', { name: 'チャットに移動' }))
 
     expect(routerPushMock).toHaveBeenCalledWith('/chats/channel-1?m=message-1')
+  })
+
+  it('末尾が見えたら次のページを読み込んで続きに表示する', async () => {
+    const fallback = fetchWithAuthMock.getMockImplementation()!
+    fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/files?') {
+        return new Response(JSON.stringify({ items: [FILES_FIXTURE[1]], nextCursor: 'cursor-1' }), { status: 200 })
+      }
+      if (url === '/api/files?cursor=cursor-1') {
+        return new Response(JSON.stringify({ items: [FILES_FIXTURE[0]], nextCursor: null }), { status: 200 })
+      }
+      return fallback(input, init)
+    })
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe() {
+        this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      disconnect() {}
+      unobserve() {}
+    })
+
+    renderPageFiles()
+
+    expect(await screen.findByText('general.pdf')).toBeInTheDocument()
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/files?cursor=cursor-1')
+  })
+
+  it('ファイル一覧の取得に失敗したら、空の一覧ではなくエラーを表示する', async () => {
+    const fallback = fetchWithAuthMock.getMockImplementation()!
+    fetchWithAuthMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/files?')) {
+        return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+      }
+      return fallback(input, init)
+    })
+
+    renderPageFiles()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('ファイルの取得に失敗しました (500)')
+    expect(screen.queryByText('ファイルはありません')).toBeNull()
   })
 })

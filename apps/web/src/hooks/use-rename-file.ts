@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import { chatQueryKeys } from '@/lib/chat/client'
 import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { FileListResponse } from '@/app/api/files/route'
 
 interface RenameFileInput {
   fileId: string
@@ -41,7 +42,15 @@ export function useRenameFile() {
       const updateFileList = (current: FileNameDto[] | undefined) =>
         current?.map(file => file.id === fileId ? { ...file, fileName } : file)
 
-      queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['files'] }, updateFileList)
+      // ファイル一覧はページ分割（useInfiniteQuery）なので、ページごとに書き換える
+      queryClient.setQueriesData<InfiniteData<FileListResponse>>({ queryKey: ['files', 'list'] }, current =>
+        current && {
+          ...current,
+          pages: current.pages.map(page => ({
+            ...page,
+            items: page.items.map(file => file.id === fileId ? { ...file, fileName } : file),
+          })),
+        })
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['project-files'] }, updateFileList)
       queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['channel-files'] }, updateFileList)
       queryClient.setQueriesData<MessageDto[]>({ queryKey: chatQueryKeys.messagesRoot }, current =>
