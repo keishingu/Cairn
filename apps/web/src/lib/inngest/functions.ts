@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { inngest } from './client'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { FEATURE_FLAGS, parseLocalePreference, resolveLocale, translate, type AppLocale } from '@cairn/shared'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
@@ -208,7 +208,27 @@ export const onMessageCreated = inngest.createFunction(
     const hasAnyMentionTarget =
       mentionedIds.length > 0 || hasGroupMention(content)
 
-    if (members.length === 0 && !hasAnyMentionTarget)
+    // 返信は、メンションがなくても返信元の投稿者に届ける（Slack のスレッド返信と同じ期待に合わせる）。
+    // 宛先の絞り込み（チャンネルへのアクセス・ブロック）はメンションと同じ経路に乗せる。
+    const replyTargets = await step.run('fetch-reply-target', async () => {
+      const { db, messages, profiles } = await import('@cairn/db')
+      const { eq, and, ne, isNull } = await import('drizzle-orm')
+      const { alias } = await import('drizzle-orm/pg-core')
+      const { filterActiveMemberIds } = await import('@/lib/access/membership')
+      const parent = alias(messages, 'parent_message')
+      const authors = await db
+        .select({ userId: parent.senderId, displayName: profiles.displayName })
+        .from(messages)
+        .innerJoin(parent, and(eq(parent.id, messages.parentMessageId), isNull(parent.deletedAt)))
+        .innerJoin(profiles, eq(profiles.id, parent.senderId))
+        .where(and(eq(messages.id, messageId), ne(parent.senderId, senderId)))
+        .limit(1)
+      // 非活性メンバーは未所属と同等に扱うため、宛先の判定は共有の membership 経由で行う
+      const activeIds = await filterActiveMemberIds(workspaceId, authors.map((a) => a.userId))
+      return authors.filter((a) => activeIds.has(a.userId))
+    })
+
+    if (members.length === 0 && !hasAnyMentionTarget && replyTargets.length === 0)
       return { mentionNotifications: 0, fileNotifications: 0 }
 
     const mentionedMembers =
@@ -274,13 +294,23 @@ export const onMessageCreated = inngest.createFunction(
       : []
 
     const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
-    const candidateMentioned = mergeMentionMembers(
+    const explicitlyMentioned = mergeMentionMembers(
       mentionedMembers,
       allMentionMembers,
       projectMentionMembers,
       attributeMentionMembers,
       roleMentionMembers,
     )
+    const candidateMentioned = mergeMentionMembers(replyTargets, explicitlyMentioned)
+    // メンションもされている返信元にはメンションの文言を優先し、返信だけの人には返信と分かる文言にする
+    const explicitlyMentionedIds = new Set(explicitlyMentioned.map((m) => m.userId))
+    // タイトルは受信者ごとの表示言語で保存・送信する（通知一覧はタイトルをそのまま表示するため）
+    const notificationTitle = (userId: string, locale: AppLocale) =>
+      translate(
+        locale,
+        explicitlyMentionedIds.has(userId) ? '{name} mentioned you' : '{name} replied to your message',
+        { name: senderName },
+      )
 
     // 本文プレビューのメンションは送信時点の最新名で解決する
     const mentionNameMap = await step.run('resolve-mention-preview-names', async () => {
@@ -381,6 +411,26 @@ export const onMessageCreated = inngest.createFunction(
       return notifyMentioned.filter(member => ids.includes(member.userId))
     })
 
+    // 'system' の受信者はジョブに Accept-Language が無いため、Web と同じ既定言語で解決する
+    const recipientLocales: Record<string, AppLocale> = unblockedMentioned.length > 0
+      ? await step.run('resolve-recipient-locales', async () => {
+          const { db, profiles } = await import('@cairn/db')
+          const { inArray } = await import('drizzle-orm')
+          const rows = await db
+            .select({ id: profiles.id, locale: profiles.locale })
+            .from(profiles)
+            .where(inArray(profiles.id, unblockedMentioned.map((m) => m.userId)))
+          return Object.fromEntries(
+            rows.map((row) => [row.id, resolveLocale(parseLocalePreference(row.locale), null)]),
+          )
+        })
+      : {}
+    const localeOf = (userId: string): AppLocale => {
+      const locale = recipientLocales[userId]
+      if (!locale) throw new Error(`Recipient profile not found: ${userId}`)
+      return locale
+    }
+
     let mentionNotifications = 0
     if (unblockedMentioned.length > 0) {
       await step.run('create-mention-notifications', async () => {
@@ -441,7 +491,7 @@ export const onMessageCreated = inngest.createFunction(
             userId: recipient.userId,
             workspaceId,
             type: 'mention' as const,
-            title: `${senderName} があなたをメンションしました`,
+            title: notificationTitle(recipient.userId, localeOf(recipient.userId)),
             body: mentionBody.slice(0, 200),
             data: { messageId, channelId, senderName },
             readAt: readUserIds.has(recipient.userId) ? now : null,
@@ -521,7 +571,7 @@ export const onMessageCreated = inngest.createFunction(
             sendPushToUser(
               recipient.userId,
               {
-                title: `${senderName} があなたをメンションしました`,
+                title: notificationTitle(recipient.userId, localeOf(recipient.userId)),
                 body: mentionBody.slice(0, 100),
                 // 送信後に移動されても、パーマリンクの転送で移動先へ辿れるようメッセージIDを付ける。
                 url: `/chats/${pushChannelId}?m=${encodeURIComponent(messageId)}`,

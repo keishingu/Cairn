@@ -1533,4 +1533,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Your name': '이름',
   'This app receives only the information above. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.': '이 앱에는 위의 정보만 제공됩니다. Cairn의 프로젝트, 대화, 파일을 읽거나 변경할 수 없습니다. 권한은 설정의 연동에서 언제든지 취소할 수 있습니다.',
   'These apps receive only the information you allowed, such as your account ID. They cannot read or change your projects, conversations, or files.': '이 앱들에는 계정 ID 등 허용한 정보만 제공됩니다. 프로젝트, 대화, 파일을 읽거나 변경할 수 없습니다.',
+  '{name} replied to your message': '{name} 님이 내 메시지에 답장했습니다',
+  '{name} mentioned you': '{name} 님이 나를 멘션했습니다',
 }
