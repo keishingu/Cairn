@@ -378,7 +378,7 @@ poll_votes   { id, pollId (cascade), optionId (cascade), userId, allowMultiple, 
 - **リアルタイム**: `message_blocks` の UPDATE に DB トリガーを張り、`realtime.broadcast_changes()` でチャンネルの topic へ流す。クライアントは該当メッセージのクエリを invalidate して REST で再取得する（Broadcast from Database のみ。postgres_changes・ポーリングは使わない）
 - **選択肢の追加**: 作った後で選択肢の入れ忘れ（日程調整の「どちらも不参加」など）に気づいたとき用に、`actions` に「選択肢を追加」ボタンを置く（選択肢が上限の10個未満のときだけ）。押下ではモーダル（`callback_id: add-poll-option`、`private_metadata` に `pollId`）を開くだけで票は変えない。作成者以外が押したら、締め切りと同じく本人にだけ案内のモーダルを出す。送信時に、票の受付と同じく投票の行をロックして作成者・ワークスペース・締切・上限・同じ選択肢の有無を確かめ直し、`position` を末尾に足して `version` を進め、カードを描き直す。既存の票はそのまま残る。応答が失われて同じ送信が再送されても二重に足さず成功として閉じるよう、view ID を `poll_processed_interactions` に同じトランザクションで記録し、記録済みなら確かめ直しより先に成功を返す
 - **「自分の票」**: Block Kit は**全員に同じカード**を描く仕組みで、閲覧者ごとの表示を持たない（[`scheduled-jobs-design.md`](./scheduled-jobs-design.md) §6 の「自分の投票状態」はそのままでは描けない）。`context` に投票者を並べて代える（Slack の投票アプリと同じ）。**第1段階は匿名投票を出さない**（`anonymous` カラムは残すが常に false。§11 D2）
-- **締切**: 投稿できた時点で `polls/card.close` を送り（イベント ID `poll-close-<pollId>` で1本にまとめる）、遅延関数 `polls-card-close` が `closesAt` まで眠ってから締め、ボタンを外したカードへ `chat.update` する。眠りの上限（無料プランは7日）を超えないよう6日ごとに起きて締切を読み直す。予約を送れなかった投票は毎時の拾い直しが締める。結果のサマリを投稿するかは既存の未決事項のまま
+- **締切**: 投稿できた時点で `polls/card.close` を送り（イベント ID `poll-close-<pollId>` で1本にまとめる）、遅延関数 `polls-card-close` が `closesAt` まで眠ってから締め、ボタンを外したカードへ `chat.update` する。実行の長さと眠りの上限に掛からないよう、1本の実行は最長6日だけ眠り、締切がまだ先なら新しい実行に引き継ぐ。予約を送れなかった投票は毎時の拾い直しが締める。結果のサマリを投稿するかは既存の未決事項のまま
 
 ### 7.4 定期ジョブ・AI からの作成
 

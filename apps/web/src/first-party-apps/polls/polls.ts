@@ -424,6 +424,11 @@ export async function nextCloseCheck(pollId: string, maxWaitMs: number): Promise
   return new Date(Math.min(poll.closesAt.getTime(), now + maxWaitMs)).toISOString()
 }
 
+/** 拾い直しの1回で選ぶ件数（Inngest へ1回で送るイベントの数） */
+const SWEEP_BATCH_SIZE = 200
+/** 拾い直しを続ける時間の上限。毎時の処理の他の後片付けと合わせても、関数の実行時間の上限に掛からない長さにする */
+const SWEEP_TIME_BUDGET_MS = 30_000
+
 /**
  * 通常経路の取りこぼしを拾い直す（毎時の定期処理から呼ぶ。docs/app-platform-design.md §7.3）。
  * - 締切の予約を送れなかった投票を締める
@@ -437,21 +442,28 @@ export async function sweepStalePolls(): Promise<{ closed: number; requeued: num
   const activeInstallation = await activeInstallationFilter()
   await db.delete(pollProcessedInteractions).where(lt(pollProcessedInteractions.createdAt, sql`now() - interval '30 days'`))
   // 古いものから拾い、拾った投票は updated_at を進めて列の後ろへ回す。投稿し続けて失敗する投票があっても、
-  // 同じ投票ばかりを毎回拾って、イベントを失っただけの投票が拾われないままにならない
-  const stale = db
-    .select({ id: polls.id })
-    .from(polls)
-    .where(
-      and(
-        or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`),
-        sql`${polls.status} <> 'post_failed'`,
-        lt(polls.updatedAt, sql`now() - interval '1 minute'`),
-        activeInstallation,
-      ),
-    )
-    .orderBy(asc(polls.updatedAt))
-    .limit(200)
-  const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
-  if (rows.length > 0) await inngest.send(rows.map((row) => ({ name: POLL_RENDER_EVENT, data: { pollId: row.id } })))
-  return { closed: closed.length, requeued: rows.length }
+  // 同じ投票ばかりを毎回拾って、イベントを失っただけの投票が拾われないままにならない。
+  // 毎時1回なので1回分の件数で止めず、対象がなくなるか時間の上限に達するまで続けて拾う（残りは次の回）
+  const startedAt = Date.now()
+  let requeued = 0
+  for (;;) {
+    const stale = db
+      .select({ id: polls.id })
+      .from(polls)
+      .where(
+        and(
+          or(sql`${polls.version} > ${polls.renderedVersion}`, sql`${polls.status} = 'pending_post'`),
+          sql`${polls.status} <> 'post_failed'`,
+          lt(polls.updatedAt, sql`now() - interval '1 minute'`),
+          activeInstallation,
+        ),
+      )
+      .orderBy(asc(polls.updatedAt))
+      .limit(SWEEP_BATCH_SIZE)
+    const rows = await db.update(polls).set({ updatedAt: sql`now()` }).where(inArray(polls.id, stale)).returning({ id: polls.id })
+    if (rows.length > 0) await inngest.send(rows.map((row) => ({ name: POLL_RENDER_EVENT, data: { pollId: row.id } })))
+    requeued += rows.length
+    if (rows.length < SWEEP_BATCH_SIZE || Date.now() - startedAt > SWEEP_TIME_BUDGET_MS) break
+  }
+  return { closed: closed.length, requeued }
 }

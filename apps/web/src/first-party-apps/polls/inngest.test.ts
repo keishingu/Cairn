@@ -57,8 +57,18 @@ describe('pollsCardClose', () => {
     const { step, result } = runClose()
 
     await expect(result).resolves.toBe('updated')
-    expect(step.sleepUntil).toHaveBeenCalledWith('wait-for-deadline-0', '2026-11-10T00:00:00.000Z')
+    expect(step.sleepUntil).toHaveBeenCalledWith('wait-for-deadline', '2026-11-10T00:00:00.000Z')
     expect(closeDuePolls).toHaveBeenCalledWith('poll-1')
+  })
+
+  it('起きても締切がまだ先なら、同じ実行で眠り直さず新しい実行に引き継ぐ', async () => {
+    vi.mocked(nextCloseCheck).mockResolvedValueOnce('2026-11-10T00:00:00.000Z').mockResolvedValueOnce('2026-11-16T00:00:00.000Z')
+    const { step, result } = runClose()
+
+    await expect(result).resolves.toBe('handed_over')
+    expect(step.sleepUntil).toHaveBeenCalledTimes(1)
+    expect(step.sendEvent).toHaveBeenCalledWith('hand-over', { id: 'poll-close-poll-1-2026-11-10T00:00:00.000Z', name: 'polls/card.close', data: { pollId: 'poll-1' } })
+    expect(closeDuePolls).not.toHaveBeenCalled()
   })
 
   it('締切の前に締め切りボタンで締められていれば、何もせずに終わる', async () => {

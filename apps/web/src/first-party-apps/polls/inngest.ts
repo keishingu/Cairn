@@ -18,7 +18,10 @@ export const pollsCardRender = inngest.createFunction(
   },
 )
 
-/** 1回に眠る長さの上限。Inngest のプランごとの上限（無料プランは7日）より短くする */
+/**
+ * 1本の実行が眠る長さの上限。Inngest は眠っている時間も実行の長さに数え、プランごとに実行の長さと1回の眠りに上限がある
+ * （無料プランは眠り7日）。締切が遠ければ、上限の前に起きて新しい実行へ引き継ぐ（同じ実行で眠り直さない）
+ */
 const MAX_SLEEP_MS = 6 * 24 * 60 * 60 * 1000
 
 // 締切に締めてカードを描き直す。投稿時に投票ごとに1本予約し、締切まで眠る（眠っている間は実行数を使わない）。
@@ -29,11 +32,17 @@ export const pollsCardClose = inngest.createFunction(
   async ({ event, step }) => {
     const pollId = (event.data as { pollId: string }).pollId
     // 締切は起きるたびに DB から読み直す（締め切りボタンで先に締められていれば、何もせずに終わる）
-    for (let round = 0; ; round++) {
-      const next = await step.run(`check-deadline-${round}`, () => nextCloseCheck(pollId, MAX_SLEEP_MS))
+    const first = await step.run('check-deadline', () => nextCloseCheck(pollId, MAX_SLEEP_MS))
+    if (first === null) return 'skipped'
+    if (first !== 'due') {
+      await step.sleepUntil('wait-for-deadline', first)
+      const next = await step.run('recheck-deadline', () => nextCloseCheck(pollId, MAX_SLEEP_MS))
       if (next === null) return 'skipped'
-      if (next === 'due') break
-      await step.sleepUntil(`wait-for-deadline-${round}`, next)
+      if (next !== 'due') {
+        // 締切がまだ先。実行の長さの上限に掛からないよう、新しい実行に引き継いで終える（ID は起きた時刻ごとに変え、重複排除で落とさない）
+        await step.sendEvent('hand-over', { id: `poll-close-${pollId}-${first}`, name: POLL_CLOSE_EVENT, data: { pollId } })
+        return 'handed_over'
+      }
     }
     const closed = await step.run('close', () => closeDuePolls(pollId))
     if (closed.length === 0) return 'skipped'
