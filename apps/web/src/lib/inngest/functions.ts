@@ -211,24 +211,21 @@ export const onMessageCreated = inngest.createFunction(
     // 返信は、メンションがなくても返信元の投稿者に届ける（Slack のスレッド返信と同じ期待に合わせる）。
     // 宛先の絞り込み（チャンネルへのアクセス・ブロック）はメンションと同じ経路に乗せる。
     const replyTargets = await step.run('fetch-reply-target', async () => {
-      const { db, messages, activeWorkspaceMembers, profiles } = await import('@cairn/db')
+      const { db, messages, profiles } = await import('@cairn/db')
       const { eq, and, ne, isNull } = await import('drizzle-orm')
       const { alias } = await import('drizzle-orm/pg-core')
+      const { filterActiveMemberIds } = await import('@/lib/access/membership')
       const parent = alias(messages, 'parent_message')
-      return db
-        .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
+      const authors = await db
+        .select({ userId: parent.senderId, displayName: profiles.displayName })
         .from(messages)
         .innerJoin(parent, and(eq(parent.id, messages.parentMessageId), isNull(parent.deletedAt)))
-        .innerJoin(
-          activeWorkspaceMembers,
-          and(
-            eq(activeWorkspaceMembers.userId, parent.senderId),
-            eq(activeWorkspaceMembers.workspaceId, workspaceId),
-          ),
-        )
         .innerJoin(profiles, eq(profiles.id, parent.senderId))
         .where(and(eq(messages.id, messageId), ne(parent.senderId, senderId)))
         .limit(1)
+      // 非活性メンバーは未所属と同等に扱うため、宛先の判定は共有の membership 経由で行う
+      const activeIds = await filterActiveMemberIds(workspaceId, authors.map((a) => a.userId))
+      return authors.filter((a) => activeIds.has(a.userId))
     })
 
     if (members.length === 0 && !hasAnyMentionTarget && replyTargets.length === 0)
