@@ -256,6 +256,8 @@ describe('onMessageCreated', () => {
         case 'filter-mention-access':
         case 'filter-blocked-mentions':
           return [mentioned]
+        case 'resolve-recipient-locales':
+          return { 'mentioned-user': 'ja' }
         case 'create-mention-notifications':
           return undefined
         case 'filter-mention-push-targets':
@@ -296,6 +298,7 @@ describe('onMessageCreated', () => {
       replyTargets: { userId: string; displayName: string }[]
       mentioned?: { userId: string; displayName: string }[]
       accessible?: { userId: string; displayName: string }[]
+      locales?: Record<string, string>
     }) {
       const handler = handlers.get('on-message-created')
       const run = vi.fn(async (name: string, callback: () => unknown) => {
@@ -317,6 +320,8 @@ describe('onMessageCreated', () => {
           case 'filter-mention-access':
           case 'filter-blocked-mentions':
             return options.accessible ?? [...options.replyTargets, ...(options.mentioned ?? [])]
+          case 'resolve-recipient-locales':
+            return options.locales ?? { author: 'ja' }
           case 'create-mention-notifications':
             return undefined
           case 'filter-mention-push-targets':
@@ -387,6 +392,18 @@ describe('onMessageCreated', () => {
       await expect(result).resolves.toEqual({ mentionNotifications: 0, fileNotifications: 0 })
       expect(stepNames(run)).not.toContain('create-mention-notifications')
       expect(sendPushToUser).not.toHaveBeenCalled()
+    })
+    it('返信の通知タイトルを受信者の表示言語で送る', async () => {
+      vi.mocked(sendPushToUser).mockClear()
+      const author = { userId: 'author', displayName: '返信元' }
+      const { result } = runReply('OK', { replyTargets: [author], locales: { author: 'en' } })
+
+      await result
+      expect(sendPushToUser).toHaveBeenCalledWith(
+        'author',
+        expect.objectContaining({ title: '送信者 replied to your message' }),
+        { updateAppBadge: true },
+      )
     })
   })
 })
