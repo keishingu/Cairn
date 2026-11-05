@@ -232,6 +232,23 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
   })
 
+  test('既存の公開チャンネルに取り込んでも、開いたことのない人の Cairn での未読は既読にしない', async () => {
+    const liveChannelId = randomUUID()
+    await db.db.insert(db.channels).values({ id: liveChannelId, workspaceId, type: 'workspace', name: '既存', isPrivate: false })
+    const liveAt = new Date('2026-11-01T00:00:00.000Z')
+    await db.db.insert(db.messages).values({ channelId: liveChannelId, senderId: adminId, content: 'Cairn での投稿', createdAt: liveAt, updatedAt: liveAt })
+    const liveConversation = '19:FixtureLiveCommunityDDDDDDDDDDDDDDDDDDDDDDD1@thread.v2'
+    const { jobId } = await service.createImportJob(workspaceId, adminId, {
+      source: 'teams-consumer', exportedAt: null, identities, links: [],
+      conversations: [{ externalId: liveConversation, channelId: liveChannelId, totalMessages: messages.length }],
+    })
+    await service.importMessageBatch(workspaceId, adminId, jobId, { conversationExternalId: liveConversation, messages: messages.map(m => toBatchMessage(m, new Set())) })
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+    const row = (await db.db.execute(sql`select last_read_at from channel_read_states where channel_id = ${liveChannelId} and user_id = ${memberId}`)).rows[0] as { last_read_at: string }
+    // 取り込んだ過去ログ（2025年）は既読、Cairn での投稿（2026-11-01）は未読のまま
+    expect(new Date(row.last_read_at).getTime()).toBe(liveAt.getTime() - 1)
+  })
+
   test('リアクションを取り込み元の人ごとに保存する', async () => {
     const reactionTotal = messages.reduce((n, m) => n + m.reactions.length, 0)
     expect(await count(sql`select count(*) as n from imported_message_reactions r join messages m on m.id = r.message_id where m.channel_id = ${channelId}`)).toBe(reactionTotal)

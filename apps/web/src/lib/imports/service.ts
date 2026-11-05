@@ -416,8 +416,8 @@ export async function registerImportedMedia(
  * AI の巡回が過去ログを新着として読まないよう巡回位置を最新に合わせる。
  */
 export async function completeImportJob(workspaceId: string, jobId: string, input: CompleteImportJobInput) {
-  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, aiScanStates, messages, activeWorkspaceMembers, orm } = await loadDb()
-  const { and, eq, desc, inArray, ne, sql } = orm
+  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, aiScanStates, messages, activeWorkspaceMembers, IMPORT_SENDER_PROFILE_ID, orm } = await loadDb()
+  const { and, asc, eq, desc, inArray, ne, sql } = orm
   await loadRunningJob(db, workspaceId, jobId)
 
   const conversations = await db
@@ -446,9 +446,18 @@ export async function completeImportJob(workspaceId: string, jobId: string, inpu
           : await tx.select({ userId: activeWorkspaceMembers.userId }).from(activeWorkspaceMembers)
               .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), ne(activeWorkspaceMembers.role, 'guest')))
         if (readers.length > 0) {
-          // 既読位置がまだ無い人だけ。既にある人は取り込んだ過去ログ（作成日時が古い）より後を読んでいる
+          // 既読位置がまだ無い人だけ。既にある人は取り込んだ過去ログ（作成日時が古い）より後を読んでいる。
+          // Cairn で投稿されたメッセージがあるチャンネルでは、その最初の投稿の直前を既読位置にし、
+          // チャンネルを開いたことのない人の本当の未読（取り込み中の投稿を含む）を既読にしない
+          const [earliestLive] = await tx
+            .select({ createdAt: messages.createdAt })
+            .from(messages)
+            .where(and(eq(messages.channelId, channel.id), ne(messages.senderId, IMPORT_SENDER_PROFILE_ID)))
+            .orderBy(asc(messages.createdAt))
+            .limit(1)
+          const lastReadAt = earliestLive ? new Date(earliestLive.createdAt.getTime() - 1) : new Date()
           await tx.insert(channelReadStates)
-            .values(readers.map(reader => ({ userId: reader.userId, channelId: channel.id, lastReadAt: new Date() })))
+            .values(readers.map(reader => ({ userId: reader.userId, channelId: channel.id, lastReadAt })))
             .onConflictDoNothing()
         }
         const [latest] = await tx
