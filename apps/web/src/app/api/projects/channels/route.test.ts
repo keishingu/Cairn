@@ -24,6 +24,7 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
+  IMPORT_SENDER_PROFILE_ID: '00000000-0000-4000-8000-00000000c0de',
   channels:         { id: 'ch.id', name: 'ch.name', projectId: 'ch.projectId', milestoneId: 'ch.milestoneId' },
   milestones:       { id: 'm.id', title: 'm.title', startDate: 'm.startDate', endDate: 'm.endDate', startTime: 'm.startTime', endTime: 'm.endTime', completed: 'm.completed', createdAt: 'm.createdAt' },
   projects:         { id: 'p.id', workspaceId: 'p.workspaceId', title: 'p.title', startDate: 'p.startDate', endDate: 'p.endDate', archived: 'p.archived', createdAt: 'p.createdAt' },
