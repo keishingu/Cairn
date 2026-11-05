@@ -25,7 +25,8 @@ export function VideoAttachment({
   const t = useT()
   const [unplayable, setUnplayable] = React.useState(false)
   const downloadHref = `/api/attachments/${fileId}?download=1`
-  const canDownloadOriginal = useUploadRights().data?.canDownloadOriginal === true
+  const uploadRights = useUploadRights()
+  const canDownloadOriginal = uploadRights.data?.canDownloadOriginal === true
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth }}>
@@ -74,6 +75,20 @@ export function VideoAttachment({
           </a>
         )}
       </div>
+      {/* 支援状態を取れないときは「原本なし」として黙って隠さず、失敗を見せて再試行させる */}
+      {uploadRights.isError && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--red-text)' }}>
+          <span>{t('Could not check whether you can download original files.')}</span>
+          <button
+            type="button"
+            className="btn btn-xs"
+            disabled={uploadRights.isFetching}
+            onClick={() => void uploadRights.refetch()}
+          >
+            {t('Retry')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
