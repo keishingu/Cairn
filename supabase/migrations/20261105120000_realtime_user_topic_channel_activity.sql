@@ -14,7 +14,7 @@
 -- ─── 宛先の判定 ───────────────────────────────────────────────
 -- can_access_channel(p_channel_id) は auth.uid() 本人を判定する。こちらは同じ条件を
 -- 全ユーザーについて展開したもの。どちらかを変えたら両方を揃える
--- （検証: docs/notification-design.md「user トピックへの配信」）。
+-- （確かめ方: docs/notification-design.md「宛先判定の同等性の確かめ方」）。
 CREATE OR REPLACE FUNCTION public.channel_realtime_recipients(p_channel_id uuid)
 RETURNS SETOF uuid
 LANGUAGE sql
