@@ -31,7 +31,7 @@
 
 | 順 | セクション | 伝えること |
 |---|---|---|
-| 0 | キャンペーン `#teams-migration`（期間限定） | ナビ直下・ヒーローの上。「Teamsコミュニティからの移行をサポート！」と問い合わせ CTA。取り込みは検証中と注記。詳細は §7 |
+| 0 | キャンペーン `#teams-migration`（期間限定） | ナビ直下・ヒーローの上。「Teamsコミュニティからの移行をサポート！」と問い合わせ CTA。詳細は §7 |
 | 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は必要な人だけ月 ¥300。CTA「無料で始める」＋「料金を見る」、App Store / Google Play へのリンク |
 | 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 10GB（1ファイル 5MB） |
 | 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
@@ -91,8 +91,8 @@
 ## 5. CTA とパラメータ規約
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
-- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
-- Expedition と Teams 移行の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は `utm_campaign=teams-migration` を付ける
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は同じ窓口（`moruit.com`）に `utm_campaign=teams-migration` を付け、メール（`info@orikata.co.jp`）も併記する
 - ストアへのリンクはテキストリンクで、公式バッジ画像は使っていない。バッジに置き換えるときは Apple / Google のバッジ利用ガイドラインに従う（公式の画像をそのまま使い、改変しない）。フッターに App Store・Google Play・Microsoft Teams の商標表記と、Microsoft と提携していない旨を置いている
 
 ### 計測（PostHog）
@@ -113,10 +113,11 @@
 
 Microsoft が個人向け Microsoft Teams のコミュニティ機能を 2026年12月以降に終了すると発表したため、移行先を探す団体・コミュニティの運営者に向けて告知している。
 
+- **ボタン**: 告知の CTA は `.btn-primary` だがグロー（`box-shadow`）を外している。ヒーローの CTA と光り方で競わせないため
 - **配置**: ナビ直下・ヒーローの上の `section.campaign#teams-migration`。PC は本文と CTA の横並び、820px 以下は縦並びで CTA を全幅にする。後続のヒーローは上余白を詰める（`.campaign + .hero`）
 - **意味**: 「移行支援」は問い合わせ・ヒアリング・移行方法の個別案内のこと。データの完全移行、履歴の完全復元、全ファイルの取り込みは約束しない
-- **取り込み機能**: Teams のエクスポートデータを Cairn に取り込む機能は**未完成（検証中）**。バナーと FAQ に「現在検証中」と必ず書く。正式に提供したら、コピー・FAQ・§4 の「書いてはいけない」を更新する
+- **取り込み機能**: Teams のエクスポートデータを Cairn に取り込む機能は**未完成（検証中）**。「取り込める」「履歴を移せる」とは書かない。一方で「検証中」の注記はマイナスの印象が強いため告知・FAQ には出さず、FAQ では「これまでのメッセージやファイルの扱いもお問い合わせの際にご相談ください」とだけ書く。正式に提供したら、コピー・FAQ・§4 の「書いてはいけない」を更新する
 - **表現の制約**: 終わるのは「個人向け Teams のコミュニティ機能」。企業・学校向けの Teams 全体が終わるように書かない。Microsoft と提携しているように書かない
-- **問い合わせ**: 既存の相談窓口（moru.tech のフォーム）を再利用し、`utm_source=oss-cairn&utm_medium=lp&utm_campaign=teams-migration&utm_content=banner` を付ける。フォームに種別の事前入力はできないため、注記で「Teams 移行」と書いてもらう
+- **問い合わせ**: 既存の相談窓口のフォーム（`https://moruit.com/#consultation`。旧 `moru.tech` はここへリダイレクトされる）に `utm_source=oss-cairn&utm_medium=lp&utm_campaign=teams-migration&utm_content=banner` を付けたボタンと、`info@orikata.co.jp` 宛ての `mailto:`（件名「Teams コミュニティからの移行の相談」）のホローボタンを並べる。フォームに種別の事前入力はできないため、注記で「Teams 移行」と書いてもらう
 - **SEO**: 新ページは作らず、`meta description` に一文と FAQ（JSON-LD 含む）に 1 問を追加した。「Teams コミュニティ 廃止 / 代替 / 移行」で上位を狙うなら、専用ページ（例: `/migrate-from-teams`）を別途検討する
 - **撤去手順**: `index.html` の `#teams-migration` セクション、FAQ の Teams の 1 問（HTML と JSON-LD の両方）、`meta description` の Teams の一文、`cairn-lp.css` の「campaign」ブロックを消し、`apps/web/src/app/page.test.tsx` の該当テストと本節を更新する
