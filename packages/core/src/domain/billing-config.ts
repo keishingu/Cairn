@@ -16,7 +16,7 @@ export const BILLING_CONFIG = {
     'claude-opus-5-5': 20,
   },
   heartbeatAiDeliveryCredits: 10,
-  freeStorageBytes: 10 * 1024 ** 3,
+  freeStorageBytes: 100 * 1024 ** 3,
   storageRentCreditsPerGibMonth: 4,
   billingTimeZone: 'Asia/Tokyo',
 } as const

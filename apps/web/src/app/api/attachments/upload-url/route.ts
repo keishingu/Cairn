@@ -4,13 +4,11 @@
 import { NextResponse } from 'next/server'
 import {
   ALLOWED_MIME_TYPES,
-  FREE_ATTACHMENT_MAX_FILE_SIZE,
   MAX_FILE_SIZE,
   normalizeMimeType,
   resolveStorageExtension,
 } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
@@ -69,18 +67,7 @@ export async function POST(req: Request) {
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
-  const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
   const isPdf = normalizedMime === 'application/pdf'
-  if (
-    fileSize > FREE_ATTACHMENT_MAX_FILE_SIZE &&
-    !(isPdf && fileSize <= MAX_FILE_SIZE) &&
-    !entitlements.rights.canUploadLargeFile
-  ) {
-    return NextResponse.json(
-      { error: '5MBを超えるファイルをアップロードするには、残高のある有効な支援が必要です' },
-      { status: 403 },
-    )
-  }
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
