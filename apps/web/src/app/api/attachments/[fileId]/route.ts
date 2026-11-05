@@ -6,6 +6,10 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { isVideoMimeType } from '@/lib/attachments'
+
+// 動画は <video> が再生中に Range 要求を繰り返すため、PDF より長く署名を保つ
+const VIDEO_SIGNED_URL_TTL_SECONDS = 4 * 60 * 60
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -110,8 +114,8 @@ export async function GET(req: Request, { params }: RouteContext) {
 
       if (wantOriginal) {
         const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-        if (!entitlements.rights.canUploadOriginal) {
-          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の有効な支援とワークスペースの残高が必要です' }, { status: 403 })
+        if (!entitlements.rights.canDownloadOriginal) {
+          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の Solo 支援とワークスペースの残高が必要です', code: 'original-download-entitlement-required' }, { status: 403 })
         }
       } else if (status === 'pending' || status === 'processing') {
         return NextResponse.json({ error: 'PDFを最適化中です。しばらくしてから再試行してください' }, { status: 409 })
@@ -132,6 +136,33 @@ export async function GET(req: Request, { params }: RouteContext) {
       if (signedError || !signed) {
         console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
         return new NextResponse(null, { status: 502 })
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
+
+    // 動画は Vercel の Function 経由だと応答サイズ上限に掛かり、シークもできない。
+    // 本体を中継せず、Range 要求を受けられる Storage の短期署名 URL へ転送する。
+    // 再生・保存はチャンネル/プロジェクトのメンバー全員が可（アップロードだけが支援者の能動権）
+    if (isVideoMimeType(file.mimeType)) {
+      if (wantThumb) return new NextResponse(null, { status: 404 })
+      const wantDownload = new URL(req.url).searchParams.get('download') === '1'
+      const { data: signed, error: signedError } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(
+          file.storagePath,
+          VIDEO_SIGNED_URL_TTL_SECONDS,
+          wantDownload ? { download: file.fileName } : undefined,
+        )
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] Video signed URL failed:', signedError)
+        return NextResponse.json({ error: '動画の取得に失敗しました' }, { status: 502 })
+      }
+      // アプリは認証ヘッダーを付けられない OS のプレイヤーで再生するため、転送ではなく URL を受け取る
+      if (new URL(req.url).searchParams.get('as') === 'json') {
+        return NextResponse.json(
+          { url: signed.signedUrl, expiresIn: VIDEO_SIGNED_URL_TTL_SECONDS },
+          { headers: { 'Cache-Control': 'private, no-store' } },
+        )
       }
       return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
     }

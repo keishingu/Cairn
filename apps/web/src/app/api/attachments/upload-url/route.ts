@@ -4,10 +4,15 @@
 import { NextResponse } from 'next/server'
 import {
   ALLOWED_MIME_TYPES,
-  MAX_FILE_SIZE,
+  UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
+  VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentFileSizeError,
+  isVideoMimeType,
+  maxAttachmentFileSize,
   normalizeMimeType,
   resolveStorageExtension,
 } from '@/lib/attachments'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -51,27 +56,33 @@ export async function POST(req: Request) {
   const normalizedMime = normalizeMimeType(fileName, mimeType)
 
   if (!ALLOWED_MIME_TYPES.has(normalizedMime)) {
-    return NextResponse.json(
-      {
-        error:
-          '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）',
-      },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: UNSUPPORTED_ATTACHMENT_TYPE_ERROR }, { status: 400 })
   }
 
-  if (fileSize > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'ファイルサイズは 50MiB 以下にしてください' }, { status: 400 })
+  if (fileSize > maxAttachmentFileSize(normalizedMime)) {
+    return NextResponse.json({ error: attachmentFileSizeError(normalizedMime) }, { status: 400 })
   }
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   const isPdf = normalizedMime === 'application/pdf'
+  const isVideo = isVideoMimeType(normalizedMime)
+
+  // 動画は Solo の支援者本人の能動権。finalize でも同じ判定をやり直す
+  if (isVideo) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.rights.canUploadVideo) {
+      return NextResponse.json(
+        { error: VIDEO_UPLOAD_ENTITLEMENT_ERROR, code: 'video-upload-entitlement-required' },
+        { status: 403 },
+      )
+    }
+  }
 
   const ext = resolveStorageExtension(fileName, normalizedMime)
   // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
-  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${isPdf ? 'pdf-originals/' : ''}${crypto.randomUUID()}.${ext}`
+  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${isPdf ? 'pdf-originals/' : isVideo ? 'videos/' : ''}${crypto.randomUUID()}.${ext}`
 
   const { db, uploadRequests } = await import('@cairn/db')
   if (!(await hasAttachmentUploadRequestSchema(db))) {
@@ -121,5 +132,7 @@ export async function POST(req: Request) {
     path: data.path,
     storagePath,
     mimeType: normalizedMime,
+    // 50MiB を超え得る動画は、署名トークンを x-signature に載せた TUS で送る
+    resumable: isVideo,
   })
 }

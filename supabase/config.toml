@@ -68,16 +68,18 @@ port = 54324
 [storage]
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+# Solo の動画添付（500MiB）に合わせる。バケットごとの上限は下で個別に絞る
+file_size_limit = "500MiB"
 
 [storage.image_transformation]
 enabled = true
 
 [storage.buckets."chat-attachments"]
 public = false
-file_size_limit = "50MiB"
+file_size_limit = "500MiB"
 allowed_mime_types = [
   "image/jpeg", "image/png", "image/gif", "image/webp",
+  "video/mp4", "video/quicktime", "video/webm",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

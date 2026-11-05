@@ -581,3 +581,98 @@ describe('/api/attachments/finalize の実サイズ上限', () => {
     expect(mockInsertReturning).not.toHaveBeenCalled()
   })
 })
+
+describe('/api/attachments/finalize の動画', () => {
+  const videoPath = `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/videos/clip.mp4`
+
+  beforeEach(() => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID },
+      error: null,
+    })
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockList.mockResolvedValue({
+      data: [{ name: 'clip.mp4', metadata: { size: 300 * 1024 * 1024 } }],
+      error: null,
+    })
+    mockSelectLimit
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1', fileName: 'clip.mp4', mimeType: 'video/mp4' }])
+      .mockResolvedValueOnce([{ projectId: null }])
+    mockInsertReturning.mockImplementation((values) =>
+      Promise.resolve([{ id: 'file-1', ...values }]),
+    )
+  })
+
+  afterEach(() => {
+    mockIsBillingEnabled.mockReturnValue(false)
+    mockTransactionSelectLimit.mockReset()
+    vi.clearAllMocks()
+  })
+
+  const body = {
+    channelId: CHANNEL_ID,
+    storagePath: videoPath,
+    fileName: 'clip.mp4',
+    mimeType: 'video/mp4',
+    fileSize: 300 * 1024 * 1024,
+  }
+
+  it('無料容量の範囲内でも、支援者本人でなければ動画を確定せず削除する', async () => {
+    mockTransactionSelectLimit
+      .mockResolvedValueOnce([{ originalBytes: 0 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ balance: '300' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'video-upload-entitlement-required' })
+    expect(mockRemove).toHaveBeenCalledWith([videoPath])
+    expect(mockInsertReturning).not.toHaveBeenCalled()
+  })
+
+  it('残高のあるワークスペースの Solo 支援者本人なら 50MiB を超える動画を video として確定する', async () => {
+    mockTransactionSelectLimit
+      .mockResolvedValueOnce([{ originalBytes: 0 }])
+      // Promise.all では支援行の limit() が残高の then() より先に呼ばれる
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+      .mockResolvedValueOnce([{ balance: '300' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ fileType: 'video', mimeType: 'video/mp4', fileSize: 300 * 1024 * 1024 }),
+    )
+    expect(mockRemove).not.toHaveBeenCalled()
+  })
+
+  it('Storage の実サイズが 500MiB を超えた動画は削除して拒否する', async () => {
+    mockList.mockResolvedValue({
+      data: [{ name: 'clip.mp4', metadata: { size: 500 * 1024 * 1024 + 1 } }],
+      error: null,
+    })
+    mockTransactionSelectLimit.mockResolvedValue([])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(400)
+    expect(mockRemove).toHaveBeenCalledWith([videoPath])
+  })
+
+  it('動画の intent を videos/ 以外のパスで確定しようとしたら拒否する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({ ...body, storagePath: `${DEV_WORKSPACE_ID}/${CHANNEL_ID}/${DEV_USER_ID}/clip.mp4` }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(mockInsertValues).not.toHaveBeenCalled()
+  })
+})

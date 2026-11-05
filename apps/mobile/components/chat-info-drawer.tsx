@@ -13,7 +13,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { formatTaskTitleForDisplay } from '@cairn/shared'
+import { formatTaskTitleForDisplay, isVideoAttachmentMime } from '@cairn/shared'
 import { useChannelMembers, useProjectMembers, type ChannelMemberDto } from '../hooks/use-chat-channels'
 import { useChatInfoFiles, useChatInfoTasks, type ChatInfoFileDto } from '../hooks/use-chat-info'
 import { useProjects } from '../hooks/use-projects'
@@ -401,7 +401,7 @@ function FilesSection({
           >
             <View style={[styles.fileIcon, { backgroundColor: palette.card2 }]}>
               <Ionicons
-                name={isLink ? 'link-outline' : isImageMime(file.mimeType) ? 'image-outline' : 'document-text-outline'}
+                name={isLink ? 'link-outline' : isImageMime(file.mimeType) ? 'image-outline' : isVideoAttachmentMime(file.mimeType) ? 'videocam-outline' : 'document-text-outline'}
                 size={18}
                 color={palette.text3}
               />

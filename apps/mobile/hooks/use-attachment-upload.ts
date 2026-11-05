@@ -6,10 +6,12 @@ import { File } from 'expo-file-system'
 import { apiFetch } from '../lib/api-fetch'
 import { ALLOWED_DOCUMENT_TYPES } from '../lib/attachment-file'
 import { AttachmentFinalizeError, finalizeAttachment } from '../lib/attachment-finalize'
-import { MAX_MESSAGE_ATTACHMENTS } from '@cairn/shared'
+import { MAX_MESSAGE_ATTACHMENTS, MAX_VIDEO_ATTACHMENT_BYTES } from '@cairn/shared'
 import { remainingAttachmentSlots } from '../lib/attachment-limit'
 import { hasFailedUploads } from '../lib/mobile-chat-state'
-import { supabase } from '../lib/supabase'
+import { supabase, SUPABASE_ANON_KEY } from '../lib/supabase'
+import { SUPABASE_URL } from '../lib/env'
+import { uploadResumableToStorage } from '../lib/resumable-upload'
 import { useT } from '../components/locale-provider'
 
 export interface PendingUpload {
@@ -17,6 +19,8 @@ export interface PendingUpload {
   channelId: string
   fileName: string
   status: 'uploading' | 'done' | 'error'
+  /** 動画など再開可能アップロードの進捗（0〜100） */
+  progress?: number | undefined
   fileId?: string
   error?: string | undefined
   retryFinalize?: (() => Promise<{ fileId: string }>) | undefined
@@ -33,6 +37,8 @@ type SignedUploadDto = {
   token: string
   storagePath: string
   mimeType: string
+  /** 動画は 50MiB を超え得るため、TUS で送るよう upload-url が指示する */
+  resumable?: boolean
 }
 
 function uploadId(): string {
@@ -74,14 +80,29 @@ export function useAttachmentUpload(channelId: string) {
           throw await responseError(signResponse, t('Could not prepare the upload'))
         const signed = (await signResponse.json()) as SignedUploadDto
 
-        const file = new File(picked.uri)
-        const bytes = await file.arrayBuffer()
-        const { error: storageError } = await supabase.storage
-          .from('chat-attachments')
-          .uploadToSignedUrl(signed.storagePath, signed.token, bytes, {
-            contentType: signed.mimeType,
+        if (signed.resumable) {
+          await uploadResumableToStorage({
+            supabaseUrl: SUPABASE_URL,
+            apiKey: SUPABASE_ANON_KEY,
+            bucket: 'chat-attachments',
+            storagePath: signed.storagePath,
+            token: signed.token,
+            mimeType: signed.mimeType,
+            file: { uri: picked.uri, name: picked.fileName, type: signed.mimeType },
+            onProgress: (sent, total) => {
+              if (total > 0) patchUpload(id, { progress: Math.floor((sent / total) * 100) })
+            },
           })
-        if (storageError) throw storageError
+        } else {
+          const file = new File(picked.uri)
+          const bytes = await file.arrayBuffer()
+          const { error: storageError } = await supabase.storage
+            .from('chat-attachments')
+            .uploadToSignedUrl(signed.storagePath, signed.token, bytes, {
+              contentType: signed.mimeType,
+            })
+          if (storageError) throw storageError
+        }
 
         const finalized = await finalizeAttachment({
           channelId,
@@ -167,6 +188,37 @@ export function useAttachmentUpload(channelId: string) {
     )
   }, [alertAttachmentLimit, uploadFiles, uploads.length])
 
+  // 動画は Solo の支援者本人だけが送れる。ボタンは送れる人にだけ出し、判定の正はサーバー
+  const pickVideo = React.useCallback(async () => {
+    if (remainingAttachmentSlots(uploads.length) === 0) {
+      alertAttachmentLimit()
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      // iPhone の HEVC をそのまま送ると Chrome などで再生できないため、互換性の高い形式で受け取る
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    })
+    const asset = result.assets?.[0]
+    if (result.canceled || !asset) return
+    const localFile = new File(asset.uri)
+    const fileSize = asset.fileSize ?? localFile.size
+    if (fileSize > MAX_VIDEO_ATTACHMENT_BYTES) {
+      Alert.alert(t('Upload failed'), t('Videos must be 500MiB or smaller'))
+      return
+    }
+    await uploadFiles([
+      {
+        uri: asset.uri,
+        fileName: asset.fileName ?? localFile.name ?? 'video.mp4',
+        mimeType: asset.mimeType ?? 'video/mp4',
+        fileSize,
+      },
+    ])
+  }, [alertAttachmentLimit, t, uploadFiles, uploads.length])
+
   const pickDocument = React.useCallback(async () => {
     if (remainingAttachmentSlots(uploads.length) === 0) {
       alertAttachmentLimit()
@@ -217,6 +269,7 @@ export function useAttachmentUpload(channelId: string) {
     uploads,
     uploadFiles,
     pickImage,
+    pickVideo,
     pickDocument,
     removeUpload,
     retryUpload,

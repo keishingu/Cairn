@@ -1,6 +1,6 @@
 # 課金実装設計書
 
-> **ステータス**: 現行仕様（Free / Solo の購読・クレジット台帳・ストレージ家賃・AI 消費は実装済み。Team / Expedition・ミニゲームは未実装）（作成: 2026-06-12 / 改訂: 2026-09-24）
+> **ステータス**: 現行仕様（Free / Solo の購読・クレジット台帳・ストレージ家賃・AI 消費・動画添付・原本の取得は実装済み。Team / Expedition・ミニゲームは未実装）（作成: 2026-06-12 / 改訂: 2026-11-05）
 > プランの意図・価格・原価モデルは [`pricing-plan-design.md`](./pricing-plan-design.md)。関連: [`ai-pmo-design.md`](./ai-pmo-design.md)（受動AI）、[`billing-minigame-design.md`](./billing-minigame-design.md)（石積みミニゲーム）
 
 ## 1. 方針
@@ -18,16 +18,20 @@
 - **消費**: AI の利用 = 都度（フロー型）、ストレージ保有 = 家賃として日割り（ストック型。保有バイト × レート × 経過期間）
 - **残高 = `SUM(credit_ledger.delta)`**。0 以下で「風化」
 - **権利と恩恵の分離**:
-  - **能動権（本人帰属）**: オリジナルのアップロード、無料容量を超える保存、`/ai` への依頼 → アクティブな支援者本人のみ
-  - **受動恩恵（WS 帰属）**: オリジナルの閲覧・DL、AI PMO のナッジ → ケルンに残高があれば全メンバー
+  - **能動権（本人帰属）**: オリジナルのアップロード、動画のアップロード、PDF 原本・ギャラリー原本画像のダウンロード、無料容量を超える保存、`/ai` への依頼 → アクティブな支援者本人のみ
+  - **受動恩恵（WS 帰属）**: 動画の再生・保存、AI PMO のナッジ → ケルンに残高があれば全メンバー（動画は残高に関係なく、チャンネルに入れる全員が再生できる）
+  - 2026-11 に無料プランを 100GiB・全形式 50MiB/ファイルへ広げ、Solo のファイル面の売りを「動画のアップロード」と「原本のダウンロード」に置き換えた。原本の閲覧・DL は当初 WS 帰属の受動恩恵だったが、Solo 本人の売りにするため能動権へ移した
 
 ## 3. 課金ポイントと執行ポイント
 
 | 課金ポイント | Free | 支援者本人（funded WS） | 執行ポイント |
 |---|---|---|---|
-| ギャラリー画像 | 圧縮派生のみ（長辺2048px。EXIF の撮影日時・GPS は保持） | オリジナルも保存（閲覧は全員） | `projects/[id]/gallery/upload-url` / `finalize` |
+| ギャラリー画像 | 圧縮派生のみ（長辺2048px。EXIF の撮影日時・GPS は保持） | オリジナルも保存（表示は全員とも圧縮派生） | `projects/[id]/gallery/upload-url` / `finalize` |
+| ギャラリー原本画像のダウンロード | 不可 | 可（`?original=1`、短期署名 URL） | `projects/[id]/gallery/[itemId]/file` |
 | チャット添付・ファイル | 50MiB/ファイル（PDF は圧縮前） | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
-| 動画、チャット添付の音声・ZIP | 不可（MIME whitelist 外） | 未開放（`canUploadVideo` の権利判定だけ定義済み） | — |
+| PDF 原本のダウンロード | 不可（最適化版は全員可） | 可（`?original=1`） | `attachments/[fileId]` |
+| チャット添付の動画（MP4 / MOV / WebM） | 不可 | 500MiB/ファイル。再開可能アップロード（TUS）。再生・保存はチャンネルの全員 | `attachments/upload-url` / `finalize`、配信は `attachments/[fileId]` |
+| チャット添付の音声・ZIP、ギャラリーの動画 | 不可（MIME whitelist 外） | 未開放 | — |
 | ストレージ保有 | 100GiB まで（`BILLING_CONFIG.freeStorageBytes`。2026-11 に 10GiB から引き上げ） | 残高が家賃を払える限り | 家賃 cron（§6） |
 | AI 能動利用（`/ai`） | 不可 | クレジットを消費 | `api/ai/conversations/[id]/messages` |
 | AI 受動利用（AI PMO） | ケルンに残高があれば受信 | 受信 | `lib/ai-nudges/`（配信ごとに消費） |
@@ -35,7 +39,10 @@
 - 画像圧縮は**アップロード前のクライアントサイド**で行う（`lib/process-image.ts`。ingress 帯域と処理コストの節約）。撮影日時・GPS を失わないこと（地図・タイムラインの前提）。オリジナルを保存する場合も必ず表示用の圧縮派生を持たせる（サムネイル兼、風化時のフォールバック）
 - PDF は無料でも圧縮前50MiBまで受け付け、最適化版は全員が利用できる。原本のダウンロードは本人の有効な支援と残高を要求し、課金無効環境では許可する。
 - アバター・ワークスペースロゴ・カバー写真は**家賃対象外**（サイズ上限のみ。プロフィール設定が課金で詰まる体験を避けるため）
-- 音声・動画・ZIP は原価（ストレージ・egress）が大きく無料開放しづらいため、支援者本人の能動権として開放する想定（MIME・上限は未決）
+- 動画は原価（ストレージ・egress）が大きく無料開放しづらいため、支援者本人の能動権としてチャット添付にだけ開放した。形式は MP4 / MOV / WebM（`VIDEO_ATTACHMENT_MIME_TYPES`）、上限は 500MiB（`MAX_VIDEO_ATTACHMENT_BYTES`。どちらも `@cairn/shared`）。upload-url は `canUploadVideo` を判定し、finalize は家賃精算後に支援と残高を同じトランザクションで再判定する（無料容量の内外を問わない）。50MiB を超えるため、クライアントは upload-url が返す `resumable: true` を見て、署名トークンを `x-signature` に載せた TUS（`/storage/v1/upload/resumable/sign`、6MB チャンク）で送る
+- 動画のサーバー側サムネイルは作らない。Web はブラウザ標準の `<video preload="metadata">`、アプリは OS のブラウザで再生する。配信は API が Storage の署名 URL（4時間。再生中の Range 要求に耐える長さ）へ 302 し、本体を Vercel に通さない。アプリは `?as=json` で URL を受け取る
+- ホスト版 Supabase は、プロジェクト全体のアップロード上限（Storage 設定）を 500MiB 以上にしておく必要がある（`chat-attachments` バケットの上限はマイグレーションで 500MiB）
+- 音声・ZIP、ギャラリーの動画は未開放
 
 ## 4. データモデル（`packages/db/src/schema/billing.ts`）
 
@@ -70,7 +77,8 @@ stripe_events              Webhook 冪等性（Stripe event id）
 純粋関数は `packages/core`（`@cairn/core/billing`）、DB からの解決は `apps/web/src/lib/billing/entitlements.ts`（`resolveUploadEntitlements`）。
 
 - `resolveWorkspaceState(creditBalance, billingEnabled)` → `unlimited`（課金無効）/ `funded`（残高 > 0）/ `weathered`（残高 <= 0）
-- `resolveUploadRights(isActiveSupporter, workspaceFunded, billingEnabled)` → `canUploadOriginal` / `canUploadLargeFile` / `canUploadVideo`。課金無効なら常に可、有効なら「支援者本人 かつ funded」
+- `resolveUploadRights(isActiveSupporter, workspaceFunded, billingEnabled)` → `canUploadOriginal` / `canUploadLargeFile` / `canUploadVideo` / `canDownloadOriginal`。課金無効なら常に可、有効なら「支援者本人 かつ funded」
+- UI の出し分け用に `GET /api/billing/upload-rights`（`canUploadVideo` / `canDownloadOriginal`）を置く。判定の正は各ルートの 403 で、アプリは課金の導線を出さないため、送れる・取得できる本人にだけボタンやメニューを出す
 - 数値（価格・付与数・パック・AI 消費・無料容量・家賃レート）は `packages/core/src/domain/billing-config.ts` の `BILLING_CONFIG` に集約し、Route Handler に散在させない
 - Team 移行動線（Solo の月額合計が Team 価格に近づいた WS への提案）は Team 実装時に設計する
 
@@ -97,7 +105,8 @@ stripe_events              Webhook 冪等性（Stripe event id）
 残高から導出する状態であり専用フラグは持たない。風化 = データ消失ではなく **Free 相当への復帰**。
 
 - 新規のオリジナル / 大容量アップロードを停止
-- **既存オリジナルはロックするが配信は止めない**: ギャラリー画像は圧縮派生を返す（`gallery/[itemId]/file`）。egress が赤字リスクの本体なのでオリジナルは返さない
+- **既存オリジナルはロックするが配信は止めない**: ギャラリーの表示は平常時から全員に圧縮派生を返す（`gallery/[itemId]/file`）。原本のダウンロードは風化中は支援者本人にも許可しない（egress が赤字リスクの本体）
+- 既存の動画は風化中も再生・保存できる（動画に圧縮派生は無く、止めると添付が見られなくなるため）
 - 圧縮派生と貢献記録は消えない
 - 石が再び積まれたら funded に戻り、ロックが外れる
 - 未実装: 動画・文書のプレースホルダ表示、長期風化オリジナルのコールドストレージ退避（最終削除は超長期 + 警告の上での最終手段）
@@ -140,7 +149,7 @@ stripe_events              Webhook 冪等性（Stripe event id）
 - クレジット単価・月次付与数・家賃レート・AI 1依頼 / 1配信の消費数の本決定（現状は `BILLING_CONFIG` の初期仮値。原価シミュレーション要）
 - AI の天井の見せ方（減る残高 or 毎月リセットの上限。枯渇不安が少ない後者を推奨）
 - 画像圧縮の最終パラメータ（長辺 px・品質）と文書 5MB 上限の妥当性
-- チャット添付で開放する音声・動画・ZIP の MIME・サイズ上限（ギャラリーの動画対応を含む）
+- チャット添付で開放する音声・ZIP の MIME・サイズ上限、ギャラリーの動画対応、動画の Free 向け軽量版（トランスコード）の要否
 - 家賃の月またぎ・タイムゾーンの扱い
 - 風化後オリジナルのコールド退避までの猶予期間、最終削除の是非
 - Team の確定価格、Team 加入時の既存 Solo の扱い（併存して上積みか停止案内か）

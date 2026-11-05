@@ -1,13 +1,43 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { MAX_VIDEO_ATTACHMENT_BYTES, VIDEO_ATTACHMENT_MIME_TYPES } from '@cairn/shared'
+
 // 添付ファイルのバリデーション・MIME 正規化ロジック。
 // アップロード URL 発行(upload-url) と登録(finalize) の両ルートで共有する。
 
-// 1ファイルの上限はプランを問わず同じ。無料と有料の差は保存容量（BILLING_CONFIG.freeStorageBytes）で付ける。
+// 動画以外の1ファイル上限はプランを問わず同じ。無料と有料の差は保存容量（BILLING_CONFIG.freeStorageBytes）で付ける。
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
 
+// 動画は Solo の支援者本人（課金無効なら全員）だけがアップロードできる。
+// スマホで撮った数分の動画が入る大きさにし、50MiB を超えるため再開可能アップロード（TUS）で送る。
+export const MAX_VIDEO_FILE_SIZE = MAX_VIDEO_ATTACHMENT_BYTES
+
+// iPhone の標準撮影は MOV、Android と多くの書き出しは MP4、ブラウザの画面録画は WebM
+export const VIDEO_MIME_TYPES: ReadonlySet<string> = new Set(VIDEO_ATTACHMENT_MIME_TYPES)
+
+export function isVideoMimeType(mimeType: string | null | undefined): boolean {
+  return typeof mimeType === 'string' && VIDEO_MIME_TYPES.has(mimeType)
+}
+
+export function maxAttachmentFileSize(mimeType: string): number {
+  return isVideoMimeType(mimeType) ? MAX_VIDEO_FILE_SIZE : MAX_FILE_SIZE
+}
+
+export function attachmentFileSizeError(mimeType: string): string {
+  return isVideoMimeType(mimeType)
+    ? '動画のファイルサイズは 500MiB 以下にしてください'
+    : 'ファイルサイズは 50MiB 以下にしてください'
+}
+
+export const UNSUPPORTED_ATTACHMENT_TYPE_ERROR =
+  '対応していないファイル形式です（画像・動画・PDF・Word・Excel・PowerPoint・CSV・テキスト）'
+
+export const VIDEO_UPLOAD_ENTITLEMENT_ERROR =
+  '動画をアップロードするには、本人の Solo 支援とワークスペースの残高が必要です'
+
 export const ALLOWED_MIME_TYPES = new Set([
+  ...VIDEO_ATTACHMENT_MIME_TYPES,
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf',
   'application/msword',
@@ -40,6 +70,10 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   md: 'text/markdown',
   markdown: 'text/markdown',
   csv: 'text/csv',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
 }
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -56,6 +90,9 @@ const MIME_TO_EXT: Record<string, string> = {
   'text/plain': 'txt',
   'text/markdown': 'md',
   'text/csv': 'csv',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
 }
 
 // Windows等では.csvファイルがExcelの登録ハンドラ経由でapplication/vnd.ms-excelとして
@@ -106,6 +143,15 @@ export function sniffMimeType(bytes: Uint8Array): string | null {
   ) {
     return 'image/webp'
   }
+  // MP4 / MOV: 先頭4バイトのボックス長の後に "ftyp"。ブランド "qt  " は QuickTime
+  if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+    const isQuickTime = bytes[8] === 0x71 && bytes[9] === 0x74 && bytes[10] === 0x20 && bytes[11] === 0x20
+    return isQuickTime ? 'video/quicktime' : 'video/mp4'
+  }
+  // WebM（EBML ヘッダー）
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    return 'video/webm'
+  }
   return null
 }
 
@@ -119,8 +165,9 @@ export function resolveStorageExtension(fileName: string, mimeType: string): str
   return fileName.includes('.') ? (fileName.split('.').pop() ?? 'bin') : (MIME_TO_EXT[mimeType] ?? 'bin')
 }
 
-export function resolveFileType(mimeType: string): 'image' | 'document' | 'other' {
+export function resolveFileType(mimeType: string): 'image' | 'video' | 'document' | 'other' {
   if (mimeType.startsWith('image/')) return 'image'
+  if (isVideoMimeType(mimeType)) return 'video'
   if (
     mimeType === 'application/pdf' ||
     mimeType === 'application/msword' ||

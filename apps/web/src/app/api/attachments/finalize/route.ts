@@ -5,7 +5,11 @@ import { NextResponse } from 'next/server'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import {
   ALLOWED_MIME_TYPES,
-  MAX_FILE_SIZE,
+  UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
+  VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentFileSizeError,
+  isVideoMimeType,
+  maxAttachmentFileSize,
   normalizeMimeType,
   resolveFileType,
 } from '@/lib/attachments'
@@ -17,6 +21,7 @@ import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
+const VIDEO_ENTITLEMENT_ERROR = 'video-upload-entitlement-required'
 const UPLOAD_REQUEST_EXPIRED_ERROR = 'upload-request-expired'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
@@ -55,13 +60,7 @@ export async function POST(req: Request) {
 
   const normalizedMime = normalizeMimeType(fileName, mimeType)
   if (!ALLOWED_MIME_TYPES.has(normalizedMime)) {
-    return NextResponse.json(
-      {
-        error:
-          '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）',
-      },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: UNSUPPORTED_ATTACHMENT_TYPE_ERROR }, { status: 400 })
   }
 
   // storagePath は upload-url が発行した `${workspaceId}/${channelId}/...` 形式のはず。
@@ -162,6 +161,10 @@ export async function POST(req: Request) {
   if (isPdf !== storagePath.includes('/pdf-originals/')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
+  const isVideo = isVideoMimeType(uploadRequest.mimeType)
+  if (isVideo !== storagePath.includes('/videos/')) {
+    return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
+  }
 
   const supabase = createServiceRoleClient()
   const removeIfUnfinalized = async (paths: string[]) =>
@@ -215,7 +218,7 @@ export async function POST(req: Request) {
 
   const actualSize =
     typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
-  if (actualSize > MAX_FILE_SIZE) {
+  if (actualSize > maxAttachmentFileSize(normalizedMime)) {
     let committed: {
       id: string
       fileName: string
@@ -242,10 +245,7 @@ export async function POST(req: Request) {
         { status: 200 },
       )
     }
-    return NextResponse.json(
-      { error: 'ファイルサイズは 50MiB 以下にしてください' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: attachmentFileSizeError(normalizedMime) }, { status: 400 })
   }
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
@@ -321,7 +321,9 @@ export async function POST(req: Request) {
           .limit(1)
         const exceedsFreeStorageAllowance =
           Number(usage?.originalBytes ?? 0) + actualSize > BILLING_CONFIG.freeStorageBytes
-        if (exceedsFreeStorageAllowance) {
+        // 動画は無料容量の内外を問わず支援者本人の能動権。署名URL発行後に支援が切れた場合も、
+        // 家賃精算後の残高と支援状態をここで再判定して登録を拒否する。
+        if (exceedsFreeStorageAllowance || isVideo) {
           const [[balance], [subscription]] = await Promise.all([
             tx
               .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
@@ -342,7 +344,7 @@ export async function POST(req: Request) {
               .limit(1),
           ])
           if (!subscription || Number(balance?.balance ?? 0) <= 0) {
-            throw new Error(PAID_STORAGE_ENTITLEMENT_ERROR)
+            throw new Error(isVideo ? VIDEO_ENTITLEMENT_ERROR : PAID_STORAGE_ENTITLEMENT_ERROR)
           }
         }
       }
@@ -458,6 +460,12 @@ export async function POST(req: Request) {
     if (err instanceof Error && err.message === PAID_STORAGE_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
+    if (err instanceof Error && err.message === VIDEO_ENTITLEMENT_ERROR) {
+      return NextResponse.json(
+        { error: VIDEO_UPLOAD_ENTITLEMENT_ERROR, code: VIDEO_ENTITLEMENT_ERROR },
         { status: 403 },
       )
     }
