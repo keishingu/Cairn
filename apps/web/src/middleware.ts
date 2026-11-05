@@ -54,6 +54,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/og-image.svg'
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isLegalRoute = pathname === '/privacy' || pathname === '/terms'
+  // Teams コミュニティからの移行の案内（広告の遷移先なのでログインを求めない）
+  const isCampaignRoute = pathname === '/teams/migration'
   // アプリ開発者向けの公開ドキュメント
   const isDevelopersRoute = pathname === '/developers' || pathname.startsWith('/developers/')
   // 未ログインでもアクセスできるパブリックルート（LP と関連静的アセットを含む）
@@ -66,6 +68,7 @@ export async function middleware(request: NextRequest) {
     isLandingRoute ||
     isLandingAsset ||
     isLegalRoute ||
+    isCampaignRoute ||
     isDevelopersRoute ||
     isSeoRoute
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外

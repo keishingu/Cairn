@@ -111,6 +111,15 @@ describe('middleware', () => {
     expect(res.headers.get('location')).toContain('/auth/login')
   })
 
+  it('Teams 移行の案内ページは未認証でも認証済みでもそのまま表示する', async () => {
+    const { middleware } = await import('./middleware')
+    for (const state of [unauthed(), authed()]) {
+      getClaims.mockResolvedValue(state)
+      const res = await middleware(makeRequest('/teams/migration?utm_source=google&gclid=abc'))
+      expect(res.headers.get('location')).toBeNull()
+    }
+  })
+
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {
     getClaims.mockResolvedValue(unauthed())
     const { middleware } = await import('./middleware')
