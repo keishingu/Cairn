@@ -17,7 +17,7 @@ describe('parseWebViewDownloadRequest', () => {
         fileName: 'IMG.JPG',
         workspaceId: null,
       }),
-    ).toMatchObject({ workspaceId: null })
+    ).toMatchObject({ workspaceId: null, cacheKey: `original_${FILE_ID}` })
   })
 
   it.each([

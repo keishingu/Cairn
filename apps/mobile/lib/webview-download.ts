@@ -8,13 +8,14 @@ export interface WebViewDownloadRequest {
   path: string
   fileName: string
   workspaceId: string | null
-  /** 端末キャッシュのファイル名に使う、path から作った識別子 */
+  /** 端末キャッシュのファイル名に使う短い識別子（`original_{ID}`） */
   cacheKey: string
 }
 
+// 最後の UUID（ファイル ID かギャラリー項目 ID）をキャッシュの識別子に使う
 const ALLOWED_PATHS = [
-  /^\/api\/attachments\/[0-9a-f-]{36}\?original=1$/i,
-  /^\/api\/projects\/[0-9a-f-]{36}\/gallery\/[0-9a-f-]{36}\/file\?original=1$/i,
+  /^\/api\/attachments\/([0-9a-f-]{36})\?original=1$/i,
+  /^\/api\/projects\/[0-9a-f-]{36}\/gallery\/([0-9a-f-]{36})\/file\?original=1$/i,
 ]
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -22,7 +23,9 @@ export function parseWebViewDownloadRequest(msg: unknown): WebViewDownloadReques
   if (!msg || typeof msg !== 'object') return null
   const { type, path, fileName, workspaceId } = msg as Record<string, unknown>
   if (type !== DOWNLOAD_FILE_MESSAGE_TYPE) return null
-  if (typeof path !== 'string' || !ALLOWED_PATHS.some((pattern) => pattern.test(path))) return null
+  if (typeof path !== 'string') return null
+  const resourceId = ALLOWED_PATHS.map((pattern) => pattern.exec(path)?.[1]).find(Boolean)
+  if (!resourceId) return null
   if (typeof fileName !== 'string' || fileName.trim().length === 0 || fileName.length > 255) return null
   if (workspaceId !== null && workspaceId !== undefined && (typeof workspaceId !== 'string' || !UUID.test(workspaceId))) {
     return null
@@ -31,6 +34,7 @@ export function parseWebViewDownloadRequest(msg: unknown): WebViewDownloadReques
     path,
     fileName,
     workspaceId: typeof workspaceId === 'string' ? workspaceId : null,
-    cacheKey: `original_${path.replace(/[^0-9a-z]/gi, '_')}`,
+    // パス全体を入れると端末のファイル名の上限（255 バイト）を超えるため、ID だけにする
+    cacheKey: `original_${resourceId.toLowerCase()}`,
   }
 }
