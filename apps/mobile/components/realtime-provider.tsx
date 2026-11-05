@@ -7,6 +7,7 @@ import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channel
 import { invalidateChannelListQueries } from '../lib/channel-list-queries'
 import { isRealtimeUnauthorized, shouldRetryRealtime } from '../lib/mobile-chat-state'
 import { supabase } from '../lib/supabase'
+import { reconcileRealtimeSubscriptions } from '../lib/realtime-subscriptions'
 
 function tableOf(payload: unknown): string | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined
@@ -75,6 +76,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void invalidateChannelListQueries(queryClient)
           // 切断中の既読・新着を取り直す。背景から戻った直後の再取得は再接続より先に走りうる
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+          void queryClient.invalidateQueries({ queryKey: ['tasks'] })
           // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
           void queryClient.invalidateQueries({ queryKey: ['app-views'] })
         } else if (shouldRetryRealtime(status, error)) {
@@ -104,10 +106,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [me?.id, queryClient, retryNonce])
 
+  const channelIdsKey = channelIds.join(',')
+  const subscriptionsRef = React.useRef(new Map<string, RealtimeChannel>())
+  const tasksRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
   React.useEffect(() => {
-    if (!authenticated) return
-    let cancelled = false
-    const subscriptions = channelIds.map((channelId) => {
+    const subscriptions = subscriptionsRef.current
+    const wanted = new Set(authenticated && channelIdsKey ? channelIdsKey.split(',') : [])
+    reconcileRealtimeSubscriptions(subscriptions, wanted, (channelId) => {
       const channel = supabase
         .channel(`channel:${channelId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
@@ -125,25 +131,42 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // チャット情報のタスク一覧
           if (table === 'tasks') void queryClient.invalidateQueries({ queryKey: ['tasks'] })
         })
+      return channel
+    }, (channel) => { void supabase.removeChannel(channel) }, (channel, channelId) => {
       channel.subscribe((status, error) => {
-        if (cancelled) return
+        if (subscriptions.get(channelId) !== channel) return
+        if (status === 'SUBSCRIBED') {
+          void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+          void queryClient.invalidateQueries({ queryKey: ['channel-files', channelId] })
+          if (tasksRefreshTimerRef.current) clearTimeout(tasksRefreshTimerRef.current)
+          tasksRefreshTimerRef.current = setTimeout(() => {
+            void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            tasksRefreshTimerRef.current = null
+          }, 800)
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[Realtime] channel:${channelId} の購読に失敗しました:`, status, error?.message ?? error)
+        }
         if (isRealtimeUnauthorized(error)) {
           console.warn(
             `[Realtime] channel:${channelId} の購読を取り下げます:`,
             status,
             error?.message ?? error,
           )
+          subscriptions.delete(channelId)
           void supabase.removeChannel(channel)
         }
       })
-      return channel
     })
+  }, [authenticated, channelIdsKey, queryClient])
 
+  React.useEffect(() => {
+    const subscriptions = subscriptionsRef.current
     return () => {
-      cancelled = true
-      for (const channel of subscriptions) void supabase.removeChannel(channel)
+      if (tasksRefreshTimerRef.current) clearTimeout(tasksRefreshTimerRef.current)
+      for (const channel of subscriptions.values()) void supabase.removeChannel(channel)
+      subscriptions.clear()
     }
-  }, [authenticated, channelIds, queryClient])
+  }, [])
 
   return <>{children}</>
 }
