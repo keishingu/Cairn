@@ -109,6 +109,11 @@ const sections = [
           <li>Stripe（購入、購読および請求の処理）</li>
           <li>Google（ログインおよび利用者が選択したカレンダー連携）</li>
           <li>Inngest（通知やインデックス作成などの非同期処理）</li>
+          <li>
+            Google（Google 広告。公開サイトのトップページなど一部の案内ページで、広告の効果測定のために、閲覧したページの URL、参照元、Cookie
+            などの識別子、ブラウザや端末の情報を送信します。ログイン後のアプリ画面からは送信しません。Google による利用は
+            Google のポリシーに従い、広告のパーソナライズは Google の広告設定から無効にできます）
+          </li>
         </ul>
         <p>
           これらの事業者には、契約、設定およびアクセス制御を通じて、本ポリシーと同等の保護を求めます。処理先が国外となる場合があります。
@@ -200,7 +205,7 @@ export default function PrivacyPage() {
     <LegalPage
       title="プライバシーポリシー"
       description="Cairnがどのような情報を、何のために取り扱うのかを説明します。"
-      updatedAt="2026年10月20日"
+      updatedAt="2026年11月5日"
       sections={sections}
     />
   )
