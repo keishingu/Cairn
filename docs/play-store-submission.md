@@ -2,7 +2,7 @@
 
 > 対象: `apps/mobile` の Cairn 本番アプリ（Android package: `com.oss_cairn`）。iOS は [`app-store-submission.md`](app-store-submission.md)。
 
-iOS は App Store 公開済み。Android は株式会社オリカタ（orikata, Inc.）の Play デベロッパー アカウントに登録済みで、内部テストに公開しており、製品版はまだ公開していない。この文書は、開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。進捗は末尾の「製品版送信前のブロッカー」で管理する。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
+iOS は App Store 公開済み。Android は株式会社オリカタ（orikata, Inc.）の Play デベロッパー アカウントで、2026-10-28 に製品版を公開した（公開国は日本のみ。ストアページ: https://play.google.com/store/apps/details?id=com.oss_cairn ）。この文書は、開発者登録から内部テスト → 製品版公開までの手順と、リポジトリ側で済んでいるものを分けて書く。進捗は末尾の「製品版送信前のブロッカー」で管理する。Play Console の仕様・ポリシーは変わるため、作業時は各項目を Play Console の画面と [Play Console ヘルプ](https://support.google.com/googleplay/android-developer) で確認する。
 
 ## リポジトリ内で準備済みのもの
 
@@ -174,3 +174,4 @@ iOS の App Privacy（[`app-store-submission.md`](app-store-submission.md#app-pr
 - [ ] Play 提出用サービス アカウントを招待し、EAS に鍵を登録して `pnpm submit:android:latest` が通ることを確認する
 - [x] 個人アカウントの場合のクローズド テスト（12 人 × 14 日）は、組織アカウントのため不要
 - [x] 2026-10-27 に製品版リリース（versionCode 3、公開国は日本のみ）を審査に送信済み。管理対象の公開はオフのため、承認されると自動で公開される
+- [x] 2026-10-28 に承認・公開。ストアページを LP（`apps/web/public/index.html`）に掲載済み

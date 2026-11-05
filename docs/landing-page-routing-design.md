@@ -8,6 +8,7 @@
 
 - `apps/web/src/app/route.ts` の Route Handler が `public/index.html` を読み、`text/html` として `/` に返す（`app/page.tsx` はない）
 - 既存の静的 HTML/CSS/JS（`public/index.html`・`cairn-lp.css`・`cairn-lp.js`）をそのまま配信する。React で作り直すより工数・デザイン移植リスクが小さいため。React 化は LP を大きく作り替える時に再検討する
+- `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` があるときだけ、PostHog の設定を `window.__CAIRN_LP_POSTHOG__` として `<head>` に差し込む（CTA クリックの計測。[`lp-content-redesign.md`](./lp-content-redesign.md) §5）
 - 単一レイアウトで、`x-device` による PC / モバイル出し分けはしない
 - 旧 `/lp` 配下や `/index.html` の互換リダイレクトは持たない。正規 URL は `/`
 - SEO: LP の `<head>` に OGP / canonical、`app/robots.ts` / `app/sitemap.ts`
