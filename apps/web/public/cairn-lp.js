@@ -126,6 +126,20 @@
       href: a.href,
       lp_lang: state.lang
     }, { transport: 'sendBeacon' });
+
+    /* Before array.js loads, the event only sits in the stub queue and a
+       same-tab navigation would drop it. Hold the navigation until the SDK
+       has loaded (it replays the queue and flushes on unload), max 800ms.
+       New tabs, mailto: and modified clicks don't unload this page. */
+    if (window.posthog.__loaded || e.defaultPrevented || e.button !== 0 ||
+        e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+        a.target === '_blank' || a.protocol === 'mailto:') return;
+    e.preventDefault();
+    var href = a.href, started = Date.now();
+    (function go() {
+      if ((window.posthog && window.posthog.__loaded) || Date.now() - started > 800) location.href = href;
+      else setTimeout(go, 50);
+    })();
   });
 
   /* ── sticky nav ────────────────────────────────────────────────── */
