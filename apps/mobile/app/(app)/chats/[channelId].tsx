@@ -39,6 +39,7 @@ import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
+import { useRealtimeChannel } from '../../../components/realtime-provider'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -725,6 +726,8 @@ export default function ChatThreadScreen() {
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
+  useRealtimeChannel(channelId ?? null)
   const messagesQuery = useMessages(channelId ?? null)
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },

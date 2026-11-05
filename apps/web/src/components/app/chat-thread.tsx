@@ -78,6 +78,7 @@ import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from
 import { VideoAttachment } from '@/components/app/video-attachment'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
+import { useRealtimeChannel } from '@/components/realtime/use-realtime-channel'
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -1660,6 +1661,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
+  useRealtimeChannel(channelId)
   const latestMessagesQuery = useChannelMessages(channelId)
   const initialMessageQuery = useChannelInitialMessage(initialUnreadPosition ? channelId : null)
   const latestMessages = latestMessagesQuery.data ?? EMPTY_MESSAGES
