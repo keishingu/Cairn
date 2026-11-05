@@ -13,7 +13,7 @@ import { PATCH as updateTaskRoute } from '@/app/api/tasks/[id]/route'
 import { POST as postMessageRoute } from '@/app/api/channels/[channelId]/messages/route'
 import { GET as searchMessagesRoute } from '@/app/api/search/messages/route'
 import { GET as listChannelsRoute } from '@/app/api/research/channels/route'
-import { GET as readChannelMessagesRoute } from '@/app/api/research/channels/[channelId]/messages/route'
+import { GET as readChannelMessagesRoute } from '@/app/api/research/channels/messages/route'
 import { GET as getProjectMembersRoute } from '@/app/api/research/projects/[id]/members/route'
 import { GET as listMembersRoute } from '@/app/api/research/members/route'
 import { GET as getMemberHistoryRoute } from '@/app/api/research/members/history/route'
@@ -240,7 +240,7 @@ const mcpHandler = createMcpHandler(
       {
         title: 'List channels',
         description:
-          'List non-DM channels (workspace, project and thread channels) visible to the current Cairn user. Use this to resolve a channel name such as "#review" to its ID.',
+          'List non-DM channels (workspace, project and thread channels) visible to the current Cairn user. Use this to browse or search channels. To just read a channel whose name is known, call read_channel_messages with channelName instead.',
         inputSchema: z.object({
           query: z.string().trim().max(100).optional(),
           projectId: z.uuid().optional(),
@@ -264,25 +264,30 @@ const mcpHandler = createMcpHandler(
       {
         title: 'Read channel messages',
         description:
-          'Read messages in one visible channel, oldest first, within a time range. Continue with nextCursor when truncated is true.',
-        inputSchema: z.object({
-          channelId: z.uuid(),
-          since: z.iso.datetime({ offset: true }).optional(),
-          until: z.iso.datetime({ offset: true }).optional(),
-          cursor: z.string().max(100).optional(),
-          limit: z.number().int().min(1).max(100).optional(),
-        }),
+          'Read messages in one visible channel, oldest first, within a time range. Pass exactly one of channelId or channelName. When the name is known (e.g. "#review"), pass channelName directly and skip list_channels; if several channels share the name the error lists candidate IDs. Continue with nextCursor when truncated is true.',
+        inputSchema: z
+          .object({
+            channelId: z.uuid().optional(),
+            channelName: z.string().trim().min(1).max(100).optional(),
+            since: z.iso.datetime({ offset: true }).optional(),
+            until: z.iso.datetime({ offset: true }).optional(),
+            cursor: z.string().max(100).optional(),
+            limit: z.number().int().min(1).max(100).optional(),
+          })
+          .refine(input => !!input.channelId !== !!input.channelName, {
+            message: 'Specify exactly one of channelId or channelName',
+          }),
         annotations: { readOnlyHint: true },
       },
-      async ({ channelId, since, until, cursor, limit }) => {
-        const url = new URL(`http://cairn.local/api/research/channels/${channelId}/messages`)
+      async ({ channelId, channelName, since, until, cursor, limit }) => {
+        const url = new URL('http://cairn.local/api/research/channels/messages')
+        if (channelId) url.searchParams.set('channelId', channelId)
+        if (channelName) url.searchParams.set('channelName', channelName)
         if (since) url.searchParams.set('since', since)
         if (until) url.searchParams.set('until', until)
         if (cursor) url.searchParams.set('cursor', cursor)
         if (limit) url.searchParams.set('limit', String(limit))
-        return routeResult(
-          readChannelMessagesRoute(new Request(url), { params: Promise.resolve({ channelId }) }),
-        )
+        return routeResult(readChannelMessagesRoute(new Request(url)))
       },
     )
 
@@ -333,16 +338,24 @@ const mcpHandler = createMcpHandler(
       {
         title: 'Get member history',
         description:
-          'Get the project history of up to 50 members at once: projects they joined, project roles, periods, statuses and files attached to each project. Files are listed once per project in projectFiles (newest first, 10-50 per project depending on how many projects are returned; filesTruncated means older files remain). Read file bodies with read_file.',
-        inputSchema: z.object({
-          userIds: z.array(z.uuid()).min(1).max(50),
-          includeFiles: z.boolean().optional(),
-        }),
+          'Get the project history of up to 50 members at once: projects they joined, project roles, periods, statuses and files attached to each project. Select members by userIds, or directly by attributeNames (profile attributes, exact match, any) and/or projectRoleNames (project role names such as "leader", exact match, any, only projects visible to you) without calling list_members first. Combining filters requires all of them; adding userIds narrows to those members. Filters exclude inactive members. At least one of userIds, attributeNames, projectRoleNames is required. Files are listed once per project in projectFiles (newest first, 10-50 per project depending on how many projects are returned; filesTruncated means older files remain). Read file bodies with read_file.',
+        inputSchema: z
+          .object({
+            userIds: z.array(z.uuid()).min(1).max(50).optional(),
+            attributeNames: z.array(z.string().trim().min(1).max(20)).min(1).max(10).optional(),
+            projectRoleNames: z.array(z.string().trim().min(1).max(50)).min(1).max(10).optional(),
+            includeFiles: z.boolean().optional(),
+          })
+          .refine(input => input.userIds || input.attributeNames || input.projectRoleNames, {
+            message: 'Specify at least one of userIds, attributeNames, projectRoleNames',
+          }),
         annotations: { readOnlyHint: true },
       },
-      async ({ userIds, includeFiles }) => {
+      async ({ userIds, attributeNames, projectRoleNames, includeFiles }) => {
         const url = new URL('http://cairn.local/api/research/members/history')
-        for (const userId of userIds) url.searchParams.append('userId', userId)
+        for (const userId of userIds ?? []) url.searchParams.append('userId', userId)
+        for (const name of attributeNames ?? []) url.searchParams.append('attribute', name)
+        for (const name of projectRoleNames ?? []) url.searchParams.append('projectRole', name)
         if (includeFiles !== undefined) url.searchParams.set('includeFiles', String(includeFiles))
         return routeResult(getMemberHistoryRoute(new Request(url)))
       },
