@@ -82,6 +82,66 @@
   } catch (e) {}
   root.setAttribute('data-persona', persona);
 
+  /* ── analytics (PostHog) ────────────────────────────────────────
+     route.ts injects window.__CAIRN_LP_POSTHOG__ only when the app has
+     NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN. Same project/cookie as the app, so
+     UTM on the landing URL is kept as PostHog's initial-referrer props.
+     Autocapture is off so each CTA click is one `lp_cta_clicked` event. */
+  var phConfig = window.__CAIRN_LP_POSTHOG__;
+  if (phConfig && phConfig.token && !window.posthog) {
+    (function (d, token, host) {
+      var ph = window.posthog = [];
+      ph._i = [];
+      ph.__SV = 1;
+      ['capture', 'register'].forEach(function (m) {
+        ph[m] = function () { ph.push([m].concat([].slice.call(arguments))); };
+      });
+      ph._i.push([token, {
+        api_host: host,
+        defaults: '2026-05-30',
+        autocapture: false,
+        capture_pageview: true
+      }, 'posthog']);
+      var s = d.createElement('script');
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.src = host.replace('.i.posthog.com', '-assets.i.posthog.com') + '/static/array.js';
+      d.head.appendChild(s);
+    })(document, phConfig.token, phConfig.host || 'https://us.i.posthog.com');
+  }
+
+  function ctaGroup(id) {
+    if (id.indexOf('teams-migration') === 0) return 'teams_migration';
+    if (id.indexOf('appstore') === 0) return 'app_store';
+    if (id.indexOf('googleplay') === 0) return 'google_play';
+    return 'other';
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-cta]');
+    if (!a || !window.posthog || typeof window.posthog.capture !== 'function') return;
+    var id = a.getAttribute('data-cta');
+    window.posthog.capture('lp_cta_clicked', {
+      cta: id,
+      cta_group: ctaGroup(id),
+      href: a.href,
+      lp_lang: state.lang
+    }, { transport: 'sendBeacon' });
+
+    /* Before array.js loads, the event only sits in the stub queue and a
+       same-tab navigation would drop it. Hold the navigation until the SDK
+       has loaded (it replays the queue and flushes on unload), max 800ms.
+       New tabs, mailto: and modified clicks don't unload this page. */
+    if (window.posthog.__loaded || e.defaultPrevented || e.button !== 0 ||
+        e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+        a.target === '_blank' || a.protocol === 'mailto:') return;
+    e.preventDefault();
+    var href = a.href, started = Date.now();
+    (function go() {
+      if ((window.posthog && window.posthog.__loaded) || Date.now() - started > 800) location.href = href;
+      else setTimeout(go, 50);
+    })();
+  });
+
   /* ── sticky nav ────────────────────────────────────────────────── */
   var nav = document.getElementById('nav');
   function onScroll() { nav.classList.toggle('is-stuck', window.scrollY > 10); }
