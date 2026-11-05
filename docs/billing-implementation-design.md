@@ -41,7 +41,8 @@
 - アバター・ワークスペースロゴ・カバー写真は**家賃対象外**（サイズ上限のみ。プロフィール設定が課金で詰まる体験を避けるため）
 - 動画は原価（ストレージ・egress）が大きく無料開放しづらいため、支援者本人の能動権としてチャット添付にだけ開放した。形式は MP4 / MOV / WebM（`VIDEO_ATTACHMENT_MIME_TYPES`）、上限は 500MiB（`MAX_VIDEO_ATTACHMENT_BYTES`。どちらも `@cairn/shared`）。upload-url は `canUploadVideo` を判定し、finalize は家賃精算後に支援と残高を同じトランザクションで再判定する（無料容量の内外を問わない）。50MiB を超えるため、クライアントは upload-url が返す `resumable: true` を見て、署名トークンを `x-signature` に載せた TUS（`/storage/v1/upload/resumable/sign`、6MB チャンク）で送る
 - 動画のサーバー側サムネイルは作らない。Web はブラウザ標準の `<video preload="metadata">`、アプリは OS のブラウザで再生する。配信は API が Storage の署名 URL（4時間。再生中の Range 要求に耐える長さ）へ 302 し、本体を Vercel に通さない。アプリは `?as=json` で URL を受け取る
-- ホスト版 Supabase は、プロジェクト全体のアップロード上限（Storage 設定）を 500MiB 以上にしておく必要がある（`chat-attachments` バケットの上限はマイグレーションで 500MiB）
+- 動画は専用の非公開バケット `chat-videos`（500MiB、動画の MIME だけ）に置き、`chat-attachments` は 50MiB のまま残す。同じバケットの上限を上げると、動画以外の署名付きアップロードでも finalize を呼ばずに 500MiB のオブジェクトを期限切れの清掃まで置けてしまうため。保存先は保存パスの `videos/` で決める（`attachmentBucketForPath`）。`chat-videos` には authenticated のポリシーを付けず、取得は API の署名 URL だけで行う
+- ホスト版 Supabase は、プロジェクト全体のアップロード上限（Storage 設定）を 500MiB 以上にしておく必要がある
 - 音声・ZIP、ギャラリーの動画は未開放
 
 ## 4. データモデル（`packages/db/src/schema/billing.ts`）

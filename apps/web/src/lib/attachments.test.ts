@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  attachmentBucketForPath,
+  groupAttachmentPathsByBucket,
   MAX_FILE_SIZE,
   MAX_VIDEO_FILE_SIZE,
   maxAttachmentFileSize,
@@ -64,5 +66,24 @@ describe('動画添付の判定', () => {
 
   it('動画の files.file_type を video にする', () => {
     expect(resolveFileType('video/quicktime')).toBe('video')
+  })
+})
+
+describe('添付の保存先バケット', () => {
+  it('videos/ 配下だけを動画専用バケットにし、他は chat-attachments にする', () => {
+    expect(attachmentBucketForPath('w/c/u/videos/a.mp4')).toBe('chat-videos')
+    expect(attachmentBucketForPath('w/c/u/pdf-originals/a.pdf')).toBe('chat-attachments')
+    expect(attachmentBucketForPath('w/c/u/a.png')).toBe('chat-attachments')
+    // 4階層目以外の "videos" はバケットの判定に使わない
+    expect(attachmentBucketForPath('w/videos/u/a.png')).toBe('chat-attachments')
+  })
+
+  it('削除対象のパスをバケットごとにまとめ、空と重複を除く', () => {
+    expect(
+      groupAttachmentPathsByBucket(['w/c/u/a.png', null, 'w/c/u/videos/b.mp4', 'w/c/u/a.png', undefined]),
+    ).toEqual([
+      { bucket: 'chat-attachments', paths: ['w/c/u/a.png'] },
+      { bucket: 'chat-videos', paths: ['w/c/u/videos/b.mp4'] },
+    ])
   })
 })

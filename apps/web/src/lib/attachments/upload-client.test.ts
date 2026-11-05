@@ -127,7 +127,7 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
     tus.options = []
     tus.fail = false
     mockFetch
-      .mockResolvedValueOnce(json({ token: 'tok', path: 'w/c/u/videos/a.mp4', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true }))
+      .mockResolvedValueOnce(json({ token: 'tok', path: 'w/c/u/videos/a.mp4', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true, bucket: 'chat-videos' }))
       .mockResolvedValueOnce(json({ fileId: 'v1', fileName: 'a.mp4', mimeType: 'video/mp4', fileSize: 12 }, 201))
     const onProgress = vi.fn()
 
@@ -139,7 +139,7 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
     expect(tus.options[0]).toMatchObject({
       endpoint: 'https://example.supabase.co/storage/v1/upload/resumable/sign',
       headers: { apikey: 'anon', 'x-signature': 'tok' },
-      metadata: { bucketName: 'chat-attachments', objectName: 'w/c/u/videos/a.mp4', contentType: 'video/mp4' },
+      metadata: { bucketName: 'chat-videos', objectName: 'w/c/u/videos/a.mp4', contentType: 'video/mp4' },
     })
     expect(onProgress).toHaveBeenCalledWith(6, 12)
     vi.unstubAllEnvs()
@@ -150,7 +150,7 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'anon')
     tus.options = []
     tus.fail = true
-    mockFetch.mockResolvedValueOnce(json({ token: 'tok', path: 'p', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true }))
+    mockFetch.mockResolvedValueOnce(json({ token: 'tok', path: 'p', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true, bucket: 'chat-videos' }))
 
     await expect(
       uploadAttachment('channel-1', new File(['x'], 'a.mp4', { type: 'video/mp4' })),

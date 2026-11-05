@@ -7,6 +7,7 @@ import {
   ALLOWED_MIME_TYPES,
   UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
   VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentBucketForPath,
   attachmentFileSizeError,
   isVideoMimeType,
   maxAttachmentFileSize,
@@ -17,7 +18,6 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
-import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
@@ -69,6 +69,8 @@ export async function POST(req: Request) {
   if (!storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
+  // 動画は 500MiB を受けられる専用バケット、それ以外は 50MiB の chat-attachments に置く
+  const bucket = attachmentBucketForPath(storagePath)
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
@@ -142,7 +144,7 @@ export async function POST(req: Request) {
         eq(uploadRequests.workspaceId, ctx.workspaceId),
         eq(uploadRequests.requestedBy, ctx.userId),
         eq(uploadRequests.derivedStoragePath, storagePath),
-        eq(uploadRequests.storageBucket, ATTACHMENTS_BUCKET),
+        eq(uploadRequests.storageBucket, bucket),
         isNull(uploadRequests.projectId),
         isNull(uploadRequests.finalizedAt),
       ),
@@ -186,7 +188,7 @@ export async function POST(req: Request) {
         .limit(1)
       if (file) return file
 
-      const { error: removeError } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths)
+      const { error: removeError } = await supabase.storage.from(bucket).remove(paths)
       if (removeError)
         throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
       // 署名URLは拒否後もしばらく有効なため、意図レコードは期限切れ清掃まで残す。
@@ -200,7 +202,7 @@ export async function POST(req: Request) {
   const folder = storagePath.slice(0, lastSlash)
   const objectName = storagePath.slice(lastSlash + 1)
   const { data: listed, error: listError } = await supabase.storage
-    .from(ATTACHMENTS_BUCKET)
+    .from(bucket)
     .list(folder, { search: objectName })
 
   if (listError) {
@@ -281,7 +283,7 @@ export async function POST(req: Request) {
           and workspace_id = ${ctx.workspaceId}
           and requested_by = ${ctx.userId}
           and derived_storage_path = ${storagePath}
-          and storage_bucket = ${ATTACHMENTS_BUCKET}
+          and storage_bucket = ${bucket}
           and project_id is null
         for update
       `)

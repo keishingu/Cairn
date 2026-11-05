@@ -78,14 +78,14 @@ export interface UploadAttachmentOptions {
 // 回線が一時的に切れても 6MB 単位で再送し、最初からやり直さない
 async function uploadResumable(
   file: File,
-  signed: { token: string; path: string; mimeType: string },
+  signed: { token: string; path: string; mimeType: string; bucket: string },
   onProgress?: UploadAttachmentOptions['onProgress'],
 ): Promise<void> {
   const { Upload } = await import('tus-js-client')
   const options = signedResumableUploadOptions({
     supabaseUrl: process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     apiKey: process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!,
-    bucket: 'chat-attachments',
+    bucket: signed.bucket,
     objectPath: signed.path,
     token: signed.token,
     contentType: signed.mimeType,
@@ -141,12 +141,14 @@ export async function uploadAttachment(
     }),
   })
   if (!urlRes.ok) throw new AttachmentUploadError('prepare', await serverMessage(urlRes))
-  const { token, path, storagePath, mimeType, resumable } = (await urlRes.json()) as {
+  const { token, path, storagePath, mimeType, resumable, bucket } = (await urlRes.json()) as {
     token: string
     path: string
     storagePath: string
     mimeType: string
     resumable?: boolean
+    /** 保存先のバケット。動画は専用バケット（chat-videos） */
+    bucket?: string
   }
 
   // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
@@ -156,8 +158,9 @@ export async function uploadAttachment(
   //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
   //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
   if (resumable) {
+    if (!bucket) throw new AttachmentUploadError('prepare')
     try {
-      await uploadResumable(file, { token, path, mimeType }, options.onProgress)
+      await uploadResumable(file, { token, path, mimeType, bucket }, options.onProgress)
     } catch (error) {
       console.error('[uploadAttachment] resumable upload failed:', error)
       throw new AttachmentUploadError('storage')

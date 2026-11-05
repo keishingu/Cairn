@@ -39,6 +39,8 @@ type SignedUploadDto = {
   mimeType: string
   /** 動画は 50MiB を超え得るため、TUS で送るよう upload-url が指示する */
   resumable?: boolean
+  /** 動画は専用バケット（chat-videos）に送る */
+  bucket?: string
 }
 
 function uploadId(): string {
@@ -81,10 +83,11 @@ export function useAttachmentUpload(channelId: string) {
         const signed = (await signResponse.json()) as SignedUploadDto
 
         if (signed.resumable) {
+          if (!signed.bucket) throw new Error(t('Could not prepare the upload'))
           await uploadResumableToStorage({
             supabaseUrl: SUPABASE_URL,
             apiKey: SUPABASE_ANON_KEY,
-            bucket: 'chat-attachments',
+            bucket: signed.bucket,
             storagePath: signed.storagePath,
             token: signed.token,
             mimeType: signed.mimeType,

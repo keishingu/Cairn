@@ -76,10 +76,9 @@ enabled = true
 
 [storage.buckets."chat-attachments"]
 public = false
-file_size_limit = "500MiB"
+file_size_limit = "50MiB"
 allowed_mime_types = [
   "image/jpeg", "image/png", "image/gif", "image/webp",
-  "video/mp4", "video/quicktime", "video/webm",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -90,6 +89,12 @@ allowed_mime_types = [
   "text/markdown",
   "text/csv"
 ]
+
+# Solo の動画添付専用。大きい上限を動画の MIME だけに閉じ込めるため chat-attachments と分ける
+[storage.buckets."chat-videos"]
+public = false
+file_size_limit = "500MiB"
+allowed_mime_types = ["video/mp4", "video/quicktime", "video/webm"]
 
 [storage.buckets.gallery]
 public = true

@@ -16,6 +16,30 @@ export const MAX_VIDEO_FILE_SIZE = MAX_VIDEO_ATTACHMENT_BYTES
 // iPhone の標準撮影は MOV、Android と多くの書き出しは MP4、ブラウザの画面録画は WebM
 export const VIDEO_MIME_TYPES: ReadonlySet<string> = new Set(VIDEO_ATTACHMENT_MIME_TYPES)
 
+export const CHAT_ATTACHMENTS_BUCKET = 'chat-attachments'
+// 動画は 500MiB の上限を動画の MIME だけに閉じ込めるため、専用バケットに置く
+export const CHAT_VIDEOS_BUCKET = 'chat-videos'
+
+/** 添付の保存パス（`{workspaceId}/{channelId}/{userId}/videos/...`）から保存先のバケットを決める */
+export function attachmentBucketForPath(storagePath: string): string {
+  return storagePath.split('/')[3] === 'videos' ? CHAT_VIDEOS_BUCKET : CHAT_ATTACHMENTS_BUCKET
+}
+
+/** 削除キュー（storage/objects.delete）へ渡すため、添付の保存パスをバケットごとにまとめる */
+export function groupAttachmentPathsByBucket(
+  paths: ReadonlyArray<string | null | undefined>,
+): Array<{ bucket: string; paths: string[] }> {
+  const byBucket = new Map<string, Set<string>>()
+  for (const path of paths) {
+    if (!path) continue
+    const bucket = attachmentBucketForPath(path)
+    const set = byBucket.get(bucket) ?? new Set<string>()
+    set.add(path)
+    byBucket.set(bucket, set)
+  }
+  return [...byBucket].map(([bucket, set]) => ({ bucket, paths: [...set] }))
+}
+
 export function isVideoMimeType(mimeType: string | null | undefined): boolean {
   return typeof mimeType === 'string' && VIDEO_MIME_TYPES.has(mimeType)
 }

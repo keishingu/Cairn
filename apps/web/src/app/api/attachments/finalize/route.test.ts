@@ -25,7 +25,9 @@ const {
   mockTransactionExecute,
   mockDeleteWhere,
   mockHasAttachmentUploadRequestSchema,
+  mockStorageFrom,
 } = vi.hoisted(() => ({
+  mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockResolveUploadEntitlements: vi.fn(),
@@ -67,7 +69,12 @@ vi.mock('@/lib/billing/storage-rent', () => ({
 }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ list: mockList, remove: mockRemove }) },
+    storage: {
+      from: (bucket: string) => {
+        mockStorageFrom(bucket)
+        return { list: mockList, remove: mockRemove }
+      },
+    },
   }),
 }))
 vi.mock('@/lib/ai/extract-text', () => ({ isIndexable: mockIsIndexable }))
@@ -632,6 +639,8 @@ describe('/api/attachments/finalize の動画', () => {
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ code: 'video-upload-entitlement-required' })
     expect(mockRemove).toHaveBeenCalledWith([videoPath])
+    expect(mockStorageFrom).toHaveBeenCalledWith('chat-videos')
+    expect(mockStorageFrom).not.toHaveBeenCalledWith('chat-attachments')
     expect(mockInsertReturning).not.toHaveBeenCalled()
   })
 

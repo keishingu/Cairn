@@ -22,7 +22,9 @@ const {
   mockInngestSend,
   transactionDeletedFile,
   fileRow,
+  mockStorageFrom,
 } = vi.hoisted(() => ({
+  mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
@@ -55,7 +57,12 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }) },
+    storage: {
+      from: (bucket: string) => {
+        mockStorageFrom(bucket)
+        return { download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }
+      },
+    },
   }),
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
@@ -199,6 +206,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     const res = await GET(new Request('http://localhost/'), routeParams())
     expect(res.status).toBe(302)
     expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.storagePath, 4 * 60 * 60, undefined)
+    expect(mockStorageFrom).toHaveBeenCalledWith('chat-videos')
     expect(mockDownload).not.toHaveBeenCalled()
     expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
   })
@@ -346,13 +354,37 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockInngestSend).toHaveBeenCalledWith({
       name: 'storage/objects.delete',
       data: {
-        bucket: 'chat-attachments',
-        paths: [
-          'ws/ch/user/pdf-originals/current.pdf',
-          'ws/ch/user/pdf-derivatives/current.pdf',
-          'ws/ch/user/thumbnails/current.jpg',
+        targets: [
+          {
+            bucket: 'chat-attachments',
+            paths: [
+              'ws/ch/user/pdf-originals/current.pdf',
+              'ws/ch/user/pdf-derivatives/current.pdf',
+              'ws/ch/user/thumbnails/current.jpg',
+            ],
+          },
         ],
       },
+    })
+  })
+
+  it('動画の DELETE は動画専用バケットのオブジェクトを消す', async () => {
+    Object.assign(transactionDeletedFile, {
+      storagePath: 'ws/ch/user/videos/clip.mp4',
+      derivedStoragePath: null,
+      fileSize: 300,
+      derivedFileSize: null,
+      fileType: 'video',
+      metadata: {},
+    })
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'storage/objects.delete',
+      data: { targets: [{ bucket: 'chat-videos', paths: ['ws/ch/user/videos/clip.mp4'] }] },
     })
   })
 

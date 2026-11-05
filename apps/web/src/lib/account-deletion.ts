@@ -40,7 +40,7 @@ import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { getStripeClient } from '@/lib/billing/stripe'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
-import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
+import { groupAttachmentPathsByBucket } from '@/lib/attachments'
 import { AI_ATTACHMENT_BUCKET, delayedAiAttachmentDeletion } from '@/lib/ai/attachments'
 import { inngest } from '@/lib/inngest/client'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -146,9 +146,14 @@ export function buildStorageDeletionTargets(
       add(GALLERY_ORIGINALS_BUCKET, file.storagePath)
       add(GALLERY_BUCKET, file.derivedStoragePath)
     } else {
-      add(ATTACHMENTS_BUCKET, file.storagePath)
-      add(ATTACHMENTS_BUCKET, file.derivedStoragePath)
-      add(ATTACHMENTS_BUCKET, file.thumbnailPath)
+      // 動画は専用バケット（chat-videos）に置くため、パスから削除先を決める
+      for (const target of groupAttachmentPathsByBucket([
+        file.storagePath,
+        file.derivedStoragePath,
+        file.thumbnailPath,
+      ])) {
+        for (const path of target.paths) add(target.bucket, path)
+      }
     }
   }
   for (const upload of pendingUploads) {

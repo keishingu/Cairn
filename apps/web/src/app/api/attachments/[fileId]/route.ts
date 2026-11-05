@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
-import { isVideoMimeType } from '@/lib/attachments'
+import { CHAT_VIDEOS_BUCKET, groupAttachmentPathsByBucket, isVideoMimeType } from '@/lib/attachments'
 
 // 動画は <video> が再生中に Range 要求を繰り返すため、PDF より長く署名を保つ
 const VIDEO_SIGNED_URL_TTL_SECONDS = 4 * 60 * 60
@@ -147,7 +147,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       if (wantThumb) return new NextResponse(null, { status: 404 })
       const wantDownload = new URL(req.url).searchParams.get('download') === '1'
       const { data: signed, error: signedError } = await supabase.storage
-        .from('chat-attachments')
+        .from(CHAT_VIDEOS_BUCKET)
         .createSignedUrl(
           file.storagePath,
           VIDEO_SIGNED_URL_TTL_SECONDS,
@@ -372,9 +372,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
+        // 動画は専用バケット（chat-videos）に置くため、パスごとに削除先を分ける
         data: {
-          bucket: 'chat-attachments',
-          paths: [...new Set([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
+          targets: groupAttachmentPathsByBucket([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath]),
         },
       })
     }

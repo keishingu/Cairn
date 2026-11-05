@@ -6,6 +6,7 @@ import {
   ALLOWED_MIME_TYPES,
   UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
   VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentBucketForPath,
   attachmentFileSizeError,
   isVideoMimeType,
   maxAttachmentFileSize,
@@ -16,7 +17,6 @@ import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
-import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import {
   UPLOAD_REQUEST_EXPIRY_MS,
   UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
@@ -84,6 +84,8 @@ export async function POST(req: Request) {
   // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
   const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${isPdf ? 'pdf-originals/' : isVideo ? 'videos/' : ''}${crypto.randomUUID()}.${ext}`
 
+  const bucket = attachmentBucketForPath(storagePath)
+
   const { db, uploadRequests } = await import('@cairn/db')
   if (!(await hasAttachmentUploadRequestSchema(db))) {
     return NextResponse.json(
@@ -100,7 +102,7 @@ export async function POST(req: Request) {
       fileName,
       derivedMimeType: normalizedMime,
       derivedStoragePath: storagePath,
-      storageBucket: ATTACHMENTS_BUCKET,
+      storageBucket: bucket,
       // token発行後の期限更新に失敗しても、intentがtokenより先に消えないfallback。
       expiresAt: new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS),
     })
@@ -109,7 +111,7 @@ export async function POST(req: Request) {
 
   const supabase = createServiceRoleClient()
   const { data, error: signError } = await supabase.storage
-    .from(ATTACHMENTS_BUCKET)
+    .from(bucket)
     .createSignedUploadUrl(storagePath)
 
   if (signError || !data) {
@@ -132,6 +134,7 @@ export async function POST(req: Request) {
     path: data.path,
     storagePath,
     mimeType: normalizedMime,
+    bucket,
     // 50MiB を超え得る動画は、署名トークンを x-signature に載せた TUS で送る
     resumable: isVideo,
   })
