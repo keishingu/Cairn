@@ -157,7 +157,7 @@ OAuth / MCP の基準は [MCP 2026-07-28 authorization](https://modelcontextprot
 | ----------------- | ----- | ----------------------------------------- |
 | `list_projects`   | read  | `GET /api/projects`                       |
 | `get_project`     | read  | `GET /api/projects/[id]`                  |
-| `list_files`      | read  | `GET /api/files` / project files API      |
+| `list_files`      | read  | `GET /api/files`（`cursor` でページ送り）/ project files API |
 | `read_file`       | read  | `GET /api/files/[id]/content`             |
 | `list_my_tasks`   | read  | `GET /api/tasks?assignee=me`              |
 | `create_task`     | write | `POST /api/tasks`                         |

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { resolveMessageJumpView } from './message-jump'
+import { replyJumpTargetId, resolveMessageJumpView } from './message-jump'
 
 const base = {
   jumpMessageId: 'm-1',
@@ -41,5 +41,20 @@ describe('resolveMessageJumpView', () => {
       historyUnavailable: true,
       isHistoryView: false,
     })
+  })
+})
+
+describe('replyJumpTargetId', () => {
+  test('返信元があれば、そのメッセージへ移動する', () => {
+    expect(replyJumpTargetId({ id: 'm-parent', isDeleted: false })).toBe('m-parent')
+  })
+
+  test('返信元が削除済みなら移動しない（Web と同じ）', () => {
+    expect(replyJumpTargetId({ id: 'm-parent', isDeleted: true })).toBeNull()
+  })
+
+  test('返信でないメッセージは移動先がない', () => {
+    expect(replyJumpTargetId(null)).toBeNull()
+    expect(replyJumpTargetId(undefined)).toBeNull()
   })
 })

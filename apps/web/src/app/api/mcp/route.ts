@@ -83,19 +83,26 @@ const mcpHandler = createMcpHandler(
       {
         title: 'List files',
         description:
-          'List files visible to the current Cairn user, optionally limited to one project.',
-        inputSchema: z.object({ projectId: z.uuid().optional() }),
+          'List files visible to the current Cairn user, newest first, optionally limited to one project. Without projectId the result is paged: pass nextCursor as cursor to read more.',
+        inputSchema: z.object({
+          projectId: z.uuid().optional(),
+          cursor: z.string().max(500).optional(),
+        }),
         annotations: { readOnlyHint: true },
       },
-      async ({ projectId }) =>
-        projectId
-          ? routeResult(
-              listProjectFilesRoute(
-                new Request(`http://cairn.local/api/projects/${projectId}/files`),
-                { params: Promise.resolve({ id: projectId }) },
-              ),
-            )
-          : routeResult(listFilesRoute()),
+      async ({ projectId, cursor }) => {
+        if (projectId) {
+          return routeResult(
+            listProjectFilesRoute(
+              new Request(`http://cairn.local/api/projects/${projectId}/files`),
+              { params: Promise.resolve({ id: projectId }) },
+            ),
+          )
+        }
+        const url = new URL('http://cairn.local/api/files')
+        if (cursor) url.searchParams.set('cursor', cursor)
+        return routeResult(listFilesRoute(new Request(url)))
+      },
     )
 
     server.registerTool(
