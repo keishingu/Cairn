@@ -92,7 +92,7 @@
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
 - `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
-- Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は同じ窓口（`moruit.com`）に `utm_campaign=teams-migration` を付け、メール（`info@orikata.co.jp`）も併記する
+- Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は無料相談の予約ページ（TimeRex）とメール（`info@orikata.co.jp`）
 - Android 版は日本でのみ配信しているため、英語のストア導線と FAQ には「Japan only」/「日本でのみ配信」を添える。配信国を広げたら外す
 - ストアへのリンクはテキストリンクで、公式バッジ画像は使っていない。バッジに置き換えるときは Apple / Google のバッジ利用ガイドラインに従う（公式の画像をそのまま使い、改変しない）。フッターに App Store・Google Play・Microsoft Teams の商標表記と、Microsoft と提携していない旨を置いている
 
@@ -119,6 +119,6 @@ Microsoft が個人向け Microsoft Teams のコミュニティ機能を 2026年
 - **意味**: 「移行支援」は問い合わせ・ヒアリング・移行方法の個別案内のこと。データの完全移行、履歴の完全復元、全ファイルの取り込みは約束しない
 - **取り込み機能**: Teams のエクスポートデータを Cairn に取り込む機能は**未完成（検証中）**。「取り込める」「履歴を移せる」とは書かない。一方で「検証中」の注記はマイナスの印象が強いため告知・FAQ には出さず、FAQ では「これまでのメッセージやファイルの扱いもお問い合わせの際にご相談ください」とだけ書く。正式に提供したら、コピー・FAQ・§4 の「書いてはいけない」を更新する
 - **表現の制約**: 終わるのは「個人向け Teams のコミュニティ機能」。企業・学校向けの Teams 全体が終わるように書かない。Microsoft と提携しているように書かない
-- **問い合わせ**: 既存の相談窓口のフォーム（`https://moruit.com/#consultation`。旧 `moru.tech` はここへリダイレクトされる）に `utm_source=oss-cairn&utm_medium=lp&utm_campaign=teams-migration&utm_content=banner` を付けたボタンと、`info@orikata.co.jp` 宛ての `mailto:`（件名「Teams コミュニティからの移行の相談」）のホローボタンを並べる。フォームに種別の事前入力はできないため、注記で「Teams 移行」と書いてもらう
+- **問い合わせ**: 「まずはお問い合わせください」は無料相談の予約ページ（TimeRex、`https://timerex.net/s/dongmin.park_471b/579387d1/`）へ直接リンクする（UTM なし）。並べて `info@orikata.co.jp` 宛ての `mailto:`（件名「Teams コミュニティからの移行の相談」）のホローボタンを置く。予約にもメールにも種別がないため、注記で「Teams 移行」と書いてもらう
 - **SEO**: 新ページは作らず、`meta description` に一文と FAQ（JSON-LD 含む）に 1 問を追加した。「Teams コミュニティ 廃止 / 代替 / 移行」で上位を狙うなら、専用ページ（例: `/migrate-from-teams`）を別途検討する
 - **撤去手順**: `index.html` の `#teams-migration` セクション、FAQ の Teams の 1 問（HTML と JSON-LD の両方）、`meta description` の Teams の一文、`cairn-lp.css` の「campaign」ブロックを消し、`apps/web/src/app/page.test.tsx` の該当テストと本節を更新する
