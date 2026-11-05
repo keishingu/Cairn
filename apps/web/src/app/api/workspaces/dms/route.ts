@@ -71,7 +71,7 @@ export async function GET() {
     const visibleRows = rows.filter(row => visibleParticipantIds.has(row.participantId))
     const visibleChannelIds = visibleRows.map(row => row.id)
     if (visibleChannelIds.length > 0) {
-      const { channelReadStates, messages } = await import('@cairn/db')
+      const { channelReadStates, messages, IMPORT_SENDER_PROFILE_ID } = await import('@cairn/db')
       const { isNull, gt, count, sql: sql2, inArray, ne } = await import('drizzle-orm')
 
       const [unreadRows, mentionRows] = await Promise.all([
@@ -79,7 +79,7 @@ export async function GET() {
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
           .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-          .where(and(inArray(messages.channelId, visibleChannelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .where(and(inArray(messages.channelId, visibleChannelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), ne(messages.senderId, IMPORT_SENDER_PROFILE_ID), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
           .groupBy(messages.channelId),
         db
           .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
