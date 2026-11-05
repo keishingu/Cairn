@@ -43,6 +43,19 @@ describe('RootRoute', () => {
     expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
   })
 
+  it('チャットからのタスク作成は「タスク化する」で説明し、廃止したチェックボックス記法と回数表記を残さない', async () => {
+    const { html } = await fetchLp()
+
+    expect(html).toContain('タスク化する')
+    expect(html).not.toMatch(/☑ がタスクになる|完了のチェックはチャットとタスク一覧で同期|最大 月 30 回/)
+  })
+
+  it('AI PMO と外部リポジトリの固有名を LP に書かない', async () => {
+    const { html } = await fetchLp()
+
+    expect(html).not.toMatch(/AI PMO|ナッジ|Rack/)
+  })
+
   it('PostHog のトークンが無ければ計測設定を埋め込まない', async () => {
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN', '')
     const { html } = await fetchLp()
