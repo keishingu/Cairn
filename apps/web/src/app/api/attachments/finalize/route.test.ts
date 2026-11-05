@@ -287,6 +287,36 @@ describe('/api/attachments/finalize のアクセス制御', () => {
     expect(mockInsertValues).toHaveBeenCalled()
   })
 
+  it('支援がなくても50MiBちょうどの非PDFは無料容量の範囲なら確定できる', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
+    mockSelectLimit
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'upload-1', fileName: 'big.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }])
+      .mockResolvedValueOnce([{ projectId: null }])
+    mockList.mockResolvedValue({
+      data: [{ name: 'big.docx', metadata: { size: 50 * 1024 * 1024 } }],
+      error: null,
+    })
+    mockTransactionSelectLimit.mockResolvedValue([])
+
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        storagePath: storagePathFor('big.docx'),
+        fileName: 'big.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileSize: 50 * 1024 * 1024,
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(mockRemove).not.toHaveBeenCalled()
+    expect(mockInsertValues).toHaveBeenCalled()
+  })
+
   it('無料容量を超える小容量ファイルは最終確定時に支援なしで拒否する', async () => {
     const { BILLING_CONFIG } = await import('@cairn/core/billing')
     mockIsBillingEnabled.mockReturnValue(true)

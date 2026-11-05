@@ -5,13 +5,11 @@ import { NextResponse } from 'next/server'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import {
   ALLOWED_MIME_TYPES,
-  FREE_ATTACHMENT_MAX_FILE_SIZE,
   MAX_FILE_SIZE,
   normalizeMimeType,
   resolveFileType,
 } from '@/lib/attachments'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -249,41 +247,6 @@ export async function POST(req: Request) {
       { status: 400 },
     )
   }
-  if (actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE && !isPdf) {
-    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-    if (!entitlements.rights.canUploadLargeFile) {
-      let committed: {
-        id: string
-        fileName: string
-        mimeType: string | null
-        fileSize: number | null
-      } | null
-      try {
-        committed = await removeIfUnfinalized([storagePath])
-      } catch (cleanupError) {
-        console.error('[/api/attachments/finalize] Rejected object cleanup failed:', cleanupError)
-        return NextResponse.json(
-          { error: 'アップロード済みファイルの削除に失敗しました' },
-          { status: 500 },
-        )
-      }
-      if (committed) {
-        return NextResponse.json(
-          {
-            fileId: committed.id,
-            fileName: committed.fileName,
-            mimeType: committed.mimeType,
-            fileSize: committed.fileSize,
-          },
-          { status: 200 },
-        )
-      }
-      return NextResponse.json(
-        { error: '5MBを超えるファイルを保存するには、残高のある有効な支援が必要です' },
-        { status: 403 },
-      )
-    }
-  }
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
     try {
@@ -358,9 +321,7 @@ export async function POST(req: Request) {
           .limit(1)
         const exceedsFreeStorageAllowance =
           Number(usage?.originalBytes ?? 0) + actualSize > BILLING_CONFIG.freeStorageBytes
-        const requiresPaidStorage =
-          (!isPdf && actualSize > FREE_ATTACHMENT_MAX_FILE_SIZE) || exceedsFreeStorageAllowance
-        if (requiresPaidStorage) {
+        if (exceedsFreeStorageAllowance) {
           const [[balance], [subscription]] = await Promise.all([
             tx
               .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
