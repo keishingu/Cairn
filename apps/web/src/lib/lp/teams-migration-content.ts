@@ -4,7 +4,7 @@
 // `/teams/migration`（Teams コミュニティからの移行の案内ページ）で、状況が変わると書き換える文言。
 // 静的 HTML（public/teams-migration.html）の目印コメントを、ここから組み立てた HTML に置き換える。
 //
-// - 取り込みツールの提供状況が変わったら TEAMS_IMPORTER_STATUS と FAQ を更新する
+// - 引き継ぎの進め方が変わったら TEAMS_MIGRATION_SUPPORT と FAQ を更新する
 // - エクスポートの解析結果が変わったら TEAMS_EXPORT_FINDINGS を更新し、checkedAt も直す
 // - FAQ は画面と JSON-LD（検索結果向け）の両方をここから作るので、二重に書かない
 // 書いてよいこと・いけないことは docs/lp-content-redesign.md §7・§8。
@@ -22,12 +22,15 @@ export type ExportFinding = {
 
 export type FaqEntry = { q: Bilingual; a: Bilingual }
 
-/** Teams のエクスポートを Cairn に取り込むツールの提供状況。一般公開までは「開発中」のまま */
-export const TEAMS_IMPORTER_STATUS = {
-  label: { ja: '開発中（一般公開前）', en: 'In development (not yet public)' },
+/**
+ * Teams のエクスポートを Cairn へ引き継ぐ進め方。取り込みは運営側（私たち）が個別に行い、
+ * 利用者が自分で実行する取り込み機能は提供しない方針。
+ */
+export const TEAMS_MIGRATION_SUPPORT = {
+  label: { ja: '私たちが個別に対応', en: 'We do it for you' },
   detail: {
-    ja: 'Teams のエクスポートを Cairn に取り込むツールは開発中で、まだ一般には公開していません。現在は、エクスポートの内容を確認しながら、移行の方法を個別にご案内しています。',
-    en: 'A tool that brings a Teams export into Cairn is in development and is not available to the public yet. For now, we look at your export with you and explain how to move, one on one.',
+    ja: 'お問い合わせのうえで、Teams のエクスポートから会話履歴や写真・動画を Cairn に引き継ぐ作業を私たちが行います。ご自身で操作する取り込み機能はありません。引き継げる範囲はエクスポートの内容によって変わるため、事前に確認してお伝えします。',
+    en: 'Once you contact us, we bring your chat history, photos, and videos from the Teams export into Cairn for you. There is no self-service import. What can be carried over depends on your export, so we check it and tell you up front.',
   },
 } as const satisfies { label: Bilingual; detail: Bilingual }
 
@@ -94,15 +97,15 @@ export const TEAMS_MIGRATION_FAQ: FaqEntry[] = [
   {
     q: { ja: '過去のメッセージは移せますか？', en: 'Can we bring our past messages?' },
     a: {
-      ja: 'Teams のエクスポートから、メッセージの本文と投稿日時を取得できることを確認しています。ただし、Cairn への取り込みツールは開発中で一般公開していないため、現在は内容を確認しながら個別にご案内しています。すべてのメッセージを元どおりに移せるとはお約束できません。',
-      en: 'We have confirmed that the Teams export includes message text and post times. The tool that brings it into Cairn is still in development and not public, so for now we work it out with you one on one. We cannot promise that every message will move over exactly as it was.',
+      ja: 'はい。お問い合わせのうえで、Teams のエクスポートからメッセージの本文と投稿日時を、私たちが Cairn に引き継ぎます（ご自身で操作する取り込み機能はありません）。ただし、エクスポートでは一部の投稿者が匿名化され、返信の関係も残らないため、元どおりには再現できません。',
+      en: 'Yes. Once you contact us, we bring message text and post times from your Teams export into Cairn for you (there is no self-service import). The export anonymizes some authors and drops reply threads, though, so the history cannot be recreated exactly as it was.',
     },
   },
   {
     q: { ja: '画像や PDF も移行できますか？', en: 'Can images and PDFs move too?' },
     a: {
-      ja: '画像・動画はエクスポートに含まれます。PDF などの添付ファイルは OneDrive へのリンクだけで、ファイルの実体が含まれない場合があります。その場合は OneDrive から保存したファイルを Cairn にアップロードしてください（1ファイル 50MB まで）。',
-      en: 'Images and videos are in the export. PDFs and other attachments may appear only as OneDrive links without the file itself. In that case, save the files from OneDrive and upload them to Cairn (up to 50 MB per file).',
+      ja: '画像・動画はエクスポートに含まれるため、会話と一緒に引き継ぎます。PDF などの添付ファイルは OneDrive へのリンクだけで、ファイルの実体が含まれない場合があります。その場合は OneDrive から保存したファイルを Cairn にアップロードしてください（1ファイル 50MB まで）。',
+      en: 'Images and videos are in the export, so we carry them over along with the conversations. PDFs and other attachments may appear only as OneDrive links without the file itself. In that case, save the files from OneDrive and upload them to Cairn (up to 50 MB per file).',
     },
   },
   {
@@ -140,10 +143,10 @@ function bilingualSpans(text: Bilingual): string {
   return `<span data-i="ja">${escapeHtml(text.ja)}</span><span data-i="en">${escapeHtml(text.en)}</span>`
 }
 
-export function renderImporterStatus(): string {
+export function renderMigrationSupport(): string {
   return (
-    `<p class="tm-status-label"><span class="tm-pill tm-pill--partial">${bilingualSpans(TEAMS_IMPORTER_STATUS.label)}</span></p>\n` +
-    `<p class="tm-status-text">${bilingualSpans(TEAMS_IMPORTER_STATUS.detail)}</p>`
+    `<p class="tm-status-label"><span class="tm-pill tm-pill--ok">${bilingualSpans(TEAMS_MIGRATION_SUPPORT.label)}</span></p>\n` +
+    `<p class="tm-status-text">${bilingualSpans(TEAMS_MIGRATION_SUPPORT.detail)}</p>`
   )
 }
 
@@ -186,7 +189,7 @@ export function renderFaqJsonLd(): string {
 }
 
 const SLOTS: Record<string, () => string> = {
-  'teams-importer-status': renderImporterStatus,
+  'teams-migration-support': renderMigrationSupport,
   'teams-export-findings': renderExportFindings,
   'teams-faq': renderFaq,
   'teams-faq-jsonld': renderFaqJsonLd,

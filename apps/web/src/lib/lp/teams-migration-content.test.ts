@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   TEAMS_EXPORT_FINDINGS,
-  TEAMS_IMPORTER_STATUS,
+  TEAMS_MIGRATION_SUPPORT,
   TEAMS_MIGRATION_FAQ,
   renderExportFindings,
   renderFaq,
@@ -9,12 +9,15 @@ import {
   renderTeamsMigrationPage,
 } from './teams-migration-content'
 
-const ALL_TEXT = JSON.stringify([TEAMS_IMPORTER_STATUS, TEAMS_EXPORT_FINDINGS, TEAMS_MIGRATION_FAQ])
+const ALL_TEXT = JSON.stringify([TEAMS_MIGRATION_SUPPORT, TEAMS_EXPORT_FINDINGS, TEAMS_MIGRATION_FAQ])
 
 describe('Teams 移行ページの文言', () => {
-  it('取り込みツールは開発中と書き、一般利用できるとは書かない', () => {
-    expect(TEAMS_IMPORTER_STATUS.label.ja).toContain('開発中')
-    expect(TEAMS_IMPORTER_STATUS.detail.ja).toContain('まだ一般には公開していません')
+  it('引き継ぎは私たちが個別に行い、ご自身で使う取り込み機能はないと書く', () => {
+    expect(TEAMS_MIGRATION_SUPPORT.detail.ja).toContain('私たちが行います')
+    expect(TEAMS_MIGRATION_SUPPORT.detail.ja).toContain('ご自身で操作する取り込み機能はありません')
+    const pastMessages = TEAMS_MIGRATION_FAQ.find((f) => f.q.ja === '過去のメッセージは移せますか？')!
+    expect(pastMessages.a.ja).toContain('ご自身で操作する取り込み機能はありません')
+    expect(pastMessages.a.ja).toContain('元どおりには再現できません')
     expect(ALL_TEXT).not.toMatch(/インポートできます|取り込めます|完全に移行|すべて移せます/)
     expect(ALL_TEXT).not.toMatch(/import everything|fully migrate/i)
   })
@@ -60,11 +63,11 @@ describe('Teams 移行ページの文言', () => {
 
   it('目印をすべて差し替え、欠けていれば例外にする', () => {
     const template =
-      '<!-- @teams-importer-status --><!-- @teams-export-findings --><!-- @teams-faq --><!-- @teams-faq-jsonld -->'
+      '<!-- @teams-migration-support --><!-- @teams-export-findings --><!-- @teams-faq --><!-- @teams-faq-jsonld -->'
     const html = renderTeamsMigrationPage(template)
     expect(html).not.toContain('<!-- @')
     expect(html).toContain('tm-findings')
 
-    expect(() => renderTeamsMigrationPage('<!-- @teams-faq -->')).toThrow('@teams-importer-status')
+    expect(() => renderTeamsMigrationPage('<!-- @teams-faq -->')).toThrow('@teams-migration-support')
   })
 })
