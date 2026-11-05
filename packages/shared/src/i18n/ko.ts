@@ -666,6 +666,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Go to chat': '채팅으로 이동',
   'Go to the latest message': '최신 메시지로 이동',
   'Go to the message that created this task': '이 작업을 등록한 메시지로 이동',
+  'Go to the message this replies to': '답장한 원래 메시지로 이동',
   'Go to the message where this was shared': '공유된 메시지로 이동',
   'Google Calendar': 'Google 캘린더',
   'Google Calendar → Cairn (import events)': 'Google 캘린더 → Cairn(일정 가져오기)',
