@@ -79,7 +79,7 @@ Solo の説明は「容量」ではなく「AI と原本」を軸にする。無
 | 投票（選択肢の追加） | ファーストパーティ投票アプリ（全ワークスペースに自動インストール） |
 | DM・プライベートチャンネル、DM からのタスク化 | `FEATURE_FLAGS.dm`、product-help「DM のメッセージもタスク化でき」 |
 | 返信元への通知 | 2026-11-04「返信元へ通知」 |
-| AI は構造（プロジェクト・タスク・マイルストーン・ファイル・メンバー）ごと読み、権限準拠、根拠は元の発言・ファイルへのリンク、DM は読まない | `lib/ai/research-tools.ts`、`system-prompt.ts`（evidence.href 以外のリンクを禁止）、`requireAiChatAccess` |
+| AI は構造（プロジェクト・タスク・マイルストーン・ファイル・メンバー）ごと読み、権限準拠、根拠は元の発言・ファイルへのリンク。DM の発言は読まないが、本人が参加する DM で共有したファイルの本文は検索対象（「DM は読まない」と言い切らない） | `lib/ai/research-tools.ts`、`system-prompt.ts`（evidence.href 以外のリンクを禁止）、`requireAiChatAccess`、`lib/ai/search-chunks.ts`（`channelAccess` の `type = 'dm'` 条件） |
 | システムプロンプト・モデル選択（GPT-5 / Claude）・使える人の制限 | `workspaces.ai_chat_system_prompt` / `ai_chat_allowed_models` / `ai_chat_access` |
 | Skill（`$名前`）: AI が提案し人が承認して実行、定義と作成者は member 全員に公開 | `lib/ai/automations.ts`、`skill-run.ts`、承認カード（`pending-actions.ts`） |
 | MCP からチャンネル・メンバー・経歴を読める | `research-tools.ts` を MCP にも公開（2026-10-28） |
