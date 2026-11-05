@@ -1,0 +1,125 @@
+# 外部チャットの取り込み（Teams 個人用コミュニティ）
+
+**種別: 現行**（MVP 実装済み。取り込み元は Teams 個人用だけ）
+
+Microsoft Teams（個人用）のコミュニティ廃止に合わせて、エクスポート（チャット履歴・メディア）からグループの過去ログを Cairn のチャンネルに取り込む。エクスポートの形式と移行の可否は [`research/teams-community-export-analysis.md`](research/teams-community-export-analysis.md)（記録）を参照。
+
+## 1. 全体の流れ
+
+```
+Teams エクスポート（フォルダ）
+  → Teams Parser（packages/core/src/import/teams。ブラウザで実行）
+  → 共通 Import モデル（packages/core/src/import/model.ts）
+  → 管理画面で選択・対応づけ・プレビュー（settings-import.tsx、client-runner.ts）
+  → 取り込み API（/api/imports/**、owner / admin のみ）
+  → Import Service（apps/web/src/lib/imports/service.ts）
+  → Cairn DB / Storage（画像は通常のアップロード経路）
+```
+
+- **解析はブラウザで行う**。エクスポートのフォルダ全体はサーバーへ送らない。読むのは `messages.json` と `media/` の画像だけで、`endpoints.json`（端末の通知用の鍵）・`invites.json`（招待リンク）は読まない
+- 管理者が「取り込む」を押すまで DB には何も書かない
+- Slack / Discord を足すときは Parser を増やし、共通モデルに変換するだけにする。Service・API・画面は共通モデルしか見ない
+
+## 2. 投稿者の持ち方（設計判断）
+
+`messages.sender_id` は NOT NULL で `profiles` を参照する。取り込み元の投稿者（Cairn にまだいない人、誰か分からない人を含む）をどう持つかを比較した。
+
+| 観点 | A. `profiles` にログインできない仮メンバーを作る | B. 外部の投稿者を `import_identities` に持つ（採用） |
+|---|---|---|
+| DB 変更 | `profiles.kind` の追加だけで、メッセージ・リアクションはそのまま入る | `import_identities` などのテーブルを追加し、表示時に上書きする |
+| 既存の RLS・認可 | `profiles` は全ワークスペース共通の表なので、ワークスペースに閉じた仮の人を混ぜることになる。メンバー一覧・メンション候補・DM・ブロック・通報の各所で「仮の人」を除く条件が要る | 取り込みの表はワークスペースごとに閉じる。既存の一覧・候補・DM には現れない |
+| Realtime・通知 | 仮メンバーへのメンション・通知を各所で止める必要がある | 送信者は共通の「取り込み」プロフィールだけで、通知先にならない |
+| 将来のアカウント紐づけ | メッセージ・リアクション・添付などの `sender_id` / `user_id` をすべて付け替える。一意制約（同じ人の同じリアクション）と衝突し、元に戻せない | `import_identities.linked_user_id` を設定するだけ。行は書き換えず、外すこともできる |
+| Slack / Discord | 取り込み元ごとに仮メンバーの作り方を決め直す | `source` と外部キーで同じ表を使える |
+| 退会・削除 | 仮メンバーを消すとメッセージの外部キーが残る。紐づけ後は本人の削除と履歴の扱いが絡む | 本人が退会・削除されたら紐づけだけ外れ（`on delete set null`）、履歴は取り込み元の名前で残る |
+
+**B を採用した**。変更量は A より多いが、`profiles` を「ログインできる人とアプリの Bot」に保ち、取り込みの情報をワークスペース内に閉じられる。紐づけを行の書き換えなしで行えるので、誤って紐づけても戻せる。
+
+- 取り込んだメッセージの `sender_id` は全ワークスペース共通の「取り込み」プロフィール（`IMPORT_SENDER_PROFILE_ID`、`profiles.kind = 'import'`。マイグレーションで作る）
+- 本当の投稿者は `imported_messages.identity_id` → `import_identities`。表示は `lib/imports/display.ts` の `loadImportedSenders()` で上書きする（`GET /api/channels/[id]/messages` が使う）
+- DTO の `senderId` は取り込みプロフィールのまま返す。紐づけた本人の ID にすると、本人の発言として編集・削除の操作が出てしまう（実際の編集 API は `sender_id` で拒否する）
+
+### 投稿者不明
+
+- エクスポートは本人の連絡先にいない参加者を `Unknown User` に置き換えるため、投稿者が分からない投稿がある（検証データでは約30%）。これらは `external_key = 'anonymous'` の1件にまとめ、**誰かに推定して割り当てない**
+- `import_identities.is_anonymous` は Cairn ユーザーに紐づけられない（DB の CHECK 制約で拒否）
+- `imported_messages` に元の会話 ID・メッセージ ID・属性（投稿者 ID / 表示名の有無など）を残す。あとでブラウザのキャッシュや他の参加者のエクスポートと照合し直す余地を残すため（照合し直す機能は未実装）
+
+### 紐づけ
+
+- 表示名だけで自動では紐づけない。画面は表示名が一意に一致するメンバーを「候補」として出すだけで、管理者が選んだときだけ紐づける
+- 紐づけの変更・解除は `PATCH /api/imports/identities/[id]`（owner / admin）。管理画面の一覧からの変更は未実装（API のみ）
+- 元の投稿者が後から Cairn に参加したら、管理者がその人を紐づける。行は書き換えないので、表示がその人の名前とアバターになるだけ。招待リンクから参加した人を自動で紐づけることはしない（投稿者不明は1人ではないため）
+
+## 3. 取り込む内容
+
+| 取り込み元 | Cairn | 備考 |
+|---|---|---|
+| グループ / コミュニティの会話 | ワークスペースチャンネル（新規作成は非公開） | 1対1・会議チャットは画面で選べず、サーバーも会話 ID の種類（`uni01_` / `meeting_` など）で拒否する。Service は `type = 'workspace'` のチャンネルにしか書かない |
+| 本文（HTML / Text） | `messages.content`（Markdown） | HTML はすべて外し、意味のあるものだけ Markdown にする。本文は要約・改変しない |
+| 投稿日時 | `messages.created_at`（元の日時） | |
+| 編集日時 | `messages.updated_at` | 編集履歴は取り込み元に無い |
+| 件名（subject） | 本文の1行目を太字に | |
+| 引用返信（`qtdMsgs`） | `messages.parent_message_id` | 同じチャンネルに入る引用元だけ。投稿と返信のスレッドは推定しない |
+| メンション | `@名前` の文字列 | Cairn のメンション（`<@id>`）にはしない。通知も飛ばない |
+| リアクション | `imported_message_reactions` | `message_reactions` は Cairn ユーザー単位で一意のため別表に持ち、表示時に合算する |
+| 画像（AMS） | `files` + `message_attachments` | 通常のアップロード経路（署名付き URL → finalize）。同じ AMS オブジェクトは1回だけ保存して共有する |
+| 添付ファイル（OneDrive） | 本文のリンク | 「ファイル本体は取り込まれていません」と明記する |
+| イベントカード | 本文（📅 タイトル・日時・場所） | プロジェクトは作らない |
+| 削除済み・システム・通話 | 取り込まない | 件数を結果レポートに残す |
+| 動画 | 取り込まない | `ALLOWED_MIME_TYPES` に動画が無いため（対応するなら Storage の許可・サムネイル・容量の扱いを決めてから） |
+
+### 本文の安全性
+
+- Parser は HTML を残さない（タグ・script・style・コメントを除去、`javascript:` などのリンクは文字列だけにする）
+- 本文の Markdown 記号はエスケープする。Cairn は Markdown の描画前後のどちらでも `<@id>` をメンションとして解決するため、`<@` の間に U+2060（WORD JOINER）を入れて、取り込み元の文字列が Cairn のメンションにならないようにする
+- サーバー（`lib/imports/schema.ts`）でも、自動リンク以外の `<` とメンション記法を含む本文を拒否する。ブラウザ側の変換を信用しない
+
+## 4. 冪等性と再実行
+
+- メッセージの ID は `UUID v5(ワークスペース, 取り込み元, 会話 ID, メッセージ ID)`（`lib/imports/ids.ts`）。同じメッセージを何度流しても、別の参加者のエクスポートでも同じ ID になり、`imported_messages` の一意制約とあわせて二重登録しない。メッセージ ID は会話内でしか一意と限らないので会話 ID と組にする
+- 書き込みは最大200件（約2.5MB）ごとに1トランザクション。途中で止まっても済んだバッチは残り、同じエクスポートで再実行すると済んだ分は重複としてスキップされる
+- 重複判定はワークスペース単位なので、再実行では前回と同じチャンネルを選ぶ。画面は過去のジョブの取り込み先（`GET /api/imports/conversations`）を既定にする
+- 画像は `imported_files(ワークスペース, 取り込み元, AMS ID)` で対応を持つ。再実行では `media/lookup` で登録済みのファイルを使い回し、もう一度アップロードしない
+- 進捗と失敗は `import_jobs`（ジョブ）と `import_job_conversations`（会話ごとの件数・状態）に残る。結果レポート（`import_jobs.report`）は件数と理由だけで、本文・氏名は持たない
+
+### 失敗時に残るもの
+
+- アップロード済みで、メッセージに添付される前に止まった画像は、添付のないファイルとして残る（再実行で添付される）。ジョブ失敗時の自動削除と、どこにも紐づかないファイルの定期削除は未実装
+
+## 5. 通知・既読・AI
+
+- 通常の投稿 API（`postMessage`）を使わない。Inngest の `message/created` を出さないので、メンション・プッシュ・メールの通知、AI の巡回、埋め込みのジョブは動かない
+- DB トリガーは Realtime の配信だけ（取り込み先を開いている人の画面が再取得する）
+- 完了時に、取り込み先チャンネルの既読位置が無い人（非公開ならチャンネルメンバー、公開ならゲスト以外の全員）に既読位置を置き、過去ログが一気に未読にならないようにする。AI の巡回位置（`ai_scan_states`）も最新に合わせ、過去ログを新着として読ませない
+- 埋め込み（AI の検索）は作らないため、取り込んだ過去ログは `/ai` の資料検索の対象にならない。チャンネルのメッセージ検索は使える
+
+## 6. 権限・公開範囲
+
+- 取り込み API はすべて owner / admin のみ（`withImportAdmin`）。API トークンでは使えない
+- 取り込み先は、そのワークスペースのアーカイブされていないワークスペースチャンネルで、非公開なら操作者が参加しているものだけ（ジョブ作成時とバッチごとに確認）
+- 新しいチャンネルは非公開で作り、作った管理者だけが見られる。公開範囲は画面に明示し、取り込み前に「メンバーへの周知と公開範囲の確認」のチェックを求める
+- 取り込みの表はすべて `.enableRLS()` で、`anon` / `authenticated` に権限を付けない。読み書きは Route Handler だけ
+- 他のワークスペースの投稿者・メッセージは、ワークスペース ID で必ず絞る（結合テストで確認）
+
+## 7. テスト
+
+- `packages/core/src/import/teams/*.test.ts`: Parser・HTML サニタイズ・日時・投稿者・リアクション・メディア。フィクスチャ（`__fixtures__/messages.json`）は架空の名前・ID だけで作った匿名のもの
+- `apps/web/src/lib/imports/*.test.ts`: ファイルの選別、紐づけ候補、バッチ分割、実行手順（画像の重複アップロード防止・再実行・中止・失敗）、ID、入力検証、権限
+- `apps/web/src/lib/imports/service.integration.test.ts`: ローカルの Supabase に書き込む結合テスト。冪等性・中断後の再開・画像の共有・通知なし・既読位置・ワークスペースの分離・紐づけ。`IMPORT_INTEGRATION_DATABASE_URL` を指定したときだけ動く（CI では飛ばす。ローカル以外の URL では動かない）
+
+```bash
+IMPORT_INTEGRATION_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm --filter @cairn/web exec vitest run src/lib/imports/service.integration.test.ts
+```
+
+実データ（エクスポート）はリポジトリに入れない。検証はローカルで、件数だけを出力して行う。
+
+## 8. 未実装・今後
+
+- 投稿者の紐づけを管理画面の一覧から変更する（API はある）
+- 投稿者不明の投稿を、ブラウザのキャッシュや他の参加者のエクスポートと照合して投稿者を補う（`imported_messages` に元の ID・属性を残してある。マージ規則を決めてから）
+- 失敗したジョブでアップロードした画像の削除、紐づかないファイルの定期削除
+- 動画の取り込み
+- イベントカードからのプロジェクト作成（予定表エクスポートの iCalUID で統合）
+- モバイル（Expo のネイティブチャット）での「Teams から取り込み」の印。投稿者名の上書きは API で行うのでアプリにも反映される
+- Slack / Discord の Parser

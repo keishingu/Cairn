@@ -739,6 +739,16 @@ describe('AIオートメーションの設定セクション', () => {
   })
 })
 
+describe('Teams から取り込むの設定セクション', () => {
+  it('PC の owner / admin にだけ出し、member・ゲスト・モバイルには出さない', () => {
+    expect(isSettingsSection('import', false, { isAdmin: true })).toBe(true)
+    expect(isSettingsSection('import', true, { isAdmin: true })).toBe(true)
+    expect(isSettingsSection('import', false, { isAdmin: false })).toBe(false)
+    expect(isSettingsSection('import', false, { isGuest: true })).toBe(false)
+    expect(isSettingsSection('import', true, { isAdmin: true, isMobile: true })).toBe(false)
+  })
+})
+
 describe('AIエージェントのモデル選択', () => {
   function renderAiSection(wsRole: 'owner' | 'member') {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
