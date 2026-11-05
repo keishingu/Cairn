@@ -1,14 +1,63 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+async function fetchLp() {
+  const { GET } = await import('./route')
+  const response = await GET()
+  return { response, html: await response.text() }
+}
 
 describe('RootRoute', () => {
-  it('LP の静的 HTML を返す', async () => {
-    const { GET } = await import('./route')
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
 
-    const response = await GET()
-    const html = await response.text()
+  it('LP の静的 HTML を返す', async () => {
+    const { response, html } = await fetchLp()
 
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(html).toContain('<title>Cairn')
     expect(html).toContain('property="og:image"')
+  })
+
+  it('App Store と Google Play の両方の公式ストアへのリンクを載せる', async () => {
+    const { html } = await fetchLp()
+
+    expect(html).toContain('href="https://apps.apple.com/jp/app/cairn/id6800673777"')
+    expect(html).toContain('href="https://play.google.com/store/apps/details?id=com.oss_cairn"')
+    for (const cta of ['hero', 'details', 'final', 'footer']) {
+      expect(html).toContain(`data-cta="appstore-${cta}"`)
+      expect(html).toContain(`data-cta="googleplay-${cta}"`)
+    }
+  })
+
+  it('Teams 移行の告知はヒーローより前にあり、取り込みを利用可能と書かない', async () => {
+    const { html } = await fetchLp()
+
+    const campaign = html.indexOf('id="teams-migration"')
+    expect(campaign).toBeGreaterThan(-1)
+    expect(campaign).toBeLessThan(html.indexOf('id="stay"'))
+    expect(html).toContain('data-cta="teams-migration-banner"')
+    expect(html).toContain('href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=banner#consultation"')
+    expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
+    expect(html).toContain('お問い合わせ内容に「Teams 移行」とお書きください。')
+    expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
+  })
+
+  it('PostHog のトークンが無ければ計測設定を埋め込まない', async () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN', '')
+    const { html } = await fetchLp()
+
+    expect(html).not.toContain('__CAIRN_LP_POSTHOG__=')
+  })
+
+  it('PostHog のトークンがあれば head に計測設定を埋め込む', async () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN', 'phc_test</script>')
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com')
+    const { html } = await fetchLp()
+
+    const head = html.slice(0, html.indexOf('</head>'))
+    expect(head).toContain(
+      'window.__CAIRN_LP_POSTHOG__={"token":"phc_test\\u003c/script>","host":"https://eu.i.posthog.com"};',
+    )
   })
 })
