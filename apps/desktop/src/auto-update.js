@@ -25,6 +25,7 @@ function setupAutoUpdate({ deploymentEnv }) {
   autoUpdater.autoInstallOnAppQuit = true
 
   // 「アップデートを確認」から始めた確認の結果だけをダイアログで返す。
+  // 新しい版が見つかった場合はダウンロードが終わるまで追い、ダウンロードの失敗もダイアログで出す。
   // 定期確認の失敗（オフラインなど）でダイアログを出し続けないよう、そちらはログに残す。
   let manualCheckInProgress = false
 
@@ -47,7 +48,7 @@ function setupAutoUpdate({ deploymentEnv }) {
 
   autoUpdater.on('update-available', (info) => {
     if (!manualCheckInProgress) return
-    manualCheckInProgress = false
+    // ダウンロード失敗を 'error' でダイアログに出すため、ここではまだ下ろさない
     dialog.showMessageBox({
       type: 'info',
       message: `新しいバージョン ${info.version} をダウンロードしています`,
@@ -56,6 +57,7 @@ function setupAutoUpdate({ deploymentEnv }) {
   })
 
   autoUpdater.on('update-downloaded', async (info) => {
+    manualCheckInProgress = false
     const { response } = await dialog.showMessageBox({
       type: 'info',
       buttons: ['再起動して更新', 'あとで'],
