@@ -186,13 +186,13 @@ describe('/teams/migration の PostHog SDK 設定（cairn-lp.js）', () => {
       $set_once: { $initial_current_url: url, $initial_gclid: 'abc123', $initial_utm_source: 'google' },
     }) as { properties: Record<string, string>; $set_once: Record<string, string> }
 
-    expect(event.properties.$current_url).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
-    expect(event.properties.utm_source).toBe('google')
+    expect(event.properties['$current_url']).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
+    expect(event.properties['utm_source']).toBe('google')
     expect(event.properties).not.toHaveProperty('gclid')
     expect(event.properties).not.toHaveProperty('gad_source')
-    expect(event.$set_once.$initial_current_url).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
+    expect(event.$set_once['$initial_current_url']).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
     expect(event.$set_once).not.toHaveProperty('$initial_gclid')
-    expect(event.$set_once.$initial_utm_source).toBe('google')
+    expect(event.$set_once['$initial_utm_source']).toBe('google')
     expect(JSON.stringify(event)).not.toContain('abc123')
     // ブラウザの URL は書き換えないので、Google 広告タグは gclid を読める
     expect(window.location.search).toContain('gclid=abc123')
