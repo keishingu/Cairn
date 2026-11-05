@@ -61,7 +61,7 @@
 
 | トピック | 配信元テーブル | 用途 |
 |---|---|---|
-| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`tasks` | チャット本文・リアクション・タスクの更新シグナル |
+| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`message_blocks`、`tasks` | 表示中のチャットの本文・リアクション・カード・タスクの印の更新シグナル |
 | `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク |
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
@@ -119,19 +119,23 @@ private channel の join は `realtime.messages` の RLS（Realtime Authorizatio
 
 ペイロード（`record`）から直接描画しない。表示に必要な JOIN（送信者名・アバター・リアクション集計・添付）を再現できず DTO 組み立てが API と二重化するため。ペイロードは `table` の判別だけに使い、**受信 → 該当 TanStack Query を invalidate → REST で再取得**する。楽観的更新はそのまま。
 
-Web は `apps/web/src/components/realtime/realtime-provider.tsx` を `app/(app)/layout.tsx` に 1 つ置き、1 WebSocket で `user:{me}` + 所属チャンネル分の `channel:{id}` を購読する（チャンネル一覧の結果に追従して join / leave）。
+Web は `apps/web/src/components/realtime/realtime-provider.tsx` を `app/(app)/layout.tsx` に 1 つ置き、1 WebSocket で `user:{me}` + 表示中のチャットの `channel:{id}` だけを購読する。チャットを表示するコンポーネント（`ChatThread`）が `useRealtimeChannel(channelId)` で登録し、表示をやめてから 5 秒後に leave する（行き来での join / leave の繰り返しを避ける）。leave したチャンネルのメッセージは古い扱い（`refetchType: 'none'`）にし、次に開いたときに取り直す。登録の数え方と通知の振り分けは `packages/shared/src/realtime-channel-activity.ts` で Web と Expo が共有する。
 
 | 受信 | 動作 |
 |---|---|
-| `channel:{id}` の `messages` | messages・channel-files を invalidate + チャンネル一覧（デバウンス 0.8s） |
-| `channel:{id}` の `message_reactions` / `tasks` | messages / tasks を invalidate |
+| `channel:{id}` の `messages` | messages・channel-files を invalidate |
+| `channel:{id}` の `message_reactions` / `message_blocks` / `tasks` | messages を invalidate |
+| `channel:{id}` の SUBSCRIBED | messages・channel-files を invalidate（表示開始から JOIN までの取りこぼし） |
+| `user:{me}` の `messages`（`channel_ids`） | チャンネル一覧（デバウンス 0.8s）+ JOIN 済みでないチャンネルの messages・channel-files |
+| `user:{me}` の `tasks`（`channel_ids`） | tasks（デバウンス）+ JOIN 済みでないチャンネルの messages（タスク化の印） |
 | `user:{me}` の `notifications` | notifications + チャンネル一覧（未参加チャンネル・新規 DM の活動を回収） |
 | `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications（他デバイス既読の即時同期） |
 | `user:{me}` の `channel_members` / `ai_nudges` | チャンネル一覧 / ai-nudges |
 
 - 購読前に `supabase.realtime.setAuth(accessToken)` を **await** する（未完了で join すると認可エラー）。トークン更新時も再設定。`channel:{id}` の join は `user:{me}` の SUBSCRIBED 後
 - `user:{me}` の（再）SUBSCRIBED 時に対象クエリを一括 invalidate して切断中の取りこぼしを回収する
-- Expo のネイティブチャットも同じトピックと方式（`apps/mobile/components/realtime-provider.tsx`）。WebView 画面は Web の実装がそのまま効く
+- Expo のネイティブチャットも同じトピックと方式（`apps/mobile/components/realtime-provider.tsx`。チャット画面が `useRealtimeChannel` で登録）。前面復帰時に一覧・通知・タスク・表示中のチャットを取り直す。WebView 画面は Web の実装がそのまま効く
+- 権限取消後: 宛先は送信時点で決まるため user トピックは即座に止まる。表示中のチャットの `channel:{id}` は join 時の認可なので、Realtime が JWT 更新で再評価するまで（最大で JWT の有効期間）届き得る
 
 ### ポーリングは置かない
 
