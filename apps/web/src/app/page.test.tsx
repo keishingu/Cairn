@@ -37,9 +37,9 @@ describe('RootRoute', () => {
     expect(campaign).toBeGreaterThan(-1)
     expect(campaign).toBeLessThan(html.indexOf('id="stay"'))
     expect(html).toContain('data-cta="teams-migration-banner"')
-    expect(html).toContain('href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=banner#consultation"')
+    expect(html).toContain('data-cta="teams-migration-banner" href="https://timerex.net/s/dongmin.park_471b/579387d1/"')
     expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
-    expect(html).toContain('お問い合わせ内容に「Teams 移行」とお書きください。')
+    expect(html).toContain('ご予約・メールの際は「Teams 移行」とお書きください。')
     expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
   })
 

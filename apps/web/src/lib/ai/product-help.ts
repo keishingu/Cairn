@@ -127,6 +127,6 @@ export const PRODUCT_HELP_CONTEXT = `
 
 ## 入手方法・他サービスからの移行
 - スマホアプリは iPhone 版を App Store（https://apps.apple.com/jp/app/cairn/id6800673777）、Android 版を Google Play（https://play.google.com/store/apps/details?id=com.oss_cairn、公開国は日本のみ）で公開している。PC・スマホのブラウザからも同じデータを使える。デスクトップアプリは一般配布していない。
-- Microsoft Teams の個人向けコミュニティ機能は 2026年12月以降に終了する。移行を検討している団体・コミュニティの運営者には、公開サイト（https://oss-cairn.com/）の告知から問い合わせてもらい、移行方法を個別に案内している。問い合わせはフォーム（https://moruit.com/#consultation。お問い合わせ内容に「Teams 移行」と書いてもらう）か、メール（info@orikata.co.jp）で受け付ける。
+- Microsoft Teams の個人向けコミュニティ機能は 2026年12月以降に終了する。移行を検討している団体・コミュニティの運営者には、公開サイト（https://oss-cairn.com/）の告知から問い合わせてもらい、移行方法を個別に案内している。問い合わせは無料相談の予約ページ（https://timerex.net/s/dongmin.park_471b/579387d1/）か、メール（info@orikata.co.jp）で受け付け、どちらも「Teams 移行」と書いてもらう。
 - Teams からエクスポートしたメッセージ・ファイルを Cairn に取り込む機能は検証中で、利用者が自分で実行できる取り込み機能はまだない。完全な移行や履歴の復元を約束しない。取り込みの可否や範囲は問い合わせ時に個別に伝える。
 `.trim()
