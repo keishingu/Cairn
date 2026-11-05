@@ -440,6 +440,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
 
 /* ── problem ───────────────────────────────────────────────────────── */
 .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 56px; }
+.prob-grid--two { grid-template-columns: repeat(2, 1fr); }
 .prob {
   padding: 28px 26px 30px; border-radius: var(--radius); border: 1px solid var(--hair);
   background: var(--card); position: relative; overflow: hidden;

@@ -2,7 +2,7 @@
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
-- **更新**: 2026-11-05（Teams 移行キャンペーン・Android 公開・`/teams/migration` を反映）
+- **更新**: 2026-11-05（Teams 移行キャンペーン・Android 公開・`/teams/migration`、タスク化・AI・アプリ基盤の実装追従と Solo の説明の見直しを反映）
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`AGENTS.md`](../AGENTS.md) を正とする。
@@ -24,7 +24,9 @@
 | 2 | 個人事業主の延長のような小規模チーム | Free / Solo → Team（準備中） |
 | 3 | 企業内の小規模チーム（試験導入） | Free → Expedition（導入支援つき） |
 
-企業向けは Expedition で FDE 的な導入支援（業務整理・運用設計・既存ツール連携）へつなぐ。
+企業向けは Expedition で FDE 的な導入支援（業務整理・運用設計・既存ツール連携）へつなぐ。団体固有の機能（装備の貸出管理など）は Cairn 本体を改造せず、「Cairn でログイン」と Bot 投稿で Cairn の外に専用アプリとして作る。これも Expedition の範囲として LP に書く（固有名は出さず用途で書く。§4）。
+
+Solo の説明は「容量」ではなく「AI と原本」を軸にする。無料枠を 100GB に広げた 2026-11 以降、容量を動機に Solo へ入る人はほぼいないため。
 
 
 ## 3. 構成
@@ -32,15 +34,15 @@
 | 順 | セクション | 伝えること |
 |---|---|---|
 | 0 | キャンペーン `#teams-migration`（期間限定） | ナビ直下・ヒーローの上。「Teamsコミュニティからの移行をサポート！」と問い合わせ CTA。詳細は §7 |
-| 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は必要な人だけ月 ¥300。CTA「無料で始める」＋「料金を見る」、App Store / Google Play へのリンク |
+| 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は AI を使いたい人だけ月 ¥300、ほかは無料のまま。CTA「無料で始める」＋「料金を見る」、App Store / Google Play へのリンク |
 | 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 100GB（1ファイル 50MB） |
-| 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
+| 3 | ツールを分けなくていい `#connect` | 発言がそのままタスクになる（「タスク化する」・行選択で複数・元の発言へ戻れる）/ プロジェクトごとにまとまる（スレッドへの切り出し）/ カレンダー・カンバンとマイルストーンチャット |
 | 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
-| 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone・Android アプリとブラウザ（App Store / Google Play リンク）、キーボード、電気通信事業届出 |
-| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談 |
-| 7 | AI `#ai` | 出典つき回答（Solo）と MCP（任意）を短く |
-| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる。GitHub と要望受付ワークスペースへの導線 |
-| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、ゲスト、企業導入、Teams コミュニティからの移行、スマホアプリ |
+| 5 | 細かいところ `#details` | 圏外でも読める・送れる、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone・Android アプリとブラウザ（App Store / Google Play リンク。PDF のアプリ内表示、iPhone は Office も）、キーボード、電気通信事業届出、投票、DM と非公開チャンネル、返信通知。12 枚（3 列 × 4 行） |
+| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月。AI・動画のアップロード・原本の保存と DL・100GB 超・追加購入）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談（導入支援と団体向け専用アプリの開発）。注記はクレジットの単位（10 / 20）・有効期限なし・貢献の記録 |
+| 7 | AI `#ai` | 4 カード（2×2）: 構造があるから答えが当たる（権限準拠・根拠リンク、Solo）/ システムプロンプト・モデル選択・使える人の制限 / Skill（提案→承認→実行、定義は全員に公開）/ MCP（Claude・Cursor・Codex、チャンネル・メンバー・経歴の読み取り） |
+| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる / 団体に合わせたアプリを載せられる（Slack 互換のアプリ基盤はプレビュー、Cairn でログイン）。4 カード（`prob-grid--two` で 2×2）。GitHub と要望受付ワークスペースへの導線 |
+| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、AI が読む範囲、ゲスト、会社・団体に合わせた導入・開発、Teams コミュニティからの移行、スマホアプリ |
 | 10 | 最終 CTA `#demo` | Hero と同じ見出し。クレジットカード不要。App Store / Google Play ボタン |
 
 
@@ -65,10 +67,24 @@
 |---|---|
 | メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
 | ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `MAX_FILE_SIZE`。引き上げは [keishingu/Cairn#769](https://github.com/keishingu/Cairn/pull/769)。**#769 より先に LP を本番に出さない** |
-| Solo ¥300/月、100GB を超える保存、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
+| Solo ¥300/月、100GB を超える保存、月 300 クレジット、質問 1 回 10〜20 クレジット（GPT-5・Claude Sonnet 10 / Claude Opus 20）、追加 ¥500 で 400 クレジット、有効期限なし | `BILLING_CONFIG`（`aiChatRequestCreditsByModel` / `creditPackCredits`）。失効処理は無い（`credit_ledger`） |
+| 誰がいつ積んだかの記録が残る | `/api/billing/contributions`（[`billing-implementation-design.md`](./billing-implementation-design.md) §4） |
 | AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
-| ☑ がタスクになり双方向同期 | `parseCheckboxes` / Todo→Task 同期 |
-| 圏外送信（スマホアプリ） | Expo の送信オフラインキュー |
+| 動画のアップロード（500MB/ファイル）は Solo | `MAX_VIDEO_ATTACHMENT_BYTES`、`resolveUploadRights`（[keishingu/Cairn#778](https://github.com/keishingu/Cairn/pull/778)） |
+| 写真・動画・PDF の原本の保存・ダウンロードは Solo | `resolveUploadRights`（オリジナル保存は支援者本人）、原本 DL の判定（支援者本人かつ残高あり。[`pricing-plan-design.md`](./pricing-plan-design.md) 設計原則 3） |
+| 発言がタスクになる・行選択で複数・元の発言へ戻れる・発言側にタスクの印 | `lib/tasks/task-candidates.ts`、`packages/shared/src/line-task-markers.ts`、タスク詳細の「元のメッセージ」 |
+| 脱線した会話をスレッドへ切り出す | `packages/shared/src/move-to-thread.ts` |
+| 圏外で読める（直近のチャット・通知）・送れる | Expo の端末キャッシュ（2026-11-01）と送信オフラインキュー |
+| PDF のアプリ内表示（Android は pdf.js）、iPhone は Office もアプリ内 | Expo の添付ビューア |
+| 投票（選択肢の追加） | ファーストパーティ投票アプリ（全ワークスペースに自動インストール） |
+| DM・プライベートチャンネル、DM からのタスク化 | `FEATURE_FLAGS.dm`、product-help「DM のメッセージもタスク化でき」 |
+| 返信元への通知 | 2026-11-04「返信元へ通知」 |
+| AI は構造（プロジェクト・タスク・マイルストーン・ファイル・メンバー）ごと読み、権限準拠、根拠は元の発言・ファイルへのリンク。DM の発言は読まないが、本人が参加する DM で共有したファイルの本文は検索対象（「DM は読まない」と言い切らない） | `lib/ai/research-tools.ts`、`system-prompt.ts`（evidence.href 以外のリンクを禁止）、`requireAiChatAccess`、`lib/ai/search-chunks.ts`（`channelAccess` の `type = 'dm'` 条件） |
+| システムプロンプト・モデル選択（GPT-5 / Claude）・使える人の制限 | `workspaces.ai_chat_system_prompt` / `ai_chat_allowed_models` / `ai_chat_access` |
+| Skill（`$名前`）: AI が提案し人が承認して実行、定義と作成者は member 全員に公開 | `lib/ai/automations.ts`、`skill-run.ts`、承認カード（`pending-actions.ts`） |
+| MCP からチャンネル・メンバー・経歴を読める | `research-tools.ts` を MCP にも公開（2026-10-28） |
+| 外部アプリがカードを投稿しボタン操作を受け取れる（Slack 互換・プレビュー） | `/developers`（公開仕様）、[`app-platform-design.md`](./app-platform-design.md) |
+| 「Cairn でログイン」 | 自前の OIDC プロバイダー（2026-11-03。[`oidc-design.md`](./oidc-design.md)） |
 | 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
 | 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
 | セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
@@ -81,10 +97,12 @@
 - **未公開のアプリ**: デスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
 - **Teams からのデータ取り込み**: 会話履歴・写真・ファイルの引き継ぎは**運営側が個別サポートで行う**。利用者が自分で使う取り込み機能は提供しない方針なので、あるようには書かない。「完全に」「すべて」移せるとは書かない（§7・§8）
 - **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
-- **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない
+- **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない。正式公開したら `#ai` に「期限と停滞を本人にだけ知らせる。管理者にも見えない。Solo が 1 人いればワークスペース全員に届く」のカードを足し、料金のリードに「全員の AI 通知の原資になる」を戻す（根拠: [`ai-pmo-design.md`](./ai-pmo-design.md) §2.3、課金設計原則 3）
 - **石・ケルン・風化の用語**: LP では「クレジット」で説明する
 - **Team の確定価格**: 「目安」「準備中」と必ず併記する
-- **Solo の AI 回数**: 「最大」と書く。保存と AI の自動通知が同じクレジットを消費するため
+- **Solo の AI 回数**: 回数で書かない（「月 30 回」は不可）。モデルで消費が違い（10 / 20）、保存と AI の自動通知も同じクレジットを消費するため、「300 クレジット、質問 1 回 10〜20」の形で書く
+- **チェックボックス記法**: 「☑ がタスクになる」「完了のチェックが同期する」は廃止した旧仕様。本文のチェックボックスはタスクにならない
+- **外部リポジトリ・個別開発アプリの固有名**: 用途（装備の貸出管理など）で書く。本リポジトリは公開のため
 - **非公開の顧客名**
 
 
