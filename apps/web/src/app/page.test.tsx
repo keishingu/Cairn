@@ -48,6 +48,7 @@ describe('RootRoute', () => {
     expect(html).toContain('data-cta="teams-migration-banner" href="https://timerex.net/s/dongmin.park_471b/579387d1/"')
     expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
     expect(html).toContain('ご予約・メールの際は「Teams 移行」とお書きください。')
+    expect(html).toContain('data-cta="teams-migration-detail" href="/teams/migration"')
     expect(html).toContain('会話履歴・メディアを引き継いで移行できます')
     expect(html).not.toMatch(/完全に移行|すべて移行/)
   })

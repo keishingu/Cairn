@@ -2,7 +2,7 @@
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
-- **更新**: 2026-11-05（Teams 移行キャンペーン・Android 公開を反映）
+- **更新**: 2026-11-05（Teams 移行キャンペーン・Android 公開・`/teams/migration` を反映）
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
 > 実装と矛盾する場合はコードと [`AGENTS.md`](../AGENTS.md) を正とする。
@@ -79,7 +79,7 @@
 ### 書いてはいけない
 
 - **未公開のアプリ**: デスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
-- **Teams からのデータ取り込み**: 会話履歴・写真・ファイルの引き継ぎは**運営側が個別サポートで行う**。利用者が自分で使える取り込み機能があるようには書かない。「完全に」「すべて」移せるとは書かない（§7）
+- **Teams からのデータ取り込み**: 会話履歴・写真・ファイルの引き継ぎは**運営側が個別サポートで行う**。利用者が自分で使う取り込み機能は提供しない方針なので、あるようには書かない。「完全に」「すべて」移せるとは書かない（§7・§8）
 - **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
 - **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない
 - **石・ケルン・風化の用語**: LP では「クレジット」で説明する
@@ -91,7 +91,7 @@
 ## 5. CTA とパラメータ規約
 
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
-- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail` / `teams-migration-detail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
 - Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は無料相談の予約ページ（TimeRex）とメール（`info@orikata.co.jp`）
 - Android 版は日本でのみ配信しているため、英語のストア導線と FAQ には「Japan only」/「日本でのみ配信」を添える。配信国を広げたら外す
 - ヒーローと最終 CTA は公式のストアバッジ（`public/badges/`。App Store は Apple の Marketing Tools、Google Play は Partner Marketing Hub から取得）。言語ごとにバッジを出し分け、改変せず同じ高さ（44px）で並べ、周囲に高さの 1/4 以上の余白をとる。差し替えるときは配布元の最新版を使う。「スマホと PC」のカードとフッターはテキストリンク。フッターに Apple・App Store・Google Play・Microsoft Teams の商標表記と、Microsoft と提携していない旨を置いている
@@ -117,8 +117,83 @@ Microsoft が個人向け Microsoft Teams のコミュニティ機能を 2026年
 - **ボタン**: 告知の CTA は `.btn-primary` だがグロー（`box-shadow`）を外している。ヒーローの CTA と光り方で競わせないため
 - **配置**: ナビ直下・ヒーローの上の `section.campaign#teams-migration`。PC は本文と CTA の横並び、820px 以下は縦並びで CTA を全幅にする。後続のヒーローは上余白を詰める（`.campaign + .hero`）
 - **意味**: 「移行支援」は問い合わせ・ヒアリング・移行方法の個別案内のこと。データの完全移行、履歴の完全復元、全ファイルの取り込みは約束しない
-- **引き継ぎ**: 見出しで「会話履歴・メディアを引き継いで移行できます」と伝える（移行の一番の価値のため、2026-11-05 にユーザー判断で変更）。引き継ぎは問い合わせ後に運営側が行う個別サポートで、セルフサービスの取り込み機能は未提供。「完全に」「すべて」は書かない
+- **引き継ぎ**: 見出しで「会話履歴・メディアを引き継いで移行できます」と伝える（移行の一番の価値のため、2026-11-05 にユーザー判断で変更）。引き継ぎは問い合わせ後に運営側が行う個別サポートで、利用者が自分で使う取り込み機能は提供しない方針。「完全に」「すべて」は書かない。専用ページ `/teams/migration`（§8）では、後から期待との食い違いにならないよう、エクスポートで残らない情報（匿名化される投稿者・返信関係・OneDrive リンクのみの添付）も示す
 - **表現の制約**: 終わるのは「個人向け Teams のコミュニティ機能」。企業・学校向けの Teams 全体が終わるように書かない。Microsoft と提携しているように書かない
 - **問い合わせ**: 「まずはお問い合わせください」は無料相談の予約ページ（TimeRex、`https://timerex.net/s/dongmin.park_471b/579387d1/`）へ直接リンクする（UTM なし）。並べて `info@orikata.co.jp` 宛ての `mailto:`（件名「Teams コミュニティからの移行の相談」）のホローボタンを置く。予約にもメールにも種別がないため、注記で「Teams 移行」と書いてもらう
-- **SEO**: 新ページは作らず、`meta description` に一文と FAQ（JSON-LD 含む）に 1 問を追加した。「Teams コミュニティ 廃止 / 代替 / 移行」で上位を狙うなら、専用ページ（例: `/migrate-from-teams`）を別途検討する
-- **撤去手順**: `index.html` の `#teams-migration` セクション、FAQ の Teams の 1 問（HTML と JSON-LD の両方）、`meta description` の Teams の一文、`cairn-lp.css` の「campaign」ブロックを消し、`apps/web/src/app/page.test.tsx` の該当テストと本節を更新する
+- **SEO**: トップページは `meta description` に一文と FAQ（JSON-LD 含む）に 1 問だけ。検索広告と「Teams コミュニティ 廃止 / 終了 / 代替 / 移行」の受け皿は専用ページ `/teams/migration`（§8）が担う
+- **専用ページへの導線**: 告知の本文の下に `/teams/migration` へのテキストリンク（`data-cta="teams-migration-detail"`）を置く。問い合わせボタンとメールはそのまま残す
+- **撤去手順**: `index.html` の `#teams-migration` セクション（専用ページへのリンクを含む）、FAQ の Teams の 1 問（HTML と JSON-LD の両方）、`meta description` の Teams の一文、`cairn-lp.css` の「campaign」ブロックを消し、`apps/web/src/app/page.test.tsx` の該当テストと本節を更新する
+
+
+## 8. Teams 移行の専用ページ `/teams/migration`（2026-11-05〜）
+
+Google 検索広告「Cairn | Teams移行支援 | 検索 | 2026-11」の遷移先。広告の最終ページ URL の変更は広告アカウント側で行う。
+
+### 配信
+
+- `apps/web/src/app/teams/migration/route.ts` が `public/teams-migration.html` を読み、`<!-- @teams-... -->` の目印を `src/lib/lp/teams-migration-content.ts` の内容に差し替え、`injectPublicPageHeadScripts()`（PostHog・Google 広告タグ）を通して返す。トップページと同じ `cairn-lp.css` / `cairn-lp.js` を使い、デザイン・日英切り替え・テーマはトップページと共通（ページ固有のスタイルは `cairn-lp.css` の `tm-` ブロック）
+- 未ログインでも、ログイン済みでもそのまま表示する（middleware の公開ルート。`/` と違い `/chats` へは飛ばさない）。sitemap に載せる
+- タイトルは `<html data-title-ja / data-title-en>` から言語ごとに切り替える
+
+### 状況で変わる文言の更新
+
+`teams-migration-content.ts` だけを書き換える。画面の FAQ と JSON-LD は同じ配列から作るので二重に書かない。
+
+| 変わったこと | 直す場所 |
+|---|---|
+| 引き継ぎの進め方が変わった | `TEAMS_MIGRATION_SUPPORT`、FAQ「過去のメッセージは移せますか？」「画像や PDF も移行できますか？」、HTML の「過去データを引き継ぐ」の導入文と「移行までの流れ」4、§4 の「書いてはいけない」 |
+| エクスポートの解析結果が変わった | `TEAMS_EXPORT_FINDINGS` と `TEAMS_EXPORT_FINDINGS_CHECKED_AT` |
+| Microsoft の告知（時期・範囲）が変わった | HTML の「Teams コミュニティの終了について」と確認日、FAQ「いつまでに移行すべきですか？」、meta description |
+
+### 事実の根拠（2026-11-05 確認）
+
+| 記載 | 根拠 |
+|---|---|
+| 2026年12月以降、個人使用の Teams のコミュニティが使えなくなる。職場・学校の Teams には影響しない。新しいコミュニティは順次作れなくなる。メンバー・メッセージは自動で移らない | Microsoft「個人使用のための Microsoft Teams のコミュニティは廃止されます」（`support.microsoft.com/{ja-jp,en-us}/teams/free/communities/communities-deprecation`）。終了日は明記されていない |
+| 退出・削除されるとエクスポートできない。エクスポートはコミュニティに参加している Microsoft アカウントで行う | 同上と「Microsoft Teams 無料版でデータをエクスポートまたは削除する」（`.../teams/free/settings/export-or-delete-your-data-in-microsoft-teams-free`） |
+| 本文・投稿日時は取得可、画像・動画は含まれる、一部の投稿者は匿名化、返信の親子関係は失われる、PDF などは OneDrive リンクのみの場合がある | 実際のコミュニティのエクスポートを解析した結果（2026-11） |
+| 無料プランの範囲（100GB・1ファイル 50MB、Solo ¥300） | §4 の表と同じ |
+| 招待はリンク、アカウントは Google / Apple / メール。Teams のメンバー一覧の自動取り込みはない | `/api/workspaces/invites`、ログイン画面 |
+| 相談は 60 分・無料・Google Meet | Moru の相談ページ（`moruit.com/#consultation`）の「エンジニア1時間無料相談」「60分 / 無料」「Google Meet 自動生成」。初回に限らず相談料はかからない表記 |
+
+### 相談の導線
+
+- 第一の CTA は TimeRex の予約ページへ直接（`https://timerex.net/s/dongmin.park_471b/579387d1/`、`utm_*` 付き）。Moru の相談ページの「予約カレンダーを開く」と同じ予約ページで、内容は「エンジニア1時間無料相談」（汎用。Teams 移行専用の枠ではない）。担当は Moru のエンジニアで、Teams 移行の相談にも対応できるため、フォームを 1 段飛ばせる直接予約を選んだ。専用の枠を作ったら URL を差し替える
+- 予約フォームに相談種別を事前入力できないため、本文で「Teams からの移行の相談であることをお知らせください」と書く
+- 相談ページ（`moruit.com/?…&utm_content=teams-page#consultation`）へのテキストリンクとメール（`info@orikata.co.jp`）を残す。トップページの告知・Expedition の導線は変えていない
+
+### 計測（PostHog）
+
+`data-page="teams-migration"` のページでは `lp_cta_clicked` の代わりに次を送る（`cairn-lp.js`）。
+
+| イベント | いつ | 主なプロパティ |
+|---|---|---|
+| `teams_migration_lp_view` | 表示時 | `source_page` `lp_lang` `utm_source` `utm_medium` `utm_campaign` `utm_content` |
+| `teams_migration_consultation_click` | 相談 CTA（TimeRex / 相談ページ） | 上記 + `cta_location`（`hero` / `consult` / `consult-alt`）+ `destination`（`timerex` / `moru`） |
+| `teams_migration_signup_click` | 「Cairn を無料で試す」 | 上記 + `cta_location` + `destination=signup` |
+| `teams_migration_email_click` | メール | 上記 + `cta_location` + `destination=email` |
+
+- 送るのはページのパス・CTA の位置・遷移先の種類・流入時の UTM だけ。予約内容・フォーム入力は送らない
+- PostHog の SDK が自動で付ける `$current_url` `$referrer` `$initial_*` や流入パラメータには広告のクリック ID（`gclid` `gad_source` `gbraid` `fbclid` など）が入るため、このページでは SDK の `before_send` で取り除く（`$pageview` を含む全イベント）。UTM は残す。ページの URL は書き換えないので、Google 広告タグは `gclid` をそのまま読める
+- **予約完了は計測していない**。TimeRex は予約完了ページの Google Analytics 連携・Google 広告のコンバージョンタグ設置に対応しているが、どちらもプレミアムプラン限定で、GTM と予約後のリダイレクトには対応していない（TimeRex ヘルプ「広告コンバージョンタグ設置」「Google Analytics連携」）。それまでは `teams_migration_consultation_click`（`destination=timerex`）を**暫定のコンバージョン候補**として扱い、予約完了数とは別物として報告する。予約完了を計測するなら、TimeRex のプレミアムプランで広告のコンバージョンタグ（コンバージョン ID とラベル）を設定する
+
+### 広告ポリシーと表現
+
+- Cairn が Microsoft の公式移行先・提携先・認定サービスだと読める表現を使わない。ヒーロー直下の注記・フッターの商標表記に「Microsoft と提携しておらず、公式移行先・認定サービスではない」と書く
+- 「Teams」は終了する機能の説明（記述的な使用）に限る。Microsoft のロゴ・配色・画面は使わない
+- 引き継ぎは「お問い合わせのうえで私たち（運営側）が行う」と書き、利用者が自分で操作して移せるように読める表現を使わない。エクスポートで残らない情報（匿名化される投稿者・返信関係・OneDrive リンクのみの添付）は、誤認とトラブルを避けるため必ず併記する
+
+### 本番反映後の確認
+
+1. 未ログインのブラウザで `https://oss-cairn.com/teams/migration` が表示される（ログイン画面へ飛ばない）。ログイン済みでも表示される
+2. ページのソースに canonical・OGP・JSON-LD があり、`https://oss-cairn.com/sitemap.xml` に載っている
+3. `?utm_source=google&utm_medium=cpc&gclid=test` を付けて開き、PostHog の Live events に `teams_migration_lp_view`（UTM 付き・gclid なし）が届く。相談・無料登録・メールの各ボタンで対応するイベントが 1 回ずつ届く
+4. Google 広告タグ（`LP_GOOGLE_ADS_TAG_ID`）が `<head>` に入っている。Tag Assistant でコンバージョンリンカーが `gclid` を保存している
+5. TimeRex・相談ページ・メール・`/auth/login` へ遷移できる
+6. トップページの告知から専用ページへ移れ、告知の問い合わせボタン・メールも従来どおり動く
+7. 日英切り替え・スマートフォン表示
+8. 広告の最終ページ URL を `https://oss-cairn.com/teams/migration` に変え、広告のポリシー審査が通る
+
+### 撤去手順
+
+`apps/web/src/app/teams/migration/`、`public/teams-migration.html`、`src/lib/lp/teams-migration-content.ts`(+test)、`cairn-lp.css` の `tm-` ブロック、`cairn-lp.js` の `teams-migration` 分岐、middleware の `isCampaignRoute`、sitemap の行、トップページ告知のリンク（§7）を消す。URL を残す場合はトップページへリダイレクトする。

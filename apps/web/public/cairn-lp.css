@@ -661,3 +661,90 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.03em; line-height: 
   .btn-lg { height: 48px; }
   .badge .apache { display: none; }
 }
+
+/* ── /teams/migration (Teams コミュニティ移行の案内ページ) ─────────────
+   public/teams-migration.html 専用。トップページの部品（.btn / .panel-card / .faq-item 等）を再利用し、
+   足りない分だけ tm- 接頭辞で足す。 */
+.tm-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.tm-skip { position: absolute; left: 16px; top: -48px; z-index: 100; padding: 10px 14px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.tm-skip:focus { top: 12px; }
+.tm-hero .hero-inner { max-width: 900px; }
+.tm-display { font-size: clamp(36px, 6.2vw, 72px); }
+.tm-alert {
+  margin: 0 0 26px; display: inline-flex; align-items: center; gap: 9px;
+  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  font-size: 13.5px; font-weight: 500; color: var(--accent-2); line-height: 1.45; text-align: left;
+}
+.tm-alert svg { width: 16px; height: 16px; flex: none; }
+.tm-hero .hero-money { max-width: 36em; }
+.tm-hero-note { margin: 22px auto 0; font-size: 12.5px; color: var(--ink-3); max-width: 46em; line-height: 1.6; }
+.tm-h2 { font-size: clamp(26px, 3.6vw, 40px); line-height: 1.2; }
+.tm-lead { max-width: 52ch; }
+.tm-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; }
+.tm-grid-data { grid-template-columns: 1.25fr 1fr; }
+.tm-grid-2 .panel-card { padding: 30px 28px; }
+.tm-grid-2 .panel-card h3 { font-size: clamp(19px, 2.2vw, 23px); }
+.tm-facts { margin-top: 0; gap: 18px; }
+.tm-facts li { line-height: 1.6; }
+.tm-callout { background: color-mix(in srgb, var(--accent) 7%, var(--card)); border-color: var(--accent-line); }
+.tm-callout .eyebrow { margin-bottom: 12px; }
+.tm-links { display: flex; flex-direction: column; align-items: flex-start; margin-top: 8px; }
+.tm-links .feat-link { margin-top: 10px; line-height: 1.5; }
+.tm-source { text-align: left; margin-left: 0; }
+.tm-reasons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 28px; border: 1px solid var(--hair); border-radius: var(--radius); overflow: hidden; background: var(--hair); }
+.tm-reason { background: var(--bg); padding: 26px 24px; }
+.tm-reason b { display: block; font-size: 16.5px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink); }
+.tm-reason p { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); line-height: 1.65; }
+.tm-reason .feat-link { margin-top: 10px; }
+.tm-reason:last-child { grid-column: span 2; }
+.tm-findings { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.tm-finding { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: start; }
+.tm-finding b { font-size: 15px; font-weight: 600; color: var(--ink); }
+.tm-finding p { margin: 3px 0 0; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+.tm-pill { display: inline-flex; justify-content: center; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4; border: 1px solid; white-space: nowrap; }
+.tm-pill--ok { color: var(--accent-2); background: var(--accent-soft); border-color: var(--accent-line); }
+.tm-pill--partial { color: #FBD38D; background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.4); }
+.tm-pill--missing { color: #FCA5A5; background: var(--red-soft); border-color: rgba(248,113,113,.4); }
+[data-theme="light"] .tm-pill--ok { color: #047857; }
+[data-theme="light"] .tm-pill--partial { color: #92400E; }
+[data-theme="light"] .tm-pill--missing { color: #B91C1C; }
+[data-theme="light"] .tm-alert { color: color-mix(in srgb, var(--accent) 70%, #000); }
+[data-theme="light"][data-page="teams-migration"] .feat-link,
+[data-theme="light"] .tm-consult-alt a,
+[data-theme="light"] .tm-step-n,
+[data-theme="light"][data-page="teams-migration"] .eyebrow { color: color-mix(in srgb, var(--accent) 62%, #000); }
+.tm-note { margin: 18px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.6; }
+.tm-status-label { margin: 16px 0 0; }
+.tm-status-text { margin: 12px 0 0; font-size: 15px; color: var(--ink-2); line-height: 1.7; }
+.tm-steps { list-style: none; margin: 28px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.tm-step { border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card); padding: 24px 22px; }
+.tm-step-n { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; margin-bottom: 14px; font-family: var(--font-mono); font-weight: 600; color: var(--accent-2); background: var(--accent-soft); border: 1px solid var(--accent-line); }
+.tm-step b { display: block; font-size: 16px; font-weight: 600; line-height: 1.45; }
+.tm-step p { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); line-height: 1.65; }
+.tm-consult .lead { max-width: 46ch; }
+.tm-consult-alt { margin: 18px 0 0 !important; font-size: 14px; }
+.tm-consult-alt + .tm-consult-alt { margin-top: 8px !important; }
+.tm-consult-alt a { color: var(--accent-2); }
+.tm-consult-alt a:hover { text-decoration: underline; }
+.tm-foot-links { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.tm-foot-links a { font-size: 14px; color: var(--ink-3); }
+.tm-foot-links a:hover { color: var(--ink); }
+@media (max-width: 1000px) {
+  .tm-steps { grid-template-columns: 1fr 1fr; }
+  .tm-reasons { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 820px) {
+  .tm-grid-2, .tm-grid-data { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .tm-steps, .tm-reasons { grid-template-columns: 1fr; }
+  .tm-reason:last-child { grid-column: auto; }
+  .tm-grid-2 .panel-card { padding: 24px 20px; }
+  .tm-finding { grid-template-columns: 1fr; gap: 6px; }
+  .tm-finding .tm-pill { justify-self: start; }
+  .tm-hero .hero-cta .btn { width: 100%; white-space: normal; text-align: center; height: auto; min-height: 48px; padding-block: 10px; }
+  .tm-nav-cta { display: none; }
+  .tm-display { font-size: 28px; line-height: 1.15; }
+  .tm-alert { font-size: 12.5px; }
+}

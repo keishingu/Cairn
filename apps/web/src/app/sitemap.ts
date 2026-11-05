@@ -13,6 +13,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
+      url: 'https://oss-cairn.com/teams/migration',
+      lastModified: new Date('2026-11-05'),
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
       url: 'https://oss-cairn.com/privacy',
       lastModified: new Date('2026-08-09'),
       changeFrequency: 'monthly',

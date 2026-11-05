@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<!-- /teams/migration の本体。apps/web/src/app/teams/migration/route.ts が
+     「@teams-」で始まる目印コメントを src/lib/lp/teams-migration-content.ts の内容に差し替えて配信する。
+     コピーの規則は docs/lp-content-redesign.md §8。Microsoft と提携しているように書かない。 -->
+<html lang="ja" data-theme="dark" data-tone="rich" data-lang="ja" data-persona="team" data-page="teams-migration"
+  data-title-ja="Teams コミュニティ終了に伴う移行の相談 | Cairn"
+  data-title-en="Moving off a Teams community | Cairn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teams コミュニティ終了に伴う移行の相談 | Cairn</title>
+<meta name="description" content="個人向け Microsoft Teams のコミュニティ機能は 2026年12月以降に終了します。代替の活動場所を探している団体・コミュニティ向けに、無料で始められる Cairn への移行方法と、Teams のデータの扱いを個別にご案内します（相談無料）。Cairn は Microsoft と提携していません。">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://oss-cairn.com/teams/migration">
+<meta property="og:site_name" content="Cairn">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://oss-cairn.com/teams/migration">
+<meta property="og:title" content="Teams コミュニティから Cairn へ。移行の無料相談">
+<meta property="og:description" content="個人向け Teams のコミュニティ機能は 2026年12月以降に終了します。チャット・プロジェクト・タスク・カレンダーをまとめた Cairn への移行方法を個別にご案内します。">
+<meta property="og:image" content="https://oss-cairn.com/og-image.png">
+<meta property="og:image:secure_url" content="https://oss-cairn.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Cairn — One Project. One Place.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Teams コミュニティから Cairn へ。移行の無料相談">
+<meta name="twitter:description" content="個人向け Teams のコミュニティ機能は 2026年12月以降に終了します。チャット・プロジェクト・タスク・カレンダーをまとめた Cairn への移行方法を個別にご案内します。">
+<meta name="twitter:image" content="https://oss-cairn.com/og-image.png">
+
+<script>
+(function () {
+  var lang = 'ja';
+  try {
+    var saved = localStorage.getItem('cairn-lp-lang');
+    if (saved === 'ja' || saved === 'en') lang = saved;
+    else {
+      var match = document.cookie.match(/(?:^|; )cairn-locale-preference=(ja|en)(?:;|$)/);
+      if (match) lang = match[1];
+      else if ((navigator.language || '').toLowerCase().indexOf('en') === 0) lang = 'en';
+    }
+  } catch (e) {}
+  var root = document.documentElement;
+  root.lang = lang;
+  root.setAttribute('data-lang', lang);
+  document.title = root.getAttribute('data-title-' + lang) || document.title;
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/cairn-lp.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cairn-mark" viewBox="0 0 512 512">
+    <rect x="192" y="88"  width="188" height="88" rx="22" fill="currentColor"/>
+    <rect x="96"  y="204" width="228" height="88" rx="22" fill="currentColor"/>
+    <rect x="112" y="320" width="296" height="92" rx="22" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<a class="tm-skip" href="#main"><span data-i="ja">本文へ移動</span><span data-i="en">Skip to content</span></a>
+
+<!-- ── nav ───────────────────────────────────────────────────────── -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Cairn">
+      <svg class="brand-mark" style="color:var(--accent)" aria-hidden="true"><use href="#cairn-mark"/></svg>
+      Cairn
+    </a>
+    <nav class="nav-links" aria-label="ページ内ナビゲーション">
+      <a href="#ending"><span data-i="ja">終了の概要</span><span data-i="en">What’s ending</span></a>
+      <a href="#data"><span data-i="ja">データの引き継ぎ</span><span data-i="en">Your data</span></a>
+      <a href="#steps"><span data-i="ja">移行の流れ</span><span data-i="en">Steps</span></a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-right">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang-set="ja">日本語</button>
+        <button type="button" data-lang-set="en">EN</button>
+      </div>
+      <a class="btn btn-primary btn-sm tm-nav-cta" href="#consult"><span data-i="ja">無料相談</span><span data-i="en">Free consultation</span></a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ── hero ──────────────────────────────────────────────────────── -->
+  <section class="hero tm-hero" id="top" aria-labelledby="tm-title">
+    <div class="hero-glow"></div>
+    <div class="hero-grid"></div>
+    <div class="wrap hero-inner">
+      <p class="tm-alert reveal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <span data-i="ja">2026年12月以降、個人向け Teams のコミュニティが終了</span><span data-i="en">Communities in Teams for personal use end starting December 2026</span>
+      </p>
+      <h1 class="display tm-display reveal" data-d="1" id="tm-title">
+        <span data-i="ja">Teams コミュニティから<br>Cairn へ。</span>
+        <span data-i="en">From a Teams community<br>to Cairn.</span>
+      </h1>
+      <p class="hero-lead reveal" data-d="2">
+        <span data-i="ja">活動の場所が変わっても、仲間とのつながりと大切な記録を、できるだけ引き継ぎたい。</span>
+        <span data-i="en">Your group is moving, but the people and the records that matter should come along as much as possible.</span>
+      </p>
+      <p class="hero-money reveal" data-d="2">
+        <span data-i="ja">Cairn は、チャット・プロジェクト・タスク・カレンダーをひとつにまとめた、無料で始められるコミュニティ運営プラットフォームです。</span>
+        <span data-i="en">Cairn brings chat, projects, tasks, and a calendar together in one place for running a community, and it’s free to start.</span>
+      </p>
+      <div class="hero-cta reveal" data-d="3">
+        <a class="btn btn-primary btn-lg" data-tm-event="consultation" data-tm-location="hero" data-tm-destination="timerex"
+          href="https://timerex.net/s/dongmin.park_471b/579387d1/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=hero"
+          target="_blank" rel="noopener">
+          <span data-i="ja">Teams 移行について無料相談する</span><span data-i="en">Book a free Teams migration consultation</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <span class="tm-sr"><span data-i="ja">（予約ページが新しいタブで開きます）</span><span data-i="en">(opens the booking page in a new tab)</span></span>
+        </a>
+        <a class="btn btn-ghost btn-lg" data-tm-event="signup" data-tm-location="hero" data-tm-destination="signup"
+          href="/auth/login?utm_source=lp&amp;utm_campaign=teams-migration&amp;utm_content=tm-hero">
+          <span data-i="ja">Cairn を無料で試す</span><span data-i="en">Try Cairn for free</span>
+        </a>
+      </div>
+      <p class="tm-hero-note reveal" data-d="4">
+        <span data-i="ja">相談は 60 分・無料・オンライン。Cairn は Microsoft の公式移行先・提携サービスではありません。</span>
+        <span data-i="en">60-minute free online consultation. Cairn is not an official Microsoft migration partner and is not affiliated with Microsoft.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ── 1. what is ending ─────────────────────────────────────────── -->
+  <section class="section section-tight" id="ending" aria-labelledby="ending-title">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">01</span>
+        <h2 class="h2 tm-h2" id="ending-title"><span data-i="ja">Teams コミュニティの終了について</span><span data-i="en">What Microsoft is ending</span></h2>
+      </div>
+      <div class="tm-grid-2">
+        <div class="panel-card reveal" data-d="1">
+          <ul class="check-list tm-facts">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span><span class="k"><span data-i="ja">終わるのは、個人向け Teams のコミュニティ機能</span><span data-i="en">Only communities in Teams for personal use</span></span><br>
+              <span data-i="ja">Microsoft は「2026年12月以降、個人使用のための Microsoft Teams のコミュニティは利用できなくなる」と案内しています。終了日は明記されていません。</span><span data-i="en">Microsoft says communities in Microsoft Teams for personal use will no longer be available starting December 2026. No exact day is given.</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span><span class="k"><span data-i="ja">職場・学校向けの Teams は対象外</span><span data-i="en">Teams for work or school is not affected</span></span><br>
+              <span data-i="ja">法人・教育機関向けの Teams 全体が終わるわけではありません。</span><span data-i="en">This is not the end of Teams for businesses or schools.</span></span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span><span class="k"><span data-i="ja">新しいコミュニティは順次作れなくなる</span><span data-i="en">New communities can no longer be created as the change rolls out</span></span><br>
+              <span data-i="ja">既存のコミュニティは当面使えますが、メンバーやメッセージが自動で別の場所へ移ることはありません。</span><span data-i="en">Existing communities keep working for now, but members and messages do not move anywhere automatically.</span></span></li>
+          </ul>
+        </div>
+        <div class="panel-card tm-callout reveal" data-d="2">
+          <span class="eyebrow eyebrow--muted"><span data-i="ja">いまやっておくこと</span><span data-i="en">Do this now</span></span>
+          <h3><span data-i="ja">終了前に、残したいデータをエクスポート</span><span data-i="en">Export what you want to keep before it ends</span></h3>
+          <p class="desc"><span data-i="ja">コミュニティから退出したり削除されたりすると、そのコミュニティのデータはエクスポートできなくなります。エクスポートは、コミュニティに参加している Microsoft アカウントで行います。</span><span data-i="en">Once you leave or are removed from a community, you can no longer export its data. Export it with the Microsoft account you use in the community.</span></p>
+          <div class="tm-links">
+            <a class="feat-link" href="https://support.microsoft.com/ja-jp/teams/free/communities/communities-deprecation" target="_blank" rel="noopener" data-i="ja">Microsoft の告知（個人使用のための Teams のコミュニティの廃止）<span class="tm-sr">（新しいタブで開きます）</span> ↗</a>
+            <a class="feat-link" href="https://support.microsoft.com/en-us/teams/free/communities/communities-deprecation" target="_blank" rel="noopener" data-i="en">Microsoft’s notice: Communities in Teams for personal use is going away<span class="tm-sr"> (opens in a new tab)</span> ↗</a>
+            <a class="feat-link" href="https://support.microsoft.com/ja-jp/teams/free/settings/export-or-delete-your-data-in-microsoft-teams-free" target="_blank" rel="noopener" data-i="ja">Microsoft のデータのエクスポート手順<span class="tm-sr">（新しいタブで開きます）</span> ↗</a>
+            <a class="feat-link" href="https://support.microsoft.com/en-us/teams/free/settings/export-or-delete-your-data-in-microsoft-teams-free" target="_blank" rel="noopener" data-i="en">Microsoft’s guide to exporting your data<span class="tm-sr"> (opens in a new tab)</span> ↗</a>
+          </div>
+        </div>
+      </div>
+      <p class="cmp-note tm-source"><span data-i="ja">2026年11月5日時点の Microsoft サポートページの記載に基づきます。最新の情報は Microsoft の告知をご確認ください。</span><span data-i="en">Based on Microsoft’s support pages as of November 5, 2026. Check Microsoft’s notice for the latest.</span></p>
+    </div>
+  </section>
+
+  <!-- ── 2. why Cairn ──────────────────────────────────────────────── -->
+  <section class="section section-tight" id="why" aria-labelledby="why-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">02</span>
+        <h2 class="h2 tm-h2" id="why-title"><span data-i="ja">Cairn を選ぶ理由</span><span data-i="en">Why Cairn</span></h2>
+      </div>
+      <div class="tm-reasons">
+        <div class="tm-reason reveal" data-d="1">
+          <b><span data-i="ja">無料で始められる</span><span data-i="en">Free to start</span></b>
+          <p><span data-i="ja">無料プランに期限はありません。ファイルは 100GB（1ファイル 50MB）まで無料。それを超える保存と AI を使う人だけが月 ¥300。クレジットカード不要。</span><span data-i="en">The free plan never expires. Files are free up to 100 GB (50 MB per file). Only people who need more storage or AI pay ¥300 a month. No credit card.</span></p>
+        </div>
+        <div class="tm-reason reveal" data-d="1">
+          <b><span data-i="ja">履歴・メンバー数は無制限</span><span data-i="en">Unlimited history and members</span></b>
+          <p><span data-i="ja">メッセージ数・履歴・メンバー数に上限はなく、ゲストも無料・人数無制限で招待できます。</span><span data-i="en">No caps on messages, history, or members. Guests are free and unlimited too.</span></p>
+        </div>
+        <div class="tm-reason reveal" data-d="2">
+          <b><span data-i="ja">チャット・タスク・カレンダーをひとつに</span><span data-i="en">Chat, tasks, and calendar in one place</span></b>
+          <p><span data-i="ja">プロジェクトごとにチャット・タスク・予定・ファイルがまとまります。チャットの ☑ はそのままタスクになります。</span><span data-i="en">Each project keeps its chat, tasks, events, and files together. A ☑ in chat becomes a task.</span></p>
+        </div>
+        <div class="tm-reason reveal" data-d="2">
+          <b><span data-i="ja">iPhone・Android・ブラウザ</span><span data-i="en">iPhone, Android, and the browser</span></b>
+          <p><span data-i="ja">iPhone アプリは App Store、Android アプリは Google Play（日本のみ）で公開中。PC・スマホのブラウザでも使えます。</span><span data-i="en">The iPhone app is on the App Store and the Android app is on Google Play (Japan only). Works in any browser too.</span></p>
+        </div>
+        <div class="tm-reason reveal" data-d="3">
+          <b><span data-i="ja">Apache-2.0 のオープンソース</span><span data-i="en">Open source under Apache-2.0</span></b>
+          <p><span data-i="ja">ソースコードを公開しています。中身を確認でき、特定のサービスに縛られません。</span><span data-i="en">The source is public, so you can see how it works and you aren’t locked in.</span></p>
+          <a class="feat-link" href="https://github.com/keishingu/Cairn" target="_blank" rel="noopener">GitHub<span class="tm-sr"><span data-i="ja">（新しいタブで開きます）</span><span data-i="en"> (opens in a new tab)</span></span> ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3. your data ──────────────────────────────────────────────── -->
+  <section class="section section-tight" id="data" aria-labelledby="data-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">03</span>
+        <h2 class="h2 tm-h2" id="data-title"><span data-i="ja">Teams の過去データを引き継ぐ</span><span data-i="en">Bringing your Teams history</span></h2>
+        <p class="lead tm-lead"><span data-i="ja">会話履歴や写真・動画は、私たちが個別に引き継ぎます。ただし、Teams のエクスポートには残らない情報があります。移行の前にご確認ください。</span><span data-i="en">We carry over your chat history, photos, and videos for you, one on one. Some information is not kept in a Teams export, so please check it before you move.</span></p>
+      </div>
+      <div class="tm-grid-2 tm-grid-data">
+        <div class="panel-card reveal" data-d="1">
+          <h3><span data-i="ja">エクスポートに含まれるもの</span><span data-i="en">What the export contains</span></h3>
+          <!-- @teams-export-findings -->
+        </div>
+        <div class="panel-card tm-callout reveal" data-d="2">
+          <h3><span data-i="ja">Cairn への取り込み</span><span data-i="en">Bringing it into Cairn</span></h3>
+          <!-- @teams-migration-support -->
+          <a class="feat-link" href="#consult"><span data-i="ja">引き継ぎを相談する →</span><span data-i="en">Talk to us about carrying it over →</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. steps ──────────────────────────────────────────────────── -->
+  <section class="section section-tight" id="steps" aria-labelledby="steps-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">04</span>
+        <h2 class="h2 tm-h2" id="steps-title"><span data-i="ja">移行までの流れ</span><span data-i="en">How the move works</span></h2>
+      </div>
+      <ol class="tm-steps">
+        <li class="tm-step reveal" data-d="1">
+          <span class="tm-step-n" aria-hidden="true">1</span>
+          <b><span data-i="ja">Teams からデータをエクスポート</span><span data-i="en">Export your data from Teams</span></b>
+          <p><span data-i="ja">Microsoft の手順に沿って、チャット履歴とメディアをエクスポートします。</span><span data-i="en">Follow Microsoft’s steps to export chat history and media.</span></p>
+        </li>
+        <li class="tm-step reveal" data-d="1">
+          <span class="tm-step-n" aria-hidden="true">2</span>
+          <b><span data-i="ja">Cairn へ移す内容を確認</span><span data-i="en">Decide what to bring to Cairn</span></b>
+          <p><span data-i="ja">残したいチャンネルやファイル、続けたい活動を整理します。</span><span data-i="en">Pick the channels, files, and activities you want to keep going.</span></p>
+        </li>
+        <li class="tm-step reveal" data-d="2">
+          <span class="tm-step-n" aria-hidden="true">3</span>
+          <b><span data-i="ja">必要に応じて個別相談</span><span data-i="en">Talk it through if needed</span></b>
+          <p><span data-i="ja">エクスポートの中身を見ながら、移せる範囲と方法を一緒に確認します（無料）。</span><span data-i="en">We look at the export with you and confirm what can move and how (free).</span></p>
+        </li>
+        <li class="tm-step reveal" data-d="2">
+          <span class="tm-step-n" aria-hidden="true">4</span>
+          <b><span data-i="ja">ワークスペースを用意し、会話履歴・メディアを引き継ぐ</span><span data-i="en">Set up a workspace and carry over your history and media</span></b>
+          <p><span data-i="ja">Cairn のワークスペースを作り、メンバーを招待します。エクスポートからの取り込みは私たちが行います（ご自身で操作する取り込み機能はありません）。</span><span data-i="en">Create a Cairn workspace and invite members. We do the import from your export for you (there is no self-service import).</span></p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ── 5. FAQ ────────────────────────────────────────────────────── -->
+  <section class="section section-tight" id="faq" aria-labelledby="faq-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head center reveal">
+        <span class="eyebrow eyebrow--muted">FAQ</span>
+        <h2 class="h2 tm-h2" id="faq-title"><span data-i="ja">よくある質問</span><span data-i="en">FAQ</span></h2>
+      </div>
+      <div class="faq-list">
+        <!-- @teams-faq -->
+      </div>
+    </div>
+    <!-- @teams-faq-jsonld -->
+  </section>
+
+  <!-- ── 6. consultation ───────────────────────────────────────────── -->
+  <section class="section final tm-consult" id="consult" aria-labelledby="consult-title">
+    <div class="final-glow"></div>
+    <div class="wrap final-inner">
+      <svg class="brand-mark mark-xl reveal" style="color:var(--accent)" aria-hidden="true"><use href="#cairn-mark"/></svg>
+      <h2 class="reveal" data-d="1" id="consult-title">
+        <span data-i="ja">Teams 移行について<br>相談する</span>
+        <span data-i="en">Talk to us about<br>moving off Teams</span>
+      </h2>
+      <p class="lead reveal" data-d="2" style="text-align:center">
+        <span data-i="ja">予約ページで日時を選ぶと、Google Meet で 60 分の無料相談を行います。窓口は Moru合同会社のエンジニアです。予約の際は Teams からの移行の相談であることをお知らせください。</span>
+        <span data-i="en">Pick a time on the booking page for a free 60-minute call on Google Meet with an engineer at Moru LLC. Please let us know it’s about moving off Teams. The call is in Japanese; email us if you prefer English.</span>
+      </p>
+      <div class="hero-cta reveal" data-d="3">
+        <a class="btn btn-primary btn-lg" data-tm-event="consultation" data-tm-location="consult" data-tm-destination="timerex"
+          href="https://timerex.net/s/dongmin.park_471b/579387d1/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=consult"
+          target="_blank" rel="noopener">
+          <span data-i="ja">Teams 移行について相談する</span><span data-i="en">Book a consultation</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <span class="tm-sr"><span data-i="ja">（予約ページが新しいタブで開きます）</span><span data-i="en">(opens the booking page in a new tab)</span></span>
+        </a>
+        <a class="btn btn-ghost btn-lg" data-tm-event="email" data-tm-location="consult" data-tm-destination="email"
+          href="mailto:info@orikata.co.jp?subject=Teams%20%E3%82%B3%E3%83%9F%E3%83%A5%E3%83%8B%E3%83%86%E3%82%A3%E3%81%8B%E3%82%89%E3%81%AE%E7%A7%BB%E8%A1%8C%E3%81%AE%E7%9B%B8%E8%AB%87">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+          <span data-i="ja">メールで問い合わせる</span><span data-i="en">Email us</span>
+        </a>
+      </div>
+      <p class="tm-consult-alt reveal" data-d="4">
+        <a data-tm-event="consultation" data-tm-location="consult-alt" data-tm-destination="moru"
+          href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=teams-page#consultation"
+          target="_blank" rel="noopener"><span data-i="ja">相談窓口のページで内容を確認してから予約する</span><span data-i="en">See the consultation page first (Japanese)</span><span class="tm-sr"><span data-i="ja">（新しいタブで開きます）</span><span data-i="en"> (opens in a new tab)</span></span> ↗</a>
+      </p>
+      <p class="tm-consult-alt reveal" data-d="4">
+        <a data-tm-event="signup" data-tm-location="consult" data-tm-destination="signup" href="/auth/login?utm_source=lp&amp;utm_campaign=teams-migration&amp;utm_content=tm-consult"><span data-i="ja">相談せずに Cairn を無料で試す →</span><span data-i="en">Or try Cairn for free without a call →</span></a>
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── footer ────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-bottom" style="margin-top:0;padding-top:0;border-top:0">
+      <a class="brand" href="/"><svg class="brand-mark" style="color:var(--accent)" aria-hidden="true"><use href="#cairn-mark"/></svg>Cairn</a>
+      <nav class="tm-foot-links" aria-label="フッター">
+        <a href="/"><span data-i="ja">Cairn のトップページ</span><span data-i="en">Cairn home</span></a>
+        <a href="/#pricing"><span data-i="ja">料金</span><span data-i="en">Pricing</span></a>
+        <a href="/privacy"><span data-i="ja">プライバシーポリシー</span><span data-i="en">Privacy policy</span></a>
+        <a href="/terms"><span data-i="ja">利用規約</span><span data-i="en">Terms</span></a>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <p>© 2026 Cairn Project</p>
+      <span class="lic">電気通信事業届出済（届出番号 A-08-24291）</span>
+      <span class="lic">Apache License 2.0</span>
+    </div>
+    <p class="foot-tm"><span data-i="ja">Microsoft Teams は Microsoft Corporation の商標です。App Store は Apple Inc. のサービスマークです。Google Play は Google LLC の商標です。Cairn は Microsoft とは提携しておらず、Microsoft の公式移行先・認定サービスではありません。</span><span data-i="en">Microsoft Teams is a trademark of Microsoft Corporation. App Store is a service mark of Apple Inc. Google Play is a trademark of Google LLC. Cairn is not affiliated with Microsoft and is not an official or certified Microsoft migration service.</span></p>
+  </div>
+</footer>
+
+<script src="/cairn-lp.js"></script>
+</body>
+</html>
