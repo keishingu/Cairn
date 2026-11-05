@@ -569,6 +569,7 @@ export async function POST(req: Request, { params }: RouteContext) {
             ) {
               return
             }
+            let messagesSaved = false
             try {
               const { aiConversations, aiMessages, db } = await import('@cairn/db')
               const { eq, and, isNull } = await import('drizzle-orm')
@@ -612,6 +613,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                 })
               })
               activeCreditReservationPending = false
+              messagesSaved = true
               // 初回メッセージでタイトルを設定
               await db
                 .update(aiConversations)
@@ -631,7 +633,8 @@ export async function POST(req: Request, { params }: RouteContext) {
                 console.warn('[AI chat] duplicate client message id; keeping the charge:', requestedMessageId)
                 return
               }
-              usageError ??= 'save_failed'
+              // タイトル更新だけの失敗は保存・課金済みなので成功のままにする
+              if (!messagesSaved) usageError ??= 'save_failed'
               await refundPendingActiveCredit()
               console.error('[AI chat] onFinish DB save failed:', e)
             }

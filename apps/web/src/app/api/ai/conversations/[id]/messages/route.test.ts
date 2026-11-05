@@ -56,6 +56,7 @@ vi.mock('@/lib/ai/workspace-research', () => ({
 vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
 // /ai の使用量の記録（応答後に非同期で書く）。評価する関数を受け取り、テストが応答の完了後に呼ぶ
 const { mockRecordUsage } = vi.hoisted(() => ({ mockRecordUsage: vi.fn() }))
+const { mockDbUpdate } = vi.hoisted(() => ({ mockDbUpdate: vi.fn() }))
 vi.mock('@/lib/ai/chat-usage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/ai/chat-usage')>()),
   recordChatUsageAfterResponse: mockRecordUsage,
@@ -77,7 +78,7 @@ vi.mock('@cairn/db', () => {
     db: {
       select: () => chain,
       transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ insert: () => ({ values: () => Promise.resolve() }) }),
-      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+      update: (...args: unknown[]) => mockDbUpdate(...args),
     },
     aiAttachments: { id: 'id', conversationId: 'conversationId', messageId: 'messageId' },
     aiConversations: { id: 'id', workspaceId: 'workspaceId', createdBy: 'createdBy' },
@@ -117,6 +118,7 @@ const queueDbResults = (
 describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
+    mockDbUpdate.mockImplementation(() => ({ set: () => ({ where: () => Promise.resolve() }) }))
     mockIsBillingEnabled.mockReturnValue(false)
     mockRequireAiChatAccess.mockResolvedValue(null)
     mockSearchResearchDocuments.mockResolvedValue({ items: [] })
@@ -522,6 +524,18 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       expect(row.toolNames).toEqual(['searchDocuments', 'getTask'])
       expect(row.steps).toBe(2)
       expect(row.inputTokens).toBe(300)
+    })
+
+    it('会話タイトルの更新だけが失敗しても、保存・課金済みなので成功として記録する', async () => {
+      const options = await startStream()
+      mockDbUpdate.mockImplementation(() => {
+        throw new Error('title update failed')
+      })
+
+      await options.onFinish({ text: '回答', steps: [stepWithTools(100, 10, [])] })
+
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      expect(recordedRecord()).toMatchObject({ status: 'success', error: null })
     })
 
     it('ステップの途中でストリームが失敗したら、完了済みのステップ付きで failed を記録する', async () => {
