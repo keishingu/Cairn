@@ -3866,8 +3866,9 @@ export const PageSettings = () => {
   const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true }
   const navGroups = getSettingsNavGroups(isOwner, navOptions)
   const seg = pathname.split('/')[2]
-  // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中に /settings/import を開いても既定の画面へ戻さない
-  const section = isSettingsSection(seg, isOwner, navOptions) || (seg === 'import' && isAdmin && importAccess.isPending) ? seg : DEFAULT_SECTION
+  // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中・確認に失敗したときに /settings/import を開いても
+  // 既定の画面へ戻さず、取り込み画面の側で読み込み中・エラー（再試行できる）を出す
+  const section = isSettingsSection(seg, isOwner, navOptions) || (seg === 'import' && isAdmin && (importAccess.isPending || importAccess.isError)) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title={t('Settings')} />

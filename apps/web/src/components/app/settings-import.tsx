@@ -92,7 +92,16 @@ export function SettingsImport() {
     return (
       <div>
         <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700 }}>{t('Import from Teams')}</h1>
-        <p style={noteStyle}>{importAccess.isPending && isWorkspaceAdmin ? t('Loading...') : t('Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.')}</p>
+        {isWorkspaceAdmin && importAccess.isError ? (
+          <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
+            <InlineError variant="box">
+              {t('Could not check access to importing')} {importAccess.error instanceof Error ? importAccess.error.message : ''}
+            </InlineError>
+            <button type="button" className="btn btn-sm" onClick={() => void importAccess.refetch()}>{t('Retry')}</button>
+          </div>
+        ) : (
+          <p style={noteStyle}>{importAccess.isPending && isWorkspaceAdmin ? t('Loading...') : t('Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.')}</p>
+        )}
       </div>
     )
   }
