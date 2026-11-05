@@ -726,8 +726,6 @@ export default function ChatThreadScreen() {
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
-  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
-  useRealtimeChannel(channelId ?? null)
   const messagesQuery = useMessages(channelId ?? null)
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },
@@ -1020,6 +1018,9 @@ export default function ChatThreadScreen() {
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）。
+  // 他のタブへ移ってもアンマウントされないため、フォーカスが外れたら登録を外して猶予後に購読をやめる
+  useRealtimeChannel(isFocused ? channelId ?? null : null)
   const goBackToList = React.useCallback(() => {
     router.dismissTo('/(app)/chats')
   }, [router])
