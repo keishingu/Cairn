@@ -64,7 +64,7 @@
 | コピー | 根拠 |
 |---|---|
 | メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
-| ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `FREE_ATTACHMENT_MAX_FILE_SIZE`。**2026-11-05 時点のコードは 10GB・5MB のまま**で、上限の引き上げは別 PR で入れる。LP を先に更新した |
+| ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `MAX_FILE_SIZE`。引き上げは [keishingu/Cairn#769](https://github.com/keishingu/Cairn/pull/769)。**#769 より先に LP を本番に出さない** |
 | Solo ¥300/月、100GB を超える保存、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
 | AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
 | ☑ がタスクになり双方向同期 | `parseCheckboxes` / Todo→Task 同期 |
