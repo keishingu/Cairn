@@ -38,6 +38,7 @@ pnpm --filter @cairn/desktop generate-icons  # apps/web/public/ の PNG から .
   - `desktop-vX.Y.Z`: バージョンごとの履歴
 - mac: Developer ID で署名・公証したユニバーサル版（Apple Silicon / Intel 両対応）の dmg と、自動更新用の zip。**署名用 Secrets が無ければエラーで止め、署名なしでは配布しない**（mac の自動更新は署名が必須）
 - Windows: 当面は署名なしの NSIS インストーラ（SmartScreen の警告が出る）。自動更新は署名なしでも動く
+  - 署名なしのため、electron-updater はインストーラの発行元を検証できない。`desktop-latest` に書き込める人・トークンが差し替えると、インストール済みの全端末が自動で入れてしまう。このリスクは受け入れたうえで自動更新を有効にしている。署名を入れたら `win.publisherName` を設定して検証を有効にする
 
 ### 自動更新
 
