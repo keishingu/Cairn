@@ -33,7 +33,7 @@
 |---|---|---|
 | 0 | キャンペーン `#teams-migration`（期間限定） | ナビ直下・ヒーローの上。「Teamsコミュニティからの移行をサポート！」と問い合わせ CTA。詳細は §7 |
 | 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は必要な人だけ月 ¥300。CTA「無料で始める」＋「料金を見る」、App Store / Google Play へのリンク |
-| 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 10GB（1ファイル 5MB） |
+| 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 100GB（1ファイル 50MB） |
 | 3 | ツールを分けなくていい `#connect` | ☑ がタスクになる / プロジェクトごとにまとまる / カレンダー・カンバンとマイルストーンチャット |
 | 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
 | 5 | 細かいところ `#details` | 圏外送信、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone・Android アプリとブラウザ（App Store / Google Play リンク）、キーボード、電気通信事業届出 |
@@ -64,8 +64,8 @@
 | コピー | 根拠 |
 |---|---|
 | メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
-| ファイル 10GB・1ファイル 5MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `FREE_ATTACHMENT_MAX_FILE_SIZE` |
-| Solo ¥300/月、1ファイル 10MB、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
+| ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `FREE_ATTACHMENT_MAX_FILE_SIZE`。**2026-11-05 時点のコードは 10GB・5MB のまま**で、上限の引き上げは別 PR で入れる。LP を先に更新した |
+| Solo ¥300/月、100GB を超える保存、月 300 クレジット、AI 1回 10 クレジット、追加 ¥500 | `BILLING_CONFIG` / `MAX_FILE_SIZE` |
 | AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
 | ☑ がタスクになり双方向同期 | `parseCheckboxes` / Todo→Task 同期 |
 | 圏外送信（スマホアプリ） | Expo の送信オフラインキュー |
