@@ -26,6 +26,7 @@ pnpm dev                                                # http://localhost:3128
 - pull・ブランチ切り替え後も `supabase migration up --local --include-all` で差分を適用する。`.env.local` の再コピーや DB の reset は不要
 - メンション・DM・ファイルの通知は Inngest 経由のため、確認するときは Inngest dev server も起動する
 - キーが変わったときは `supabase status` で確認する。停止は `supabase stop`
+- 開発時の Service Worker は Web Push のためだけに登録され、キャッシュを使わない（`sw.js?dev=1`）。以前のキャッシュは次の読み込みで消える。それでも古い画面が出るときは DevTools の Application → Service workers で登録を解除する
 
 ## コマンド
 

@@ -39,6 +39,7 @@ import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
+import { useRealtimeChannel } from '../../../components/realtime-provider'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -1017,6 +1018,9 @@ export default function ChatThreadScreen() {
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）。
+  // 他のタブへ移ってもアンマウントされないため、フォーカスが外れたら登録を外して猶予後に購読をやめる
+  useRealtimeChannel(isFocused ? channelId ?? null : null)
   const goBackToList = React.useCallback(() => {
     router.dismissTo('/(app)/chats')
   }, [router])

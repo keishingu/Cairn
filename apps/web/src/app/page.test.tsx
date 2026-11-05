@@ -30,17 +30,27 @@ describe('RootRoute', () => {
     }
   })
 
-  it('Teams 移行の告知はヒーローより前にあり、取り込みを利用可能と書かない', async () => {
+  it('ストアの公式バッジを日英それぞれの言語で表示する', async () => {
+    const { html } = await fetchLp()
+
+    for (const src of ['app-store-ja.svg', 'app-store-en.svg', 'google-play-ja.png', 'google-play-en.png']) {
+      expect(html).toContain(`src="/badges/${src}"`)
+    }
+  })
+
+  it('Teams 移行の告知はヒーローより前にあり、会話履歴とメディアを引き継げると伝える', async () => {
     const { html } = await fetchLp()
 
     const campaign = html.indexOf('id="teams-migration"')
     expect(campaign).toBeGreaterThan(-1)
     expect(campaign).toBeLessThan(html.indexOf('id="stay"'))
     expect(html).toContain('data-cta="teams-migration-banner"')
-    expect(html).toContain('href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=banner#consultation"')
+    expect(html).toContain('data-cta="teams-migration-banner" href="https://timerex.net/s/dongmin.park_471b/579387d1/"')
     expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
-    expect(html).toContain('お問い合わせ内容に「Teams 移行」とお書きください。')
-    expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
+    expect(html).toContain('ご予約・メールの際は「Teams 移行」とお書きください。')
+    expect(html).toContain('data-cta="teams-migration-detail" href="/teams/migration"')
+    expect(html).toContain('会話履歴・メディアを引き継いで移行できます')
+    expect(html).not.toMatch(/完全に移行|すべて移行/)
   })
 
   it('チャットからのタスク作成は「タスク化する」で説明し、廃止したチェックボックス記法と回数表記を残さない', async () => {

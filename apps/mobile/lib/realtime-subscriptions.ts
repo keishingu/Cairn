@@ -6,13 +6,13 @@ export function reconcileRealtimeSubscriptions<T>(
   current: Map<string, T>,
   wanted: ReadonlySet<string>,
   subscribe: (id: string) => T,
-  remove: (subscription: T) => void,
+  remove: (subscription: T, id: string) => void,
   start: (subscription: T, id: string) => void = () => {},
 ) {
   for (const [id, subscription] of current) {
     if (!wanted.has(id)) {
       current.delete(id)
-      remove(subscription)
+      remove(subscription, id)
     }
   }
   for (const id of wanted) {

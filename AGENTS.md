@@ -27,6 +27,7 @@ pnpm Workspace + Turborepo。`pnpm dev` / `build` / `typecheck` / `lint` / `test
 ## 横断ルール
 
 - **Realtime は Broadcast from Database のみ**（DB トリガー → `realtime.broadcast_changes()` → クライアントがクエリを invalidate して REST 再取得）。**postgres_changes は本プロジェクトでは動かないため使わない**。ポーリング・フォールバックも置かない
+- **常時購読は `user:{me}` と表示中のチャット（`useRealtimeChannel`）だけ**。チャンネル一覧から `channel:{id}` を購読すると購読数がチャンネル数に比例して上限に当たる。画面外の変化は user トピックへ送り、宛先判定 `channel_realtime_recipients()` は `can_access_channel()` と同じ条件に保つ（[`docs/notification-design.md`](docs/notification-design.md#user-トピックへのチャンネル活動の配信)）
 - **エラーを隠さない**: 取得できない・見つからないデータをサイレントに代替値へ fallback せず、エラーを表示する（`?? default` で誤ったデータを見せない）
 - **権限はワークスペースロール（owner / admin / member / guest）だけで決める**。プロジェクトロールはシステム権限に影響させない。サーバー側チェックは常に必須で、UI ガードは補助
 - **非活性メンバーは未所属と同等**。認可目的の membership 参照は `active_workspace_members` ビュー（Web は `apps/web/src/lib/access/membership.ts`）を必ず経由する。Storage RLS・Realtime 認可も同じ
