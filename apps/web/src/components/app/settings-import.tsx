@@ -103,9 +103,12 @@ export function SettingsImport() {
   const [result, setResult] = React.useState<ImportRunResult | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
 
-  const { data: members = [] } = useWorkspaceMembers({ enabled: isAdmin })
+  const membersQuery = useWorkspaceMembers({ enabled: isAdmin })
+  // 共有のフックは失敗時もレスポンスをそのまま返すので、配列でなければ取得失敗として扱う
+  const membersInvalid = membersQuery.isSuccess && !Array.isArray(membersQuery.data)
+  const members = Array.isArray(membersQuery.data) ? membersQuery.data : []
   const activeMembers = members.filter(member => member.membershipStatus === 'active')
-  const { data: channels = [] } = useQuery<WorkspaceChannelDto[]>({
+  const channelsQuery = useQuery<WorkspaceChannelDto[]>({
     queryKey: ['workspace-channels'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/workspaces/channels')
@@ -114,7 +117,7 @@ export function SettingsImport() {
     },
     enabled: isAdmin,
   })
-  const { data: existingIdentities = [] } = useQuery<ExistingIdentityDto[]>({
+  const identitiesQuery = useQuery<ExistingIdentityDto[]>({
     queryKey: ['import-identities', 'teams-consumer'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/imports/identities?source=teams-consumer')
@@ -123,7 +126,7 @@ export function SettingsImport() {
     },
     enabled: isAdmin,
   })
-  const { data: importedConversations = [] } = useQuery<ImportedConversationDto[]>({
+  const importedConversationsQuery = useQuery<ImportedConversationDto[]>({
     queryKey: ['imported-conversations', 'teams-consumer'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/imports/conversations?source=teams-consumer')
@@ -132,6 +135,14 @@ export function SettingsImport() {
     },
     enabled: isAdmin,
   })
+  const channels = channelsQuery.data ?? []
+  const existingIdentities = identitiesQuery.data ?? []
+  const importedConversations = importedConversationsQuery.data ?? []
+  // 取り込み先の既定（前回のチャンネル）と紐づけ済みの投稿者が分からないまま進むと、再実行で取り込み済みの分が
+  // 新しいチャンネルに入らず空になるなど誤った結果になる。取得に失敗したらエラーを出し、取り込みを止める
+  const prerequisiteQueries = [membersQuery, channelsQuery, identitiesQuery, importedConversationsQuery]
+  const prerequisiteError = prerequisiteQueries.find(query => query.isError)?.error ?? (membersInvalid ? new Error(t('Could not load members')) : null)
+  const prerequisitesReady = prerequisiteQueries.every(query => query.isSuccess) && !membersInvalid
 
   if (!isAdmin) {
     return (
@@ -255,6 +266,12 @@ export function SettingsImport() {
         {t('Import past group conversations from a Microsoft Teams (personal) export into Cairn channels. The export is read in your browser, and nothing is saved until you press Import.')}
       </p>
 
+      {prerequisiteError && (
+        <div role="alert" className="card" style={{ padding: 12, marginBottom: 16, borderColor: 'var(--danger)', color: 'var(--danger)', fontSize: 13 }}>
+          {t('Could not load the information needed for importing. Reload the page and try again.')} {prerequisiteError instanceof Error ? prerequisiteError.message : ''}
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="card" style={{ padding: 12, marginBottom: 16, borderColor: 'var(--danger)', color: 'var(--danger)', fontSize: 13 }}>{error}</div>
       )}
@@ -264,12 +281,12 @@ export function SettingsImport() {
           <h2 style={{ fontSize: 14 }}>{t('1. Choose the export')}</h2>
           <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
             <p style={noteStyle}>{t('Choose the folder you got from teams.live.com/dataexport (chat history and media). Only messages.json and the images in media are read. Other files such as endpoints.json and invites.json are not read.')}</p>
-            <label className="btn btn-primary" style={{ justifySelf: 'start', cursor: reading ? 'wait' : 'pointer' }}>
+            <label className="btn btn-primary" style={{ justifySelf: 'start', cursor: reading ? 'wait' : 'pointer', ...(prerequisitesReady ? {} : { opacity: 0.5, pointerEvents: 'none' as const }) }} aria-disabled={!prerequisitesReady}>
               <Icon name="download" size={14} /> {reading ? t('Reading...') : t('Choose export folder')}
               <input
                 type="file"
                 style={{ display: 'none' }}
-                disabled={reading}
+                disabled={reading || !prerequisitesReady}
                 // @ts-expect-error webkitdirectory はブラウザ独自の属性
                 webkitdirectory=""
                 multiple
@@ -485,7 +502,7 @@ export function SettingsImport() {
               </label>
             </div>
             {stepNav('destination', null)}
-            <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={!acknowledged} onClick={() => void startImport()}>
+            <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={!acknowledged || !prerequisitesReady} onClick={() => void startImport()}>
               {t('Import')}
             </button>
           </section>

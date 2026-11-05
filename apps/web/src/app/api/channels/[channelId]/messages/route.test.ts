@@ -285,7 +285,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     ])
   })
 
-  it('GET は取り込んだ過去ログの投稿者を取り込み元の名前で上書きし、取り込みリアクションを合算する', async () => {
+  it('GET は取り込んだ過去ログの投稿者を取り込み元の名前で上書きし、取り込みリアクションを合算する（紐づけた本人でも自分のリアクションにしない）', async () => {
     mockRequireChannelAccess.mockResolvedValue(null)
     mockLoadImportedSenders.mockResolvedValue(new Map([
       ['msg-imported', {
@@ -325,7 +325,7 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       senderId: IMPORT_SENDER,
       senderName: '投稿者不明',
       imported: { source: 'teams-consumer', anonymous: true },
-      reactions: [{ emoji: '👍', count: 3, mine: true, userNames: ['Aki', '山田 太郎', '名前不明の参加者'] }],
+      reactions: [{ emoji: '👍', count: 3, mine: false, userNames: ['Aki', '山田 太郎', '名前不明の参加者'] }],
     })
     expect(mockLoadImportedSenders).toHaveBeenCalledWith(DEV_WORKSPACE_ID, ['msg-imported'])
   })

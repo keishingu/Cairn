@@ -222,6 +222,37 @@ export async function importMessageBatch(
     const freshIds = new Set(fresh.map(m => m.externalId))
 
     const result: ImportBatchResult = { imported: 0, duplicates: input.messages.length - fresh.length, quotesLinked: 0, quotesUnresolved: 0, attachments: 0, missingMedia: 0, reactions: 0 }
+
+    // 取り込み済みのメッセージでも、前回アップロードに失敗した・エクスポートに無かった画像が今回そろっていれば添付を補う。
+    // 同じチャンネルに取り込まれたメッセージにだけ、まだ添付されていないファイルを足す
+    const duplicates = input.messages.filter(m => alreadySet.has(m.externalId) && m.mediaObjectIds.some(id => fileIdByObject.has(id)))
+    if (duplicates.length > 0) {
+      const duplicateIds = duplicates.map(m => idFor(m.externalId))
+      const sameChannel = new Set((await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(inArray(messages.id, duplicateIds), eq(messages.channelId, channelId)))).map(row => row.id))
+      const attached = await tx
+        .select({ messageId: messageAttachments.messageId, fileId: messageAttachments.fileId, displayOrder: messageAttachments.displayOrder })
+        .from(messageAttachments)
+        .where(inArray(messageAttachments.messageId, [...sameChannel]))
+      const attachedKeys = new Set(attached.map(row => `${row.messageId}:${row.fileId}`))
+      const repairRows = duplicates.flatMap(message => {
+        const messageId = idFor(message.externalId)
+        if (!sameChannel.has(messageId)) return []
+        return message.mediaObjectIds.flatMap((objectId, index) => {
+          const fileId = fileIdByObject.get(objectId)
+          if (!fileId || attachedKeys.has(`${messageId}:${fileId}`)) return []
+          attachedKeys.add(`${messageId}:${fileId}`)
+          return [{ messageId, fileId, displayOrder: index }]
+        })
+      })
+      if (repairRows.length > 0) {
+        await tx.insert(messageAttachments).values(repairRows)
+        result.attachments += repairRows.length
+      }
+    }
+
     if (fresh.length === 0) {
       await bumpCounts(tx, conversation.id, result)
       return result
@@ -295,7 +326,7 @@ export async function importMessageBatch(
     }))
     if (attachmentRows.length > 0) {
       await tx.insert(messageAttachments).values(attachmentRows)
-      result.attachments = attachmentRows.length
+      result.attachments += attachmentRows.length
     }
 
     await bumpCounts(tx, conversation.id, result)

@@ -356,8 +356,9 @@ export async function getMessages({
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const reaction of [
       ...reactionRows,
-      // 取り込んだリアクションは取り込み元の人ごと。紐づけた本人なら自分のリアクションとして数える
-      ...importedReactionRows.map(row => ({ messageId: row.messageId, emoji: row.emoji, userId: row.linkedUserId ?? IMPORT_SENDER_PROFILE_ID, userName: row.userName })),
+      // 取り込んだリアクションは取り込み元の人ごとの履歴で、トグル API（message_reactions）では消せない。
+      // 紐づけた本人でも「自分のリアクション」にはしない（押すと Cairn のリアクションが別に増える・減る）
+      ...importedReactionRows.map(row => ({ messageId: row.messageId, emoji: row.emoji, userId: IMPORT_SENDER_PROFILE_ID, userName: row.userName })),
     ]) {
       if (!reactionMap.has(reaction.messageId)) reactionMap.set(reaction.messageId, [])
       const existing = reactionMap

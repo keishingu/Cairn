@@ -1624,4 +1624,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not register the image': '이미지를 등록하지 못했습니다',
   'Could not import messages': '메시지를 가져오지 못했습니다',
   'Could not finish the import': '가져오기를 완료하지 못했습니다',
+  'Could not load the information needed for importing. Reload the page and try again.': '가져오기에 필요한 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.',
+  'Could not load members': '멤버를 불러오지 못했습니다',
 }

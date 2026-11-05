@@ -208,6 +208,30 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
   })
 
+  test('画像がそろわずに取り込んだメッセージも、再実行で画像がそろえば添付を補う', async () => {
+    const repairConversation = '19:FixtureRepairCommunityCCCCCCCCCCCCCCCCCCCCC1@thread.v2'
+    const repairChannelId = randomUUID()
+    await db.db.insert(db.channels).values({ id: repairChannelId, workspaceId, type: 'workspace', name: '補う', isPrivate: false })
+    const repairFileId = randomUUID()
+    await db.db.insert(db.files).values({ id: repairFileId, workspaceId, uploadedBy: adminId, storagePath: `${workspaceId}/${repairChannelId}/${adminId}/repair.jpg`, fileName: 'repair.jpg', mimeType: 'image/jpeg', fileSize: 10, fileType: 'image' })
+    const create = () => service.createImportJob(workspaceId, adminId, {
+      source: 'teams-consumer', exportedAt: null, identities, links: [],
+      conversations: [{ externalId: repairConversation, channelId: repairChannelId, totalMessages: messages.length }],
+    })
+    const body = { conversationExternalId: repairConversation, messages: messages.map(m => toBatchMessage(m, new Set([MEDIA_ID]))) }
+    const first = await create()
+    expect(await service.importMessageBatch(workspaceId, adminId, first.jobId, body)).toMatchObject({ imported: messages.length, attachments: 0, missingMedia: 2 })
+    await service.completeImportJob(workspaceId, first.jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+
+    const second = await create()
+    await service.registerImportedMedia(workspaceId, adminId, second.jobId, { objectId: MEDIA_ID, fileId: repairFileId, channelId: repairChannelId })
+    expect(await service.importMessageBatch(workspaceId, adminId, second.jobId, body)).toMatchObject({ imported: 0, duplicates: messages.length, attachments: 2 })
+    // もう一度流しても二重に添付しない
+    expect(await service.importMessageBatch(workspaceId, adminId, second.jobId, body)).toMatchObject({ attachments: 0 })
+    expect(await count(sql`select count(*) as n from message_attachments where file_id = ${repairFileId}`)).toBe(2)
+    await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+  })
+
   test('リアクションを取り込み元の人ごとに保存する', async () => {
     const reactionTotal = messages.reduce((n, m) => n + m.reactions.length, 0)
     expect(await count(sql`select count(*) as n from imported_message_reactions r join messages m on m.id = r.message_id where m.channel_id = ${channelId}`)).toBe(reactionTotal)

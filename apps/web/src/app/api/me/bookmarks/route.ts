@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { loadImportedSenders } from '@/lib/imports/display'
 import { NextResponse } from 'next/server'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
@@ -82,11 +83,13 @@ export async function GET(_req: Request) {
       .orderBy(desc(messageBookmarks.createdAt))
       .limit(100)
 
+    // 取り込んだ過去ログは共通の取り込みプロフィールが送信者なので、本当の投稿者で表示を上書きする（docs/import-design.md）
+    const importedSenders = await loadImportedSenders(ctx.workspaceId, rows.map(r => r.id))
     const result: BookmarkDto[] = rows.map(r => ({
       id: r.id,
       content: r.content,
-      senderName: r.senderName,
-      senderAvatarUrl: r.senderAvatarUrl ?? null,
+      senderName: importedSenders.get(r.id)?.name ?? r.senderName,
+      senderAvatarUrl: importedSenders.has(r.id) ? importedSenders.get(r.id)!.avatarUrl : r.senderAvatarUrl ?? null,
       createdAt: r.createdAt.toISOString(),
       channelId: r.channelId,
       channelName: r.channelName,
