@@ -140,7 +140,7 @@ export interface ImportPlanConversation {
 
 export interface ImportApi {
   createJob(body: unknown): Promise<{ jobId: string }>
-  lookupMedia(jobId: string, objectIds: string[]): Promise<Record<string, string>>
+  lookupMedia(jobId: string, channelId: string, objectIds: string[]): Promise<Record<string, string>>
   uploadMedia(channelId: string, file: File): Promise<{ fileId: string }>
   registerMedia(jobId: string, body: { objectId: string; fileId: string; channelId: string }): Promise<{ fileId: string }>
   importBatch(jobId: string, body: { conversationExternalId: string; messages: BatchMessage[] }): Promise<{ imported: number; duplicates: number; missingMedia: number; attachments: number; reactions: number; quotesLinked: number; quotesUnresolved: number }>
@@ -184,6 +184,7 @@ export async function runImport(args: {
   const emit = () => onProgress?.({ ...progress })
   const totals = { imported: 0, duplicates: 0, attachments: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0 }
   const mediaFailures: ImportRunResult['mediaFailures'] = []
+  const availableByChannel = new Map<string, Set<string>>()
 
   progress.messagesTotal = conversationIds.reduce((n, id) => n + (bundle.messagesByConversation[id]?.length ?? 0), 0)
   emit()
@@ -233,48 +234,54 @@ export async function runImport(args: {
   }
 
   try {
-    // 1. メディア: 参照されるものだけ。アップロード済み（再実行）のものは使い回し、同じオブジェクトは1回だけ送る
-    const firstChannelForObject = new Map<string, string>()
+    // 1. メディア: 参照されるものだけ。取り込み先チャンネルごとに1回だけ送り、アップロード済み（再実行）のものは使い回す。
+    //    別のチャンネルのファイルは使い回さない（チャンネルの公開範囲をまたいで画像を持ち込まないため）
+    const objectsByChannel = new Map<string, Set<string>>()
     for (const p of plan) {
-      for (const message of bundle.messagesByConversation[p.externalId] ?? []) {
-        for (const ref of message.media) if (!firstChannelForObject.has(ref.objectId)) firstChannelForObject.set(ref.objectId, p.channelId)
-      }
+      const set = objectsByChannel.get(p.channelId) ?? new Set<string>()
+      for (const message of bundle.messagesByConversation[p.externalId] ?? []) for (const ref of message.media) set.add(ref.objectId)
+      objectsByChannel.set(p.channelId, set)
     }
-    const objectIds = [...firstChannelForObject.keys()]
     progress.phase = 'media'
-    progress.mediaTotal = objectIds.length
+    progress.mediaTotal = [...objectsByChannel.values()].reduce((n, set) => n + set.size, 0)
     emit()
-    const available = new Set<string>()
-    for (let i = 0; i < objectIds.length; i += 500) {
-      const found = await api.lookupMedia(jobId, objectIds.slice(i, i + 500))
-      for (const objectId of Object.keys(found)) available.add(objectId)
-    }
-    for (const objectId of objectIds) {
-      if (signal?.aborted) return await finish('cancelled', null)
-      if (!available.has(objectId)) {
-        const rejected = collected.rejectedMedia.get(objectId)
-        const media = collected.media.get(objectId)
-        if (rejected) mediaFailures.push({ objectId, reason: rejected })
-        else if (!media) mediaFailures.push({ objectId, reason: 'missing-file' })
-        else {
-          try {
-            const channelId = firstChannelForObject.get(objectId)!
-            const uploaded = await api.uploadMedia(channelId, media.file)
-            await api.registerMedia(jobId, { objectId, fileId: uploaded.fileId, channelId })
-            available.add(objectId)
-          } catch {
-            mediaFailures.push({ objectId, reason: 'upload-failed' })
+    const failedObjects = new Map<string, ImportRunResult['mediaFailures'][number]['reason']>()
+    for (const [channelId, set] of objectsByChannel) {
+      const objectIds = [...set]
+      const ready = new Set<string>()
+      for (let i = 0; i < objectIds.length; i += 500) {
+        const found = await api.lookupMedia(jobId, channelId, objectIds.slice(i, i + 500))
+        for (const objectId of Object.keys(found)) ready.add(objectId)
+      }
+      for (const objectId of objectIds) {
+        if (signal?.aborted) return await finish('cancelled', null)
+        if (!ready.has(objectId)) {
+          const rejected = collected.rejectedMedia.get(objectId)
+          const media = collected.media.get(objectId)
+          if (rejected) failedObjects.set(objectId, rejected)
+          else if (!media) failedObjects.set(objectId, 'missing-file')
+          else {
+            try {
+              const uploaded = await api.uploadMedia(channelId, media.file)
+              await api.registerMedia(jobId, { objectId, fileId: uploaded.fileId, channelId })
+              ready.add(objectId)
+            } catch {
+              failedObjects.set(objectId, 'upload-failed')
+            }
           }
         }
+        progress.mediaDone++
+        emit()
       }
-      progress.mediaDone++
-      emit()
+      availableByChannel.set(channelId, ready)
     }
+    for (const [objectId, reason] of failedObjects) mediaFailures.push({ objectId, reason })
 
     // 2. メッセージ: 会話ごと・投稿日時順にバッチで送る。失敗したら止めて、再実行で続きから入れる
     progress.phase = 'messages'
     emit()
     for (const p of plan) {
+      const available = availableByChannel.get(p.channelId) ?? new Set<string>()
       const messages = (bundle.messagesByConversation[p.externalId] ?? []).map(m => toBatchMessage(m, available))
       for (const chunk of chunkMessages(messages)) {
         if (signal?.aborted) return await finish('cancelled', null)

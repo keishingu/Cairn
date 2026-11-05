@@ -82,6 +82,7 @@ export const importBatchSchema = z.object({
 })
 
 export const mediaLookupSchema = z.object({
+  channelId: z.string().uuid(),
   objectIds: z.array(z.string().regex(/^[A-Za-z0-9-]{1,80}$/)).min(1).max(1_000),
 })
 

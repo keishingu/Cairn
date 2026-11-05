@@ -35,6 +35,7 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
   const memberId = randomUUID()
   const channelId = randomUUID()
   const otherChannelId = randomUUID()
+  const publicChannelId = randomUUID()
   const fileId = randomUUID()
   const bundle = parseTeamsExport(fixture, { timeZone: 'Asia/Tokyo' })
   const messages = bundle.messagesByConversation[COMMUNITY]!
@@ -66,6 +67,7 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await db.db.insert(channels).values([
       { id: channelId, workspaceId, type: 'workspace', name: '取り込み先', isPrivate: true },
       { id: otherChannelId, workspaceId: otherWorkspaceId, type: 'workspace', name: '別WS', isPrivate: false },
+      { id: publicChannelId, workspaceId, type: 'workspace', name: '公開チャンネル', isPrivate: false },
     ])
     await db.db.insert(channelMembers).values({ channelId, userId: adminId })
     await db.db.insert(files).values({
@@ -134,7 +136,7 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await expect(service.importMessageBatch(workspaceId, adminId, jobId, batch())).rejects.toMatchObject({ status: 409 })
 
     const { jobId: retryJob } = await createJob()
-    const found = await service.lookupImportedMedia(workspaceId, retryJob, [MEDIA_ID])
+    const found = await service.lookupImportedMedia(workspaceId, retryJob, channelId, [MEDIA_ID])
     expect(found).toEqual({ [MEDIA_ID]: fileId })
     const second = await service.importMessageBatch(workspaceId, adminId, retryJob, batch())
     expect(second).toMatchObject({ imported: messages.length - 2, duplicates: 2 })
@@ -191,9 +193,24 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     expect(await count(sql`select count(*) as n from message_attachments where file_id = ${fileId}`)).toBe(2)
   })
 
+  test('非公開チャンネルに取り込んだ画像を、別のチャンネルへの取り込みで使い回さない', async () => {
+    const otherConversation = '19:FixtureOtherCommunityBBBBBBBBBBBBBBBBBBBBBB1@thread.v2'
+    const { jobId } = await service.createImportJob(workspaceId, adminId, {
+      source: 'teams-consumer', exportedAt: null, identities, links: [],
+      conversations: [{ externalId: otherConversation, channelId: publicChannelId, totalMessages: messages.length }],
+    })
+    expect(await service.lookupImportedMedia(workspaceId, jobId, publicChannelId, [MEDIA_ID])).toEqual({})
+    // 取り込み先でないチャンネルのメディアは問い合わせられない
+    await expect(service.lookupImportedMedia(workspaceId, jobId, channelId, [MEDIA_ID])).rejects.toMatchObject({ status: 400 })
+    const result = await service.importMessageBatch(workspaceId, adminId, jobId, { conversationExternalId: otherConversation, messages: messages.map(m => toBatchMessage(m, new Set([MEDIA_ID]))) })
+    expect(result).toMatchObject({ imported: messages.length, attachments: 0, missingMedia: 2 })
+    expect(await count(sql`select count(*) as n from message_attachments a join messages m on m.id = a.message_id where m.channel_id = ${publicChannelId}`)).toBe(0)
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+  })
+
   test('リアクションを取り込み元の人ごとに保存する', async () => {
     const reactionTotal = messages.reduce((n, m) => n + m.reactions.length, 0)
-    expect(await count(sql`select count(*) as n from imported_message_reactions r join imported_messages im on im.message_id = r.message_id where im.workspace_id = ${workspaceId}`)).toBe(reactionTotal)
+    expect(await count(sql`select count(*) as n from imported_message_reactions r join messages m on m.id = r.message_id where m.channel_id = ${channelId}`)).toBe(reactionTotal)
   })
 
   test('過去ログの取り込みで通知・Inngest のイベントを出さない', async () => {

@@ -63,7 +63,7 @@ async function postJson<T>(url: string, body: unknown, fallback: string): Promis
 function createImportApi(t: (key: string) => string): ImportApi {
   return {
     createJob: body => postJson('/api/imports/jobs', body, t('Could not start the import')),
-    lookupMedia: async (jobId, objectIds) => (await postJson<{ found: Record<string, string> }>(`/api/imports/jobs/${jobId}/media/lookup`, { objectIds }, t('Could not check uploaded images'))).found,
+    lookupMedia: async (jobId, channelId, objectIds) => (await postJson<{ found: Record<string, string> }>(`/api/imports/jobs/${jobId}/media/lookup`, { channelId, objectIds }, t('Could not check uploaded images'))).found,
     uploadMedia: async (channelId, file) => ({ fileId: (await uploadAttachment(channelId, file)).fileId }),
     registerMedia: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/media`, body, t('Could not register the image')),
     importBatch: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/batches`, body, t('Could not import messages')),

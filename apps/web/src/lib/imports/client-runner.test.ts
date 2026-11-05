@@ -133,6 +133,17 @@ describe('runImport', () => {
     expect(result.imported).toBe(5)
   })
 
+  test('同じ画像でも取り込み先チャンネルが違えば、チャンネルごとにアップロードする', async () => {
+    const twoChannels = parseTeamsExport(fixture)
+    const otherId = '19:FixtureOtherCommunityBBBBBBBBBBBBBBBBBBBBBB1@thread.v2'
+    twoChannels.messagesByConversation[otherId] = twoChannels.messagesByConversation[COMMUNITY]!
+    const api = fakeApi()
+    await runImport({ api, bundle: twoChannels, plan: [...plan, { externalId: otherId, channelId: 'channel-2' }], links: [], collected })
+    expect(api.uploadMedia).toHaveBeenCalledTimes(2)
+    expect((api.uploadMedia as ReturnType<typeof vi.fn>).mock.calls.map(c => c[0])).toEqual(['channel-1', 'channel-2'])
+    expect(api.lookupMedia).toHaveBeenCalledWith('job-1', 'channel-2', [MEDIA_ID])
+  })
+
   test('再実行ではアップロード済みの画像を使い回し、もう一度アップロードしない', async () => {
     const api = fakeApi({ lookupMedia: vi.fn(async () => ({ [MEDIA_ID]: 'file-old' })) })
     await runImport({ api, bundle, plan, links: [], collected })

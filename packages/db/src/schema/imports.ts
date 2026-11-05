@@ -138,8 +138,9 @@ export const importedMessageReactions = pgTable(
 ).enableRLS()
 
 /**
- * 取り込んだメディア（Teams の AMS オブジェクト）と Cairn のファイルの対応。
- * 同じオブジェクトを複数のメッセージが参照しても1回だけ保存し、再実行ではアップロード済みのファイルを使い回す。
+ * 取り込んだメディア（Teams の AMS オブジェクト）と Cairn のファイルの対応。取り込み先チャンネルごとに持つ。
+ * 同じチャンネルの中では同じオブジェクトを1回だけ保存して共有し、再実行ではアップロード済みのファイルを使い回す。
+ * 別のチャンネルのファイルは使い回さない（非公開チャンネルに取り込んだ画像を、メディア ID だけで公開チャンネルに添付できてしまうため）。
  */
 export const importedFiles = pgTable(
   'imported_files',
@@ -153,13 +154,15 @@ export const importedFiles = pgTable(
     fileId: uuid('file_id')
       .notNull()
       .references(() => files.id, { onDelete: 'cascade' }),
-    // アップロード先のチャンネル（files のアクセス可否は添付先のメッセージで決まる）
-    channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    // アップロード先＝取り込み先のチャンネル。チャンネルが消えたら対応も消す
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
     jobId: uuid('job_id').references(() => importJobs.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique('imported_files_external_key').on(t.workspaceId, t.source, t.externalObjectId),
+    unique('imported_files_external_key').on(t.workspaceId, t.source, t.channelId, t.externalObjectId),
     index('idx_imported_files_file').on(t.fileId),
   ],
 ).enableRLS()

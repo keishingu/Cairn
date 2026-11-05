@@ -14,6 +14,6 @@ export async function POST(req: Request, { params }: RouteContext) {
   return withImportAdmin('lookup media', async ({ workspaceId }) => {
     const { data, error } = await parseJsonBody(req, mediaLookupSchema)
     if (error) return error
-    return NextResponse.json({ found: await lookupImportedMedia(workspaceId, jobId, data.objectIds) })
+    return NextResponse.json({ found: await lookupImportedMedia(workspaceId, jobId, data.channelId, data.objectIds) })
   })
 }

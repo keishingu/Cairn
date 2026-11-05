@@ -187,7 +187,8 @@ export async function importMessageBatch(
     ? await db
         .select({ objectId: importedFiles.externalObjectId, fileId: importedFiles.fileId })
         .from(importedFiles)
-        .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), inArray(importedFiles.externalObjectId, objectIds)))
+        // 取り込み先と同じチャンネルにアップロードしたファイルだけを添付する（別チャンネルのファイルを持ち込ませない）
+        .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.channelId, channelId), inArray(importedFiles.externalObjectId, objectIds)))
     : []
   const fileIdByObject = new Map(fileRows.map(row => [row.objectId, row.fileId]))
 
@@ -312,15 +313,21 @@ export async function importMessageBatch(
   }
 }
 
-export async function lookupImportedMedia(workspaceId: string, jobId: string, objectIds: string[]) {
-  const { db, importedFiles, files, orm } = await loadDb()
+export async function lookupImportedMedia(workspaceId: string, jobId: string, channelId: string, objectIds: string[]) {
+  const { db, importedFiles, importJobConversations, files, orm } = await loadDb()
   const { and, eq, inArray } = orm
   const job = await loadRunningJob(db, workspaceId, jobId)
+  const [target] = await db
+    .select({ channelId: importJobConversations.channelId })
+    .from(importJobConversations)
+    .where(and(eq(importJobConversations.jobId, jobId), eq(importJobConversations.channelId, channelId)))
+    .limit(1)
+  if (!target) throw new ImportServiceError(400, 'このジョブの取り込み先ではないチャンネルです')
   const rows = await db
     .select({ objectId: importedFiles.externalObjectId, fileId: importedFiles.fileId })
     .from(importedFiles)
     .innerJoin(files, eq(files.id, importedFiles.fileId))
-    .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), inArray(importedFiles.externalObjectId, objectIds)))
+    .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.channelId, channelId), inArray(importedFiles.externalObjectId, objectIds)))
   return Object.fromEntries(rows.map(row => [row.objectId, row.fileId]))
 }
 
@@ -367,7 +374,7 @@ export async function registerImportedMedia(
   const [existing] = await db
     .select({ fileId: importedFiles.fileId })
     .from(importedFiles)
-    .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.externalObjectId, input.objectId)))
+    .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.channelId, input.channelId), eq(importedFiles.externalObjectId, input.objectId)))
     .limit(1)
   if (!existing) throw new Error('imported file lookup failed after conflict')
   return { fileId: existing.fileId, reused: true }

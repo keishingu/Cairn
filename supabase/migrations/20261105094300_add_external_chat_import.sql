@@ -58,10 +58,10 @@ CREATE TABLE "imported_files" (
 	"source" text NOT NULL,
 	"external_object_id" text NOT NULL,
 	"file_id" uuid NOT NULL,
-	"channel_id" uuid,
+	"channel_id" uuid NOT NULL,
 	"job_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "imported_files_external_key" UNIQUE("workspace_id","source","external_object_id")
+	CONSTRAINT "imported_files_external_key" UNIQUE("workspace_id","source","channel_id","external_object_id")
 );
 --> statement-breakpoint
 ALTER TABLE "imported_files" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -102,7 +102,7 @@ ALTER TABLE "import_jobs" ADD CONSTRAINT "import_jobs_workspace_id_workspaces_id
 ALTER TABLE "import_jobs" ADD CONSTRAINT "import_jobs_created_by_profiles_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "imported_files" ADD CONSTRAINT "imported_files_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "imported_files" ADD CONSTRAINT "imported_files_file_id_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."files"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "imported_files" ADD CONSTRAINT "imported_files_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "imported_files" ADD CONSTRAINT "imported_files_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "imported_files" ADD CONSTRAINT "imported_files_job_id_import_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."import_jobs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "imported_message_reactions" ADD CONSTRAINT "imported_message_reactions_message_id_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "imported_message_reactions" ADD CONSTRAINT "imported_message_reactions_identity_id_import_identities_id_fk" FOREIGN KEY ("identity_id") REFERENCES "public"."import_identities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
