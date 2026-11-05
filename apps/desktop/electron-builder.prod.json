@@ -16,13 +16,42 @@
   },
   "mac": {
     "icon": "resources/icons/prod/icon.icns",
-    "category": "public.app-category.productivity"
+    "category": "public.app-category.productivity",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "universal"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "universal"
+        ]
+      }
+    ],
+    "hardenedRuntime": true,
+    "notarize": true
   },
   "win": {
-    "icon": "resources/icons/prod/icon.ico"
+    "icon": "resources/icons/prod/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
   },
   "linux": {
     "icon": "resources/icons/prod/icon512.png",
     "category": "Office"
+  },
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "publish": {
+    "provider": "generic",
+    "url": "https://github.com/keishingu/Cairn/releases/download/desktop-latest"
   }
 }

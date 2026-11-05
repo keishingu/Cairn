@@ -1,11 +1,19 @@
-name: Desktop Build
+name: Desktop Release
 
-# main への push（apps/desktop 変更時）で Desktop（Electron）アプリの本番インストーラを
-# ビルドし、GitHub Release（ローリングタグ desktop-latest）へ添付して一般公開する。
-# develop 向けの限定配布ビルドは行わない（開発中は各自ローカルで `pnpm --filter @cairn/desktop dev` する）。
-#
-# desktop-latest は「常に main の最新」を指すローリングリリース。push のたびに
-# 既存アセットを削除して同じタグへ上書きし、ダウンロードURLを固定に保つ。
+# main への push（apps/desktop 変更時）で Desktop（Electron）アプリをビルドして公開する。
+# - バージョンは apps/desktop/package.json の version。リリースごとに上げる
+#   （同じバージョンの desktop-vX.Y.Z が既にあればエラーで止める。PR 時点の確認は desktop-version-check.yml）
+# - mac は Developer ID で署名・公証したユニバーサル版（dmg / zip）。署名用 Secrets が無ければエラーで止め、
+#   署名なしの mac 版は配布しない（mac の自動更新は署名が必須なため）
+# - Windows は当面署名なしの NSIS インストーラ（SmartScreen の警告が出る）
+# - 公開先は2つ:
+#   - desktop-vX.Y.Z: バージョンごとの Release（履歴用）
+#   - desktop-latest: 常に最新版を置くローリング Release。ダウンロードリンクと
+#     自動更新（electron-updater の generic provider）がここを参照する。
+#     Web のリリース（release-YYYY-MM-DD）と同じリポジトリにあるため、GitHub の
+#     「Latest release」に頼らず固定タグを参照する
+# 開発中は各自ローカルで `pnpm desktop:dev` する（develop 向けの配布ビルドは行わない）。
+# 運用手順は docs/desktop-app.md。
 on:
   push:
     branches: [main]
@@ -18,20 +26,50 @@ permissions:
   contents: write
 
 concurrency:
-  group: desktop-build-main
-  cancel-in-progress: true
+  group: desktop-release
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    # workflow_dispatch は任意ブランチから実行できるため、main 以外からの公開を防ぐ
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version is not released yet
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          TAG="desktop-v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::${TAG} は公開済みです。apps/desktop/package.json の version を上げてください"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: prepare
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: macos-latest
-            artifact_glob: apps/desktop/dist/*.dmg
+            platform: mac
           - os: windows-latest
-            artifact_glob: apps/desktop/dist/*.exe
+            platform: win
     runs-on: ${{ matrix.os }}
+    # 署名用 Secrets は main だけに許可した desktop-release Environment に置く
+    # （production は PR の merge ref にも許可しているため使わない。設定手順は docs/desktop-app.md）
+    environment: desktop-release
     steps:
       - uses: actions/checkout@v4
 
@@ -45,39 +83,101 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build desktop app (prod)
-        # コード署名証明書は未設定。mac で署名を自動探索して失敗しないよう無効化する
-        # （未署名ビルド。配布先で Gatekeeper/SmartScreen の警告が出る）。
+      - name: Prepare macOS signing
+        if: matrix.platform == 'mac'
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::mac の署名・公証用 Secrets が未設定です: ${missing[*]}（設定手順は docs/desktop-app.md）"
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$KEY_PATH"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build desktop app (mac, signed + notarized)
+        if: matrix.platform == 'mac'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: pnpm --filter @cairn/desktop build:prod
 
-      - name: Upload build artifact (CI 確認用)
+      - name: Build desktop app (Windows, unsigned)
+        if: matrix.platform == 'win'
+        run: pnpm --filter @cairn/desktop build:prod
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cairn-desktop-${{ runner.os }}
-          path: ${{ matrix.artifact_glob }}
+          name: cairn-desktop-${{ matrix.platform }}
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest*.yml
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish to rolling release (desktop-latest)
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to desktop-latest and desktop-vX.Y.Z
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Windows runner の run: 既定シェルは pwsh。このスクリプトは
-        # set -euo pipefail 等の bash 構文なので明示しないと Windows で失敗する
-        shell: bash
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="desktop-latest"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --title "Cairn Desktop（最新ビルド）" \
-              --notes "main の最新コミットからビルドした Desktop アプリです。push のたびに上書きされます。未署名のため、初回起動時に OS の警告が出る場合があります。" \
-              --latest=false
-          fi
-          # 同じ OS 分の古いアセットだけ消して、他 OS のアセットは残す
-          for f in ${{ matrix.artifact_glob }}; do
-            NAME="$(basename "$f")"
-            gh release delete-asset "$TAG" "$NAME" --yes 2>/dev/null || true
+          cd dist
+          ls -la
+          for f in latest.yml latest-mac.yml; do
+            [ -f "$f" ] || { echo "::error::$f がビルド成果物にありません"; exit 1; }
           done
-          gh release upload "$TAG" ${{ matrix.artifact_glob }} --clobber
+
+          LATEST="desktop-latest"
+          NOTES="最新の Cairn Desktop（v${VERSION}）です。インストール済みのアプリはここから自動で更新されます。Windows 版は未署名のため、初回起動時に SmartScreen の警告が出る場合があります。"
+          if gh release view "$LATEST" >/dev/null 2>&1; then
+            gh release edit "$LATEST" --title "Cairn Desktop（最新版）" --notes "$NOTES"
+          else
+            gh release create "$LATEST" --title "Cairn Desktop（最新版）" --notes "$NOTES" --latest=false
+          fi
+
+          # 自動更新中のアプリが「yml は新しいのにインストーラが無い」状態を見ないよう、
+          # インストーラ類を先に上げ、yml は最後に差し替える
+          INSTALLERS=$(ls | grep -v '^latest.*\.yml$')
+          gh release upload "$LATEST" $INSTALLERS --clobber
+          gh release upload "$LATEST" latest.yml latest-mac.yml --clobber
+
+          # 旧バージョンのファイルを消す
+          gh release view "$LATEST" --json assets --jq '.assets[].name' | while read -r name; do
+            if [ ! -f "$name" ]; then
+              gh release delete-asset "$LATEST" "$name" --yes
+            fi
+          done
+
+          # 履歴用のバージョン別 Release は最後に作る（途中で失敗しても、再実行がバージョン重複で止まらない）
+          gh release create "$TAG" * \
+            --target "$GITHUB_SHA" \
+            --title "Cairn Desktop v${VERSION}" \
+            --notes "Cairn Desktop v${VERSION}。最新版のダウンロードは ${LATEST} を参照してください。" \
+            --latest=false

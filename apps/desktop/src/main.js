@@ -4,6 +4,7 @@ const pkg = require('../package.json')
 const { registerExternalNavigation } = require('./external-navigation')
 const { isSameOrigin, registerPermissionPolicy } = require('./permission-policy')
 const { resolveAppIconFile } = require('./app-icon')
+const { setupAutoUpdate } = require('./auto-update')
 
 const APP_URL = process.env.DESKTOP_APP_URL || pkg.config?.appUrl || 'https://develop.oss-cairn.com'
 const DEPLOYMENT_ENV = pkg.config?.deploymentEnv || 'development'
@@ -27,7 +28,12 @@ const NAV_ITEMS = [
   // ユーザーメニュー(⌘⌥0)・サイドバー(⌘B) はキーハンドラ/専用メニューで処理する。
 ]
 
-function buildMenu() {
+// checkForUpdates: 自動更新が有効なときだけ渡され、「アップデートを確認…」を出す
+function buildMenu({ checkForUpdates }) {
+  const updateItems = checkForUpdates
+    ? [{ label: 'アップデートを確認…', click: () => checkForUpdates() }]
+    : []
+
   const navSubmenu = NAV_ITEMS.map(({ label, accelerator, action }) => ({
     label,
     accelerator,
@@ -35,7 +41,23 @@ function buildMenu() {
   }))
 
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    ...(isMac
+      ? [{
+          label: app.name,
+          submenu: [
+            { role: 'about' },
+            ...updateItems,
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        }]
+      : []),
     { role: 'editMenu' },
     {
       label: '表示',
@@ -58,6 +80,8 @@ function buildMenu() {
       ],
     },
     { role: 'windowMenu' },
+    // macOS ではアプリメニューに置くため、Windows / Linux だけヘルプメニューに置く
+    ...(!isMac && updateItems.length > 0 ? [{ label: 'ヘルプ', submenu: updateItems }] : []),
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -148,7 +172,8 @@ app.whenReady().then(() => {
 
   registerBadgeBridge()
   registerAppIconBridge()
-  buildMenu()
+  const updater = setupAutoUpdate({ deploymentEnv: DEPLOYMENT_ENV })
+  buildMenu({ checkForUpdates: updater.checkManually })
   createWindow()
 
   app.on('activate', () => {
