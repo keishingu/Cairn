@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -12,12 +12,19 @@ vi.mock('@cairn/db', () => ({}))
 import { parseJsonBody, withImportAdmin } from './route-helpers'
 import { ImportServiceError } from './service'
 
+const ORIGINAL_OPERATORS = process.env['IMPORT_OPERATOR_USER_IDS']
+
 function asRole(role: string) {
   mockGetAuthContext.mockResolvedValue({ ctx: { userId: 'u1', workspaceId: 'ws1', role }, error: null })
 }
 
 describe('withImportAdmin', () => {
-  afterEach(() => vi.clearAllMocks())
+  beforeEach(() => { process.env['IMPORT_OPERATOR_USER_IDS'] = 'u1' })
+  afterEach(() => {
+    vi.clearAllMocks()
+    if (ORIGINAL_OPERATORS === undefined) delete process.env['IMPORT_OPERATOR_USER_IDS']
+    else process.env['IMPORT_OPERATOR_USER_IDS'] = ORIGINAL_OPERATORS
+  })
 
   test.each(['member', 'guest'])('%s は 403 で、処理を呼ばない', async (role) => {
     asRole(role)
@@ -32,6 +39,24 @@ describe('withImportAdmin', () => {
     const res = await withImportAdmin('test', async ctx => NextResponse.json(ctx))
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ userId: 'u1', workspaceId: 'ws1' })
+  })
+
+  test.each(['owner', 'admin'])('運営者でない %s は 403 で、処理を呼ばない', async (role) => {
+    process.env['IMPORT_OPERATOR_USER_IDS'] = 'someone-else'
+    asRole(role)
+    const handler = vi.fn()
+    const res = await withImportAdmin('test', handler)
+    expect(res.status).toBe(403)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  test('運営者の一覧が未設定なら誰も使えない', async () => {
+    delete process.env['IMPORT_OPERATOR_USER_IDS']
+    asRole('owner')
+    const handler = vi.fn()
+    const res = await withImportAdmin('test', handler)
+    expect(res.status).toBe(403)
+    expect(handler).not.toHaveBeenCalled()
   })
 
   test('認証できなければ認証エラーをそのまま返す', async () => {

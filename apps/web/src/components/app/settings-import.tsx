@@ -9,7 +9,7 @@ import { parseTeamsExport, summarizeConversation, type ImportBundle, type Import
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useWorkspaceMembers } from '@/hooks/use-project-members'
-import { useImportIdentities, useImportTargetChannels, useImportedConversations } from '@/hooks/use-imports'
+import { useImportAccess, useImportIdentities, useImportTargetChannels, useImportedConversations } from '@/hooks/use-imports'
 import {
   collectExportFiles,
   identitiesForConversations,
@@ -53,7 +53,10 @@ const cellStyle: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px
 
 export function SettingsImport() {
   const t = useT()
-  const { isAdmin } = useWorkspacePermissions()
+  const { isAdmin: isWorkspaceAdmin } = useWorkspacePermissions()
+  const importAccess = useImportAccess(isWorkspaceAdmin)
+  // 取り込みは移行支援として運営側（IMPORT_OPERATOR_USER_IDS の owner / admin）だけが行う。判定の正はサーバー
+  const isAdmin = isWorkspaceAdmin && importAccess.data?.allowed === true
   const queryClient = useQueryClient()
   const [step, setStep] = React.useState<Step>('select')
   const [error, setError] = React.useState<string | null>(null)
@@ -89,7 +92,7 @@ export function SettingsImport() {
     return (
       <div>
         <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700 }}>{t('Import from Teams')}</h1>
-        <p style={noteStyle}>{t('Only workspace owners and admins can import past conversations.')}</p>
+        <p style={noteStyle}>{importAccess.isPending && isWorkspaceAdmin ? t('Loading...') : t('Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.')}</p>
       </div>
     )
   }

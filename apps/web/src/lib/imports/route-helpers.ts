@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import type { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
+import { isImportOperator } from './operators'
 import { ImportServiceError } from './service'
 
 export interface ImportAdminContext {
@@ -14,6 +15,7 @@ export interface ImportAdminContext {
 
 /**
  * 取り込み API の共通処理。取り込みは過去ログを一括で書き込むので owner / admin だけに許可する。
+ * さらに、移行支援をしながら使う前提のため、Cairn の運営者（isImportOperator）に限る。
  * API トークンでは使えない（ブラウザの管理画面からだけ操作する）。
  * エラーは本文・氏名を含めずにログへ出す。
  */
@@ -25,6 +27,9 @@ export async function withImportAdmin(
   if (error) return error
   const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
+  if (!isImportOperator(ctx.userId)) {
+    return NextResponse.json({ error: '外部チャットの取り込みは、移行支援の担当者（Cairn の運営者）だけが利用できます' }, { status: 403 })
+  }
   try {
     return await handler({ userId: ctx.userId, workspaceId: ctx.workspaceId })
   } catch (err) {

@@ -740,12 +740,13 @@ describe('AIオートメーションの設定セクション', () => {
 })
 
 describe('Teams から取り込むの設定セクション', () => {
-  it('PC の owner / admin にだけ出し、member・ゲスト・モバイルには出さない', () => {
-    expect(isSettingsSection('import', false, { isAdmin: true })).toBe(true)
-    expect(isSettingsSection('import', true, { isAdmin: true })).toBe(true)
-    expect(isSettingsSection('import', false, { isAdmin: false })).toBe(false)
-    expect(isSettingsSection('import', false, { isGuest: true })).toBe(false)
-    expect(isSettingsSection('import', true, { isAdmin: true, isMobile: true })).toBe(false)
+  it('運営者の owner / admin にだけ PC で出し、運営者でない管理者・member・ゲスト・モバイルには出さない', () => {
+    expect(isSettingsSection('import', false, { isAdmin: true, isImportOperator: true })).toBe(true)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: true })).toBe(true)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: false })).toBe(false)
+    expect(isSettingsSection('import', false, { isAdmin: false, isImportOperator: true })).toBe(false)
+    expect(isSettingsSection('import', false, { isGuest: true, isImportOperator: true })).toBe(false)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: true, isMobile: true })).toBe(false)
   })
 })
 

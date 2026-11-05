@@ -2,7 +2,7 @@
 
 **種別: 現行**（MVP 実装済み。取り込み元は Teams 個人用だけ）
 
-Microsoft Teams（個人用）のコミュニティ廃止に合わせて、エクスポート（チャット履歴・メディア）からグループの過去ログを Cairn のチャンネルに取り込む。エクスポートの形式と移行の可否は [`research/teams-community-export-analysis.md`](research/teams-community-export-analysis.md)（記録）を参照。
+Microsoft Teams（個人用）のコミュニティ廃止に合わせて、エクスポート（チャット履歴・メディア）からグループの過去ログを Cairn のチャンネルに取り込む。**取り込みは移行支援として Cairn の運営側が行い、利用者が自分で実行する機能にはしない**（運営者は環境変数 `IMPORT_OPERATOR_USER_IDS` で指定する）。エクスポートの形式と移行の可否は [`research/teams-community-export-analysis.md`](research/teams-community-export-analysis.md)（記録）を参照。
 
 ## 1. 全体の流れ
 
@@ -101,7 +101,8 @@ Teams エクスポート（フォルダ）
 
 ## 6. 権限・公開範囲
 
-- 取り込み API はすべて owner / admin のみ（`withImportAdmin`）。API トークンでは使えない
+- 取り込み API はすべて、Cairn の運営者（`IMPORT_OPERATOR_USER_IDS` にユーザー ID がある人。未設定なら誰も使えない）で、かつ取り込み先ワークスペースの owner / admin に限る（`withImportAdmin`）。運営者は移行するワークスペースに管理者として招待してもらってから作業する。API トークンでは使えない
+- 設定の「Teams から取り込む」は、`GET /api/imports/access` で運営者かを確かめてから出す（入口の出し分けだけで、判定の正は API）
 - 取り込み先は、そのワークスペースのアーカイブされていないワークスペースチャンネルで、非公開なら操作者が参加しているものだけ（ジョブ作成時とバッチごとに確認）
 - 新しいチャンネルは非公開で作り、作った管理者だけが見られる。公開範囲は画面に明示し、取り込み前に「メンバーへの周知と公開範囲の確認」のチェックを求める
 - 取り込みの表はすべて `.enableRLS()` で、`anon` / `authenticated` に権限を付けない。読み書きは Route Handler だけ

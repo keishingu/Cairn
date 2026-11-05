@@ -1637,4 +1637,6 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not finish the import': '가져오기를 완료하지 못했습니다',
   'Could not load the information needed for importing. Reload the page and try again.': '가져오기에 필요한 정보를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.',
   'Could not load members': '멤버를 불러오지 못했습니다',
+  'Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.': 'Teams에서 가져오기는 이전 지원으로 Cairn 운영팀이 진행합니다. 커뮤니티 이전은 문의해 주세요.',
+  'Could not check access to importing': '가져오기 사용 가능 여부를 확인하지 못했습니다',
 }

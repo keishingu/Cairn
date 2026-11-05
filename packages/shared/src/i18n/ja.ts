@@ -1638,4 +1638,6 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not finish the import': '取り込みを完了できませんでした',
   'Could not load the information needed for importing. Reload the page and try again.': '取り込みに必要な情報を読み込めませんでした。ページを再読み込みしてやり直してください。',
   'Could not load members': 'メンバーを読み込めませんでした',
+  'Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.': 'Teams からの取り込みは、移行支援として Cairn の運営チームが行います。コミュニティの移行はお問い合わせください。',
+  'Could not check access to importing': '取り込みを使えるか確認できませんでした',
 }

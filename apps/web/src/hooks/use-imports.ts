@@ -57,3 +57,14 @@ export function useImportedConversations(source: string, enabled: boolean) {
     enabled,
   })
 }
+
+/** 取り込み画面を使えるか（Cairn の運営者で owner / admin）。設定の入口の出し分けに使う */
+export function useImportAccess(enabled: boolean) {
+  const t = useT()
+  return useQuery<{ allowed: boolean }>({
+    queryKey: ['import-access'],
+    queryFn: () => getJson('/api/imports/access', t('Could not check access to importing')),
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
