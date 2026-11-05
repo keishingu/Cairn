@@ -18,7 +18,7 @@
 - **消費**: AI の利用 = 都度（フロー型）、ストレージ保有 = 家賃として日割り（ストック型。保有バイト × レート × 経過期間）
 - **残高 = `SUM(credit_ledger.delta)`**。0 以下で「風化」
 - **権利と恩恵の分離**:
-  - **能動権（本人帰属）**: オリジナル / 大容量のアップロード、`/ai` への依頼 → アクティブな支援者本人のみ
+  - **能動権（本人帰属）**: オリジナルのアップロード、無料容量を超える保存、`/ai` への依頼 → アクティブな支援者本人のみ
   - **受動恩恵（WS 帰属）**: オリジナルの閲覧・DL、AI PMO のナッジ → ケルンに残高があれば全メンバー
 
 ## 3. 課金ポイントと執行ポイント
@@ -26,9 +26,9 @@
 | 課金ポイント | Free | 支援者本人（funded WS） | 執行ポイント |
 |---|---|---|---|
 | ギャラリー画像 | 圧縮派生のみ（長辺2048px。EXIF の撮影日時・GPS は保持） | オリジナルも保存（閲覧は全員） | `projects/[id]/gallery/upload-url` / `finalize` |
-| チャット添付・ファイル | 非PDF 5MiB/PDF 圧縮前50MiB | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
+| チャット添付・ファイル | 50MiB/ファイル（PDF は圧縮前） | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
 | 動画、チャット添付の音声・ZIP | 不可（MIME whitelist 外） | 未開放（`canUploadVideo` の権利判定だけ定義済み） | — |
-| ストレージ保有 | 10GB まで | 残高が家賃を払える限り | 家賃 cron（§6） |
+| ストレージ保有 | 100GiB まで（`BILLING_CONFIG.freeStorageBytes`。2026-11 に 10GiB から引き上げ） | 残高が家賃を払える限り | 家賃 cron（§6） |
 | AI 能動利用（`/ai`） | 不可 | クレジットを消費 | `api/ai/conversations/[id]/messages` |
 | AI 受動利用（AI PMO） | ケルンに残高があれば受信 | 受信 | `lib/ai-nudges/`（配信ごとに消費） |
 

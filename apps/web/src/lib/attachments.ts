@@ -4,9 +4,8 @@
 // 添付ファイルのバリデーション・MIME 正規化ロジック。
 // アップロード URL 発行(upload-url) と登録(finalize) の両ルートで共有する。
 
+// 1ファイルの上限はプランを問わず同じ。無料と有料の差は保存容量（BILLING_CONFIG.freeStorageBytes）で付ける。
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
-// Free で許可する通常添付。大容量ストレージだけを能動権の対象にする。
-export const FREE_ATTACHMENT_MAX_FILE_SIZE = 5 * 1024 * 1024
 
 export const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
