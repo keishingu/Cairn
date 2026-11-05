@@ -6,12 +6,16 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { GALLERY_BUCKET } from '@/lib/gallery-upload'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 
 export interface GalleryItemDto {
   id: string
   fileId: string
+  fileName: string
+  /** 表示用の圧縮版。支援状態を問わず全員がこれを見る */
   publicUrl: string
-  originalUrl: string | null
+  /** 原本のダウンロード先。原本があり、閲覧者本人が原本を取得できる（Solo 支援者・課金無効）ときだけ入る */
+  originalDownloadUrl: string | null
   takenAt: string | null
   createdAt: string
 }
@@ -43,6 +47,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .select({
         id: galleryItems.id,
         fileId: galleryItems.fileId,
+        fileName: files.fileName,
         storagePath: files.storagePath,
         derivedStoragePath: files.derivedStoragePath,
         takenAt: galleryItems.takenAt,
@@ -58,14 +63,22 @@ export async function GET(_req: Request, { params }: RouteContext) {
       )
       .orderBy(sql`${galleryItems.takenAt} DESC NULLS LAST`, desc(galleryItems.createdAt))
 
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    const canDownloadOriginal = entitlements.rights.canDownloadOriginal
+
     const supabase = createServiceRoleClient()
     const result: GalleryItemDto[] = rows.map((r: (typeof rows)[number]) => ({
       id: r.id,
       fileId: r.fileId,
+      fileName: r.fileName,
       publicUrl: supabase.storage
         .from(GALLERY_BUCKET)
         .getPublicUrl(r.derivedStoragePath ?? r.storagePath!).data.publicUrl,
-      originalUrl: r.storagePath ? `/api/projects/${projectId}/gallery/${r.id}/file` : null,
+      originalDownloadUrl:
+        // derivedStoragePath が無い行は原本・派生を分ける前の旧データで、storagePath は表示用画像を指す
+        canDownloadOriginal && r.storagePath && r.derivedStoragePath
+          ? `/api/projects/${projectId}/gallery/${r.id}/file?original=1`
+          : null,
       takenAt: r.takenAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
     }))

@@ -74,6 +74,13 @@ describe('添付ファイルの表示とキャッシュ', () => {
     expect(attachmentCacheFileName('file-1', 'a b/c')).toBe('file-1_a_b_c')
   })
 
+  it('長いファイル名は一時ファイルの .download を含めて 255 バイトに収め、拡張子を残す', () => {
+    const name = attachmentCacheFileName('original_11111111-1111-4111-8111-111111111111', `${'a'.repeat(250)}.jpg`)
+    expect(`${name}.download`.length).toBeLessThanOrEqual(255)
+    expect(name.endsWith('.jpg')).toBe(true)
+    expect(name.startsWith('original_11111111-1111-4111-8111-111111111111_aaa')).toBe(true)
+  })
+
   it('空でないキャッシュだけ再ダウンロードを省く', () => {
     expect(shouldReuseCachedFile({ exists: true, size: 12 })).toBe(true)
     expect(shouldReuseCachedFile({ exists: true, size: 0 })).toBe(false)

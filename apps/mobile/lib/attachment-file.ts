@@ -74,9 +74,19 @@ export function isPreviewableAttachment(
   return attachmentViewer(mimeType, fileName, platform) !== null
 }
 
+// 端末のファイル名は 255 バイトまで。取得中は `.download` を付けた一時ファイルに書くため、その分も残す
+const MAX_CACHE_FILE_NAME_LENGTH = 255 - '.download'.length
+
 export function attachmentCacheFileName(fileId: string, fileName: string): string {
+  // ASCII 以外も _ に置き換えるため、文字数がそのままバイト数になる
   const safeName = fileName.replace(/[^\w.\-]/g, '_') || 'file'
-  return `${fileId}_${safeName}`
+  const full = `${fileId}_${safeName}`
+  if (full.length <= MAX_CACHE_FILE_NAME_LENGTH) return full
+  // 長すぎる名前は、ビューアが形式の判定に使う拡張子を残して本体を切り詰める
+  const dot = safeName.lastIndexOf('.')
+  const extension = dot > 0 && safeName.length - dot <= 16 ? safeName.slice(dot) : ''
+  const stemLength = Math.max(1, MAX_CACHE_FILE_NAME_LENGTH - fileId.length - 1 - extension.length)
+  return `${fileId}_${safeName.slice(0, stemLength)}${extension}`.slice(0, MAX_CACHE_FILE_NAME_LENGTH)
 }
 
 export function shouldReuseCachedFile(info: { exists: boolean; size?: number }): boolean {

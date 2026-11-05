@@ -19,6 +19,8 @@ export interface UploadRights {
   canUploadOriginal: boolean
   canUploadLargeFile: boolean
   canUploadVideo: boolean
+  /** PDF 原本・ギャラリーの原本画像の取得。保存と同じく支援者本人の能動権として扱う */
+  canDownloadOriginal: boolean
 }
 
 /**
@@ -34,8 +36,9 @@ export function resolveWorkspaceState(
 }
 
 /**
- * 原本・動画・大容量ファイルのアップロード権を解決する。
+ * 原本・動画・大容量ファイルのアップロード権と、原本の取得権を解決する。
  * 圧縮画像および無料枠内の文書はこの関数の対象外であり、常に既存の通常フローで扱う。
+ * 原本の取得は、原本を残すのと同じ Solo の売りとして支援者本人に限る（課金無効なら全員）。
  */
 export function resolveUploadRights(
   isActiveSupporter: boolean,
@@ -48,5 +51,6 @@ export function resolveUploadRights(
     canUploadOriginal: canUploadPaidStorage,
     canUploadLargeFile: canUploadPaidStorage,
     canUploadVideo: canUploadPaidStorage,
+    canDownloadOriginal: canUploadPaidStorage,
   }
 }

@@ -6,16 +6,17 @@
 import React from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { RealtimeChannel } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/client'
 import {
-  chatQueryKeys,
-  useProjectChannels,
-  useWorkspaceChannels,
-  useWorkspaceDms,
-} from '@/lib/chat/client'
+  createActiveChannelRegistry,
+  planChannelActivityRefresh,
+  realtimePayloadTable,
+} from '@cairn/shared'
+import { createClient } from '@/lib/supabase/client'
+import { chatQueryKeys } from '@/lib/chat/client'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
+import { ActiveChannelContext } from './use-realtime-channel'
 import { projectQueryKeys } from '@/hooks/use-projects'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -33,10 +34,13 @@ const RealtimeContext = React.createContext<RealtimeContextValue>({
 
 export const useRealtime = () => React.useContext(RealtimeContext)
 
+
 // 切断インジケータを出すまでの猶予。瞬断でのちらつきを避ける
 const DEGRADED_DELAY_MS = 10_000
 // チャンネル一覧の invalidate をまとめるデバウンス。連続する新着での過剰な再取得を抑える
 const LIST_DEBOUNCE_MS = 800
+// タスク一覧の invalidate をまとめるデバウンス。一括操作で複数の文が続いても1回にする
+const TASKS_DEBOUNCE_MS = 300
 
 const CHANNEL_LIST_KEYS = [
   chatQueryKeys.projectChannels,
@@ -51,12 +55,9 @@ function invalidateChannelLists(queryClient: QueryClient) {
   }
 }
 
-// realtime.broadcast_changes() が送るペイロード（{ table, record, ... }）から table を取り出す。
-// シグナル用途のため record は読まず、既存 REST API の再取得に任せる
+// ペイロードはシグナル用途。table（と user トピックでは channel_ids）だけを読み、データは既存 REST API で再取得する
 function tableOf(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null) return undefined
-  const table = (payload as { table?: unknown }).table
-  return typeof table === 'string' ? table : undefined
+  return realtimePayloadTable(payload)
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -67,17 +68,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<RealtimeStatus>('connecting')
   const [degraded, setDegraded] = React.useState(false)
 
-  // 購読すべきチャンネルトピックの決定にチャンネル一覧を使う（サイドバーと同じクエリを共有）
-  const { data: projectChannels = [] } = useProjectChannels()
-  const { data: workspaceChannels = [] } = useWorkspaceChannels()
-  const { data: dms = [] } = useWorkspaceDms()
-  const channelIdsKey = React.useMemo(() => {
-    const ids = new Set<string>()
-    for (const c of projectChannels) ids.add(c.channelId)
-    for (const c of workspaceChannels) ids.add(c.id)
-    for (const d of dms) ids.add(d.id)
-    return [...ids].sort().join(',')
-  }, [projectChannels, workspaceChannels, dms])
+  // 購読するチャンネルトピックは表示中のチャットだけ（useRealtimeChannel が登録する）。
+  // チャンネル一覧から決めると購読数がチャンネル総数に比例し、Realtime の上限に当たる
+  const [registry] = React.useState(createActiveChannelRegistry)
+  React.useEffect(() => () => registry.dispose(), [registry])
+  const activeChannelIdsKey = React.useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
+  // SUBSCRIBED 済みの channel トピック。届いている間は user トピック側でメッセージを再取得しない（二重取得を避ける）
+  const joinedChannelIdsRef = React.useRef(new Set<string>())
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
@@ -99,7 +96,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     listTimerRef.current = setTimeout(() => invalidateChannelLists(queryClient), LIST_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states / channel_members）────
+  const tasksTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleTasksInvalidate = React.useCallback(() => {
+    if (tasksTimerRef.current) clearTimeout(tasksTimerRef.current)
+    tasksTimerRef.current = setTimeout(() => {
+      tasksTimerRef.current = null
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    }, TASKS_DEBOUNCE_MS)
+  }, [queryClient])
+
+  // ─── ユーザートピック（notifications / channel_read_states / channel_members / チャンネル活動）────
   React.useEffect(() => {
     if (!userId) return
 
@@ -125,8 +131,21 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       const currentChannel = supabase
         .channel(`user:${userId}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
-          const table = tableOf((message as { payload?: unknown }).payload)
-          if (table === 'notifications') {
+          const payload = (message as { payload?: unknown }).payload
+          const table = tableOf(payload)
+          const activity = planChannelActivityRefresh(payload, joinedChannelIdsRef.current)
+          if (activity) {
+            // 画面外のチャンネルの新着・削除・スレッドへの移動（移動元と移動先）とタスク。本文は届かない。
+            // 表示していないチャンネルは古い扱いにするだけで通信せず、表示中で JOIN 待ちなら再取得する
+            if (activity.channelLists) scheduleListInvalidate()
+            if (activity.tasks) scheduleTasksInvalidate()
+            for (const id of activity.messageChannelIds) {
+              void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+            }
+            for (const id of activity.fileChannelIds) {
+              void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
+            }
+          } else if (table === 'notifications') {
             void queryClient.invalidateQueries({ queryKey: ['notifications'] })
             // 新規DM・未参加チャンネルでの活動はチャンネル一覧の再取得で拾う
             scheduleListInvalidate()
@@ -217,10 +236,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       authSub.subscription.unsubscribe()
       if (userChannel) void removeUserChannel(userChannel)
     }
-  }, [queryClient, userId, scheduleListInvalidate])
+  }, [queryClient, userId, scheduleListInvalidate, scheduleTasksInvalidate])
 
-  // ─── チャンネルトピック（messages / message_reactions / message_blocks）─────────
-  // 一覧の変化に追従して join/leave を差分反映する
+  // ─── チャンネルトピック（表示中のチャットだけ。messages / message_reactions / message_blocks / tasks）──
+  // 表示中のチャットの変化に追従して join/leave を差分反映する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
 
   React.useEffect(() => {
@@ -229,12 +248,17 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = createClient()
     const current = topicChannelsRef.current
-    const wanted = new Set(channelIdsKey ? channelIdsKey.split(',') : [])
+    const joined = joinedChannelIdsRef.current
+    const wanted = new Set(activeChannelIdsKey ? activeChannelIdsKey.split(',') : [])
 
     for (const [id, ch] of [...current]) {
       if (!wanted.has(id)) {
         void supabase.removeChannel(ch)
         current.delete(id)
+        joined.delete(id)
+        // 購読をやめた後の編集・リアクションは届かない。次に開いたときに取り直すよう古い扱いにする
+        void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id), refetchType: 'none' })
+        void queryClient.invalidateQueries({ queryKey: ['channel-files', id], refetchType: 'none' })
       }
     }
 
@@ -244,22 +268,29 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         .channel(`channel:${id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
           const table = tableOf((message as { payload?: unknown }).payload)
+          // 一覧（未読数）とタスク一覧は user トピックで更新する。ここでは表示中のメッセージだけを取り直す
           if (table === 'messages') {
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
             // 添付ファイル・Google Docs リンクの有無はペイロードから判別できないため、
             // 新着メッセージのたびに無効化して他クライアントのアップロードも反映する
             void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
-            scheduleListInvalidate()
-          } else if (table === 'message_reactions' || table === 'message_blocks') {
-            // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う
-            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
-          } else if (table === 'tasks') {
-            void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-            // タスク化済みの印（メッセージの linkedTasks）も完了・削除で更新する
+          } else if (table === 'message_reactions' || table === 'message_blocks' || table === 'tasks') {
+            // message_blocks はアプリがカードを更新した（chat.update）とき。messages は動かないためここで拾う。
+            // tasks はタスク化済みの印（メッセージの linkedTasks）の完了・削除
             void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
           }
         })
       ch.subscribe((subStatus, err) => {
+        if (current.get(id) !== ch) return
+        if (subStatus === 'SUBSCRIBED') {
+          joined.add(id)
+          // 表示開始から JOIN 完了まで・再接続までの間の変化を取り直す
+          void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(id) })
+          void queryClient.invalidateQueries({ queryKey: ['channel-files', id] })
+          return
+        }
+        // JOIN できていない間は user トピックの通知で表示中のメッセージを再取得する
+        joined.delete(id)
         if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
           console.error(`[Realtime] channel:${id} subscription failed:`, subStatus, err?.message ?? err)
           // 未参加の非公開チャンネルは何回 JOIN しても直らない。ライブラリの再 JOIN を止める。
@@ -271,23 +302,28 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       })
       current.set(id, ch)
     }
-  }, [channelIdsKey, userId, status, queryClient, scheduleListInvalidate])
+  }, [activeChannelIdsKey, userId, status, queryClient])
 
   // アンマウント時に全チャンネルトピックを解放
   React.useEffect(() => {
     const topicChannels = topicChannelsRef.current
+    const joined = joinedChannelIdsRef.current
     return () => {
       const supabase = createClient()
       if (listTimerRef.current) clearTimeout(listTimerRef.current)
+      if (tasksTimerRef.current) clearTimeout(tasksTimerRef.current)
       for (const ch of topicChannels.values()) void supabase.removeChannel(ch)
       topicChannels.clear()
+      joined.clear()
     }
   }, [])
 
   return (
-    <RealtimeContext.Provider value={{ status, degraded }}>
-      {children}
-      <RealtimeIndicator />
-    </RealtimeContext.Provider>
+    <ActiveChannelContext.Provider value={registry}>
+      <RealtimeContext.Provider value={{ status, degraded }}>
+        {children}
+        <RealtimeIndicator />
+      </RealtimeContext.Provider>
+    </ActiveChannelContext.Provider>
   )
 }

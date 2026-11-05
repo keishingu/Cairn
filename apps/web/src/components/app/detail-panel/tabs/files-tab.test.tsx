@@ -31,6 +31,16 @@ vi.mock('@/hooks/use-project-files', () => ({
   })),
 }))
 
+const uploadRightsState = vi.hoisted(() => ({
+  value: { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() } as {
+    data: { canUploadVideo: boolean; canDownloadOriginal: boolean } | undefined
+    isError: boolean
+    isFetching: boolean
+    refetch: () => Promise<unknown>
+  },
+}))
+vi.mock('@/hooks/use-upload-rights', () => ({ useUploadRights: () => uploadRightsState.value }))
+
 const mockUpload = vi.mocked(uploadAttachment)
 const uploaded = { fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }
 
@@ -286,5 +296,66 @@ describe('ファイルタブ', () => {
     fireEvent.change(input, { target: { files: [new File(['x'], 'archive.zip', { type: 'application/zip' })] } })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('archive.zip: 対応していないファイル形式です')
+  })
+
+  describe('原本ダウンロードの権利', () => {
+    const pdfFiles = {
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>
+
+    it('支援状態を取得できないときは原本の項目を黙って隠さず、失敗と再試行を表示する', async () => {
+      const refetch = vi.fn(() => Promise.resolve())
+      uploadRightsState.value = { data: undefined, isError: true, isFetching: false, refetch }
+      vi.mocked(useProjectFiles).mockReturnValue(pdfFiles)
+      renderFilesTab('channel-1', { isWebView: true })
+
+      expect(screen.getByText(translate('ja', 'Could not check whether you can download original files.'))).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: translate('ja', 'Retry') }))
+      expect(refetch).toHaveBeenCalled()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
+
+    it('アプリでも原本を取得できる本人には支援者向けの注記なしで項目を出す', async () => {
+      uploadRightsState.value = {
+        data: { canUploadVideo: true, canDownloadOriginal: true },
+        isError: false,
+        isFetching: false,
+        refetch: () => Promise.resolve(),
+      }
+      vi.mocked(useProjectFiles).mockReturnValue(pdfFiles)
+      renderFilesTab('channel-1', { isWebView: true })
+
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.getByRole('button', { name: translate('ja', 'Download original PDF') })).toBeInTheDocument()
+      expect(screen.queryByText(translate('ja', 'Download original PDF (new PDFs are supporter only)'))).toBeNull()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
+
+    it('動画の原本は取得できる本人にだけ項目を出し、それ以外には課金の案内も出さない', async () => {
+      const videoFiles = {
+        ...pdfFiles,
+        data: [{ id: 'video-1', fileName: 'clip.mov', mimeType: 'video/quicktime', fileSize: 8, fileType: 'video', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      } as unknown as ReturnType<typeof useProjectFiles>
+      vi.mocked(useProjectFiles).mockReturnValue(videoFiles)
+      const { unmount } = renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.queryByRole('button', { name: translate('ja', 'Download original video') })).toBeNull()
+      unmount()
+
+      uploadRightsState.value = {
+        data: { canUploadVideo: true, canDownloadOriginal: true },
+        isError: false,
+        isFetching: false,
+        refetch: () => Promise.resolve(),
+      }
+      renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.getByRole('button', { name: translate('ja', 'Download original video') })).toBeInTheDocument()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
   })
 })

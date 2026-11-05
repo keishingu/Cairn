@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { groupAttachmentPathsByBucket } from '@/lib/attachments'
 import { patchProjectSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireProjectAccess, requireRole } from '@/lib/permissions'
@@ -190,7 +191,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
           .filter((path): path is string => path !== null),
       ]
       let deletionTargets = [
-        attachmentPaths.length > 0 ? { bucket: 'chat-attachments', paths: attachmentPaths } : null,
+        // 動画は専用バケット（chat-videos）に置くため、パスごとに削除先を分ける
+        ...groupAttachmentPathsByBucket(attachmentPaths),
         galleryDerivedPaths.length > 0 ? { bucket: 'gallery', paths: galleryDerivedPaths } : null,
         galleryOriginalPaths.length > 0
           ? { bucket: 'gallery-originals', paths: galleryOriginalPaths }

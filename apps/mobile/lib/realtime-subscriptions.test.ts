@@ -18,7 +18,7 @@ describe('Realtimeの差分購読', () => {
     expect([...current.keys()]).toEqual(['b', 'c'])
     expect(subscribe).toHaveBeenCalledTimes(3)
     expect(remove).toHaveBeenCalledOnce()
-    expect(remove).toHaveBeenCalledWith({ id: 'a' })
+    expect(remove).toHaveBeenCalledWith({ id: 'a' }, 'a')
   })
 
   it('認証解除時はすべてを解除する', () => {
@@ -26,7 +26,7 @@ describe('Realtimeの差分購読', () => {
     const remove = vi.fn()
     reconcileRealtimeSubscriptions(current, new Set(), vi.fn(), remove)
     expect(current.size).toBe(0)
-    expect(remove).toHaveBeenCalledWith('subscription')
+    expect(remove).toHaveBeenCalledWith('subscription', 'a')
   })
 
   it('同期的な購読失敗で削除された購読を再登録しない', () => {
