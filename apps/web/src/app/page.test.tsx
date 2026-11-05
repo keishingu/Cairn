@@ -30,16 +30,17 @@ describe('RootRoute', () => {
     }
   })
 
-  it('Teams 移行の告知はヒーローより前にあり、取り込みが検証中であることを明記する', async () => {
+  it('Teams 移行の告知はヒーローより前にあり、取り込みを利用可能と書かない', async () => {
     const { html } = await fetchLp()
 
     const campaign = html.indexOf('id="teams-migration"')
     expect(campaign).toBeGreaterThan(-1)
     expect(campaign).toBeLessThan(html.indexOf('id="stay"'))
     expect(html).toContain('data-cta="teams-migration-banner"')
-    expect(html).toContain('utm_campaign=teams-migration')
-    expect(html).toContain('過去のメッセージ・ファイルの取り込みは現在検証中です。')
-    expect(html).toContain('Importing past messages and files is still being tested.')
+    expect(html).toContain('href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=banner#consultation"')
+    expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
+    expect(html).toContain('お問い合わせ内容に「Teams 移行」とお書きください。')
+    expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
   })
 
   it('PostHog のトークンが無ければ計測設定を埋め込まない', async () => {
