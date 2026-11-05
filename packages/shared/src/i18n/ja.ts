@@ -1075,6 +1075,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load upload permissions ({status})': 'アップロードできる内容を取得できませんでした（{status}）',
   'Could not play the video ({status})': '動画を再生できませんでした（{status}）',
   'Download original': '原本をダウンロード',
+  'Download original video': '元の動画をダウンロード',
   'Download {name}': '{name} をダウンロード',
   'This video cannot be played in this browser. Download it to watch.': 'このブラウザでは再生できない動画です。ダウンロードして再生してください',
   'Save file': 'ファイルを保存',

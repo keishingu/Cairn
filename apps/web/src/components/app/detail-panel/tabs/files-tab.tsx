@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { isVideoAttachmentMime } from '@cairn/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { ConfirmDialog } from '../../confirm-dialog'
 import { RowActionMenu } from '../../row-action-menu'
@@ -266,7 +267,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       </div>
 
       {/* 支援状態を取れないときは「権利なし」として原本の項目を黙って隠さず、失敗を見せて再試行させる */}
-      {uploadRights.isError && files.some(f => f.mimeType === 'application/pdf') && (
+      {uploadRights.isError && files.some(f => f.mimeType === 'application/pdf' || isVideoAttachmentMime(f.mimeType)) && (
         <InlineError variant="box" style={{ marginBottom: 8 }}>
           <span>{t('Could not check whether you can download original files.')}</span>{' '}
           <button type="button" className="btn btn-xs" disabled={uploadRights.isFetching} onClick={() => void uploadRights.refetch()}>
@@ -339,6 +340,12 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
                 ...(f.mimeType === 'application/pdf' && (canDownloadOriginal || !isWebView) ? [{
                   icon: 'external-link' as const,
                   label: canDownloadOriginal ? t('Download original PDF') : t('Download original PDF (new PDFs are supporter only)'),
+                  onSelect: () => openFileDownload(`/api/attachments/${f.id}?original=1`, f.fileName),
+                }] : []),
+                // 動画は全員が圧縮版を再生・保存し、原本は取得できる本人にだけ出す（支援者でない人に課金の案内は出さない）
+                ...(isVideoAttachmentMime(f.mimeType) && canDownloadOriginal ? [{
+                  icon: 'external-link' as const,
+                  label: t('Download original video'),
                   onSelect: () => openFileDownload(`/api/attachments/${f.id}?original=1`, f.fileName),
                 }] : []),
                 f.isLatest

@@ -227,7 +227,59 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/?as=json'), routeParams())
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ url: 'https://storage.test/signed', expiresIn: 4 * 60 * 60 })
+    expect(await res.json()).toEqual({ url: 'https://storage.test/signed', expiresIn: 4 * 60 * 60, variant: 'original' })
+  })
+
+  it('圧縮版ができた動画は、全員に圧縮版を再生・保存させる', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'ws/ch/user/videos/clip.mov',
+      derivedStoragePath: 'ws/ch/user/videos/derived/f.mp4',
+      mimeType: 'video/quicktime',
+      fileName: '練習.MOV',
+      metadata: { videoTranscodeStatus: 'ready' },
+    })
+    const { GET } = await import('./route')
+
+    const play = await GET(new Request('http://localhost/?as=json'), routeParams())
+    expect(await play.json()).toMatchObject({ variant: 'derived' })
+    expect(mockCreateSignedUrl).toHaveBeenLastCalledWith('ws/ch/user/videos/derived/f.mp4', 4 * 60 * 60, undefined)
+
+    await GET(new Request('http://localhost/?download=1'), routeParams())
+    expect(mockCreateSignedUrl).toHaveBeenLastCalledWith('ws/ch/user/videos/derived/f.mp4', 4 * 60 * 60, { download: '練習.mp4' })
+    expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
+  })
+
+  it('変換中の動画は全員が原本で再生する', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'ws/ch/user/videos/clip.mov',
+      derivedStoragePath: null,
+      mimeType: 'video/quicktime',
+      metadata: { videoTranscodeStatus: 'processing' },
+    })
+    const { GET } = await import('./route')
+    await GET(new Request('http://localhost/'), routeParams())
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith('ws/ch/user/videos/clip.mov', 4 * 60 * 60, undefined)
+  })
+
+  it('動画の原本のダウンロードは Solo 支援者本人だけに渡す', async () => {
+    Object.assign(fileRow, {
+      storagePath: 'ws/ch/user/videos/clip.mov',
+      derivedStoragePath: 'ws/ch/user/videos/derived/f.mp4',
+      mimeType: 'video/quicktime',
+      fileName: 'clip.mov',
+      metadata: { videoTranscodeStatus: 'ready' },
+    })
+    const { GET } = await import('./route')
+
+    const denied = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(denied.status).toBe(403)
+    expect(await denied.json()).toMatchObject({ code: 'original-download-entitlement-required' })
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canDownloadOriginal: true } })
+    const allowed = await GET(new Request('http://localhost/?original=1'), routeParams())
+    expect(allowed.status).toBe(302)
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith('ws/ch/user/videos/clip.mov', 4 * 60 * 60, { download: 'clip.mov' })
   })
 
   it('動画のサムネイルは無いため404を返す', async () => {
