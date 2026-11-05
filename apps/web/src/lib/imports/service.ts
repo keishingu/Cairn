@@ -412,12 +412,13 @@ export async function registerImportedMedia(
 }
 
 /**
- * ジョブを終える。取り込み先のチャンネルは、過去ログが未読として一気に積まれないよう既読位置を置き、
- * AI の巡回が過去ログを新着として読まないよう巡回位置を最新に合わせる。
+ * ジョブを終える。取り込み先のチャンネルは、過去ログが未読として一気に積まれないよう既読位置を置く。
+ * AI の巡回位置は触らない（巡回のクエリが取り込みプロフィールの投稿を除外する。位置を進めると、まだ評価していない
+ * Cairn での投稿まで巡回済みになってしまう）
  */
 export async function completeImportJob(workspaceId: string, jobId: string, input: CompleteImportJobInput) {
-  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, aiScanStates, messages, activeWorkspaceMembers, IMPORT_SENDER_PROFILE_ID, orm } = await loadDb()
-  const { and, asc, eq, desc, inArray, ne, sql } = orm
+  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, messages, activeWorkspaceMembers, IMPORT_SENDER_PROFILE_ID, orm } = await loadDb()
+  const { and, asc, eq, inArray, ne, sql } = orm
   await loadRunningJob(db, workspaceId, jobId)
 
   const conversations = await db
@@ -458,17 +459,6 @@ export async function completeImportJob(workspaceId: string, jobId: string, inpu
           const lastReadAt = earliestLive ? new Date(earliestLive.createdAt.getTime() - 1) : new Date()
           await tx.insert(channelReadStates)
             .values(readers.map(reader => ({ userId: reader.userId, channelId: channel.id, lastReadAt })))
-            .onConflictDoNothing()
-        }
-        const [latest] = await tx
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.channelId, channel.id))
-          .orderBy(desc(messages.createdAt))
-          .limit(1)
-        if (latest) {
-          await tx.insert(aiScanStates)
-            .values({ channelId: channel.id, lastScannedMessageId: latest.id, lastScannedAt: new Date() })
             .onConflictDoNothing()
         }
       }

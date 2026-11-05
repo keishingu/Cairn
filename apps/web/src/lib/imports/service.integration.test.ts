@@ -259,9 +259,9 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     expect(await count(sql`select count(*) as n from notifications where workspace_id = ${workspaceId}`)).toBe(0)
   })
 
-  test('完了時に取り込み先の既読位置と AI の巡回位置を置き、過去ログを未読・新着にしない', async () => {
+  test('完了時に取り込み先の既読位置を置き、AI の巡回位置は進めない（巡回は取り込みの投稿を除外する）', async () => {
     expect(await count(sql`select count(*) as n from channel_read_states where channel_id = ${channelId} and user_id = ${adminId}`)).toBe(1)
-    expect(await count(sql`select count(*) as n from ai_scan_states where channel_id = ${channelId}`)).toBe(1)
+    expect(await count(sql`select count(*) as n from ai_scan_states where channel_id = ${channelId}`)).toBe(0)
   })
 
   test('他のワークスペースからは、取り込んだ投稿者もメッセージも見えない', async () => {
