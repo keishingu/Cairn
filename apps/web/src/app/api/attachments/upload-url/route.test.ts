@@ -111,27 +111,12 @@ describe('/api/attachments/upload-url', () => {
   })
 
   it('50MiBちょうどのファイルには署名付きURLを発行する', async () => {
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
     const { POST } = await import('./route')
     const res = await POST(post({
       channelId: CHANNEL_ID,
       fileName: 'large.pdf',
       mimeType: 'application/pdf',
       fileSize: 50 * 1024 * 1024,
-    }))
-
-    expect(res.status).toBe(200)
-    expect(mockCreateSignedUploadUrl).toHaveBeenCalledOnce()
-  })
-
-  it('無料の上限5MiBちょうどのファイルには署名付きURLを発行する', async () => {
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
-    const { POST } = await import('./route')
-    const res = await POST(post({
-      channelId: CHANNEL_ID,
-      fileName: 'free.pdf',
-      mimeType: 'application/pdf',
-      fileSize: 5 * 1024 * 1024,
     }))
 
     expect(res.status).toBe(200)
@@ -153,21 +138,19 @@ describe('/api/attachments/upload-url', () => {
     expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
   })
 
-  it('Freeは5MiBを超える非PDFをアップロードできない', async () => {
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadLargeFile: false } })
-
+  it('支援がなくても50MiBちょうどの非PDFには署名付きURLを発行する', async () => {
     const { POST } = await import('./route')
     const res = await POST(
       post({
         channelId: CHANNEL_ID,
         fileName: 'a.docx',
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        fileSize: 5 * 1024 * 1024 + 1,
+        fileSize: 50 * 1024 * 1024,
       }),
     )
 
-    expect(res.status).toBe(403)
-    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    expect(mockCreateSignedUploadUrl).toHaveBeenCalledOnce()
   })
 
   it('妥当なリクエストには署名付きURLトークンと正規化後MIMEを返す', async () => {
