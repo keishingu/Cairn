@@ -5,7 +5,12 @@ import { NextResponse } from 'next/server'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 import {
   ALLOWED_MIME_TYPES,
-  MAX_FILE_SIZE,
+  UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
+  VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentBucketForPath,
+  attachmentFileSizeError,
+  isVideoMimeType,
+  maxAttachmentFileSize,
   normalizeMimeType,
   resolveFileType,
 } from '@/lib/attachments'
@@ -13,10 +18,10 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
-import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
+const VIDEO_ENTITLEMENT_ERROR = 'video-upload-entitlement-required'
 const UPLOAD_REQUEST_EXPIRED_ERROR = 'upload-request-expired'
 
 // 署名付きURLでのアップロード(upload-url)完了後、files レコードを登録し
@@ -55,13 +60,7 @@ export async function POST(req: Request) {
 
   const normalizedMime = normalizeMimeType(fileName, mimeType)
   if (!ALLOWED_MIME_TYPES.has(normalizedMime)) {
-    return NextResponse.json(
-      {
-        error:
-          '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）',
-      },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: UNSUPPORTED_ATTACHMENT_TYPE_ERROR }, { status: 400 })
   }
 
   // storagePath は upload-url が発行した `${workspaceId}/${channelId}/...` 形式のはず。
@@ -70,6 +69,8 @@ export async function POST(req: Request) {
   if (!storagePath.startsWith(expectedPrefix) || storagePath.includes('..')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
+  // 動画は 500MiB を受けられる専用バケット、それ以外は 50MiB の chat-attachments に置く
+  const bucket = attachmentBucketForPath(storagePath)
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
@@ -143,7 +144,7 @@ export async function POST(req: Request) {
         eq(uploadRequests.workspaceId, ctx.workspaceId),
         eq(uploadRequests.requestedBy, ctx.userId),
         eq(uploadRequests.derivedStoragePath, storagePath),
-        eq(uploadRequests.storageBucket, ATTACHMENTS_BUCKET),
+        eq(uploadRequests.storageBucket, bucket),
         isNull(uploadRequests.projectId),
         isNull(uploadRequests.finalizedAt),
       ),
@@ -160,6 +161,10 @@ export async function POST(req: Request) {
   }
   const isPdf = uploadRequest.mimeType === 'application/pdf'
   if (isPdf !== storagePath.includes('/pdf-originals/')) {
+    return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
+  }
+  const isVideo = isVideoMimeType(uploadRequest.mimeType)
+  if (isVideo !== storagePath.includes('/videos/')) {
     return NextResponse.json({ error: '不正な storagePath です' }, { status: 400 })
   }
 
@@ -183,7 +188,7 @@ export async function POST(req: Request) {
         .limit(1)
       if (file) return file
 
-      const { error: removeError } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths)
+      const { error: removeError } = await supabase.storage.from(bucket).remove(paths)
       if (removeError)
         throw new Error(`Failed to remove rejected attachment: ${removeError.message}`)
       // 署名URLは拒否後もしばらく有効なため、意図レコードは期限切れ清掃まで残す。
@@ -197,7 +202,7 @@ export async function POST(req: Request) {
   const folder = storagePath.slice(0, lastSlash)
   const objectName = storagePath.slice(lastSlash + 1)
   const { data: listed, error: listError } = await supabase.storage
-    .from(ATTACHMENTS_BUCKET)
+    .from(bucket)
     .list(folder, { search: objectName })
 
   if (listError) {
@@ -215,7 +220,7 @@ export async function POST(req: Request) {
 
   const actualSize =
     typeof object.metadata?.['size'] === 'number' ? (object.metadata['size'] as number) : fileSize
-  if (actualSize > MAX_FILE_SIZE) {
+  if (actualSize > maxAttachmentFileSize(normalizedMime)) {
     let committed: {
       id: string
       fileName: string
@@ -242,10 +247,7 @@ export async function POST(req: Request) {
         { status: 200 },
       )
     }
-    return NextResponse.json(
-      { error: 'ファイルサイズは 50MiB 以下にしてください' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: attachmentFileSizeError(normalizedMime) }, { status: 400 })
   }
   let thumbnailPath: string | null = null
   if (normalizedMime.startsWith('image/')) {
@@ -281,7 +283,7 @@ export async function POST(req: Request) {
           and workspace_id = ${ctx.workspaceId}
           and requested_by = ${ctx.userId}
           and derived_storage_path = ${storagePath}
-          and storage_bucket = ${ATTACHMENTS_BUCKET}
+          and storage_bucket = ${bucket}
           and project_id is null
         for update
       `)
@@ -321,7 +323,9 @@ export async function POST(req: Request) {
           .limit(1)
         const exceedsFreeStorageAllowance =
           Number(usage?.originalBytes ?? 0) + actualSize > BILLING_CONFIG.freeStorageBytes
-        if (exceedsFreeStorageAllowance) {
+        // 動画は無料容量の内外を問わず支援者本人の能動権。署名URL発行後に支援が切れた場合も、
+        // 家賃精算後の残高と支援状態をここで再判定して登録を拒否する。
+        if (exceedsFreeStorageAllowance || isVideo) {
           const [[balance], [subscription]] = await Promise.all([
             tx
               .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
@@ -342,7 +346,7 @@ export async function POST(req: Request) {
               .limit(1),
           ])
           if (!subscription || Number(balance?.balance ?? 0) <= 0) {
-            throw new Error(PAID_STORAGE_ENTITLEMENT_ERROR)
+            throw new Error(isVideo ? VIDEO_ENTITLEMENT_ERROR : PAID_STORAGE_ENTITLEMENT_ERROR)
           }
         }
       }
@@ -458,6 +462,12 @@ export async function POST(req: Request) {
     if (err instanceof Error && err.message === PAID_STORAGE_ENTITLEMENT_ERROR) {
       return NextResponse.json(
         { error: '無料容量を超えて保存するには、残高のある有効な支援が必要です' },
+        { status: 403 },
+      )
+    }
+    if (err instanceof Error && err.message === VIDEO_ENTITLEMENT_ERROR) {
+      return NextResponse.json(
+        { error: VIDEO_UPLOAD_ENTITLEMENT_ERROR, code: VIDEO_ENTITLEMENT_ERROR },
         { status: 403 },
       )
     }

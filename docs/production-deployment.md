@@ -93,6 +93,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
 - **`OIDC_SIGNING_KEYS`**: 「Cairn でログイン」の ID トークンの署名鍵（kid 付きの ES256 秘密鍵 JWK の配列）。Production と Preview で別の鍵にし、Sensitive として登録する。未設定だとトークンの交換と JWKS がエラーになる。作り方は `apps/web/.env.local.example`、入れ替えの手順は [`oidc-design.md`](./oidc-design.md) §8 の6。
+- **Supabase Storage の全体アップロード上限**: `cairn-preview` / `cairn-production` とも、ダッシュボードの **Storage → Settings → Upload file size limit** を **500 MB 以上**にする（Pro プラン以上が必要）。Solo の動画添付（500MiB）が、動画専用バケット `chat-videos` の上限（マイグレーションで 500MiB）より先にここで拒否されるため。マイグレーションでは変えられない
 - **「Cairn でログイン」のクライアント登録**: 運営者が対象環境の `DATABASE_URL` を指定して `node scripts/oidc-client.mjs create` で登録する（[`oidc-design.md`](./oidc-design.md) §8 の3）。
 
 ### 環境設定と Feature Flag の境界

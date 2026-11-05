@@ -17,9 +17,13 @@ import { useT } from '@/components/locale-provider'
 import { useAppShell } from '../../app-shell-context'
 import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
+import { useUploadRights } from '@/hooks/use-upload-rights'
+import { openFileDownload } from '@/lib/attachments/download-original'
 
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  // 動画は Solo の支援者本人だけが送れる。送信時にサーバーが理由つきで断る
+  'video/mp4', 'video/quicktime', 'video/webm',
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -31,6 +35,7 @@ const ACCEPT_FILE_TYPES = [
   'text/markdown',
   '.csv', '.pptx',
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.mp4', '.m4v', '.mov', '.webm',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md', '.markdown',
 ].join(',')
 
@@ -72,8 +77,11 @@ function isImageFile(file: ProjectFileDto): boolean {
 
 export const FilesTab = ({ projectId, channelId }: { projectId: string; channelId: string | null }) => {
   const t = useT()
-  // 原本は支援者向けの機能。アプリ（WebView）では課金への誘導と受け取られないよう、ストアの決済ポリシーに合わせて出さない
+  // 原本は Solo 支援者向けの機能。取得できる本人には Web・アプリとも出す。
+  // 取得できない人には、アプリ（WebView）では課金への誘導と受け取られないよう、ストアの決済ポリシーに合わせて出さない
   const { isWebView } = useAppShell()
+  const uploadRights = useUploadRights()
+  const canDownloadOriginal = uploadRights.data?.canDownloadOriginal === true
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
@@ -155,7 +163,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
             }
             throw new Error(
               error.failure === 'unsupported_type'
-                ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+                ? t('Unsupported file type (image, video, PDF, Word, Excel, PowerPoint, CSV, or text)')
                 : error.failure === 'unknown_type'
                   ? t('Unknown file type. Add an extension and upload again.')
                   : (error.serverMessage ?? t('Could not upload')),
@@ -257,6 +265,16 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
         </button>
       </div>
 
+      {/* 支援状態を取れないときは「権利なし」として原本の項目を黙って隠さず、失敗を見せて再試行させる */}
+      {uploadRights.isError && files.some(f => f.mimeType === 'application/pdf') && (
+        <InlineError variant="box" style={{ marginBottom: 8 }}>
+          <span>{t('Could not check whether you can download original files.')}</span>{' '}
+          <button type="button" className="btn btn-xs" disabled={uploadRights.isFetching} onClick={() => void uploadRights.refetch()}>
+            {t('Retry')}
+          </button>
+        </InlineError>
+      )}
+
       {uploadError && (
         <InlineError variant="box" onDismiss={() => setUploadError(null)} style={{ marginBottom: 8 }}>
           {uploadError.map((message, i) => <div key={i}>{message}</div>)}
@@ -318,7 +336,11 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
             <RowActionMenu
               actions={[
-                ...(f.mimeType === 'application/pdf' && !isWebView ? [{ icon: 'external-link' as const, label: t('Download original PDF (new PDFs are supporter only)'), onSelect: () => window.open(`/api/attachments/${f.id}?original=1`, '_blank', 'noopener,noreferrer') }] : []),
+                ...(f.mimeType === 'application/pdf' && (canDownloadOriginal || !isWebView) ? [{
+                  icon: 'external-link' as const,
+                  label: canDownloadOriginal ? t('Download original PDF') : t('Download original PDF (new PDFs are supporter only)'),
+                  onSelect: () => openFileDownload(`/api/attachments/${f.id}?original=1`, f.fileName),
+                }] : []),
                 f.isLatest
                   ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
                   : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },

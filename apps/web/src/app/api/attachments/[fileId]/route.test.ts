@@ -22,7 +22,9 @@ const {
   mockInngestSend,
   transactionDeletedFile,
   fileRow,
+  mockStorageFrom,
 } = vi.hoisted(() => ({
+  mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
   mockDownload: vi.fn(),
@@ -55,7 +57,12 @@ vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext })
 vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }) },
+    storage: {
+      from: (bucket: string) => {
+        mockStorageFrom(bucket)
+        return { download: mockDownload, remove: vi.fn(), createSignedUrl: mockCreateSignedUrl }
+      },
+    },
   }),
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
@@ -117,7 +124,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: false } })
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canDownloadOriginal: false } })
     mockDownload.mockResolvedValue({
       data: 'file body',
       error: null,
@@ -157,7 +164,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockDownload).not.toHaveBeenCalled()
   })
 
-  it('Freeは新しいPDFの原本を取得できない', async () => {
+  it('Solo 支援者本人でなければ新しいPDFの原本を取得できない', async () => {
     fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/?original=1'), routeParams())
@@ -167,7 +174,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
 
   it('支援者は新しいPDFの原本を短期署名URLで取得する', async () => {
     fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
-    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canDownloadOriginal: true } })
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/?original=1'), routeParams())
     expect(res.status).toBe(302)
@@ -188,6 +195,48 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(res.status).toBe(409)
     expect(mockCreateSignedUrl).not.toHaveBeenCalled()
     expect(mockDownload).not.toHaveBeenCalled()
+  })
+
+  it('動画は本体を中継せず、再生中のRange要求に耐える長めの署名URLへ転送する', async () => {
+    fileRow.storagePath = 'ws/ch/user/videos/clip.mov'
+    fileRow.mimeType = 'video/quicktime'
+    fileRow.fileName = 'clip.mov'
+    fileRow.fileType = 'video'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), routeParams())
+    expect(res.status).toBe(302)
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.storagePath, 4 * 60 * 60, undefined)
+    expect(mockStorageFrom).toHaveBeenCalledWith('chat-videos')
+    expect(mockDownload).not.toHaveBeenCalled()
+    expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
+  })
+
+  it('動画の保存は支援状態を問わずダウンロード名つきの署名URLで返す', async () => {
+    fileRow.storagePath = 'ws/ch/user/videos/clip.mp4'
+    fileRow.mimeType = 'video/mp4'
+    fileRow.fileName = '練習.mp4'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?download=1'), routeParams())
+    expect(res.status).toBe(302)
+    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.storagePath, 4 * 60 * 60, { download: '練習.mp4' })
+  })
+
+  it('アプリ向けに動画の署名URLをJSONで返す', async () => {
+    fileRow.storagePath = 'ws/ch/user/videos/clip.mp4'
+    fileRow.mimeType = 'video/mp4'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?as=json'), routeParams())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ url: 'https://storage.test/signed', expiresIn: 4 * 60 * 60 })
+  })
+
+  it('動画のサムネイルは無いため404を返す', async () => {
+    fileRow.storagePath = 'ws/ch/user/videos/clip.mp4'
+    fileRow.mimeType = 'video/mp4'
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/?thumb=1'), routeParams())
+    expect(res.status).toBe(404)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
   })
 
   it('最適化済みPDFは派生物を短期署名URLで返す', async () => {
@@ -305,13 +354,37 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockInngestSend).toHaveBeenCalledWith({
       name: 'storage/objects.delete',
       data: {
-        bucket: 'chat-attachments',
-        paths: [
-          'ws/ch/user/pdf-originals/current.pdf',
-          'ws/ch/user/pdf-derivatives/current.pdf',
-          'ws/ch/user/thumbnails/current.jpg',
+        targets: [
+          {
+            bucket: 'chat-attachments',
+            paths: [
+              'ws/ch/user/pdf-originals/current.pdf',
+              'ws/ch/user/pdf-derivatives/current.pdf',
+              'ws/ch/user/thumbnails/current.jpg',
+            ],
+          },
         ],
       },
+    })
+  })
+
+  it('動画の DELETE は動画専用バケットのオブジェクトを消す', async () => {
+    Object.assign(transactionDeletedFile, {
+      storagePath: 'ws/ch/user/videos/clip.mp4',
+      derivedStoragePath: null,
+      fileSize: 300,
+      derivedFileSize: null,
+      fileType: 'video',
+      metadata: {},
+    })
+
+    const { DELETE } = await import('./route')
+    const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
+
+    expect(res.status).toBe(200)
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'storage/objects.delete',
+      data: { targets: [{ bucket: 'chat-videos', paths: ['ws/ch/user/videos/clip.mp4'] }] },
     })
   })
 

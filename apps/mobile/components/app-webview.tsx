@@ -20,6 +20,8 @@ import {
 } from '../lib/native-header-bridge'
 import { decideWebViewNavigation, WEBVIEW_ORIGIN_WHITELIST } from '../lib/webview-navigation'
 import { chatLinkTarget, type ChatLinkTarget } from '../lib/chat-link'
+import { parseWebViewDownloadRequest, type WebViewDownloadRequest } from '../lib/webview-download'
+import { shareCachedAttachment } from '../lib/attachment-cache'
 import { followNotification } from '../lib/follow-notification'
 import {
   ACCOUNT_DELETED_LOGIN_ROUTE,
@@ -240,6 +242,11 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     } catch {
       return
     }
+    const download = parseWebViewDownloadRequest(msg)
+    if (download) {
+      void saveWebViewDownload(download)
+      return
+    }
     if (msg?.type === 'HANDOFF_FAILED') {
       void recoverFromHandoffFailure()
     }
@@ -308,6 +315,31 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
     if (msg?.type === 'locale-changed' && isLocalePreference(msg.locale)) {
       updateLocale(msg.locale)
+    }
+  }
+
+  // 原本など WebView では保存できないファイルを、ネイティブのセッションで取得して共有シートに渡す。
+  // ワークスペースは WebView が開いているものを使う（アプリの選択と違うことがある）
+  async function saveWebViewDownload(download: WebViewDownloadRequest) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error(t('Your session has expired. Please sign in again.'))
+      await shareCachedAttachment({
+        fileUrl: `${WEB_BASE.replace(/\/$/, '')}${download.path}`,
+        fileId: download.cacheKey,
+        fileName: download.fileName,
+        auth: { accessToken: session.access_token, workspaceId: download.workspaceId },
+        dialogTitle: t('Save file'),
+        t,
+      })
+    } catch (error) {
+      console.error('[AppWebView] ファイルを保存できませんでした:', error)
+      Alert.alert(
+        t('Could not save the file'),
+        error instanceof Error ? error.message : t('Please try again in a moment.'),
+      )
     }
   }
 
