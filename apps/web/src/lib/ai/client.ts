@@ -6,6 +6,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { aiChatModelProvider, type AiChatModel, type AiChatProvider } from '@cairn/shared'
 import type { LanguageModelV1 } from 'ai'
 import { withAnthropicCompat } from './anthropic-compat-middleware'
+import { withConversationCache } from './conversation-cache-middleware'
 
 export const openai = createOpenAI({
   apiKey: process.env['OPENAI_API_KEY'] ?? '',
@@ -33,7 +34,8 @@ export function apiKeyEnvForChatModel(model: AiChatModel): 'OPENAI_API_KEY' | 'A
 
 export function chatLanguageModel(model: AiChatModel): LanguageModelV1 {
   if (aiChatModelProvider(model) === 'openai') return openai(model)
-  return withAnthropicCompat(anthropic(model))
+  // 複数ステップの tool ループ（/ai とスキルのドライラン）向け。履歴と tool 結果をキャッシュさせる。
+  return withConversationCache(withAnthropicCompat(anthropic(model)))
 }
 
 // 通知文生成は Anthropic のみを使う。未設定のまま呼ぶと空のキーで 401 になり原因が分かりにくいため、

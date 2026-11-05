@@ -48,7 +48,7 @@ import {
   type StoredConversationMessage,
 } from './message-input'
 import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
-import { buildChatSystemPrompt, toChatSystemMessages } from './system-prompt'
+import { buildChatSystemPrompt, toChatSystemMessages, withLatestMessageCacheBreakpoint } from './system-prompt'
 import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 // スキルの呼び出しは読む → 判断する → 実行案を作る、まで tool calling を重ね、数分かかる（GPT-5 で3〜4分を確認）。
@@ -492,7 +492,7 @@ export async function POST(req: Request, { params }: RouteContext) {
         const result = streamText({
           model: chatLanguageModel(chatModel),
           // system は messages の先頭に2つの system として渡す（stable 側にキャッシュの区切りを置くため。system-prompt.ts）
-          messages: [...toChatSystemMessages(systemPrompt), ...messages],
+          messages: [...toChatSystemMessages(systemPrompt), ...withLatestMessageCacheBreakpoint(messages)],
           tools: {
             ...createResearchTools(ctx),
             // 書き込みの実行案を作る tool は、スキルで許可された種類だけを渡す
