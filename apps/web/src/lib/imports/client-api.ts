@@ -18,6 +18,11 @@ export async function postJson<T>(url: string, body: unknown, fallback: string):
   return (await res.json()) as T
 }
 
+/** 取り込み先の新しいチャンネルを非公開で作る（作った管理者だけが見られる） */
+export async function createImportChannel(name: string, fallback: string): Promise<{ id: string }> {
+  return postJson<{ id: string }>('/api/workspaces/channels', { name, isPrivate: true }, fallback)
+}
+
 export function createImportApi(t: (key: string) => string): ImportApi {
   return {
     createJob: body => postJson('/api/imports/jobs', body, t('Could not start the import')),

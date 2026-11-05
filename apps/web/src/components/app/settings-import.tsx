@@ -19,7 +19,7 @@ import {
   type ImportProgress,
   type ImportRunResult,
 } from '@/lib/imports/client-runner'
-import { createImportApi, postJson } from '@/lib/imports/client-api'
+import { createImportApi, createImportChannel } from '@/lib/imports/client-api'
 import { InlineError } from './inline-error'
 import { Icon } from './primitives'
 
@@ -157,7 +157,7 @@ export function SettingsImport() {
         if (destination.kind === 'existing') {
           plan.push({ externalId: conversation.externalId, channelId: destination.channelId })
         } else {
-          const created = await postJson<{ id: string }>('/api/workspaces/channels', { name: destination.name.trim() || t('Teams import'), isPrivate: true }, t('Could not create the channel'))
+          const created = await createImportChannel(destination.name.trim() || t('Teams import'), t('Could not create the channel'))
           plan.push({ externalId: conversation.externalId, channelId: created.id })
           setDestinations(prev => ({ ...prev, [conversation.externalId]: { kind: 'existing', channelId: created.id } }))
         }

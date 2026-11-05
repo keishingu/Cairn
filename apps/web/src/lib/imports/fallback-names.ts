@@ -12,14 +12,15 @@ export const IMPORTED_FALLBACK_NAMES = {
   named: '不明',
 } as const
 
-const UI_KEYS: Record<string, string> = {
-  [IMPORTED_FALLBACK_NAMES.anonymous]: 'Unknown poster',
-  [IMPORTED_FALLBACK_NAMES.exporter]: 'The person who exported',
-  [IMPORTED_FALLBACK_NAMES['unnamed-participant']]: 'Participant without a name',
-}
+// Map にして、取り込み元の名前が `toString` などでも継承プロパティを翻訳キーとして拾わないようにする
+const UI_KEYS = new Map<string, string>([
+  [IMPORTED_FALLBACK_NAMES.anonymous, 'Unknown poster'],
+  [IMPORTED_FALLBACK_NAMES.exporter, 'The person who exported'],
+  [IMPORTED_FALLBACK_NAMES['unnamed-participant'], 'Participant without a name'],
+])
 
 /** 返信先・リアクションの人の名前が取り込みの代替名なら、表示言語の文言にする。それ以外はそのまま返す */
 export function localizeImportedFallbackName(name: string, t: (key: string) => string): string {
-  const key = UI_KEYS[name]
+  const key = UI_KEYS.get(name)
   return key ? t(key) : name
 }
