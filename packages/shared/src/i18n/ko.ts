@@ -1074,6 +1074,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load upload permissions ({status})': '업로드 권한을 불러오지 못했습니다 ({status})',
   'Could not play the video ({status})': '동영상을 재생하지 못했습니다 ({status})',
   'Download original': '원본 다운로드',
+  'Download original video': '원본 동영상 다운로드',
   'Download {name}': '{name} 다운로드',
   'This video cannot be played in this browser. Download it to watch.': '이 브라우저에서는 재생할 수 없는 동영상입니다. 다운로드해서 재생하세요',
   'Save file': '파일 저장',

@@ -5,11 +5,13 @@
 
 import React from 'react'
 import { useT } from '@/components/locale-provider'
+import { useUploadRights } from '@/hooks/use-upload-rights'
 
 /**
  * 動画添付をブラウザ標準のプレイヤーで表示する。サムネイルは作らず、preload="metadata" で
  * 先頭フレームを代わりにする。本体は API が Storage の署名 URL へ転送し、Range 要求でシークできる。
- * HEVC の MOV など再生できない形式は、エラーを隠さず保存して見るよう案内する。
+ * 再生・保存は全員が圧縮版（720p の H.264。変換中は原本）で、原本の保存は Solo 支援者本人だけ。
+ * 再生できない形式（変換前の HEVC など）は、エラーを隠さず保存して見るよう案内する。
  */
 export function VideoAttachment({
   fileId,
@@ -23,6 +25,7 @@ export function VideoAttachment({
   const t = useT()
   const [unplayable, setUnplayable] = React.useState(false)
   const downloadHref = `/api/attachments/${fileId}?download=1`
+  const canDownloadOriginal = useUploadRights().data?.canDownloadOriginal === true
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth }}>
@@ -57,19 +60,20 @@ export function VideoAttachment({
           }}
         />
       )}
-      <a
-        href={downloadHref}
-        download={fileName}
-        style={{
-          fontSize: 11.5,
-          color: 'var(--text-3)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {t('Download {name}', { name: fileName })}
-      </a>
+      <div style={{ display: 'flex', gap: 10, minWidth: 0, fontSize: 11.5 }}>
+        <a
+          href={downloadHref}
+          download={fileName}
+          style={{ color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+        >
+          {t('Download {name}', { name: fileName })}
+        </a>
+        {canDownloadOriginal && (
+          <a href={`/api/attachments/${fileId}?original=1`} download={fileName} style={{ color: 'var(--text-3)', flexShrink: 0 }}>
+            {t('Download original')}
+          </a>
+        )}
+      </div>
     </div>
   )
 }

@@ -18,8 +18,8 @@
 - **消費**: AI の利用 = 都度（フロー型）、ストレージ保有 = 家賃として日割り（ストック型。保有バイト × レート × 経過期間）
 - **残高 = `SUM(credit_ledger.delta)`**。0 以下で「風化」
 - **権利と恩恵の分離**:
-  - **能動権（本人帰属）**: オリジナルのアップロード、動画のアップロード、PDF 原本・ギャラリー原本画像のダウンロード、無料容量を超える保存、`/ai` への依頼 → アクティブな支援者本人のみ
-  - **受動恩恵（WS 帰属）**: 動画の再生・保存、AI PMO のナッジ → ケルンに残高があれば全メンバー（動画は残高に関係なく、チャンネルに入れる全員が再生できる）
+  - **能動権（本人帰属）**: オリジナルのアップロード、動画のアップロード、PDF 原本・ギャラリー原本画像・動画の原本のダウンロード、無料容量を超える保存、`/ai` への依頼 → アクティブな支援者本人のみ
+  - **受動恩恵（WS 帰属）**: 動画（圧縮版）の再生・保存、AI PMO のナッジ → ケルンに残高があれば全メンバー（動画は残高に関係なく、チャンネルに入れる全員が再生できる）
   - 2026-11 に無料プランを 100GiB・全形式 50MiB/ファイルへ広げ、Solo のファイル面の売りを「動画のアップロード」と「原本のダウンロード」に置き換えた。原本の閲覧・DL は当初 WS 帰属の受動恩恵だったが、Solo 本人の売りにするため能動権へ移した
 
 ## 3. 課金ポイントと執行ポイント
@@ -30,7 +30,7 @@
 | ギャラリー原本画像のダウンロード | 不可 | 可（`?original=1`、短期署名 URL） | `projects/[id]/gallery/[itemId]/file` |
 | チャット添付・ファイル | 50MiB/ファイル（PDF は圧縮前） | 50MiB/ファイル | `attachments/upload-url` / `finalize`（`lib/attachments.ts`） |
 | PDF 原本のダウンロード | 不可（最適化版は全員可） | 可（`?original=1`） | `attachments/[fileId]` |
-| チャット添付の動画（MP4 / MOV / WebM） | 不可 | 500MiB/ファイル。再開可能アップロード（TUS）。再生・保存はチャンネルの全員 | `attachments/upload-url` / `finalize`、配信は `attachments/[fileId]` |
+| チャット添付の動画（MP4 / MOV / WebM） | 不可 | 500MiB/ファイル。再開可能アップロード（TUS）。再生・保存はチャンネルの全員が圧縮版、原本のダウンロード（`?original=1`）は支援者本人だけ | `attachments/upload-url` / `finalize`、配信は `attachments/[fileId]`、圧縮は `lib/inngest/video-transcode-job.ts` |
 | チャット添付の音声・ZIP、ギャラリーの動画 | 不可（MIME whitelist 外） | 未開放 | — |
 | ストレージ保有 | 100GiB まで（`BILLING_CONFIG.freeStorageBytes`。2026-11 に 10GiB から引き上げ） | 残高が家賃を払える限り | 家賃 cron（§6） |
 | AI 能動利用（`/ai`） | 不可 | クレジットを消費 | `api/ai/conversations/[id]/messages` |
@@ -40,6 +40,9 @@
 - PDF は無料でも圧縮前50MiBまで受け付け、最適化版は全員が利用できる。原本のダウンロードは本人の有効な支援と残高を要求し、課金無効環境では許可する。
 - アバター・ワークスペースロゴ・カバー写真は**家賃対象外**（サイズ上限のみ。プロフィール設定が課金で詰まる体験を避けるため）
 - 動画は原価（ストレージ・egress）が大きく無料開放しづらいため、支援者本人の能動権としてチャット添付にだけ開放した。形式は MP4 / MOV / WebM（`VIDEO_ATTACHMENT_MIME_TYPES`）、上限は 500MiB（`MAX_VIDEO_ATTACHMENT_BYTES`。どちらも `@cairn/shared`）。upload-url は `canUploadVideo` を判定し、finalize は家賃精算後に支援と残高を同じトランザクションで再判定する（無料容量の内外を問わない）。50MiB を超えるため、クライアントは upload-url が返す `resumable: true` を見て、署名トークンを `x-signature` に載せた TUS（`/storage/v1/upload/resumable/sign`、6MB チャンク）で送る
+- 動画は再生用の圧縮版（長辺 1280px = 720p 相当、H.264 / AAC の MP4、`+faststart`）を作り、全員はそれを再生・保存する。原本のダウンロードは画像・PDF と同じく支援者本人だけ。finalize が `metadata.videoTranscodeStatus = 'pending'` で登録して `file/video-transcode-requested` を送り、Inngest の `transcode-uploaded-video` が Vercel Sandbox（東京 `hnd1`、4 vCPU、使い捨て）で `apt-get install ffmpeg` してから変換する。Sandbox は原本を署名 URL で読み、圧縮版を署名付きアップロード URL で `chat-videos` の `videos/derived/{fileId}.mp4` に書く。変換は数分〜数十分かかり関数1回では待てないため、コマンドを detached で起動し、Inngest が 30 秒ごとの step で終了を確かめる（上限 60 分）。圧縮版は `derivedStoragePath` / `derivedFileSize` に記録し、家賃対象外の derived として数える
+- 変換中（`pending` / `processing`）・失敗（`failed`）・状態なし（変換環境のないセルフホストと、この仕組みの前の動画）は全員が原本で再生する。Vercel 上（OIDC）か `VERCEL_TOKEN` / `VERCEL_TEAM_ID` / `VERCEL_PROJECT_ID` が揃うときだけ変換する（`isVideoTranscodeConfigured`）
+- 変換のたびに原本1回分の Supabase の配信量（egress）と、Sandbox の CPU・メモリ・送信量がかかる。再生のたびの配信量が原本より小さくなるので、2〜3回以上再生されれば元が取れる
 - 動画のサーバー側サムネイルは作らない。Web はブラウザ標準の `<video preload="metadata">`、アプリは OS のブラウザで再生する。配信は API が Storage の署名 URL（4時間。再生中の Range 要求に耐える長さ）へ 302 し、本体を Vercel に通さない。アプリは `?as=json` で URL を受け取る
 - 動画は専用の非公開バケット `chat-videos`（500MiB、動画の MIME だけ）に置き、`chat-attachments` は 50MiB のまま残す。同じバケットの上限を上げると、動画以外の署名付きアップロードでも finalize を呼ばずに 500MiB のオブジェクトを期限切れの清掃まで置けてしまうため。保存先は保存パスの `videos/` で決める（`attachmentBucketForPath`）。`chat-videos` には authenticated のポリシーを付けず、取得は API の署名 URL だけで行う
 - ホスト版 Supabase は、プロジェクト全体のアップロード上限（Storage 設定）を 500MiB 以上にしておく必要がある
@@ -107,7 +110,7 @@ stripe_events              Webhook 冪等性（Stripe event id）
 
 - 新規のオリジナル / 大容量アップロードを停止
 - **既存オリジナルはロックするが配信は止めない**: ギャラリーの表示は平常時から全員に圧縮派生を返す（`gallery/[itemId]/file`）。原本のダウンロードは風化中は支援者本人にも許可しない（egress が赤字リスクの本体）
-- 既存の動画は風化中も再生・保存できる（動画に圧縮派生は無く、止めると添付が見られなくなるため）
+- 既存の動画は風化中も再生・保存できる（全員が圧縮版、変換前は原本。原本のダウンロードは画像・PDF と同じく風化中は止まる）
 - 圧縮派生と貢献記録は消えない
 - 石が再び積まれたら funded に戻り、ロックが外れる
 - 未実装: 動画・文書のプレースホルダ表示、長期風化オリジナルのコールドストレージ退避（最終削除は超長期 + 警告の上での最終手段）
@@ -150,7 +153,7 @@ stripe_events              Webhook 冪等性（Stripe event id）
 - クレジット単価・月次付与数・家賃レート・AI 1依頼 / 1配信の消費数の本決定（現状は `BILLING_CONFIG` の初期仮値。原価シミュレーション要）
 - AI の天井の見せ方（減る残高 or 毎月リセットの上限。枯渇不安が少ない後者を推奨）
 - 画像圧縮の最終パラメータ（長辺 px・品質）と文書 5MB 上限の妥当性
-- チャット添付で開放する音声・ZIP の MIME・サイズ上限、ギャラリーの動画対応、動画の Free 向け軽量版（トランスコード）の要否
+- チャット添付で開放する音声・ZIP の MIME・サイズ上限、ギャラリーの動画対応、動画のサムネイル（一覧で軽く見せる静止画）の要否、変換に失敗した動画の再変換の導線
 - 家賃の月またぎ・タイムゾーンの扱い
 - 風化後オリジナルのコールド退避までの猶予期間、最終削除の是非
 - Team の確定価格、Team 加入時の既存 Solo の扱い（併存して上積みか停止案内か）

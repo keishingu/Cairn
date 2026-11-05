@@ -334,5 +334,28 @@ describe('ファイルタブ', () => {
       expect(screen.queryByText(translate('ja', 'Download original PDF (new PDFs are supporter only)'))).toBeNull()
       uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
     })
+
+    it('動画の原本は取得できる本人にだけ項目を出し、それ以外には課金の案内も出さない', async () => {
+      const videoFiles = {
+        ...pdfFiles,
+        data: [{ id: 'video-1', fileName: 'clip.mov', mimeType: 'video/quicktime', fileSize: 8, fileType: 'video', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      } as unknown as ReturnType<typeof useProjectFiles>
+      vi.mocked(useProjectFiles).mockReturnValue(videoFiles)
+      const { unmount } = renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.queryByRole('button', { name: translate('ja', 'Download original video') })).toBeNull()
+      unmount()
+
+      uploadRightsState.value = {
+        data: { canUploadVideo: true, canDownloadOriginal: true },
+        isError: false,
+        isFetching: false,
+        refetch: () => Promise.resolve(),
+      }
+      renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.getByRole('button', { name: translate('ja', 'Download original video') })).toBeInTheDocument()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
   })
 })
