@@ -19,7 +19,7 @@ import {
   type AiNudgeStatus,
 } from '@cairn/db'
 import { BILLING_CONFIG } from '@cairn/core/billing'
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, notInArray, or, sql } from 'drizzle-orm'
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import {
@@ -44,6 +44,10 @@ import {
   phaseTwoDedupeKey,
   type PhaseTwoDetector,
 } from './llm-nudge-rules'
+
+// アプリの Bot と、外部チャットから取り込んだ過去ログ（共通の取り込みプロフィール）は巡回の対象にしない。
+// 取り込んだ過去ログを新着の依頼として読み、通知を出さないため（docs/import-design.md）
+const NON_HUMAN_SENDER_KINDS = ['bot', 'import']
 
 export interface PhaseTwoMessage {
   id: string
@@ -362,13 +366,13 @@ export async function listPhaseTwoChannelsToScan(): Promise<ChannelCursorRow[]> 
       latestMessageId: sql<string | null>`(
         select m.id from messages m
         where m.channel_id = ${channels.id} and m.deleted_at is null
-          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind = 'bot')
+          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind in ('bot', 'import'))
         order by m.created_at desc, m.id desc limit 1
       )`,
       latestMessageAt: sql<Date | null>`(
         select m.created_at from messages m
         where m.channel_id = ${channels.id} and m.deleted_at is null
-          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind = 'bot')
+          and not exists (select 1 from profiles p where p.id = m.sender_id and p.kind in ('bot', 'import'))
         order by m.created_at desc, m.id desc limit 1
       )`,
       nextUnansweredAskCheckAt: aiScanStates.nextUnansweredAskCheckAt,
@@ -465,7 +469,7 @@ export async function loadPhaseTwoChannelInput(
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
         .where(
           // アプリ（Bot）の発言は検索・RAG には含めるが、PMO の未回答の依頼・リスクの候補にはしない（app-platform-design.md §11 D11）
-          and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), ne(profiles.kind, 'bot'), afterCursor),
+          and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS), afterCursor),
         )
         .orderBy(asc(messages.createdAt), asc(messages.id))
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
@@ -480,7 +484,7 @@ export async function loadPhaseTwoChannelInput(
         })
         .from(messages)
         .innerJoin(profiles, eq(messages.senderId, profiles.id))
-        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), ne(profiles.kind, 'bot')))
+        .where(and(eq(messages.channelId, channel.channelId), isNull(messages.deletedAt), notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS)))
         .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(PHASE_TWO_NEW_MESSAGE_LIMIT)
         .then((rows) => rows.reverse())
@@ -568,7 +572,7 @@ export async function loadPhaseTwoChannelInput(
               and(
                 eq(messages.channelId, channel.channelId),
                 isNull(messages.deletedAt),
-                ne(profiles.kind, 'bot'),
+                notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS),
                 or(
                   gt(messages.createdAt, recheckAnchor.createdAt),
                   and(
@@ -626,7 +630,7 @@ export async function loadPhaseTwoChannelInput(
         eq(messages.channelId, channel.channelId),
         isNull(messages.deletedAt),
         // アプリ（Bot）の投稿は文脈にも入れない。カードが依頼への返答のように見えて判定を変えないようにする
-        ne(profiles.kind, 'bot'),
+        notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS),
         or(
           lt(messages.createdAt, first.createdAt),
           and(eq(messages.createdAt, first.createdAt), lt(messages.id, first.id)),
@@ -662,7 +666,7 @@ export async function loadPhaseTwoChannelInput(
             eq(messages.channelId, channel.channelId),
             isNull(messages.deletedAt),
             // 次の再評価の予約元に Bot の投稿を選ばない（読み直すと判定の対象になってしまう）
-            ne(profiles.kind, 'bot'),
+            notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS),
             or(
               gt(messages.createdAt, last.createdAt),
               and(eq(messages.createdAt, last.createdAt), gt(messages.id, last.id)),
@@ -1091,7 +1095,7 @@ export async function loadPhaseTwoContinuationContext(
     eq(messages.channelId, input.channelId),
     isNull(messages.deletedAt),
     // アプリ（Bot）の投稿は文脈にも入れない（候補・再確認と同じ）
-    ne(profiles.kind, 'bot'),
+    notInArray(profiles.kind, NON_HUMAN_SENDER_KINDS),
     lte(messages.createdAt, evaluatedAt),
     or(
       gt(messages.createdAt, scannedThrough),

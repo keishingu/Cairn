@@ -1,6 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { IMPORTED_FALLBACK_NAMES } from './fallback-names'
+
 /**
  * 取り込んだメッセージの表示用情報。messages.sender_id は共通の「取り込み」プロフィールなので、
  * 本当の投稿者（取り込み元の名前、または管理者が紐づけた Cairn ユーザー）をここで引いて上書きする。
@@ -29,12 +31,7 @@ export interface ImportedSender {
 
 /** 名前が分からない投稿者の表示名（UI は identityKind から翻訳し直す。アプリはこの文字列をそのまま出す） */
 export function fallbackImportedName(kind: ImportedIdentityKind): string {
-  switch (kind) {
-    case 'anonymous': return '投稿者不明'
-    case 'exporter': return 'エクスポートした人'
-    case 'unnamed-participant': return '名前不明の参加者'
-    default: return '不明'
-  }
+  return IMPORTED_FALLBACK_NAMES[kind] ?? IMPORTED_FALLBACK_NAMES.named
 }
 
 export async function loadImportedSenders(workspaceId: string, messageIds: string[]): Promise<Map<string, ImportedSender>> {

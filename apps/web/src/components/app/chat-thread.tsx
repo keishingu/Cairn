@@ -78,6 +78,7 @@ import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 import type { ImportedMessageInfoDto } from '@/lib/imports/display'
+import { localizeImportedFallbackName } from '@/lib/imports/fallback-names'
 
 function importedFallbackName(imported: ImportedMessageInfoDto, t: (key: string) => string): string {
   if (imported.anonymous) return t('Unknown poster')
@@ -547,7 +548,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{localizeImportedFallbackName(replyTo.senderName, t)}</span>
             <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
@@ -719,7 +720,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
                   {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
-                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).map(name => localizeImportedFallbackName(name, t)).join(t(', '))}
                   {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
@@ -773,7 +774,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px calc(16px + env(safe-area-inset-bottom))' }}>
               {selectedReaction.userNames.length > 0 ? selectedReaction.userNames.map((name, index) => (
                 <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>
-                  {name}
+                  {localizeImportedFallbackName(name, t)}
                 </div>
               )) : (
                 <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-3)', fontSize: 13 }}>

@@ -4,24 +4,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { parseTeamsExport, summarizeConversation, type ImportBundle, type ImportConversation, type ImportIdentity } from '@cairn/core/import'
-import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useWorkspaceMembers } from '@/hooks/use-project-members'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import { uploadAttachment } from '@/lib/attachments/upload-client'
+import { useImportIdentities, useImportTargetChannels, useImportedConversations } from '@/hooks/use-imports'
 import {
   collectExportFiles,
   identitiesForConversations,
   runImport,
   suggestMember,
   type CollectedExport,
-  type ImportApi,
   type ImportProgress,
   type ImportRunResult,
 } from '@/lib/imports/client-runner'
+import { createImportApi, postJson } from '@/lib/imports/client-api'
+import { InlineError } from './inline-error'
 import { Icon } from './primitives'
 
 /**
@@ -35,41 +34,7 @@ type Step = 'select' | 'conversations' | 'mapping' | 'destination' | 'preview' |
 
 type Destination = { kind: 'new'; name: string } | { kind: 'existing'; channelId: string }
 
-interface ExistingIdentityDto {
-  id: string
-  key: string
-  linkedUserId: string | null
-  linkedUserName: string | null
-}
 
-interface ImportedConversationDto {
-  externalConversationId: string
-  channelId: string | null
-  channelName: string | null
-  status: string
-}
-
-async function readError(res: Response, fallback: string): Promise<string> {
-  const data = (await res.json().catch(() => ({}))) as { error?: unknown }
-  return typeof data.error === 'string' ? data.error : fallback
-}
-
-async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
-  const res = await fetchWithAuth(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await readError(res, fallback))
-  return (await res.json()) as T
-}
-
-function createImportApi(t: (key: string) => string): ImportApi {
-  return {
-    createJob: body => postJson('/api/imports/jobs', body, t('Could not start the import')),
-    lookupMedia: async (jobId, channelId, objectIds) => (await postJson<{ found: Record<string, string> }>(`/api/imports/jobs/${jobId}/media/lookup`, { channelId, objectIds }, t('Could not check uploaded images'))).found,
-    uploadMedia: async (channelId, file) => ({ fileId: (await uploadAttachment(channelId, file)).fileId }),
-    registerMedia: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/media`, body, t('Could not register the image')),
-    importBatch: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/batches`, body, t('Could not import messages')),
-    completeJob: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/complete`, body, t('Could not finish the import')),
-  }
-}
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
@@ -108,33 +73,9 @@ export function SettingsImport() {
   const membersInvalid = membersQuery.isSuccess && !Array.isArray(membersQuery.data)
   const members = Array.isArray(membersQuery.data) ? membersQuery.data : []
   const activeMembers = members.filter(member => member.membershipStatus === 'active')
-  const channelsQuery = useQuery<WorkspaceChannelDto[]>({
-    queryKey: ['workspace-channels'],
-    queryFn: async () => {
-      const res = await fetchWithAuth('/api/workspaces/channels')
-      if (!res.ok) throw new Error(await readError(res, t('Could not load channels')))
-      return res.json()
-    },
-    enabled: isAdmin,
-  })
-  const identitiesQuery = useQuery<ExistingIdentityDto[]>({
-    queryKey: ['import-identities', 'teams-consumer'],
-    queryFn: async () => {
-      const res = await fetchWithAuth('/api/imports/identities?source=teams-consumer')
-      if (!res.ok) throw new Error(await readError(res, t('Could not load imported participants')))
-      return res.json()
-    },
-    enabled: isAdmin,
-  })
-  const importedConversationsQuery = useQuery<ImportedConversationDto[]>({
-    queryKey: ['imported-conversations', 'teams-consumer'],
-    queryFn: async () => {
-      const res = await fetchWithAuth('/api/imports/conversations?source=teams-consumer')
-      if (!res.ok) throw new Error(await readError(res, t('Could not load previous imports')))
-      return res.json()
-    },
-    enabled: isAdmin,
-  })
+  const channelsQuery = useImportTargetChannels(isAdmin)
+  const identitiesQuery = useImportIdentities('teams-consumer', isAdmin)
+  const importedConversationsQuery = useImportedConversations('teams-consumer', isAdmin)
   const channels = channelsQuery.data ?? []
   const existingIdentities = identitiesQuery.data ?? []
   const importedConversations = importedConversationsQuery.data ?? []
@@ -222,7 +163,9 @@ export function SettingsImport() {
         }
       }
       void queryClient.invalidateQueries({ queryKey: ['workspace-channels'] })
-      const linkList = Object.entries(links).filter(([, userId]) => userId).map(([key, userId]) => ({ key, userId }))
+      // 戻って会話の選択を変えると、選ばなくなった会話の投稿者の紐づけが残る。いま選んでいる会話の投稿者だけを送る
+      const selectedKeys = new Set(identitiesForConversations(bundle, [...selected]).map(row => row.identity.key))
+      const linkList = Object.entries(links).filter(([key, userId]) => userId && selectedKeys.has(key)).map(([key, userId]) => ({ key, userId }))
       const run = await runImport({ api: createImportApi(t), bundle, plan, links: linkList, collected, onProgress: setProgress, signal: controller.signal })
       setResult(run)
       setStep('done')
@@ -267,14 +210,12 @@ export function SettingsImport() {
       </p>
 
       {prerequisiteError && (
-        <div role="alert" className="card" style={{ padding: 12, marginBottom: 16, borderColor: 'var(--danger)', color: 'var(--danger)', fontSize: 13 }}>
+        <InlineError variant="box" style={{ marginBottom: 16 }}>
           {t('Could not load the information needed for importing. Reload the page and try again.')} {prerequisiteError instanceof Error ? prerequisiteError.message : ''}
-        </div>
+        </InlineError>
       )}
 
-      {error && (
-        <div role="alert" className="card" style={{ padding: 12, marginBottom: 16, borderColor: 'var(--danger)', color: 'var(--danger)', fontSize: 13 }}>{error}</div>
-      )}
+      {error && <InlineError variant="box" style={{ marginBottom: 16 }}>{error}</InlineError>}
 
       {step === 'select' && (
         <section style={sectionStyle}>
@@ -541,7 +482,7 @@ export function SettingsImport() {
               </tbody>
             </table>
           </div>
-          {result.error && <p role="alert" style={{ ...noteStyle, color: 'var(--danger)', marginTop: 8 }}>{result.error}</p>}
+          {result.error && <InlineError style={{ marginTop: 8 }}>{result.error}</InlineError>}
           <p style={{ ...noteStyle, marginTop: 8 }}>{t('The report of what was not imported is saved with the import. Imported messages are marked as imported from Teams.')}</p>
           <button type="button" className="btn" style={{ marginTop: 8 }} onClick={() => { setStep('select'); setResult(null); setProgress(null); setAcknowledged(false) }}>{t('Done')}</button>
         </section>

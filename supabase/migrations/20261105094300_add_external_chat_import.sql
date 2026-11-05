@@ -92,7 +92,6 @@ CREATE TABLE "imported_messages" (
 );
 --> statement-breakpoint
 ALTER TABLE "imported_messages" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "profiles" DROP CONSTRAINT "profiles_kind_check";--> statement-breakpoint
 ALTER TABLE "import_identities" ADD CONSTRAINT "import_identities_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "import_identities" ADD CONSTRAINT "import_identities_linked_user_id_profiles_id_fk" FOREIGN KEY ("linked_user_id") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "import_identities" ADD CONSTRAINT "import_identities_linked_by_profiles_id_fk" FOREIGN KEY ("linked_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -115,7 +114,12 @@ CREATE INDEX "idx_import_jobs_workspace" ON "import_jobs" USING btree ("workspac
 CREATE INDEX "idx_imported_files_file" ON "imported_files" USING btree ("file_id");--> statement-breakpoint
 CREATE INDEX "idx_imported_message_reactions_message" ON "imported_message_reactions" USING btree ("message_id");--> statement-breakpoint
 CREATE INDEX "idx_imported_messages_identity" ON "imported_messages" USING btree ("identity_id");--> statement-breakpoint
-ALTER TABLE "profiles" ADD CONSTRAINT "profiles_kind_check" CHECK ("profiles"."kind" in ('human', 'bot', 'import'));--> statement-breakpoint
+-- 制約の付け替えは1つの DO ブロック（1トランザクション）で行い、途中で失敗しても制約が無い状態を残さない
+DO $$
+BEGIN
+  ALTER TABLE "profiles" DROP CONSTRAINT IF EXISTS "profiles_kind_check";
+  ALTER TABLE "profiles" ADD CONSTRAINT "profiles_kind_check" CHECK ("profiles"."kind" in ('human', 'bot', 'import'));
+END $$;--> statement-breakpoint
 -- 取り込んだメッセージの送信者にする共通のシステムプロフィール（auth.users を持たず、どのワークスペースのメンバーにもならない）。
 -- 本当の投稿者は import_identities に持ち、表示時に上書きする（docs/import-design.md）
 INSERT INTO "profiles" ("id", "display_name", "kind")
