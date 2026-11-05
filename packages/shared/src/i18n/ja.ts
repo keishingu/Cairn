@@ -1068,6 +1068,8 @@ export const JA_MESSAGES: Record<string, string> = {
   'Original PDF': '原本をダウンロード',
   'Download original PDF (new PDFs are supporter only)': 'PDF原本をダウンロード（新しいPDFは支援者向け）',
   'Download original PDF': 'PDF原本をダウンロード',
+  'Could not check whether you can download original files.': '原本をダウンロードできるか確認できませんでした。',
+  'Could not check whether you can upload videos. Tap to retry.': '動画を送れるか確認できませんでした。タップして再試行してください。',
   'Video': '動画',
   'Videos must be 500MiB or smaller': '動画は 500MiB 以下にしてください',
   'Could not load upload permissions ({status})': 'アップロードできる内容を取得できませんでした（{status}）',

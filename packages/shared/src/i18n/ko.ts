@@ -1067,6 +1067,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'Save PDF': 'PDF 저장',
   'Download original PDF (new PDFs are supporter only)': 'PDF 원본 다운로드 (새 PDF는 후원자 전용)',
   'Download original PDF': 'PDF 원본 다운로드',
+  'Could not check whether you can download original files.': '원본을 다운로드할 수 있는지 확인하지 못했습니다.',
+  'Could not check whether you can upload videos. Tap to retry.': '동영상을 보낼 수 있는지 확인하지 못했습니다. 탭하여 다시 시도하세요.',
   'Video': '동영상',
   'Videos must be 500MiB or smaller': '동영상은 500MiB 이하로 해 주세요',
   'Could not load upload permissions ({status})': '업로드 권한을 불러오지 못했습니다 ({status})',

@@ -2124,6 +2124,27 @@ export default function ChatThreadScreen() {
                 <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Photo')} hitSlop={6} onPress={() => void upload.pickImage()}>
                   <Ionicons name="image-outline" size={17} color={palette.text3} />
                 </Pressable>
+                {/* 支援状態を取れないときは動画ボタンを黙って消さず、失敗を見せて再試行させる */}
+                {uploadRights.isError && (
+                  <Pressable
+                    style={styles.attachmentAction}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('Could not check whether you can upload videos. Tap to retry.')}
+                    hitSlop={6}
+                    onPress={() =>
+                      Alert.alert(
+                        t('Could not check whether you can upload videos. Tap to retry.'),
+                        uploadRights.error instanceof Error ? uploadRights.error.message : undefined,
+                        [
+                          { text: t('Cancel'), style: 'cancel' },
+                          { text: t('Retry'), onPress: () => void uploadRights.refetch() },
+                        ],
+                      )
+                    }
+                  >
+                    <Ionicons name="videocam-off-outline" size={17} color={palette.redText} />
+                  </Pressable>
+                )}
                 {canUploadVideo && (
                   <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Video')} hitSlop={6} onPress={() => void upload.pickVideo()}>
                     <Ionicons name="videocam-outline" size={17} color={palette.text3} />

@@ -81,7 +81,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
   // 取得できない人には、アプリ（WebView）では課金への誘導と受け取られないよう、ストアの決済ポリシーに合わせて出さない
   const { isWebView } = useAppShell()
   const uploadRights = useUploadRights()
-  const canDownloadOriginal = uploadRights?.canDownloadOriginal === true
+  const canDownloadOriginal = uploadRights.data?.canDownloadOriginal === true
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null)
@@ -264,6 +264,16 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
           {isUploading ? t('Uploading...') : t('Add a file')}
         </button>
       </div>
+
+      {/* 支援状態を取れないときは「権利なし」として原本の項目を黙って隠さず、失敗を見せて再試行させる */}
+      {uploadRights.isError && files.some(f => f.mimeType === 'application/pdf') && (
+        <InlineError variant="box" style={{ marginBottom: 8 }}>
+          <span>{t('Could not check whether you can download original files.')}</span>{' '}
+          <button type="button" className="btn btn-xs" disabled={uploadRights.isFetching} onClick={() => void uploadRights.refetch()}>
+            {t('Retry')}
+          </button>
+        </InlineError>
+      )}
 
       {uploadError && (
         <InlineError variant="box" onDismiss={() => setUploadError(null)} style={{ marginBottom: 8 }}>

@@ -7,10 +7,11 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 /**
  * 自分が動画を送れるか・原本を取得できるか（Solo 支援者本人、または課金無効）。
- * メニューの出し分けだけに使い、判定の正はサーバーの 403。読み込み中・失敗時は undefined
+ * メニューの出し分けだけに使い、判定の正はサーバーの 403。
+ * 取得の失敗は「権利なし」と区別できるよう、query の結果をそのまま返す（呼び出し側で失敗を表示する）
  */
-export function useUploadRights(): UploadRightsDto | undefined {
-  const { data } = useQuery<UploadRightsDto>({
+export function useUploadRights() {
+  return useQuery<UploadRightsDto>({
     queryKey: ['upload-rights'],
     queryFn: async () => {
       const res = await fetchWithAuth('/api/billing/upload-rights')
@@ -19,5 +20,4 @@ export function useUploadRights(): UploadRightsDto | undefined {
     },
     staleTime: 60_000,
   })
-  return data
 }
