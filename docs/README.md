@@ -28,6 +28,7 @@
 | Web Push 通知（VAPID） | `web-push.md`（現行） | — |
 | Electron デスクトップ | `desktop-app.md`（現行） | — |
 | DM の法令対応 | `telecom-business-filing-research.md`（記録） | — |
+| Teams からの移行・インポート | `research/teams-community-export-analysis.md`（記録。Teams 個人用エクスポートの構造・移行可否・MVP 設計案） | — |
 
 ## アーカイブ
 
