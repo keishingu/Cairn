@@ -62,10 +62,49 @@
 | トピック | 配信元テーブル | 用途 |
 |---|---|---|
 | `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`tasks` | チャット本文・リアクション・タスクの更新シグナル |
-| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members` | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱 |
+| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク |
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
 - トリガーは `supabase/migrations/0034_realtime_broadcast.sql` ほか後続マイグレーションで追加
+
+### user トピックへのチャンネル活動の配信
+
+常時購読を `user:{me}` + 表示中のチャットに絞るため（#173。チャンネルごとに購読すると購読数がチャンネル総数に比例し、Realtime の1接続あたりのチャンネル数上限に当たる）、画面外のチャンネルの変化は user トピックで知らせる（`20261105120000_realtime_user_topic_channel_activity.sql`）。
+
+- 対象は `messages` の INSERT と、`channel_id`（スレッドへの移動）・`deleted_at` が変わった UPDATE、`tasks` の INSERT / UPDATE / DELETE。移動は移動元・移動先の両方の閲覧者へ送る。編集・リアクションは表示中のチャットにしか影響しないので channel トピックだけ
+- ペイロードは `{ table, operation, channel_ids }` だけで本文・行データを載せない（`realtime.send`、private）。受信側は REST で再取得する
+- 宛先は `channel_realtime_recipients()` で送信時点の権限から決める。`can_access_channel()` を全ユーザーについて展開した同じ条件で、**どちらかを変えたら両方を揃える**。`channel_ids` も宛先ごとに見られるものだけに絞る（非公開スレッドへの移動で、移動先に参加していない人へ移動先の ID を出さない）
+- 行ごとではなく文ごと（遷移テーブル）に配信する。一括移動・並べ替えでも1文につき宛先1人1件
+- 新しい関数は anon / authenticated から実行できない（`REVOKE ALL FROM PUBLIC` とロックダウンの既定権限）。クライアントは他人の `user:` トピックへ join も送信もできない
+- 負荷: DB への書き込み（`realtime.messages`）は「文 × 宛先人数」件。代わりに join・再接続はチャンネル数ではなく「1 + 表示中のチャット数」になる
+- 既存の `channel:{id}` 配信はそのまま残す（全チャンネルを購読している旧クライアントの互換）。**適用順序はサーバー（migration）が先、クライアントが後**。逆だと画面外の未読が更新されない
+
+#### 宛先判定の同等性の確かめ方
+
+`can_access_channel()` か `channel_realtime_recipients()` を変えたら、全チャンネル × 全ユーザーで両者が一致することを確かめる。データを変えないよう、トランザクション内で変更後の migration を当てて実行し ROLLBACK する（共有 DB で `migration up` しない）。
+
+```sql
+begin;
+\i supabase/migrations/<変更した migration>.sql
+do $$
+declare c record; u record; n int := 0;
+begin
+  for c in select id from channels loop
+    for u in select id from profiles loop
+      perform set_config('request.jwt.claims', json_build_object('sub', u.id, 'role', 'authenticated')::text, true);
+      if public.can_access_channel(c.id) is distinct from
+         exists (select 1 from public.channel_realtime_recipients(c.id) r where r = u.id) then
+        n := n + 1;
+        raise warning 'mismatch channel=% user=%', c.id, u.id;
+      end if;
+    end loop;
+  end loop;
+  if n > 0 then raise exception '% mismatches', n; end if;
+end $$;
+rollback;
+```
+
+既存データに owner / member / guest・非活性メンバー・公開 / 非公開 / DM / 参加外プロジェクトが揃っていなければ、同じトランザクション内で fixture を作ってから実行する。配信内容は、同じトランザクション内でメッセージやタスクを書き込み、`realtime.messages` の `topic like 'user:%'` の行（宛先・`channel_ids`・本文が載っていないこと）を確かめる。
 
 ### 認可
 
