@@ -661,6 +661,63 @@ describe('/api/attachments/finalize の動画', () => {
     expect(mockRemove).not.toHaveBeenCalled()
   })
 
+  it('変換環境があれば動画を pending で登録し、圧縮版の作成を依頼する', async () => {
+    vi.stubEnv('VERCEL', '1')
+    mockTransactionSelectLimit
+      .mockResolvedValueOnce([{ originalBytes: 0 }])
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+      .mockResolvedValueOnce([{ balance: '300' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { videoTranscodeStatus: 'pending' } }),
+    )
+    expect(mockInngestSend).toHaveBeenCalledWith({
+      name: 'file/video-transcode-requested',
+      data: { fileId: 'file-1', workspaceId: DEV_WORKSPACE_ID },
+    })
+    vi.unstubAllEnvs()
+  })
+
+  it('変換環境のないセルフホストでは状態を持たせず、原本で再生させる', async () => {
+    vi.stubEnv('VERCEL', '')
+    vi.stubEnv('VERCEL_OIDC_TOKEN', '')
+    vi.stubEnv('VERCEL_TOKEN', '')
+    mockTransactionSelectLimit
+      .mockResolvedValueOnce([{ originalBytes: 0 }])
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+      .mockResolvedValueOnce([{ balance: '300' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ metadata: {} }))
+    expect(mockInngestSend).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'file/video-transcode-requested' }),
+    )
+    vi.unstubAllEnvs()
+  })
+
+  it('圧縮版の依頼に失敗しても動画の登録は成功させる（原本で再生できる）', async () => {
+    vi.stubEnv('VERCEL', '1')
+    mockInngestSend.mockRejectedValueOnce(new Error('queue unavailable'))
+    mockTransactionSelectLimit
+      .mockResolvedValueOnce([{ originalBytes: 0 }])
+      .mockResolvedValueOnce([{ id: 'sub-1' }])
+      .mockResolvedValueOnce([{ balance: '300' }])
+
+    const { POST } = await import('./route')
+    const res = await POST(post(body))
+
+    expect(res.status).toBe(201)
+    expect(mockRemove).not.toHaveBeenCalled()
+    vi.unstubAllEnvs()
+  })
+
   it('Storage の実サイズが 500MiB を超えた動画は削除して拒否する', async () => {
     mockList.mockResolvedValue({
       data: [{ name: 'clip.mp4', metadata: { size: 500 * 1024 * 1024 + 1 } }],

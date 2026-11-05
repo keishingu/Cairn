@@ -19,6 +19,7 @@ import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
+import { isVideoTranscodeConfigured } from '@/lib/video/transcode'
 
 const PAID_STORAGE_ENTITLEMENT_ERROR = 'paid-storage-entitlement-required'
 const VIDEO_ENTITLEMENT_ERROR = 'video-upload-entitlement-required'
@@ -364,6 +365,8 @@ export async function POST(req: Request) {
           metadata: {
             ...(thumbnailPath ? { thumbnailPath } : {}),
             ...(isPdf ? { pdfCompressionStatus: 'pending' } : {}),
+            // 変換環境のないセルフホストでは状態を持たず、原本で再生する
+            ...(isVideo && isVideoTranscodeConfigured() ? { videoTranscodeStatus: 'pending' } : {}),
           },
         })
         // 署名付きURLの完了通知はネットワーク再試行され得る。同一オブジェクトの
@@ -415,6 +418,24 @@ export async function POST(req: Request) {
         })
       } catch (e) {
         console.warn('[/api/attachments/finalize] Inngest event send failed (indexing skipped):', e)
+      }
+    }
+    if (finalized.created && isVideo && isVideoTranscodeConfigured()) {
+      // 圧縮版ができるまでは原本で再生できるため、送信に失敗しても登録は成功として返し、状態だけ失敗にする
+      try {
+        const { inngest } = await import('@/lib/inngest/client')
+        await inngest.send({
+          name: 'file/video-transcode-requested',
+          data: { fileId: finalized.file.id, workspaceId: ctx.workspaceId },
+        })
+      } catch (e) {
+        console.error('[/api/attachments/finalize] Video transcode event send failed:', e)
+        await db.update(files).set({
+          metadata: sql`jsonb_set(${files.metadata}, '{videoTranscodeStatus}', '"failed"'::jsonb, true)`,
+        }).where(and(
+          eq(files.id, finalized.file.id),
+          sql`${files.metadata}->>'videoTranscodeStatus' = 'pending'`,
+        ))
       }
     }
     if (finalized.created && isPdf) {
