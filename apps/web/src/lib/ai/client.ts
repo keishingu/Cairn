@@ -7,8 +7,11 @@ import { aiChatModelProvider, type AiChatModel, type AiChatProvider } from '@cai
 import type { LanguageModelV1 } from 'ai'
 import { withAnthropicCompat } from './anthropic-compat-middleware'
 
+// OpenAI 本家の API なので strict にする。compatible（既定）のままだとストリーミングで stream_options.include_usage を
+// 送らず使用量が返らないため、/ai の GPT-5 の原価（ai_chat_usage）を記録できない。
 export const openai = createOpenAI({
   apiKey: process.env['OPENAI_API_KEY'] ?? '',
+  compatibility: 'strict',
 })
 
 export const anthropic = createAnthropic({
