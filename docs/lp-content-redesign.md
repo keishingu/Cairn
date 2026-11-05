@@ -93,6 +93,7 @@
 - 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
 - `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
 - Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は同じ窓口（`moruit.com`）に `utm_campaign=teams-migration` を付け、メール（`info@orikata.co.jp`）も併記する
+- Android 版は日本でのみ配信しているため、英語のストア導線と FAQ には「Japan only」/「日本でのみ配信」を添える。配信国を広げたら外す
 - ストアへのリンクはテキストリンクで、公式バッジ画像は使っていない。バッジに置き換えるときは Apple / Google のバッジ利用ガイドラインに従う（公式の画像をそのまま使い、改変しない）。フッターに App Store・Google Play・Microsoft Teams の商標表記と、Microsoft と提携していない旨を置いている
 
 ### 計測（PostHog）
