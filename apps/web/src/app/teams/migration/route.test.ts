@@ -155,3 +155,46 @@ describe('/teams/migration の計測（cairn-lp.js）', () => {
     expect(capture).not.toHaveBeenCalledWith('lp_cta_clicked', expect.anything(), expect.anything())
   })
 })
+
+describe('/teams/migration の PostHog SDK 設定（cairn-lp.js）', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete (window as unknown as { posthog?: unknown }).posthog
+  })
+
+  it('SDK が自動で付ける URL・流入元のプロパティから gclid などの広告クリック ID を取り除く', async () => {
+    const { html } = await fetchPage()
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    for (const attr of Array.from(doc.documentElement.attributes)) {
+      document.documentElement.setAttribute(attr.name, attr.value)
+    }
+    document.body.innerHTML = doc.body.innerHTML
+    window.history.replaceState({}, '', '/teams/migration?utm_source=google&gclid=abc123')
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    delete (window as unknown as { posthog?: unknown }).posthog
+    Object.assign(window, { __CAIRN_LP_POSTHOG__: { token: 'phc_test', host: 'https://us.i.posthog.com' } })
+    window.eval(await readFile(join(process.cwd(), 'public/cairn-lp.js'), 'utf8'))
+
+    const stub = (window as unknown as { posthog: { _i: [string, { before_send?: (e: unknown) => unknown }][] } }).posthog
+    const beforeSend = stub._i[0]![1].before_send!
+    expect(typeof beforeSend).toBe('function')
+
+    const url = 'https://oss-cairn.com/teams/migration?utm_source=google&gclid=abc123&gad_source=1'
+    const event = beforeSend({
+      event: '$pageview',
+      properties: { $current_url: url, gclid: 'abc123', gad_source: '1', utm_source: 'google', $pathname: '/teams/migration' },
+      $set_once: { $initial_current_url: url, $initial_gclid: 'abc123', $initial_utm_source: 'google' },
+    }) as { properties: Record<string, string>; $set_once: Record<string, string> }
+
+    expect(event.properties.$current_url).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
+    expect(event.properties.utm_source).toBe('google')
+    expect(event.properties).not.toHaveProperty('gclid')
+    expect(event.properties).not.toHaveProperty('gad_source')
+    expect(event.$set_once.$initial_current_url).toBe('https://oss-cairn.com/teams/migration?utm_source=google')
+    expect(event.$set_once).not.toHaveProperty('$initial_gclid')
+    expect(event.$set_once.$initial_utm_source).toBe('google')
+    expect(JSON.stringify(event)).not.toContain('abc123')
+    // ブラウザの URL は書き換えないので、Google 広告タグは gclid を読める
+    expect(window.location.search).toContain('gclid=abc123')
+  })
+})

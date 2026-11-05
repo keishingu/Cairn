@@ -89,6 +89,49 @@
      UTM on the landing URL is kept as PostHog's initial-referrer props.
      Autocapture is off so each CTA click is one `lp_cta_clicked` event. */
   var phConfig = window.__CAIRN_LP_POSTHOG__;
+
+  /* On /teams/migration (the ad landing page) the SDK's own properties would carry
+     ad click IDs: $current_url / $referrer / $initial_* and the gclid-style campaign
+     props it collects by default. Strip them in before_send — the browser URL is not
+     touched, so the Google Ads tag still reads gclid. */
+  var CLICK_ID_PARAMS = ['gclid', 'gclsrc', 'gad_source', 'gad_campaignid', 'gbraid', 'wbraid', 'dclid',
+    'fbclid', 'msclkid', 'twclid', 'li_fat_id', 'ttclid', 'igshid', 'yclid', 'rdt_cid', 'epik', 'qclid', 'sccid', 'irclid', '_kx'];
+  function isClickIdKey(key) {
+    var k = String(key).replace(/^\$initial_/, '');
+    return CLICK_ID_PARAMS.indexOf(k) !== -1;
+  }
+  function stripClickIds(value) {
+    if (typeof value !== 'string' || value.indexOf('?') === -1) return value;
+    try {
+      var u = new URL(value);
+      var changed = false;
+      CLICK_ID_PARAMS.forEach(function (k) {
+        if (u.searchParams.has(k)) { u.searchParams.delete(k); changed = true; }
+      });
+      return changed ? u.toString() : value;
+    } catch (e) {
+      return value;
+    }
+  }
+  function sanitizeProps(props) {
+    if (!props || typeof props !== 'object') return;
+    Object.keys(props).forEach(function (key) {
+      if (isClickIdKey(key)) delete props[key];
+      else props[key] = stripClickIds(props[key]);
+    });
+  }
+  function stripClickIdsFromEvent(event) {
+    if (!event) return event;
+    sanitizeProps(event.properties);
+    sanitizeProps(event.$set);
+    sanitizeProps(event.$set_once);
+    if (event.properties) {
+      sanitizeProps(event.properties.$set);
+      sanitizeProps(event.properties.$set_once);
+    }
+    return event;
+  }
+
   if (phConfig && phConfig.token && !window.posthog) {
     (function (d, token, host) {
       var ph = window.posthog = [];
@@ -101,7 +144,8 @@
         api_host: host,
         defaults: '2026-05-30',
         autocapture: false,
-        capture_pageview: true
+        capture_pageview: true,
+        before_send: root.getAttribute('data-page') === 'teams-migration' ? stripClickIdsFromEvent : undefined
       }, 'posthog']);
       var s = d.createElement('script');
       s.async = true;
@@ -120,8 +164,8 @@
   /* /teams/migration (data-page="teams-migration") sends its own events instead of
      lp_cta_clicked. Links carry data-tm-event / data-tm-location / data-tm-destination.
      Only the page path, CTA location, destination kind and the landing UTM go out —
-     never form input, booking details or the full URL (it may carry gclid etc.).
-     The landing URL itself is never rewritten, so gclid stays for the Google Ads tag. */
+     never form input or booking details. Ad click IDs (gclid etc.) are removed from
+     the SDK's automatic URL/campaign props by before_send above. */
   var page = root.getAttribute('data-page');
   var TM_EVENTS = {
     consultation: 'teams_migration_consultation_click',

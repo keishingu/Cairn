@@ -173,7 +173,8 @@ Google 検索広告「Cairn | Teams移行支援 | 検索 | 2026-11」の遷移�
 | `teams_migration_signup_click` | 「Cairn を無料で試す」 | 上記 + `cta_location` + `destination=signup` |
 | `teams_migration_email_click` | メール | 上記 + `cta_location` + `destination=email` |
 
-- 送るのはページのパス・CTA の位置・遷移先の種類・流入時の UTM だけ。予約内容・フォーム入力・URL 全体（`gclid` などを含む）は送らない。ページの URL は書き換えないので、Google 広告タグは `gclid` をそのまま読める
+- 送るのはページのパス・CTA の位置・遷移先の種類・流入時の UTM だけ。予約内容・フォーム入力は送らない
+- PostHog の SDK が自動で付ける `$current_url` `$referrer` `$initial_*` や流入パラメータには広告のクリック ID（`gclid` `gad_source` `gbraid` `fbclid` など）が入るため、このページでは SDK の `before_send` で取り除く（`$pageview` を含む全イベント）。UTM は残す。ページの URL は書き換えないので、Google 広告タグは `gclid` をそのまま読める
 - **予約完了は計測していない**。TimeRex は予約完了ページの Google Analytics 連携・Google 広告のコンバージョンタグ設置に対応しているが、どちらもプレミアムプラン限定で、GTM と予約後のリダイレクトには対応していない（TimeRex ヘルプ「広告コンバージョンタグ設置」「Google Analytics連携」）。それまでは `teams_migration_consultation_click`（`destination=timerex`）を**暫定のコンバージョン候補**として扱い、予約完了数とは別物として報告する。予約完了を計測するなら、TimeRex のプレミアムプランで広告のコンバージョンタグ（コンバージョン ID とラベル）を設定する
 
 ### 広告ポリシーと表現
