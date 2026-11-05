@@ -51,7 +51,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/cairn-lp.css' ||
     pathname === '/cairn-lp.js' ||
     pathname === '/og-image.png' ||
-    pathname === '/og-image.svg'
+    pathname === '/og-image.svg' ||
+    pathname.startsWith('/badges/')
   const isSeoRoute = pathname === '/robots.txt' || pathname === '/sitemap.xml'
   const isLegalRoute = pathname === '/privacy' || pathname === '/terms'
   // アプリ開発者向けの公開ドキュメント
