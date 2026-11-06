@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiKeyEnvForChatModel, chatLanguageModel, nudgeCopyLanguageModel } from './client'
 
 describe('AI モデルの解決', () => {
@@ -29,5 +29,23 @@ describe('AI モデルの解決', () => {
     process.env['ANTHROPIC_API_KEY'] = 'test-key'
 
     expect(nudgeCopyLanguageModel().modelId).toBe('claude-haiku-5-5')
+  })
+
+  it('GPT-5 のストリーミングは使用量を受け取るため stream_options.include_usage を送る', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('data: [DONE]\n\n', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await chatLanguageModel('gpt-5').doStream({
+        inputFormat: 'messages',
+        mode: { type: 'regular' },
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'こんにちは' }] }],
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string) as Record<string, unknown>
+    expect(body['stream']).toBe(true)
+    expect(body['stream_options']).toEqual({ include_usage: true })
   })
 })

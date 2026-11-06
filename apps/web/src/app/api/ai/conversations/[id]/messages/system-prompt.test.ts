@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, test } from 'vitest'
+import type { CoreMessage } from 'ai'
 import {
   buildChatSystemPrompt as buildChatSystemPromptParts,
   buildWorkspaceInstructionsSection,
   toChatSystemMessages,
+  withLatestMessageCacheBreakpoint,
   type ChatSystemPromptInput,
 } from './system-prompt'
 
@@ -131,3 +133,32 @@ describe('buildWorkspaceInstructionsSection', () => {
   })
 })
 
+
+describe('最新メッセージへのキャッシュ境界', () => {
+  it('最後のメッセージだけにキャッシュ境界を付け、入力は書き換えない', () => {
+    const messages: CoreMessage[] = [
+      { role: 'user', content: '前の質問' },
+      { role: 'assistant', content: '回答' },
+      { role: 'user', content: '最新の質問' },
+    ]
+    const result = withLatestMessageCacheBreakpoint(messages)
+    expect(result.at(-1)?.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
+    expect(result[0]?.providerOptions).toBeUndefined()
+    expect(result[1]?.providerOptions).toBeUndefined()
+    expect(messages.at(-1)).not.toHaveProperty('providerOptions')
+  })
+
+  it('既存の providerOptions を落とさずに合成する', () => {
+    const result = withLatestMessageCacheBreakpoint([
+      { role: 'user', content: 'q', providerOptions: { anthropic: { foo: 1 }, openai: { bar: 2 } } },
+    ])
+    expect(result[0]?.providerOptions).toEqual({
+      anthropic: { foo: 1, cacheControl: { type: 'ephemeral' } },
+      openai: { bar: 2 },
+    })
+  })
+
+  it('空配列はそのまま返す', () => {
+    expect(withLatestMessageCacheBreakpoint([])).toEqual([])
+  })
+})
