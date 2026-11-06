@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { fetchWithRetryableAuthRefresh } from '@cairn/shared'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
@@ -11,6 +12,7 @@ export async function createClient() {
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!,
     {
+      global: { fetch: fetchWithRetryableAuthRefresh },
       cookies: {
         getAll() {
           return cookieStore.getAll()
@@ -36,6 +38,7 @@ export async function createServiceClient() {
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     process.env['SUPABASE_SERVICE_ROLE_KEY']!,
     {
+      global: { fetch: fetchWithRetryableAuthRefresh },
       cookies: {
         getAll() {
           return cookieStore.getAll()

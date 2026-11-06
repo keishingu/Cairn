@@ -379,6 +379,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load the week start. Reload and try again.': '주 시작 설정을 불러오지 못했습니다. 잠시 후 다시 로드해 주세요.',
   'Could not load the workspace': '워크스페이스를 불러오지 못했습니다',
   'Could not load the workspace list ({status})': '워크스페이스 목록을 불러오지 못했습니다 ({status})',
+  'Could not sign out. Please try again.': '로그아웃하지 못했습니다. 다시 시도해 주세요.',
   'Could not load this page': '불러오지 못했습니다',
   'This page is not available offline. Connect to the internet and try again.':
     '이 화면은 오프라인에서 사용할 수 없습니다. 인터넷에 연결한 뒤 다시 시도해 주세요',

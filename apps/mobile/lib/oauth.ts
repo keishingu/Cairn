@@ -5,6 +5,7 @@ import * as Application from 'expo-application'
 import * as AppleAuthentication from 'expo-apple-authentication'
 import * as Crypto from 'expo-crypto'
 import { supabase } from './supabase'
+import { signOutFromDevice } from './sign-out'
 import { apiFetch } from './api-fetch'
 import { resolveOAuthScheme } from './oauth-scheme'
 import { getAppleDisplayName, isAppleAuthenticationCancelled } from './apple-auth'
@@ -88,10 +89,12 @@ export async function signInWithGoogle(t: Translate = translateJa): Promise<OAut
   }
 
   beginPostAuthNavigation()
+  let signedIn = false
   try {
     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
     if (exchangeError) throw exchangeError
     if (!data.session) throw new Error(t('Could not establish a session'))
+    signedIn = true
 
     const { needsWorkspace } = await setupProfile(data.session, undefined, t)
     return needsWorkspace ? 'needs-workspace' : 'success'
@@ -99,7 +102,7 @@ export async function signInWithGoogle(t: Translate = translateJa): Promise<OAut
     completePostAuthNavigation()
     // セッションだけ残るとAuthGuardが未設定ユーザーを通常画面へ送るため、
     // セットアップ失敗時は明示的にログイン前の状態へ戻す。
-    await supabase.auth.signOut().catch(() => undefined)
+    if (signedIn) await signOutFromDevice()
     throw error
   }
 }
@@ -132,6 +135,7 @@ export async function signInWithApple(t: Translate = translateJa): Promise<OAuth
   }
 
   beginPostAuthNavigation()
+  let signedIn = false
   try {
     const { data, error: authError } = await supabase.auth.signInWithIdToken({
       provider: 'apple',
@@ -141,6 +145,7 @@ export async function signInWithApple(t: Translate = translateJa): Promise<OAuth
     })
     if (authError) throw authError
     if (!data.session) throw new Error(t('Could not establish a session'))
+    signedIn = true
 
     const displayName = getAppleDisplayName(credential.fullName)
     if (displayName) {
@@ -158,7 +163,7 @@ export async function signInWithApple(t: Translate = translateJa): Promise<OAuth
   } catch (error) {
     completePostAuthNavigation()
     // Apple認証後のプロフィール作成に失敗した場合も同じくセッションを残さない。
-    await supabase.auth.signOut().catch(() => undefined)
+    if (signedIn) await signOutFromDevice()
     throw error
   }
 }

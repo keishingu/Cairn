@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store'
 import { createClient, type Session } from '@supabase/supabase-js'
+import { fetchWithRetryableAuthRefresh } from '@cairn/shared'
 import { SUPABASE_URL } from './env'
 import { parseStoredSession } from './offline-session'
 
@@ -8,6 +9,7 @@ export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
 const AUTH_STORAGE_KEY = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: fetchWithRetryableAuthRefresh },
   auth: {
     storageKey: AUTH_STORAGE_KEY,
     storage: {

@@ -1,12 +1,13 @@
 'use client'
 
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 
 function isSafeRedirect(path: string): boolean {
-  return path.startsWith('/') && !path.startsWith('//')
+  return path.startsWith('/') && !path.startsWith('//') && !path.includes('\\')
 }
 
 function isWorkspaceId(value: string | null): value is string {
@@ -21,15 +22,14 @@ function isWorkspaceId(value: string | null): value is string {
 declare global {
   interface Window {
     ReactNativeWebView?: { postMessage: (message: string) => void }
+    cairnDeviceSignOut?: boolean
   }
 }
 
-// ハンドオフ失敗時の処理。WebView 内ではネイティブに復帰（トークン更新＋再ハンドオフ
-// またはログアウト）を委ね、/auth/login へは遷移しない。WebView 外（通常ブラウザ）の
-// フォールバックとしてのみログインへ送る。
-function handleFailure() {
+// WebView 内ではネイティブに再ハンドオフを委ねる。
+function handleFailure(attempt: string | null) {
   if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'HANDOFF_FAILED' }))
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'HANDOFF_FAILED', attempt }))
     return
   }
   window.location.replace('/auth/login')
@@ -37,8 +37,12 @@ function handleFailure() {
 
 function MobileHandoffInner() {
   const params = useSearchParams()
+  const started = useRef(false)
 
   useEffect(() => {
+    if (started.current) return
+    started.current = true
+    const attempt = params.get('attempt')
     const rawRedirect = params.get('redirect') ?? '/chats'
     const redirect = isSafeRedirect(rawRedirect) ? rawRedirect : '/chats'
     const workspaceId = params.get('workspaceId')
@@ -51,6 +55,7 @@ function MobileHandoffInner() {
     const hash = window.location.hash.slice(1)
     const hashParams = new URLSearchParams(hash)
     const tokenHash = hashParams.get('th')
+    const nativeUserId = hashParams.get('uid')
 
     // フラグメントからトークンを消去（履歴・画面表示に残さない）
     history.replaceState(null, '', window.location.pathname + window.location.search)
@@ -73,25 +78,26 @@ function MobileHandoffInner() {
       // タブ切り替えごとに verifyOtp して無駄なセッションを増やさないため。
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession()
-      if (session) {
+      if (session && (!nativeUserId || session.user.id === nativeUserId)) {
         goRedirect()
         return
       }
 
-      if (!tokenHash) {
-        handleFailure()
+      if (!tokenHash || (sessionError && isAuthRetryableFetchError(sessionError))) {
+        handleFailure(attempt)
         return
       }
 
       const { error } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: tokenHash })
       if (error) {
-        handleFailure()
+        handleFailure(attempt)
         return
       }
 
       goRedirect()
-    })()
+    })().catch(() => handleFailure(attempt))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

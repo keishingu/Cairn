@@ -25,3 +25,5 @@ export * from './config/calendar'
 export * from './i18n/translate'
 export * from './config/profile-attributes'
 export * from './config/video-attachment'
+
+export { fetchWithRetryableAuthRefresh } from './auth-refresh-fetch'
