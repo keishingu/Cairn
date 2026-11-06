@@ -594,19 +594,44 @@ const ChatDetailContent = ({
   )
 }
 
+/** 右の詳細を縮めても、メッセージ欄に残す幅。PCシェルは窓幅ではモバイルに切り替わらない */
+export const CHAT_DETAIL_MESSAGE_MIN_WIDTH = 320
+
 function panelTitle({ isProject, isDm }: { isProject: boolean; isDm: boolean }): string {
   return isProject ? 'About this project' : isDm ? 'Direct messages' : 'About this channel'
 }
 
-// PC: 3カラムレイアウト右端の常設サイドバー
-export const ChatDetailSidebar = (props: ChatDetailSidebarProps) => {
+// PC: 3カラムレイアウト右端の常設サイドバー。幅は左端の区切り線で変えられる
+export const ChatDetailSidebar = ({
+  width = 280,
+  messageMinWidth,
+  resize,
+  ...props
+}: ChatDetailSidebarProps & {
+  width?: number
+  /** 指定すると、親の幅からこの分を残して詳細パネルを縮める */
+  messageMinWidth?: number
+  resize?: { dragging: boolean; handleProps: React.HTMLAttributes<HTMLElement> }
+}) => {
   const t = useT()
   return (
-  <aside style={{ width: 280, background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
-    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(panelTitle(props))}</h3>
+  <aside style={{ width, maxWidth: messageMinWidth == null ? undefined : `max(0px, calc(100% - ${messageMinWidth}px))`, minWidth: 0, flexShrink: messageMinWidth == null ? 0 : 1, position: 'relative', background: 'var(--card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    {resize && (
+      <div
+        {...resize.handleProps}
+        aria-label={t('Resize the detail panel')}
+        title={t('Drag to resize, double-click to reset')}
+        className="resize-handle"
+        data-dragging={resize.dragging || undefined}
+        style={{ position: 'absolute', top: 0, bottom: 0, left: -4, width: 7, cursor: 'col-resize', zIndex: 1, touchAction: 'none' }}
+      />
+    )}
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
+        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(panelTitle(props))}</h3>
+      </div>
+      <ChatDetailContent {...props}/>
     </div>
-    <ChatDetailContent {...props}/>
   </aside>
   )
 }

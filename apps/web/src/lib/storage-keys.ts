@@ -32,6 +32,7 @@ export const STORAGE_KEYS = {
   chat_archived_channels_collapsed: 'cairn:chat_archived_channels_collapsed',
   chat_last_channel_id:      'cairn:chat_last_channel_id',
   chat_sidebar_width:        'cairn:chat_sidebar_width',
+  chat_detail_width:         'cairn:chat_detail_width',
   chat_send_key:             'cairn:chat_send_key',
   tasks_status_filter:       'cairn:tasks_status_filter',
   tasks_scope:               'cairn:tasks_scope',

@@ -1046,6 +1046,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Required to store cover photos, gallery images, and attachments': 'カバー写真・ギャラリー画像・添付ファイルの保存に必要',
   Resend: '再送',
   'Resize the chat list': 'チャット一覧の幅を変更',
+  'Resize the detail panel': '詳細パネルの幅を変更',
   Retry: '再試行',
   'Return to the app and try again.': '接続元へ戻り、もう一度お試しください。',
   Revoke: '無効化',
