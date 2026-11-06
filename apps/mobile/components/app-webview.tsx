@@ -3,16 +3,24 @@ import { Alert, Linking, Platform, View, Text, Pressable, StyleSheet } from 'rea
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
-import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import type { WebViewProps, WebViewNavigation, WebViewMessageEvent } from 'react-native-webview'
-import { supabase } from '../lib/supabase'
+import { loadStoredSession, supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api-fetch'
+import { requestWebViewHandoff } from '../lib/webview-handoff'
+import {
+  finishPendingWebViewSignOut,
+  markWebViewSignOutPending,
+  WEBVIEW_DEVICE_SIGN_OUT_PATH,
+} from '../lib/webview-sign-out'
+import { signOutFromDevice } from '../lib/sign-out'
+import { unregisterPushTokenForSignOut } from '../lib/push-registration'
+import { useSession } from '../lib/session-context'
 import { isDeviceOffline } from '../lib/device-offline'
 import { API_BASE_URL as WEB_BASE } from '../lib/env'
 import { mobileHandoffUrl, webPath } from '../lib/webview-path'
 import { isAccentId, isAppearanceTheme, isLocalePreference } from '@cairn/shared'
 import { useAppAppearance } from './appearance-provider'
-import { useAppLocale, useT} from './locale-provider'
+import { useAppLocale, useT } from './locale-provider'
 import {
   NATIVE_HEADER_BACK_SCRIPT,
   parseNativeHeaderDescriptor,
@@ -36,6 +44,8 @@ import {
   linkGoogleIdentity,
   type NativeOAuthIdentityLinkResult,
 } from '../lib/apple-identity-bridge'
+
+const WEBVIEW_SIGN_OUT_TIMEOUT_MS = 10_000
 
 type ShouldStartLoadRequest = Parameters<
   NonNullable<WebViewProps['onShouldStartLoadWithRequest']>
@@ -82,6 +92,9 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   const { updateLocale } = useAppLocale()
   const bg = palette.bg
   const router = useRouter()
+  const userId = useSession()?.user.id
+  const isSignOutScreen = path === WEBVIEW_DEVICE_SIGN_OUT_PATH
+  const activeUri = React.useRef<string | null>(null)
 
   React.useImperativeHandle(
     ref,
@@ -100,71 +113,92 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   const initialPathRef = React.useRef<string | null>(null)
   // 初回ロード完了フラグ。完了前は injectJavaScript が失われるため遷移を保留する
   const loadedRef = React.useRef(false)
-  // HANDOFF_FAILED 起因の再ハンドオフは 1 回だけ（無限リトライ防止）
   const retriedRef = React.useRef(false)
-  // 復帰処理中は URL 監視による signOut を一時停止する
-  const recoveringRef = React.useRef(false)
+  const attemptRef = React.useRef(0)
+  const requestInFlight = React.useRef(false)
+  const completeWebViewSignOut = React.useRef<((ok: boolean) => void) | null>(null)
 
-  // WEB_BASE のオリジン（scheme+host+port）を抽出して信頼済みオリジンとする
-  const trustedOrigin = WEB_BASE.replace(/\/$/, '').replace(/(https?:\/\/[^/]+).*/, '$1')
+  const trustedOrigin = new URL(WEB_BASE).origin
 
-  const performHandoff = React.useCallback(
+  const loadUrl = React.useCallback((url: string | null) => {
+    activeUri.current = url
+    setUri(url)
+  }, [])
+
+  const loadWebViewSignOut = React.useCallback(async () => {
+    if (await isDeviceOffline()) return false
+
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => completeWebViewSignOut.current?.(false), WEBVIEW_SIGN_OUT_TIMEOUT_MS)
+      completeWebViewSignOut.current = (ok) => {
+        clearTimeout(timeout)
+        completeWebViewSignOut.current = null
+        loadUrl(null)
+        resolve(ok)
+      }
+      loadUrl(webUrl(WEBVIEW_DEVICE_SIGN_OUT_PATH))
+    })
+  }, [loadUrl])
+
+  React.useEffect(() => () => completeWebViewSignOut.current?.(false), [])
+
+  const startWebView = React.useCallback(
     async (targetPath: string) => {
+      if (requestInFlight.current) return
+      requestInFlight.current = true
+      loadUrl(null)
       setError(null)
 
-      // WebView は通信が前提。圏外で getSession を待つとトークン切れの更新失敗で止まる
-      if (await isDeviceOffline()) {
-        setError('offline')
-        return
-      }
+      try {
+        if (isSignOutScreen) {
+          // 先に WebView を終了する。通信できなければ次のハンドオフ前まで WebView を開かない。
+          await markWebViewSignOutPending()
+          if (userId) await unregisterPushTokenForSignOut(userId)
+          await finishPendingWebViewSignOut(loadWebViewSignOut)
+          await signOutFromDevice()
+          if (await loadStoredSession()) setError('failed')
+          return
+        }
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession()
-      if (!session) {
-        // 更新が届かなかっただけならサインアウトではない（保存は残っている）
-        if (sessionError && isAuthRetryableFetchError(sessionError)) {
+        if (await isDeviceOffline()) {
           setError('offline')
           return
         }
-        // 通常は AuthGuard がセッションを保証するため到達しない
-        router.replace('/(auth)/login')
-        return
-      }
 
-      try {
-        // ネイティブの refresh_token を WebView に渡さず、使い捨ての hashed_token を発行する。
-        // WebView 側は verifyOtp で独立したセッションを確立する
-        // （docs/mobile-webview-auth-handoff.md）。
-        const res = await apiFetch('/api/auth/webview-handoff', {
-          method: 'POST',
-        })
-        if (!res.ok) {
-          if (res.status === 401) {
-            await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
-            router.replace('/(auth)/login')
-            return
-          }
-          throw new Error(`handoff failed: ${res.status}`)
+        if (!(await finishPendingWebViewSignOut(loadWebViewSignOut))) {
+          setError('failed')
+          return
         }
-        const data = (await res.json()) as { tokenHash?: string; workspaceId?: string }
-        if (!data.tokenHash) {
-          throw new Error('handoff response missing tokenHash')
+
+        const result = await requestWebViewHandoff()
+        if (result.status === 'signed-out') {
+          router.replace('/(auth)/login')
+          return
+        }
+        if (result.status !== 'ready') {
+          setError('failed')
+          return
         }
 
         initialPathRef.current = targetPath
         loadedRef.current = false
-        // トークンは URL フラグメント（#th=...）で渡す。
-        // フラグメントはサーバーに送信されないためアクセスログに残らない。
-        setUri(mobileHandoffUrl(WEB_BASE, targetPath, data.tokenHash, data.workspaceId))
-      } catch (err) {
-        // 失敗理由が Metro ログで追えるように必ず出力する
-        console.error('[AppWebView] ハンドオフに失敗:', err)
+        const url = new URL(mobileHandoffUrl(WEB_BASE, targetPath, result.tokenHash, result.workspaceId))
+        url.searchParams.set('attempt', String(++attemptRef.current))
+        if (userId) {
+          const fragment = new URLSearchParams(url.hash.slice(1))
+          fragment.set('uid', userId)
+          url.hash = fragment.toString()
+        }
+        // ワンタイムトークンはフラグメントに残し、アクセスログに送信しない。
+        loadUrl(url.toString())
+      } catch {
+        console.error('[AppWebView] WebView の認証処理に失敗しました')
         setError('failed')
+      } finally {
+        requestInFlight.current = false
       }
     },
-    [router],
+    [isSignOutScreen, loadUrl, loadWebViewSignOut, router, userId],
   )
 
   // WebView 内の同一オリジンへ内部遷移する（Cookie セッションは生きているため再認証不要）
@@ -177,15 +211,23 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
   React.useEffect(() => {
     if (initialPathRef.current === null) {
       // 初回マウント時のみハンドオフを実行する
-      void performHandoff(path)
+      void startWebView(path)
     } else if (loadedRef.current && path !== initialPathRef.current) {
       // ハンドオフ済み・ロード完了後の path 切り替えは内部遷移で処理する
       navigateTo(path)
     }
     // ロード未完了中の path 変更は onLoadEnd 側で反映する
-  }, [path, performHandoff, navigateTo])
+  }, [path, startWebView, navigateTo])
 
-  function handleLoadEnd() {
+  function handleLoadEnd(event: { nativeEvent: { url: string } }) {
+    const target = getTrustedUrl(event.nativeEvent.url)
+    if (
+      uri !== activeUri.current ||
+      requestInFlight.current ||
+      !target ||
+      target.pathname.startsWith('/auth/')
+    ) return
+    retriedRef.current = false
     onLoadEnd?.()
     if (loadedRef.current) return
     loadedRef.current = true
@@ -195,31 +237,25 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
   }
 
-  async function recoverFromHandoffFailure() {
-    recoveringRef.current = true
-
+  function recoverWebViewSession() {
+    if (requestInFlight.current || isSignOutScreen) return
     if (retriedRef.current) {
-      // 2 回目の失敗：トークンを更新しても復帰できないためログアウトする
-      await supabase.auth.signOut().catch(() => undefined)
-      router.replace('/(auth)/login')
+      setError('failed')
       return
     }
     retriedRef.current = true
-
-    const { data, error: refreshError } = await supabase.auth.refreshSession()
-    if (refreshError || !data.session) {
-      await supabase.auth.signOut().catch(() => undefined)
-      router.replace('/(auth)/login')
-      return
-    }
-
-    recoveringRef.current = false
-    void performHandoff(pathRef.current)
+    void startWebView(pathRef.current)
   }
 
   function handleMessage(event: WebViewMessageEvent) {
-    let msg: {
+    if (uri !== activeUri.current) return
+    const source = getTrustedUrl(event.nativeEvent.url)
+    if (!source) return
+
+    type BridgeMessage = {
       type?: string
+      attempt?: unknown
+      ok?: unknown
       theme?: unknown
       accentId?: unknown
       locale?: unknown
@@ -227,18 +263,10 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       subtitle?: unknown
       canGoBack?: unknown
       path?: unknown
-    } | null = null
+    }
+    let msg: BridgeMessage | null
     try {
-      msg = JSON.parse(event.nativeEvent.data) as {
-        type?: string
-        theme?: unknown
-        accentId?: unknown
-        locale?: unknown
-        title?: unknown
-        subtitle?: unknown
-        canGoBack?: unknown
-        path?: unknown
-      }
+      msg = JSON.parse(event.nativeEvent.data) as BridgeMessage | null
     } catch {
       return
     }
@@ -248,7 +276,21 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       return
     }
     if (msg?.type === 'HANDOFF_FAILED') {
-      void recoverFromHandoffFailure()
+      if (
+        source.pathname === '/auth/mobile-handoff' &&
+        (msg.attempt ?? source.searchParams.get('attempt')) === String(attemptRef.current)
+      ) {
+        recoverWebViewSession()
+      }
+      return
+    }
+    if (msg?.type === 'WEBVIEW_SIGN_OUT_RESULT' && source.pathname === WEBVIEW_DEVICE_SIGN_OUT_PATH) {
+      completeWebViewSignOut.current?.(msg.ok === true)
+      return
+    }
+    if (msg?.type === 'DEVICE_SIGN_OUT_REQUESTED' && source.pathname === '/settings') {
+      router.navigate('/(app)/signout')
+      return
     }
     if (msg?.type === 'account-deleted') {
       // WebView側でAuthユーザーを削除したら、独立して保持しているネイティブの
@@ -343,22 +385,23 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
     }
   }
 
-  // Web 側でログアウトして /auth/login に遷移したらネイティブセッションも破棄する
-  function handleNavigationStateChange(state: WebViewNavigation) {
-    if (recoveringRef.current) return
-    const url = state.url
-    if (url.includes('/auth/login') || url.includes('/auth/signup')) {
-      supabase.auth.signOut().then(() => {
-        router.replace('/(auth)/login')
-      })
-      return
-    }
+  function getTrustedUrl(url: string): URL | null {
     try {
       const target = new URL(url)
-      if (target.origin === trustedOrigin) onWebPathChange?.(target.pathname)
+      return target.origin === trustedOrigin ? target : null
     } catch {
-      // WebViewが途中で返す非URL値は遷移イベントとして扱わない。
+      return null
     }
+  }
+
+  function handleNavigationStateChange(state: WebViewNavigation) {
+    const target = getTrustedUrl(state.url)
+    if (uri !== activeUri.current || !target) return
+    if (target.pathname === '/auth/login' || target.pathname === '/auth/signup') {
+      if (!state.loading) recoverWebViewSession()
+      return
+    }
+    onWebPathChange?.(target.pathname)
   }
 
   // チャンネル・メッセージへのリンクは通知と同じ経路で開く（スレッドへ移ったメッセージの移動先も辿る）
@@ -410,13 +453,18 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         ]}
       >
         <Text style={[styles.errorText, { color: palette.text3 }]}>
-          {error === 'offline'
-            ? t('This page is not available offline. Connect to the internet and try again.')
-            : t('Could not load this page')}
+          {isSignOutScreen
+            ? t('Could not sign out. Please try again.')
+            : error === 'offline'
+              ? t('This page is not available offline. Connect to the internet and try again.')
+              : t('Could not load this page')}
         </Text>
         <Pressable
           style={[styles.retryButton, { backgroundColor: palette.accent }]}
-          onPress={() => void performHandoff(pathRef.current)}
+          onPress={() => {
+            retriedRef.current = false
+            void startWebView(pathRef.current)
+          }}
         >
           <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Retry')}</Text>
         </Pressable>
@@ -434,6 +482,7 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
       ]}
     >
       <WebView
+        key={uri}
         ref={webViewRef}
         source={{ uri }}
         // WebView 既定の白い背景が、ページ遷移で次の画面が描かれるまでの間に見えてしまう。
@@ -448,6 +497,17 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
         // iOS スワイプバック（ブラウザの進む/戻るジェスチャー）
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         keyboardDisplayRequiresUserAction={!allowProgrammaticFocus}
+        injectedJavaScript="window.cairnDeviceSignOut = true; true;"
+        onError={() => {
+          if (uri !== activeUri.current) return
+          if (completeWebViewSignOut.current) completeWebViewSignOut.current(false)
+          else setError('failed')
+        }}
+        onHttpError={({ nativeEvent }) => {
+          if (uri !== activeUri.current) return
+          if (completeWebViewSignOut.current) completeWebViewSignOut.current(false)
+          else if (nativeEvent.statusCode === 503) setError('failed')
+        }}
         onLoadEnd={handleLoadEnd}
         onMessage={handleMessage}
         onNavigationStateChange={handleNavigationStateChange}

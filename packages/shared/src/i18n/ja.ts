@@ -379,6 +379,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load the week start. Reload and try again.': '週の始まりの設定を読み込めませんでした。時間をおいて再読み込みしてください。',
   'Could not load the workspace': 'ワークスペースを読み込めませんでした',
   'Could not load the workspace list ({status})': 'ワークスペース一覧の取得に失敗しました ({status})',
+  'Could not sign out. Please try again.': 'ログアウトできませんでした。もう一度お試しください。',
   'Could not load this page': '読み込みに失敗しました',
   'This page is not available offline. Connect to the internet and try again.':
     'この画面はオフラインでは使えません。インターネットに接続して再試行してください',

@@ -9,7 +9,7 @@ import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { createClient } from '@/lib/supabase/client'
+import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
   getSettingsNavGroups,
@@ -33,9 +33,19 @@ export function MobileSettings() {
   const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true, isGuest: me?.wsRole === 'guest' })
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+    if (window.ReactNativeWebView) {
+      if (window.cairnDeviceSignOut) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'DEVICE_SIGN_OUT_REQUESTED' }))
+      } else {
+        window.location.assign('/auth/mobile-signout?webview=1')
+      }
+      return
+    }
+    if (!(await signOutCurrentSession())) {
+      window.alert(t('Could not sign out. Please try again.'))
+      return
+    }
+    window.location.replace('/auth/login')
   }
 
   return (
