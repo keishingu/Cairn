@@ -66,6 +66,7 @@ vi.mock('@/components/app/pages/chat-detail-sidebar', () => ({
     <div data-testid="detail">{channelId}<button onClick={() => onJumpToMessage('detail-message')}>詳細からメッセージへ移動</button></div>
   ),
   ChatInfoDrawer: () => null,
+  CHAT_DETAIL_MESSAGE_MIN_WIDTH: 320,
 }))
 vi.mock('@/components/app/chat-thread', () => ({
   ChatThread: ({ channelId, targetMessage }: { channelId: string; targetMessage: { id: string } | null }) => {
@@ -104,11 +105,20 @@ function renderChats(pathname = '/chats/a') {
 describe('共有チャットlayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 会話列の幅を測るため ResizeObserver を使う（jsdom には無い）
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     projectChannels.length = 0
     localStorage.clear()
     localStorage.setItem(STORAGE_KEYS.chat_sidebar_width, '360')
   })
-  afterEach(() => window.history.replaceState(null, '', '/'))
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', '/')
+  })
 
   it('会話の選択・戻る・進むでサイドバーのDOM・幅・スクロール・開閉状態を保ち、本文だけを切り替える', () => {
     const { navigate } = renderChats()

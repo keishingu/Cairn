@@ -1046,6 +1046,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Required to store cover photos, gallery images, and attachments': '커버 사진·갤러리 이미지·첨부 파일 저장에 필요',
   Resend: '다시 보내기',
   'Resize the chat list': '채팅 목록 너비 변경',
+  'Resize the detail panel': '상세 패널 너비 변경',
   Retry: '다시 시도',
   'Return to the app and try again.': '앱으로 돌아가 다시 시도해 주세요.',
   Revoke: '취소',
