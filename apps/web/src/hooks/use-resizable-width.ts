@@ -18,7 +18,7 @@ export function parseStoredWidth(saved: string | null, fallback: number, min: nu
 }
 
 /** 画面に収める上限。保存した希望幅は変えず、表示だけを狭める */
-export function fitWidth(width: number, ceiling?: number): number {
+export function fitWidth(width: number, ceiling?: number | undefined): number {
   if (ceiling == null || !Number.isFinite(ceiling)) return width
   return Math.min(width, Math.max(0, Math.round(ceiling)))
 }
@@ -35,7 +35,7 @@ export function useResizableWidth({ storageKey, defaultWidth, min, max, edge = '
   min: number
   max: number
   edge?: 'start' | 'end'
-  ceiling?: number
+  ceiling?: number | undefined
 }) {
   const [width, setWidth] = React.useState(defaultWidth)
   const [dragging, setDragging] = React.useState(false)
