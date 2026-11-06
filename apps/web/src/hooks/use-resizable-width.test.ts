@@ -117,9 +117,11 @@ describe('useResizableWidth: 区切り線の動かし方', () => {
   it('上限より広い保存幅は表示だけ縮め、保存値は残す', () => {
     store.set(STORAGE_KEYS.chat_detail_width, '480')
     const options = { storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' as const }
+    // 初期値を number のまま渡すと rerender の引数が number に推論され、上限なしの undefined を渡せない
+    const props: { ceiling: number | undefined } = { ceiling: 200 }
     const { result, rerender } = renderHook(
       ({ ceiling }: { ceiling: number | undefined }) => useResizableWidth({ ...options, ceiling }),
-      { initialProps: { ceiling: 200 } },
+      { initialProps: props },
     )
     expect(result.current.width).toBe(200)
     expect(store.get(options.storageKey)).toBe('480')
