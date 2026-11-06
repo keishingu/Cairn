@@ -105,11 +105,20 @@ function renderChats(pathname = '/chats/a') {
 describe('共有チャットlayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 会話列の幅を測るため ResizeObserver を使う（jsdom には無い）
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     projectChannels.length = 0
     localStorage.clear()
     localStorage.setItem(STORAGE_KEYS.chat_sidebar_width, '360')
   })
-  afterEach(() => window.history.replaceState(null, '', '/'))
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.history.replaceState(null, '', '/')
+  })
 
   it('会話の選択・戻る・進むでサイドバーのDOM・幅・スクロール・開閉状態を保ち、本文だけを切り替える', () => {
     const { navigate } = renderChats()
