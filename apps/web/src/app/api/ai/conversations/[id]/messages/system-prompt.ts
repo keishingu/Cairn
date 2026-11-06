@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CoreSystemMessage } from 'ai'
+import type { CoreMessage, CoreSystemMessage } from 'ai'
 import { PRODUCT_HELP_CONTEXT } from '@/lib/ai/product-help'
 
 export interface ChatSystemPromptInput {
@@ -128,3 +128,20 @@ export function toChatSystemMessages(prompt: ChatSystemPrompt): CoreSystemMessag
   ]
 }
 
+// 会話履歴の末尾（利用者の最新メッセージ）にも固定のキャッシュ境界を置く。ステップごとに動く境界
+// （conversation-cache-middleware）は直前20ブロックまでしか遡れず、並列 tool 呼び出しが多いと履歴側が外れうる。
+// ここに固定の境界があれば履歴までの接頭辞は確実に読め、同じ会話の次の依頼（TTL 内）でも再利用できる。
+// 境界は stable system + これ + ステップごとの境界で最大3つ（Anthropic の上限4つ以内）。
+// 既存の providerOptions は落とさず、入力は書き換えない。OpenAI では anthropic の providerOptions は無視される。
+export function withLatestMessageCacheBreakpoint(messages: CoreMessage[]): CoreMessage[] {
+  const last = messages.at(-1)
+  if (!last) return messages
+  const marked: CoreMessage = {
+    ...last,
+    providerOptions: {
+      ...last.providerOptions,
+      anthropic: { ...last.providerOptions?.['anthropic'], cacheControl: { type: 'ephemeral' } },
+    },
+  }
+  return [...messages.slice(0, -1), marked]
+}
