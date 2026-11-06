@@ -151,9 +151,11 @@ export const AppWebView = React.forwardRef<AppWebViewHandle, AppWebViewProps>(fu
 
       try {
         if (isSignOutScreen) {
+          // サインアウト完了で userId が消えた後は、保留キーを作り直さない。
+          if (!userId) return
           // 先に WebView を終了する。通信できなければ次のハンドオフ前まで WebView を開かない。
           await markWebViewSignOutPending()
-          if (userId) await unregisterPushTokenForSignOut(userId)
+          await unregisterPushTokenForSignOut(userId)
           await finishPendingWebViewSignOut(loadWebViewSignOut)
           await signOutFromDevice()
           if (await loadStoredSession()) setError('failed')
