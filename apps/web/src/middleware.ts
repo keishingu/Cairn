@@ -3,9 +3,8 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import { fetchWithRetryableAuthRefresh, resolveLocale, translate } from '@cairn/shared'
-import { verifyAccessToken } from '@/lib/auth-jwt'
+import { checkAccessToken } from '@/lib/auth-jwt'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -45,9 +44,7 @@ export async function middleware(request: NextRequest) {
   })
 
   // getClaims で JWT をローカル検証する（非対称署名鍵なら Auth API 往復なし）。
-  // 更新失敗とセッション失効を区別するため getSession のエラーも確認する。
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-  const userId = session ? await verifyAccessToken(supabase.auth, session.access_token) : null
+  const { userId, retryable } = await checkAccessToken(supabase.auth)
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
@@ -99,7 +96,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!userId && !isAuthRoute && !isPublicRoute) {
-    if (isAuthRetryableFetchError(sessionError)) {
+    if (retryable) {
       const locale = resolveLocale('system', request.headers.get('accept-language'))
       return withCookies(new NextResponse(translate(locale, 'Could not connect. Try again.'), {
         status: 503,
