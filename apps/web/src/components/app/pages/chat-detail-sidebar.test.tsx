@@ -58,7 +58,7 @@ const project: ProjectDto = {
 function renderSidebar(
   onJumpToMessage = vi.fn(),
   locale: 'ja' | 'en' = 'ja',
-  extra: { width?: number; resize?: { dragging: boolean; handleProps: React.HTMLAttributes<HTMLElement> } } = {},
+  extra: { width?: number; messageMinWidth?: number; resize?: { dragging: boolean; handleProps: React.HTMLAttributes<HTMLElement> } } = {},
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const sidebar = (
@@ -307,10 +307,11 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
   it('指定した幅と、左端の幅変更の区切りを出す', () => {
     renderSidebar(vi.fn(), 'ja', {
       width: 360,
+      messageMinWidth: 320,
       resize: { dragging: false, handleProps: { role: 'separator' } },
     })
 
     expect(screen.getByRole('separator', { name: '詳細パネルの幅を変更' })).toHaveStyle({ left: '-4px' })
-    expect(screen.getByRole('complementary')).toHaveStyle({ width: '360px' })
+    expect(screen.getByRole('complementary')).toHaveStyle({ width: '360px', maxWidth: 'max(0px, calc(100% - 320px))' })
   })
 })

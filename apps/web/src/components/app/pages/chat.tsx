@@ -40,7 +40,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { ChannelList } from './chat-channel-list'
-import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
+import { ChatDetailSidebar, ChatInfoDrawer, CHAT_DETAIL_MESSAGE_MIN_WIDTH, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -334,7 +334,26 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
-  const detailResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' })
+  // 会話列の幅からメッセージ欄の最低幅を引いた分だけ詳細を広げる。希望幅自体は保存したままにする
+  const conversationColumnRef = React.useRef<HTMLDivElement>(null)
+  const [conversationWidth, setConversationWidth] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const column = conversationColumnRef.current
+    if (!column) return
+    const update = () => setConversationWidth(column.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(column)
+    return () => observer.disconnect()
+  }, [])
+  const detailResize = useResizableWidth({
+    storageKey: STORAGE_KEYS.chat_detail_width,
+    defaultWidth: 280,
+    min: 240,
+    max: 480,
+    edge: 'start',
+    ceiling: conversationWidth == null ? undefined : conversationWidth - CHAT_DETAIL_MESSAGE_MIN_WIDTH,
+  })
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -1008,7 +1027,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div ref={conversationColumnRef} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!globalSearchOpen && !bookmarksOpen && (
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
@@ -1056,6 +1075,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
           {detailOpen && <ChatDetailSidebar
             width={detailResize.width}
+            messageMinWidth={CHAT_DETAIL_MESSAGE_MIN_WIDTH}
             resize={{ dragging: detailResize.dragging, handleProps: detailResize.handleProps }}
             isProject={isProject}
             isDm={isDm}

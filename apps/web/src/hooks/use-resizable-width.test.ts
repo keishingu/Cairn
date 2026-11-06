@@ -5,13 +5,25 @@ import React from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
-import { clampWidth, parseStoredWidth, useResizableWidth } from './use-resizable-width'
+import { clampWidth, fitWidth, parseStoredWidth, useResizableWidth } from './use-resizable-width'
 
 describe('clampWidth: 幅の範囲制限', () => {
   it('最小・最大の範囲に収め、整数に丸める', () => {
     expect(clampWidth(100, 200, 480)).toBe(200)
     expect(clampWidth(900, 200, 480)).toBe(480)
     expect(clampWidth(300.6, 200, 480)).toBe(301)
+  })
+})
+
+describe('fitWidth: 表示幅の上限', () => {
+  it('上限が無ければ幅をそのまま返す', () => {
+    expect(fitWidth(480)).toBe(480)
+  })
+
+  it('上限より広い幅は表示だけを上限へ縮める', () => {
+    expect(fitWidth(480, 200)).toBe(200)
+    expect(fitWidth(180, 200)).toBe(180)
+    expect(fitWidth(480, -20)).toBe(0)
   })
 })
 
@@ -100,6 +112,24 @@ describe('useResizableWidth: 区切り線の動かし方', () => {
     act(() => { result.current.handleProps.onKeyDown?.(key('ArrowRight')) })
     expect(result.current.width).toBe(304)
     expect(store.get(options.storageKey)).toBe('304')
+  })
+
+  it('上限より広い保存幅は表示だけ縮め、保存値は残す', () => {
+    store.set(STORAGE_KEYS.chat_detail_width, '480')
+    const options = { storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' as const }
+    const { result, rerender } = renderHook(
+      ({ ceiling }: { ceiling?: number }) => useResizableWidth({ ...options, ceiling }),
+      { initialProps: { ceiling: 200 } },
+    )
+    expect(result.current.width).toBe(200)
+    expect(store.get(options.storageKey)).toBe('480')
+
+    rerender({ ceiling: 360 })
+    expect(result.current.width).toBe(360)
+    expect(store.get(options.storageKey)).toBe('480')
+
+    rerender({ ceiling: undefined })
+    expect(result.current.width).toBe(480)
   })
 })
 
