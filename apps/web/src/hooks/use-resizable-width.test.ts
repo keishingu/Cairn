@@ -118,7 +118,7 @@ describe('useResizableWidth: 区切り線の動かし方', () => {
     store.set(STORAGE_KEYS.chat_detail_width, '480')
     const options = { storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' as const }
     const { result, rerender } = renderHook(
-      ({ ceiling }: { ceiling?: number }) => useResizableWidth({ ...options, ceiling }),
+      ({ ceiling }: { ceiling: number | undefined }) => useResizableWidth({ ...options, ceiling }),
       { initialProps: { ceiling: 200 } },
     )
     expect(result.current.width).toBe(200)
