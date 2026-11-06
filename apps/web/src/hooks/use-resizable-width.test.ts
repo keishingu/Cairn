@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { clampWidth, parseStoredWidth, useResizableWidth } from './use-resizable-width'
 
@@ -59,5 +59,60 @@ describe('useResizableWidth: 描画前の幅復元', () => {
     expect(next.result.current.width).toBe(360)
     expect(restoredDuringLayout).toEqual([true, true])
   })
-
 })
+
+describe('useResizableWidth: 区切り線の動かし方', () => {
+  const store = new Map<string, string>()
+
+  beforeEach(() => {
+    store.clear()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value) },
+      removeItem: (key: string) => { store.delete(key) },
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('左パネルの右端は右へ動かすと広がり、左へ動かすと狭まる', () => {
+    const options = { storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 }
+    const { result } = renderHook(() => useResizableWidth(options))
+    act(() => { result.current.handleProps.onPointerDown?.(pointer(100)) })
+    act(() => { result.current.handleProps.onPointerMove?.(pointer(140)) })
+    expect(result.current.width).toBe(280)
+    act(() => { result.current.handleProps.onKeyDown?.(key('ArrowLeft')) })
+    expect(result.current.width).toBe(264)
+    expect(store.get(options.storageKey)).toBe('264')
+  })
+
+  it('右パネルの左端は左へ動かすと広がり、右へ動かすと狭まる', () => {
+    const options = { storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' as const }
+    const { result } = renderHook(() => useResizableWidth(options))
+    act(() => { result.current.handleProps.onPointerDown?.(pointer(100)) })
+    act(() => { result.current.handleProps.onPointerMove?.(pointer(60)) })
+    expect(result.current.width).toBe(320)
+    act(() => { result.current.handleProps.onPointerUp?.(pointer(60)) })
+    expect(store.get(options.storageKey)).toBe('320')
+
+    act(() => { result.current.handleProps.onKeyDown?.(key('ArrowRight')) })
+    expect(result.current.width).toBe(304)
+    expect(store.get(options.storageKey)).toBe('304')
+  })
+})
+
+function pointer(clientX: number): React.PointerEvent<HTMLElement> {
+  return {
+    button: 0,
+    clientX,
+    pointerId: 1,
+    preventDefault: vi.fn(),
+    currentTarget: { setPointerCapture: vi.fn() },
+  } as unknown as React.PointerEvent<HTMLElement>
+}
+
+function key(keyName: string): React.KeyboardEvent<HTMLElement> {
+  return { key: keyName, preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLElement>
+}

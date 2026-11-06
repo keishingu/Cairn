@@ -18,18 +18,22 @@ export function parseStoredWidth(saved: string | null, fallback: number, min: nu
 }
 
 /**
- * 左側パネルの幅を、右端の区切り線のドラッグ・矢印キーで変えられるようにする。
- * 幅は端末ごとの好みなので localStorage にだけ保存する。
+ * パネルの幅を、区切り線のドラッグ・矢印キーで変えられるようにする。
+ * `edge` は区切り線の位置。`end` は左パネルの右端、`start` は右パネルの左端。
+ * 矢印キーは区切り線をその方向へ動かす。幅は端末ごとの好みなので localStorage にだけ保存する。
  */
-export function useResizableWidth({ storageKey, defaultWidth, min, max }: {
+export function useResizableWidth({ storageKey, defaultWidth, min, max, edge = 'end' }: {
   storageKey: StorageKey
   defaultWidth: number
   min: number
   max: number
+  edge?: 'start' | 'end'
 }) {
   const [width, setWidth] = React.useState(defaultWidth)
   const [dragging, setDragging] = React.useState(false)
   const dragStart = React.useRef<{ pointerX: number; width: number } | null>(null)
+  // 右パネルの左端は、左へ動かすとパネルが広がる
+  const direction = edge === 'start' ? -1 : 1
 
   // SSR と初回描画は一致させつつ、保存幅はブラウザの描画前に復元する。
   // チャンネル移動で再マウントされても、既定幅が一瞬表示されるのを防ぐ。
@@ -49,7 +53,7 @@ export function useResizableWidth({ storageKey, defaultWidth, min, max }: {
 
   const endDrag = (e: React.PointerEvent<HTMLElement>) => {
     if (!dragStart.current) return
-    commit(dragStart.current.width + e.clientX - dragStart.current.pointerX)
+    commit(dragStart.current.width + (e.clientX - dragStart.current.pointerX) * direction)
     dragStart.current = null
     setDragging(false)
   }
@@ -71,14 +75,14 @@ export function useResizableWidth({ storageKey, defaultWidth, min, max }: {
     },
     onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
       if (!dragStart.current) return
-      setWidth(clampWidth(dragStart.current.width + e.clientX - dragStart.current.pointerX, min, max))
+      setWidth(clampWidth(dragStart.current.width + (e.clientX - dragStart.current.pointerX) * direction, min, max))
     },
     onPointerUp: endDrag,
     onPointerCancel: endDrag,
     onDoubleClick: () => commit(defaultWidth),
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
-      if (e.key === 'ArrowLeft') { e.preventDefault(); commit(width - KEYBOARD_STEP) }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); commit(width + KEYBOARD_STEP) }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); commit(width - KEYBOARD_STEP * direction) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); commit(width + KEYBOARD_STEP * direction) }
       else if (e.key === 'Home') { e.preventDefault(); commit(min) }
       else if (e.key === 'End') { e.preventDefault(); commit(max) }
     },

@@ -334,6 +334,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
+  const detailResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_detail_width, defaultWidth: 280, min: 240, max: 480, edge: 'start' })
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -960,6 +961,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }
 
   // ─── PC（3カラム）─────────────────────────────────────────────
+  const detailLabel = isProject ? t('About this project') : isDm ? t('Direct messages') : t('About this channel')
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
@@ -1025,6 +1027,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
               <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+              <button
+                className="btn"
+                onClick={() => setDetailOpen(open => !open)}
+                style={{ background: detailOpen ? 'var(--card-hover)' : undefined }}
+                aria-pressed={detailOpen}
+                aria-label={detailLabel}
+                title={detailLabel}
+              >
+                <Icon name="info" size={13}/>
+              </button>
               <BellButton/>
             </div>
           </div>
@@ -1043,6 +1055,8 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           </main>
 
           {detailOpen && <ChatDetailSidebar
+            width={detailResize.width}
+            resize={{ dragging: detailResize.dragging, handleProps: detailResize.handleProps }}
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}

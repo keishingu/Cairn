@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import React from 'react'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
@@ -54,7 +55,11 @@ const project: ProjectDto = {
   coverPhotoIdx: 0, coverPhotoUrl: null, location: null, placeId: null,
 }
 
-function renderSidebar(onJumpToMessage = vi.fn(), locale: 'ja' | 'en' = 'ja') {
+function renderSidebar(
+  onJumpToMessage = vi.fn(),
+  locale: 'ja' | 'en' = 'ja',
+  extra: { width?: number; resize?: { dragging: boolean; handleProps: React.HTMLAttributes<HTMLElement> } } = {},
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const sidebar = (
     <QueryClientProvider client={queryClient}><ChatDetailSidebar
@@ -74,6 +79,7 @@ function renderSidebar(onJumpToMessage = vi.fn(), locale: 'ja' | 'en' = 'ja') {
       onOpenProject={vi.fn()}
       onOpenMember={vi.fn()}
       onJumpToMessage={onJumpToMessage}
+      {...extra}
     /></QueryClientProvider>
   )
   render(locale === 'en' ? (
@@ -296,5 +302,15 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
       method: 'POST',
       body: JSON.stringify({ title: 'チャンネルタスク', channelId: 'channel-1', priority: 'medium' }),
     })))
+  })
+
+  it('指定した幅と、左端の幅変更の区切りを出す', () => {
+    renderSidebar(vi.fn(), 'ja', {
+      width: 360,
+      resize: { dragging: false, handleProps: { role: 'separator' } },
+    })
+
+    expect(screen.getByRole('separator', { name: '詳細パネルの幅を変更' })).toHaveStyle({ left: '-4px' })
+    expect(screen.getByRole('complementary')).toHaveStyle({ width: '360px' })
   })
 })
