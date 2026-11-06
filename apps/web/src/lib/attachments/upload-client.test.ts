@@ -6,6 +6,23 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { AttachmentUploadError, uploadAttachment } from './upload-client'
 
 vi.mock('@/lib/fetch-with-auth')
+const tus = vi.hoisted(() => ({ options: [] as Array<Record<string, unknown>>, fail: false }))
+vi.mock('tus-js-client', () => ({
+  Upload: class {
+    constructor(_file: unknown, private readonly opts: Record<string, unknown>) {
+      tus.options.push(opts)
+    }
+    start() {
+      const opts = this.opts as { onProgress: (a: number, b: number) => void; onSuccess: () => void; onError: (e: Error) => void }
+      if (tus.fail) {
+        opts.onError(new Error('network'))
+        return
+      }
+      opts.onProgress(6, 12)
+      opts.onSuccess()
+    }
+  },
+}))
 const uploadToSignedUrl = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ storage: { from: () => ({ uploadToSignedUrl }) } }),
@@ -102,5 +119,45 @@ describe('添付ファイルのアップロード（uploadAttachment）', () => 
       failure: 'unsupported_type',
     })
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('動画は Storage の署名付き TUS で送り、進捗を伝えてから登録する', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'anon')
+    tus.options = []
+    tus.fail = false
+    mockFetch
+      .mockResolvedValueOnce(json({ token: 'tok', path: 'w/c/u/videos/a.mp4', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true, bucket: 'chat-videos' }))
+      .mockResolvedValueOnce(json({ fileId: 'v1', fileName: 'a.mp4', mimeType: 'video/mp4', fileSize: 12 }, 201))
+    const onProgress = vi.fn()
+
+    await expect(
+      uploadAttachment('channel-1', new File(['video-bytes'], 'a.mp4', { type: 'video/mp4' }), { onProgress }),
+    ).resolves.toMatchObject({ fileId: 'v1' })
+
+    expect(uploadToSignedUrl).not.toHaveBeenCalled()
+    expect(tus.options[0]).toMatchObject({
+      endpoint: 'https://example.supabase.co/storage/v1/upload/resumable/sign',
+      headers: { apikey: 'anon', 'x-signature': 'tok' },
+      metadata: { bucketName: 'chat-videos', objectName: 'w/c/u/videos/a.mp4', contentType: 'video/mp4' },
+    })
+    expect(onProgress).toHaveBeenCalledWith(6, 12)
+    vi.unstubAllEnvs()
+  })
+
+  it('TUS の送信に失敗した動画は登録しない', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'anon')
+    tus.options = []
+    tus.fail = true
+    mockFetch.mockResolvedValueOnce(json({ token: 'tok', path: 'p', storagePath: 'w/c/u/videos/a.mp4', mimeType: 'video/mp4', resumable: true, bucket: 'chat-videos' }))
+
+    await expect(
+      uploadAttachment('channel-1', new File(['x'], 'a.mp4', { type: 'video/mp4' })),
+    ).rejects.toMatchObject({ failure: 'storage' })
+    expect(tus.options).toHaveLength(1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    tus.fail = false
+    vi.unstubAllEnvs()
   })
 })

@@ -6,6 +6,11 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { CHAT_VIDEOS_BUCKET, groupAttachmentPathsByBucket, isVideoMimeType } from '@/lib/attachments'
+import { resolveVideoPlaybackSource } from '@/lib/video/transcode'
+
+// 動画は <video> が再生中に Range 要求を繰り返すため、PDF より長く署名を保つ
+const VIDEO_SIGNED_URL_TTL_SECONDS = 4 * 60 * 60
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -110,8 +115,8 @@ export async function GET(req: Request, { params }: RouteContext) {
 
       if (wantOriginal) {
         const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
-        if (!entitlements.rights.canUploadOriginal) {
-          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の有効な支援とワークスペースの残高が必要です' }, { status: 403 })
+        if (!entitlements.rights.canDownloadOriginal) {
+          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の Solo 支援とワークスペースの残高が必要です', code: 'original-download-entitlement-required' }, { status: 403 })
         }
       } else if (status === 'pending' || status === 'processing') {
         return NextResponse.json({ error: 'PDFを最適化中です。しばらくしてから再試行してください' }, { status: 409 })
@@ -132,6 +137,53 @@ export async function GET(req: Request, { params }: RouteContext) {
       if (signedError || !signed) {
         console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
         return new NextResponse(null, { status: 502 })
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
+
+    // 動画は Vercel の Function 経由だと応答サイズ上限に掛かり、シークもできない。
+    // 本体を中継せず、Range 要求を受けられる Storage の短期署名 URL へ転送する。
+    // 再生・保存はチャンネル/プロジェクトのメンバー全員が可（アップロードだけが支援者の能動権）
+    if (isVideoMimeType(file.mimeType)) {
+      if (wantThumb) return new NextResponse(null, { status: 404 })
+      const search = new URL(req.url).searchParams
+      const wantOriginal = search.get('original') === '1'
+      const wantDownload = wantOriginal || search.get('download') === '1'
+
+      // 再生・通常の保存は全員が圧縮版（変換中・失敗・未変換なら原本）。
+      // 原本のダウンロードは画像・PDF と同じく Solo 支援者本人だけ（課金無効なら全員）
+      let source = resolveVideoPlaybackSource({ ...file, storagePath: file.storagePath })
+      if (wantOriginal) {
+        const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+        if (!entitlements.rights.canDownloadOriginal) {
+          return NextResponse.json(
+            {
+              error: '元の動画をダウンロードするには、本人の Solo 支援とワークスペースの残高が必要です',
+              code: 'original-download-entitlement-required',
+            },
+            { status: 403 },
+          )
+        }
+        source = { storagePath: file.storagePath, downloadName: file.fileName, variant: 'original' }
+      }
+
+      const { data: signed, error: signedError } = await supabase.storage
+        .from(CHAT_VIDEOS_BUCKET)
+        .createSignedUrl(
+          source.storagePath,
+          VIDEO_SIGNED_URL_TTL_SECONDS,
+          wantDownload ? { download: source.downloadName } : undefined,
+        )
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] Video signed URL failed:', signedError)
+        return NextResponse.json({ error: '動画の取得に失敗しました' }, { status: 502 })
+      }
+      // アプリは認証ヘッダーを付けられない OS のプレイヤーで再生するため、転送ではなく URL を受け取る
+      if (search.get('as') === 'json') {
+        return NextResponse.json(
+          { url: signed.signedUrl, expiresIn: VIDEO_SIGNED_URL_TTL_SECONDS, variant: source.variant },
+          { headers: { 'Cache-Control': 'private, no-store' } },
+        )
       }
       return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
     }
@@ -341,9 +393,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
+        // 動画は専用バケット（chat-videos）に置くため、パスごとに削除先を分ける
         data: {
-          bucket: 'chat-attachments',
-          paths: [...new Set([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath].filter((p): p is string => !!p))],
+          targets: groupAttachmentPathsByBucket([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath]),
         },
       })
     }

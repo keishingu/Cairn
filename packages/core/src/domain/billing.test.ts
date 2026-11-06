@@ -37,19 +37,21 @@ describe('isPlacementEligibleCredit', () => {
 })
 
 describe('resolveUploadRights', () => {
-  it('セルフホストでは支援状態にかかわらず原本・大容量・動画を許可する', () => {
+  it('セルフホストでは支援状態にかかわらず原本・大容量・動画の保存と原本の取得を許可する', () => {
     expect(resolveUploadRights(false, false, false)).toEqual({
       canUploadOriginal: true,
       canUploadLargeFile: true,
       canUploadVideo: true,
+      canDownloadOriginal: true,
     })
   })
 
-  it('funded のアクティブ支援者にだけ原本・大容量・動画を許可する', () => {
+  it('funded のアクティブ支援者にだけ原本・大容量・動画の保存と原本の取得を許可する', () => {
     expect(resolveUploadRights(true, true, true)).toEqual({
       canUploadOriginal: true,
       canUploadLargeFile: true,
       canUploadVideo: true,
+      canDownloadOriginal: true,
     })
   })
 
@@ -57,12 +59,13 @@ describe('resolveUploadRights', () => {
     [false, true],
     [true, false],
   ] as const)(
-    '権利または残高を満たさない場合は有料ストレージを許可しない',
+    '権利または残高を満たさない場合は有料ストレージも原本の取得も許可しない',
     (isActiveSupporter, workspaceFunded) => {
       expect(resolveUploadRights(isActiveSupporter, workspaceFunded, true)).toEqual({
         canUploadOriginal: false,
         canUploadLargeFile: false,
         canUploadVideo: false,
+        canDownloadOriginal: false,
       })
     },
   )

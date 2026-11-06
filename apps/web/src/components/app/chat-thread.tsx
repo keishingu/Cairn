@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, matchMentionQuery, sortMentionCandidatesByProject, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, isVideoAttachmentMime, matchMentionQuery, sortMentionCandidatesByProject, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
 import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
 import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
@@ -75,13 +75,17 @@ import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
 import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from '@/lib/attachments/upload-client'
+import { VideoAttachment } from '@/components/app/video-attachment'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
+import { useRealtimeChannel } from '@/components/realtime/use-realtime-channel'
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  // 動画は Solo の支援者本人だけが送れる。選べない人を作らず、送信時にサーバーが理由つきで断る
+  'video/mp4', 'video/quicktime', 'video/webm',
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -93,6 +97,7 @@ const ACCEPT_FILE_TYPES = [
   // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
   // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.mp4', '.m4v', '.mov', '.webm',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx',
   '.txt', '.md', '.markdown', '.csv',
 ].join(',')
@@ -597,6 +602,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   cursor: 'pointer',
                 }}
               />
+            ) : isVideoAttachmentMime(a.mimeType) ? (
+              <VideoAttachment key={a.fileId} fileId={a.fileId} fileName={a.fileName} maxWidth={attachments.length === 1 ? 360 : 240} />
             ) : (
               <a
                 key={a.fileId}
@@ -788,7 +795,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, finalizeRetries, onRetryFinalize, onRemoveFinalizeRetry, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, finalizeRetries, onRetryFinalize, onRemoveFinalizeRetry, onFilesSelect, onRemoveAttachment, isUploading, uploadProgress, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -807,6 +814,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
+  /** 再開可能アップロード（動画）の進捗（0〜100）。進捗の無い送信では null */
+  uploadProgress: number | null
   mentionMembers?: { userId: string; displayName: string }[]
   /** 候補の絞り込みに必要なデータを取得できなかった時のメッセージ。候補の代わりに表示する */
   mentionMembersError?: string | null
@@ -1069,7 +1078,9 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     )
   })()
 
-  // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ
+  // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ。
+  // textarea とオーバーレイの両方に scrollbar-gutter: stable を付ける。長文で textarea にだけスクロールバーが出ると
+  // 内容幅が変わって折り返し位置がずれ、見えている文字とキャレットの位置が食い違うため
   const draftOverlay = React.useMemo(() => {
     if (insertedMentions.length === 0 || !draft) return null
     const sorted = [...new Set(insertedMentions.map(m => m.displayName))].sort((a, b) => b.length - a.length)
@@ -1146,7 +1157,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       ))}
       {isUploading && (
         <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 18, flexShrink: 0 }}>
-          ⋯
+          {uploadProgress !== null ? <span style={{ fontSize: 12, fontWeight: 600 }}>{uploadProgress}%</span> : '⋯'}
         </div>
       )}
     </div>
@@ -1216,7 +1227,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 240 }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', scrollbarGutter: 'stable', maxHeight: 240 }}>
                   {draftOverlay}
                 </div>
               )}
@@ -1237,7 +1248,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 rows={1}
-                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box' }}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box', scrollbarGutter: 'stable' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -1309,7 +1320,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               </div>
             )}
             {draftOverlay && (
-              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 320 }}>
+              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', scrollbarGutter: 'stable', maxHeight: 320 }}>
                 {draftOverlay}
               </div>
             )}
@@ -1330,7 +1341,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box' }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box', scrollbarGutter: 'stable' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
@@ -1568,6 +1579,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const uploadScopeRef = React.useRef({ channelId })
   if (uploadScopeRef.current.channelId !== channelId) uploadScopeRef.current = { channelId }
   const [isUploading, setIsUploading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
   // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
@@ -1649,6 +1661,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
+  useRealtimeChannel(channelId)
   const latestMessagesQuery = useChannelMessages(channelId)
   const initialMessageQuery = useChannelInitialMessage(initialUnreadPosition ? channelId : null)
   const latestMessages = latestMessagesQuery.data ?? EMPTY_MESSAGES
@@ -2186,7 +2200,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       }
     }
     try {
-      const data = await uploadAttachment(uploadChannelId, file)
+      const data = await uploadAttachment(uploadChannelId, file, {
+        onProgress: (sent, total) => {
+          if (uploadScopeRef.current === uploadScope && total > 0) setUploadProgress(Math.floor((sent / total) * 100))
+        },
+      })
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
     } catch (error) {
@@ -2206,7 +2224,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       const failure = error instanceof AttachmentUploadError ? error.failure : null
       setSendError(
         failure === 'unsupported_type'
-          ? t('Unsupported file type (image, PDF, Word, Excel, PowerPoint, CSV, or text)')
+          ? t('Unsupported file type (image, video, PDF, Word, Excel, PowerPoint, CSV, or text)')
           : failure === 'unknown_type'
             ? t('Unknown file type. Add an extension and upload again.')
             : ((error instanceof AttachmentUploadError ? error.serverMessage : undefined) ?? t('Could not upload the file')),
@@ -2225,7 +2243,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       const successful = results.filter((r): r is PendingAttachment => r !== null)
       if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
-      if (uploadScopeRef.current === uploadScope) setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) {
+        setIsUploading(false)
+        setUploadProgress(null)
+      }
     }
   }
 
@@ -2537,6 +2558,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
+        uploadProgress={uploadProgress}
         mentionMembers={mentionMembers}
         mentionMembersError={mentionMembersError}
         onRetryMentionMembers={retryMentionMembers}

@@ -1,9 +1,19 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { JWK, SupabaseClient } from '@supabase/supabase-js'
+import { isAuthApiError, isAuthRetryableFetchError } from '@supabase/supabase-js'
+import type { AuthError, JWK, SupabaseClient } from '@supabase/supabase-js'
 
 type SupabaseAuth = SupabaseClient['auth']
+type AccessTokenCheck = { userId: string; retryable: false } | { userId: null; retryable: boolean }
+
+function failedAccessTokenCheck(error: AuthError | null): AccessTokenCheck {
+  const status = isAuthApiError(error) ? error.status : undefined
+  return {
+    userId: null,
+    retryable: isAuthRetryableFetchError(error) || status === 429 || (status !== undefined && status >= 500),
+  }
+}
 
 // JWKS をサーバーレス関数インスタンス内でキャッシュし、非対称署名鍵での
 // ローカル検証時に .well-known/jwks.json への往復を warm リクエストで省く（TTL: 10分）。
@@ -59,7 +69,7 @@ function needsJwks(header: { alg?: string; kid?: string } | null): boolean {
 }
 
 /**
- * access token を検証してユーザー ID（JWT の sub）を返す。検証できなければ null。
+ * access token を検証し、ユーザー ID（JWT の sub）または認証失敗の再試行可否を返す。
  *
  * - 非対称署名鍵（RS/ES + kid）: キャッシュ済み JWKS で署名をローカル検証する
  *   （JWKS 取得後はネットワーク往復なし）
@@ -74,20 +84,24 @@ function needsJwks(header: { alg?: string; kid?: string } | null): boolean {
  * 通常ログインと同じユーザー JWT なので署名検証は通る。外部アプリに Cairn の API を使わせないため、
  * Bearer・Cookie のどちらで届いても null にする（docs/oidc-design.md §5）。
  */
-export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Promise<string | null> {
+export async function checkAccessToken(auth: SupabaseAuth, token?: string): Promise<AccessTokenCheck> {
   let resolvedToken = token
   if (!resolvedToken) {
-    const { data } = await auth.getSession()
+    const { data, error } = await auth.getSession()
     resolvedToken = data.session?.access_token
-    if (!resolvedToken) return null
+    if (!resolvedToken) return failedAccessTokenCheck(error)
   }
 
   const header = decodeJwtHeader(resolvedToken)
   const keys = needsJwks(header) ? await getCachedJwks() : []
   const { data, error } = await auth.getClaims(resolvedToken, keys.length > 0 ? { jwks: { keys } } : undefined)
-  if (error || !data?.claims?.sub) return null
-  if (!isCairnSessionClaims(data.claims)) return null
-  return data.claims.sub
+  if (error) return failedAccessTokenCheck(error)
+  if (!data?.claims?.sub || !isCairnSessionClaims(data.claims)) return failedAccessTokenCheck(null)
+  return { userId: data.claims.sub, retryable: false }
+}
+
+export async function verifyAccessToken(auth: SupabaseAuth, token?: string): Promise<string | null> {
+  return (await checkAccessToken(auth, token)).userId
 }
 
 /**

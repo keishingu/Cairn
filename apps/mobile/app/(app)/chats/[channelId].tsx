@@ -39,6 +39,7 @@ import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
+import { useRealtimeChannel } from '../../../components/realtime-provider'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -55,7 +56,10 @@ import { useMe } from '../../../hooks/use-account'
 import { useSession } from '../../../lib/session-context'
 import { attachmentRequestHeaders, type AttachmentAuth } from '../../../lib/attachment-auth'
 import { useSelectedWorkspaceId } from '../../../hooks/use-selected-workspace-id'
-import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, openChannelDisappeared, sortMentionCandidatesByProject } from '@cairn/shared'
+import { displayAppName, FEATURE_FLAGS, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, isVideoAttachmentMime, openChannelDisappeared, sortMentionCandidatesByProject } from '@cairn/shared'
+import * as WebBrowser from 'expo-web-browser'
+import { fetchVideoPlaybackUrl } from '../../../lib/video-playback'
+import { useUploadRights } from '../../../hooks/use-upload-rights'
 import { shareCachedAttachment } from '../../../lib/attachment-cache'
 import {
   attachmentViewer,
@@ -129,6 +133,7 @@ function formatTime(value: string) {
 
 function attachmentIcon(mimeType: string | null): IoniconName {
   if (mimeType?.startsWith('image/')) return 'image-outline'
+  if (isVideoAttachmentMime(mimeType)) return 'videocam-outline'
   if (mimeType === 'application/pdf') return 'document-text-outline'
   if (mimeType?.startsWith('text/')) return 'document-outline'
   return 'attach-outline'
@@ -146,6 +151,11 @@ async function openAttachmentFile(
   t: (message: string, values?: Record<string, string | number>) => string,
 ): Promise<void> {
   try {
+    // 動画は最大 500MiB あり、端末へ丸ごと落とさず OS のブラウザで再生する（保存はそのプレイヤーの共有から）
+    if (isVideoAttachmentMime(mimeType)) {
+      await WebBrowser.openBrowserAsync(await fetchVideoPlaybackUrl(fileId, t))
+      return
+    }
     await shareCachedAttachment({
       fileUrl: attachmentUrl(fileId),
       fileId,
@@ -729,6 +739,9 @@ export default function ChatThreadScreen() {
   const toggleBookmark = useToggleMessageBookmark(channelId ?? '')
   const moveToThread = useMoveMessagesToThread(channelId ?? '')
   const upload = useAttachmentUpload(channelId ?? '')
+  // アプリは課金の導線を出さないため、動画のボタンは送れる本人（Solo 支援者・課金無効）にだけ出す
+  const uploadRights = useUploadRights()
+  const canUploadVideo = uploadRights.data?.canUploadVideo === true
   const { data: me } = useMe()
   const projectChannelsQuery = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
@@ -1005,6 +1018,9 @@ export default function ChatThreadScreen() {
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）。
+  // 他のタブへ移ってもアンマウントされないため、フォーカスが外れたら登録を外して猶予後に購読をやめる
+  useRealtimeChannel(isFocused ? channelId ?? null : null)
   const goBackToList = React.useCallback(() => {
     router.dismissTo('/(app)/chats')
   }, [router])
@@ -2112,6 +2128,32 @@ export default function ChatThreadScreen() {
                 <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Photo')} hitSlop={6} onPress={() => void upload.pickImage()}>
                   <Ionicons name="image-outline" size={17} color={palette.text3} />
                 </Pressable>
+                {/* 支援状態を取れないときは動画ボタンを黙って消さず、失敗を見せて再試行させる */}
+                {uploadRights.isError && (
+                  <Pressable
+                    style={styles.attachmentAction}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('Could not check whether you can upload videos. Tap to retry.')}
+                    hitSlop={6}
+                    onPress={() =>
+                      Alert.alert(
+                        t('Could not check whether you can upload videos. Tap to retry.'),
+                        uploadRights.error instanceof Error ? uploadRights.error.message : undefined,
+                        [
+                          { text: t('Cancel'), style: 'cancel' },
+                          { text: t('Retry'), onPress: () => void uploadRights.refetch() },
+                        ],
+                      )
+                    }
+                  >
+                    <Ionicons name="videocam-off-outline" size={17} color={palette.redText} />
+                  </Pressable>
+                )}
+                {canUploadVideo && (
+                  <Pressable style={styles.attachmentAction} accessibilityRole="button" accessibilityLabel={t('Video')} hitSlop={6} onPress={() => void upload.pickVideo()}>
+                    <Ionicons name="videocam-outline" size={17} color={palette.text3} />
+                  </Pressable>
+                )}
                 <Pressable
                   style={styles.attachmentAction}
                   accessibilityRole="button"
@@ -2164,7 +2206,9 @@ export default function ChatThreadScreen() {
                     >
                       {pending.status === 'error' && pending.error
                         ? `${pending.fileName}: ${pending.error}`
-                        : pending.fileName}
+                        : pending.status === 'uploading' && pending.progress !== undefined
+                          ? `${pending.fileName} (${pending.progress}%)`
+                          : pending.fileName}
                     </Text>
                     {pending.status === 'error' && pending.retryFinalize && (
                       <Pressable

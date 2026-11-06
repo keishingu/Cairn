@@ -14,6 +14,7 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { toast } from '@/lib/toast'
 import { describeUploadFailures } from '@/lib/files/upload-failures'
 import { createClient } from '@/lib/supabase/client'
+import { openFileDownload } from '@/lib/attachments/download-original'
 import { useT } from '@/components/locale-provider'
 
 type Translate = (message: string, values?: Record<string, string | number>) => string
@@ -159,7 +160,8 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
     () =>
       items.map((it) => ({
         key: it.id,
-        src: it.originalUrl ?? it.publicUrl,
+        // 表示は支援状態を問わず圧縮版。原本はメニューから本人だけが保存する
+        src: it.publicUrl,
       })),
     [items],
   )
@@ -283,6 +285,13 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
                       color: '#fff',
                     }}
                     actions={[
+                      ...(item.originalDownloadUrl
+                        ? [{
+                            icon: 'external-link' as const,
+                            label: t('Download original'),
+                            onSelect: () => openFileDownload(item.originalDownloadUrl!, item.fileName),
+                          }]
+                        : []),
                       {
                         icon: 'trash',
                         label: t('Delete'),

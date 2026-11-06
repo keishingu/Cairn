@@ -3,7 +3,8 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { verifyAccessToken } from '@/lib/auth-jwt'
+import { fetchWithRetryableAuthRefresh, resolveLocale, translate } from '@cairn/shared'
+import { checkAccessToken } from '@/lib/auth-jwt'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -23,28 +24,32 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']!
   const supabasePublishableKey = process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!
 
+  const authCookies = new Map<string, { name: string; value: string; options: CookieOptions }>()
+
   const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
+    global: { fetch: fetchWithRetryableAuthRefresh },
     cookies: {
       getAll() {
         return request.cookies.getAll()
       },
       setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        for (const cookie of cookiesToSet) {
+          request.cookies.set(cookie.name, cookie.value)
+          authCookies.set(cookie.name, cookie)
+        }
+        requestHeaders.set('cookie', request.cookies.toString())
         supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options),
-        )
       },
     },
   })
 
   // getClaims で JWT をローカル検証する（非対称署名鍵なら Auth API 往復なし）。
-  // getSession 経由で期限切れセッションのリフレッシュ副作用（Cookie 再発行）も維持される。
-  const userId = await verifyAccessToken(supabase.auth)
+  const { userId, retryable } = await checkAccessToken(supabase.auth)
   const { pathname } = request.nextUrl
   const isAuthRoute = pathname.startsWith('/auth')
   const isMobileHandoffRoute = pathname === '/auth/mobile-handoff'
-  const isMobileSignoutRoute = pathname === '/auth/mobile-signout'
+  const isMobileSignoutRoute =
+    pathname === '/auth/mobile-signout' || pathname === '/auth/mobile-device-signout'
   // トップページは未ログインでも閲覧できる公開 LP
   const isLandingRoute = pathname === '/'
   const isLandingAsset =
@@ -75,17 +80,39 @@ export async function middleware(request: NextRequest) {
   // オンボーディングはログイン済みユーザーが /auth/* にリダイレクトされないよう除外
   const isOnboardingRoute = pathname.startsWith('/onboarding')
 
+  function withCookies(response: NextResponse) {
+    for (const { name, value, options } of authCookies.values()) {
+      response.cookies.set(name, value, options)
+    }
+    if (authCookies.size) response.headers.set('Cache-Control', 'private, no-store')
+    if (isWebView) {
+      response.cookies.set('cairn-webview', '1', {
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+        path: '/',
+      })
+    }
+    return response
+  }
+
   if (!userId && !isAuthRoute && !isPublicRoute) {
+    if (retryable) {
+      const locale = resolveLocale('system', request.headers.get('accept-language'))
+      return withCookies(new NextResponse(translate(locale, 'Could not connect. Try again.'), {
+        status: 503,
+        headers: { 'Cache-Control': 'private, no-store', 'Content-Type': 'text/plain; charset=utf-8' },
+      }))
+    }
     const loginUrl = new URL('/auth/login', request.url)
     // MCP の認可（/oauth/authorize）と「Cairn でログイン」の同意画面（/oidc/authorize）は、
     // ログイン後に同じ画面へ戻す
     if (pathname === '/oauth/authorize' || pathname === '/oidc/authorize') {
       loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
     }
-    return NextResponse.redirect(loginUrl)
+    return withCookies(NextResponse.redirect(loginUrl))
   }
   if (userId && isLandingRoute) {
-    return NextResponse.redirect(new URL('/chats', request.url))
+    return withCookies(NextResponse.redirect(new URL('/chats', request.url)))
   }
   if (
     userId &&
@@ -94,18 +121,10 @@ export async function middleware(request: NextRequest) {
     !isMobileHandoffRoute &&
     !isMobileSignoutRoute
   ) {
-    return NextResponse.redirect(new URL('/chats', request.url))
+    return withCookies(NextResponse.redirect(new URL('/chats', request.url)))
   }
 
-  if (isWebView) {
-    supabaseResponse.cookies.set('cairn-webview', '1', {
-      sameSite: 'lax',
-      secure: request.nextUrl.protocol === 'https:',
-      path: '/',
-    })
-  }
-
-  return supabaseResponse
+  return withCookies(supabaseResponse)
 }
 
 export const config = {

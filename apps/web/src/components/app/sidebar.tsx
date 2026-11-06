@@ -7,7 +7,7 @@ import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
-import { createClient } from '@/lib/supabase/client'
+import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { UserStatus } from '@/lib/user-status'
 import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
@@ -567,7 +567,6 @@ const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const t = useT()
-  const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
@@ -598,10 +597,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   }, [menuOpen])
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
-    router.refresh()
+    if (!(await signOutCurrentSession())) {
+      window.alert(t('Could not sign out. Please try again.'))
+      return
+    }
+    window.location.replace('/auth/login')
   }
 
   const userMenu = menuOpen && (

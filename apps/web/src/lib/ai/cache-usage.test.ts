@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from 'vitest'
-import { summarizeChatCacheUsage } from './cache-usage'
+import { summarizeChatCacheUsage, summarizeStepUsage } from './cache-usage'
 
 const usage = (promptTokens: number, completionTokens: number) => ({
   promptTokens,
@@ -38,5 +38,46 @@ describe('summarizeChatCacheUsage', () => {
     expect(summary.cacheReadInputTokens).toBeNull()
     expect(summary.cacheCreationInputTokens).toBeNull()
     expect(summary.inputTokens).toBe(500)
+  })
+})
+
+describe('summarizeStepUsage', () => {
+  test('OpenAI の cachedPromptTokens をキャッシュ読みとして扱い、書き込みは null にする', () => {
+    expect(
+      summarizeStepUsage({ usage: usage(1000, 50), providerMetadata: { openai: { cachedPromptTokens: 800 } } }),
+    ).toEqual({ inputTokens: 1000, outputTokens: 50, cacheReadInputTokens: 800, cacheCreationInputTokens: null })
+  })
+
+  test('OpenAI が cachedPromptTokens を返さない（null / 未定義）ときは 0 ではなく null にする', () => {
+    expect(
+      summarizeStepUsage({ usage: usage(10, 5), providerMetadata: { openai: { cachedPromptTokens: null } } })
+        .cacheReadInputTokens,
+    ).toBeNull()
+    expect(summarizeStepUsage({ usage: usage(10, 5), providerMetadata: undefined })).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadInputTokens: null,
+      cacheCreationInputTokens: null,
+    })
+  })
+
+  test('Anthropic のキャッシュ読み書きをそのまま返す', () => {
+    expect(
+      summarizeStepUsage({
+        usage: usage(5, 7),
+        providerMetadata: { anthropic: { cacheReadInputTokens: 0, cacheCreationInputTokens: 300 } },
+      }),
+    ).toMatchObject({ cacheReadInputTokens: 0, cacheCreationInputTokens: 300 })
+  })
+})
+
+describe('summarizeChatCacheUsage（OpenAI）', () => {
+  test('OpenAI のキャッシュ読みを全ステップで合計し、書き込みは null のままにする', () => {
+    const summary = summarizeChatCacheUsage([
+      { usage: usage(1000, 10), providerMetadata: { openai: { cachedPromptTokens: 0 } } },
+      { usage: usage(1200, 20), providerMetadata: { openai: { cachedPromptTokens: 1000 } } },
+    ])
+    expect(summary.cacheReadInputTokens).toBe(1000)
+    expect(summary.cacheCreationInputTokens).toBeNull()
   })
 })

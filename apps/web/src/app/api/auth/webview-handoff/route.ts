@@ -36,7 +36,7 @@ export async function POST() {
   const { data: userData, error: userError } = await admin.auth.admin.getUserById(userId)
   const email = userData?.user?.email
   if (userError || !email) {
-    console.error('[webview-handoff] ユーザーの email 取得に失敗:', userError)
+    console.error('[webview-handoff] ユーザーの email 取得に失敗')
     return NextResponse.json({ error: 'Failed to resolve user' }, { status: 500 })
   }
 
@@ -47,9 +47,12 @@ export async function POST() {
   })
   const tokenHash = linkData?.properties?.hashed_token
   if (linkError || !tokenHash) {
-    console.error('[webview-handoff] magiclink の発行に失敗:', linkError)
+    console.error('[webview-handoff] magiclink の発行に失敗')
     return NextResponse.json({ error: 'Failed to generate handoff token' }, { status: 500 })
   }
 
-  return NextResponse.json({ tokenHash, ...(workspaceId ? { workspaceId } : {}) })
+  return NextResponse.json(
+    { tokenHash, ...(workspaceId ? { workspaceId } : {}) },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }

@@ -5,18 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type SubscribeCallback = (status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED', err?: { message?: string }) => void
 
-const { channelRecords, workspaceChannels, mockCreateClient } = vi.hoisted(() => {
+const { channelRecords, mockCreateClient } = vi.hoisted(() => {
   const channelRecords: Array<{
     topic: string
     callback?: SubscribeCallback
     broadcastCallback?: (message: unknown) => void
   }> = []
-  const workspaceChannels: Array<{ id: string }> = []
   const mockCreateClient = vi.fn(() => ({
     channel: vi.fn((topic: string) => {
       const record: (typeof channelRecords)[number] = { topic }
       channelRecords.push(record)
       const channel = {
+        topic,
         on: vi.fn((_type, _filter, callback) => {
           record.broadcastCallback = callback
           return channel
@@ -35,7 +35,7 @@ const { channelRecords, workspaceChannels, mockCreateClient } = vi.hoisted(() =>
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
     },
   }))
-  return { channelRecords, workspaceChannels, mockCreateClient }
+  return { channelRecords, mockCreateClient }
 })
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -53,35 +53,59 @@ vi.mock('@/lib/chat/client', () => ({
     dms: ['dms'],
     messages: (id: string) => ['messages', id],
   },
-  useProjectChannels: () => ({ data: [] }),
-  useWorkspaceChannels: () => ({ data: workspaceChannels }),
-  useWorkspaceDms: () => ({ data: [] }),
 }))
 
-function renderProvider() {
+// チャットを表示している画面の代わり
+function OpenChat({ channelId }: { channelId: string }) {
+  useRealtimeChannel(channelId)
+  return null
+}
+
+function renderProvider(openChannelIds: string[] = []) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
-  const result = render(
+  const tree = (ids: string[]) => (
     <QueryClientProvider client={queryClient}>
       <React.Suspense fallback={null}>
         <RealtimeProvider>
           <div>child</div>
+          {ids.map(id => <OpenChat key={id} channelId={id} />)}
         </RealtimeProvider>
       </React.Suspense>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
-  return { ...result, queryClient }
+  const result = render(tree(openChannelIds))
+  return { ...result, queryClient, setOpenChannels: (ids: string[]) => result.rerender(tree(ids)) }
+}
+
+async function connectUserTopic() {
+  await act(async () => {
+    await Promise.resolve()
+  })
+  act(() => {
+    channelRecords[0]?.callback?.('SUBSCRIBED')
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
+function removedTopics() {
+  return mockCreateClient.mock.results.flatMap(result => {
+    const client = result.value as { removeChannel: { mock: { calls: Array<[{ topic?: string }]> } } }
+    return client.removeChannel.mock.calls.map(([channel]) => channel?.topic)
+  })
 }
 
 import { RealtimeProvider } from './realtime-provider'
+import { useRealtimeChannel } from './use-realtime-channel'
 
 describe('RealtimeProvider', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     channelRecords.length = 0
-    workspaceChannels.length = 0
     mockCreateClient.mockClear()
   })
 
@@ -259,54 +283,151 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notifications'] })
   })
 
-  it('チャンネルのtask broadcastでタスクqueryとそのチャンネルのメッセージqueryを再取得する', async () => {
-    workspaceChannels.push({ id: 'channel-1' })
-    const { queryClient } = renderProvider()
+  it('購読は user トピックと表示中のチャットだけで、チャンネル総数に比例しない', async () => {
+    renderProvider(['channel-1'])
+    await connectUserTopic()
+
+    expect(channelRecords.map(record => record.topic)).toEqual(['user:user-1', 'channel:channel-1'])
+  })
+
+  it('表示中のチャットを複数開くとその分だけ購読し、閉じると猶予後に外して古い扱いにする', async () => {
+    const { queryClient, setOpenChannels } = renderProvider(['channel-1', 'channel-2'])
+    await connectUserTopic()
+    expect(channelRecords.map(record => record.topic)).toEqual(['user:user-1', 'channel:channel-1', 'channel:channel-2'])
+
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    setOpenChannels(['channel-2'])
+    act(() => {
+      vi.advanceTimersByTime(4_999)
+    })
+    expect(removedTopics()).toEqual([])
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(removedTopics()).toEqual(['channel:channel-1'])
+    // 購読をやめた後の編集・リアクションは届かないため、次に開いたときに取り直す
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'], refetchType: 'none' })
+  })
+
+  it('猶予中に同じチャットへ戻ったら購読し直さない', async () => {
+    const { setOpenChannels } = renderProvider(['channel-1'])
+    await connectUserTopic()
+
+    setOpenChannels([])
+    act(() => {
+      vi.advanceTimersByTime(2_000)
+    })
+    setOpenChannels(['channel-1'])
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(removedTopics()).toEqual([])
+    expect(channelRecords.filter(record => record.topic === 'channel:channel-1')).toHaveLength(1)
+  })
+
+  it('表示中のチャットの JOIN 完了でそのチャンネルのメッセージを取り直す', async () => {
+    const { queryClient } = renderProvider(['channel-1'])
+    await connectUserTopic()
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
-    await act(async () => {
-      await Promise.resolve()
-    })
+    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
     act(() => {
-      channelRecords[0]?.callback?.('SUBSCRIBED')
+      topic?.callback?.('SUBSCRIBED')
     })
-    await act(async () => {
-      await Promise.resolve()
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files', 'channel-1'] })
+  })
+
+  it('user トピックのメッセージ通知で一覧と画面外チャンネルのメッセージを更新し、届いている表示中のチャットは二重に取らない', async () => {
+    const { queryClient } = renderProvider(['open-1'])
+    await connectUserTopic()
+    act(() => {
+      channelRecords.find(record => record.topic === 'channel:open-1')?.callback?.('SUBSCRIBED')
     })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    for (const operation of ['INSERT', 'UPDATE']) {
+      invalidate.mockClear()
+      act(() => {
+        channelRecords[0]?.broadcastCallback?.({
+          event: operation,
+          payload: { table: 'messages', operation, channel_ids: ['open-1', 'hidden-1'] },
+        })
+        vi.advanceTimersByTime(800)
+      })
+
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'hidden-1'] })
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files', 'hidden-1'] })
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['messages', 'open-1'] })
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    }
+  })
+
+  it('表示中のチャットが JOIN できていない間は user トピックの通知で再取得する', async () => {
+    const { queryClient } = renderProvider(['open-1'])
+    await connectUserTopic()
+    const topic = channelRecords.find(record => record.topic === 'channel:open-1')
+    act(() => {
+      topic?.callback?.('SUBSCRIBED')
+      topic?.callback?.('CHANNEL_ERROR', { message: 'socket closed' })
+    })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'messages', channel_ids: ['open-1'] } })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'open-1'] })
+  })
+
+  it('user トピックのタスク通知でタスク一覧と画面外チャンネルの印を更新する', async () => {
+    const { queryClient } = renderProvider()
+    await connectUserTopic()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'tasks', channel_ids: ['hidden-1'] } })
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'tasks', channel_ids: ['hidden-2'] } })
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'hidden-1'] })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    // 一括操作で続いた通知は1回の再取得にまとめる
+    expect(invalidate.mock.calls.filter(([arg]) => JSON.stringify(arg) === JSON.stringify({ queryKey: ['tasks'] }))).toHaveLength(1)
+  })
+
+  it('表示中のチャットのタスク broadcast ではそのチャンネルのメッセージを再取得する', async () => {
+    const { queryClient } = renderProvider(['channel-1'])
+    await connectUserTopic()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
     const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
     act(() => {
       topic?.broadcastCallback?.({ payload: { table: 'tasks' } })
     })
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
-    // タスク化済みの印（メッセージの linkedTasks）も更新する
+    // タスク化済みの印（メッセージの linkedTasks）
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'] })
   })
 
-  it('メッセージの新着・編集・削除通知と再接続でプロジェクト一覧を更新する', async () => {
-    workspaceChannels.push({ id: 'channel-1' })
+  it('再接続で切断中の取りこぼしを一括で取り直す', async () => {
     const { queryClient } = renderProvider()
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
-    await act(async () => { await Promise.resolve() })
-    act(() => { channelRecords[0]?.callback?.('SUBSCRIBED') })
-    await act(async () => { await Promise.resolve() })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    await connectUserTopic()
 
-    const topic = channelRecords.find(record => record.topic === 'channel:channel-1')
-    for (const event of ['INSERT', 'UPDATE', 'DELETE']) {
-      invalidate.mockClear()
-      act(() => {
-        topic?.broadcastCallback?.({ event, payload: { table: 'messages' } })
-        vi.advanceTimersByTime(800)
-      })
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
-    }
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
   })
 
   it('Unauthorized のチャンネル購読は破棄して再JOINしない', async () => {
-    workspaceChannels.push({ id: 'private-1' })
-    renderProvider()
+    renderProvider(['private-1'])
 
     await act(async () => {
       await Promise.resolve()
@@ -336,8 +457,7 @@ describe('RealtimeProvider', () => {
   })
 
   it('JWT 期限切れの Unauthorized ではチャンネル購読を破棄しない', async () => {
-    workspaceChannels.push({ id: 'channel-1' })
-    renderProvider()
+    renderProvider(['channel-1'])
 
     await act(async () => {
       await Promise.resolve()

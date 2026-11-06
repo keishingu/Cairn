@@ -3,6 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_REQUEST_BODY_BYTES } from './message-input'
+import { buildChatUsageRow, type ChatUsageRecord } from '@/lib/ai/chat-usage'
+import { chatRequestCredits } from '@/lib/ai/chat-model'
 
 const {
   mockGetAuthContext,
@@ -52,14 +54,33 @@ vi.mock('@/lib/ai/workspace-research', () => ({
   searchResearchDocuments: mockSearchResearchDocuments,
 }))
 vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), desc: vi.fn(), asc: vi.fn() }))
+// /ai の使用量の記録（応答後に非同期で書く）。評価する関数を受け取り、テストが応答の完了後に呼ぶ
+const { mockRecordUsage } = vi.hoisted(() => ({ mockRecordUsage: vi.fn() }))
+const { mockDbUpdate } = vi.hoisted(() => ({ mockDbUpdate: vi.fn() }))
+vi.mock('@/lib/ai/chat-usage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai/chat-usage')>()),
+  recordChatUsageAfterResponse: mockRecordUsage,
+}))
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn(),
+  and: vi.fn(),
+  desc: vi.fn(),
+  asc: vi.fn(),
+  isNull: vi.fn(),
+  inArray: vi.fn(),
+}))
 // select チェーンは where / from / orderBy をそのまま返し、limit で用意した結果を順に返す。
 vi.mock('@cairn/db', () => {
   const chain: Record<string, unknown> = {}
   for (const name of ['from', 'where', 'orderBy']) chain[name] = () => chain
   chain['limit'] = () => Promise.resolve(dbSelectResults.shift() ?? [])
   return {
-    db: { select: () => chain },
+    db: {
+      select: () => chain,
+      transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ insert: () => ({ values: () => Promise.resolve() }) }),
+      update: (...args: unknown[]) => mockDbUpdate(...args),
+    },
+    aiAttachments: { id: 'id', conversationId: 'conversationId', messageId: 'messageId' },
     aiConversations: { id: 'id', workspaceId: 'workspaceId', createdBy: 'createdBy' },
     aiMessages: {
       id: 'id',
@@ -97,6 +118,7 @@ const queueDbResults = (
 describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
+    mockDbUpdate.mockImplementation(() => ({ set: () => ({ where: () => Promise.resolve() }) }))
     mockIsBillingEnabled.mockReturnValue(false)
     mockRequireAiChatAccess.mockResolvedValue(null)
     mockSearchResearchDocuments.mockResolvedValue({ items: [] })
@@ -445,5 +467,121 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     await expect(response.json()).resolves.toEqual({ error: 'ワークスペースの資料検索の設定を読み込めませんでした' })
     expect(mockReserveCredits).not.toHaveBeenCalled()
     expect(mockStreamText).not.toHaveBeenCalled()
+  })
+  describe('使用量の記録（ai_chat_usage）', () => {
+    const usage = (promptTokens: number, completionTokens: number) => ({
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    })
+    const stepWithTools = (promptTokens: number, completionTokens: number, toolNames: string[]) => ({
+      usage: usage(promptTokens, completionTokens),
+      providerMetadata: undefined,
+      finishReason: toolNames.length > 0 ? 'tool-calls' : 'stop',
+      toolCalls: toolNames.map((toolName) => ({ toolName })),
+      toolResults: [],
+    })
+
+    type StreamOptions = {
+      onStepFinish: (step: unknown) => void
+      onError: () => Promise<void>
+      onFinish: (event: { text: string; steps: unknown[] }) => Promise<void>
+    }
+
+    // ストリームを読み切り、streamText に渡されたコールバックを返す
+    const startStream = async () => {
+      mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
+      queueDbResults('gpt-5')
+      const response = await postQuestion()
+      await response.text()
+      return mockStreamText.mock.calls[0]![0] as StreamOptions
+    }
+    const recordedRecord = (callIndex = 0): ChatUsageRecord =>
+      (mockRecordUsage.mock.calls[callIndex]![0] as () => ChatUsageRecord)()
+
+    it('onFinish で全ステップの使用量を1回だけ記録する', async () => {
+      const options = await startStream()
+      const steps = [stepWithTools(100, 10, ['searchDocuments', 'getTask']), stepWithTools(200, 30, [])]
+
+      await options.onFinish({ text: '回答', steps })
+
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      const record = recordedRecord()
+      expect(record).toMatchObject({
+        status: 'success',
+        error: null,
+        model: 'gpt-5',
+        requestCredits: null,
+        conversationId: 'conv-1',
+        userId: '00000000-0000-0000-0000-000000000001',
+        workspaceId: '00000000-0000-0000-0000-000000000010',
+        skillRunId: null,
+      })
+      expect(typeof record.assistantMessageId).toBe('string')
+      expect(record.steps).toHaveLength(2)
+      expect(record.durationMs).toBeGreaterThanOrEqual(0)
+      const row = buildChatUsageRow(record)
+      expect(row.toolNames).toEqual(['searchDocuments', 'getTask'])
+      expect(row.steps).toBe(2)
+      expect(row.inputTokens).toBe(300)
+    })
+
+    it('会話タイトルの更新だけが失敗しても、保存・課金済みなので成功として記録する', async () => {
+      const options = await startStream()
+      mockDbUpdate.mockImplementation(() => {
+        throw new Error('title update failed')
+      })
+
+      await options.onFinish({ text: '回答', steps: [stepWithTools(100, 10, [])] })
+
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      expect(recordedRecord()).toMatchObject({ status: 'success', error: null })
+    })
+
+    it('ステップの途中でストリームが失敗したら、完了済みのステップ付きで failed を記録する', async () => {
+      const options = await startStream()
+      options.onStepFinish(stepWithTools(100, 10, ['searchDocuments']))
+
+      await options.onError()
+
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      const record = recordedRecord()
+      expect(record).toMatchObject({ status: 'failed', error: 'stream_failed' })
+      expect(record.steps).toHaveLength(1)
+    })
+
+    it('onError の後に onFinish が来ても記録は1回で、onFinish のステップを使う', async () => {
+      const options = await startStream()
+      options.onStepFinish(stepWithTools(100, 10, ['searchDocuments']))
+
+      await options.onError()
+      await options.onFinish({ text: '', steps: [stepWithTools(100, 10, ['searchDocuments']), stepWithTools(50, 5, [])] })
+
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      const record = recordedRecord()
+      expect(record.status).toBe('failed')
+      expect(record.steps).toHaveLength(2)
+    })
+
+    it('クレジットの予約に失敗した 402 でも、credit_reservation_failed の行をステップなしで記録する', async () => {
+      mockIsBillingEnabled.mockReturnValue(true)
+      mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 1000 })
+      mockReserveCredits.mockResolvedValue(false)
+      queueDbResults('claude-opus-5-5')
+      process.env['ANTHROPIC_API_KEY'] = 'test-key'
+
+      const response = await postQuestion()
+
+      expect(response.status).toBe(402)
+      expect(mockRecordUsage).toHaveBeenCalledTimes(1)
+      const record = recordedRecord()
+      expect(record).toMatchObject({
+        status: 'failed',
+        error: 'credit_reservation_failed',
+        model: 'claude-opus-5-5',
+        requestCredits: chatRequestCredits('claude-opus-5-5'),
+        steps: [],
+      })
+    })
   })
 })

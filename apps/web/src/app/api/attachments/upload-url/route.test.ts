@@ -16,7 +16,9 @@ const {
   mockDeleteWhere,
   mockHasAttachmentUploadRequestSchema,
   mockUpdateSet,
+  mockStorageFrom,
 } = vi.hoisted(() => ({
+  mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockResolveUploadEntitlements: vi.fn(),
@@ -36,7 +38,12 @@ vi.mock('@/lib/billing/entitlements', () => ({
 }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
-    storage: { from: () => ({ createSignedUploadUrl: mockCreateSignedUploadUrl }) },
+    storage: {
+      from: (bucket: string) => {
+        mockStorageFrom(bucket)
+        return { createSignedUploadUrl: mockCreateSignedUploadUrl }
+      },
+    },
   }),
 }))
 vi.mock('@/lib/uploads/schema-readiness', () => ({
@@ -198,6 +205,68 @@ describe('/api/attachments/upload-url', () => {
       true,
     )
     expect(body.storagePath.endsWith('.pdf')).toBe(true)
+  })
+
+  it('Solo 支援者本人には 500MiB までの動画の再開可能アップロードURLを発行する', async () => {
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadVideo: true } })
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'IMG_0001.MOV',
+        mimeType: 'video/quicktime',
+        fileSize: 500 * 1024 * 1024,
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { storagePath: string; mimeType: string; resumable: boolean; bucket: string }
+    expect(body.mimeType).toBe('video/quicktime')
+    expect(body.resumable).toBe(true)
+    expect(body.storagePath).toContain(`/${DEV_USER_ID}/videos/`)
+    // 500MiB の上限は動画専用バケットだけに置き、chat-attachments は 50MiB のまま
+    expect(body.bucket).toBe('chat-videos')
+    expect(mockStorageFrom).toHaveBeenCalledWith('chat-videos')
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ storageBucket: 'chat-videos' }))
+    expect(mockResolveUploadEntitlements).toHaveBeenCalledWith(DEV_WORKSPACE_ID, DEV_USER_ID)
+  })
+
+  it('支援者本人でなければ動画のアップロードURLを発行しない', async () => {
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadVideo: false } })
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({ channelId: CHANNEL_ID, fileName: 'clip.mp4', mimeType: 'video/mp4', fileSize: 1024 }),
+    )
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'video-upload-entitlement-required' })
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
+    expect(mockInsertValues).not.toHaveBeenCalled()
+  })
+
+  it('500MiB を超える動画は支援者でも拒否する', async () => {
+    mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadVideo: true } })
+    const { POST } = await import('./route')
+    const res = await POST(
+      post({
+        channelId: CHANNEL_ID,
+        fileName: 'clip.mp4',
+        mimeType: 'video/mp4',
+        fileSize: 500 * 1024 * 1024 + 1,
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(mockCreateSignedUploadUrl).not.toHaveBeenCalled()
+  })
+
+  it('動画以外のファイルは支援状態を問い合わせず、50MiB 上限の chat-attachments に発行する', async () => {
+    const { POST } = await import('./route')
+    const res = await POST(post({ channelId: CHANNEL_ID, fileName: 'a.txt', mimeType: 'text/plain', fileSize: 10 }))
+
+    expect(mockResolveUploadEntitlements).not.toHaveBeenCalled()
+    expect(((await res.json()) as { bucket: string }).bucket).toBe('chat-attachments')
+    expect(mockStorageFrom).toHaveBeenCalledWith('chat-attachments')
   })
 
   it('migration適用前は署名付きURLを発行しない', async () => {
