@@ -66,6 +66,7 @@ vi.mock('@/components/app/pages/chat-detail-sidebar', () => ({
     <div data-testid="detail">{channelId}<button onClick={() => onJumpToMessage('detail-message')}>詳細からメッセージへ移動</button></div>
   ),
   ChatInfoDrawer: () => null,
+  CHAT_DETAIL_MESSAGE_MIN_WIDTH: 320,
 }))
 vi.mock('@/components/app/chat-thread', () => ({
   ChatThread: ({ channelId, targetMessage }: { channelId: string; targetMessage: { id: string } | null }) => {
