@@ -112,6 +112,14 @@ describe('useWorkspaceMembers', () => {
     expect(result.current.data).toEqual(STUB_WS_MEMBERS)
     expect(mockFetch).toHaveBeenCalledWith('/api/workspaces/members')
   })
+
+  it('取得に失敗したらエラーの JSON をメンバー一覧にせずエラーにする', async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }))
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useWorkspaceMembers(), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.data).toBeUndefined()
+  })
 })
 
 describe('useProjectMembers', () => {

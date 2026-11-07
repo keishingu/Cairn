@@ -340,4 +340,19 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
   test('他のワークスペースからは、取り込んだ投稿者が見えない', async () => {
     expect(await service.listImportIdentities(otherWorkspaceId, 'teams-consumer')).toEqual([])
   })
+
+  test('後のエクスポートで名前が分かると、作成済みの取り込み用プロフィールの表示名も変わる', async () => {
+    const key = 'mri:8:live:.cid.0000000unknown1'
+    const before = (await db.db.execute(sql`select p.display_name from import_identities i join profiles p on p.id = i.profile_id where i.workspace_id = ${workspaceId} and i.external_key = ${key}`)).rows[0] as { display_name: string }
+    expect(before.display_name).toBe('名前不明の参加者')
+    await service.createImportJob(workspaceId, adminId, {
+      source: 'teams-consumer',
+      exportedAt: bundle.exportedAt,
+      conversations: [{ externalId: COMMUNITY, channelId, totalMessages: messages.length, unknownPolicy: 'include_unknown' }],
+      identities: identities.map(identity => identity.key === key ? { ...identity, displayName: 'Jiro Suzuki' } : identity),
+      links: [],
+    })
+    const after = (await db.db.execute(sql`select p.display_name from import_identities i join profiles p on p.id = i.profile_id where i.workspace_id = ${workspaceId} and i.external_key = ${key}`)).rows[0] as { display_name: string }
+    expect(after.display_name).toBe('Jiro Suzuki')
+  })
 })

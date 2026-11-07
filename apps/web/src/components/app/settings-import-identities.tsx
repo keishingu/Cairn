@@ -21,7 +21,9 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
   const queryClient = useQueryClient()
   const identitiesQuery = useImportIdentities('teams-consumer', enabled)
   const membersQuery = useWorkspaceMembers({ enabled })
-  const members = Array.isArray(membersQuery.data) ? membersQuery.data.filter(member => member.membershipStatus === 'active') : []
+  // メンバー一覧が取れるまで紐づけを変えさせない（空の一覧で「紐づけない」しか選べない状態にしない）
+  const members = membersQuery.data?.filter(member => member.membershipStatus === 'active') ?? []
+  const membersReady = membersQuery.isSuccess
   const [pending, setPending] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -58,6 +60,11 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
       <p style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6 }}>
         {t('Match participants of the imported conversations to members. Their past messages and reactions are then shown as the member. Choose a member only when you have confirmed it is the same person.')}
       </p>
+      {membersQuery.isError && (
+        <InlineError variant="box" style={{ marginBottom: 8 }}>
+          {t('Could not load members')} {membersQuery.error instanceof Error ? membersQuery.error.message : ''}
+        </InlineError>
+      )}
       {error && <InlineError variant="box" style={{ marginBottom: 8 }}>{error}</InlineError>}
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -77,7 +84,7 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
                   <select
                     aria-label={t('Cairn member for {name}', { name: identity.displayName ?? '' })}
                     value={identity.linkedUserId ?? ''}
-                    disabled={pending === identity.id}
+                    disabled={!membersReady || pending === identity.id}
                     onChange={event => void change(identity.id, event.target.value || null)}
                   >
                     <option value="">{t('Do not match')}</option>

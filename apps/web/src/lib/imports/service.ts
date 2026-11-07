@@ -108,11 +108,12 @@ export async function createImportJob(workspaceId: string, userId: string, input
         // 名前は分かった方を残す（後のエクスポートで名前が判明した場合）
         set: { displayName: sql`coalesce(excluded.display_name, ${importIdentities.displayName})` },
       })
+      await syncImportProfileNames(tx, workspaceId, input.source, input.identities.map(identity => identity.key))
     }
 
     // 管理者が確認した紐づけ。既に別の人へ紐づいているものは上書きしない（変更は投稿者の一覧から行う）。
     // 前のジョブで公開済みの投稿があれば、紐づけの画面と同じく送信者とリアクションを本人に付け替える（再実行で発言者が分かれないように）
-    const linkTargets = await loadIdentities(tx, workspaceId, input.source, input.links.map(link => link.key))
+    const linkTargets = await loadIdentities(tx, workspaceId, input.source, input.links.map(link => link.key), { lock: true })
     for (const link of input.links) {
       const identity = linkTargets.get(link.key)
       if (!identity || identity.isAnonymous || identity.linkedUserId) continue
@@ -150,6 +151,8 @@ const IMPORT_PROFILE_FALLBACK_NAMES: Record<string, string> = {
 
 interface IdentityRow {
   id: string
+  workspaceId: string
+  source: string
   externalKey: string
   displayName: string | null
   isAnonymous: boolean
@@ -177,18 +180,40 @@ async function ensureIdentityProfile(tx: Tx, identity: IdentityRow): Promise<str
   return profileId
 }
 
+/**
+ * 後のエクスポートで名前が分かった投稿者の、作成済みの取り込み用プロフィールの表示名を揃える。
+ * 公開済みの過去ログはプロフィールの表示名で出るので、投稿者の行だけ直すと名前不明のまま残る
+ */
+async function syncImportProfileNames(tx: Tx, workspaceId: string, source: string, keys: string[]) {
+  if (keys.length === 0) return
+  const { orm } = await loadDb()
+  const { sql } = orm
+  await tx.execute(sql`
+    update profiles p set display_name = left(i.display_name, 200)
+    from import_identities i
+    where i.profile_id = p.id and p.kind = 'import'
+      and i.workspace_id = ${workspaceId} and i.source = ${source}
+      and i.external_key in (${sql.join(keys.map(key => sql`${key}`), sql`, `)})
+      and i.display_name is not null
+      and p.display_name is distinct from left(i.display_name, 200)
+  `)
+}
+
 /** 公開したメッセージ・リアクションの送信者。紐づけた Cairn ユーザー本人か、投稿者ごとの取り込み用プロフィール */
 async function senderFor(tx: Tx, identity: IdentityRow): Promise<string> {
   return identity.linkedUserId ?? ensureIdentityProfile(tx, identity)
 }
 
-async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, keys: string[]): Promise<Map<string, IdentityRow>> {
+/** 送信者を付け替える前に読むときは lock = true にし、同じ投稿者への同時の紐づけ変更を直列にする（古い送信者から付け替えないように） */
+async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, keys: string[], options?: { lock?: boolean }): Promise<Map<string, IdentityRow>> {
   const { importIdentities, orm } = await loadDb()
   const { and, eq, inArray } = orm
   if (keys.length === 0) return new Map()
-  const rows = await db
+  const query = db
     .select({
       id: importIdentities.id,
+      workspaceId: importIdentities.workspaceId,
+      source: importIdentities.source,
       externalKey: importIdentities.externalKey,
       displayName: importIdentities.displayName,
       isAnonymous: importIdentities.isAnonymous,
@@ -198,6 +223,7 @@ async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, 
     })
     .from(importIdentities)
     .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, source), inArray(importIdentities.externalKey, keys)))
+  const rows = options?.lock ? await query.for('update') : await query
   return new Map(rows.map(row => [row.externalKey, row]))
 }
 
@@ -522,7 +548,13 @@ async function applyIdentitySender(tx: Tx, identity: IdentityRow, userId: string
         source: importIdentities.source,
       })
       .from(importIdentities)
-      .where(and(eq(importIdentities.linkedUserId, from), ne(importIdentities.id, identity.id)))
+      // 同じユーザーが他のワークスペースでも紐づいていることがあるので、このワークスペース・取り込み元に限る
+      .where(and(
+        eq(importIdentities.workspaceId, identity.workspaceId),
+        eq(importIdentities.source, identity.source),
+        eq(importIdentities.linkedUserId, from),
+        ne(importIdentities.id, identity.id),
+      ))
     for (const other of others) await syncIdentityReactions(tx, other, from)
   }
   return moved
@@ -532,11 +564,10 @@ async function applyIdentitySender(tx: Tx, identity: IdentityRow, userId: string
  * 投稿者のリアクションを、一時保管の内容どおりに sender で付け直す。足りないものだけを作り、取り込みのリアクションとして記録する。
  * sender が同じ絵文字を既に付けていれば作らない（本人のリアクションや他の投稿者のリアクションは動かさない）
  */
-async function syncIdentityReactions(tx: Tx, identity: IdentityRow & { workspaceId?: string; source?: string }, sender: string) {
-  const { messageReactions, importStagedMessages, importedReactions, importIdentities, orm } = await loadDb()
+async function syncIdentityReactions(tx: Tx, identity: IdentityRow, sender: string) {
+  const { messageReactions, importStagedMessages, importedReactions, orm } = await loadDb()
   const { and, eq, inArray, isNotNull, sql } = orm
-  const [owner] = await tx.select({ workspaceId: importIdentities.workspaceId, source: importIdentities.source }).from(importIdentities).where(eq(importIdentities.id, identity.id)).limit(1)
-  if (!owner) return
+  const owner = { workspaceId: identity.workspaceId, source: identity.source }
   const rows = await tx
     .select({ messageId: importStagedMessages.publishedMessageId, reactions: importStagedMessages.reactions })
     .from(importStagedMessages)
@@ -807,12 +838,13 @@ export async function listImportIdentities(workspaceId: string, source: string) 
     .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, source)))
 }
 
-async function loadIdentityById(db: Db | Tx, workspaceId: string, identityId: string): Promise<IdentityRow & { source: string }> {
+async function loadIdentityById(db: Db | Tx, workspaceId: string, identityId: string, options?: { lock?: boolean }): Promise<IdentityRow> {
   const { importIdentities, orm } = await loadDb()
   const { and, eq } = orm
-  const [identity] = await db
+  const query = db
     .select({
       id: importIdentities.id,
+      workspaceId: importIdentities.workspaceId,
       source: importIdentities.source,
       externalKey: importIdentities.externalKey,
       displayName: importIdentities.displayName,
@@ -824,6 +856,7 @@ async function loadIdentityById(db: Db | Tx, workspaceId: string, identityId: st
     .from(importIdentities)
     .where(and(eq(importIdentities.id, identityId), eq(importIdentities.workspaceId, workspaceId)))
     .limit(1)
+  const [identity] = options?.lock ? await query.for('update') : await query
   if (!identity) throw new ImportServiceError(404, '投稿者が見つかりません')
   return identity
 }
@@ -846,7 +879,9 @@ export async function linkImportIdentity(workspaceId: string, actorId: string, i
     if (!member) throw new ImportServiceError(400, '紐づけ先はこのワークスペースのメンバーにしてください')
   }
   return db.transaction(async (tx) => {
-    const moved = await applyIdentitySender(tx, identity, userId)
+    // 同じ投稿者への同時の変更で古い送信者から付け替えないよう、トランザクション内でロックして読み直す
+    const current = await loadIdentityById(tx, workspaceId, identityId, { lock: true })
+    const moved = await applyIdentitySender(tx, current, userId)
     await tx.update(importIdentities)
       .set(userId ? { linkedUserId: userId, linkedBy: actorId, linkedAt: new Date() } : { linkedUserId: null, linkedBy: null, linkedAt: null })
       .where(eq(importIdentities.id, identityId))
@@ -876,6 +911,7 @@ export async function resolveUnknownMessages(workspaceId: string, input: Resolve
       target: [importIdentities.workspaceId, importIdentities.source, importIdentities.externalKey],
       set: { displayName: sql`coalesce(excluded.display_name, ${importIdentities.displayName})` },
     })
+    await syncImportProfileNames(tx, workspaceId, input.source, identities.map(i => i.key))
     const identityByKey = await loadIdentities(tx, workspaceId, input.source, identities.map(i => i.key))
     const rows = await tx
       .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
