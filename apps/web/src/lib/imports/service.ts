@@ -204,7 +204,11 @@ async function senderFor(tx: Tx, identity: IdentityRow): Promise<string> {
   return identity.linkedUserId ?? ensureIdentityProfile(tx, identity)
 }
 
-/** 送信者を付け替える前に読むときは lock = true にし、同じ投稿者への同時の紐づけ変更を直列にする（古い送信者から付け替えないように） */
+/**
+ * 送信者を決めて書き込む前に読むとき（紐づけの変更・公開）は lock = true にし、同じ投稿者への処理をコミットまで直列にする
+ * （公開中に紐づけが変わって古い送信者で入る・古い送信者から付け替える、を防ぐ）。
+ * 公開は取り込み用プロフィールを作るときに投稿者の行を更新するので共有ロックでは足りない。行は id 順にロックしてデッドロックを避ける
+ */
 async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, keys: string[], options?: { lock?: boolean }): Promise<Map<string, IdentityRow>> {
   const { importIdentities, orm } = await loadDb()
   const { and, eq, inArray } = orm
@@ -223,7 +227,7 @@ async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, 
     })
     .from(importIdentities)
     .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, source), inArray(importIdentities.externalKey, keys)))
-  const rows = options?.lock ? await query.for('update') : await query
+  const rows = options?.lock ? await query.orderBy(importIdentities.id).for('update') : await query
   return new Map(rows.map(row => [row.externalKey, row]))
 }
 
@@ -396,7 +400,8 @@ export async function publishConversationBatch(
   return db.transaction(async (tx) => {
     // 同じチャンネルへの並行した取り込みと投稿の順序を直列化する（通常の投稿と同じロック）
     await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)).for('update')
-    const identities = await loadIdentities(tx, workspaceId, job.source, identityKeys)
+    // 公開中に紐づけが変わって古い送信者で入らないよう、送信者を決める投稿者をコミットまでロックする
+    const identities = await loadIdentities(tx, workspaceId, job.source, identityKeys, { lock: true })
     const fileRows = objectIds.length > 0
       ? await tx
           .select({ objectId: importedFiles.externalObjectId, fileId: importedFiles.fileId })
