@@ -1,0 +1,32 @@
+name: Desktop Version Check
+
+# main 宛ての PR で apps/desktop が変わっているのに version が公開済みのままなら失敗させる。
+# マージ後の Desktop Release（desktop-build.yml）がバージョン重複で止まるのを、マージ前に気づけるようにする。
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version is not released yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          TAG="desktop-v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::apps/desktop が変わっていますが、${TAG} は公開済みです。apps/desktop/package.json の version を上げてください"
+            exit 1
+          fi
+          echo "${TAG} は未公開です（マージ後に公開されます）"
