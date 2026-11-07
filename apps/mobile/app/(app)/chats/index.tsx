@@ -336,10 +336,12 @@ export default function ChatsScreen() {
         refetchProjectChannels(),
         workspaceChannelsQuery.refetch(),
         dmsQuery.refetch(),
+        // ピン留めは Realtime で届かないため、一覧に戻るたびに取り直す（WebView のサイドバーや別端末での変更）
+        pinnedProjectsQuery.refetch(),
       ])
     })
     return unsubscribe
-  }, [dmsQuery.refetch, navigation, refetchProjectChannels, workspaceChannelsQuery.refetch])
+  }, [dmsQuery.refetch, navigation, pinnedProjectsQuery.refetch, refetchProjectChannels, workspaceChannelsQuery.refetch])
   // Web の ChannelList と同じく、通常チャンネルの直下に未完了マイルストーンを並べる。
   // 並び順は Web と同じ共通ロジック。ピン留めしたプロジェクトは先頭に固定する
   const { projectGroups, archivedProjects } = React.useMemo(() => {
