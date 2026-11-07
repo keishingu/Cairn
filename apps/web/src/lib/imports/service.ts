@@ -299,6 +299,23 @@ export async function stageMessageBatch(
       ne(importStagedMessages.jobId, jobId),
     ))
 
+    // 取り込み済みのメッセージでも、後のエクスポートで分かった画像の参照を足す（公開し直すと添付を補えるように）。既存の順は保つ
+    const withMedia = input.messages.filter(message => message.mediaObjectIds.length > 0)
+    if (withMedia.length > 0) {
+      const incoming = sql.join(withMedia.map(message => sql`(${message.externalId}::text, ${JSON.stringify(message.mediaObjectIds)}::jsonb)`), sql`, `)
+      await tx.execute(sql`
+        update import_staged_messages s
+        set media_object_ids = s.media_object_ids || coalesce(
+          (select jsonb_agg(e) from jsonb_array_elements(v.ids) e where not s.media_object_ids @> jsonb_build_array(e)),
+          '[]'::jsonb)
+        from (values ${incoming}) as v(external_message_id, ids)
+        where s.workspace_id = ${workspaceId} and s.source = ${job.source}
+          and s.external_conversation_id = ${input.conversationExternalId}
+          and s.external_message_id = v.external_message_id
+          and not s.media_object_ids @> v.ids
+      `)
+    }
+
     const result = { staged: inserted.length, duplicates: input.messages.length - inserted.length }
     await tx.update(importJobConversations).set({
       status: 'running',

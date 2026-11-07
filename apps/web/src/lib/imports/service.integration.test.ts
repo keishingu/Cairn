@@ -325,6 +325,30 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: emptyReport })
   })
 
+  test('取り込み済みのメッセージに後のエクスポートで画像の参照が増えると、公開し直したときに添付を補う', async () => {
+    const conversation = '19:FixtureMoreMediaCommunityEEEEEEEEEEEEEEEEEEE1@thread.v2'
+    const targetId = randomUUID()
+    await db.db.insert(db.channels).values({ id: targetId, workspaceId, type: 'workspace', name: '画像が増える', isPrivate: false })
+    const withMedia = messages.filter(m => toBatchMessage(m, null).mediaObjectIds.length > 0)
+    expect(withMedia.length).toBeGreaterThan(0)
+    const first = await createJob({ conversation, channel: targetId })
+    // 最初のエクスポートでは画像の参照が無かった
+    await service.stageMessageBatch(workspaceId, adminId, first.jobId, {
+      conversationExternalId: conversation,
+      messages: messages.map(m => ({ ...toBatchMessage(m, null), mediaObjectIds: [] })),
+    })
+    expect(await publishAll(first.jobId, conversation)).toMatchObject({ attachments: 0, missingMedia: 0 })
+    await service.completeImportJob(workspaceId, first.jobId, { status: 'completed', error: null, report: emptyReport })
+
+    const fileId = randomUUID()
+    await db.db.insert(db.files).values({ id: fileId, workspaceId, uploadedBy: adminId, storagePath: `${workspaceId}/${targetId}/${adminId}/more.jpg`, fileName: 'more.jpg', mimeType: 'image/jpeg', fileSize: 10, fileType: 'image' })
+    const second = await createJob({ conversation, channel: targetId })
+    expect(await service.stageMessageBatch(workspaceId, adminId, second.jobId, stageBody(conversation))).toMatchObject({ staged: 0 })
+    await service.registerImportedMedia(workspaceId, adminId, second.jobId, { objectId: MEDIA_ID, fileId, channelId: targetId })
+    expect(await publishAll(second.jobId, conversation)).toMatchObject({ published: 0, attachments: withMedia.length })
+    await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: emptyReport })
+  })
+
   test('画像がそろわずに公開したメッセージも、画像がそろってから公開し直すと添付を補う', async () => {
     const repairConversation = '19:FixtureRepairCommunityCCCCCCCCCCCCCCCCCCCCC1@thread.v2'
     const repairChannelId = randomUUID()
