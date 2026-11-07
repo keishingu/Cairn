@@ -469,6 +469,26 @@ export function useEnsureMessageLoaded(channelId: string | null) {
   }, [channelId, queryClient])
 }
 
+/**
+ * 1件のメッセージだけを取り直し、キャッシュ（直近・履歴表示）にある同じメッセージを差し替える。
+ * カードの操作が古い版として断られたときに使う。一覧ごと invalidate すると、上へスクロールして足した古いページが
+ * 直近100件・元のウィンドウに戻って消えるため、読み込み済みの範囲はそのままにする
+ */
+export function useRefreshChannelMessage(channelId: string | null) {
+  const queryClient = useQueryClient()
+  return React.useCallback(async (messageId: string) => {
+    if (!channelId) return
+    const fresh = (await fetchChannelMessagesAround(channelId, messageId)).find(message => message.id === messageId)
+    if (!fresh) return
+    const replace = (previous: MessageDto[] | undefined) =>
+      previous?.some(message => message.id === messageId)
+        ? previous.map(message => message.id === messageId ? fresh : message)
+        : previous
+    queryClient.setQueryData<MessageDto[]>(chatQueryKeys.messages(channelId), replace)
+    queryClient.setQueriesData<MessageDto[]>({ queryKey: ['message-history', channelId] }, replace)
+  }, [channelId, queryClient])
+}
+
 /** 表示済みの最古メッセージをカーソルに、さらに古いページをキャッシュ先頭へ追加する。 */
 export function useLoadOlderChannelMessages(channelId: string | null, historyMessageId: string | null = null) {
   const queryClient = useQueryClient()

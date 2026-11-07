@@ -83,6 +83,7 @@ vi.mock('@/lib/chat/client', () => ({
   useEnsureMessageLoaded: () => vi.fn(),
   useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
+  useRefreshChannelMessage: () => vi.fn(() => Promise.resolve()),
   useProjectChannels: () => ({
     data: chatThreadState.projectChannels,
     isSuccess: chatThreadState.projectChannelsResolved,

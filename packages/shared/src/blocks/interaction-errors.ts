@@ -21,6 +21,8 @@ const MESSAGES: Record<string, string> = {
   view_not_found: 'This form is no longer available.',
   app_invalid_response: 'The app returned an invalid response.',
   card_changed: 'This card was updated. Check it and try again.',
+  // card_changed の後、最新のカードの取り直しにも失敗した（クライアントが付けるコード）
+  card_refresh_failed: 'This card was updated, but the latest content could not be loaded. Please try again.',
 }
 
 export function cardActionErrorMessage(code: string | null | undefined): string {
