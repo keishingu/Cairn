@@ -4,6 +4,16 @@
 import { IMPORTED_FALLBACK_NAMES } from './fallback-names'
 
 /**
+ * 取り込みのテーブルがまだ無い（アプリのデプロイがマイグレーションより先に走った）ときのエラーか。
+ * merge 時のデプロイとマイグレーションの順序は保証されないため、その間も通常のメッセージ・タスクは表示する。
+ * テーブルが無ければ取り込んだメッセージも無いので、空として扱ってよい
+ */
+function isMissingImportSchema(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null
+  return e?.code === '42P01' || e?.cause?.code === '42P01'
+}
+
+/**
  * 取り込んだメッセージの表示用情報。messages.sender_id は共通の「取り込み」プロフィールなので、
  * 本当の投稿者（取り込み元の名前、または管理者が紐づけた Cairn ユーザー）をここで引いて上書きする。
  */
@@ -39,7 +49,9 @@ export async function loadImportedSenders(workspaceId: string, messageIds: strin
   if (messageIds.length === 0) return result
   const { db, importedMessages, importIdentities, workspaceMembers, profiles } = await import('@cairn/db')
   const { and, eq, inArray } = await import('drizzle-orm')
-  const rows = await db
+  let rows
+  try {
+  rows = await db
     .select({
       messageId: importedMessages.messageId,
       source: importedMessages.source,
@@ -58,6 +70,10 @@ export async function loadImportedSenders(workspaceId: string, messageIds: strin
     .leftJoin(profiles, eq(profiles.id, importIdentities.linkedUserId))
     .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, importIdentities.linkedUserId), eq(workspaceMembers.workspaceId, workspaceId)))
     .where(and(eq(importedMessages.workspaceId, workspaceId), inArray(importedMessages.messageId, messageIds)))
+  } catch (err) {
+    if (isMissingImportSchema(err)) return result
+    throw err
+  }
   for (const row of rows) {
     const kind = row.kind as ImportedIdentityKind
     const linkedName = row.linkedUserId ? (row.linkedMemberName || row.linkedProfileName) : null
@@ -88,7 +104,9 @@ export async function loadImportedReactions(workspaceId: string, messageIds: str
   if (messageIds.length === 0) return []
   const { db, importedMessageReactions, importIdentities, workspaceMembers, profiles } = await import('@cairn/db')
   const { and, asc, eq, inArray } = await import('drizzle-orm')
-  const rows = await db
+  let rows
+  try {
+  rows = await db
     .select({
       messageId: importedMessageReactions.messageId,
       emoji: importedMessageReactions.emoji,
@@ -104,6 +122,10 @@ export async function loadImportedReactions(workspaceId: string, messageIds: str
     .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, importIdentities.linkedUserId), eq(workspaceMembers.workspaceId, workspaceId)))
     .where(inArray(importedMessageReactions.messageId, messageIds))
     .orderBy(asc(importedMessageReactions.reactedAt))
+  } catch (err) {
+    if (isMissingImportSchema(err)) return []
+    throw err
+  }
   return rows.map(row => ({
     messageId: row.messageId,
     emoji: row.emoji,

@@ -70,6 +70,8 @@ export function SettingsImport() {
   const [progress, setProgress] = React.useState<ImportProgress | null>(null)
   const [result, setResult] = React.useState<ImportRunResult | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
+  // フォルダ選択の input は見た目を持たないので、キーボードで操作できるボタンから開く
+  const folderInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const membersQuery = useWorkspaceMembers({ enabled: isAdmin })
   // 共有のフックは失敗時もレスポンスをそのまま返すので、配列でなければ取得失敗として扱う
@@ -234,18 +236,27 @@ export function SettingsImport() {
           <h2 style={{ fontSize: 14 }}>{t('1. Choose the export')}</h2>
           <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
             <p style={noteStyle}>{t('Choose the folder you got from teams.live.com/dataexport (chat history and media). Only messages.json and the images in media are read. Other files such as endpoints.json and invites.json are not read.')}</p>
-            <label className="btn btn-primary" style={{ justifySelf: 'start', cursor: reading ? 'wait' : 'pointer', ...(prerequisitesReady ? {} : { opacity: 0.5, pointerEvents: 'none' as const }) }} aria-disabled={!prerequisitesReady}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ justifySelf: 'start', cursor: reading ? 'wait' : 'pointer' }}
+              disabled={reading || !prerequisitesReady}
+              onClick={() => folderInputRef.current?.click()}
+            >
               <Icon name="download" size={14} /> {reading ? t('Reading...') : t('Choose export folder')}
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                disabled={reading || !prerequisitesReady}
-                // @ts-expect-error webkitdirectory はブラウザ独自の属性
-                webkitdirectory=""
-                multiple
-                onChange={event => { void handleFiles(event.target.files); event.target.value = '' }}
-              />
-            </label>
+            </button>
+            <input
+              ref={folderInputRef}
+              type="file"
+              tabIndex={-1}
+              aria-hidden
+              style={{ display: 'none' }}
+              disabled={reading || !prerequisitesReady}
+              // @ts-expect-error webkitdirectory はブラウザ独自の属性
+              webkitdirectory=""
+              multiple
+              onChange={event => { void handleFiles(event.target.files); event.target.value = '' }}
+            />
           </div>
         </section>
       )}
