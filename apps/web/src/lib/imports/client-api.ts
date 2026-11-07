@@ -29,7 +29,15 @@ export function createImportApi(t: (key: string) => string): ImportApi {
     lookupMedia: async (jobId, channelId, objectIds) => (await postJson<{ found: Record<string, string> }>(`/api/imports/jobs/${jobId}/media/lookup`, { channelId, objectIds }, t('Could not check uploaded images'))).found,
     uploadMedia: async (channelId, file) => ({ fileId: (await uploadAttachment(channelId, file)).fileId }),
     registerMedia: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/media`, body, t('Could not register the image')),
-    importBatch: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/batches`, body, t('Could not import messages')),
+    stageBatch: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/batches`, body, t('Could not import messages')),
+    publishBatch: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/publish`, body, t('Could not publish messages')),
     completeJob: (jobId, body) => postJson(`/api/imports/jobs/${jobId}/complete`, body, t('Could not finish the import')),
   }
+}
+
+/** 取り込んだ投稿者を Cairn のメンバーに紐づける・外す（owner / admin）。公開済みの送信者も付け替わる */
+export async function linkImportedIdentity(identityId: string, userId: string | null, fallback: string): Promise<{ messages: number; reactions: number }> {
+  const res = await fetchWithAuth(`/api/imports/identities/${identityId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) })
+  if (!res.ok) throw new Error(await readError(res, fallback))
+  return (await res.json()) as { messages: number; reactions: number }
 }

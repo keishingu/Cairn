@@ -34,6 +34,8 @@ export const createImportJobSchema = z.object({
     externalId,
     channelId: z.string().uuid(),
     totalMessages: z.number().int().min(0).max(1_000_000),
+    /** 投稿者不明の投稿を、投稿者不明として一緒に公開する（include_unknown）か、残す（hold）か */
+    unknownPolicy: z.enum(['include_unknown', 'hold']).default('include_unknown'),
   })).min(1).max(MAX_CONVERSATIONS_PER_JOB),
   identities: z.array(importIdentitySchema).max(MAX_IDENTITIES_PER_REQUEST),
   /** 管理者が確認した紐づけ（identity key → Cairn ユーザー ID） */
@@ -81,6 +83,25 @@ export const importBatchSchema = z.object({
   messages: z.array(importMessageSchema).min(1).max(MAX_BATCH_MESSAGES),
 })
 
+/** 一時保管した会話を、送信者を確定したうえで messages に移す。1回で最大 MAX_BATCH_MESSAGES 件、続きは cursor から */
+export const publishBatchSchema = z.object({
+  conversationExternalId: externalId,
+  cursor: z.object({
+    sentAt: isoDate,
+    externalMessageId: z.string().regex(/^\d{1,20}$/),
+  }).nullable().default(null),
+})
+
+/** 投稿者不明の投稿の発言者を、外部データ（ブラウザのキャッシュ・他の参加者のエクスポート）から補う */
+export const resolveUnknownSchema = z.object({
+  source: importSourceSchema,
+  conversationExternalId: externalId,
+  assignments: z.array(z.object({
+    externalMessageId: z.string().regex(/^\d{1,20}$/),
+    identity: importIdentitySchema,
+  })).min(1).max(MAX_BATCH_MESSAGES),
+})
+
 export const mediaLookupSchema = z.object({
   channelId: z.string().uuid(),
   objectIds: z.array(z.string().regex(/^[A-Za-z0-9-]{1,80}$/)).min(1).max(1_000),
@@ -117,5 +138,7 @@ export const linkIdentitySchema = z.object({
 
 export type CreateImportJobInput = z.infer<typeof createImportJobSchema>
 export type ImportBatchInput = z.infer<typeof importBatchSchema>
+export type PublishBatchInput = z.infer<typeof publishBatchSchema>
+export type ResolveUnknownInput = z.infer<typeof resolveUnknownSchema>
 export type ImportMessageInput = z.infer<typeof importMessageSchema>
 export type CompleteImportJobInput = z.infer<typeof completeImportJobSchema>

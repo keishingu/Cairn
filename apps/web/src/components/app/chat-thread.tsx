@@ -230,7 +230,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -261,6 +261,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
+  imported?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -435,8 +436,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
-    ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
-    ...(isOwn ? [
+    // 取り込んだ過去ログの送信者は、紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    // 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する）
+    ...(isOwn && !imported ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
@@ -503,6 +506,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             {senderApp && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
                 {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </span>
+            )}
+            {/* 外部チャットから取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
+            {imported && (
+              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+                {t('Imported from Teams')}
               </span>
             )}
             {visibleProjectRole && (
@@ -2487,6 +2496,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               blocksRevision={item.message.blocksRevision}
               cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
+              imported={item.message.imported}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}

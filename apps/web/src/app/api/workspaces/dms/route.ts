@@ -79,7 +79,7 @@ export async function GET() {
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
           .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-          .where(and(inArray(messages.channelId, visibleChannelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+          .where(and(inArray(messages.channelId, visibleChannelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), eq(messages.imported, false), gt(messages.createdAt, sql2`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
           .groupBy(messages.channelId),
         db
           .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })

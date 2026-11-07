@@ -21,6 +21,7 @@ import {
 } from '@/lib/imports/client-runner'
 import { createImportApi, createImportChannel } from '@/lib/imports/client-api'
 import { InlineError } from './inline-error'
+import { ImportedIdentitiesPanel } from './settings-import-identities'
 import { Icon } from './primitives'
 
 /**
@@ -66,6 +67,8 @@ export function SettingsImport() {
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
   const [links, setLinks] = React.useState<Record<string, string>>({})
   const [destinations, setDestinations] = React.useState<Record<string, Destination>>({})
+  // 会話ごとに、投稿者不明の投稿を投稿者不明として一緒に公開するか、残すか（docs/import-design.md §4）
+  const [unknownPolicies, setUnknownPolicies] = React.useState<Record<string, 'include_unknown' | 'hold'>>({})
   const [acknowledged, setAcknowledged] = React.useState(false)
   const [progress, setProgress] = React.useState<ImportProgress | null>(null)
   const [result, setResult] = React.useState<ImportRunResult | null>(null)
@@ -104,6 +107,7 @@ export function SettingsImport() {
         ) : (
           <p style={noteStyle}>{importAccess.isPending && isWorkspaceAdmin ? t('Loading...') : t('Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.')}</p>
         )}
+        <ImportedIdentitiesPanel enabled={isWorkspaceAdmin && importAccess.data?.canLink === true} />
       </div>
     )
   }
@@ -165,14 +169,14 @@ export function SettingsImport() {
     abortRef.current = controller
     try {
       // 新しいチャンネルは非公開で作る（作った管理者だけが見える。公開範囲は後から変えられる）
-      const plan: Array<{ externalId: string; channelId: string }> = []
+      const plan: Array<{ externalId: string; channelId: string; unknownPolicy: 'include_unknown' | 'hold' }> = []
       for (const conversation of bundle.conversations.filter(c => selected.has(c.externalId))) {
         const destination = destinationFor(conversation)
         if (destination.kind === 'existing') {
-          plan.push({ externalId: conversation.externalId, channelId: destination.channelId })
+          plan.push({ externalId: conversation.externalId, channelId: destination.channelId, unknownPolicy: unknownPolicies[conversation.externalId] ?? 'include_unknown' })
         } else {
           const created = await createImportChannel(destination.name.trim() || t('Teams import'), t('Could not create the channel'))
-          plan.push({ externalId: conversation.externalId, channelId: created.id })
+          plan.push({ externalId: conversation.externalId, channelId: created.id, unknownPolicy: unknownPolicies[conversation.externalId] ?? 'include_unknown' })
           setDestinations(prev => ({ ...prev, [conversation.externalId]: { kind: 'existing', channelId: created.id } }))
         }
       }
@@ -260,6 +264,8 @@ export function SettingsImport() {
           </div>
         </section>
       )}
+
+      {step === 'select' && <ImportedIdentitiesPanel enabled={importAccess.data?.canLink === true} />}
 
       {step === 'conversations' && bundle && (
         <section style={sectionStyle}>
@@ -413,6 +419,17 @@ export function SettingsImport() {
                         ? t('Who can read: members of this private channel')
                         : t('Who can read: all workspace members except guests')}
                   </div>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                    <span>{t('Messages from unknown posters')}</span>
+                    <select
+                      aria-label={t('Messages from unknown posters in {name}', { name: conversation.name ?? '' })}
+                      value={unknownPolicies[conversation.externalId] ?? 'include_unknown'}
+                      onChange={event => setUnknownPolicies(prev => ({ ...prev, [conversation.externalId]: event.target.value as 'include_unknown' | 'hold' }))}
+                    >
+                      <option value="include_unknown">{t('Publish as “Unknown poster”')}</option>
+                      <option value="hold">{t('Keep until the poster is known')}</option>
+                    </select>
+                  </label>
                 </div>
               )
             })}
@@ -479,6 +496,7 @@ export function SettingsImport() {
           <div className="card" style={{ padding: 16, display: 'grid', gap: 8, fontSize: 13 }}>
             <div>{t('Images: {done} / {total}', { done: progress?.mediaDone ?? 0, total: progress?.mediaTotal ?? 0 })}</div>
             <div>{t('Messages: {done} / {total}', { done: progress?.messagesDone ?? 0, total: progress?.messagesTotal ?? 0 })}</div>
+            {progress?.phase === 'publishing' && <div>{t('Publishing to channels...')}</div>}
             <p style={noteStyle}>{t('Keep this page open. If the import stops, run it again with the same export and channels; messages that were already imported are skipped.')}</p>
             <button type="button" className="btn" style={{ justifySelf: 'start' }} onClick={() => abortRef.current?.abort()}>{t('Stop')}</button>
           </div>
@@ -496,6 +514,8 @@ export function SettingsImport() {
                 {([
                   [t('Imported messages'), result.imported],
                   [t('Already imported (skipped)'), result.duplicates],
+                  [t('Published to channels'), result.published],
+                  [t('Kept until the poster is known'), result.held],
                   [t('Attached images'), result.attachments],
                   [t('Imported reactions'), result.reactions],
                   [t('Images that could not be imported'), result.mediaFailures.length],

@@ -97,7 +97,8 @@ export function suggestMember<T extends { userId: string; displayName: string }>
   return matches.length === 1 ? matches[0]! : null
 }
 
-export function toBatchMessage(message: ImportMessage, availableMedia: Set<string>) {
+/** availableMedia を渡すと、その画像だけを参照する。null なら参照をすべて残す（一時保管では、後で画像がそろったときに添付を補えるよう全部残す） */
+export function toBatchMessage(message: ImportMessage, availableMedia: Set<string> | null) {
   return {
     externalId: message.externalId,
     identityKey: message.identityKey,
@@ -106,7 +107,7 @@ export function toBatchMessage(message: ImportMessage, availableMedia: Set<strin
     text: message.text,
     quotedExternalId: message.quotedExternalId,
     reactions: message.reactions,
-    mediaObjectIds: message.media.map(m => m.objectId).filter(id => availableMedia.has(id)),
+    mediaObjectIds: message.media.map(m => m.objectId).filter(id => !availableMedia || availableMedia.has(id)),
     attributes: message.attributes,
   }
 }
@@ -136,6 +137,20 @@ export function chunkMessages(messages: BatchMessage[], maxBytes = MAX_BATCH_BYT
 export interface ImportPlanConversation {
   externalId: string
   channelId: string
+  /** 投稿者不明の投稿を、投稿者不明として一緒に公開する（include_unknown）か、残す（hold）か */
+  unknownPolicy: 'include_unknown' | 'hold'
+}
+
+export interface PublishResult {
+  published: number
+  held: number
+  alreadyPublished: number
+  attachments: number
+  missingMedia: number
+  reactions: number
+  quotesLinked: number
+  quotesUnresolved: number
+  nextCursor: { sentAt: string; externalMessageId: string } | null
 }
 
 export interface ImportApi {
@@ -143,12 +158,13 @@ export interface ImportApi {
   lookupMedia(jobId: string, channelId: string, objectIds: string[]): Promise<Record<string, string>>
   uploadMedia(channelId: string, file: File): Promise<{ fileId: string }>
   registerMedia(jobId: string, body: { objectId: string; fileId: string; channelId: string }): Promise<{ fileId: string }>
-  importBatch(jobId: string, body: { conversationExternalId: string; messages: BatchMessage[] }): Promise<{ imported: number; duplicates: number; missingMedia: number; attachments: number; reactions: number; quotesLinked: number; quotesUnresolved: number }>
+  stageBatch(jobId: string, body: { conversationExternalId: string; messages: BatchMessage[] }): Promise<{ staged: number; duplicates: number }>
+  publishBatch(jobId: string, body: { conversationExternalId: string; cursor: PublishResult['nextCursor'] }): Promise<PublishResult>
   completeJob(jobId: string, body: unknown): Promise<unknown>
 }
 
 export interface ImportProgress {
-  phase: 'creating' | 'media' | 'messages' | 'completing' | 'done'
+  phase: 'creating' | 'media' | 'messages' | 'publishing' | 'completing' | 'done'
   mediaDone: number
   mediaTotal: number
   messagesDone: number
@@ -158,8 +174,12 @@ export interface ImportProgress {
 export interface ImportRunResult {
   jobId: string
   status: 'completed' | 'failed' | 'cancelled'
+  /** 一時保管した件数（重複を除く） */
   imported: number
   duplicates: number
+  /** チャンネルに公開した件数と、投稿者不明で残した件数 */
+  published: number
+  held: number
   attachments: number
   reactions: number
   quotesLinked: number
@@ -182,16 +202,15 @@ export async function runImport(args: {
   const identities = identitiesForConversations(bundle, conversationIds).map(entry => entry.identity)
   const progress: ImportProgress = { phase: 'creating', mediaDone: 0, mediaTotal: 0, messagesDone: 0, messagesTotal: 0 }
   const emit = () => onProgress?.({ ...progress })
-  const totals = { imported: 0, duplicates: 0, attachments: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0 }
+  const totals = { imported: 0, duplicates: 0, published: 0, held: 0, attachments: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0 }
   const mediaFailures: ImportRunResult['mediaFailures'] = []
-  const availableByChannel = new Map<string, Set<string>>()
 
   progress.messagesTotal = conversationIds.reduce((n, id) => n + (bundle.messagesByConversation[id]?.length ?? 0), 0)
   emit()
   const { jobId } = await api.createJob({
     source: bundle.source,
     exportedAt: bundle.exportedAt,
-    conversations: plan.map(p => ({ externalId: p.externalId, channelId: p.channelId, totalMessages: bundle.messagesByConversation[p.externalId]?.length ?? 0 })),
+    conversations: plan.map(p => ({ externalId: p.externalId, channelId: p.channelId, totalMessages: bundle.messagesByConversation[p.externalId]?.length ?? 0, unknownPolicy: p.unknownPolicy })),
     identities,
     links,
   })
@@ -273,28 +292,42 @@ export async function runImport(args: {
         progress.mediaDone++
         emit()
       }
-      availableByChannel.set(channelId, ready)
     }
     for (const [objectId, reason] of failedObjects) mediaFailures.push({ objectId, reason })
 
-    // 2. メッセージ: 会話ごと・投稿日時順にバッチで送る。失敗したら止めて、再実行で続きから入れる
+    // 2. 一時保管: 会話ごと・投稿日時順にバッチで送る（チャンネルにはまだ出ない）。失敗したら止めて、再実行で続きから入れる
     progress.phase = 'messages'
     emit()
     for (const p of plan) {
-      const available = availableByChannel.get(p.channelId) ?? new Set<string>()
-      const messages = (bundle.messagesByConversation[p.externalId] ?? []).map(m => toBatchMessage(m, available))
+      // 画像の参照はすべて残す。アップロードできなかった画像も、後で画像がそろえば公開時に添付を補える
+      const messages = (bundle.messagesByConversation[p.externalId] ?? []).map(m => toBatchMessage(m, null))
       for (const chunk of chunkMessages(messages)) {
         if (signal?.aborted) return await finish('cancelled', null)
-        const result = await api.importBatch(jobId, { conversationExternalId: p.externalId, messages: chunk })
-        totals.imported += result.imported
+        const result = await api.stageBatch(jobId, { conversationExternalId: p.externalId, messages: chunk })
+        totals.imported += result.staged
         totals.duplicates += result.duplicates
+        progress.messagesDone += chunk.length
+        emit()
+      }
+    }
+
+    // 3. 公開: 発言者を確定したものを、会話ごとにサーバー側で読み出してチャンネルに移す（最大200件ずつ）
+    progress.phase = 'publishing'
+    emit()
+    for (const p of plan) {
+      let cursor: PublishResult['nextCursor'] = null
+      do {
+        if (signal?.aborted) return await finish('cancelled', null)
+        const result: PublishResult = await api.publishBatch(jobId, { conversationExternalId: p.externalId, cursor })
+        totals.published += result.published
+        totals.held += result.held
         totals.attachments += result.attachments
         totals.reactions += result.reactions
         totals.quotesLinked += result.quotesLinked
         totals.quotesUnresolved += result.quotesUnresolved
-        progress.messagesDone += chunk.length
+        cursor = result.nextCursor
         emit()
-      }
+      } while (cursor)
     }
     return await finish('completed', null)
   } catch (err) {

@@ -87,9 +87,10 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     if (!db) return
     const { workspaces, profiles } = db
     const { inArray } = await import('drizzle-orm')
-    // 取り込みメッセージの送信者は共通プロフィールなので、ワークスペースを消せばメッセージも消える
+    // 取り込み用プロフィールはワークスペースのメンバーではないので、ワークスペースを消したあとに別に消す
+    const importProfiles = (await db.db.execute(sql`select profile_id from import_identities where workspace_id = ${workspaceId} and profile_id is not null`)).rows.map(r => (r as { profile_id: string }).profile_id)
     await db.db.delete(workspaces).where(inArray(workspaces.id, [workspaceId, otherWorkspaceId]))
-    await db.db.delete(profiles).where(inArray(profiles.id, [adminId, memberId]))
+    await db.db.delete(profiles).where(inArray(profiles.id, [adminId, memberId, ...importProfiles]))
   })
 
   async function count(query: ReturnType<typeof sql>) {
@@ -97,139 +98,174 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     return Number((result.rows[0] as { n: string | number }).n)
   }
 
-  async function createJob(links: Array<{ key: string; userId: string }> = []) {
+  const emptyReport = { conversations: [], excludedConversations: {}, mediaFailures: [] }
+
+  async function createJob(options: { conversation?: string; channel?: string; unknownPolicy?: 'include_unknown' | 'hold'; links?: Array<{ key: string; userId: string }> } = {}) {
     return service.createImportJob(workspaceId, adminId, {
       source: 'teams-consumer',
       exportedAt: bundle.exportedAt,
-      conversations: [{ externalId: COMMUNITY, channelId, totalMessages: messages.length }],
+      conversations: [{ externalId: options.conversation ?? COMMUNITY, channelId: options.channel ?? channelId, totalMessages: messages.length, unknownPolicy: options.unknownPolicy ?? 'include_unknown' }],
       identities,
-      links,
+      links: options.links ?? [],
     })
   }
 
-  const batch = (subset = messages) => ({
-    conversationExternalId: COMMUNITY,
-    messages: subset.map(m => toBatchMessage(m, new Set([MEDIA_ID]))),
+  const stageBody = (conversation = COMMUNITY, subset = messages) => ({
+    conversationExternalId: conversation,
+    messages: subset.map(m => toBatchMessage(m, null)),
   })
+
+  async function publishAll(jobId: string, conversation = COMMUNITY) {
+    const total = { published: 0, held: 0, alreadyPublished: 0, attachments: 0, missingMedia: 0, reactions: 0 }
+    let cursor: { sentAt: string; externalMessageId: string } | null = null
+    do {
+      const result = await service.publishConversationBatch(workspaceId, adminId, jobId, { conversationExternalId: conversation, cursor })
+      for (const key of Object.keys(total) as Array<keyof typeof total>) total[key] += result[key]
+      cursor = result.nextCursor
+    } while (cursor)
+    return total
+  }
+
+  const senderOf = async (conversation: string, externalId: string) => {
+    const row = (await db.db.execute(sql`
+      select m.sender_id, p.kind, p.display_name from import_staged_messages s
+      join messages m on m.id = s.published_message_id join profiles p on p.id = m.sender_id
+      where s.workspace_id = ${workspaceId} and s.external_conversation_id = ${conversation} and s.external_message_id = ${externalId}`)).rows[0] as { sender_id: string; kind: string; display_name: string } | undefined
+    return row
+  }
 
   test('参加していない非公開チャンネル・他のワークスペースのチャンネルには取り込めない', async () => {
     await expect(service.createImportJob(workspaceId, memberId, {
-      source: 'teams-consumer', exportedAt: null, conversations: [{ externalId: COMMUNITY, channelId, totalMessages: 1 }], identities, links: [],
+      source: 'teams-consumer', exportedAt: null, conversations: [{ externalId: COMMUNITY, channelId, totalMessages: 1, unknownPolicy: 'include_unknown' }], identities, links: [],
     })).rejects.toMatchObject({ status: 403 })
     await expect(service.createImportJob(workspaceId, adminId, {
-      source: 'teams-consumer', exportedAt: null, conversations: [{ externalId: COMMUNITY, channelId: otherChannelId, totalMessages: 1 }], identities, links: [],
+      source: 'teams-consumer', exportedAt: null, conversations: [{ externalId: COMMUNITY, channelId: otherChannelId, totalMessages: 1, unknownPolicy: 'include_unknown' }], identities, links: [],
     })).rejects.toMatchObject({ status: 400 })
   })
 
   test('投稿者不明は Cairn のユーザーに紐づけられない', async () => {
-    await expect(createJob([{ key: 'anonymous', userId: memberId }])).rejects.toMatchObject({ status: 400 })
+    await expect(createJob({ links: [{ key: 'anonymous', userId: memberId }] })).rejects.toMatchObject({ status: 400 })
   })
 
-  test('一部のメッセージだけ取り込んだあと、全件を再実行すると残りだけが入る（中断後の再開）', async () => {
-    const { jobId } = await createJob([{ key: 'name:Hanako Sato', userId: memberId }])
+  test('一時保管の段階ではチャンネルに何も出ず、中断後の再実行でも二重に保管しない', async () => {
+    const { jobId } = await createJob()
     await service.registerImportedMedia(workspaceId, adminId, jobId, { objectId: MEDIA_ID, fileId, channelId })
-
-    const first = await service.importMessageBatch(workspaceId, adminId, jobId, batch(messages.slice(0, 2)))
-    expect(first).toMatchObject({ imported: 2, duplicates: 0 })
-    // ここで中断したとみなし、ジョブを失敗で終える
-    await service.completeImportJob(workspaceId, jobId, { status: 'failed', error: '中断', report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
-    await expect(service.importMessageBatch(workspaceId, adminId, jobId, batch())).rejects.toMatchObject({ status: 409 })
+    expect(await service.stageMessageBatch(workspaceId, adminId, jobId, stageBody(COMMUNITY, messages.slice(0, 2)))).toEqual({ staged: 2, duplicates: 0 })
+    await service.completeImportJob(workspaceId, jobId, { status: 'failed', error: '中断', report: emptyReport })
+    await expect(service.stageMessageBatch(workspaceId, adminId, jobId, stageBody())).rejects.toMatchObject({ status: 409 })
 
     const { jobId: retryJob } = await createJob()
-    const found = await service.lookupImportedMedia(workspaceId, retryJob, channelId, [MEDIA_ID])
-    expect(found).toEqual({ [MEDIA_ID]: fileId })
-    const second = await service.importMessageBatch(workspaceId, adminId, retryJob, batch())
-    expect(second).toMatchObject({ imported: messages.length - 2, duplicates: 2 })
-    await service.completeImportJob(workspaceId, retryJob, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+    expect(await service.stageMessageBatch(workspaceId, adminId, retryJob, stageBody())).toEqual({ staged: messages.length - 2, duplicates: 2 })
+    expect(await count(sql`select count(*) as n from messages where channel_id = ${channelId}`)).toBe(0)
+    expect(await count(sql`select count(*) as n from import_staged_messages where workspace_id = ${workspaceId}`)).toBe(messages.length)
 
-    expect(await count(sql`select count(*) as n from messages where channel_id = ${channelId}`)).toBe(messages.length)
+    // 公開: 投稿者不明も「投稿者不明」として一緒に公開する
+    const published = await publishAll(retryJob)
+    expect(published).toMatchObject({ published: messages.length, held: 0, attachments: 2 })
+    await service.completeImportJob(workspaceId, retryJob, { status: 'completed', error: null, report: emptyReport })
+    expect(await count(sql`select count(*) as n from messages where channel_id = ${channelId} and imported`)).toBe(messages.length)
   })
 
-  test('同じデータをもう一度取り込んでも二重登録されない', async () => {
+  test('もう一度公開しても二重に投稿しない', async () => {
     const { jobId } = await createJob()
-    const again = await service.importMessageBatch(workspaceId, adminId, jobId, batch())
-    expect(again).toMatchObject({ imported: 0, duplicates: messages.length })
+    expect(await publishAll(jobId)).toMatchObject({ published: 0, alreadyPublished: messages.length, attachments: 0 })
     expect(await count(sql`select count(*) as n from messages where channel_id = ${channelId}`)).toBe(messages.length)
-    expect(await count(sql`select count(*) as n from imported_messages where workspace_id = ${workspaceId}`)).toBe(messages.length)
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
   })
 
-  test('元の投稿日時・本文・編集日時を保持し、送信者は取り込みプロフィールにする', async () => {
+  test('送信者は投稿者ごとの取り込み用プロフィールになり、元の日時・本文・編集日時を保持する', async () => {
     const original = messages.find(m => m.externalId === '1760000500000')!
-    const rows = await db.db.execute(sql`
-      select m.content, m.created_at, m.updated_at, m.sender_id, i.kind, i.display_name, im.external_message_id
-      from messages m join imported_messages im on im.message_id = m.id join import_identities i on i.id = im.identity_id
-      where im.workspace_id = ${workspaceId} and im.external_message_id = ${original.externalId}`)
-    const row = rows.rows[0] as Record<string, unknown>
+    const row = (await db.db.execute(sql`
+      select m.content, m.created_at, m.updated_at, m.imported, p.kind, p.display_name
+      from import_staged_messages s join messages m on m.id = s.published_message_id join profiles p on p.id = m.sender_id
+      where s.workspace_id = ${workspaceId} and s.external_message_id = ${original.externalId}`)).rows[0] as Record<string, unknown>
     expect(row['content']).toBe(original.text)
     expect(new Date(row['created_at'] as string).toISOString()).toBe(original.sentAt)
     expect(new Date(row['updated_at'] as string).toISOString()).toBe(original.editedAt)
-    expect(row['sender_id']).toBe(db.IMPORT_SENDER_PROFILE_ID)
+    expect(row).toMatchObject({ imported: true, kind: 'import', display_name: '山田 太郎' })
+    expect(await senderOf(COMMUNITY, '1760000700000')).toMatchObject({ kind: 'import', display_name: '投稿者不明' })
+    // 取り込み用プロフィールはワークスペースのメンバーにならない
+    expect(await count(sql`select count(*) as n from workspace_members wm join profiles p on p.id = wm.user_id where wm.workspace_id = ${workspaceId} and p.kind = 'import'`)).toBe(0)
   })
 
-  test('投稿者不明の投稿は匿名の identity に入り、元の属性を残す', async () => {
-    const rows = await db.db.execute(sql`
-      select i.is_anonymous, i.linked_user_id, im.attributes
-      from imported_messages im join import_identities i on i.id = im.identity_id
-      where im.workspace_id = ${workspaceId} and im.external_message_id = '1760000700000'`)
-    const row = rows.rows[0] as { is_anonymous: boolean; linked_user_id: string | null; attributes: Record<string, unknown> }
-    expect(row.is_anonymous).toBe(true)
-    expect(row.linked_user_id).toBeNull()
-    expect(row.attributes).toMatchObject({ senderIdPresent: false, senderNamePresent: false })
-  })
-
-  test('管理者が確認した紐づけだけが入り、表示ではその人の名前になる', async () => {
-    const { loadImportedSenders } = await import('./display')
-    const hanakoMessage = (await db.db.execute(sql`select message_id from imported_messages where workspace_id = ${workspaceId} and external_message_id = '1760000800000'`)).rows[0] as { message_id: string }
-    const anonymousMessage = (await db.db.execute(sql`select message_id from imported_messages where workspace_id = ${workspaceId} and external_message_id = '1760000700000'`)).rows[0] as { message_id: string }
-    const senders = await loadImportedSenders(workspaceId, [hanakoMessage.message_id, anonymousMessage.message_id])
-    expect(senders.get(hanakoMessage.message_id)).toMatchObject({ name: 'Hanako Sato', info: { linkedUserId: memberId, anonymous: false } })
-    expect(senders.get(anonymousMessage.message_id)).toMatchObject({ name: '投稿者不明', info: { anonymous: true, linkedUserId: null } })
-    // 表示名が同じ「山田 太郎」は誰にも紐づけていないので、紐づけは増えていない
-    expect(await count(sql`select count(*) as n from import_identities where workspace_id = ${workspaceId} and linked_user_id is not null`)).toBe(1)
+  test('リアクションを通常のリアクションとして、取り込み元の人ごとに入れる（投稿者不明の同じ絵文字は1件になる）', async () => {
+    const first = (await db.db.execute(sql`select published_message_id as id from import_staged_messages where workspace_id = ${workspaceId} and external_message_id = '1760000000000'`)).rows[0] as { id: string }
+    // 👍 は山田・名前不明の参加者・投稿者不明の3人、✅ は Hanako
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id}`)).toBe(4)
   })
 
   test('同じ画像を参照する複数のメッセージは、1つのファイルを共有して添付する', async () => {
-    expect(await count(sql`select count(*) as n from imported_files where workspace_id = ${workspaceId}`)).toBe(1)
     expect(await count(sql`select count(*) as n from message_attachments where file_id = ${fileId}`)).toBe(2)
   })
 
-  test('非公開チャンネルに取り込んだ画像を、別のチャンネルへの取り込みで使い回さない', async () => {
-    const otherConversation = '19:FixtureOtherCommunityBBBBBBBBBBBBBBBBBBBBBB1@thread.v2'
-    const { jobId } = await service.createImportJob(workspaceId, adminId, {
-      source: 'teams-consumer', exportedAt: null, identities, links: [],
-      conversations: [{ externalId: otherConversation, channelId: publicChannelId, totalMessages: messages.length }],
-    })
-    expect(await service.lookupImportedMedia(workspaceId, jobId, publicChannelId, [MEDIA_ID])).toEqual({})
-    // 取り込み先でないチャンネルのメディアは問い合わせられない
-    await expect(service.lookupImportedMedia(workspaceId, jobId, channelId, [MEDIA_ID])).rejects.toMatchObject({ status: 400 })
-    const result = await service.importMessageBatch(workspaceId, adminId, jobId, { conversationExternalId: otherConversation, messages: messages.map(m => toBatchMessage(m, new Set([MEDIA_ID]))) })
-    expect(result).toMatchObject({ imported: messages.length, attachments: 0, missingMedia: 2 })
-    expect(await count(sql`select count(*) as n from message_attachments a join messages m on m.id = a.message_id where m.channel_id = ${publicChannelId}`)).toBe(0)
-    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+  test('過去ログの公開で通知・Inngest のイベントを出さない', async () => {
+    expect(mockInngestSend).not.toHaveBeenCalled()
+    expect(await count(sql`select count(*) as n from notifications where workspace_id = ${workspaceId}`)).toBe(0)
   })
 
-  test('画像がそろわずに取り込んだメッセージも、再実行で画像がそろえば添付を補う', async () => {
+  test('owner / admin が紐づけると送信者とリアクションが本人に付け替わり、外すと Teams の名前に戻る', async () => {
+    const list = await service.listImportIdentities(workspaceId, 'teams-consumer')
+    const hanako = list.find(i => i.key === 'name:Hanako Sato')!
+    expect(hanako).toMatchObject({ messageCount: 1, publishedCount: 1, linkedUserId: null })
+    const before = await senderOf(COMMUNITY, '1760000800000')
+    expect(before).toMatchObject({ kind: 'import', display_name: 'Hanako Sato' })
+
+    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, memberId)).toEqual({ messages: 1, reactions: 1 })
+    expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(memberId)
+    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${memberId} and emoji = '✅'`)).toBe(1)
+
+    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)).toEqual({ messages: 1, reactions: 1 })
+    expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(before!.sender_id)
+    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${memberId}`)).toBe(0)
+  })
+
+  test('投稿者不明は紐づけられない', async () => {
+    const anonymous = (await service.listImportIdentities(workspaceId, 'teams-consumer')).find(i => i.isAnonymous)!
+    await expect(service.linkImportIdentity(workspaceId, adminId, anonymous.id, memberId)).rejects.toMatchObject({ status: 400 })
+  })
+
+  test('投稿者不明として公開済みの投稿は、発言者を補うと送信者が付け替わる', async () => {
+    const result = await service.resolveUnknownMessages(workspaceId, {
+      source: 'teams-consumer',
+      conversationExternalId: COMMUNITY,
+      assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' } }],
+    })
+    expect(result).toEqual({ resolved: 1, republished: 1, skipped: 0 })
+    expect(await senderOf(COMMUNITY, '1760000700000')).toMatchObject({ kind: 'import', display_name: '鈴木 次郎' })
+  })
+
+  test('「残す」を選んだ会話では投稿者不明の投稿を公開せず、発言者を補ってから公開する。別チャンネルの画像は使い回さない', async () => {
+    const heldConversation = '19:FixtureHeldCommunityBBBBBBBBBBBBBBBBBBBBBBB1@thread.v2'
+    const { jobId } = await createJob({ conversation: heldConversation, channel: publicChannelId, unknownPolicy: 'hold' })
+    await service.stageMessageBatch(workspaceId, adminId, jobId, stageBody(heldConversation))
+    expect(await service.lookupImportedMedia(workspaceId, jobId, publicChannelId, [MEDIA_ID])).toEqual({})
+    const first = await publishAll(jobId, heldConversation)
+    expect(first).toMatchObject({ published: messages.length - 2, held: 2, attachments: 0 })
+    expect(await count(sql`select count(*) as n from messages where channel_id = ${publicChannelId}`)).toBe(messages.length - 2)
+
+    await service.resolveUnknownMessages(workspaceId, {
+      source: 'teams-consumer',
+      conversationExternalId: heldConversation,
+      assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' } }],
+    })
+    expect(await publishAll(jobId, heldConversation)).toMatchObject({ published: 1, held: 1 })
+    expect(await senderOf(heldConversation, '1760000700000')).toMatchObject({ display_name: '鈴木 次郎' })
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
+  })
+
+  test('画像がそろわずに公開したメッセージも、画像がそろってから公開し直すと添付を補う', async () => {
     const repairConversation = '19:FixtureRepairCommunityCCCCCCCCCCCCCCCCCCCCC1@thread.v2'
     const repairChannelId = randomUUID()
     await db.db.insert(db.channels).values({ id: repairChannelId, workspaceId, type: 'workspace', name: '補う', isPrivate: false })
     const repairFileId = randomUUID()
     await db.db.insert(db.files).values({ id: repairFileId, workspaceId, uploadedBy: adminId, storagePath: `${workspaceId}/${repairChannelId}/${adminId}/repair.jpg`, fileName: 'repair.jpg', mimeType: 'image/jpeg', fileSize: 10, fileType: 'image' })
-    const create = () => service.createImportJob(workspaceId, adminId, {
-      source: 'teams-consumer', exportedAt: null, identities, links: [],
-      conversations: [{ externalId: repairConversation, channelId: repairChannelId, totalMessages: messages.length }],
-    })
-    const body = { conversationExternalId: repairConversation, messages: messages.map(m => toBatchMessage(m, new Set([MEDIA_ID]))) }
-    const first = await create()
-    expect(await service.importMessageBatch(workspaceId, adminId, first.jobId, body)).toMatchObject({ imported: messages.length, attachments: 0, missingMedia: 2 })
-    await service.completeImportJob(workspaceId, first.jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
-
-    const second = await create()
-    await service.registerImportedMedia(workspaceId, adminId, second.jobId, { objectId: MEDIA_ID, fileId: repairFileId, channelId: repairChannelId })
-    expect(await service.importMessageBatch(workspaceId, adminId, second.jobId, body)).toMatchObject({ imported: 0, duplicates: messages.length, attachments: 2 })
-    // もう一度流しても二重に添付しない
-    expect(await service.importMessageBatch(workspaceId, adminId, second.jobId, body)).toMatchObject({ attachments: 0 })
-    expect(await count(sql`select count(*) as n from message_attachments where file_id = ${repairFileId}`)).toBe(2)
-    await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+    const { jobId } = await createJob({ conversation: repairConversation, channel: repairChannelId })
+    await service.stageMessageBatch(workspaceId, adminId, jobId, stageBody(repairConversation))
+    expect(await publishAll(jobId, repairConversation)).toMatchObject({ attachments: 0, missingMedia: 2 })
+    await service.registerImportedMedia(workspaceId, adminId, jobId, { objectId: MEDIA_ID, fileId: repairFileId, channelId: repairChannelId })
+    expect(await publishAll(jobId, repairConversation)).toMatchObject({ published: 0, attachments: 2 })
+    expect(await publishAll(jobId, repairConversation)).toMatchObject({ attachments: 0 })
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
   })
 
   test('既存の公開チャンネルに取り込んでも、開いたことのない人の Cairn での未読は既読にしない', async () => {
@@ -238,46 +274,17 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     const liveAt = new Date('2026-11-01T00:00:00.000Z')
     await db.db.insert(db.messages).values({ channelId: liveChannelId, senderId: adminId, content: 'Cairn での投稿', createdAt: liveAt, updatedAt: liveAt })
     const liveConversation = '19:FixtureLiveCommunityDDDDDDDDDDDDDDDDDDDDDDD1@thread.v2'
-    const { jobId } = await service.createImportJob(workspaceId, adminId, {
-      source: 'teams-consumer', exportedAt: null, identities, links: [],
-      conversations: [{ externalId: liveConversation, channelId: liveChannelId, totalMessages: messages.length }],
-    })
-    await service.importMessageBatch(workspaceId, adminId, jobId, { conversationExternalId: liveConversation, messages: messages.map(m => toBatchMessage(m, new Set())) })
-    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: { conversations: [], excludedConversations: {}, mediaFailures: [] } })
+    const { jobId } = await createJob({ conversation: liveConversation, channel: liveChannelId })
+    await service.stageMessageBatch(workspaceId, adminId, jobId, stageBody(liveConversation))
+    await publishAll(jobId, liveConversation)
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
     const row = (await db.db.execute(sql`select last_read_at from channel_read_states where channel_id = ${liveChannelId} and user_id = ${memberId}`)).rows[0] as { last_read_at: string }
-    // 取り込んだ過去ログ（2025年）は既読、Cairn での投稿（2026-11-01）は未読のまま
     expect(new Date(row.last_read_at).getTime()).toBe(liveAt.getTime() - 1)
+    // AI の巡回位置は置かない（巡回は messages.imported で過去ログを除外する）
+    expect(await count(sql`select count(*) as n from ai_scan_states where channel_id = ${liveChannelId}`)).toBe(0)
   })
 
-  test('リアクションを取り込み元の人ごとに保存する', async () => {
-    const reactionTotal = messages.reduce((n, m) => n + m.reactions.length, 0)
-    expect(await count(sql`select count(*) as n from imported_message_reactions r join messages m on m.id = r.message_id where m.channel_id = ${channelId}`)).toBe(reactionTotal)
-  })
-
-  test('過去ログの取り込みで通知・Inngest のイベントを出さない', async () => {
-    expect(mockInngestSend).not.toHaveBeenCalled()
-    expect(await count(sql`select count(*) as n from notifications where workspace_id = ${workspaceId}`)).toBe(0)
-  })
-
-  test('完了時に取り込み先の既読位置を置き、AI の巡回位置は進めない（巡回は取り込みの投稿を除外する）', async () => {
-    expect(await count(sql`select count(*) as n from channel_read_states where channel_id = ${channelId} and user_id = ${adminId}`)).toBe(1)
-    expect(await count(sql`select count(*) as n from ai_scan_states where channel_id = ${channelId}`)).toBe(0)
-  })
-
-  test('他のワークスペースからは、取り込んだ投稿者もメッセージも見えない', async () => {
-    const otherIdentities = await service.listImportIdentities(otherWorkspaceId, 'teams-consumer')
-    expect(otherIdentities).toEqual([])
-    const { loadImportedSenders } = await import('./display')
-    const anyMessage = (await db.db.execute(sql`select message_id from imported_messages where workspace_id = ${workspaceId} limit 1`)).rows[0] as { message_id: string }
-    expect((await loadImportedSenders(otherWorkspaceId, [anyMessage.message_id])).size).toBe(0)
-  })
-
-  test('紐づけを外すと取り込み元の名前に戻り、投稿者不明には紐づけられない', async () => {
-    const list = await service.listImportIdentities(workspaceId, 'teams-consumer')
-    const hanako = list.find(i => i.key === 'name:Hanako Sato')!
-    const anonymous = list.find(i => i.isAnonymous)!
-    await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)
-    await expect(service.linkImportIdentity(workspaceId, adminId, anonymous.id, memberId)).rejects.toMatchObject({ status: 400 })
-    expect((await service.listImportIdentities(workspaceId, 'teams-consumer')).find(i => i.id === hanako.id)?.linkedUserId).toBeNull()
+  test('他のワークスペースからは、取り込んだ投稿者が見えない', async () => {
+    expect(await service.listImportIdentities(otherWorkspaceId, 'teams-consumer')).toEqual([])
   })
 })

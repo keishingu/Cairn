@@ -96,6 +96,8 @@ export async function GET() {
             inArray(messages.channelId, channelIds),
             isNull(messages.deletedAt),
             ne(messages.senderId, ctx.userId),
+            // 外部チャットから取り込んだ過去ログは未読に数えない（docs/import-design.md §6）
+            eq(messages.imported, false),
             gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`),
           ),
         )

@@ -1,18 +1,19 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { importedMessageId } from './ids'
-import type { CompleteImportJobInput, CreateImportJobInput, ImportBatchInput, ImportMessageInput } from './schema'
+import { importedMessageId, uuidV5 } from './ids'
+import { MAX_BATCH_MESSAGES, type CompleteImportJobInput, type CreateImportJobInput, type ImportBatchInput, type PublishBatchInput, type ResolveUnknownInput } from './schema'
 
 /**
  * 外部チャットの取り込みを Cairn の DB に書き込む（docs/import-design.md）。
  *
+ * - 取り込みは2段階。stageMessageBatch で一時保管し（チャンネルには出ない）、publishConversationBatch で
+ *   発言者を確定したうえで messages に移す。送信者は紐づけた本人か投稿者ごとの取り込み用プロフィールで、表示時の差し替えは無い
  * - 通常の投稿 API（postMessage）は使わない。Inngest の `message/created` を出さないので、
  *   メンション・プッシュ・メールの通知、AI の巡回・埋め込みのジョブは動かない
- * - メッセージ ID は取り込み元のキーから決める（UUID v5）。同じデータを何度流しても二重登録されない
- * - 書き込みはバッチ（最大200件）ごとに1トランザクション。途中で止まっても、済んだバッチは残り、
- *   再実行すると済んだメッセージは重複としてスキップされる
- * - 権限の確認（owner / admin、チャンネルの所属）は呼び出し側の Route Handler とここの両方で行う
+ * - 一時保管とメッセージの ID は取り込み元のキーから決める。同じデータを何度流しても二重登録されない
+ * - 書き込みはバッチ（最大200件）ごとに1トランザクション。途中で止まっても、済んだバッチは残り、再実行で続きから入る
+ * - 権限の確認（運営者・owner / admin、チャンネルの所属）は呼び出し側の Route Handler とここの両方で行う
  */
 
 export class ImportServiceError extends Error {
@@ -91,6 +92,7 @@ export async function createImportJob(workspaceId: string, userId: string, input
       externalConversationId: c.externalId,
       channelId: c.channelId,
       totalMessages: c.totalMessages,
+      unknownPolicy: c.unknownPolicy,
     })))
 
     if (input.identities.length > 0) {
@@ -137,211 +139,395 @@ async function loadRunningJob(db: Db, workspaceId: string, jobId: string) {
   return job
 }
 
-export interface ImportBatchResult {
-  imported: number
-  duplicates: number
-  quotesLinked: number
-  quotesUnresolved: number
-  attachments: number
-  missingMedia: number
-  reactions: number
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/** 名前が分からない投稿者の取り込み用プロフィールの表示名（データとして持つ。docs/import-design.md §3） */
+const IMPORT_PROFILE_FALLBACK_NAMES: Record<string, string> = {
+  anonymous: '投稿者不明',
+  exporter: 'エクスポートした人',
+  'unnamed-participant': '名前不明の参加者',
+  named: '不明',
 }
 
-export async function importMessageBatch(
+interface IdentityRow {
+  id: string
+  externalKey: string
+  displayName: string | null
+  isAnonymous: boolean
+  kind: string
+  profileId: string | null
+  linkedUserId: string | null
+}
+
+/**
+ * 投稿者の取り込み用プロフィール（profiles.kind = 'import'）を用意する。ID は投稿者から決めるので、並行して呼ばれても1つになる。
+ * auth.users を持たず、どのワークスペースのメンバーにもならない（アプリの Bot と同じ扱い）
+ */
+async function ensureIdentityProfile(tx: Tx, identity: IdentityRow): Promise<string> {
+  if (identity.profileId) return identity.profileId
+  const { profiles, importIdentities, orm } = await loadDb()
+  const { eq } = orm
+  const profileId = uuidV5(`import-profile\n${identity.id}`)
+  await tx.insert(profiles).values({
+    id: profileId,
+    displayName: (identity.displayName ?? IMPORT_PROFILE_FALLBACK_NAMES[identity.kind] ?? IMPORT_PROFILE_FALLBACK_NAMES['named']!).slice(0, 200),
+    kind: 'import',
+  }).onConflictDoNothing()
+  await tx.update(importIdentities).set({ profileId }).where(eq(importIdentities.id, identity.id))
+  identity.profileId = profileId
+  return profileId
+}
+
+/** 公開したメッセージ・リアクションの送信者。紐づけた Cairn ユーザー本人か、投稿者ごとの取り込み用プロフィール */
+async function senderFor(tx: Tx, identity: IdentityRow): Promise<string> {
+  return identity.linkedUserId ?? ensureIdentityProfile(tx, identity)
+}
+
+async function loadIdentities(db: Db | Tx, workspaceId: string, source: string, keys: string[]): Promise<Map<string, IdentityRow>> {
+  const { importIdentities, orm } = await loadDb()
+  const { and, eq, inArray } = orm
+  if (keys.length === 0) return new Map()
+  const rows = await db
+    .select({
+      id: importIdentities.id,
+      externalKey: importIdentities.externalKey,
+      displayName: importIdentities.displayName,
+      isAnonymous: importIdentities.isAnonymous,
+      kind: importIdentities.kind,
+      profileId: importIdentities.profileId,
+      linkedUserId: importIdentities.linkedUserId,
+    })
+    .from(importIdentities)
+    .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, source), inArray(importIdentities.externalKey, keys)))
+  return new Map(rows.map(row => [row.externalKey, row]))
+}
+
+async function loadJobConversation(db: Db, jobId: string, conversationExternalId: string) {
+  const { importJobConversations, orm } = await loadDb()
+  const { and, eq } = orm
+  const [conversation] = await db
+    .select({ id: importJobConversations.id, channelId: importJobConversations.channelId, unknownPolicy: importJobConversations.unknownPolicy })
+    .from(importJobConversations)
+    .where(and(eq(importJobConversations.jobId, jobId), eq(importJobConversations.externalConversationId, conversationExternalId)))
+    .limit(1)
+  if (!conversation?.channelId) throw new ImportServiceError(404, 'この会話はジョブの取り込み対象ではありません')
+  return { ...conversation, channelId: conversation.channelId }
+}
+
+export interface StageBatchResult {
+  staged: number
+  duplicates: number
+}
+
+/**
+ * 解析したメッセージを一時保管する（チャンネルにはまだ出ない）。同じメッセージは二重に保管しない。
+ * 発言者の確定と公開は publishConversationBatch で行う
+ */
+export async function stageMessageBatch(
   workspaceId: string,
   userId: string,
   jobId: string,
   input: ImportBatchInput,
-): Promise<ImportBatchResult> {
-  const {
-    db, channels, messages, messageAttachments, importIdentities, importedMessages,
-    importedMessageReactions, importedFiles, importJobConversations, importJobs, IMPORT_SENDER_PROFILE_ID, orm,
-  } = await loadDb()
-  const { and, eq, inArray, sql } = orm
-
+): Promise<StageBatchResult> {
+  const { db, importStagedMessages, importJobConversations, orm } = await loadDb()
+  const { eq, sql } = orm
   const job = await loadRunningJob(db, workspaceId, jobId)
-  const [conversation] = await db
-    .select({ id: importJobConversations.id, channelId: importJobConversations.channelId })
-    .from(importJobConversations)
-    .where(and(eq(importJobConversations.jobId, jobId), eq(importJobConversations.externalConversationId, input.conversationExternalId)))
-    .limit(1)
-  if (!conversation?.channelId) throw new ImportServiceError(404, 'この会話はジョブの取り込み対象ではありません')
-  const channelId = conversation.channelId
-  // ジョブ作成後にチャンネルの権限が変わっていないか、バッチごとに確かめる
-  await assertImportTargetChannels(db, workspaceId, userId, [channelId])
+  const conversation = await loadJobConversation(db, jobId, input.conversationExternalId)
+  await assertImportTargetChannels(db, workspaceId, userId, [conversation.channelId])
 
   const externalIds = input.messages.map(m => m.externalId)
   if (new Set(externalIds).size !== externalIds.length) throw new ImportServiceError(400, '同じメッセージが重複しています')
 
   const identityKeys = [...new Set(input.messages.flatMap(m => [m.identityKey, ...m.reactions.map(r => r.identityKey)]))]
-  const identityRows = await db
-    .select({ id: importIdentities.id, key: importIdentities.externalKey })
-    .from(importIdentities)
-    .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, job.source), inArray(importIdentities.externalKey, identityKeys)))
-  const identityIdByKey = new Map(identityRows.map(row => [row.key, row.id]))
-  const missingIdentity = identityKeys.find(key => !identityIdByKey.has(key))
-  if (missingIdentity !== undefined) throw new ImportServiceError(400, 'ジョブに登録されていない投稿者が含まれています')
+  const identities = await loadIdentities(db, workspaceId, job.source, identityKeys)
+  if (identityKeys.some(key => !identities.has(key))) throw new ImportServiceError(400, 'ジョブに登録されていない投稿者が含まれています')
 
-  const objectIds = [...new Set(input.messages.flatMap(m => m.mediaObjectIds))]
-  const fileRows = objectIds.length > 0
-    ? await db
-        .select({ objectId: importedFiles.externalObjectId, fileId: importedFiles.fileId })
-        .from(importedFiles)
-        // 取り込み先と同じチャンネルにアップロードしたファイルだけを添付する（別チャンネルのファイルを持ち込ませない）
-        .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.channelId, channelId), inArray(importedFiles.externalObjectId, objectIds)))
-    : []
-  const fileIdByObject = new Map(fileRows.map(row => [row.objectId, row.fileId]))
+  return db.transaction(async (tx) => {
+    const inserted = await tx.insert(importStagedMessages).values(input.messages.map(message => ({
+      workspaceId,
+      source: job.source,
+      externalConversationId: input.conversationExternalId,
+      externalMessageId: message.externalId,
+      identityId: identities.get(message.identityKey)!.id,
+      jobId,
+      sentAt: new Date(message.sentAt),
+      editedAt: message.editedAt ? new Date(message.editedAt) : null,
+      text: message.text,
+      quotedExternalMessageId: message.quotedExternalId,
+      reactions: message.reactions,
+      mediaObjectIds: message.mediaObjectIds,
+      attributes: message.attributes,
+    }))).onConflictDoNothing().returning({ id: importStagedMessages.id })
 
+    const result = { staged: inserted.length, duplicates: input.messages.length - inserted.length }
+    await tx.update(importJobConversations).set({
+      status: 'running',
+      importedMessages: sql`${importJobConversations.importedMessages} + ${result.staged}`,
+      duplicateMessages: sql`${importJobConversations.duplicateMessages} + ${result.duplicates}`,
+      updatedAt: new Date(),
+    }).where(eq(importJobConversations.id, conversation.id))
+    return result
+  })
+}
+
+export interface PublishBatchResult {
+  published: number
+  held: number
+  alreadyPublished: number
+  attachments: number
+  missingMedia: number
+  reactions: number
+  quotesLinked: number
+  quotesUnresolved: number
+  /** 続きがあれば次の呼び出しに渡す。無ければ null */
+  nextCursor: { sentAt: string; externalMessageId: string } | null
+}
+
+interface StagedReaction {
+  identityKey: string
+  emoji: string
+  reactedAt: string
+}
+
+/**
+ * 一時保管した会話のメッセージを、発言者を確定したうえで messages に移す（最大 MAX_BATCH_MESSAGES 件ずつ）。
+ * - 送信者は紐づけた Cairn ユーザー本人か、投稿者ごとの取り込み用プロフィール。表示時の差し替えは無い
+ * - 投稿者不明の投稿は、会話の unknown_policy が hold なら残す（後で発言者が分かったら公開する）
+ * - 通常の投稿 API を使わず、Inngest の message/created を出さない（通知・AI の巡回・埋め込みは動かない）
+ * - メッセージ ID は取り込み元のキーから決める。何度公開し直しても二重にならない
+ * - 公開済みのメッセージにも、前回そろっていなかった画像の添付を補う
+ */
+export async function publishConversationBatch(
+  workspaceId: string,
+  userId: string,
+  jobId: string,
+  input: PublishBatchInput,
+): Promise<PublishBatchResult> {
+  const {
+    db, channels, messages, messageReactions, messageAttachments, importStagedMessages, importIdentities,
+    importedFiles, importJobConversations, orm,
+  } = await loadDb()
+  const { and, asc, eq, gt, inArray, or, sql } = orm
+  const job = await loadRunningJob(db, workspaceId, jobId)
+  const conversation = await loadJobConversation(db, jobId, input.conversationExternalId)
+  const channelId = conversation.channelId
+  await assertImportTargetChannels(db, workspaceId, userId, [channelId])
+
+  const cursorCondition = input.cursor
+    ? or(
+        gt(importStagedMessages.sentAt, new Date(input.cursor.sentAt)),
+        and(eq(importStagedMessages.sentAt, new Date(input.cursor.sentAt)), gt(importStagedMessages.externalMessageId, input.cursor.externalMessageId)),
+      )
+    : undefined
+  const rows = await db
+    .select({
+      id: importStagedMessages.id,
+      externalMessageId: importStagedMessages.externalMessageId,
+      sentAt: importStagedMessages.sentAt,
+      editedAt: importStagedMessages.editedAt,
+      text: importStagedMessages.text,
+      quoted: importStagedMessages.quotedExternalMessageId,
+      reactions: importStagedMessages.reactions,
+      mediaObjectIds: importStagedMessages.mediaObjectIds,
+      publishedMessageId: importStagedMessages.publishedMessageId,
+      identityKey: importIdentities.externalKey,
+    })
+    .from(importStagedMessages)
+    .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
+    .where(and(
+      eq(importStagedMessages.workspaceId, workspaceId),
+      eq(importStagedMessages.source, job.source),
+      eq(importStagedMessages.externalConversationId, input.conversationExternalId),
+      cursorCondition,
+    ))
+    .orderBy(asc(importStagedMessages.sentAt), asc(importStagedMessages.externalMessageId))
+    .limit(MAX_BATCH_MESSAGES + 1)
+  const batch = rows.slice(0, MAX_BATCH_MESSAGES)
+  const last = batch[batch.length - 1]
+  const nextCursor = rows.length > MAX_BATCH_MESSAGES && last ? { sentAt: last.sentAt.toISOString(), externalMessageId: last.externalMessageId } : null
+
+  const result: PublishBatchResult = { published: 0, held: 0, alreadyPublished: 0, attachments: 0, missingMedia: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0, nextCursor }
+  if (batch.length === 0) return result
+
+  const reactionsOf = (value: unknown) => (Array.isArray(value) ? value as StagedReaction[] : [])
+  const mediaOf = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [])
+  const identityKeys = [...new Set(batch.flatMap(row => [row.identityKey, ...reactionsOf(row.reactions).map(r => r.identityKey)]))]
+  const objectIds = [...new Set(batch.flatMap(row => mediaOf(row.mediaObjectIds)))]
   const idFor = (externalId: string) => importedMessageId(workspaceId, job.source, input.conversationExternalId, externalId)
 
   return db.transaction(async (tx) => {
     // 同じチャンネルへの並行した取り込みと投稿の順序を直列化する（通常の投稿と同じロック）
     await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)).for('update')
+    const identities = await loadIdentities(tx, workspaceId, job.source, identityKeys)
+    const fileRows = objectIds.length > 0
+      ? await tx
+          .select({ objectId: importedFiles.externalObjectId, fileId: importedFiles.fileId })
+          .from(importedFiles)
+          // 取り込み先と同じチャンネルにアップロードしたファイルだけを添付する（別チャンネルのファイルを持ち込ませない）
+          .where(and(eq(importedFiles.workspaceId, workspaceId), eq(importedFiles.source, job.source), eq(importedFiles.channelId, channelId), inArray(importedFiles.externalObjectId, objectIds)))
+      : []
+    const fileIdByObject = new Map(fileRows.map(row => [row.objectId, row.fileId]))
 
-    const already = await tx
-      .select({ externalMessageId: importedMessages.externalMessageId })
-      .from(importedMessages)
-      .where(and(
-        eq(importedMessages.workspaceId, workspaceId),
-        eq(importedMessages.source, job.source),
-        eq(importedMessages.externalConversationId, input.conversationExternalId),
-        inArray(importedMessages.externalMessageId, externalIds),
-      ))
-    const alreadySet = new Set(already.map(row => row.externalMessageId))
-    const fresh = input.messages.filter(m => !alreadySet.has(m.externalId))
+    const toPublish = batch.filter(row => {
+      if (row.publishedMessageId) {
+        result.alreadyPublished++
+        return false
+      }
+      if (identities.get(row.identityKey)?.isAnonymous && conversation.unknownPolicy === 'hold') {
+        result.held++
+        return false
+      }
+      return true
+    })
 
-    // 引用元: 同じチャンネルに取り込み済みか、このバッチで先に入るものだけ。推定はしない
-    const quotedIds = [...new Set(fresh.map(m => m.quotedExternalId).filter((id): id is string => !!id))]
-    const quotedUuids = quotedIds.map(idFor)
+    // 引用元: 同じチャンネルに公開済みか、このバッチで先に公開するものだけ。推定はしない
+    const quotedUuids = [...new Set(toPublish.map(row => row.quoted).filter((id): id is string => !!id).map(idFor))]
     const existingQuoted = quotedUuids.length > 0
-      ? new Set((await tx
-          .select({ id: messages.id })
-          .from(messages)
-          .where(and(inArray(messages.id, quotedUuids), eq(messages.channelId, channelId)))).map(row => row.id))
+      ? new Set((await tx.select({ id: messages.id }).from(messages).where(and(inArray(messages.id, quotedUuids), eq(messages.channelId, channelId)))).map(row => row.id))
       : new Set<string>()
-    const freshIds = new Set(fresh.map(m => m.externalId))
+    const publishingIds = new Set(toPublish.map(row => row.externalMessageId))
 
-    const result: ImportBatchResult = { imported: 0, duplicates: input.messages.length - fresh.length, quotesLinked: 0, quotesUnresolved: 0, attachments: 0, missingMedia: 0, reactions: 0 }
-
-    // 取り込み済みのメッセージでも、前回アップロードに失敗した・エクスポートに無かった画像が今回そろっていれば添付を補う。
-    // 同じチャンネルに取り込まれたメッセージにだけ、まだ添付されていないファイルを足す
-    const duplicates = input.messages.filter(m => alreadySet.has(m.externalId) && m.mediaObjectIds.some(id => fileIdByObject.has(id)))
-    if (duplicates.length > 0) {
-      const duplicateIds = duplicates.map(m => idFor(m.externalId))
-      const sameChannel = new Set((await tx
-        .select({ id: messages.id })
-        .from(messages)
-        .where(and(inArray(messages.id, duplicateIds), eq(messages.channelId, channelId)))).map(row => row.id))
-      const attached = await tx
-        .select({ messageId: messageAttachments.messageId, fileId: messageAttachments.fileId, displayOrder: messageAttachments.displayOrder })
-        .from(messageAttachments)
-        .where(inArray(messageAttachments.messageId, [...sameChannel]))
-      const attachedKeys = new Set(attached.map(row => `${row.messageId}:${row.fileId}`))
-      const repairRows = duplicates.flatMap(message => {
-        const messageId = idFor(message.externalId)
-        if (!sameChannel.has(messageId)) return []
-        return message.mediaObjectIds.flatMap((objectId, index) => {
-          const fileId = fileIdByObject.get(objectId)
-          if (!fileId || attachedKeys.has(`${messageId}:${fileId}`)) return []
-          attachedKeys.add(`${messageId}:${fileId}`)
-          return [{ messageId, fileId, displayOrder: index }]
-        })
+    const messageRows = []
+    for (const row of toPublish) {
+      const identity = identities.get(row.identityKey)
+      if (!identity) throw new Error('staged message identity not found')
+      let parentMessageId: string | null = null
+      if (row.quoted) {
+        const target = idFor(row.quoted)
+        if (existingQuoted.has(target) || publishingIds.has(row.quoted)) {
+          parentMessageId = target
+          result.quotesLinked++
+        } else {
+          result.quotesUnresolved++
+        }
+      }
+      messageRows.push({
+        id: idFor(row.externalMessageId),
+        channelId,
+        senderId: await senderFor(tx, identity),
+        messageType: 'text' as const,
+        content: row.text,
+        parentMessageId,
+        imported: true,
+        createdAt: row.sentAt,
+        updatedAt: row.editedAt && row.editedAt > row.sentAt ? row.editedAt : row.sentAt,
       })
-      if (repairRows.length > 0) {
-        await tx.insert(messageAttachments).values(repairRows)
-        result.attachments += repairRows.length
+    }
+    if (messageRows.length > 0) {
+      await tx.insert(messages).values(messageRows).onConflictDoNothing({ target: messages.id })
+    }
+    // ID が決まっているので、別の会話・チャンネルに同じ ID の行があった場合は、このチャンネルの行だけを公開済みにする
+    const published = messageRows.length > 0
+      ? new Set((await tx.select({ id: messages.id }).from(messages).where(and(inArray(messages.id, messageRows.map(m => m.id)), eq(messages.channelId, channelId)))).map(row => row.id))
+      : new Set<string>()
+    const now = new Date()
+    for (const row of toPublish) {
+      const messageId = idFor(row.externalMessageId)
+      if (!published.has(messageId)) continue
+      await tx.update(importStagedMessages).set({ publishedMessageId: messageId, publishedAt: now }).where(eq(importStagedMessages.id, row.id))
+      result.published++
+    }
+
+    // リアクションと画像は、公開済みのメッセージすべてに対して補う（再実行で画像がそろった場合など）
+    const live = batch
+      .map(row => ({ row, messageId: row.publishedMessageId ?? (published.has(idFor(row.externalMessageId)) ? idFor(row.externalMessageId) : null) }))
+      .filter((entry): entry is { row: typeof batch[number]; messageId: string } => !!entry.messageId)
+
+    const reactionRows = []
+    for (const { row, messageId } of live) {
+      for (const reaction of reactionsOf(row.reactions)) {
+        const reactor = identities.get(reaction.identityKey)
+        if (!reactor) continue
+        reactionRows.push({ messageId, userId: await senderFor(tx, reactor), emoji: reaction.emoji, createdAt: new Date(reaction.reactedAt) })
       }
     }
-
-    if (fresh.length === 0) {
-      await bumpCounts(tx, conversation.id, result)
-      return result
-    }
-
-    const parentFor = (message: ImportMessageInput): string | null => {
-      if (!message.quotedExternalId) return null
-      const target = idFor(message.quotedExternalId)
-      if (existingQuoted.has(target) || freshIds.has(message.quotedExternalId)) {
-        result.quotesLinked++
-        return target
-      }
-      result.quotesUnresolved++
-      return null
-    }
-
-    // 引用元が同じバッチ内にある場合に外部キーが先に満たされるよう、投稿日時の順に入れる
-    const ordered = [...fresh].sort((a, b) => a.sentAt.localeCompare(b.sentAt) || a.externalId.localeCompare(b.externalId))
-    const inserted = await tx.insert(messages).values(ordered.map(message => ({
-      id: idFor(message.externalId),
-      channelId,
-      senderId: IMPORT_SENDER_PROFILE_ID,
-      messageType: 'text' as const,
-      content: message.text,
-      parentMessageId: parentFor(message),
-      createdAt: new Date(message.sentAt),
-      updatedAt: new Date(message.editedAt && message.editedAt > message.sentAt ? message.editedAt : message.sentAt),
-    }))).onConflictDoNothing({ target: messages.id }).returning({ id: messages.id })
-    const insertedIds = new Set(inserted.map(row => row.id))
-    const insertedMessages = ordered.filter(message => insertedIds.has(idFor(message.externalId)))
-    // ID は決まっているので、別の会話・別のチャンネルに既に同じ ID があれば重複として数える
-    result.duplicates += ordered.length - insertedMessages.length
-    result.imported = insertedMessages.length
-    if (insertedMessages.length === 0) {
-      await bumpCounts(tx, conversation.id, result)
-      return result
-    }
-
-    await tx.insert(importedMessages).values(insertedMessages.map(message => ({
-      messageId: idFor(message.externalId),
-      workspaceId,
-      source: job.source,
-      externalConversationId: input.conversationExternalId,
-      externalMessageId: message.externalId,
-      identityId: identityIdByKey.get(message.identityKey)!,
-      jobId,
-      originalSentAt: new Date(message.sentAt),
-      originalEditedAt: message.editedAt ? new Date(message.editedAt) : null,
-      attributes: message.attributes,
-    })))
-
-    const reactionRows = insertedMessages.flatMap(message => message.reactions.map(reaction => ({
-      messageId: idFor(message.externalId),
-      identityId: identityIdByKey.get(reaction.identityKey)!,
-      emoji: reaction.emoji,
-      sourceKey: reaction.sourceKey,
-      reactedAt: new Date(reaction.reactedAt),
-    })))
     if (reactionRows.length > 0) {
-      const insertedReactions = await tx.insert(importedMessageReactions).values(reactionRows).onConflictDoNothing().returning({ id: importedMessageReactions.id })
-      result.reactions = insertedReactions.length
+      // 同じ人（投稿者不明は1つのプロフィール）の同じ絵文字は1件になる（一意制約）
+      const inserted = await tx.insert(messageReactions).values(reactionRows).onConflictDoNothing().returning({ id: messageReactions.id })
+      result.reactions = inserted.length
     }
 
-    const attachmentRows = insertedMessages.flatMap(message => message.mediaObjectIds.flatMap((objectId, index) => {
+    const liveIds = live.map(entry => entry.messageId)
+    const attached = liveIds.length > 0
+      ? await tx.select({ messageId: messageAttachments.messageId, fileId: messageAttachments.fileId }).from(messageAttachments).where(inArray(messageAttachments.messageId, liveIds))
+      : []
+    const attachedKeys = new Set(attached.map(row => `${row.messageId}:${row.fileId}`))
+    const attachmentRows = live.flatMap(({ row, messageId }) => mediaOf(row.mediaObjectIds).flatMap((objectId, index) => {
       const fileId = fileIdByObject.get(objectId)
       if (!fileId) {
         result.missingMedia++
         return []
       }
-      return [{ messageId: idFor(message.externalId), fileId, displayOrder: index }]
+      if (attachedKeys.has(`${messageId}:${fileId}`)) return []
+      attachedKeys.add(`${messageId}:${fileId}`)
+      return [{ messageId, fileId, displayOrder: index }]
     }))
     if (attachmentRows.length > 0) {
       await tx.insert(messageAttachments).values(attachmentRows)
-      result.attachments += attachmentRows.length
+      result.attachments = attachmentRows.length
     }
 
-    await bumpCounts(tx, conversation.id, result)
-    await tx.update(importJobs).set({ updatedAt: new Date() }).where(eq(importJobs.id, jobId))
+    await tx.update(importJobConversations).set({
+      publishedMessages: sql`${importJobConversations.publishedMessages} + ${result.published}`,
+      updatedAt: new Date(),
+    }).where(eq(importJobConversations.id, conversation.id))
     return result
   })
+}
 
-  async function bumpCounts(tx: Parameters<Parameters<Db['transaction']>[0]>[0], jobConversationId: string, result: ImportBatchResult) {
-    await tx.update(importJobConversations).set({
-      status: 'running',
-      importedMessages: sql`${importJobConversations.importedMessages} + ${result.imported}`,
-      duplicateMessages: sql`${importJobConversations.duplicateMessages} + ${result.duplicates}`,
-      updatedAt: new Date(),
-    }).where(eq(importJobConversations.id, jobConversationId))
+/**
+ * 投稿者の公開済みメッセージとリアクションの送信者を、from から to へ付け替える。
+ * 対象は一時保管の行（どの投稿・どのリアクションがこの投稿者のものか）から決め、Cairn で投稿・リアクションしたものは変えない
+ */
+async function reassignIdentityContent(tx: Tx, workspaceId: string, source: string, identity: IdentityRow, from: string, to: string) {
+  const { messages, messageReactions, importStagedMessages, orm } = await loadDb()
+  const { and, eq, inArray, isNotNull, sql } = orm
+  if (from === to) return { messages: 0, reactions: 0 }
+
+  const authored = await tx
+    .select({ messageId: importStagedMessages.publishedMessageId })
+    .from(importStagedMessages)
+    .where(and(eq(importStagedMessages.identityId, identity.id), isNotNull(importStagedMessages.publishedMessageId)))
+  const authoredIds = authored.map(row => row.messageId).filter((id): id is string => !!id)
+  let movedMessages = 0
+  if (authoredIds.length > 0) {
+    const moved = await tx.update(messages).set({ senderId: to })
+      .where(and(inArray(messages.id, authoredIds), eq(messages.senderId, from), eq(messages.imported, true)))
+      .returning({ id: messages.id })
+    movedMessages = moved.length
   }
+
+  // この投稿者のリアクション（一時保管の reactions に identityKey が入っている公開済みメッセージの、その絵文字）
+  const reacted = await tx
+    .select({ messageId: importStagedMessages.publishedMessageId, reactions: importStagedMessages.reactions })
+    .from(importStagedMessages)
+    .where(and(
+      eq(importStagedMessages.workspaceId, workspaceId),
+      eq(importStagedMessages.source, source),
+      isNotNull(importStagedMessages.publishedMessageId),
+      sql`${importStagedMessages.reactions} @> ${JSON.stringify([{ identityKey: identity.externalKey }])}::jsonb`,
+    ))
+  let movedReactions = 0
+  for (const row of reacted) {
+    if (!row.messageId) continue
+    const emojis = [...new Set((Array.isArray(row.reactions) ? row.reactions as StagedReaction[] : []).filter(r => r.identityKey === identity.externalKey).map(r => r.emoji))]
+    if (emojis.length === 0) continue
+    // 付け替え先が同じメッセージに同じ絵文字を既に付けていたら、取り込みのリアクションの方を消す（一意制約）
+    const existing = new Set((await tx.select({ emoji: messageReactions.emoji }).from(messageReactions)
+      .where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, to), inArray(messageReactions.emoji, emojis)))).map(r => r.emoji))
+    const duplicate = emojis.filter(emoji => existing.has(emoji))
+    if (duplicate.length > 0) {
+      await tx.delete(messageReactions).where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, from), inArray(messageReactions.emoji, duplicate)))
+    }
+    const movable = emojis.filter(emoji => !existing.has(emoji))
+    if (movable.length > 0) {
+      const moved = await tx.update(messageReactions).set({ userId: to })
+        .where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, from), inArray(messageReactions.emoji, movable)))
+        .returning({ id: messageReactions.id })
+      movedReactions += moved.length
+    }
+  }
+  return { messages: movedMessages, reactions: movedReactions }
 }
 
 export async function lookupImportedMedia(workspaceId: string, jobId: string, channelId: string, objectIds: string[]) {
@@ -413,11 +599,11 @@ export async function registerImportedMedia(
 
 /**
  * ジョブを終える。取り込み先のチャンネルは、過去ログが未読として一気に積まれないよう既読位置を置く。
- * AI の巡回位置は触らない（巡回のクエリが取り込みプロフィールの投稿を除外する。位置を進めると、まだ評価していない
+ * AI の巡回位置は触らない（巡回のクエリが過去ログの印 messages.imported で除外する。位置を進めると、まだ評価していない
  * Cairn での投稿まで巡回済みになってしまう）
  */
 export async function completeImportJob(workspaceId: string, jobId: string, input: CompleteImportJobInput) {
-  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, messages, activeWorkspaceMembers, IMPORT_SENDER_PROFILE_ID, orm } = await loadDb()
+  const { db, importJobs, importJobConversations, channels, channelMembers, channelReadStates, messages, activeWorkspaceMembers, orm } = await loadDb()
   const { and, asc, eq, inArray, ne, sql } = orm
   await loadRunningJob(db, workspaceId, jobId)
 
@@ -431,7 +617,7 @@ export async function completeImportJob(workspaceId: string, jobId: string, inpu
     for (const conversation of conversations) {
       const done = conversation.imported + conversation.duplicates >= conversation.total
       await tx.update(importJobConversations)
-        // 全件が取り込み済み（重複を含む）でなければ、途中で止まった会話として残す。再実行で続きから入る
+        // 全件が一時保管済み（重複を含む）でなければ、途中で止まった会話として残す。再実行で続きから入る
         .set({ status: done ? 'completed' : 'failed', updatedAt: new Date() })
         .where(eq(importJobConversations.id, conversation.id))
     }
@@ -453,7 +639,7 @@ export async function completeImportJob(workspaceId: string, jobId: string, inpu
           const [earliestLive] = await tx
             .select({ createdAt: messages.createdAt })
             .from(messages)
-            .where(and(eq(messages.channelId, channel.id), ne(messages.senderId, IMPORT_SENDER_PROFILE_ID)))
+            .where(and(eq(messages.channelId, channel.id), eq(messages.imported, false)))
             .orderBy(asc(messages.createdAt))
             .limit(1)
           const lastReadAt = earliestLive ? new Date(earliestLive.createdAt.getTime() - 1) : new Date()
@@ -490,6 +676,8 @@ export async function getImportJob(workspaceId: string, jobId: string) {
       totalMessages: importJobConversations.totalMessages,
       importedMessages: importJobConversations.importedMessages,
       duplicateMessages: importJobConversations.duplicateMessages,
+      publishedMessages: importJobConversations.publishedMessages,
+      unknownPolicy: importJobConversations.unknownPolicy,
     })
     .from(importJobConversations)
     .where(eq(importJobConversations.jobId, jobId))
@@ -520,9 +708,9 @@ export async function listImportJobs(workspaceId: string) {
 }
 
 export async function listImportIdentities(workspaceId: string, source: string) {
-  const { db, importIdentities, importedMessages, workspaceMembers, profiles, orm } = await loadDb()
+  const { db, importIdentities, importStagedMessages, workspaceMembers, profiles, orm } = await loadDb()
   const { and, eq, sql } = orm
-  const rows = await db
+  return db
     .select({
       id: importIdentities.id,
       key: importIdentities.externalKey,
@@ -531,25 +719,44 @@ export async function listImportIdentities(workspaceId: string, source: string) 
       kind: importIdentities.kind,
       linkedUserId: importIdentities.linkedUserId,
       linkedUserName: sql<string | null>`coalesce(${workspaceMembers.displayName}, ${profiles.displayName})`,
-      messageCount: sql<number>`(select count(*)::int from ${importedMessages} where ${importedMessages.identityId} = ${importIdentities.id})`,
+      messageCount: sql<number>`(select count(*)::int from ${importStagedMessages} where ${importStagedMessages.identityId} = ${importIdentities.id})`,
+      publishedCount: sql<number>`(select count(*)::int from ${importStagedMessages} where ${importStagedMessages.identityId} = ${importIdentities.id} and ${importStagedMessages.publishedMessageId} is not null)`,
     })
     .from(importIdentities)
     .leftJoin(profiles, eq(profiles.id, importIdentities.linkedUserId))
     .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, importIdentities.linkedUserId), eq(workspaceMembers.workspaceId, workspaceId)))
     .where(and(eq(importIdentities.workspaceId, workspaceId), eq(importIdentities.source, source)))
-  return rows
 }
 
-/** 管理者が確認した紐づけを付け替える・外す。投稿者不明は紐づけられない */
-export async function linkImportIdentity(workspaceId: string, adminId: string, identityId: string, userId: string | null) {
-  const { db, importIdentities, activeWorkspaceMembers, orm } = await loadDb()
+async function loadIdentityById(db: Db | Tx, workspaceId: string, identityId: string): Promise<IdentityRow & { source: string }> {
+  const { importIdentities, orm } = await loadDb()
   const { and, eq } = orm
   const [identity] = await db
-    .select({ id: importIdentities.id, isAnonymous: importIdentities.isAnonymous })
+    .select({
+      id: importIdentities.id,
+      source: importIdentities.source,
+      externalKey: importIdentities.externalKey,
+      displayName: importIdentities.displayName,
+      isAnonymous: importIdentities.isAnonymous,
+      kind: importIdentities.kind,
+      profileId: importIdentities.profileId,
+      linkedUserId: importIdentities.linkedUserId,
+    })
     .from(importIdentities)
     .where(and(eq(importIdentities.id, identityId), eq(importIdentities.workspaceId, workspaceId)))
     .limit(1)
   if (!identity) throw new ImportServiceError(404, '投稿者が見つかりません')
+  return identity
+}
+
+/**
+ * 投稿者を Cairn のメンバーに紐づける・付け替える・外す（owner / admin）。投稿者不明は紐づけられない。
+ * 公開済みのメッセージとリアクションの送信者も付け替える（紐づけた本人 ⇔ 投稿者ごとの取り込み用プロフィール）。通知は出さない
+ */
+export async function linkImportIdentity(workspaceId: string, actorId: string, identityId: string, userId: string | null) {
+  const { db, importIdentities, activeWorkspaceMembers, orm } = await loadDb()
+  const { and, eq } = orm
+  const identity = await loadIdentityById(db, workspaceId, identityId)
   if (identity.isAnonymous && userId) throw new ImportServiceError(400, '投稿者不明は Cairn のユーザーに紐づけられません')
   if (userId) {
     const [member] = await db
@@ -559,9 +766,70 @@ export async function linkImportIdentity(workspaceId: string, adminId: string, i
       .limit(1)
     if (!member) throw new ImportServiceError(400, '紐づけ先はこのワークスペースのメンバーにしてください')
   }
-  await db.update(importIdentities)
-    .set(userId ? { linkedUserId: userId, linkedBy: adminId, linkedAt: new Date() } : { linkedUserId: null, linkedBy: null, linkedAt: null })
-    .where(eq(importIdentities.id, identityId))
+  return db.transaction(async (tx) => {
+    const from = identity.linkedUserId ?? identity.profileId
+    const to = userId ?? await ensureIdentityProfile(tx, identity)
+    const moved = from ? await reassignIdentityContent(tx, workspaceId, identity.source, identity, from, to) : { messages: 0, reactions: 0 }
+    await tx.update(importIdentities)
+      .set(userId ? { linkedUserId: userId, linkedBy: actorId, linkedAt: new Date() } : { linkedUserId: null, linkedBy: null, linkedAt: null })
+      .where(eq(importIdentities.id, identityId))
+    return moved
+  })
+}
+
+/**
+ * 投稿者不明の投稿の発言者を、外部データ（ブラウザのキャッシュ・他の参加者のエクスポート）から補う（運営者）。
+ * 一時保管の行の投稿者を差し替え、投稿者不明として公開済みなら送信者も付け替える。残していた投稿は次の公開で出る。
+ * 投稿者不明でない行（既に発言者が確定している行）は変えない
+ */
+export async function resolveUnknownMessages(workspaceId: string, input: ResolveUnknownInput) {
+  const { db, importIdentities, importStagedMessages, messages, orm } = await loadDb()
+  const { and, eq, inArray, sql } = orm
+  if (input.assignments.some(a => a.identity.anonymous)) throw new ImportServiceError(400, '補う発言者に投稿者不明は指定できません')
+  return db.transaction(async (tx) => {
+    const identities = [...new Map(input.assignments.map(a => [a.identity.key, a.identity])).values()]
+    await tx.insert(importIdentities).values(identities.map(identity => ({
+      workspaceId,
+      source: input.source,
+      externalKey: identity.key,
+      displayName: identity.displayName,
+      isAnonymous: false,
+      kind: identity.kind,
+    }))).onConflictDoUpdate({
+      target: [importIdentities.workspaceId, importIdentities.source, importIdentities.externalKey],
+      set: { displayName: sql`coalesce(excluded.display_name, ${importIdentities.displayName})` },
+    })
+    const identityByKey = await loadIdentities(tx, workspaceId, input.source, identities.map(i => i.key))
+    const rows = await tx
+      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
+      .from(importStagedMessages)
+      .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
+      .where(and(
+        eq(importStagedMessages.workspaceId, workspaceId),
+        eq(importStagedMessages.source, input.source),
+        eq(importStagedMessages.externalConversationId, input.conversationExternalId),
+        inArray(importStagedMessages.externalMessageId, input.assignments.map(a => a.externalMessageId)),
+      ))
+    const rowByExternalId = new Map(rows.map(row => [row.externalMessageId, row]))
+    const result = { resolved: 0, republished: 0, skipped: 0 }
+    for (const assignment of input.assignments) {
+      const row = rowByExternalId.get(assignment.externalMessageId)
+      const identity = identityByKey.get(assignment.identity.key)
+      if (!row || !identity || !row.isAnonymous) {
+        result.skipped++
+        continue
+      }
+      await tx.update(importStagedMessages).set({ identityId: identity.id }).where(eq(importStagedMessages.id, row.id))
+      result.resolved++
+      if (row.publishedMessageId && row.anonymousProfileId) {
+        const updated = await tx.update(messages).set({ senderId: await senderFor(tx, identity) })
+          .where(and(eq(messages.id, row.publishedMessageId), eq(messages.senderId, row.anonymousProfileId), eq(messages.imported, true)))
+          .returning({ id: messages.id })
+        result.republished += updated.length
+      }
+    }
+    return result
+  })
 }
 
 /**

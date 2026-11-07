@@ -3863,7 +3863,8 @@ export const PageSettings = () => {
   const router = useRouter()
   const { isOwner, isGuest, isAdmin } = useWorkspacePermissions()
   const importAccess = useImportAccess(isAdmin)
-  const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true }
+  // 取り込み（運営者）か、取り込んだ投稿者の紐づけ（owner / admin）ができるときに「Teams から取り込む」を出す
+  const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true || importAccess.data?.canLink === true }
   const navGroups = getSettingsNavGroups(isOwner, navOptions)
   const seg = pathname.split('/')[2]
   // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中・確認に失敗したときに /settings/import を開いても
