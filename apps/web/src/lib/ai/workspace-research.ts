@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { loadImportedSenders } from '@/lib/imports/display'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { getGuestVisibleProjectIds } from '@/lib/permissions'
@@ -721,6 +722,8 @@ export async function searchResearchChannelMessages(
       .filter((id): id is string => typeof id === 'string'),
   )
   const mentionNameMap = await buildMentionNameMap(ctx.workspaceId, selected.map(row => row.content))
+  // 取り込んだ過去ログは共通の取り込みプロフィールが送信者なので、本当の投稿者（紐づけた Cairn ユーザーか取り込み元の名前）で答える（docs/import-design.md）
+  const importedSenders = await loadImportedSenders(ctx.workspaceId, selected.map(row => row.id))
 
   // The SQL query is newest-first so it can cap efficiently; tools receive chronological data.
   const items: ResearchMessage[] = selected.reverse().map((row) => {
@@ -728,12 +731,14 @@ export async function searchResearchChannelMessages(
     const createdAt = toIso(row.createdAt)
     const hydrated = hydrateMentions(row.content, (id) => mentionNameMap.get(id))
     const contentTruncated = hydrated.length > AI_RESEARCH_LIMITS.messageContentChars
+    const imported = importedSenders.get(row.id)
+    const senderName = imported?.name ?? row.senderName
     return {
       id: row.id,
       channelId: row.channelId,
       channelName: channel.name,
       projectId: channel.projectId,
-      sender: { id: row.senderId, name: row.senderName },
+      sender: { id: imported?.info.linkedUserId ?? row.senderId, name: senderName },
       createdAt,
       content: hydrated.slice(0, AI_RESEARCH_LIMITS.messageContentChars),
       contentTruncated,
@@ -741,7 +746,7 @@ export async function searchResearchChannelMessages(
       hasDirectReply: repliedIds.has(row.id),
       evidence: messageEvidence({
         id: row.id,
-        label: `${channel.name} / ${row.senderName}`,
+        label: `${channel.name} / ${senderName}`,
         channelId: row.channelId,
         projectId: channel.projectId,
         occurredAt: createdAt,

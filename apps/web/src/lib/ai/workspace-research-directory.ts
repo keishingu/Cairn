@@ -4,6 +4,7 @@
 // AIオートメーション Phase 0 の読み取り（docs/ai-automation-design.md §5.1）。
 // `/ai` の tool と MCP（`/api/research/*` 経由）で同じ実装を使う。境界は既存画面の API と揃える。
 
+import { loadImportedSenders } from '@/lib/imports/display'
 import type { AuthContext } from '@/lib/get-auth-context'
 import { hydrateMentions } from '@/lib/chat/mentions'
 import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
@@ -261,20 +262,24 @@ export async function readResearchChannelMessages(
     ctx.workspaceId,
     selected.map((row) => row.content),
   )
+  // 取り込んだ過去ログは共通の取り込みプロフィールが送信者なので、本当の投稿者（紐づけた Cairn ユーザーか取り込み元の名前）で答える（docs/import-design.md）
+  const importedSenders = await loadImportedSenders(ctx.workspaceId, selected.map((row) => row.id))
   const items: ResearchChannelMessage[] = selected.map((row) => {
     const createdAt = toIso(row.createdAt)
+    const imported = importedSenders.get(row.id)
+    const senderName = imported?.name ?? row.senderName
     const hydrated = hydrateMentions(row.content, (id) => mentionNameMap.get(id))
     return {
       id: row.id,
       channelId: channel.id,
-      sender: { id: row.senderId, name: row.senderName },
+      sender: { id: imported?.info.linkedUserId ?? row.senderId, name: senderName },
       createdAt,
       content: hydrated.slice(0, AI_RESEARCH_LIMITS.messageContentChars),
       contentTruncated: hydrated.length > AI_RESEARCH_LIMITS.messageContentChars,
       replyToId: row.replyToId,
       evidence: messageEvidence({
         id: row.id,
-        label: `#${channel.name} / ${row.senderName}`,
+        label: `#${channel.name} / ${senderName}`,
         channelId: channel.id,
         projectId: channel.projectId,
         occurredAt: createdAt,

@@ -37,7 +37,7 @@ Teams エクスポート（フォルダ）
 
 - 取り込んだメッセージの `sender_id` は全ワークスペース共通の「取り込み」プロフィール（`IMPORT_SENDER_PROFILE_ID`、`profiles.kind = 'import'`。マイグレーションで作る）
 - 本当の投稿者は `imported_messages.identity_id` → `import_identities`。表示は `lib/imports/display.ts` の `loadImportedSenders()` で上書きする（`GET /api/channels/[id]/messages` が使う）
-- 上書きはメッセージ一覧に加え、メッセージ検索（横断・チャンネル内）・ブックマーク一覧・タスク詳細の元メッセージでも行う
+- 上書きはメッセージ一覧に加え、メッセージ検索（横断・チャンネル内）・ブックマーク一覧・タスク詳細の元メッセージ・`/ai` の会話検索と会話の読み取り（`lib/ai/workspace-research*.ts`）でも行う
 - DTO の `senderId` は取り込みプロフィールのまま返す。紐づけた本人の ID にすると、本人の発言として編集・削除の操作が出てしまう（実際の編集 API は `sender_id` で拒否する）
 
 ### 投稿者不明
