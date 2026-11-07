@@ -14,6 +14,7 @@ import { queryClient } from '../lib/query-client'
 import { loadStoredSession, supabase } from '../lib/supabase'
 import { LocaleProvider } from '../components/locale-provider'
 import { useQuickActionsRegistration } from '../hooks/use-quick-actions'
+import { useOtaForegroundUpdate } from '../hooks/use-ota-foreground-update'
 import { discardReceivedShare, useShareReceiveIntake } from '../hooks/use-share-receive'
 import { setAppBadge } from '../hooks/use-app-badge-sync'
 import { SessionContext } from '../lib/session-context'
@@ -125,6 +126,12 @@ function QuickActionsHost(): null {
   return null
 }
 
+// 前面復帰時に EAS Update を適用する。未ログイン画面でも古い JS のまま残さない
+function OtaUpdateHost(): null {
+  useOtaForegroundUpdate()
+  return null
+}
+
 // 未ログインでも受け取って預かり、ログイン後に受け取り画面を開く
 function ShareReceiveHost(): null {
   useShareReceiveIntake()
@@ -140,6 +147,7 @@ export default function RootLayout() {
             <LocaleProvider>
               <QuickActionsHost />
               <ShareReceiveHost />
+              <OtaUpdateHost />
               <Slot />
             </LocaleProvider>
           </AuthGuard>
