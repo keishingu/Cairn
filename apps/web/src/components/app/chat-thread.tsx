@@ -42,6 +42,7 @@ import {
   useEnsureMessageLoaded,
   useLoadOlderChannelMessages,
   useMarkChannelRead,
+  useRefreshChannelMessage,
   useSendChannelMessage,
   useToggleBookmark,
   useToggleMessageReaction,
@@ -263,7 +264,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderApp?: SenderAppDto | null | undefined
   imported?: boolean | undefined
   /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
-  onCardStale?: (() => void) | undefined
+  onCardStale?: ((messageId: string) => void) | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -293,7 +294,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale, onCardStale), [messageId, blocksRevision, locale, onCardStale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale, onCardStale && (() => onCardStale(messageId))), [messageId, blocksRevision, locale, onCardStale])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -2161,15 +2162,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
   // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
   const reactionHistoryQueue = React.useRef(Promise.resolve())
-  // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
-  // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする。
-  // 未読位置（initialMessage）は取り直さない。再取得中は初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になり、
-  // カードが外れて残したいエラーも消えるため。カードの中身は一覧・履歴から来るので、それだけで足りる
-  const handleCardStale = React.useCallback(() => {
-    if (!channelId) return
-    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
-    void queryClient.invalidateQueries({ queryKey: ['message-history', channelId] })
-  }, [channelId, queryClient])
+  // カードの操作が古い版として断られたら、そのメッセージだけを取り直す。Realtime の通知を取りこぼしていても、
+  // 次の押下は最新のカードで送れるようにする。一覧や未読位置を invalidate しないのは、上へ読み込んだ古いページが消えたり、
+  // 初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になったりして、カードと残したいエラーが外れるため
+  const refreshChannelMessage = useRefreshChannelMessage(channelId)
+  const handleCardStale = React.useCallback((messageId: string) => {
+    refreshChannelMessage(messageId).catch((err: unknown) => {
+      // 取り直せなくても、カードの下の「更新されました」の案内は出ている。押し直せば再び断られて取り直す
+      console.error('[ChatThread] failed to refresh the card message:', err)
+    })
+  }, [refreshChannelMessage])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
     const request = reactMutateAsync({ messageId, emoji })
