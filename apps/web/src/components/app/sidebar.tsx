@@ -14,6 +14,7 @@ import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
+import { chatUnreadDisplay } from '@cairn/shared'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import { useSidebarCurrentUser, useSidebarProjects, useSidebarWorkspace, useSidebarWorkspaceList } from '@/hooks/use-sidebar'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -173,11 +174,14 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
   // アーカイブ済みのプロジェクト・チャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
-  // 折りたたみで隠れているため、未読バッジ総数には含めない
+  // 折りたたみで隠れているため、未読バッジ総数には含めない。
+  // 一覧の行と同じく、件数は自分宛て（メンション・DM）だけを数える
   const totalChatUnread = React.useMemo(() => {
     const archivedParentIds = new Set(workspaceChannels.filter(c => c.archived && c.parentChannelId === null).map(c => c.id))
     const visibleWorkspaceChannels = workspaceChannels.filter(c => !c.archived && !(c.parentChannelId !== null && archivedParentIds.has(c.parentChannelId)))
-    return [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)
+    const channelBadges = [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels]
+      .reduce((sum, c) => sum + chatUnreadDisplay(c).badgeCount, 0)
+    return channelBadges + dms.reduce((sum, d) => sum + chatUnreadDisplay(d, { directMessage: true }).badgeCount, 0)
   }, [projectChannels, workspaceChannels, dms])
   const { data: workspace } = useSidebarWorkspace()
   const { data: workspaceList = [] } = useSidebarWorkspaceList()

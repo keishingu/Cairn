@@ -1,5 +1,5 @@
 import React from 'react'
-import { FEATURE_FLAGS, workspaceChannelDeleteCopy } from '@cairn/shared'
+import { FEATURE_FLAGS, chatUnreadDisplay, workspaceChannelDeleteCopy } from '@cairn/shared'
 import {
   ActivityIndicator,
   Alert,
@@ -62,6 +62,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
     channel.startTime,
     channel.endTime,
   )
+  const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
       style={[styles.channelRow, { borderBottomColor: palette.divider }]}
@@ -104,7 +105,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
         </Text>
       </View>
       <View style={styles.channelCopy}>
-        <Text style={[styles.channelName, { color: palette.text }]} numberOfLines={1}>
+        <Text style={[styles.channelName, unread.unread && styles.channelNameUnread, { color: unread.unread ? palette.text : palette.text2 }]} numberOfLines={1}>
           {milestone ? channel.channelName : channel.projectTitle}
         </Text>
         {!milestone && period && (
@@ -113,13 +114,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           </Text>
         )}
       </View>
-      {channel.unreadCount > 0 && (
-        <View style={[styles.badge, { backgroundColor: palette.accent }]}>
-          <Text style={[styles.badgeText, { color: palette.onAccent }]}>
-            {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
-          </Text>
-        </View>
-      )}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -138,6 +133,7 @@ function WorkspaceChannelItem({
   const router = useRouter()
   const { palette } = useAppAppearance()
   const privateChannel = channel.isPrivate
+  const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
       style={[
@@ -183,12 +179,12 @@ function WorkspaceChannelItem({
         )}
       </View>
       <Text
-        style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
+        style={[styles.channelName, unread.unread && styles.channelNameUnread, styles.rowLabel, { color: unread.unread ? palette.text : palette.text2 }]}
         numberOfLines={1}
       >
         {channel.name ?? t('Untitled channel')}
       </Text>
-      {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -197,6 +193,7 @@ function WorkspaceChannelItem({
 function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
   const router = useRouter()
   const { palette } = useAppAppearance()
+  const unread = chatUnreadDisplay(channel, { directMessage: true })
   return (
     <TouchableOpacity
       style={[styles.channelRow, { borderBottomColor: palette.divider }]}
@@ -214,12 +211,12 @@ function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
     >
       <UserAvatar name={channel.participantName} url={channel.participantAvatarUrl} size={36} />
       <Text
-        style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
+        style={[styles.channelName, unread.unread && styles.channelNameUnread, styles.rowLabel, { color: unread.unread ? palette.text : palette.text2 }]}
         numberOfLines={1}
       >
         {channel.participantName}
       </Text>
-      {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -1376,7 +1373,9 @@ const styles = StyleSheet.create({
   channelIconText: { fontSize: 18, fontWeight: '600' },
   channelCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { flex: 1 },
-  channelName: { fontSize: 15, fontWeight: '600' },
+  // 通常は標準の太さと一段暗い色（text2）。新着があるときだけ太字＋明るい色にして、件数バッジなしでも気づけるようにする（Web と同じ）
+  channelName: { fontSize: 15, fontWeight: '400' },
+  channelNameUnread: { fontWeight: '800' },
   projectTitle: { fontSize: 12 },
   badge: {
     borderRadius: 10,

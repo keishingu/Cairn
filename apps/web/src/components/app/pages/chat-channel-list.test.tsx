@@ -229,8 +229,32 @@ describe('ChannelList', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /既読チャンネル/ })).toHaveStyle({ fontWeight: 500 })
-    expect(screen.getByRole('button', { name: /未読チャンネル/ })).toHaveStyle({ fontWeight: 700 })
+    expect(screen.getByRole('button', { name: /既読チャンネル/ })).toHaveStyle({ fontWeight: 400 })
+    expect(screen.getByRole('button', { name: /未読チャンネル/ })).toHaveStyle({ fontWeight: 800, color: 'var(--text)' })
+  })
+
+  it('件数バッジはメンションとDMだけに付け、メンションのない新着は太字だけにする', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[
+          workspaceChannel({ id: 'plain', name: '新着だけ', unreadCount: 4 }),
+          workspaceChannel({ id: 'mentioned', name: 'メンションあり', unreadCount: 6, unreadMentionCount: 2 }),
+        ]}
+        dms={[]}
+        members={[]}
+        onAddChannel={vi.fn()}
+        onStartDm={vi.fn()}
+      />,
+    )
+
+    const plain = screen.getByRole('button', { name: /新着だけ/ })
+    expect(plain).toHaveStyle({ fontWeight: 800 })
+    expect(plain).not.toHaveTextContent('4')
+    expect(screen.getByRole('button', { name: /メンションあり/ })).toHaveTextContent('2')
+    expect(screen.getByRole('button', { name: /メンションあり/ })).not.toHaveTextContent('6')
   })
 
   it('プロジェクトメニューから完了済みマイルストーンを個別に表示・非表示にする', () => {

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { FEATURE_FLAGS, chatUnreadDisplay, type ChatUnreadCounts } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Avatar, AvatarStack, UnreadBadge, portalHostFor } from '../primitives'
 import { STORAGE_KEYS, chatArchivedThreadsCollapsedKey, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
@@ -114,13 +114,16 @@ export function formatChannelPeriod(start: string | null, end: string | null, st
   return undefined
 }
 
-export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, badge, mobile, memberNames, memberCount, action }: {
+export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, unread, directMessage = false, mobile, memberNames, memberCount, action }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string
+  /** 未読件数。メンションのない新着は太字だけで示し、件数バッジは自分宛て（メンション・DM）だけに付ける */
+  unread?: ChatUnreadCounts; directMessage?: boolean; mobile?: boolean
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
 }) => {
   const t = useT()
+  const unreadDisplay = unread ? chatUnreadDisplay(unread, { directMessage }) : null
   return (
   <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
@@ -130,9 +133,10 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       borderBottom: mobile ? '1px solid var(--divider)' : 'none',
       border: mobile ? undefined : 'none',
       background: active && !mobile ? 'var(--card-hover)' : 'transparent',
-      color: active ? 'var(--text)' : 'var(--text-2)',
+      // 新着は最大の太さに加えて文字色も一段明るくし、件数バッジがなくても一目で分かるようにする
+      color: active || unreadDisplay?.unread ? 'var(--text)' : 'var(--text-2)',
       fontSize: mobile ? 15 : 13,
-      fontWeight: badge && badge > 0 ? 700 : 500,
+      fontWeight: unreadDisplay?.unread ? 800 : 400,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
       className={!active && !mobile ? 'hover-bg-card' : undefined}
@@ -162,7 +166,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
           <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
         )}
       </span>
-      {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
+      {unreadDisplay && <UnreadBadge count={unreadDisplay.badgeCount} size={mobile ? 'md' : 'sm'} />}
       {memberNames && memberNames.length > 0 && mobile && (
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
@@ -354,7 +358,7 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
         prefix="┗"
         label={channel.channelName}
         {...(period ? { dateMeta: period } : {})}
-        badge={channel.unreadCount}
+        unread={channel}
         mobile={isMobile}
         action={actions.length > 0 ? (
           <SidebarCreateMenu ownerLabel={channel.channelName} actions={actions} isMobile={isMobile} />
@@ -435,7 +439,7 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actio
       onClick={() => onSelectChannel(channel.id)}
       prefix="┗"
       label={name}
-      badge={channel.unreadCount}
+      unread={channel}
       mobile={isMobile}
       memberNames={channel.memberNames}
       memberCount={channel.memberCount}
@@ -505,7 +509,7 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
         prefix="#"
         label={general.projectTitle}
         {...(period ? { dateMeta: period } : {})}
-        badge={general.unreadCount}
+        unread={general}
         mobile={isMobile}
         action={actions.length > 0 ? (
           <SidebarCreateMenu ownerLabel={general.projectTitle} actions={actions} isMobile={isMobile} />
@@ -699,7 +703,7 @@ const WorkspaceChannelGroup = ({ channel, threads, archivedThreads, channelId, o
         onClick={() => onSelectChannel(channel.id)}
         prefix={channel.isPrivate ? 'lock' : '#'}
         label={channel.name ?? ''}
-        badge={channel.unreadCount}
+        unread={channel}
         mobile={isMobile}
         memberNames={channel.memberNames}
         memberCount={channel.memberCount}
@@ -821,7 +825,7 @@ export const ChannelList = ({
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title={t('Archived projects')} count={archivedProjectChannels.length} containsActiveChannel={archivedProjectsContainActive}>
         {archivedProjectChannels.map(c => (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} unread={c} mobile={isMobile}/>
         ))}
       </ChatSidebarCollapsibleSection>
     )}
@@ -851,7 +855,7 @@ export const ChannelList = ({
               onClick={() => onSelectChannel(channel.id)}
               prefix={channel.isPrivate ? 'lock' : '#'}
               label={channel.name ?? ''}
-              badge={channel.unreadCount}
+              unread={channel}
               mobile={isMobile}
               memberNames={channel.memberNames}
               memberCount={channel.memberCount}
@@ -873,7 +877,7 @@ export const ChannelList = ({
         </div>
         <div>
           {dms.map(d => (
-            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} unread={d} directMessage mobile={isMobile}/>
           ))}
         </div>
       </div>
