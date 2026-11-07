@@ -746,3 +746,21 @@ describe('ChannelList の見出しの並び替えボタン', () => {
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['作成順', '更新順', '実施日順', '名前順'])
   })
 })
+
+describe('ChannelList のピン留め取得エラー', () => {
+  it('ピン留めを読み込めなかったときはプロジェクト欄にエラーを出す', () => {
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[projectChannel({})]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        pinnedProjectsError="ピン留めしたプロジェクトを読み込めませんでした（500）"
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('ピン留めしたプロジェクトを読み込めませんでした（500）')
+  })
+})

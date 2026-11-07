@@ -730,7 +730,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }
 
   const [chatListSorts, setChatListSort] = useChatListSorts()
-  const { data: pinnedProjects } = usePinnedProjects()
+  const { data: pinnedProjects, error: pinnedProjectsError } = usePinnedProjects()
   const pinnedProjectIds = React.useMemo(() => new Set((pinnedProjects ?? []).map(p => p.projectId)), [pinnedProjects])
   const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
@@ -748,6 +748,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
       sorts={chatListSorts}
       onChangeSort={setChatListSort}
       pinnedProjectIds={pinnedProjectIds}
+      {...(pinnedProjectsError ? { pinnedProjectsError: pinnedProjectsError.message } : {})}
       onTogglePinProject={handleTogglePinProject}
       channelId={channelId}
       onSelectChannel={selectChannel}

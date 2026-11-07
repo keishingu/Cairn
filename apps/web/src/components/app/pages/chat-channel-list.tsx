@@ -779,6 +779,8 @@ export interface ChannelListProps {
   /** ピン留め中のプロジェクト（サイドバーのピン留めと同じもの）。プロジェクト欄の先頭に固定する */
   pinnedProjectIds?: ReadonlySet<string>
   onTogglePinProject?: (projectId: string, pinned: boolean) => void
+  /** ピン留めの取得に失敗したときのエラー文。未ピン扱いで黙って並べず、プロジェクト欄に出す */
+  pinnedProjectsError?: string
 }
 
 const NO_PINNED_PROJECTS: ReadonlySet<string> = new Set()
@@ -787,7 +789,7 @@ export const ChannelList = ({
   channelId, onSelectChannel, projectChannels, workspaceChannels,
   dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
   onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
-  canManageWorkspaceChannel = false, sorts = DEFAULT_CHAT_LIST_SORTS, onChangeSort, pinnedProjectIds = NO_PINNED_PROJECTS, onTogglePinProject,
+  canManageWorkspaceChannel = false, sorts = DEFAULT_CHAT_LIST_SORTS, onChangeSort, pinnedProjectIds = NO_PINNED_PROJECTS, onTogglePinProject, pinnedProjectsError,
 }: ChannelListProps) => {
   const t = useT()
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
@@ -855,6 +857,9 @@ export const ChannelList = ({
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
     <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})} sortMenu={sortMenu('projects', t('Projects'))}>
+      {pinnedProjectsError && (
+        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 11.5, color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
+      )}
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
           key={general.channelId}
