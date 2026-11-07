@@ -2161,13 +2161,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
   // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
   const reactionHistoryQueue = React.useRef(Promise.resolve())
-  // カードの操作が古い版として断られたら、このチャンネルのメッセージを取り直す。Realtime の通知を取りこぼしていても
-  // 次の押下は最新のカードで送れるようにする（Realtime と同じく、履歴表示・未読位置からの表示の分も含める）
+  // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
+  // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする。
+  // 未読位置（initialMessage）は取り直さない。再取得中は初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になり、
+  // カードが外れて残したいエラーも消えるため。カードの中身は一覧・履歴から来るので、それだけで足りる
   const handleCardStale = React.useCallback(() => {
     if (!channelId) return
     void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
     void queryClient.invalidateQueries({ queryKey: ['message-history', channelId] })
-    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.initialMessage(channelId) })
   }, [channelId, queryClient])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()

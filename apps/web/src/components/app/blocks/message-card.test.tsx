@@ -247,6 +247,20 @@ describe('カード型メッセージの描画', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('古い版として断られる前に押し直していたら、後の操作の送信中を解かずエラーも出さない', async () => {
+    let rejectFirst: (err: unknown) => void = () => {}
+    const onAction = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((_, rej) => { rejectFirst = rej }))
+      .mockImplementationOnce(() => new Promise<void>(() => {}))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!)
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[1]!)
+    await act(async () => rejectFirst(Object.assign(new Error('x'), { code: 'card_changed' })))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).toHaveAttribute('aria-busy', 'true')
+  })
+
   it('届かなかった選択は元の選択に戻す', async () => {
     const blocks = [{
       type: 'actions',

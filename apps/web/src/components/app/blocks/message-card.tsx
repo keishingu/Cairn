@@ -63,6 +63,8 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
   const generation = React.useRef(0)
   // card_changed のエラーは、取り直した最新のカードが届いても残す。操作はアプリに届いておらず、押し直しが要るため
   const keepErrorOnUpdate = React.useRef(false)
+  // 押すたびに進む。遅れて届いた古い操作の失敗で、後から押した操作の送信中・書き換え待ちを解かないようにする
+  const latestAction = React.useRef(0)
   React.useEffect(() => {
     generation.current += 1
     stopWaiting()
@@ -95,6 +97,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
           return false
         }
       }
+      const actionNo = ++latestAction.current
       setBusy(true)
       setPendingAction({ blockId: action.blockId, actionId: action.actionId })
       clearError()
@@ -103,8 +106,9 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
       } catch (err) {
         const code = errorCode(err)
         // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない。
-        // card_changed だけは別で、アプリに届いていない（書き換わったのは他の人の操作による）ので必ず知らせる
-        if (code !== 'card_changed' && superseded()) return true
+        // card_changed だけは別で、アプリに届いていない（書き換わったのは他の人の操作による）ので知らせる。
+        // ただし、その後に押し直していれば、その操作の送信中・書き換え待ちを解かず、押し直し済みの案内も出さない
+        if (code === 'card_changed' ? actionNo !== latestAction.current : superseded()) return true
         showError(code)
         stopWaiting()
         return false
