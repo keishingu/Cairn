@@ -305,7 +305,7 @@ export async function publishConversationBatch(
 ): Promise<PublishBatchResult> {
   const {
     db, channels, messages, messageReactions, messageAttachments, importStagedMessages, importIdentities,
-    importedFiles, importJobConversations, orm,
+    importedFiles, importedReactions, importJobConversations, orm,
   } = await loadDb()
   const { and, asc, eq, gt, inArray, or, sql } = orm
   const job = await loadRunningJob(db, workspaceId, jobId)
@@ -429,22 +429,38 @@ export async function publishConversationBatch(
     }
 
     // リアクションと画像は、公開済みのメッセージすべてに対して補う（再実行で画像がそろった場合など）
-    const live = batch
+    // 前のジョブで同じ会話を別のチャンネルに公開していた場合、その行のメッセージは別チャンネルにある。
+    // このチャンネルのファイルやリアクションを別チャンネルのメッセージに付けないよう、このチャンネルのメッセージだけを対象にする
+    const candidates = batch
       .map(row => ({ row, messageId: row.publishedMessageId ?? (published.has(idFor(row.externalMessageId)) ? idFor(row.externalMessageId) : null) }))
       .filter((entry): entry is { row: typeof batch[number]; messageId: string } => !!entry.messageId)
+    const inChannel = candidates.length > 0
+      ? new Set((await tx.select({ id: messages.id }).from(messages).where(and(inArray(messages.id, candidates.map(c => c.messageId)), eq(messages.channelId, channelId)))).map(row => row.id))
+      : new Set<string>()
+    const live = candidates.filter(entry => inChannel.has(entry.messageId))
 
-    const reactionRows = []
+    const reactionRows: Array<{ messageId: string; userId: string; emoji: string; createdAt: Date }> = []
+    const reactorByKey = new Map<string, string>()
     for (const { row, messageId } of live) {
       for (const reaction of reactionsOf(row.reactions)) {
         const reactor = identities.get(reaction.identityKey)
         if (!reactor) continue
-        reactionRows.push({ messageId, userId: await senderFor(tx, reactor), emoji: reaction.emoji, createdAt: new Date(reaction.reactedAt) })
+        const userId = await senderFor(tx, reactor)
+        reactionRows.push({ messageId, userId, emoji: reaction.emoji, createdAt: new Date(reaction.reactedAt) })
+        reactorByKey.set(`${messageId}\n${userId}\n${reaction.emoji}`, reactor.id)
       }
     }
     if (reactionRows.length > 0) {
       // 同じ人（投稿者不明は1つのプロフィール）の同じ絵文字は1件になる（一意制約）
-      const inserted = await tx.insert(messageReactions).values(reactionRows).onConflictDoNothing().returning({ id: messageReactions.id })
+      const inserted = await tx.insert(messageReactions).values(reactionRows).onConflictDoNothing()
+        .returning({ id: messageReactions.id, messageId: messageReactions.messageId, userId: messageReactions.userId, emoji: messageReactions.emoji })
       result.reactions = inserted.length
+      // 取り込みで作ったリアクションを記録する。紐づけの付け替え・解除ではこれだけを動かす
+      const tracked = inserted.flatMap(reaction => {
+        const identityId = reactorByKey.get(`${reaction.messageId}\n${reaction.userId}\n${reaction.emoji}`)
+        return identityId ? [{ reactionId: reaction.id, workspaceId, identityId }] : []
+      })
+      if (tracked.length > 0) await tx.insert(importedReactions).values(tracked).onConflictDoNothing()
     }
 
     const liveIds = live.map(entry => entry.messageId)
@@ -477,11 +493,11 @@ export async function publishConversationBatch(
 
 /**
  * 投稿者の公開済みメッセージとリアクションの送信者を、from から to へ付け替える。
- * 対象は一時保管の行（どの投稿・どのリアクションがこの投稿者のものか）から決め、Cairn で投稿・リアクションしたものは変えない
+ * 投稿は一時保管の行、リアクションは imported_reactions（取り込みで作ったもの）から決め、Cairn で投稿・リアクションしたものは変えない
  */
-async function reassignIdentityContent(tx: Tx, workspaceId: string, source: string, identity: IdentityRow, from: string, to: string) {
-  const { messages, messageReactions, importStagedMessages, orm } = await loadDb()
-  const { and, eq, inArray, isNotNull, sql } = orm
+async function reassignIdentityContent(tx: Tx, identity: IdentityRow, from: string, to: string) {
+  const { messages, messageReactions, importStagedMessages, importedReactions, orm } = await loadDb()
+  const { and, eq, inArray, isNotNull } = orm
   if (from === to) return { messages: 0, reactions: 0 }
 
   const authored = await tx
@@ -497,34 +513,26 @@ async function reassignIdentityContent(tx: Tx, workspaceId: string, source: stri
     movedMessages = moved.length
   }
 
-  // この投稿者のリアクション（一時保管の reactions に identityKey が入っている公開済みメッセージの、その絵文字）
-  const reacted = await tx
-    .select({ messageId: importStagedMessages.publishedMessageId, reactions: importStagedMessages.reactions })
-    .from(importStagedMessages)
-    .where(and(
-      eq(importStagedMessages.workspaceId, workspaceId),
-      eq(importStagedMessages.source, source),
-      isNotNull(importStagedMessages.publishedMessageId),
-      sql`${importStagedMessages.reactions} @> ${JSON.stringify([{ identityKey: identity.externalKey }])}::jsonb`,
-    ))
+  // この投稿者のリアクションのうち、取り込みで作ったものだけを動かす（本人が Cairn で付けたリアクションは変えない）
+  const tracked = await tx
+    .select({ id: messageReactions.id, messageId: messageReactions.messageId, emoji: messageReactions.emoji })
+    .from(importedReactions)
+    .innerJoin(messageReactions, eq(messageReactions.id, importedReactions.reactionId))
+    .where(and(eq(importedReactions.identityId, identity.id), eq(messageReactions.userId, from)))
   let movedReactions = 0
-  for (const row of reacted) {
-    if (!row.messageId) continue
-    const emojis = [...new Set((Array.isArray(row.reactions) ? row.reactions as StagedReaction[] : []).filter(r => r.identityKey === identity.externalKey).map(r => r.emoji))]
-    if (emojis.length === 0) continue
+  if (tracked.length > 0) {
     // 付け替え先が同じメッセージに同じ絵文字を既に付けていたら、取り込みのリアクションの方を消す（一意制約）
-    const existing = new Set((await tx.select({ emoji: messageReactions.emoji }).from(messageReactions)
-      .where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, to), inArray(messageReactions.emoji, emojis)))).map(r => r.emoji))
-    const duplicate = emojis.filter(emoji => existing.has(emoji))
-    if (duplicate.length > 0) {
-      await tx.delete(messageReactions).where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, from), inArray(messageReactions.emoji, duplicate)))
-    }
-    const movable = emojis.filter(emoji => !existing.has(emoji))
-    if (movable.length > 0) {
-      const moved = await tx.update(messageReactions).set({ userId: to })
-        .where(and(eq(messageReactions.messageId, row.messageId), eq(messageReactions.userId, from), inArray(messageReactions.emoji, movable)))
-        .returning({ id: messageReactions.id })
-      movedReactions += moved.length
+    const existing = await tx
+      .select({ messageId: messageReactions.messageId, emoji: messageReactions.emoji })
+      .from(messageReactions)
+      .where(and(eq(messageReactions.userId, to), inArray(messageReactions.messageId, [...new Set(tracked.map(r => r.messageId))])))
+    const taken = new Set(existing.map(r => `${r.messageId}\n${r.emoji}`))
+    const duplicateIds = tracked.filter(r => taken.has(`${r.messageId}\n${r.emoji}`)).map(r => r.id)
+    const movableIds = tracked.filter(r => !taken.has(`${r.messageId}\n${r.emoji}`)).map(r => r.id)
+    if (duplicateIds.length > 0) await tx.delete(messageReactions).where(inArray(messageReactions.id, duplicateIds))
+    if (movableIds.length > 0) {
+      const moved = await tx.update(messageReactions).set({ userId: to }).where(inArray(messageReactions.id, movableIds)).returning({ id: messageReactions.id })
+      movedReactions = moved.length
     }
   }
   return { messages: movedMessages, reactions: movedReactions }
@@ -769,7 +777,7 @@ export async function linkImportIdentity(workspaceId: string, actorId: string, i
   return db.transaction(async (tx) => {
     const from = identity.linkedUserId ?? identity.profileId
     const to = userId ?? await ensureIdentityProfile(tx, identity)
-    const moved = from ? await reassignIdentityContent(tx, workspaceId, identity.source, identity, from, to) : { messages: 0, reactions: 0 }
+    const moved = from ? await reassignIdentityContent(tx, identity, from, to) : { messages: 0, reactions: 0 }
     await tx.update(importIdentities)
       .set(userId ? { linkedUserId: userId, linkedBy: actorId, linkedAt: new Date() } : { linkedUserId: null, linkedBy: null, linkedAt: null })
       .where(eq(importIdentities.id, identityId))

@@ -203,20 +203,33 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     expect(await count(sql`select count(*) as n from notifications where workspace_id = ${workspaceId}`)).toBe(0)
   })
 
-  test('owner / admin が紐づけると送信者とリアクションが本人に付け替わり、外すと Teams の名前に戻る', async () => {
+  test('owner / admin が紐づけると送信者とリアクションが本人に付け替わり、外すと Teams の名前に戻る（本人が Cairn で付けたリアクションは動かさない）', async () => {
     const list = await service.listImportIdentities(workspaceId, 'teams-consumer')
     const hanako = list.find(i => i.key === 'name:Hanako Sato')!
     expect(hanako).toMatchObject({ messageCount: 1, publishedCount: 1, linkedUserId: null })
     const before = await senderOf(COMMUNITY, '1760000800000')
     expect(before).toMatchObject({ kind: 'import', display_name: 'Hanako Sato' })
+    // 本人が Cairn で、取り込みの ✅ と同じメッセージに同じ ✅ を付けていた
+    const first = (await db.db.execute(sql`select published_message_id as id from import_staged_messages where workspace_id = ${workspaceId} and external_conversation_id = ${COMMUNITY} and external_message_id = '1760000000000'`)).rows[0] as { id: string }
+    await db.db.insert(db.messageReactions).values({ messageId: first.id, userId: memberId, emoji: '✅' })
 
-    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, memberId)).toEqual({ messages: 1, reactions: 1 })
+    // 紐づけ: 投稿は本人に付け替わり、取り込みの ✅ は本人の ✅ と重なるので消える
+    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, memberId)).toEqual({ messages: 1, reactions: 0 })
     expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(memberId)
-    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${memberId} and emoji = '✅'`)).toBe(1)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '✅'`)).toBe(1)
 
-    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)).toEqual({ messages: 1, reactions: 1 })
+    // 解除: 投稿は Teams の名前に戻る。本人が Cairn で付けた ✅ は本人のまま
+    expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)).toEqual({ messages: 1, reactions: 0 })
     expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(before!.sender_id)
-    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${memberId}`)).toBe(0)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '✅' and user_id = ${memberId}`)).toBe(1)
+  })
+
+  test('紐づけで取り込みのリアクションが本人に移り、解除で戻る', async () => {
+    const yamada = (await service.listImportIdentities(workspaceId, 'teams-consumer')).find(i => i.key === 'mri:8:live:.cid.00000000yamada')!
+    expect(await service.linkImportIdentity(workspaceId, adminId, yamada.id, adminId)).toEqual({ messages: 1, reactions: 1 })
+    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${adminId} and emoji = '👍'`)).toBe(1)
+    expect(await service.linkImportIdentity(workspaceId, adminId, yamada.id, null)).toEqual({ messages: 1, reactions: 1 })
+    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${adminId}`)).toBe(0)
   })
 
   test('投稿者不明は紐づけられない', async () => {
@@ -250,6 +263,16 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     })
     expect(await publishAll(jobId, heldConversation)).toMatchObject({ published: 1, held: 1 })
     expect(await senderOf(heldConversation, '1760000700000')).toMatchObject({ display_name: '鈴木 次郎' })
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
+  })
+
+  test('同じ会話を別のチャンネルに公開し直しても、そのチャンネルのファイルを元のチャンネルのメッセージに付けない', async () => {
+    const otherFileId = randomUUID()
+    await db.db.insert(db.files).values({ id: otherFileId, workspaceId, uploadedBy: adminId, storagePath: `${workspaceId}/${publicChannelId}/${adminId}/other.jpg`, fileName: 'other.jpg', mimeType: 'image/jpeg', fileSize: 10, fileType: 'image' })
+    const { jobId } = await createJob({ channel: publicChannelId })
+    await service.registerImportedMedia(workspaceId, adminId, jobId, { objectId: MEDIA_ID, fileId: otherFileId, channelId: publicChannelId })
+    expect(await publishAll(jobId)).toMatchObject({ published: 0, attachments: 0, reactions: 0 })
+    expect(await count(sql`select count(*) as n from message_attachments where file_id = ${otherFileId}`)).toBe(0)
     await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
   })
 

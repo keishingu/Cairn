@@ -63,4 +63,22 @@ BEGIN
     FOREIGN KEY ("published_message_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "idx_import_staged_messages_identity" ON "import_staged_messages" USING btree ("identity_id");
   CREATE INDEX "idx_import_staged_messages_published" ON "import_staged_messages" USING btree ("published_message_id");
+
+  -- 取り込みで作ったリアクション（紐づけの付け替え・解除で、本人が Cairn で付けたリアクションを動かさないため）
+  CREATE TABLE "imported_reactions" (
+    "reaction_id" uuid PRIMARY KEY NOT NULL,
+    "workspace_id" uuid NOT NULL,
+    "identity_id" uuid NOT NULL
+  );
+  ALTER TABLE "imported_reactions" ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE "imported_reactions"
+    ADD CONSTRAINT "imported_reactions_reaction_id_message_reactions_id_fk"
+    FOREIGN KEY ("reaction_id") REFERENCES "public"."message_reactions"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "imported_reactions"
+    ADD CONSTRAINT "imported_reactions_workspace_id_workspaces_id_fk"
+    FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "imported_reactions"
+    ADD CONSTRAINT "imported_reactions_identity_id_import_identities_id_fk"
+    FOREIGN KEY ("identity_id") REFERENCES "public"."import_identities"("id") ON DELETE cascade ON UPDATE no action;
+  CREATE INDEX "idx_imported_reactions_identity" ON "imported_reactions" USING btree ("identity_id");
 END $$;

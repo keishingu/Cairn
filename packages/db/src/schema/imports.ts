@@ -3,7 +3,7 @@
 
 import { sql } from 'drizzle-orm'
 import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
-import { channels, messages } from './channels'
+import { channels, messageReactions, messages } from './channels'
 import { files } from './files'
 import { profiles, workspaces } from './workspaces'
 
@@ -149,6 +149,26 @@ export const importedFiles = pgTable(
     unique('imported_files_external_key').on(t.workspaceId, t.source, t.channelId, t.externalObjectId),
     index('idx_imported_files_file').on(t.fileId),
   ],
+).enableRLS()
+
+/**
+ * 取り込みで作ったリアクション。紐づけの付け替え・解除では、ここに載っているリアクションだけを動かす
+ * （本人が Cairn で付けたリアクションは変えない）。付け替え先が同じ絵文字を付けていて消したリアクションは、行ごと消える
+ */
+export const importedReactions = pgTable(
+  'imported_reactions',
+  {
+    reactionId: uuid('reaction_id')
+      .primaryKey()
+      .references(() => messageReactions.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    identityId: uuid('identity_id')
+      .notNull()
+      .references(() => importIdentities.id, { onDelete: 'cascade' }),
+  },
+  (t) => [index('idx_imported_reactions_identity').on(t.identityId)],
 ).enableRLS()
 
 export const importJobConversations = pgTable(
