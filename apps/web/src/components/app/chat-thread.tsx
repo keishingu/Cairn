@@ -334,6 +334,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   )
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
+  // 取り込んだ過去ログは、紐づけで本人の投稿になっても編集・削除させない（API も拒否する）
+  const canModify = isOwn && !imported
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
     legacyRole: senderProjectRole,
@@ -356,9 +358,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
     const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
-    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
     window.addEventListener('cairn:delete-message', onDeleteEvt)
@@ -368,7 +370,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, isOwn, content])
+  }, [messageId, canModify, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -439,7 +441,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     // 取り込んだ過去ログの送信者は、紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
     ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     // 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する）
-    ...(isOwn && !imported ? [
+    ...(canModify ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
@@ -2014,11 +2016,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
-      const isOwn = msg.senderId === currentUser?.id
+      // 取り込んだ過去ログは本人の投稿でも編集・削除のショートカットを効かせない
+      const canModify = msg.senderId === currentUser?.id && !msg.imported
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && isOwn) {
+      } else if (e.key === 'e' && canModify) {
         // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
@@ -2026,7 +2029,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         // リアクション（絵文字ピッカーを開く）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
-      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+      } else if ((e.key === 'd' || e.key === 'Delete') && canModify) {
         // 削除（確認ダイアログを開く・自分のメッセージのみ）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
