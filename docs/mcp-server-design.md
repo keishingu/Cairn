@@ -165,10 +165,10 @@ OAuth / MCP の基準は [MCP 2026-07-28 authorization](https://modelcontextprot
 | `post_message`    | write | `POST /api/channels/[channelId]/messages` |
 | `search_messages` | read  | `GET /api/search/messages?q=...`          |
 | `list_channels`         | read | `GET /api/research/channels`                         |
-| `read_channel_messages` | read | `GET /api/research/channels/[channelId]/messages`    |
+| `read_channel_messages` | read | `GET /api/research/channels/messages?channelId=...\|channelName=...` |
 | `get_project_members`   | read | `GET /api/research/projects/[id]/members`            |
 | `list_members`          | read | `GET /api/research/members?attribute=...`            |
-| `get_member_history`    | read | `GET /api/research/members/history?userId=...`       |
+| `get_member_history`    | read | `GET /api/research/members/history?userId=...&attribute=...&projectRole=...` |
 
 MCP 層は薄い protocol 変換に徹し、各 tool は既存 Route Handler を呼ぶ。`/api/research/*` は
 `/ai` の調査 tool と同じ関数（`apps/web/src/lib/ai/workspace-research-directory.ts`）を PAT / OAuth の
@@ -176,6 +176,17 @@ read scope で公開する Route Handler で、可視範囲・上限・evidence 
 （[`ai-automation-design.md`](./ai-automation-design.md) §7）。`read_file` は Storage の
 元 binary ではなく、`canAccessFile` 適用後に `document_chunks` の抽出済み本文を最大 10 chunk ずつ
 返す。
+
+調査 tool は `/ai` が1回のモデル呼び出しで済むよう、固定の2手順を1回で呼べる形にしている
+（`/ai` と MCP で同じ）。いずれも一覧と同じ権限確認済みの経路で対象を決めるため、見える範囲は広がらない。
+
+- `read_channel_messages` は `channelId` か `channelName`（先頭の `#` は無視、完全一致）のどちらか一方を指定する。
+  名前は権限確認済みの非DMチャンネルからだけ解決し、DM・アクセスできないチャンネルは存在しない名前と
+  同じ「見つからない」エラーになる。同名が複数あるときは候補（ラベル・channelId・プロジェクト）を添えたエラーを返す
+- `get_member_history` は `userIds`、`attributeNames`（属性名・完全一致・OR）、`projectRoleNames`
+  （見えるプロジェクトでの役割名・完全一致・OR）のいずれか1つ以上を指定する。属性と役割を両方指定すると両方を満たす人、
+  `userIds` も併せると共通部分に絞る。フィルタでは `list_members` と同じ可視範囲（ゲスト範囲）の活性メンバーだけが対象で、
+  上限は従来どおり50人（超過は `truncated`）
 
 ## 7. 後続候補
 
