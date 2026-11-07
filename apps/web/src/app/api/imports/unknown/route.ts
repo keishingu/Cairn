@@ -8,12 +8,12 @@ import { parseJsonBody, withImportAdmin } from '@/lib/imports/route-helpers'
 
 /**
  * 投稿者不明の投稿の発言者を、外部データ（ブラウザのキャッシュ・他の参加者のエクスポート）から補う（運営者）。
- * 残していた投稿は、次にその会話を公開したときに出る
+ * 残していた投稿は、それを一時保管したジョブの取り込み先へそのまま公開する
  */
 export async function POST(req: Request) {
-  return withImportAdmin('resolve unknown', async ({ workspaceId }) => {
+  return withImportAdmin('resolve unknown', async ({ userId, workspaceId }) => {
     const { data, error } = await parseJsonBody(req, resolveUnknownSchema)
     if (error) return error
-    return NextResponse.json(await resolveUnknownMessages(workspaceId, data))
+    return NextResponse.json(await resolveUnknownMessages(workspaceId, userId, data))
   })
 }

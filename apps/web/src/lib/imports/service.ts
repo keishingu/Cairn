@@ -126,7 +126,11 @@ export async function createImportJob(workspaceId: string, userId: string, input
   })
 }
 
-async function loadRunningJob(db: Db, workspaceId: string, jobId: string) {
+/**
+ * 実行中のジョブ。公開だけは allowCompleted で完了したジョブも受け付ける
+ * （「残す」を選んだ会話で、完了後に発言者を補った投稿を、取り込み直さずに公開するため）
+ */
+async function loadRunningJob(db: Db, workspaceId: string, jobId: string, options?: { allowCompleted?: boolean }) {
   const { importJobs, orm } = await loadDb()
   const { and, eq } = orm
   const [job] = await db
@@ -135,7 +139,7 @@ async function loadRunningJob(db: Db, workspaceId: string, jobId: string) {
     .where(and(eq(importJobs.id, jobId), eq(importJobs.workspaceId, workspaceId)))
     .limit(1)
   if (!job) throw new ImportServiceError(404, '取り込みジョブが見つかりません')
-  if (job.status !== 'running') throw new ImportServiceError(409, 'この取り込みジョブは終了しています')
+  if (job.status !== 'running' && !(options?.allowCompleted && job.status === 'completed')) throw new ImportServiceError(409, 'この取り込みジョブは終了しています')
   return job
 }
 
@@ -365,7 +369,7 @@ export async function publishConversationBatch(
     importedFiles, importedReactions, importJobConversations, orm,
   } = await loadDb()
   const { and, asc, eq, gt, inArray, isNotNull, or, sql } = orm
-  const job = await loadRunningJob(db, workspaceId, jobId)
+  const job = await loadRunningJob(db, workspaceId, jobId, { allowCompleted: true })
   const conversation = await loadJobConversation(db, jobId, input.conversationExternalId)
   const channelId = conversation.channelId
   await assertImportTargetChannels(db, workspaceId, userId, [channelId])
@@ -950,17 +954,17 @@ export async function linkImportIdentity(workspaceId: string, actorId: string, i
  * 一時保管の行の投稿者を差し替え、投稿者不明として公開済みなら送信者も付け替える。残していた投稿は次の公開で出る。
  * 投稿者不明でない行（既に発言者が確定している行）は変えない
  */
-export async function resolveUnknownMessages(workspaceId: string, input: ResolveUnknownInput) {
+export async function resolveUnknownMessages(workspaceId: string, actorId: string, input: ResolveUnknownInput) {
   const { db, importIdentities, importStagedMessages, messages, orm } = await loadDb()
   const { and, asc, eq, inArray, sql } = orm
   if (input.assignments.some(a => a.identity.anonymous)) throw new ImportServiceError(400, '補う発言者に投稿者不明は指定できません')
   // 同じ投稿に別々の発言者を指定させない（1件目で送信者が変わり、2件目は一時保管だけ変わって食い違う）
   const externalIds = input.assignments.map(a => a.externalMessageId)
   if (new Set(externalIds).size !== externalIds.length) throw new ImportServiceError(400, '同じ投稿に複数の発言者が指定されています')
-  return db.transaction(async (tx) => {
+  const { result, heldJobIds } = await db.transaction(async (tx) => {
     // 一時保管の行を先にロックする（公開と同じ順: 一時保管の行 → 投稿者）。公開中の行の発言者を補って食い違わないように
     const rows = await tx
-      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
+      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, jobId: importStagedMessages.jobId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
       .from(importStagedMessages)
       .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
       .where(and(
@@ -986,7 +990,8 @@ export async function resolveUnknownMessages(workspaceId: string, input: Resolve
     await syncImportProfileNames(tx, workspaceId, input.source, identities.map(i => i.key))
     const identityByKey = await loadIdentities(tx, workspaceId, input.source, identities.map(i => i.key), { lock: true })
     const rowByExternalId = new Map(rows.map(row => [row.externalMessageId, row]))
-    const result = { resolved: 0, republished: 0, skipped: 0 }
+    const result = { resolved: 0, republished: 0, published: 0, skipped: 0 }
+    const heldJobIds = new Set<string>()
     for (const assignment of input.assignments) {
       const row = rowByExternalId.get(assignment.externalMessageId)
       const identity = identityByKey.get(assignment.identity.key)
@@ -996,6 +1001,7 @@ export async function resolveUnknownMessages(workspaceId: string, input: Resolve
       }
       await tx.update(importStagedMessages).set({ identityId: identity.id }).where(eq(importStagedMessages.id, row.id))
       result.resolved++
+      if (!row.publishedMessageId && row.jobId) heldJobIds.add(row.jobId)
       if (row.publishedMessageId && row.anonymousProfileId) {
         const updated = await tx.update(messages).set({ senderId: await senderFor(tx, identity) })
           .where(and(eq(messages.id, row.publishedMessageId), eq(messages.senderId, row.anonymousProfileId), eq(messages.imported, true)))
@@ -1003,8 +1009,19 @@ export async function resolveUnknownMessages(workspaceId: string, input: Resolve
         result.republished += updated.length
       }
     }
-    return result
+    return { result, heldJobIds }
   })
+  // 残していた投稿は、それを一時保管したジョブの取り込み先へそのまま公開する（ジョブが完了していても、取り込み直さずに出す）。
+  // 公開は別のトランザクションで、通常の公開と同じロックと権限の確認を通す
+  for (const jobId of heldJobIds) {
+    let cursor: PublishBatchInput['cursor'] = null
+    do {
+      const batch = await publishConversationBatch(workspaceId, actorId, jobId, { conversationExternalId: input.conversationExternalId, cursor })
+      result.published += batch.published
+      cursor = batch.nextCursor
+    } while (cursor)
+  }
+  return result
 }
 
 /**

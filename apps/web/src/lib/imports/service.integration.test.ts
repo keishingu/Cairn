@@ -268,7 +268,7 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
   })
 
   test('同じ投稿に別々の発言者を指定すると、何も変えずに拒否する', async () => {
-    await expect(service.resolveUnknownMessages(workspaceId, {
+    await expect(service.resolveUnknownMessages(workspaceId, adminId, {
       source: 'teams-consumer',
       conversationExternalId: COMMUNITY,
       assignments: [
@@ -280,12 +280,12 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
   })
 
   test('投稿者不明として公開済みの投稿は、発言者を補うと送信者が付け替わる', async () => {
-    const result = await service.resolveUnknownMessages(workspaceId, {
+    const result = await service.resolveUnknownMessages(workspaceId, adminId, {
       source: 'teams-consumer',
       conversationExternalId: COMMUNITY,
       assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' } }],
     })
-    expect(result).toEqual({ resolved: 1, republished: 1, skipped: 0 })
+    expect(result).toEqual({ resolved: 1, republished: 1, published: 0, skipped: 0 })
     expect(await senderOf(COMMUNITY, '1760000700000')).toMatchObject({ kind: 'import', display_name: '鈴木 次郎' })
   })
 
@@ -298,14 +298,15 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     expect(first).toMatchObject({ published: messages.length - 2, held: 2, attachments: 0 })
     expect(await count(sql`select count(*) as n from messages where channel_id = ${publicChannelId}`)).toBe(messages.length - 2)
 
-    await service.resolveUnknownMessages(workspaceId, {
+    // ジョブを完了した後に発言者を補っても、取り込み直さずにその投稿だけ公開される
+    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
+    expect(await service.resolveUnknownMessages(workspaceId, adminId, {
       source: 'teams-consumer',
       conversationExternalId: heldConversation,
       assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' } }],
-    })
-    expect(await publishAll(jobId, heldConversation)).toMatchObject({ published: 1, held: 1 })
+    })).toMatchObject({ resolved: 1, published: 1 })
     expect(await senderOf(heldConversation, '1760000700000')).toMatchObject({ display_name: '鈴木 次郎' })
-    await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
+    expect(await publishAll(jobId, heldConversation)).toMatchObject({ published: 0, held: 1 })
   })
 
   test('同じ会話を別のチャンネルに公開し直しても、そのチャンネルのファイルを元のチャンネルのメッセージに付けない', async () => {
