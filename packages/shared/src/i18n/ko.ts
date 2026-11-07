@@ -1641,4 +1641,12 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load members': '멤버를 불러오지 못했습니다',
   'Importing from Teams is done by the Cairn team as migration support. Contact us to migrate your community.': 'Teams에서 가져오기는 이전 지원으로 Cairn 운영팀이 진행합니다. 커뮤니티 이전은 문의해 주세요.',
   'Could not check access to importing': '가져오기 사용 가능 여부를 확인하지 못했습니다',
+  'Sort by date created': '생성순',
+  'Sort by recent activity': '업데이트순',
+  'Sort by start date': '진행일순',
+  'Sort by name': '이름순',
+  'Pinned': '고정됨',
+  'Could not load pinned projects ({status})': '고정한 프로젝트를 불러올 수 없습니다 ({status})',
+  'Could not update the pin': '고정을 변경할 수 없습니다',
+  'Sort {title}': '{title} 정렬',
 }

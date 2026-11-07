@@ -39,6 +39,8 @@ import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { useChatListSorts } from '@/hooks/use-chat-list-sort'
+import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { ChannelList } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, CHAT_DETAIL_MESSAGE_MIN_WIDTH, type ChatDetailMember } from './chat-detail-sidebar'
@@ -727,11 +729,26 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     openMember(userId)
   }
 
+  const [chatListSorts, setChatListSort] = useChatListSorts()
+  const { data: pinnedProjects } = usePinnedProjects()
+  const pinnedProjectIds = React.useMemo(() => new Set((pinnedProjects ?? []).map(p => p.projectId)), [pinnedProjects])
+  const pinProject = usePinProject()
+  const unpinProject = useUnpinProject()
+  // サイドバーのピン留めと同じデータ。ここで変えるとサイドバーにも反映される
+  const handleTogglePinProject = (projectId: string, pinned: boolean) => {
+    const mutation = pinned ? pinProject : unpinProject
+    mutation.mutate(projectId, { onError: error => toast.error(error.message) })
+  }
+
   const memberNames = channelMembers.map(m => m.name)
   const memberAvatarUrls = channelMembers.map(m => m.url)
 
   const channelListNode = (
     <ChannelList
+      sorts={chatListSorts}
+      onChangeSort={setChatListSort}
+      pinnedProjectIds={pinnedProjectIds}
+      onTogglePinProject={handleTogglePinProject}
       channelId={channelId}
       onSelectChannel={selectChannel}
       projectChannels={projectChannels}

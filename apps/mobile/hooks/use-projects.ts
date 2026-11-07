@@ -34,6 +34,8 @@ export interface ProjectChannelDto {
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
+  /** 旧APIは返さないため、未定義は投稿なしとして扱う */
+  lastMessageAt?: string | null
   milestoneId: string | null
   milestoneCompleted: boolean | null
 }

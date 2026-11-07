@@ -18,6 +18,7 @@ function makeChannel(overrides: Partial<ProjectChannelDto>): ProjectChannelDto {
     archived: false,
     unreadCount: 0,
     unreadMentionCount: 0,
+    lastMessageAt: null,
     milestoneId: null,
     milestoneCompleted: null,
     ...overrides,

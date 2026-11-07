@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
+import { fetchLastMessageAt } from '@/lib/chat/last-message-at'
 
 export interface DmChannelDto {
   id: string
@@ -15,6 +16,8 @@ export interface DmChannelDto {
   participantAvatarUrl: string | null
   unreadCount: number
   unreadMentionCount: number
+  /** 最終投稿時刻（ISO 8601）。投稿がなければ null。一覧の「更新順」に使う */
+  lastMessageAt: string | null
 }
 
 const createDmSchema = z.object({ targetUserId: z.string().uuid() })
@@ -74,7 +77,7 @@ export async function GET() {
       const { channelReadStates, messages, IMPORT_SENDER_PROFILE_ID } = await import('@cairn/db')
       const { isNull, gt, count, sql: sql2, inArray, ne } = await import('drizzle-orm')
 
-      const [unreadRows, mentionRows] = await Promise.all([
+      const [unreadRows, mentionRows, lastMessageAtMap] = await Promise.all([
         db
           .select({ channelId: messages.channelId, cnt: count() })
           .from(messages)
@@ -85,6 +88,7 @@ export async function GET() {
           .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
           .from(channelReadStates)
           .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, visibleChannelIds))),
+        fetchLastMessageAt(visibleChannelIds),
       ])
 
       const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
@@ -95,10 +99,11 @@ export async function GET() {
         participantAvatarUrl: r.participantAvatarUrl ?? null,
         unreadCount: unreadMap.get(r.id) ?? 0,
         unreadMentionCount: mentionMap.get(r.id) ?? 0,
+        lastMessageAt: lastMessageAtMap.get(r.id) ?? null,
       })) satisfies DmChannelDto[])
     }
 
-    return NextResponse.json(visibleRows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0 })) satisfies DmChannelDto[])
+    return NextResponse.json(visibleRows.map(r => ({ ...r, participantAvatarUrl: r.participantAvatarUrl ?? null, unreadCount: 0, unreadMentionCount: 0, lastMessageAt: null })) satisfies DmChannelDto[])
   } catch (err) {
     console.error('[/api/workspaces/dms GET] failed:', err)
     return NextResponse.json([] satisfies DmChannelDto[])

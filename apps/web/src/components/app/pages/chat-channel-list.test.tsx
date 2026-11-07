@@ -18,6 +18,7 @@ const projectChannel = (overrides: Partial<ProjectChannelDto>): ProjectChannelDt
   archived: false,
   unreadCount: 0,
   unreadMentionCount: 0,
+  lastMessageAt: null,
   milestoneId: null,
   milestoneCompleted: null,
   ...overrides,
@@ -34,6 +35,7 @@ const workspaceChannel = (overrides: Partial<WorkspaceChannelDto>): WorkspaceCha
   memberAvatarUrls: [],
   unreadCount: 0,
   unreadMentionCount: 0,
+  lastMessageAt: null,
   ...overrides,
 })
 
@@ -661,5 +663,86 @@ describe('ChannelList', () => {
       .map(label => text.indexOf(label))
     expect(order.every(index => index >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})
+
+describe('ChannelList の並び替えとピン留め', () => {
+  const projects = [
+    projectChannel({ channelId: 'a', projectId: 'project-a', projectTitle: '夏山合宿', startDate: '2026-07-20', lastMessageAt: '2026-11-01T00:00:00.000Z' }),
+    projectChannel({ channelId: 'b', projectId: 'project-b', projectTitle: '春山合宿', startDate: '2026-05-18', lastMessageAt: null }),
+    // マイルストーンだけが最近動いているプロジェクトも「更新順」で上に来る
+    projectChannel({ channelId: 'b-ms', projectId: 'project-b', projectTitle: '春山合宿', channelName: '下見', milestoneId: 'ms-b', milestoneCompleted: false, lastMessageAt: '2026-11-05T00:00:00.000Z' }),
+    projectChannel({ channelId: 'c', projectId: 'project-c', projectTitle: '雪山訓練', startDate: null, lastMessageAt: '2026-11-03T00:00:00.000Z' }),
+  ]
+  const projectOrder = () => screen.getAllByRole('button', { name: /合宿|訓練/ })
+    .map(button => button.textContent ?? '')
+    .filter(text => !text.includes('下見'))
+    .map(text => ['夏山合宿', '春山合宿', '雪山訓練'].find(title => text.includes(title)))
+  const renderList = (props: Partial<React.ComponentProps<typeof ChannelList>>) => render(
+    <ChannelList
+      channelId={null}
+      onSelectChannel={vi.fn()}
+      projectChannels={projects}
+      workspaceChannels={[]}
+      dms={[]}
+      members={[]}
+      onStartDm={vi.fn()}
+      {...props}
+    />,
+  )
+
+  it('更新順は配下のマイルストーンの投稿も含めて新しい順に並べる', () => {
+    renderList({ sorts: { projects: 'updated', channels: 'created', dms: 'name' } })
+    expect(projectOrder()).toEqual(['春山合宿', '雪山訓練', '夏山合宿'])
+  })
+
+  it('実施日順は開始日の古い順で、日付のないプロジェクトは末尾', () => {
+    renderList({ sorts: { projects: 'startDate', channels: 'created', dms: 'name' } })
+    expect(projectOrder()).toEqual(['春山合宿', '夏山合宿', '雪山訓練'])
+  })
+
+  it('ピン留めしたプロジェクトは並び順に関係なく先頭に置き、ピン留め中の印を出す', () => {
+    renderList({ sorts: { projects: 'startDate', channels: 'created', dms: 'name' }, pinnedProjectIds: new Set(['project-c']) })
+    expect(projectOrder()).toEqual(['雪山訓練', '春山合宿', '夏山合宿'])
+    expect(screen.getByRole('img', { name: 'ピン留め中' })).toBeInTheDocument()
+  })
+
+  it('プロジェクトのメニューからピン留め・解除できる', () => {
+    const onTogglePinProject = vi.fn()
+    renderList({ pinnedProjectIds: new Set(['project-a']), onTogglePinProject })
+
+    fireEvent.click(screen.getByRole('button', { name: '雪山訓練のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ピン留め' }))
+    expect(onTogglePinProject).toHaveBeenLastCalledWith('project-c', true)
+
+    fireEvent.click(screen.getByRole('button', { name: '夏山合宿のメニュー' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ピン留めを解除' }))
+    expect(onTogglePinProject).toHaveBeenLastCalledWith('project-a', false)
+  })
+})
+
+describe('ChannelList の見出しの並び替えボタン', () => {
+  it('セクションごとに選べる並び順だけを出し、選ぶとそのセクションの変更を通知する', () => {
+    const onChangeSort = vi.fn()
+    render(
+      <ChannelList
+        channelId={null}
+        onSelectChannel={vi.fn()}
+        projectChannels={[]}
+        workspaceChannels={[]}
+        dms={[]}
+        members={[]}
+        onStartDm={vi.fn()}
+        onChangeSort={onChangeSort}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'チャンネルの並び替え' }))
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['作成順', '更新順', '名前順'])
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '更新順' }))
+    expect(onChangeSort).toHaveBeenCalledWith('channels', 'updated')
+
+    fireEvent.click(screen.getByRole('button', { name: 'プロジェクトの並び替え' }))
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['作成順', '更新順', '実施日順', '名前順'])
   })
 })
