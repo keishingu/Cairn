@@ -6,6 +6,7 @@ import { generateObject, streamText, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 import { ClaudeRefusalError, withAnthropicCompat } from './anthropic-compat-middleware'
+import { createChatAnthropic } from './client'
 import { summarizeChatCacheUsage } from './cache-usage'
 import { createOpenAI } from '@ai-sdk/openai'
 import { withConversationCache } from './conversation-cache-middleware'
@@ -291,6 +292,28 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
       cacheReadInputTokens: 18000,
       cacheCreationInputTokens: 0,
     })
+  })
+  it.each([
+    ['claude-sonnet-5-5', { effort: 'medium' }],
+    ['claude-opus-5-5', undefined],
+  ] as const)('チャット用の Anthropic クライアントは %s に effort を付け（Sonnet のみ）、既定外のパラメータは送らない', async (modelId, expected) => {
+    const requests: Record<string, unknown>[] = []
+    const anthropic = createChatAnthropic((async (_url: unknown, init?: { body?: unknown }) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return sse([messageStart('msg_effort'), ...emptyThinkingBlock(0), ...messageEnd('end_turn')])
+    }) as unknown as typeof fetch)
+    const result = streamText({
+      model: withAnthropicCompat(anthropic(modelId)),
+      messages: [{ role: 'user', content: 'こんにちは' }],
+    })
+    for await (const part of result.fullStream) void part
+
+    expect(requests[0]?.['model']).toBe(modelId)
+    if (expected) expect(requests[0]?.['output_config']).toEqual(expected)
+    else expect(requests[0]).not.toHaveProperty('output_config')
+    for (const key of ['temperature', 'top_p', 'top_k', 'thinking']) {
+      expect(requests[0]).not.toHaveProperty(key)
+    }
   })
 })
 
