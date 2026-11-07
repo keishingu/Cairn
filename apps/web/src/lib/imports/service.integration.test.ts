@@ -218,10 +218,40 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(memberId)
     expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '✅'`)).toBe(1)
 
-    // 解除: 投稿は Teams の名前に戻る。本人が Cairn で付けた ✅ は本人のまま
+    // 解除: 投稿は Teams の名前に戻る。本人が Cairn で付けた ✅ は本人のまま、畳んでいた取り込みの ✅ は Teams の名前で戻る
     expect(await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)).toEqual({ messages: 1, reactions: 0 })
     expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(before!.sender_id)
     expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '✅' and user_id = ${memberId}`)).toBe(1)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '✅' and user_id = ${before!.sender_id}`)).toBe(1)
+    await db.db.execute(sql`delete from message_reactions where message_id = ${first.id} and user_id = ${memberId}`)
+  })
+
+  test('2人の投稿者を同じメンバーに紐づけて畳んだリアクションも、片方を外すと両方とも戻る', async () => {
+    const list = await service.listImportIdentities(workspaceId, 'teams-consumer')
+    const yamada = list.find(i => i.key === 'mri:8:live:.cid.00000000yamada')!
+    const unnamed = list.find(i => i.key === 'mri:8:live:.cid.0000000unknown1')!
+    const first = (await db.db.execute(sql`select published_message_id as id from import_staged_messages where workspace_id = ${workspaceId} and external_conversation_id = ${COMMUNITY} and external_message_id = '1760000000000'`)).rows[0] as { id: string }
+    // どちらも 👍 を付けていた
+    await service.linkImportIdentity(workspaceId, adminId, yamada.id, adminId)
+    await service.linkImportIdentity(workspaceId, adminId, unnamed.id, adminId)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '👍' and user_id = ${adminId}`)).toBe(1)
+    // 山田を外すと、山田の 👍 は山田の名前に戻り、名前不明の参加者の 👍 は管理者（紐づけ先）に残る
+    await service.linkImportIdentity(workspaceId, adminId, yamada.id, null)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '👍' and user_id = ${adminId}`)).toBe(1)
+    const yamadaProfile = (await db.db.execute(sql`select profile_id from import_identities where id = ${yamada.id}`)).rows[0] as { profile_id: string }
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '👍' and user_id = ${yamadaProfile.profile_id}`)).toBe(1)
+    await service.linkImportIdentity(workspaceId, adminId, unnamed.id, null)
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and user_id = ${adminId}`)).toBe(0)
+    // 👍 は山田・名前不明の参加者・投稿者不明の3件に戻る
+    expect(await count(sql`select count(*) as n from message_reactions where message_id = ${first.id} and emoji = '👍'`)).toBe(3)
+  })
+
+  test('再実行のジョブ作成で紐づけると、公開済みの投稿も本人に付け替わる', async () => {
+    await createJob({ links: [{ key: 'name:Hanako Sato', userId: memberId }] })
+    expect((await senderOf(COMMUNITY, '1760000800000'))?.sender_id).toBe(memberId)
+    expect(await count(sql`select count(*) as n from message_reactions where user_id = ${memberId} and emoji = '✅'`)).toBe(1)
+    const hanako = (await service.listImportIdentities(workspaceId, 'teams-consumer')).find(i => i.key === 'name:Hanako Sato')!
+    await service.linkImportIdentity(workspaceId, adminId, hanako.id, null)
   })
 
   test('紐づけで取り込みのリアクションが本人に移り、解除で戻る', async () => {

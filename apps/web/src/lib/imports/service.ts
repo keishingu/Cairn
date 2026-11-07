@@ -110,17 +110,16 @@ export async function createImportJob(workspaceId: string, userId: string, input
       })
     }
 
-    // 管理者が確認した紐づけ。既に別の人へ紐づいているものは上書きしない（変更は投稿者の一覧から行う）
+    // 管理者が確認した紐づけ。既に別の人へ紐づいているものは上書きしない（変更は投稿者の一覧から行う）。
+    // 前のジョブで公開済みの投稿があれば、紐づけの画面と同じく送信者とリアクションを本人に付け替える（再実行で発言者が分かれないように）
+    const linkTargets = await loadIdentities(tx, workspaceId, input.source, input.links.map(link => link.key))
     for (const link of input.links) {
+      const identity = linkTargets.get(link.key)
+      if (!identity || identity.isAnonymous || identity.linkedUserId) continue
+      await applyIdentitySender(tx, identity, link.userId)
       await tx.update(importIdentities)
         .set({ linkedUserId: link.userId, linkedBy: userId, linkedAt: new Date() })
-        .where(and(
-          eq(importIdentities.workspaceId, workspaceId),
-          eq(importIdentities.source, input.source),
-          eq(importIdentities.externalKey, link.key),
-          eq(importIdentities.isAnonymous, false),
-          sql`${importIdentities.linkedUserId} is null`,
-        ))
+        .where(eq(importIdentities.id, identity.id))
     }
     return { jobId: job.id }
   })
@@ -495,6 +494,78 @@ export async function publishConversationBatch(
  * 投稿者の公開済みメッセージとリアクションの送信者を、from から to へ付け替える。
  * 投稿は一時保管の行、リアクションは imported_reactions（取り込みで作ったもの）から決め、Cairn で投稿・リアクションしたものは変えない
  */
+/**
+ * 投稿者の送信者を、紐づけ先（userId）か取り込み用プロフィール（null）にそろえる。
+ * 公開済みの投稿・取り込みのリアクションを付け替えたあと、リアクションを一時保管の内容から同期し直す
+ * （紐づけ先が同じ絵文字を付けていて畳んだリアクションを、解除や付け替えで戻すため）
+ */
+async function applyIdentitySender(tx: Tx, identity: IdentityRow, userId: string | null) {
+  const from = identity.linkedUserId ?? identity.profileId
+  const to = userId ?? await ensureIdentityProfile(tx, identity)
+  const moved = from ? await reassignIdentityContent(tx, identity, from, to) : { messages: 0, reactions: 0 }
+  identity.linkedUserId = userId
+  await syncIdentityReactions(tx, identity, to)
+  // from が Cairn ユーザーなら、同じ人に紐づいている他の投稿者のリアクションも戻す（2人を1人に紐づけて畳んでいた場合）
+  if (from && from !== identity.profileId) {
+    const { importIdentities, orm } = await loadDb()
+    const { and, eq, ne } = orm
+    const others = await tx
+      .select({
+        id: importIdentities.id,
+        externalKey: importIdentities.externalKey,
+        displayName: importIdentities.displayName,
+        isAnonymous: importIdentities.isAnonymous,
+        kind: importIdentities.kind,
+        profileId: importIdentities.profileId,
+        linkedUserId: importIdentities.linkedUserId,
+        workspaceId: importIdentities.workspaceId,
+        source: importIdentities.source,
+      })
+      .from(importIdentities)
+      .where(and(eq(importIdentities.linkedUserId, from), ne(importIdentities.id, identity.id)))
+    for (const other of others) await syncIdentityReactions(tx, other, from)
+  }
+  return moved
+}
+
+/**
+ * 投稿者のリアクションを、一時保管の内容どおりに sender で付け直す。足りないものだけを作り、取り込みのリアクションとして記録する。
+ * sender が同じ絵文字を既に付けていれば作らない（本人のリアクションや他の投稿者のリアクションは動かさない）
+ */
+async function syncIdentityReactions(tx: Tx, identity: IdentityRow & { workspaceId?: string; source?: string }, sender: string) {
+  const { messageReactions, importStagedMessages, importedReactions, importIdentities, orm } = await loadDb()
+  const { and, eq, inArray, isNotNull, sql } = orm
+  const [owner] = await tx.select({ workspaceId: importIdentities.workspaceId, source: importIdentities.source }).from(importIdentities).where(eq(importIdentities.id, identity.id)).limit(1)
+  if (!owner) return
+  const rows = await tx
+    .select({ messageId: importStagedMessages.publishedMessageId, reactions: importStagedMessages.reactions })
+    .from(importStagedMessages)
+    .where(and(
+      eq(importStagedMessages.workspaceId, owner.workspaceId),
+      eq(importStagedMessages.source, owner.source),
+      isNotNull(importStagedMessages.publishedMessageId),
+      sql`${importStagedMessages.reactions} @> ${JSON.stringify([{ identityKey: identity.externalKey }])}::jsonb`,
+    ))
+  const wanted = rows.flatMap(row => (row.messageId ? (Array.isArray(row.reactions) ? row.reactions as StagedReaction[] : [])
+    .filter(r => r.identityKey === identity.externalKey)
+    .map(r => ({ messageId: row.messageId!, emoji: r.emoji, createdAt: new Date(r.reactedAt) })) : []))
+  if (wanted.length === 0) return
+  const existing = await tx
+    .select({ messageId: messageReactions.messageId, emoji: messageReactions.emoji })
+    .from(messageReactions)
+    .where(and(eq(messageReactions.userId, sender), inArray(messageReactions.messageId, [...new Set(wanted.map(w => w.messageId))])))
+  const taken = new Set(existing.map(r => `${r.messageId}\n${r.emoji}`))
+  const missing = [...new Map(wanted.filter(w => !taken.has(`${w.messageId}\n${w.emoji}`)).map(w => [`${w.messageId}\n${w.emoji}`, w])).values()]
+  if (missing.length === 0) return
+  const inserted = await tx.insert(messageReactions)
+    .values(missing.map(w => ({ messageId: w.messageId, userId: sender, emoji: w.emoji, createdAt: w.createdAt })))
+    .onConflictDoNothing()
+    .returning({ id: messageReactions.id })
+  if (inserted.length > 0) {
+    await tx.insert(importedReactions).values(inserted.map(r => ({ reactionId: r.id, workspaceId: owner.workspaceId, identityId: identity.id }))).onConflictDoNothing()
+  }
+}
+
 async function reassignIdentityContent(tx: Tx, identity: IdentityRow, from: string, to: string) {
   const { messages, messageReactions, importStagedMessages, importedReactions, orm } = await loadDb()
   const { and, eq, inArray, isNotNull } = orm
@@ -775,9 +846,7 @@ export async function linkImportIdentity(workspaceId: string, actorId: string, i
     if (!member) throw new ImportServiceError(400, '紐づけ先はこのワークスペースのメンバーにしてください')
   }
   return db.transaction(async (tx) => {
-    const from = identity.linkedUserId ?? identity.profileId
-    const to = userId ?? await ensureIdentityProfile(tx, identity)
-    const moved = from ? await reassignIdentityContent(tx, identity, from, to) : { messages: 0, reactions: 0 }
+    const moved = await applyIdentitySender(tx, identity, userId)
     await tx.update(importIdentities)
       .set(userId ? { linkedUserId: userId, linkedBy: actorId, linkedAt: new Date() } : { linkedUserId: null, linkedBy: null, linkedAt: null })
       .where(eq(importIdentities.id, identityId))
