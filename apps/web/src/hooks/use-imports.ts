@@ -11,8 +11,16 @@ import { fetchWithAuth } from '@/lib/fetch-with-auth'
 export interface ImportedIdentityDto {
   id: string
   key: string
+  displayName: string | null
+  isAnonymous: boolean
+  kind: string
   linkedUserId: string | null
   linkedUserName: string | null
+  /** 一時保管の件数と、そのうち公開済みの件数 */
+  messageCount: number
+  publishedCount: number
+  /** リアクションを付けた公開済みの投稿の件数 */
+  reactedCount: number
 }
 
 export interface ImportedConversationDto {
@@ -58,10 +66,10 @@ export function useImportedConversations(source: string, enabled: boolean) {
   })
 }
 
-/** 取り込み画面を使えるか（Cairn の運営者で owner / admin）。設定の入口の出し分けに使う */
+/** 取り込みを使えるか（allowed: 運営者で owner / admin）と、取り込んだ投稿者を紐づけられるか（canLink: owner / admin で取り込んだ投稿者がいる）。設定の入口の出し分けに使う */
 export function useImportAccess(enabled: boolean) {
   const t = useT()
-  return useQuery<{ allowed: boolean }>({
+  return useQuery<{ allowed: boolean; canLink: boolean }>({
     queryKey: ['import-access'],
     queryFn: () => getJson('/api/imports/access', t('Could not check access to importing')),
     enabled,

@@ -112,7 +112,8 @@ function fakeApi(overrides: Partial<ImportApi> = {}) {
     lookupMedia: vi.fn(async () => ({})),
     uploadMedia: vi.fn(async () => ({ fileId: 'file-1' })),
     registerMedia: vi.fn(async () => ({ fileId: 'file-1' })),
-    importBatch: vi.fn(async (_jobId: string, body: { messages: unknown[] }) => ({ imported: body.messages.length, duplicates: 0, missingMedia: 0, attachments: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0 })),
+    stageBatch: vi.fn(async (_jobId: string, body: { messages: unknown[] }) => ({ staged: body.messages.length, duplicates: 0 })),
+    publishBatch: vi.fn(async () => ({ published: 5, held: 0, alreadyPublished: 0, attachments: 0, missingMedia: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0, nextCursor: null })),
     completeJob: vi.fn(async () => ({})),
     ...overrides,
   } as never
@@ -122,7 +123,7 @@ function fakeApi(overrides: Partial<ImportApi> = {}) {
 describe('runImport', () => {
   const bundle = parseTeamsExport(fixture)
   const collected = collectExportFiles([fakeFile(`export/media/${MEDIA_ID}.1.jpeg`)])
-  const plan = [{ externalId: COMMUNITY, channelId: 'channel-1' }]
+  const plan = [{ externalId: COMMUNITY, channelId: 'channel-1', unknownPolicy: 'include_unknown' as const }]
 
   test('複数のメッセージが参照する同じ画像は1回だけアップロードする', async () => {
     const api = fakeApi()
@@ -138,7 +139,7 @@ describe('runImport', () => {
     const otherId = '19:FixtureOtherCommunityBBBBBBBBBBBBBBBBBBBBBB1@thread.v2'
     twoChannels.messagesByConversation[otherId] = twoChannels.messagesByConversation[COMMUNITY]!
     const api = fakeApi()
-    await runImport({ api, bundle: twoChannels, plan: [...plan, { externalId: otherId, channelId: 'channel-2' }], links: [], collected })
+    await runImport({ api, bundle: twoChannels, plan: [...plan, { externalId: otherId, channelId: 'channel-2', unknownPolicy: 'hold' as const }], links: [], collected })
     expect(api.uploadMedia).toHaveBeenCalledTimes(2)
     expect((api.uploadMedia as ReturnType<typeof vi.fn>).mock.calls.map(c => c[0])).toEqual(['channel-1', 'channel-2'])
     expect(api.lookupMedia).toHaveBeenCalledWith('job-1', 'channel-2', [MEDIA_ID])
@@ -148,7 +149,30 @@ describe('runImport', () => {
     const api = fakeApi({ lookupMedia: vi.fn(async () => ({ [MEDIA_ID]: 'file-old' })) })
     await runImport({ api, bundle, plan, links: [], collected })
     expect(api.uploadMedia).not.toHaveBeenCalled()
-    const batch = (api.importBatch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { messages: Array<{ mediaObjectIds: string[] }> }
+    const batch = (api.stageBatch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { messages: Array<{ mediaObjectIds: string[] }> }
+    expect(batch.messages.some(m => m.mediaObjectIds.includes(MEDIA_ID))).toBe(true)
+  })
+
+  test('一時保管してから会話ごとに公開し、続きがあれば cursor で公開を続ける', async () => {
+    const cursor = { sentAt: '2025-10-09T09:01:40.000Z', externalMessageId: '1760000500000' }
+    const publishBatch = vi.fn()
+      .mockResolvedValueOnce({ published: 2, held: 1, alreadyPublished: 0, attachments: 0, missingMedia: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0, nextCursor: cursor })
+      .mockResolvedValueOnce({ published: 2, held: 0, alreadyPublished: 0, attachments: 0, missingMedia: 0, reactions: 0, quotesLinked: 0, quotesUnresolved: 0, nextCursor: null })
+    const api = fakeApi({ publishBatch })
+    const result = await runImport({ api, bundle, plan, links: [], collected })
+    expect(publishBatch.mock.calls.map(c => c[1])).toEqual([
+      { conversationExternalId: COMMUNITY, cursor: null },
+      { conversationExternalId: COMMUNITY, cursor },
+    ])
+    expect(result).toMatchObject({ imported: 5, published: 4, held: 1 })
+    const created = (api.createJob as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { conversations: Array<{ unknownPolicy: string }> }
+    expect(created.conversations[0]!.unknownPolicy).toBe('include_unknown')
+  })
+
+  test('一時保管には、アップロードできなかった画像の参照も残す（後で画像がそろえば公開時に添付を補う）', async () => {
+    const api = fakeApi()
+    await runImport({ api, bundle, plan, links: [], collected: { media: new Map(), rejectedMedia: new Map() } })
+    const batch = (api.stageBatch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { messages: Array<{ mediaObjectIds: string[] }> }
     expect(batch.messages.some(m => m.mediaObjectIds.includes(MEDIA_ID))).toBe(true)
   })
 
@@ -160,7 +184,7 @@ describe('runImport', () => {
   })
 
   test('バッチが失敗したら止めて、失敗としてジョブを終える', async () => {
-    const api = fakeApi({ importBatch: vi.fn(async () => { throw new Error('サーバーエラー') }) })
+    const api = fakeApi({ stageBatch: vi.fn(async () => { throw new Error('サーバーエラー') }) })
     const result = await runImport({ api, bundle, plan, links: [], collected })
     expect(result.status).toBe('failed')
     expect(result.error).toBe('サーバーエラー')
@@ -173,7 +197,7 @@ describe('runImport', () => {
     const api = fakeApi()
     const result = await runImport({ api, bundle, plan, links: [], collected, signal: controller.signal })
     expect(result.status).toBe('cancelled')
-    expect(api.importBatch).not.toHaveBeenCalled()
+    expect(api.stageBatch).not.toHaveBeenCalled()
   })
 
   test('ジョブには選んだ会話の投稿者と管理者が確認した紐づけだけを送る', async () => {

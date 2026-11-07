@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   try {
     const { db } = await import('@cairn/db')
-    const { channelReadStates, messages, IMPORT_SENDER_PROFILE_ID } = await import('@cairn/db')
+    const { channelReadStates, messages } = await import('@cairn/db')
     const { eq, and, isNull, gt, ne, asc, sql } = await import('drizzle-orm')
     const lastReadAt = sql<Date>`coalesce((
       select ${channelReadStates.lastReadAt}
@@ -29,8 +29,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
       eq(messages.channelId, channelId),
       isNull(messages.deletedAt),
       gt(messages.createdAt, lastReadAt),
-      // 取り込んだ過去ログは未読に数えない（一覧の未読件数と同じ）。初期位置も Cairn での最初の未読にする
-      ne(messages.senderId, IMPORT_SENDER_PROFILE_ID),
+      // 外部チャットから取り込んだ過去ログは未読にも初期位置にもしない（docs/import-design.md §6）
+      eq(messages.imported, false),
     )
 
     const [unread] = await db

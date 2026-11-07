@@ -79,14 +79,6 @@ import { VideoAttachment } from '@/components/app/video-attachment'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 import { useRealtimeChannel } from '@/components/realtime/use-realtime-channel'
-import type { ImportedMessageInfoDto } from '@/lib/imports/display'
-import { localizeImportedFallbackName } from '@/lib/imports/fallback-names'
-
-function importedFallbackName(imported: ImportedMessageInfoDto, t: (key: string) => string): string {
-  if (imported.anonymous) return t('Unknown poster')
-  if (imported.identityKind === 'exporter') return t('The person who exported')
-  return t('Participant without a name')
-}
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -269,7 +261,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
-  imported?: ImportedMessageInfoDto | null | undefined
+  imported?: boolean | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -295,12 +287,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const router = useRouter()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
-  const displaySenderName = senderApp
-    ? displayAppName(senderApp, t)
-    // 取り込んだ過去ログで名前が分からない投稿者は、サーバーの既定文言ではなく表示言語で出す
-    : imported && !imported.linkedUserId && !imported.originalName
-      ? importedFallbackName(imported, t)
-      : senderName
+  const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useLocale()
@@ -347,6 +334,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   )
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
+  // 取り込んだ過去ログは、紐づけで本人の投稿になっても編集・削除させない（API も拒否する）
+  const canModify = isOwn && !imported
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
     legacyRole: senderProjectRole,
@@ -369,9 +358,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
     const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
-    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
     window.addEventListener('cairn:delete-message', onDeleteEvt)
@@ -381,7 +370,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, isOwn, content])
+  }, [messageId, canModify, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -449,9 +438,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
-    // 取り込んだ過去ログの送信者は共通の取り込みプロフィールなので、ブロックの対象にしない
+    // 取り込んだ過去ログの送信者は、紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
     ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
-    ...(isOwn ? [
+    // 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する）
+    ...(canModify ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
@@ -520,9 +510,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
               </span>
             )}
-            {/* 取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
+            {/* 外部チャットから取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
             {imported && (
-              <span title={t('Imported from Teams. Posted at {date}', { date: new Date(imported.originalSentAt).toLocaleString() })} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
                 {t('Imported from Teams')}
               </span>
             )}
@@ -553,7 +543,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{localizeImportedFallbackName(replyTo.senderName, t)}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
             <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
@@ -727,7 +717,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
                   {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
-                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).map(name => localizeImportedFallbackName(name, t)).join(t(', '))}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
                   {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
@@ -781,7 +771,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px calc(16px + env(safe-area-inset-bottom))' }}>
               {selectedReaction.userNames.length > 0 ? selectedReaction.userNames.map((name, index) => (
                 <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>
-                  {localizeImportedFallbackName(name, t)}
+                  {name}
                 </div>
               )) : (
                 <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-3)', fontSize: 13 }}>
@@ -2026,11 +2016,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
-      const isOwn = msg.senderId === currentUser?.id
+      // 取り込んだ過去ログは本人の投稿でも編集・削除のショートカットを効かせない
+      const canModify = msg.senderId === currentUser?.id && !msg.imported
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && isOwn) {
+      } else if (e.key === 'e' && canModify) {
         // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
@@ -2038,7 +2029,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         // リアクション（絵文字ピッカーを開く）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
-      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+      } else if ((e.key === 'd' || e.key === 'Delete') && canModify) {
         // 削除（確認ダイアログを開く・自分のメッセージのみ）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))

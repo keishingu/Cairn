@@ -1,7 +1,6 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { loadImportedReactions, loadImportedSenders } from '@/lib/imports/display'
 import { NextResponse } from 'next/server'
 import type { MessageType, ProjectMemberRole } from '@cairn/shared'
 import { linkedTaskLineIndexes } from '@/lib/tasks/task-candidates'
@@ -55,7 +54,6 @@ export async function getMessages({
       messageBlocks,
       appInstallations,
       apps,
-      IMPORT_SENDER_PROFILE_ID,
     } = await import('@cairn/db')
     const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc, sql } = await import('drizzle-orm')
 
@@ -73,6 +71,7 @@ export async function getMessages({
       senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
+      imported: messages.imported,
       blocks: messageBlocks.blocks,
       blocksUpdatedAt: sql<string | null>`${messageBlocks.updatedAt}::text`,
       appName: apps.name,
@@ -135,6 +134,7 @@ export async function getMessages({
       senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
+      imported: boolean
       blocks: unknown
       blocksUpdatedAt: string | null
       appName: string | null
@@ -230,15 +230,6 @@ export async function getMessages({
     }
 
     const messageIds = rows.map((r) => r.id)
-    // 取り込んだ過去ログは共通の「取り込み」プロフィールが送信者なので、本当の投稿者とリアクションを別に引く
-    const importedLookup = loadImportedSenders(workspaceId, [
-      ...rows.filter(row => row.senderId === IMPORT_SENDER_PROFILE_ID).map(row => row.id),
-      ...rows.map(row => row.parentMessageId).filter((id): id is string => !!id),
-    ])
-    const importedReactionsLookup = loadImportedReactions(
-      workspaceId,
-      rows.filter(row => row.senderId === IMPORT_SENDER_PROFILE_ID).map(row => row.id),
-    )
     // 引用返信の参照先（表示中の100件の外にある可能性があるので別クエリで取得）
     const parentIds = [
       ...new Set(rows.map((r) => r.parentMessageId).filter((id): id is string => !!id)),
@@ -352,14 +343,8 @@ export async function getMessages({
     }))
     const parentRows = rawParentRows.filter(parent => parent.channelId === channelId || accessibleForeign.has(parent.channelId))
 
-    const [importedSenders, importedReactionRows] = await Promise.all([importedLookup, importedReactionsLookup])
     const reactionMap = new Map<string, ReactionDto[]>()
-    for (const reaction of [
-      ...reactionRows,
-      // 取り込んだリアクションは取り込み元の人ごとの履歴で、トグル API（message_reactions）では消せない。
-      // 紐づけた本人でも「自分のリアクション」にはしない（押すと Cairn のリアクションが別に増える・減る）
-      ...importedReactionRows.map(row => ({ messageId: row.messageId, emoji: row.emoji, userId: IMPORT_SENDER_PROFILE_ID, userName: row.userName })),
-    ]) {
+    for (const reaction of reactionRows) {
       if (!reactionMap.has(reaction.messageId)) reactionMap.set(reaction.messageId, [])
       const existing = reactionMap
         .get(reaction.messageId)!
@@ -437,22 +422,19 @@ export async function getMessages({
     for (const parent of parentRows) {
       parentMap.set(parent.id, {
         id: parent.id,
-        senderName: importedSenders.get(parent.id)?.name ?? parent.senderName,
+        senderName: parent.senderName,
         content: parent.deletedAt ? '' : hydrateMentions(parent.content, (id) => nameMap.get(id)),
         isDeleted: !!parent.deletedAt,
       })
     }
 
-    const result: MessageDto[] = rows.map((row) => {
-      const imported = row.senderId === IMPORT_SENDER_PROFILE_ID ? importedSenders.get(row.id) : undefined
-      return {
+    const result: MessageDto[] = rows.map((row) => ({
       id: row.id,
       content: hydrateMentions(row.content, (id) => nameMap.get(id)),
       messageType: row.messageType,
-      // 送信者 ID は取り込みプロフィールのまま返す（紐づけた本人の ID にすると、本人の発言として編集・削除の操作が出てしまう）
       senderId: row.senderId,
-      senderName: imported?.name ?? row.senderName,
-      senderAvatarUrl: imported ? imported.avatarUrl : row.senderAvatarUrl ?? null,
+      senderName: row.senderName,
+      senderAvatarUrl: row.senderAvatarUrl ?? null,
       senderProfileAttributes: profileAttributes.get(row.senderId) ?? [],
       senderProjectRole: row.senderProjectRole ?? null,
       senderProjectRoleName: row.senderProjectRoleName ?? null,
@@ -467,6 +449,7 @@ export async function getMessages({
       bookmarked: bookmarkedIds.has(row.id),
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
+      ...(row.imported ? { imported: true } : {}),
       blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
       blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocksUpdatedAt) : null,
       ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
@@ -479,9 +462,7 @@ export async function getMessages({
             uninstalled: row.appRevokedAt != null,
           }
         : null,
-      ...(imported ? { imported: imported.info } : {}),
-    }
-    })
+    }))
 
     return NextResponse.json(result, {
       headers: { 'X-Cairn-Has-More': String(hasMore) },

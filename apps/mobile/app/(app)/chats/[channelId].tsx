@@ -1376,7 +1376,8 @@ export default function ChatThreadScreen() {
     }
     // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
     // アプリ（Bot）はユーザーではないのでブロックの対象にしない
-    if (message.senderId === me?.id || message.blocked || message.senderApp) {
+    // 取り込んだ過去ログの送信者は紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    if (message.senderId === me?.id || message.blocked || message.senderApp || message.imported) {
       Alert.alert(t('Reported'), t('The moderators will review it.'))
       return
     }
@@ -2437,7 +2438,8 @@ export default function ChatThreadScreen() {
                   }}
                 />
               )}
-              {actionTarget?.senderId === me?.id && (
+              {/* 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する） */}
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported && (
                 <ActionButton
                   icon="create-outline"
                   label={t('Edit')}
@@ -2506,7 +2508,7 @@ export default function ChatThreadScreen() {
                     }}
                   />
                 )}
-              {actionTarget?.senderId === me?.id ? (
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported ? (
                 <ActionButton
                   icon="trash-outline"
                   label={t('Delete')}

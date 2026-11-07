@@ -1,7 +1,6 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ImportedMessageInfoDto } from '@/lib/imports/display'
 import type { AttachmentDto, MessageType, ProfileAttributeDto, ProjectMemberRole } from '@cairn/shared'
 
 export interface ReactionDto {
@@ -39,8 +38,6 @@ export interface SenderAppDto {
   uninstalled: boolean
 }
 
-export type { ImportedMessageInfoDto }
-
 export interface MessageDto {
   id: string
   content: string
@@ -71,6 +68,6 @@ export interface MessageDto {
   /** カード内のメンションの userId → 表示名（非活性のメンバーも含む）。blocks のメッセージだけ */
   mentionNames?: Record<string, string>
   senderApp?: SenderAppDto | null
-  /** 外部チャットから取り込んだ過去ログなら、その取り込み元の情報（docs/import-design.md）。それ以外は無い */
-  imported?: ImportedMessageInfoDto | null
+  /** 外部チャットから取り込んだ過去ログ（docs/import-design.md）。画面は印を出し、編集・削除の操作を出さない */
+  imported?: boolean
 }

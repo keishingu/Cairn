@@ -23,11 +23,30 @@ export async function withImportAdmin(
   label: string,
   handler: (ctx: ImportAdminContext) => Promise<NextResponse>,
 ): Promise<NextResponse> {
+  return withImportRole(label, { operatorOnly: true }, handler)
+}
+
+/**
+ * 取り込んだ投稿者の一覧・紐づけ（owner / admin。運営者でなくてよい）。誰が誰かを知っているのはワークスペースの側なので、
+ * 紐づけは取り込み先ワークスペースの owner / admin ができる（docs/import-design.md §8）
+ */
+export async function withImportLinker(
+  label: string,
+  handler: (ctx: ImportAdminContext) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  return withImportRole(label, { operatorOnly: false }, handler)
+}
+
+async function withImportRole(
+  label: string,
+  options: { operatorOnly: boolean },
+  handler: (ctx: ImportAdminContext) => Promise<NextResponse>,
+): Promise<NextResponse> {
   const { ctx, error } = await getAuthContext()
   if (error) return error
   const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
-  if (!isImportOperator(ctx.userId)) {
+  if (options.operatorOnly && !isImportOperator(ctx.userId)) {
     return NextResponse.json({ error: '外部チャットの取り込みは、移行支援の担当者（Cairn の運営者）だけが利用できます' }, { status: 403 })
   }
   try {

@@ -10,7 +10,6 @@ const { mockGetAuthContext, mockRequireChannelAccess, mockSelect, mockNe } = vi.
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({ requireChannelAccess: mockRequireChannelAccess }))
 vi.mock('@cairn/db', () => ({
-  IMPORT_SENDER_PROFILE_ID: 'import-sender',
   db: { select: mockSelect },
   channelReadStates: {
     userId: 'channelReadStates.userId',
@@ -81,8 +80,6 @@ describe('GET /api/channels/[channelId]/read', () => {
 
     await expect(response.json()).resolves.toEqual({ messageId: 'first-after-read' })
     expect(mockNe).toHaveBeenCalledWith('messages.senderId', 'user-1')
-    // 取り込んだ過去ログは未読にも初期位置にもしない
-    expect(mockNe).toHaveBeenCalledWith('messages.senderId', 'import-sender')
   })
 
   it('アクセスできないチャンネルの既読位置を返さない', async () => {

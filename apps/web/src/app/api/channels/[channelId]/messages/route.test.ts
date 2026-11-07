@@ -7,7 +7,6 @@ import { createHash } from 'node:crypto'
 const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const DEV_WORKSPACE_ID = '10000000-0000-0000-0000-000000000001'
 const CHANNEL_ID = '20000000-0000-0000-0000-000000000001'
-const IMPORT_SENDER = '00000000-0000-4000-8000-00000000c0de'
 
 const {
   mockGetAuthContext,
@@ -27,11 +26,7 @@ const {
   mockLt,
   mockGt,
   mockGetProfileAttributes,
-  mockLoadImportedSenders,
-  mockLoadImportedReactions,
 } = vi.hoisted(() => ({
-  mockLoadImportedSenders: vi.fn(),
-  mockLoadImportedReactions: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockRequireChannelAccess: vi.fn(),
   mockCanAccessFile: vi.fn(),
@@ -70,12 +65,7 @@ vi.mock('@cairn/shared', () => ({
     safeParse: () => ({ success: true, data: { content: 'hi', channelId: CHANNEL_ID } }),
   },
 }))
-vi.mock('@/lib/imports/display', () => ({
-  loadImportedSenders: mockLoadImportedSenders,
-  loadImportedReactions: mockLoadImportedReactions,
-}))
 vi.mock('@cairn/db', () => ({
-  IMPORT_SENDER_PROFILE_ID: IMPORT_SENDER,
   db: { select: mockDbSelect },
   messages: {
     id: 'messages.id',
@@ -196,8 +186,6 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
       ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'member' },
       error: null,
     })
-    mockLoadImportedSenders.mockResolvedValue(new Map())
-    mockLoadImportedReactions.mockResolvedValue([])
     mockGetProfileAttributes.mockResolvedValue(new Map([['user-2', [
       { id: 'attribute-1', name: '3年生', color: 'blue' },
       { id: 'attribute-2', name: '経済学部', color: 'emerald' },
@@ -283,64 +271,6 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
         ],
       }),
     ])
-  })
-
-  it('GET は取り込んだ過去ログの投稿者を取り込み元の名前で上書きし、取り込みリアクションを合算する（紐づけた本人でも自分のリアクションにしない）', async () => {
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockLoadImportedSenders.mockResolvedValue(new Map([
-      ['msg-imported', {
-        name: '投稿者不明',
-        avatarUrl: null,
-        info: { source: 'teams-consumer', originalSentAt: '2025-10-09T15:13:20.000Z', anonymous: true, identityKind: 'anonymous', originalName: null, linkedUserId: null },
-      }],
-    ]))
-    mockLoadImportedReactions.mockResolvedValue([
-      { messageId: 'msg-imported', emoji: '👍', userName: '山田 太郎', linkedUserId: DEV_USER_ID },
-      { messageId: 'msg-imported', emoji: '👍', userName: '名前不明の参加者', linkedUserId: null },
-    ])
-    mockSelectResults(
-      [
-        {
-          id: 'msg-imported',
-          content: '過去の投稿',
-          senderId: IMPORT_SENDER,
-          senderName: '取り込まれた投稿',
-          senderAvatarUrl: null,
-          createdAt: new Date('2025-10-09T15:13:20.000Z'),
-          updatedAt: new Date('2025-10-09T15:13:20.000Z'),
-        },
-      ],
-      [{ messageId: 'msg-imported', emoji: '👍', userId: 'user-3', userName: 'Aki' }],
-      [],
-      [],
-      [],
-    )
-
-    const { GET } = await import('./route')
-    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
-
-    expect(res.status).toBe(200)
-    const body = await res.json() as Array<Record<string, unknown>>
-    expect(body[0]).toMatchObject({
-      senderId: IMPORT_SENDER,
-      senderName: '投稿者不明',
-      imported: { source: 'teams-consumer', anonymous: true },
-      reactions: [{ emoji: '👍', count: 3, mine: false, userNames: ['Aki', '山田 太郎', '名前不明の参加者'] }],
-    })
-    expect(mockLoadImportedSenders).toHaveBeenCalledWith(DEV_WORKSPACE_ID, ['msg-imported'])
-  })
-
-  it('GET は通常のメッセージに取り込み情報を付けない', async () => {
-    mockRequireChannelAccess.mockResolvedValue(null)
-    mockSelectResults(
-      [{ id: 'msg-1', content: 'hi', senderId: 'user-2', senderName: 'Sender', senderAvatarUrl: null, createdAt: new Date('2026-06-24T01:00:00.000Z'), updatedAt: new Date('2026-06-24T01:00:00.000Z') }],
-      [], [], [], [],
-    )
-    const { GET } = await import('./route')
-    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
-    const body = await res.json() as Array<Record<string, unknown>>
-    expect(body[0]).not.toHaveProperty('imported')
-    expect(mockLoadImportedReactions).toHaveBeenCalledWith(DEV_WORKSPACE_ID, [])
   })
 
   it('GET は設定済みのプロジェクト役割名と色を返す', async () => {
