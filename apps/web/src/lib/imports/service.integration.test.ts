@@ -300,11 +300,16 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
 
     // ジョブを完了した後に発言者を補っても、取り込み直さずにその投稿だけ公開される
     await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
-    expect(await service.resolveUnknownMessages(workspaceId, adminId, {
-      source: 'teams-consumer',
+    const resolveRequest = {
+      source: 'teams-consumer' as const,
       conversationExternalId: heldConversation,
-      assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' } }],
-    })).toMatchObject({ resolved: 1, published: 1 })
+      assignments: [{ externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.0000000resolved', displayName: '鈴木 次郎', anonymous: false, kind: 'named' as const } }],
+    }
+    // 取り込み先がアーカイブ中だと、発言者は補えても公開に失敗する。同じ依頼をやり直すと公開される
+    await db.db.execute(sql`update channels set archived_at = now() where id = ${publicChannelId}`)
+    await expect(service.resolveUnknownMessages(workspaceId, adminId, resolveRequest)).rejects.toMatchObject({ status: 400 })
+    await db.db.execute(sql`update channels set archived_at = null where id = ${publicChannelId}`)
+    expect(await service.resolveUnknownMessages(workspaceId, adminId, resolveRequest)).toMatchObject({ resolved: 0, published: 1 })
     expect(await senderOf(heldConversation, '1760000700000')).toMatchObject({ display_name: '鈴木 次郎' })
     expect(await publishAll(jobId, heldConversation)).toMatchObject({ published: 0, held: 1 })
   })

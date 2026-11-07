@@ -964,7 +964,7 @@ export async function resolveUnknownMessages(workspaceId: string, actorId: strin
   const { result, heldJobIds } = await db.transaction(async (tx) => {
     // 一時保管の行を先にロックする（公開と同じ順: 一時保管の行 → 投稿者）。公開中の行の発言者を補って食い違わないように
     const rows = await tx
-      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, jobId: importStagedMessages.jobId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
+      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, jobId: importStagedMessages.jobId, publishedMessageId: importStagedMessages.publishedMessageId, identityKey: importIdentities.externalKey, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
       .from(importStagedMessages)
       .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
       .where(and(
@@ -996,6 +996,8 @@ export async function resolveUnknownMessages(workspaceId: string, actorId: strin
       const row = rowByExternalId.get(assignment.externalMessageId)
       const identity = identityByKey.get(assignment.identity.key)
       if (!row || !identity || !row.isAnonymous) {
+        // 前回の依頼で同じ発言者に補ったが公開に失敗した（チャンネルのアーカイブ中など）投稿は、同じ依頼の再実行で公開し直す
+        if (row && !row.isAnonymous && !row.publishedMessageId && row.jobId && row.identityKey === assignment.identity.key) heldJobIds.add(row.jobId)
         result.skipped++
         continue
       }
