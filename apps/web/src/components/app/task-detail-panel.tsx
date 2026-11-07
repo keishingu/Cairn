@@ -1,5 +1,6 @@
 'use client'
 
+import { localizeImportedFallbackName } from '@/lib/imports/fallback-names'
 import React from 'react'
 import Link from 'next/link'
 import { Avatar, Icon, Modal, ModalHeader, fieldInputStyle, fieldTextareaStyle } from './primitives'
@@ -233,8 +234,8 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <Avatar name={message.senderName} url={message.senderAvatarUrl} size={22} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{message.senderName}</span>
+          <Avatar name={localizeImportedFallbackName(message.senderName, t)} url={message.senderAvatarUrl} size={22} />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{localizeImportedFallbackName(message.senderName, t)}</span>
           <time dateTime={message.createdAt} style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
             {new Date(message.createdAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
           </time>

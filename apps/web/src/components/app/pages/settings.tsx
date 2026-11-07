@@ -56,6 +56,8 @@ import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
 import { AutomationsSettings } from '../automations-settings'
 import { SettingsProjectRoles } from '../settings-project-roles'
+import { SettingsImport } from '../settings-import'
+import { useImportAccess } from '@/hooks/use-imports'
 
 const CreditPlacementBoard = dynamic(
   () =>
@@ -3742,7 +3744,7 @@ const SettingsDeveloper = () => {
 
 export function getSettingsNavGroups(
   isOwner: boolean,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
     { id: 'general', label: 'Workspace settings', icon: 'settings' },
@@ -3756,6 +3758,11 @@ export function getSettingsNavGroups(
       : []),
     { id: 'members', label: 'Members', icon: 'users' },
     { id: 'integrations', label: 'Integrations', icon: 'layers' },
+    // 取り込みは移行支援として運営側が行う。運営者（IMPORT_OPERATOR_USER_IDS）の owner / admin にだけ、
+    // フォルダの選択が要るので PC だけ出す（API も同じ条件で 403）
+    ...(options.isAdmin && options.isImportOperator && !options.isMobile
+      ? [{ id: 'import', label: 'Import from Teams', icon: 'download' } satisfies SettingsSectionMeta]
+      : []),
     ...(options.isMobile
       ? [{ id: 'contributions', label: 'Cairn', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
@@ -3809,6 +3816,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   billing: SettingsBilling,
   contributions: SettingsContributions,
   developer: SettingsDeveloper,
+  import: SettingsImport,
 }
 
 const DEFAULT_SECTION = 'account'
@@ -3816,7 +3824,7 @@ const DEFAULT_SECTION = 'account'
 export function isSettingsSection(
   id: string | null | undefined,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): id is string {
   return (
     id != null &&
@@ -3827,7 +3835,7 @@ export function isSettingsSection(
 export function settingsSectionLabel(
   id: string,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): string {
   for (const g of getSettingsNavGroups(isOwner, options)) {
     const item = g.items.find((i) => i.id === id)
@@ -3853,10 +3861,14 @@ export const PageSettings = () => {
   const t = useT()
   const pathname = usePathname()
   const router = useRouter()
-  const { isOwner, isGuest } = useWorkspacePermissions()
-  const navGroups = getSettingsNavGroups(isOwner, { isGuest })
+  const { isOwner, isGuest, isAdmin } = useWorkspacePermissions()
+  const importAccess = useImportAccess(isAdmin)
+  const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true }
+  const navGroups = getSettingsNavGroups(isOwner, navOptions)
   const seg = pathname.split('/')[2]
-  const section = isSettingsSection(seg, isOwner, { isGuest }) ? seg : DEFAULT_SECTION
+  // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中・確認に失敗したときに /settings/import を開いても
+  // 既定の画面へ戻さず、取り込み画面の側で読み込み中・エラー（再試行できる）を出す
+  const section = isSettingsSection(seg, isOwner, navOptions) || (seg === 'import' && isAdmin && (importAccess.isPending || importAccess.isError)) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title={t('Settings')} />

@@ -20,6 +20,7 @@
 | `/ai` のプロダクトヘルプ | `../apps/web/src/lib/ai/product-help.ts`（正本。方式と更新ルールは冒頭コメント） | — |
 | AI 常駐 PMO | `ai-pmo-design.md`（Phase 1/2 実装済み） | `ai-era-pm-strategy.md`（戦略の合意記録） |
 | MCP・外部エージェント連携 | `mcp-server-design.md`（現行） | — |
+| 外部チャットの取り込み（Teams など） | `import-design.md`（現行。投稿者の持ち方・冪等性・通知抑制・公開範囲） | `research/teams-community-export-analysis.md`（エクスポート形式の調査の記録） |
 | アプリ（プラグイン）基盤・Slack 互換 | `app-platform-design.md`（構想。Bot・Block Kit 互換カード・インタラクション、投票アプリ）。外部の開発者向けの公開仕様は `/developers`（`apps/web/src/app/developers/`） | `scheduled-jobs-design.md`（投票の元設計） |
 | 「Cairn でログイン」（OIDC） | `oidc-design.md`（構想。Cairn が自前で OIDC のプロバイダーになり、Cairn 専用の鍵で署名した ID トークンだけを外部アプリに渡す） | `app-platform-design.md` §10（位置づけ）、`mcp-server-design.md`（MCP 専用の OAuth との違い） |
 | キーボードショートカット | `keyboard-shortcuts.md`（設計方針。割り当ては `lib/commands.ts`） | — |

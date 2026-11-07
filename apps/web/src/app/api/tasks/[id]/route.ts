@@ -1,6 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { loadImportedSenders } from '@/lib/imports/display'
 import { NextResponse } from 'next/server'
 import { updateTaskSchema } from '@cairn/shared'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -138,12 +139,14 @@ export async function GET(
 
       if (message && messageVisible) {
         const nameMap = await buildMentionNameMap(ctx.workspaceId, [message.content])
+        // 取り込んだ過去ログは共通の取り込みプロフィールが送信者なので、本当の投稿者で表示を上書きする（docs/import-design.md）
+        const imported = (await loadImportedSenders(ctx.workspaceId, [message.id])).get(message.id)
         sourceMessage = {
           id: message.id,
           channelId: message.channelId,
           content: hydrateMentions(message.content, (mentionId) => nameMap.get(mentionId)),
-          senderName: message.senderName,
-          senderAvatarUrl: message.senderAvatarUrl ?? null,
+          senderName: imported?.name ?? message.senderName,
+          senderAvatarUrl: imported ? imported.avatarUrl : message.senderAvatarUrl ?? null,
           createdAt: message.createdAt.toISOString(),
         }
       }
