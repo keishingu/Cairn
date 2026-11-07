@@ -267,6 +267,18 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await expect(service.linkImportIdentity(workspaceId, adminId, anonymous.id, memberId)).rejects.toMatchObject({ status: 400 })
   })
 
+  test('同じ投稿に別々の発言者を指定すると、何も変えずに拒否する', async () => {
+    await expect(service.resolveUnknownMessages(workspaceId, {
+      source: 'teams-consumer',
+      conversationExternalId: COMMUNITY,
+      assignments: [
+        { externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.00000000dupa', displayName: 'A', anonymous: false, kind: 'named' } },
+        { externalMessageId: '1760000700000', identity: { key: 'mri:8:live:.cid.00000000dupb', displayName: 'B', anonymous: false, kind: 'named' } },
+      ],
+    })).rejects.toMatchObject({ status: 400 })
+    expect(await senderOf(COMMUNITY, '1760000700000')).toMatchObject({ display_name: '投稿者不明' })
+  })
+
   test('投稿者不明として公開済みの投稿は、発言者を補うと送信者が付け替わる', async () => {
     const result = await service.resolveUnknownMessages(workspaceId, {
       source: 'teams-consumer',

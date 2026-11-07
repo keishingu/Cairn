@@ -401,7 +401,7 @@ export async function publishConversationBatch(
     ))
     .orderBy(asc(importStagedMessages.sentAt), asc(importStagedMessages.externalMessageId))
     .limit(MAX_BATCH_MESSAGES + 1)
-  const batch = rows.slice(0, MAX_BATCH_MESSAGES)
+  let batch = rows.slice(0, MAX_BATCH_MESSAGES)
   const last = batch[batch.length - 1]
   const nextCursor = rows.length > MAX_BATCH_MESSAGES && last ? { sentAt: last.sentAt.toISOString(), externalMessageId: last.externalMessageId } : null
 
@@ -410,13 +410,32 @@ export async function publishConversationBatch(
 
   const reactionsOf = (value: unknown) => (Array.isArray(value) ? value as StagedReaction[] : [])
   const mediaOf = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [])
-  const identityKeys = [...new Set(batch.flatMap(row => [row.identityKey, ...reactionsOf(row.reactions).map(r => r.identityKey)]))]
-  const objectIds = [...new Set(batch.flatMap(row => mediaOf(row.mediaObjectIds)))]
   const idFor = (externalId: string) => importedMessageId(workspaceId, job.source, input.conversationExternalId, externalId)
 
   return db.transaction(async (tx) => {
     // 同じチャンネルへの並行した取り込みと投稿の順序を直列化する（通常の投稿と同じロック）
     await tx.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)).for('update')
+    // 一時保管の行をロックして読み直す。投稿者不明の補完（resolveUnknownMessages）が同じ行を更新するので、
+    // 読んだ後に発言者が補われて、古い投稿者不明のまま公開しないようにする
+    const fresh = await tx
+      .select({
+        id: importStagedMessages.id,
+        mediaObjectIds: importStagedMessages.mediaObjectIds,
+        publishedMessageId: importStagedMessages.publishedMessageId,
+        identityKey: importIdentities.externalKey,
+      })
+      .from(importStagedMessages)
+      .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
+      .where(inArray(importStagedMessages.id, batch.map(row => row.id)))
+      .orderBy(asc(importStagedMessages.id))
+      .for('update', { of: importStagedMessages })
+    const freshById = new Map(fresh.map(row => [row.id, row]))
+    batch = batch.flatMap(row => {
+      const current = freshById.get(row.id)
+      return current ? [{ ...row, ...current }] : []
+    })
+    const identityKeys = [...new Set(batch.flatMap(row => [row.identityKey, ...reactionsOf(row.reactions).map(r => r.identityKey)]))]
+    const objectIds = [...new Set(batch.flatMap(row => mediaOf(row.mediaObjectIds)))]
     // 公開中に紐づけが変わって古い送信者で入らないよう、送信者を決める投稿者をコミットまでロックする
     const identities = await loadIdentities(tx, workspaceId, job.source, identityKeys, { lock: true })
     const fileRows = objectIds.length > 0
@@ -933,9 +952,25 @@ export async function linkImportIdentity(workspaceId: string, actorId: string, i
  */
 export async function resolveUnknownMessages(workspaceId: string, input: ResolveUnknownInput) {
   const { db, importIdentities, importStagedMessages, messages, orm } = await loadDb()
-  const { and, eq, inArray, sql } = orm
+  const { and, asc, eq, inArray, sql } = orm
   if (input.assignments.some(a => a.identity.anonymous)) throw new ImportServiceError(400, '補う発言者に投稿者不明は指定できません')
+  // 同じ投稿に別々の発言者を指定させない（1件目で送信者が変わり、2件目は一時保管だけ変わって食い違う）
+  const externalIds = input.assignments.map(a => a.externalMessageId)
+  if (new Set(externalIds).size !== externalIds.length) throw new ImportServiceError(400, '同じ投稿に複数の発言者が指定されています')
   return db.transaction(async (tx) => {
+    // 一時保管の行を先にロックする（公開と同じ順: 一時保管の行 → 投稿者）。公開中の行の発言者を補って食い違わないように
+    const rows = await tx
+      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
+      .from(importStagedMessages)
+      .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
+      .where(and(
+        eq(importStagedMessages.workspaceId, workspaceId),
+        eq(importStagedMessages.source, input.source),
+        eq(importStagedMessages.externalConversationId, input.conversationExternalId),
+        inArray(importStagedMessages.externalMessageId, externalIds),
+      ))
+      .orderBy(asc(importStagedMessages.id))
+      .for('update', { of: importStagedMessages })
     const identities = [...new Map(input.assignments.map(a => [a.identity.key, a.identity])).values()]
     await tx.insert(importIdentities).values(identities.map(identity => ({
       workspaceId,
@@ -949,17 +984,7 @@ export async function resolveUnknownMessages(workspaceId: string, input: Resolve
       set: { displayName: sql`coalesce(excluded.display_name, ${importIdentities.displayName})` },
     })
     await syncImportProfileNames(tx, workspaceId, input.source, identities.map(i => i.key))
-    const identityByKey = await loadIdentities(tx, workspaceId, input.source, identities.map(i => i.key))
-    const rows = await tx
-      .select({ id: importStagedMessages.id, externalMessageId: importStagedMessages.externalMessageId, publishedMessageId: importStagedMessages.publishedMessageId, isAnonymous: importIdentities.isAnonymous, anonymousProfileId: importIdentities.profileId })
-      .from(importStagedMessages)
-      .innerJoin(importIdentities, eq(importIdentities.id, importStagedMessages.identityId))
-      .where(and(
-        eq(importStagedMessages.workspaceId, workspaceId),
-        eq(importStagedMessages.source, input.source),
-        eq(importStagedMessages.externalConversationId, input.conversationExternalId),
-        inArray(importStagedMessages.externalMessageId, input.assignments.map(a => a.externalMessageId)),
-      ))
+    const identityByKey = await loadIdentities(tx, workspaceId, input.source, identities.map(i => i.key), { lock: true })
     const rowByExternalId = new Map(rows.map(row => [row.externalMessageId, row]))
     const result = { resolved: 0, republished: 0, skipped: 0 }
     for (const assignment of input.assignments) {
