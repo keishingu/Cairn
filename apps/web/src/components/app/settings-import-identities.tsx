@@ -35,7 +35,7 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
       </InlineError>
     )
   }
-  const identities = (identitiesQuery.data ?? []).filter(identity => !identity.isAnonymous && identity.publishedCount + identity.messageCount > 0)
+  const identities = (identitiesQuery.data ?? []).filter(identity => !identity.isAnonymous && identity.messageCount + identity.reactedCount > 0)
   if (identitiesQuery.isPending || identities.length === 0) return null
 
   const change = async (identityId: string, userId: string | null) => {
@@ -72,6 +72,7 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
             <tr>
               <th style={cellStyle}>{t('Poster in Teams')}</th>
               <th style={cellStyle}>{t('Messages')}</th>
+              <th style={cellStyle}>{t('Reactions')}</th>
               <th style={cellStyle}>{t('Cairn member')}</th>
             </tr>
           </thead>
@@ -80,6 +81,7 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
               <tr key={identity.id}>
                 <td style={cellStyle}>{identity.displayName ?? t('Participant without a name ({id})', { id: identity.key.slice(-6) })}</td>
                 <td style={cellStyle}>{identity.publishedCount}</td>
+                <td style={cellStyle}>{identity.reactedCount}</td>
                 <td style={cellStyle}>
                   <select
                     aria-label={t('Cairn member for {name}', { name: identity.displayName ?? '' })}

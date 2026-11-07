@@ -306,6 +306,25 @@ describe.skipIf(!runIntegration)('取り込みサービス（ローカル DB と
     await service.completeImportJob(workspaceId, jobId, { status: 'completed', error: null, report: emptyReport })
   })
 
+  test('前のジョブで別のチャンネル向けに置いたまま公開していない投稿は、後のジョブのエクスポートに無ければ公開しない', async () => {
+    const conversation = '19:FixtureStrandedCommunityDDDDDDDDDDDDDDDDDDDD1@thread.v2'
+    const privateId = randomUUID()
+    const publicId = randomUUID()
+    await db.db.insert(db.channels).values([
+      { id: privateId, workspaceId, type: 'workspace', name: '非公開', isPrivate: true },
+      { id: publicId, workspaceId, type: 'workspace', name: '公開', isPrivate: false },
+    ])
+    await db.db.insert(db.channelMembers).values({ channelId: privateId, userId: adminId })
+    const first = await createJob({ conversation, channel: privateId })
+    await service.stageMessageBatch(workspaceId, adminId, first.jobId, stageBody(conversation))
+    await service.completeImportJob(workspaceId, first.jobId, { status: 'failed', error: 'stopped', report: emptyReport })
+    const second = await createJob({ conversation, channel: publicId })
+    await service.stageMessageBatch(workspaceId, adminId, second.jobId, stageBody(conversation, messages.slice(0, 2)))
+    expect(await publishAll(second.jobId, conversation)).toMatchObject({ published: 2 })
+    expect(await count(sql`select count(*) as n from messages where channel_id = ${publicId}`)).toBe(2)
+    await service.completeImportJob(workspaceId, second.jobId, { status: 'completed', error: null, report: emptyReport })
+  })
+
   test('画像がそろわずに公開したメッセージも、画像がそろってから公開し直すと添付を補う', async () => {
     const repairConversation = '19:FixtureRepairCommunityCCCCCCCCCCCCCCCCCCCCC1@thread.v2'
     const repairChannelId = randomUUID()

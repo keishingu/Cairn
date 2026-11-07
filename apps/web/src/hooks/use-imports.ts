@@ -19,6 +19,8 @@ export interface ImportedIdentityDto {
   /** 一時保管の件数と、そのうち公開済みの件数 */
   messageCount: number
   publishedCount: number
+  /** リアクションを付けた公開済みの投稿の件数 */
+  reactedCount: number
 }
 
 export interface ImportedConversationDto {

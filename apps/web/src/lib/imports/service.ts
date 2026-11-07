@@ -255,7 +255,7 @@ export async function stageMessageBatch(
   input: ImportBatchInput,
 ): Promise<StageBatchResult> {
   const { db, importStagedMessages, importJobConversations, orm } = await loadDb()
-  const { eq, sql } = orm
+  const { and, eq, inArray, isNull, ne, sql } = orm
   const job = await loadRunningJob(db, workspaceId, jobId)
   const conversation = await loadJobConversation(db, jobId, input.conversationExternalId)
   await assertImportTargetChannels(db, workspaceId, userId, [conversation.channelId])
@@ -283,6 +283,17 @@ export async function stageMessageBatch(
       mediaObjectIds: message.mediaObjectIds,
       attributes: message.attributes,
     }))).onConflictDoNothing().returning({ id: importStagedMessages.id })
+    // 前のジョブで一時保管したまま公開していない行は、このジョブのエクスポートにも含まれたものだけをこのジョブの分にする。
+    // 公開はジョブの分だけを対象にするので、前のジョブで別のチャンネル（非公開など）向けに置いた行を、
+    // このジョブの取り込み先へ持ち出さない
+    await tx.update(importStagedMessages).set({ jobId }).where(and(
+      eq(importStagedMessages.workspaceId, workspaceId),
+      eq(importStagedMessages.source, job.source),
+      eq(importStagedMessages.externalConversationId, input.conversationExternalId),
+      inArray(importStagedMessages.externalMessageId, input.messages.map(message => message.externalId)),
+      isNull(importStagedMessages.publishedMessageId),
+      ne(importStagedMessages.jobId, jobId),
+    ))
 
     const result = { staged: inserted.length, duplicates: input.messages.length - inserted.length }
     await tx.update(importJobConversations).set({
@@ -332,7 +343,7 @@ export async function publishConversationBatch(
     db, channels, messages, messageReactions, messageAttachments, importStagedMessages, importIdentities,
     importedFiles, importedReactions, importJobConversations, orm,
   } = await loadDb()
-  const { and, asc, eq, gt, inArray, or, sql } = orm
+  const { and, asc, eq, gt, inArray, isNotNull, or, sql } = orm
   const job = await loadRunningJob(db, workspaceId, jobId)
   const conversation = await loadJobConversation(db, jobId, input.conversationExternalId)
   const channelId = conversation.channelId
@@ -363,6 +374,8 @@ export async function publishConversationBatch(
       eq(importStagedMessages.workspaceId, workspaceId),
       eq(importStagedMessages.source, job.source),
       eq(importStagedMessages.externalConversationId, input.conversationExternalId),
+      // 未公開の行はこのジョブで一時保管したものだけ（前のジョブで別の取り込み先向けに置いた行を公開しない）
+      or(isNotNull(importStagedMessages.publishedMessageId), eq(importStagedMessages.jobId, job.id)),
       cursorCondition,
     ))
     .orderBy(asc(importStagedMessages.sentAt), asc(importStagedMessages.externalMessageId))
@@ -831,6 +844,8 @@ export async function listImportIdentities(workspaceId: string, source: string) 
       linkedUserName: sql<string | null>`coalesce(${workspaceMembers.displayName}, ${profiles.displayName})`,
       messageCount: sql<number>`(select count(*)::int from ${importStagedMessages} where ${importStagedMessages.identityId} = ${importIdentities.id})`,
       publishedCount: sql<number>`(select count(*)::int from ${importStagedMessages} where ${importStagedMessages.identityId} = ${importIdentities.id} and ${importStagedMessages.publishedMessageId} is not null)`,
+      // リアクションだけの参加者も紐づけの一覧に出すため、リアクションを付けた公開済みの投稿の件数も返す
+      reactedCount: sql<number>`(select count(*)::int from ${importStagedMessages} where ${importStagedMessages.workspaceId} = ${importIdentities.workspaceId} and ${importStagedMessages.source} = ${importIdentities.source} and ${importStagedMessages.publishedMessageId} is not null and ${importStagedMessages.reactions} @> jsonb_build_array(jsonb_build_object('identityKey', ${importIdentities.externalKey})))`,
     })
     .from(importIdentities)
     .leftJoin(profiles, eq(profiles.id, importIdentities.linkedUserId))
