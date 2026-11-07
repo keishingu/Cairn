@@ -230,7 +230,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -262,6 +262,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
   imported?: boolean | undefined
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale?: (() => void) | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -291,7 +293,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale), [messageId, blocksRevision, locale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale, onCardStale), [messageId, blocksRevision, locale, onCardStale])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -2159,6 +2161,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
   // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
   const reactionHistoryQueue = React.useRef(Promise.resolve())
+  // カードの操作が古い版として断られたら、このチャンネルのメッセージを取り直す。Realtime の通知を取りこぼしていても
+  // 次の押下は最新のカードで送れるようにする（Realtime と同じく、履歴表示・未読位置からの表示の分も含める）
+  const handleCardStale = React.useCallback(() => {
+    if (!channelId) return
+    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    void queryClient.invalidateQueries({ queryKey: ['message-history', channelId] })
+    void queryClient.invalidateQueries({ queryKey: chatQueryKeys.initialMessage(channelId) })
+  }, [channelId, queryClient])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
     const request = reactMutateAsync({ messageId, emoji })
@@ -2500,6 +2510,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
               imported={item.message.imported}
+              onCardStale={handleCardStale}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}

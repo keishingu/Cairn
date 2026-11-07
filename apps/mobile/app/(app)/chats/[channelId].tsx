@@ -299,6 +299,7 @@ function ChatMessageRow({
   onOpenTask,
   onShowTasks,
   onJumpToMessage,
+  onCardStale,
 }: {
   message: MessageDto
   palette: Palette
@@ -316,6 +317,8 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
   /** 返信の引用をタップしたときに、返信元のメッセージへ移動する */
   onJumpToMessage: (messageId: string) => void
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale: () => void
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -323,7 +326,7 @@ function ChatMessageRow({
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useAppLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale, onCardStale), [message.id, message.blocksRevision, locale, onCardStale])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -727,6 +730,11 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
+  // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
+  // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする
+  const handleCardStale = React.useCallback(() => {
+    if (channelId) void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+  }, [channelId, queryClient])
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },
     messagesQuery,
@@ -1989,6 +1997,7 @@ export default function ChatThreadScreen() {
                         onOpenTask={openTask}
                         onShowTasks={setLinkedTasksSheet}
                         onJumpToMessage={jumpToMessage}
+                        onCardStale={handleCardStale}
                         {...(attachmentAuth ? { attachmentAuth } : {})}
                       />
                     </SwipeToReply>

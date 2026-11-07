@@ -86,40 +86,51 @@ export function MessageCard({
   // アプリが chat.update でカードを書き換えたら（blocks が変わる）、待つのをやめて新しいカードを操作できるようにする
   // カードの書き換えのたびに進む。書き換え前に始めた操作の結果（遅れて届く時間切れなど）を、新しいカードに出さない
   const generation = React.useRef(0)
+  // card_changed のエラーは、取り直した最新のカードが届いても残す。操作はアプリに届いておらず、押し直しが要るため
+  const keepErrorOnUpdate = React.useRef(false)
   React.useEffect(() => {
     generation.current += 1
     stopWaiting()
     // 前の操作のエラー（時間切れなど）も消す。アプリは処理していて結果のカードが届いたのに「もう一度」と案内して二重に押させない
-    setActionError(null)
+    if (!keepErrorOnUpdate.current) setActionError(null)
   }, [blocks, revision, stopWaiting])
   React.useEffect(() => () => { if (waitTimer.current) clearTimeout(waitTimer.current) }, [])
   const run = React.useMemo<CardRun | undefined>(() => {
     if (!onAction) return undefined
+    const clearError = () => {
+      keepErrorOnUpdate.current = false
+      setActionError(null)
+    }
+    const showError = (code: string | null) => {
+      keepErrorOnUpdate.current = code === 'card_changed'
+      setActionError(t(cardActionErrorMessage(code)))
+    }
     return async (action: CardAction, options?: { link?: boolean }) => {
       const startedAt = generation.current
       const superseded = () => generation.current !== startedAt
       if (options?.link) {
-        setActionError(null)
+        clearError()
         try {
           await onAction(action)
           return true
         } catch (err) {
-          if (superseded()) return true
-          const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
-          setActionError(t(cardActionErrorMessage(code)))
+          const code = errorCode(err)
+          if (code !== 'card_changed' && superseded()) return true
+          showError(code)
           return false
         }
       }
       setBusy(true)
       setPendingAction({ blockId: action.blockId, actionId: action.actionId })
-      setActionError(null)
+      clearError()
       try {
         await onAction(action)
       } catch (err) {
-        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない
-        if (superseded()) return true
-        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
-        setActionError(t(cardActionErrorMessage(code)))
+        const code = errorCode(err)
+        // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない。
+        // card_changed だけは別で、アプリに届いていない（書き換わったのは他の人の操作による）ので必ず知らせる
+        if (code !== 'card_changed' && superseded()) return true
+        showError(code)
         stopWaiting()
         return false
       }
@@ -539,3 +550,7 @@ const styles = StyleSheet.create({
   quote: { borderLeftWidth: 3, paddingLeft: 10 },
   notice: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
 })
+
+function errorCode(err: unknown): string | null {
+  return typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+}
