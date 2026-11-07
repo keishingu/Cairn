@@ -44,6 +44,10 @@ export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
 export const chatDraftKey = (channelId: string) => `cairn:chat_draft_${channelId}` as const
 
 /** プロジェクト別の完了済みマイルストーン折りたたみ状態 */
+/** チャット一覧のセクション別の並び順 */
+export const chatListSortKey = (section: 'projects' | 'channels' | 'dms') =>
+  `cairn:chat_list_sort_${section}` as const
+
 export const chatCompletedMilestonesCollapsedKey = (projectId: string) =>
   `cairn:chat_completed_milestones_collapsed_${projectId}` as const
 

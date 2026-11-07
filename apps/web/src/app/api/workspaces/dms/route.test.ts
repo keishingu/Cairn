@@ -9,6 +9,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: vi.fn(),
 }))
+vi.mock('@/lib/chat/last-message-at', () => ({ fetchLastMessageAt: vi.fn(async () => new Map()) }))
 
 const originalDmFlag = FEATURE_FLAGS.dm
 

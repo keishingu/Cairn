@@ -21,7 +21,7 @@ const { router, navigation, threadMount, threadUnmount, threadJump, empty, chann
   projectChannels: [] as ProjectChannelDto[],
   channels: ['a', 'b', 'c'].map(id => ({
     id, name: `会話${id.toUpperCase()}`, parentChannelId: null, isPrivate: false, archived: id === 'c',
-    memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0,
+    memberCount: 0, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0, lastMessageAt: null,
   })),
   bookmarks: [{
     id: 'message-b', channelId: 'b', channelName: '会話B', senderName: '送信者',
@@ -253,7 +253,7 @@ describe('共有チャットlayout', () => {
     projectChannels.push({
       channelId: 'milestone-channel', channelName: 'M', projectId: 'p', projectTitle: 'P',
       startDate: null, endDate: null, startTime: null, endTime: null, archived: false,
-      unreadCount: 0, unreadMentionCount: 0, milestoneId: 'm', milestoneCompleted: false,
+      unreadCount: 0, unreadMentionCount: 0, lastMessageAt: null, milestoneId: 'm', milestoneCompleted: false,
     })
     navigate('/chats/b')
     expect(screen.queryByText('マイルストーン編集を閉じる')).toBeNull()

@@ -39,8 +39,10 @@ import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { useChatListSorts } from '@/hooks/use-chat-list-sort'
+import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
-import { ChannelList } from './chat-channel-list'
+import { ChannelList, orderedVisibleChannelIds } from './chat-channel-list'
 import { ChatDetailSidebar, ChatInfoDrawer, CHAT_DETAIL_MESSAGE_MIN_WIDTH, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -562,13 +564,20 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [crossSearchNonce, isMobile, consumeCrossSearch])
 
-  // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
+  const [chatListSorts, setChatListSort] = useChatListSorts()
+  const { data: pinnedProjects, error: pinnedProjectsError } = usePinnedProjects()
+  const pinnedProjectIds = React.useMemo(() => new Set((pinnedProjects ?? []).map(p => p.projectId)), [pinnedProjects])
+  const pinProject = usePinProject()
+  const unpinProject = useUnpinProject()
+  // サイドバーのピン留めと同じデータ。ここで変えるとサイドバーにも反映される
+  const handleTogglePinProject = (projectId: string, pinned: boolean) => {
+    const mutation = pinned ? pinProject : unpinProject
+    mutation.mutate(projectId, { onError: error => toast.error(error.message) })
+  }
+
+  // ⌥↑↓（順送り）: チャンネル一覧を画面の表示順（選んだ並び順・ピン留めを反映）で前/次へ
   const seekChannel = (dir: 'prev' | 'next') => {
-    const orderedIds = [
-      ...projectChannels.map(c => c.channelId),
-      ...workspaceChannels.map(c => c.id),
-      ...dms.map(d => d.id),
-    ]
+    const orderedIds = orderedVisibleChannelIds({ projectChannels, workspaceChannels, dms, sorts: chatListSorts, pinnedProjectIds })
     if (orderedIds.length === 0) return
     const idx = channelId ? orderedIds.indexOf(channelId) : -1
     const nextIdx = idx === -1
@@ -732,6 +741,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const channelListNode = (
     <ChannelList
+      sorts={chatListSorts}
+      onChangeSort={setChatListSort}
+      pinnedProjectIds={pinnedProjectIds}
+      {...(pinnedProjectsError ? { pinnedProjectsError: pinnedProjectsError.message } : {})}
+      onTogglePinProject={handleTogglePinProject}
       channelId={channelId}
       onSelectChannel={selectChannel}
       projectChannels={projectChannels}
