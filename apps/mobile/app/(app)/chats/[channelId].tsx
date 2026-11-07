@@ -318,7 +318,7 @@ function ChatMessageRow({
   /** 返信の引用をタップしたときに、返信元のメッセージへ移動する */
   onJumpToMessage: (messageId: string) => void
   /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
-  onCardStale: () => void
+  onCardStale: () => Promise<void>
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -732,8 +732,9 @@ export default function ChatThreadScreen() {
   const messagesQuery = useMessages(channelId ?? null)
   // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
   // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする
-  const handleCardStale = React.useCallback(() => {
-    if (channelId) void queryClient.invalidateQueries({ queryKey: ['messages', channelId] })
+  // 読み込み済みのページはすべて取り直される（useInfiniteQuery）。取り直しの失敗はカードの下にエラーとして出すため throwOnError にする
+  const handleCardStale = React.useCallback(async () => {
+    if (channelId) await queryClient.invalidateQueries({ queryKey: ['messages', channelId] }, { throwOnError: true })
   }, [channelId, queryClient])
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },

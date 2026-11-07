@@ -104,7 +104,7 @@ export function MessageCard({
       setActionError(null)
     }
     const showError = (code: string | null) => {
-      keepErrorOnUpdate.current = code === 'card_changed'
+      keepErrorOnUpdate.current = isStaleCardError(code)
       setActionError(t(cardActionErrorMessage(code)))
     }
     return async (action: CardAction, options?: { link?: boolean }) => {
@@ -117,7 +117,7 @@ export function MessageCard({
           return true
         } catch (err) {
           const code = errorCode(err)
-          if (code !== 'card_changed' && superseded()) return true
+          if (!isStaleCardError(code) && superseded()) return true
           showError(code)
           return false
         }
@@ -133,7 +133,7 @@ export function MessageCard({
         // 失敗が届く前にカードが書き換わっていたら、アプリは処理している。古いエラーで押し直しを促さない。
         // card_changed だけは別で、アプリに届いていない（書き換わったのは他の人の操作による）ので知らせる。
         // ただし、その後に押し直していれば、その操作の送信中・書き換え待ちを解かず、押し直し済みの案内も出さない
-        if (code === 'card_changed' ? actionNo !== latestAction.current : superseded()) return true
+        if (isStaleCardError(code) ? actionNo !== latestAction.current : superseded()) return true
         showError(code)
         stopWaiting()
         return false
@@ -557,4 +557,9 @@ const styles = StyleSheet.create({
 
 function errorCode(err: unknown): string | null {
   return typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : null
+}
+
+/** 古い版として断られた（取り直しの失敗を含む）。アプリに届いていないので、カードが書き換わっても知らせ続ける */
+function isStaleCardError(code: string | null): boolean {
+  return code === 'card_changed' || code === 'card_refresh_failed'
 }

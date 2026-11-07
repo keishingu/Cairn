@@ -264,7 +264,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderApp?: SenderAppDto | null | undefined
   imported?: boolean | undefined
   /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
-  onCardStale?: ((messageId: string) => void) | undefined
+  onCardStale?: ((messageId: string) => Promise<void>) | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -2166,12 +2166,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // 次の押下は最新のカードで送れるようにする。一覧や未読位置を invalidate しないのは、上へ読み込んだ古いページが消えたり、
   // 初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になったりして、カードと残したいエラーが外れるため
   const refreshChannelMessage = useRefreshChannelMessage(channelId)
-  const handleCardStale = React.useCallback((messageId: string) => {
-    refreshChannelMessage(messageId).catch((err: unknown) => {
-      // 取り直せなくても、カードの下の「更新されました」の案内は出ている。押し直せば再び断られて取り直す
-      console.error('[ChatThread] failed to refresh the card message:', err)
-    })
-  }, [refreshChannelMessage])
+  // 取り直しの失敗はカードの下にエラーとして出す（postCardAction が card_refresh_failed にする）。押し直せば再び取り直す
+  const handleCardStale = React.useCallback((messageId: string) => refreshChannelMessage(messageId), [refreshChannelMessage])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
     const request = reactMutateAsync({ messageId, emoji })

@@ -247,6 +247,14 @@ describe('カード型メッセージの描画', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('最新のカードを取り直せなかったときは、その旨をカードの書き換え後も表示する', async () => {
+    const onAction = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'card_refresh_failed' })))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('このカードは更新されましたが、最新の内容を読み込めませんでした。もう一度お試しください。')
+  })
+
   it('古い版として断られる前に押し直していたら、後の操作の送信中を解かずエラーも出さない', async () => {
     let rejectFirst: (err: unknown) => void = () => {}
     const onAction = vi.fn()

@@ -20,6 +20,12 @@ describe('カードの操作の送信', () => {
     expect(onStale).toHaveBeenCalledTimes(1)
   })
 
+  it('取り直しを待ってから断られたことを返し、取り直せなかったら card_refresh_failed にする', async () => {
+    fetchWithAuth.mockResolvedValue(new Response(JSON.stringify({ error: 'card_changed' }), { status: 409 }))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(postCardAction('m', 'r1', action, 'ja', () => Promise.reject(new Error('offline')))).rejects.toMatchObject({ code: 'card_refresh_failed' })
+  })
+
   it('ほかのエラーでは取り直しを呼ばない', async () => {
     fetchWithAuth.mockResolvedValue(new Response(JSON.stringify({ error: 'app_timeout' }), { status: 502 }))
     const onStale = vi.fn()
