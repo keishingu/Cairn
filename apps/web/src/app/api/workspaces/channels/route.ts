@@ -84,17 +84,16 @@ export async function GET() {
     }
 
     const channelIds = channelRows.map(c => c.id)
-    const { channelReadStates, messages, IMPORT_SENDER_PROFILE_ID } = await import('@cairn/db')
+    const { channelReadStates, messages } = await import('@cairn/db')
     const { isNull, gt, count, ne } = await import('drizzle-orm')
 
-    // 取り込んだ過去ログ（共通の取り込みプロフィールが送信者）は未読に数えない。日付が Cairn での投稿と重なっても、数千件の過去ログを未読にしない（docs/import-design.md）
     const [unreadRows, mentionRows] = await Promise.all([
       channelIds.length > 0
         ? db
             .select({ channelId: messages.channelId, cnt: count() })
             .from(messages)
             .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), ne(messages.senderId, IMPORT_SENDER_PROFILE_ID), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
             .groupBy(messages.channelId)
         : Promise.resolve([]),
       channelIds.length > 0

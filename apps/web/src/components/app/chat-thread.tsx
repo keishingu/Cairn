@@ -79,14 +79,6 @@ import { VideoAttachment } from '@/components/app/video-attachment'
 import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
 import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
 import { useRealtimeChannel } from '@/components/realtime/use-realtime-channel'
-import type { ImportedMessageInfoDto } from '@/lib/imports/display'
-import { localizeImportedFallbackName } from '@/lib/imports/fallback-names'
-
-function importedFallbackName(imported: ImportedMessageInfoDto, t: (key: string) => string): string {
-  if (imported.anonymous) return t('Unknown poster')
-  if (imported.identityKind === 'exporter') return t('The person who exported')
-  return t('Participant without a name')
-}
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
@@ -238,7 +230,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -269,7 +261,6 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
-  imported?: ImportedMessageInfoDto | null | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -295,12 +286,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const router = useRouter()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
-  const displaySenderName = senderApp
-    ? displayAppName(senderApp, t)
-    // 取り込んだ過去ログで名前が分からない投稿者は、サーバーの既定文言ではなく表示言語で出す
-    : imported && !imported.linkedUserId && !imported.originalName
-      ? importedFallbackName(imported, t)
-      : senderName
+  const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useLocale()
@@ -449,8 +435,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
-    // 取り込んだ過去ログの送信者は共通の取り込みプロフィールなので、ブロックの対象にしない
-    ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
     ...(isOwn ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
@@ -520,12 +505,6 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                 {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
               </span>
             )}
-            {/* 取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
-            {imported && (
-              <span title={t('Imported from Teams. Posted at {date}', { date: new Date(imported.originalSentAt).toLocaleString() })} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
-                {t('Imported from Teams')}
-              </span>
-            )}
             {visibleProjectRole && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
                 {visibleProjectRole}
@@ -553,7 +532,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{localizeImportedFallbackName(replyTo.senderName, t)}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
             <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
@@ -727,7 +706,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
                   {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
-                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).map(name => localizeImportedFallbackName(name, t)).join(t(', '))}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
                   {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
@@ -781,7 +760,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px calc(16px + env(safe-area-inset-bottom))' }}>
               {selectedReaction.userNames.length > 0 ? selectedReaction.userNames.map((name, index) => (
                 <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 13, overflowWrap: 'anywhere' }}>
-                  {localizeImportedFallbackName(name, t)}
+                  {name}
                 </div>
               )) : (
                 <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-3)', fontSize: 13 }}>
@@ -2508,7 +2487,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               blocksRevision={item.message.blocksRevision}
               cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
-              imported={item.message.imported}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}

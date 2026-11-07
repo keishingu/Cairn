@@ -26,7 +26,7 @@ export async function GET() {
     if (error) return error
 
     const { db } = await import('@cairn/db')
-    const { channels, milestones, projects, projectMembers, activeWorkspaceMembers, channelReadStates, messages, IMPORT_SENDER_PROFILE_ID } = await import('@cairn/db')
+    const { channels, milestones, projects, projectMembers, activeWorkspaceMembers, channelReadStates, messages } = await import('@cairn/db')
     const { eq, and, isNull, gt, count, sql, inArray, ne } = await import('drizzle-orm')
 
     // ゲストは参加中のプロジェクトのチャンネルのみ参照可能（active membership のロールで判定）
@@ -83,7 +83,6 @@ export async function GET() {
 
     const channelIds = rows.map(r => r.channelId)
 
-    // 取り込んだ過去ログ（共通の取り込みプロフィールが送信者）は未読に数えない。日付が Cairn での投稿と重なっても、数千件の過去ログを未読にしない（docs/import-design.md）
     const [unreadRows, mentionRows] = await Promise.all([
       db
         .select({ channelId: messages.channelId, cnt: count() })
@@ -97,7 +96,6 @@ export async function GET() {
             inArray(messages.channelId, channelIds),
             isNull(messages.deletedAt),
             ne(messages.senderId, ctx.userId),
-            ne(messages.senderId, IMPORT_SENDER_PROFILE_ID),
             gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`),
           ),
         )

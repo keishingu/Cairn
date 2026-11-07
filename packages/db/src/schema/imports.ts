@@ -10,14 +10,10 @@ import { profiles, workspaces } from './workspaces'
 /**
  * 外部チャットサービスからの取り込み（docs/import-design.md）。
  *
- * 取り込んだメッセージの送信者（messages.sender_id）は、全ワークスペース共通の
- * 「取り込み」システムプロフィール（IMPORT_SENDER_PROFILE_ID、profiles.kind = 'import'）にする。
- * 本当の投稿者は import_identities に持ち、表示時に上書きする。
- * Cairn ユーザーへの紐づけは import_identities.linked_user_id で行い、メッセージの行は書き換えない。
+ * 取り込んだ過去ログは、まず import_staged_messages（一時保管）に置き、発言者を確定してから messages に移す（公開する）。
+ * 公開したメッセージの送信者は、紐づけた Cairn ユーザー本人か、投稿者ごとの取り込み用プロフィール
+ * （import_identities.profile_id、profiles.kind = 'import'）。表示時に送信者を差し替える処理は持たない。
  */
-
-/** 取り込んだメッセージの送信者にする共通のシステムプロフィール。マイグレーションで作る */
-export const IMPORT_SENDER_PROFILE_ID = '00000000-0000-4000-8000-00000000c0de'
 
 /** 取り込みジョブ。1回の取り込み操作（同じエクスポートの再実行は別ジョブ）ごとに1件 */
 export const importJobs = pgTable(
@@ -66,6 +62,8 @@ export const importIdentities = pgTable(
     // 誰か区別できない投稿者をまとめたもの。Cairn ユーザーに紐づけられない
     isAnonymous: boolean('is_anonymous').notNull().default(false),
     kind: text('kind').notNull(),
+    // 公開したメッセージの送信者にする、この投稿者の取り込み用プロフィール（profiles.kind = 'import'）。公開するときに作る
+    profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'set null' }),
     // 管理者が確認して紐づけた Cairn ユーザー。退会・削除されたら紐づけだけ外れ、履歴は取り込み元の名前で残る
     linkedUserId: uuid('linked_user_id').references(() => profiles.id, { onDelete: 'set null' }),
     linkedBy: uuid('linked_by').references(() => profiles.id, { onDelete: 'set null' }),
@@ -82,15 +80,14 @@ export const importIdentities = pgTable(
 ).enableRLS()
 
 /**
- * 取り込んだメッセージの元情報。(workspace, source, 会話 ID, メッセージ ID) で一意にし、二重登録を防ぐ。
+ * 一時保管のメッセージ。(workspace, source, 会話 ID, メッセージ ID) で一意にし、二重登録を防ぐ。
+ * 発言者（identity_id）を確定してから messages に移す。公開後も残し、紐づけの付け替え・解除と投稿者不明の補完に使う。
  * 投稿者不明の投稿も元の属性を残し、後でキャッシュや他の参加者のエクスポートと照合し直せるようにする。
  */
-export const importedMessages = pgTable(
-  'imported_messages',
+export const importStagedMessages = pgTable(
+  'import_staged_messages',
   {
-    messageId: uuid('message_id')
-      .primaryKey()
-      .references(() => messages.id, { onDelete: 'cascade' }),
+    id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -101,39 +98,26 @@ export const importedMessages = pgTable(
       .notNull()
       .references(() => importIdentities.id, { onDelete: 'cascade' }),
     jobId: uuid('job_id').references(() => importJobs.id, { onDelete: 'set null' }),
-    originalSentAt: timestamp('original_sent_at', { withTimezone: true }).notNull(),
-    originalEditedAt: timestamp('original_edited_at', { withTimezone: true }),
-    // 取り込み元の属性（メッセージ種別・投稿者 ID/表示名の有無など）。本文は持たない
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    // Cairn の本文（Markdown。Parser が HTML を取り除き、メンション記法を無害化したもの）
+    text: text('text').notNull(),
+    quotedExternalMessageId: text('quoted_external_message_id'),
+    // [{ identityKey, emoji, sourceKey, reactedAt }]
+    reactions: jsonb('reactions').notNull().default([]),
+    // 取り込み元のメディア ID（Teams は AMS オブジェクト ID）
+    mediaObjectIds: jsonb('media_object_ids').notNull().default([]),
+    // 取り込み元の属性（メッセージ種別・投稿者 ID/表示名の有無など）
     attributes: jsonb('attributes').notNull().default({}),
+    // 公開した messages の行。未公開なら null
+    publishedMessageId: uuid('published_message_id').references(() => messages.id, { onDelete: 'set null' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique('imported_messages_external_key').on(t.workspaceId, t.source, t.externalConversationId, t.externalMessageId),
-    index('idx_imported_messages_identity').on(t.identityId),
-  ],
-).enableRLS()
-
-/**
- * 取り込んだリアクション。message_reactions は Cairn ユーザー（profiles）単位で一意のため、
- * 取り込み元の人ごと（投稿者不明は時刻で区別）に別テーブルで持ち、表示時に合算する。
- */
-export const importedMessageReactions = pgTable(
-  'imported_message_reactions',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    messageId: uuid('message_id')
-      .notNull()
-      .references(() => messages.id, { onDelete: 'cascade' }),
-    identityId: uuid('identity_id')
-      .notNull()
-      .references(() => importIdentities.id, { onDelete: 'cascade' }),
-    emoji: text('emoji').notNull(),
-    sourceKey: text('source_key').notNull(),
-    reactedAt: timestamp('reacted_at', { withTimezone: true }).notNull(),
-  },
-  (t) => [
-    unique('imported_message_reactions_unique').on(t.messageId, t.identityId, t.emoji, t.reactedAt),
-    index('idx_imported_message_reactions_message').on(t.messageId),
+    unique('import_staged_messages_external_key').on(t.workspaceId, t.source, t.externalConversationId, t.externalMessageId),
+    index('idx_import_staged_messages_identity').on(t.identityId),
+    index('idx_import_staged_messages_published').on(t.publishedMessageId),
   ],
 ).enableRLS()
 
@@ -176,9 +160,13 @@ export const importJobConversations = pgTable(
       .references(() => importJobs.id, { onDelete: 'cascade' }),
     externalConversationId: text('external_conversation_id').notNull(),
     channelId: uuid('channel_id').references(() => channels.id, { onDelete: 'set null' }),
+    // 投稿者不明の投稿を、投稿者不明として一緒に公開する（include_unknown）か、残す（hold）か
+    unknownPolicy: text('unknown_policy').notNull().default('include_unknown'),
     status: text('status').notNull().default('pending'),
     totalMessages: integer('total_messages').notNull().default(0),
+    // 一時保管した件数（imported_messages）と、公開した件数
     importedMessages: integer('imported_messages').notNull().default(0),
+    publishedMessages: integer('published_messages').notNull().default(0),
     duplicateMessages: integer('duplicate_messages').notNull().default(0),
     failedMessages: integer('failed_messages').notNull().default(0),
     error: text('error'),
@@ -187,5 +175,6 @@ export const importJobConversations = pgTable(
   (t) => [
     unique('import_job_conversations_unique').on(t.jobId, t.externalConversationId),
     check('import_job_conversations_status_check', sql`${t.status} in ('pending', 'running', 'completed', 'failed')`),
+    check('import_job_conversations_unknown_policy_check', sql`${t.unknownPolicy} in ('include_unknown', 'hold')`),
   ],
 ).enableRLS()

@@ -48,7 +48,6 @@ vi.mock('@/lib/tasks/assignment-notification', () => ({
 }))
 vi.mock('@/lib/tasks/schema-readiness', () => ({ hasTaskChannelSchema: mockHasTaskChannelSchema }))
 vi.mock('@/lib/chat/mention-name-map', () => ({ buildMentionNameMap: mockBuildMentionNameMap }))
-vi.mock('@/lib/imports/display', () => ({ loadImportedSenders: vi.fn().mockResolvedValue(new Map()) }))
 vi.mock('@cairn/shared', async () => {
   const actual = await vi.importActual<typeof import('@cairn/shared')>('@cairn/shared')
   return actual

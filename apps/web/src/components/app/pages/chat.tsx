@@ -1,6 +1,5 @@
 'use client'
 
-import { localizeImportedFallbackName } from '@/lib/imports/fallback-names'
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -157,7 +156,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
                 className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{localizeImportedFallbackName(msg.senderName, t)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
@@ -247,7 +246,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                     {msg.channelName}
                   </span>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{localizeImportedFallbackName(msg.senderName, t)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
@@ -305,7 +304,7 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
                 <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                   {msg.channelName}
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{localizeImportedFallbackName(msg.senderName, t)}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                 <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
               </div>
               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
