@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { translate } from '@cairn/shared'
-import { ChannelList, formatChannelPeriod } from './chat-channel-list'
+import { ChannelList, formatChannelPeriod, orderedVisibleChannelIds } from './chat-channel-list'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
 
@@ -762,5 +762,27 @@ describe('ChannelList のピン留め取得エラー', () => {
       />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent('ピン留めしたプロジェクトを読み込めませんでした（500）')
+  })
+})
+
+describe('orderedVisibleChannelIds', () => {
+  it('⌥↑↓ の順送りは画面と同じく、ピン留め・並び順を反映し、マイルストーン・スレッドを親の直後に並べる', () => {
+    const ids = orderedVisibleChannelIds({
+      projectChannels: [
+        projectChannel({ channelId: 'a', projectId: 'project-a', projectTitle: 'A', startDate: '2026-07-01' }),
+        projectChannel({ channelId: 'b', projectId: 'project-b', projectTitle: 'B', startDate: '2026-05-01' }),
+        projectChannel({ channelId: 'b-ms', projectId: 'project-b', projectTitle: 'B', milestoneId: 'ms', milestoneCompleted: false }),
+        projectChannel({ channelId: 'c', projectId: 'project-c', projectTitle: 'C', startDate: null }),
+      ],
+      workspaceChannels: [
+        workspaceChannel({ id: 'w1', name: 'いぬ' }),
+        workspaceChannel({ id: 'w2', name: 'あり' }),
+        workspaceChannel({ id: 'w2-thread', name: 'スレッド', parentChannelId: 'w2' }),
+      ],
+      dms: [],
+      sorts: { projects: 'startDate', channels: 'name', dms: 'name' },
+      pinnedProjectIds: new Set(['project-c']),
+    })
+    expect(ids).toEqual(['c', 'b', 'b-ms', 'a', 'w2', 'w2-thread', 'w1'])
   })
 })

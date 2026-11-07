@@ -1650,4 +1650,9 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load pinned projects ({status})': 'ピン留めしたプロジェクトを読み込めませんでした（{status}）',
   'Could not update the pin': 'ピン留めを更新できませんでした',
   'Sort {title}': '{title}の並び替え',
+  'Could not read the chat list order from this browser.': 'このブラウザからチャット一覧の並び順を読み込めませんでした。',
+  'Could not save the chat list order in this browser.': 'このブラウザにチャット一覧の並び順を保存できませんでした。',
+  'Could not read the chat list order': 'チャット一覧の並び順を読み込めませんでした',
+  'Could not save the chat list order': 'チャット一覧の並び順を保存できませんでした',
+  'Could not load pinned projects': 'ピン留めしたプロジェクトを読み込めませんでした',
 }

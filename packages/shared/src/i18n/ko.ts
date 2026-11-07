@@ -1649,4 +1649,9 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load pinned projects ({status})': '고정한 프로젝트를 불러올 수 없습니다 ({status})',
   'Could not update the pin': '고정을 변경할 수 없습니다',
   'Sort {title}': '{title} 정렬',
+  'Could not read the chat list order from this browser.': '이 브라우저에서 채팅 목록의 정렬 순서를 불러올 수 없습니다.',
+  'Could not save the chat list order in this browser.': '이 브라우저에 채팅 목록의 정렬 순서를 저장할 수 없습니다.',
+  'Could not read the chat list order': '채팅 목록의 정렬 순서를 불러올 수 없습니다',
+  'Could not save the chat list order': '채팅 목록의 정렬 순서를 저장할 수 없습니다',
+  'Could not load pinned projects': '고정한 프로젝트를 불러올 수 없습니다',
 }

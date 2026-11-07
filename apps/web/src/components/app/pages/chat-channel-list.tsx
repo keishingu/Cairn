@@ -785,13 +785,20 @@ export interface ChannelListProps {
 
 const NO_PINNED_PROJECTS: ReadonlySet<string> = new Set()
 
-export const ChannelList = ({
-  channelId, onSelectChannel, projectChannels, workspaceChannels,
-  dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
-  canManageWorkspaceChannel = false, sorts = DEFAULT_CHAT_LIST_SORTS, onChangeSort, pinnedProjectIds = NO_PINNED_PROJECTS, onTogglePinProject, pinnedProjectsError,
-}: ChannelListProps) => {
-  const t = useT()
+// ─── 一覧の並び（描画と ⌥↑↓ の順送りで共有） ─────────────────────────
+
+export interface ChannelListSectionsInput {
+  projectChannels: ProjectChannelDto[]
+  workspaceChannels: WorkspaceChannelDto[]
+  dms: DmChannelDto[]
+  sorts?: Record<ChatListSection, ChatListSort>
+  pinnedProjectIds?: ReadonlySet<string>
+}
+
+/** 一覧の各セクションを、選んだ並び順・ピン留めで組み立てる。画面の並びと順送りの順序をここで一致させる */
+export function buildChannelListSections({
+  projectChannels, workspaceChannels, dms, sorts = DEFAULT_CHAT_LIST_SORTS, pinnedProjectIds = NO_PINNED_PROJECTS,
+}: ChannelListSectionsInput) {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
   const projectGroups = sortChatList(activeProjectChannels
@@ -829,6 +836,30 @@ export const ChannelList = ({
   const sortedDms = sortChatList(dms, sorts.dms, {
     name: dm => dm.participantName,
     lastMessageAt: dm => dm.lastMessageAt,
+  })
+  return { projectGroups, archivedProjectChannels, workspaceChannelGroups, archivedParentChannels, sortedDms }
+}
+
+/** 既定で表示される会話を、画面の上から順に並べた ID。⌥↑↓ の順送りに使う（畳まれたアーカイブ・完了済みは含めない） */
+export function orderedVisibleChannelIds(input: ChannelListSectionsInput): string[] {
+  const { projectGroups, workspaceChannelGroups, sortedDms } = buildChannelListSections(input)
+  return [
+    ...projectGroups.flatMap(group => [group.general.channelId, ...group.activeMilestones.map(channel => channel.channelId)]),
+    ...workspaceChannelGroups.flatMap(group => [group.channel.id, ...group.threads.map(thread => thread.id)]),
+    ...sortedDms.map(dm => dm.id),
+  ]
+}
+
+
+export const ChannelList = ({
+  channelId, onSelectChannel, projectChannels, workspaceChannels,
+  dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
+  canManageWorkspaceChannel = false, sorts = DEFAULT_CHAT_LIST_SORTS, onChangeSort, pinnedProjectIds = NO_PINNED_PROJECTS, onTogglePinProject, pinnedProjectsError,
+}: ChannelListProps) => {
+  const t = useT()
+  const { projectGroups, archivedProjectChannels, workspaceChannelGroups, archivedParentChannels, sortedDms } = buildChannelListSections({
+    projectChannels, workspaceChannels, dms, sorts, pinnedProjectIds,
   })
   const sortMenu = (section: ChatListSection, title: string) => onChangeSort
     ? <ChatListSortMenu section={section} title={title} sort={sorts[section]} onChange={sort => onChangeSort(section, sort)}/>

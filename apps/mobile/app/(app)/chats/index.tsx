@@ -631,7 +631,8 @@ export default function ChatsScreen() {
       {showingCachedLists && listsSyncedAt !== null && (
         <OfflineBanner syncedAt={listsSyncedAt} retrying={isRetrying} onRetry={retryLists} />
       )}
-      {pinnedProjectsQuery.error && (
+      {/* 圏外のキャッシュ表示中はオフラインバナーが状況を示すため、ピン留めの通信エラーは重ねて出さない */}
+      {pinnedProjectsQuery.error && !showingCachedLists && (
         <Text style={[styles.pinnedError, { color: palette.redText }]}>
           {pinnedProjectsQuery.error.message}
         </Text>
