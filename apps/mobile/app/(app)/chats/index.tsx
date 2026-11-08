@@ -30,6 +30,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { useOfflineRead } from '../../../hooks/use-offline-read'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { OfflineBanner } from '../../../components/offline-banner'
 import { oldestSyncedAt } from '../../../lib/offline-cache'
 import type { ProjectChannelDto } from '../../../hooks/use-projects'
@@ -296,6 +297,8 @@ export default function ChatsScreen() {
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+  // チャンネル・スレッドの作成や名前の変更の入力はメモリにしか無い。開いている間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(createMode !== null && createMode !== 'menu')
   const [rowActionTarget, setRowActionTarget] = React.useState<RowActionTarget | null>(null)
   const [threadParent, setThreadParent] = React.useState<WorkspaceChannelDto | null>(null)
   const [renamingChannel, setRenamingChannel] = React.useState<WorkspaceChannelDto | null>(null)

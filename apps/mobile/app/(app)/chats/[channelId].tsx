@@ -40,6 +40,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
 import { useRealtimeChannel } from '../../../components/realtime-provider'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -1023,6 +1024,8 @@ export default function ChatThreadScreen() {
   channelIdRef.current = channelId
   const draftRef = React.useRef(draft)
   draftRef.current = draft
+  // 下書きは端末に保存していないため、未送信の入力や添付がある間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(draft.trim().length > 0 || upload.uploads.length > 0)
 
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
