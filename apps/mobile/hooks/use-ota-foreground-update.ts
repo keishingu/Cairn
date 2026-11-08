@@ -48,8 +48,9 @@ export function useOtaForegroundUpdate() {
           }
           lastCheckedAt = now
           const result = await Updates.checkForUpdateAsync()
+          // 配信の取り下げ（埋め込み版へのロールバック）も fetch で取り込まないと、裏で保持され続ける端末に届かない。
           // 適用は次の前面復帰かコールドスタート。今は操作を始めた直後なので再読み込みしない
-          if (result.isAvailable) await Updates.fetchUpdateAsync()
+          if (result.isAvailable || result.isRollBackToEmbedded) await Updates.fetchUpdateAsync()
         } catch (error) {
           // 取得できなくても今の版で動き続けられる。次の前面復帰で再試行する
           console.warn('[Updates] 前面復帰時の更新の確認・適用に失敗しました:', error instanceof Error ? error.message : error)
