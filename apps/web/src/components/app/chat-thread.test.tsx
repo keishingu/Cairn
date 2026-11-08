@@ -83,6 +83,7 @@ vi.mock('@/lib/chat/client', () => ({
   useEnsureMessageLoaded: () => vi.fn(),
   useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
+  useRefreshChannelMessage: () => vi.fn(() => Promise.resolve()),
   useProjectChannels: () => ({
     data: chatThreadState.projectChannels,
     isSuccess: chatThreadState.projectChannelsResolved,
@@ -695,6 +696,50 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
     await user.click(checkbox)
 
     expect(onToggle).toHaveBeenCalledWith('message-1')
+  })
+})
+
+describe('取り込んだ過去ログの編集・削除', () => {
+  const ownProps = {
+    messageId: 'message-1',
+    messageType: 'text' as const,
+    senderId: 'user-1',
+    currentUserId: 'user-1',
+    senderName: 'Alice',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    isEdited: false,
+    content: '過去の投稿',
+    reactions: [],
+    attachments: [],
+    replyTo: null,
+    bookmarked: false,
+    onReact: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onCheckboxToggle: vi.fn(),
+    onReply: vi.fn(),
+    onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
+    onJumpToMessage: vi.fn(),
+    onCopyLink: vi.fn(),
+    onImageClick: vi.fn(),
+    isMobile: true,
+  }
+
+  it('自分の投稿ならキーボードの削除で確認ダイアログを出す', () => {
+    render(<ChatMessage {...ownProps} />)
+    act(() => { window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: 'message-1' })) })
+    expect(screen.getByText('このメッセージを削除しますか？この操作は取り消せません。')).toBeInTheDocument()
+  })
+
+  it('紐づけで自分の投稿になった取り込みの過去ログは、キーボードの編集・削除でも開かない', () => {
+    render(<ChatMessage {...ownProps} imported />)
+    act(() => {
+      window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: 'message-1' }))
+      window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: 'message-1' }))
+    })
+    expect(screen.queryByText('このメッセージを削除しますか？この操作は取り消せません。')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 })
 

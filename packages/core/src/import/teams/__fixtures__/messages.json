@@ -1,0 +1,233 @@
+{
+  "userId": "8:live:.cid.0000000000owner",
+  "exportDate": "2026-11-05T00:00",
+  "conversations": [
+    {
+      "id": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+      "displayName": "架空の山の会",
+      "version": 0,
+      "properties": {
+        "conversationblocked": false
+      },
+      "threadProperties": {
+        "membercount": 5,
+        "members": "[\"Export Owner\",\"山田 太郎\",\"Hanako Sato\",\"Unknown User\",\"Unknown User\"]",
+        "topic": "架空の山の会"
+      },
+      "MessageList": [
+        {
+          "id": "1760000000000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T08:53:20.000Z",
+          "messagetype": "RichText/Html",
+          "version": 1760000000000,
+          "content": "<p>今週末の<strong>山行</strong>について <span itemtype=\"http://schema.skype.com/Mention\" itemscope itemid=\"0\">山田</span>&nbsp;<span itemtype=\"http://schema.skype.com/Mention\" itemscope itemid=\"1\">太郎</span> さん、確認お願いします。</p><p><a href=\"https://example.com/plan\" title=\"https://example.com/plan\">計画</a> と <a href=\"javascript:alert(1)\">危険</a></p>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": "8:live:.cid.0000000000owner",
+          "properties": {
+            "subject": "10月の山行",
+            "emotions": [
+              {
+                "key": "like",
+                "users": [
+                  {
+                    "time": 1760000100000,
+                    "value": "1760000100000",
+                    "DisplayName": "山田 太郎"
+                  },
+                  {
+                    "time": 1760000200000,
+                    "value": "1760000200000",
+                    "DisplayName": "Unknown User"
+                  },
+                  {
+                    "time": 1760000300000,
+                    "value": "1760000300000",
+                    "DisplayName": "Unknown User"
+                  }
+                ]
+              },
+              {
+                "key": "2705_whiteheavycheckmark",
+                "users": [
+                  {
+                    "time": 1760000400000,
+                    "value": "1760000400000",
+                    "DisplayName": "Hanako Sato"
+                  }
+                ]
+              }
+            ],
+            "deltaEmotions": [
+              {
+                "key": "like",
+                "users": [
+                  {
+                    "mri": "8:live:.cid.00000000yamada",
+                    "time": 1760000100000,
+                    "value": "1760000100000"
+                  }
+                ]
+              },
+              {
+                "key": "like",
+                "users": [
+                  {
+                    "mri": "8:live:.cid.0000000unknown1",
+                    "time": 1760000200000,
+                    "value": "1760000200000"
+                  }
+                ]
+              }
+            ]
+          },
+          "amsreferences": null
+        },
+        {
+          "id": "1760000500000",
+          "displayName": "山田 太郎",
+          "originalarrivaltime": "2025-10-09T09:01:40.000Z",
+          "messagetype": "RichText/Html",
+          "version": 1760000600000,
+          "content": "<p>了解です &lt;@00000000-0000-0000-0000-000000000001&gt; *強調ではない* # 見出しではない</p><p><img src=\"https://eu-api.asm.skype.com/v1/objects/0-wus-d1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/views/imgo\" itemtype=\"http://schema.skype.com/AMSImage\" itemscope width=\"200\" height=\"100\"></p>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {
+            "edittime": 1760000600000
+          },
+          "amsreferences": [
+            "0-wus-d1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "id": "1760000700000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T09:05:00.000Z",
+          "messagetype": "RichText/Html",
+          "version": 1760000700000,
+          "content": "<blockquote itemtype=\"http://schema.skype.com/Reply\" itemscope itemid=\"1760000500000\"><strong itemprop=\"mri\">山田 太郎</strong><p itemprop=\"preview\">了解です</p></blockquote><p>写真ありがとうございます<script>alert(1)</script></p>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {
+            "qtdMsgs": [
+              {
+                "messageId": 1760000500000,
+                "sender": "8:live:.cid.00000000yamada",
+                "time": 1760000500000,
+                "message": null,
+                "validationResult": "Valid"
+              }
+            ],
+            "files": "[{\"fileName\":\"計画書.pdf\",\"fileType\":\"pdf\",\"fileInfo\":{\"shareUrl\":\"https://1drv.ms/b/c/0000/EXAMPLE\",\"siteUrl\":\"https://onedrive.live.com\"}},{\"fileName\":\"失敗.pdf\",\"fileType\":\"pdf\",\"isUploadError\":true,\"fileInfo\":{\"siteUrl\":\"\"}}]"
+          },
+          "amsreferences": [
+            "0-wus-d1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "id": "1760000800000",
+          "displayName": "Hanako Sato",
+          "originalarrivaltime": "2025-10-09T09:06:40.000Z",
+          "messagetype": "Text",
+          "version": 1760000800000,
+          "content": "1. 番号付きではない\n- 箇条書きではない",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {},
+          "amsreferences": null
+        },
+        {
+          "id": "1760000900000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T09:08:20.000Z",
+          "messagetype": "RichText/Html",
+          "version": 1760000900000,
+          "content": "",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {
+            "deletetime": 1760000950000,
+            "hardDeleteTime": 1760000950000,
+            "hardDeleteReason": "ThreadServiceDeleteMessage"
+          },
+          "amsreferences": null
+        },
+        {
+          "id": "1760001000000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T09:10:00.000Z",
+          "messagetype": "ThreadActivity/AddMember",
+          "version": 1760001000000,
+          "content": "<addmember><target>8:live:.cid.0000000unknown1</target></addmember>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {},
+          "amsreferences": null
+        },
+        {
+          "id": "1760001100000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T09:11:40.000Z",
+          "messagetype": "RichText/Html",
+          "version": 1760001100000,
+          "content": "<span itemtype=\"http://schema.skype.com/ScheduledMeetingCreated\" itemscope>イベント</span>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {
+            "meeting": "{\"itemid\":\"0\",\"@type\":\"Meeting\",\"meetingtitle\":\"架空岳 日帰り\",\"location\":\"架空岳登山口\",\"scheduledmeetinginfo\":{\"startTime\":\"2025-10-11T23:00:00Z\",\"endTime\":\"2025-10-12T09:00:00Z\",\"iCalUID\":\"FIXTURE-ICAL-UID-1\",\"isCancelled\":false,\"eventType\":\"Single\"}}"
+          },
+          "amsreferences": null
+        },
+        {
+          "id": "1760001200000",
+          "displayName": null,
+          "originalarrivaltime": "2025-10-09T09:13:20.000Z",
+          "messagetype": "Event/Call",
+          "version": 1760001200000,
+          "content": "<partlist></partlist>",
+          "conversationid": "19:FixtureCommunityAAAAAAAAAAAAAAAAAAAAAAAAAAA1@thread.v2",
+          "from": null,
+          "properties": {},
+          "amsreferences": null
+        }
+      ]
+    },
+    {
+      "id": "19:uni01_fixtureoneononeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@thread.v2",
+      "displayName": "",
+      "version": 0,
+      "properties": {},
+      "threadProperties": {
+        "membercount": 2,
+        "members": "[\"Export Owner\",\"山田 太郎\"]",
+        "topic": null
+      },
+      "MessageList": [
+        {
+          "id": "1760002000000",
+          "displayName": "山田 太郎",
+          "originalarrivaltime": "2025-10-09T09:26:40.000Z",
+          "messagetype": "Text",
+          "version": 1760002000000,
+          "content": "個人的な連絡",
+          "conversationid": "19:uni01_fixtureoneononeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@thread.v2",
+          "from": null,
+          "properties": {},
+          "amsreferences": null
+        }
+      ]
+    },
+    {
+      "id": "19:meeting_FixtureMeetingAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA@thread.v2",
+      "displayName": "定例会議",
+      "version": 0,
+      "properties": {},
+      "threadProperties": {
+        "membercount": 3,
+        "members": "[\"Export Owner\",\"Unknown User\",\"Unknown User\"]",
+        "topic": "定例会議"
+      },
+      "MessageList": []
+    }
+  ]
+}

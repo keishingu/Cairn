@@ -6,6 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { visibleWorkspaceChannels } from '@/lib/chat/workspace-channel-visibility'
+import { fetchLastMessageAt } from '@/lib/chat/last-message-at'
 
 export interface WorkspaceChannelDto {
   id: string
@@ -18,6 +19,8 @@ export interface WorkspaceChannelDto {
   memberAvatarUrls: (string | null)[]
   unreadCount: number
   unreadMentionCount: number
+  /** 最終投稿時刻（ISO 8601）。投稿がなければ null。一覧の「更新順」に使う */
+  lastMessageAt: string | null
 }
 
 export async function GET() {
@@ -87,13 +90,13 @@ export async function GET() {
     const { channelReadStates, messages } = await import('@cairn/db')
     const { isNull, gt, count, ne } = await import('drizzle-orm')
 
-    const [unreadRows, mentionRows] = await Promise.all([
+    const [unreadRows, mentionRows, lastMessageAtMap] = await Promise.all([
       channelIds.length > 0
         ? db
             .select({ channelId: messages.channelId, cnt: count() })
             .from(messages)
             .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), eq(messages.imported, false), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
             .groupBy(messages.channelId)
         : Promise.resolve([]),
       channelIds.length > 0
@@ -102,6 +105,7 @@ export async function GET() {
             .from(channelReadStates)
             .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds)))
         : Promise.resolve([]),
+      fetchLastMessageAt(channelIds),
     ])
 
     const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
@@ -117,6 +121,7 @@ export async function GET() {
         memberAvatarUrls: top4.map(m => m.avatarUrl),
         unreadCount: unreadMap.get(c.id) ?? 0,
         unreadMentionCount: mentionMap.get(c.id) ?? 0,
+        lastMessageAt: lastMessageAtMap.get(c.id) ?? null,
       }
     })
 
@@ -177,7 +182,7 @@ export async function POST(req: Request) {
     }
 
     const memberCount = isPrivate ? 1 : 0
-    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, archived: false, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, archived: false, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0, lastMessageAt: null }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

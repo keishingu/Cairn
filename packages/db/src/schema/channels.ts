@@ -67,6 +67,9 @@ export const messages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // 外部チャットから取り込んだ過去ログ（docs/import-design.md）。未読・AI の巡回の対象にせず、編集・削除もさせない。
+    // 既定値があるので、マイグレーションより先に動いた旧コードの INSERT は失敗しない
+    imported: boolean('imported').notNull().default(false),
   },
   (t) => [
     index('idx_messages_channel').on(t.channelId, t.createdAt),

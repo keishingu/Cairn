@@ -42,6 +42,7 @@ import {
   useEnsureMessageLoaded,
   useLoadOlderChannelMessages,
   useMarkChannelRead,
+  useRefreshChannelMessage,
   useSendChannelMessage,
   useToggleBookmark,
   useToggleMessageReaction,
@@ -230,7 +231,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -261,6 +262,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   cardMentionNames?: Record<string, string> | undefined
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   senderApp?: SenderAppDto | null | undefined
+  imported?: boolean | undefined
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale?: ((messageId: string) => Promise<void>) | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
@@ -290,7 +294,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale), [messageId, blocksRevision, locale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale, onCardStale && (() => onCardStale(messageId))), [messageId, blocksRevision, locale, onCardStale])
   const cardNames = React.useMemo(() => {
     if (!cardMentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -333,6 +337,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   )
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
+  // 取り込んだ過去ログは、紐づけで本人の投稿になっても編集・削除させない（API も拒否する）
+  const canModify = isOwn && !imported
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
     legacyRole: senderProjectRole,
@@ -355,9 +361,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
     const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
-    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
     window.addEventListener('cairn:delete-message', onDeleteEvt)
@@ -367,7 +373,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, isOwn, content])
+  }, [messageId, canModify, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -435,8 +441,10 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
-    ...(!isOwn && !senderApp ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
-    ...(isOwn ? [
+    // 取り込んだ過去ログの送信者は、紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    // 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する）
+    ...(canModify ? [
       { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
       { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
@@ -503,6 +511,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             {senderApp && (
               <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
                 {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </span>
+            )}
+            {/* 外部チャットから取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
+            {imported && (
+              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+                {t('Imported from Teams')}
               </span>
             )}
             {visibleProjectRole && (
@@ -2005,11 +2019,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
-      const isOwn = msg.senderId === currentUser?.id
+      // 取り込んだ過去ログは本人の投稿でも編集・削除のショートカットを効かせない
+      const canModify = msg.senderId === currentUser?.id && !msg.imported
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && isOwn) {
+      } else if (e.key === 'e' && canModify) {
         // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
@@ -2017,7 +2032,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         // リアクション（絵文字ピッカーを開く）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
-      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+      } else if ((e.key === 'd' || e.key === 'Delete') && canModify) {
         // 削除（確認ダイアログを開く・自分のメッセージのみ）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
@@ -2147,6 +2162,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
   // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
   const reactionHistoryQueue = React.useRef(Promise.resolve())
+  // カードの操作が古い版として断られたら、そのメッセージだけを取り直す。Realtime の通知を取りこぼしていても、
+  // 次の押下は最新のカードで送れるようにする。一覧や未読位置を invalidate しないのは、上へ読み込んだ古いページが消えたり、
+  // 初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になったりして、カードと残したいエラーが外れるため
+  const refreshChannelMessage = useRefreshChannelMessage(channelId)
+  // 取り直しの失敗はカードの下にエラーとして出す（postCardAction が card_refresh_failed にする）。押し直せば再び取り直す
+  const handleCardStale = React.useCallback((messageId: string) => refreshChannelMessage(messageId), [refreshChannelMessage])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
     leaveHistoryView()
     const request = reactMutateAsync({ messageId, emoji })
@@ -2487,6 +2508,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               blocksRevision={item.message.blocksRevision}
               cardMentionNames={item.message.mentionNames}
               senderApp={item.message.senderApp}
+              imported={item.message.imported}
+              onCardStale={handleCardStale}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}

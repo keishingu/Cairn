@@ -47,6 +47,20 @@
 - 閲覧中 Push の判定（`classifyPushRecipients`）も同じファイル。10 秒猶予（`PUSH_GRACE_PERIOD`、Inngest `step.sleep`）後に既読を `last_read_at >= created_at` または `last_read_message_id` 一致で判定し、猶予中に削除されたメッセージの Push も送らない。タスク割り当て Push は対象外
 - 未実装: チャンネル別通知レベル・ミュート・DND、時間ベースのリマインダー、ファイル添付通知の廃止（バッジのみ化）。構想は [`archive/notification-ux-redesign.md`](./archive/notification-ux-redesign.md)
 
+## チャット一覧の未読表示
+
+- **件数バッジは自分宛てだけ**: チャンネル・スレッド・プロジェクトは未読メンション数（`unread_mention_count`）、DM は未読数をバッジにする。メンションのない新着は名前の太字（800）と一段明るい文字色だけで示す（通常は標準の太さ）。全新着に件数を出すと、急ぎでない会話まで開いて消したくなるため
+- Web のサイドバーと Expo のチャットタブの合計バッジも同じ基準で数える。判定は `packages/shared/src/chat-unread-display.ts` の `chatUnreadDisplay` に集約し、Web と Expo で揃える
+
+## チャット一覧の並び順とピン留め
+
+- 並び順はセクションごとに選ぶ。各見出しの「＋」の左（Expo は見出しの右端）の並び替えボタンから、プロジェクトは「作成順（既定）・更新順・実施日順・名前順」、チャンネルは「作成順（既定）・更新順・名前順」、DM は「名前順（既定）・更新順」。マイルストーン・スレッドは親の下のまま、アーカイブ欄は並べ替えない。選べる項目と判定は `packages/shared/src/chat-list-sort.ts`（`CHAT_LIST_SECTION_SORTS` / `sortChatList`）に集約し、Web と Expo で揃える
+  - 更新順: 最終投稿時刻（API の `lastMessageAt`。配下のマイルストーン・スレッドの投稿も親に含める）の新しい順。投稿のないものは末尾
+  - 実施日順: プロジェクトの開始日の古い順。日付のないプロジェクトは末尾
+- 並び順はセクション別・端末ごとの保存（Web は localStorage、Expo は AsyncStorage）で、Web とアプリでは同期しない
+- `lastMessageAt` はチャンネルごとに `idx_messages_channel` を末尾から1件引いて求める（`apps/web/src/lib/chat/last-message-at.ts`）。全件の max 集計にしない
+- ピン留めはプロジェクトだけで、サイドバーのピン留め（`pinned_projects`）と同じデータ。チャット一覧の「…」（Expo は長押し）から切り替え、ピン留めしたプロジェクトは並び順に関係なくプロジェクト欄の先頭に置く
+
 ## アプリアイコンのバッジ
 
 - **数字はワークスペースを問わない未読のアプリ内通知の数**（`apps/web/src/lib/notifications/badge.ts` の `getUnreadNotificationCount`。非活性ワークスペースの通知は既読にできないため除く）。チャットの未読は混ぜない

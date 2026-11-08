@@ -19,6 +19,7 @@ import type { MoveToThreadBody } from '@cairn/shared'
 import { useT } from './locale-provider'
 import { buildMoveBody, type MoveScope } from '../lib/move-to-thread'
 import type { ThemePalette } from '../lib/theme'
+import { useHoldOtaReload } from '../hooks/use-ota-foreground-update'
 
 export interface MoveToThreadSheetThread {
   id: string
@@ -46,6 +47,8 @@ export function MoveToThreadSheet({ message, threads, palette, pending, error, o
   const [threadId, setThreadId] = React.useState<string | null>(null)
   const [name, setName] = React.useState('')
   const [validation, setValidation] = React.useState<string | null>(null)
+  // スレッド名・移動先はメモリにしか無い。開いている間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(message !== null)
   const messageId = message?.id ?? null
   const messageContent = message?.content ?? ''
 
