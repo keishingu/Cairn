@@ -10,7 +10,10 @@ import { decideOtaForegroundAction, holdOtaReload, isOtaReloadHeld } from '../li
 export function useOtaForegroundUpdate() {
   const { isUpdatePending } = Updates.useUpdates()
   const pendingRef = React.useRef(isUpdatePending)
-  pendingRef.current = isUpdatePending
+  // render 中に書き換えると、破棄された render の値で AppState のイベントが動きうるため、確定後に反映する
+  React.useEffect(() => {
+    pendingRef.current = isUpdatePending
+  }, [isUpdatePending])
 
   React.useEffect(() => {
     if (!Updates.isEnabled) return
