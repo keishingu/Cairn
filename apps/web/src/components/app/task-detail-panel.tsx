@@ -46,7 +46,13 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
   useUnsavedChanges(editing && next !== title)
 
   const cancel = () => { setEditing(false); setError(null) }
-  useCancelEditOnEscape(editing && !saving, cancel)
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
+
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
 
   const startEdit = () => {
     setDraft(title)
@@ -70,7 +76,7 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
 
   if (editing) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input
           aria-label={t('Title')}
           className="form-control"
@@ -128,7 +134,13 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
 
   const dirty = editing && (draft.trim() === '' ? null : draft) !== (description ?? null)
   useUnsavedChanges(dirty)
-  useCancelEditOnEscape(editing && !saving, () => setEditing(false))
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, () => setEditing(false))
+
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
 
   const startEdit = () => {
     setDraft(description ?? '')
@@ -158,12 +170,13 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
       </div>
 
       {editing ? (
-        <>
+        <div ref={wrapRef}>
           <textarea
             id={`${id}-description`}
             className="form-control"
             value={draft}
             maxLength={DESCRIPTION_MAX_LENGTH}
+            disabled={saving}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => {
               // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
@@ -184,7 +197,7 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
               {saving ? t('Saving…') : t('Save')}
             </button>
           </div>
-        </>
+        </div>
       ) : description ? (
         <div style={{ fontSize: 13.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
           <MarkdownContent content={description} />

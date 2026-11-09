@@ -80,7 +80,13 @@ export const InlineText = ({
     setError(null)
   }
 
-  useCancelEditOnEscape(editing && !saving, cancel)
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
+
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
 
   const save = async () => {
     if (!canSave) return
@@ -129,7 +135,7 @@ export const InlineText = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {multiline ? (
         <textarea
           value={draft}
@@ -248,7 +254,13 @@ export const InlineDatePair = ({
   }
 
   // Esc は編集の取り消しだけにして、周りのパネルは閉じない
-  useCancelEditOnEscape(editing && !saving, cancel)
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
+
 
   // タッチ端末では押しやすい高さにし、iOS が 16px 未満の入力欄をフォーカス時に拡大するのを避ける
   const [coarse, setCoarse] = React.useState(false)
@@ -294,6 +306,7 @@ export const InlineDatePair = ({
   // 4つを1列に流すとどれが終了日か分からなくなる
   return (
     <div
+      ref={wrapRef}
       style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
       <div style={rowStyle}>
@@ -302,6 +315,7 @@ export const InlineDatePair = ({
           value={start}
           autoFocus
           aria-label={t('Start date')}
+          disabled={saving}
           onChange={e => setStart(e.target.value)}
           onKeyDown={handleKeyDown}
           style={dateStyle}
@@ -310,6 +324,7 @@ export const InlineDatePair = ({
           type="time"
           value={startClock}
           aria-label={t('Start time')}
+          disabled={saving}
           onChange={e => setStartClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}
@@ -323,6 +338,7 @@ export const InlineDatePair = ({
           // ピッカー側でも開始日より前を選びにくくする（手入力や開始日の変更では超えられるので、下でも判定する）
           min={start || undefined}
           aria-label={t('End date')}
+          disabled={saving}
           aria-invalid={reversed}
           aria-describedby={reversed ? dateErrorId : undefined}
           onChange={e => setEnd(e.target.value)}
@@ -333,6 +349,7 @@ export const InlineDatePair = ({
           type="time"
           value={endClock}
           aria-label={t('End time')}
+          disabled={saving}
           onChange={e => setEndClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}

@@ -62,6 +62,21 @@ describe('日程のインライン編集（InlineDatePair）', () => {
     expect(screen.getByLabelText('End date')).toHaveValue('2026-06-20')
   })
 
+  it('保存の完了待ちの間は日付・時刻の入力欄を無効にする', async () => {
+    let resolve: () => void = () => {}
+    const onSave = vi.fn().mockReturnValue(new Promise<void>(r => { resolve = r }))
+    openEditor(onSave)
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    for (const label of ['Start date', 'Start time', 'End date', 'End time']) {
+      expect(screen.getByLabelText(label)).toBeDisabled()
+    }
+    resolve()
+    await waitFor(() => expect(screen.queryByLabelText('End date')).toBeNull())
+  })
+
   it('開始日から終了日へフォーカスを移しても確定しない', () => {
     const onSave = openEditor()
 

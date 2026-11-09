@@ -31,7 +31,8 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
 
   useUnsavedChanges(nextFileName !== fileName)
   // Esc は編集の取り消しだけにして、周りのパネルは閉じない
-  useCancelEditOnEscape(!isSaving, onCancel)
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, !isSaving, onCancel)
 
   // 明示保存: Enter / 保存ボタンで保存、Esc / キャンセルボタンで破棄。blur では何もしない
   const commit = async () => {
@@ -59,7 +60,7 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }} onClick={event => event.stopPropagation()}>
+    <div ref={wrapRef} style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }} onClick={event => event.stopPropagation()}>
       <input
         ref={inputRef}
         aria-label={t('Change file name')}

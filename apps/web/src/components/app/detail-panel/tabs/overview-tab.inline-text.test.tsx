@@ -97,4 +97,24 @@ describe('テキストのインライン編集（InlineText）', () => {
     fireEvent.click(screen.getByRole('button'))
     expect(screen.queryByRole('textbox')).toBeNull()
   })
+
+  it('編集欄が2つ開いているとき、Esc はフォーカスのある方だけ取り消す', () => {
+    render(
+      <>
+        <InlineText value="タイトル" onSave={vi.fn()} />
+        <InlineText value="概要" onSave={vi.fn()} multiline />
+      </>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'タイトル' }))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'タイトル下書き' } })
+    fireEvent.click(screen.getByRole('button', { name: '概要' }))
+    const [first, second] = screen.getAllByRole('textbox')
+    fireEvent.change(second!, { target: { value: '概要下書き' } })
+
+    second!.focus()
+    fireEvent.keyDown(second!, { key: 'Escape' })
+
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(first).toHaveValue('タイトル下書き')
+  })
 })
