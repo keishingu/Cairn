@@ -2,6 +2,9 @@
 
 import React from 'react'
 import { useT } from '@/components/locale-provider'
+import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { Icon } from './primitives'
 
 export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13 }: {
   fileName: string
@@ -13,7 +16,6 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
   const [draft, setDraft] = React.useState(fileName)
   const [isSaving, setIsSaving] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const cancelledRef = React.useRef(false)
   const savingRef = React.useRef(false)
 
   React.useEffect(() => {
@@ -24,52 +26,80 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
     input.setSelectionRange(0, dotIndex > 0 ? dotIndex : fileName.length)
   }, [fileName])
 
-  const commit = async () => {
-    if (cancelledRef.current || savingRef.current) return
-    const nextFileName = draft.trim()
-    if (!nextFileName || nextFileName === fileName) {
-      onCancel()
-      return
-    }
+  const nextFileName = draft.trim()
+  const canSave = !isSaving && nextFileName !== '' && nextFileName !== fileName
 
+  useUnsavedChanges(nextFileName !== fileName)
+  // Esc は編集の取り消しだけにして、周りのパネルは閉じない
+  useCancelEditOnEscape(!isSaving, onCancel)
+
+  // 明示保存: Enter / 保存ボタンで保存、Esc / キャンセルボタンで破棄。blur では何もしない
+  const commit = async () => {
+    if (!canSave || savingRef.current) return
     savingRef.current = true
     setIsSaving(true)
     try {
       await onSave(nextFileName)
       onCancel()
     } catch {
+      // 失敗の通知は onSave 側が行う。編集を開いたまま下書きを残す
       savingRef.current = false
       setIsSaving(false)
-      inputRef.current?.focus()
     }
   }
 
+  React.useEffect(() => {
+    if (!isSaving) inputRef.current?.focus()
+  }, [isSaving])
+
+  const iconButtonStyle: React.CSSProperties = {
+    width: 24, height: 24, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 5, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-2)',
+    cursor: 'pointer', padding: 0,
+  }
+
   return (
-    <input
-      ref={inputRef}
-      aria-label={t('Change file name')}
-      value={draft}
-      disabled={isSaving}
-      onChange={event => setDraft(event.target.value)}
-      onBlur={() => void commit()}
-      onClick={event => event.stopPropagation()}
-      onKeyDown={event => {
-        event.stopPropagation()
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          cancelledRef.current = true
-          onCancel()
-        } else if (event.key === 'Enter') {
-          event.preventDefault()
-          event.currentTarget.blur()
-        }
-      }}
-      style={{
-        width: '100%', height: 26, boxSizing: 'border-box', borderRadius: 5,
-        border: '1px solid var(--accent)', background: 'var(--card)',
-        color: 'var(--text)', outline: 'none', padding: '2px 6px',
-        fontFamily: 'inherit', fontSize, fontWeight: 600,
-      }}
-    />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }} onClick={event => event.stopPropagation()}>
+      <input
+        ref={inputRef}
+        aria-label={t('Change file name')}
+        value={draft}
+        disabled={isSaving}
+        onChange={event => setDraft(event.target.value)}
+        onKeyDown={event => {
+          event.stopPropagation()
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault()
+            void commit()
+          }
+        }}
+        style={{
+          flex: 1, minWidth: 0, height: 26, boxSizing: 'border-box', borderRadius: 5,
+          border: '1px solid var(--accent)', background: 'var(--card)',
+          color: 'var(--text)', outline: 'none', padding: '2px 6px',
+          fontFamily: 'inherit', fontSize, fontWeight: 600,
+        }}
+      />
+      <button
+        type="button"
+        aria-label={t('Save')}
+        title={t('Save')}
+        disabled={!canSave}
+        onClick={() => void commit()}
+        style={{ ...iconButtonStyle, color: 'var(--accent)', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}
+      >
+        <Icon name="check" size={13} />
+      </button>
+      <button
+        type="button"
+        aria-label={t('Cancel')}
+        title={t('Cancel')}
+        disabled={isSaving}
+        onClick={onCancel}
+        style={iconButtonStyle}
+      >
+        <Icon name="close" size={13} />
+      </button>
+    </div>
   )
 }

@@ -1668,4 +1668,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not read the chat list order': 'チャット一覧の並び順を読み込めませんでした',
   'Could not save the chat list order': 'チャット一覧の並び順を保存できませんでした',
   'Could not load pinned projects': 'ピン留めしたプロジェクトを読み込めませんでした',
+  'Could not save the changes': '変更を保存できませんでした',
+  'You have unsaved changes. Discard them and leave?': '保存されていない変更があります。破棄して移動しますか？',
+  'You have unsaved changes. Discard them and close?': '保存されていない変更があります。破棄して閉じますか？',
 }

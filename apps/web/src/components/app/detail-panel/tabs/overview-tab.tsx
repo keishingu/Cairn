@@ -14,6 +14,8 @@ import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
 
@@ -38,70 +40,139 @@ const cardLabelStyle: React.CSSProperties = {
 }
 
 // ─── インライン編集フィールド ─────────────────────────────────────
-const InlineText = ({
+// テキストは明示保存。保存は保存ボタン / Enter（複数行は Cmd/Ctrl+Enter）、取り消しはキャンセルボタン / Esc。
+// フォーカスが外れても保存も破棄もしない（下書きを残したまま編集を続けられる）
+export const InlineText = ({
   value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false,
 }: {
   value: string
-  onSave: (v: string) => void
+  /** 保存の成否を返す。reject したら編集を閉じず、下書きを残してエラーを表示する */
+  onSave: (v: string) => Promise<unknown>
   placeholder?: string
   multiline?: boolean
   large?: boolean
   required?: boolean
   readOnly?: boolean
 }) => {
+  const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(value)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
-  React.useEffect(() => { setDraft(value) }, [value])
+  const trimmed = draft.trim()
+  const unchanged = trimmed === value.trim()
+  const invalid = required && !trimmed
+  const canSave = !saving && !unchanged && !invalid
 
-  const commit = () => {
+  useUnsavedChanges(editing && !unchanged)
+
+  const startEdit = () => {
+    if (readOnly) return
+    setDraft(value)
+    setError(null)
+    setEditing(true)
+  }
+
+  const cancel = () => {
     setEditing(false)
-    if (required && !draft.trim()) { setDraft(value); return }
-    if (draft.trim() !== value.trim()) onSave(draft.trim())
+    setDraft(value)
+    setError(null)
   }
 
-  const baseStyle: React.CSSProperties = {
-    width: '100%', fontFamily: 'inherit', outline: 'none',
-    background: editing ? 'var(--card)' : 'transparent',
-    border: editing ? '1px solid var(--accent)' : '1px solid transparent',
-    borderRadius: 7, transition: 'border-color .15s, background .15s',
-    color: 'var(--text)',
-    fontSize: large ? 15 : 13,
-    fontWeight: large ? 700 : 400,
-    padding: editing ? '6px 8px' : '4px 2px',
-    lineHeight: 1.55,
-    resize: 'none' as const,
-    boxSizing: 'border-box' as const,
-    cursor: readOnly ? 'default' : editing ? 'text' : 'pointer',
+  useCancelEditOnEscape(editing && !saving, cancel)
+
+  const save = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(trimmed)
+      setEditing(false)
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (multiline) {
+  const fontSize = large ? 15 : 13
+  const fontWeight = large ? 700 : 400
+
+  if (!editing) {
+    const empty = value === ''
     return (
-      <textarea
-        value={draft}
-        placeholder={editing ? placeholder : (value ? undefined : placeholder)}
-        rows={3}
-        readOnly={readOnly}
-        style={{ ...baseStyle, minHeight: 64 }}
-        onFocus={() => { if (!readOnly) setEditing(true) }}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-      />
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={startEdit}
+        title={readOnly ? undefined : t('Click to edit')}
+        style={{
+          display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit',
+          background: 'transparent', border: '1px solid transparent', borderRadius: 7,
+          color: empty ? 'var(--text-4)' : 'var(--text)', fontSize, fontWeight, lineHeight: 1.55,
+          padding: '4px 2px', boxSizing: 'border-box', cursor: readOnly ? 'default' : 'pointer',
+          whiteSpace: multiline ? 'pre-wrap' : 'normal', overflowWrap: 'anywhere',
+          minHeight: multiline ? 28 : undefined,
+        }}
+      >
+        {empty ? (placeholder ?? '') : value}
+      </button>
     )
   }
 
+  const fieldStyle: React.CSSProperties = {
+    width: '100%', fontFamily: 'inherit', outline: 'none',
+    background: 'var(--card)', border: '1px solid var(--accent)', borderRadius: 7,
+    color: 'var(--text)', fontSize, fontWeight, padding: '6px 8px', lineHeight: 1.55,
+    resize: 'none', boxSizing: 'border-box',
+  }
+
   return (
-    <input
-      type="text"
-      value={draft}
-      placeholder={editing ? placeholder : (value ? undefined : placeholder)}
-      readOnly={readOnly}
-      style={baseStyle}
-      onFocus={() => { if (!readOnly) setEditing(true) }}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {multiline ? (
+        <textarea
+          value={draft}
+          placeholder={placeholder}
+          rows={3}
+          disabled={saving}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
+          style={{ ...fieldStyle, minHeight: 64 }}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              void save()
+            }
+          }}
+        />
+      ) : (
+        <input
+          type="text"
+          value={draft}
+          placeholder={placeholder}
+          disabled={saving}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
+          style={fieldStyle}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              void save()
+            }
+          }}
+        />
+      )}
+      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={!canSave}>
+          {saving ? t('Saving…') : t('Save')}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -112,7 +183,7 @@ export const InlineDatePair = ({
   endDate: string | null
   startTime?: string | null
   endTime?: string | null
-  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => unknown
   readOnly?: boolean
 }) => {
   const t = useT()
@@ -121,63 +192,63 @@ export const InlineDatePair = ({
   const [end, setEnd]     = React.useState(endDate ?? '')
   const [startClock, setStartClock] = React.useState(formatTime(startTime) ?? '')
   const [endClock, setEndClock] = React.useState(formatTime(endTime) ?? '')
-  const wrapRef = React.useRef<HTMLDivElement>(null)
 
+  // 編集中は下書きを守り、外部の更新で上書きしない
   React.useEffect(() => {
+    if (editing) return
     setStart(startDate ?? '')
     setEnd(endDate ?? '')
     setStartClock(formatTime(startTime) ?? '')
     setEndClock(formatTime(endTime) ?? '')
-  }, [startDate, endDate, startTime, endTime])
+  }, [editing, startDate, endDate, startTime, endTime])
 
-  // 外側の押下と blur が同じ操作で続けて来ても、保存は1回だけにする
-  const openRef = React.useRef(false)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
   const reversed = isEndBeforeStart(start, end)
   const dateErrorId = React.useId()
 
-  const commit = () => {
-    if (!openRef.current) return
-    // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
-    if (reversed) return
-    openRef.current = false
-    setEditing(false)
-    const ns = start || null
-    const ne = end || null
-    const nst = startClock || null
-    const net = endClock || null
-    if (ns !== startDate || ne !== endDate || nst !== formatTime(startTime) || net !== formatTime(endTime)) onSave(ns, ne, nst, net)
-  }
+  const unchanged =
+    (start || null) === startDate && (end || null) === endDate &&
+    (startClock || null) === formatTime(startTime) && (endClock || null) === formatTime(endTime)
 
-  const cancel = () => {
-    openRef.current = false
-    setEditing(false)
+  useUnsavedChanges(editing && !unchanged)
+
+  const reset = () => {
     setStart(startDate ?? '')
     setEnd(endDate ?? '')
     setStartClock(formatTime(startTime) ?? '')
     setEndClock(formatTime(endTime) ?? '')
+    setError(null)
   }
 
-  // フォーカスが別の要素へ移った時だけ確定する（開始↔終了の移動では確定しない）。
-  // スマホのネイティブピッカーを閉じると移動先のない blur が来るため、そこで確定すると
-  // 終了日に触れる前に編集欄が閉じてしまう
-  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    const next = e.relatedTarget as Node | null
-    if (!next || wrapRef.current?.contains(next)) return
-    commit()
-  }
-
-  // 移動先のない blur では確定しない代わりに、ペアの外を押した時に確定する
-  const commitRef = React.useRef(commit)
-  commitRef.current = commit
-  React.useEffect(() => {
-    if (!editing) return
-    const onPointerDown = (e: PointerEvent) => {
-      if (wrapRef.current?.contains(e.target as Node | null)) return
-      commitRef.current()
+  // 確定は完了ボタン / Enter だけ。フォーカス移動や外側の押下では確定も破棄もしない
+  // （スマホのネイティブピッカーを閉じると移動先のない blur が来るため、blur で動かすと終了日に触れる前に閉じてしまう）
+  const commit = async () => {
+    // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
+    if (saving || reversed) return
+    if (unchanged) {
+      setEditing(false)
+      return
     }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [editing])
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(start || null, end || null, startClock || null, endClock || null)
+      setEditing(false)
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const cancel = () => {
+    setEditing(false)
+    reset()
+  }
+
+  // Esc は編集の取り消しだけにして、周りのパネルは閉じない
+  useCancelEditOnEscape(editing && !saving, cancel)
 
   // タッチ端末では押しやすい高さにし、iOS が 16px 未満の入力欄をフォーカス時に拡大するのを避ける
   const [coarse, setCoarse] = React.useState(false)
@@ -192,14 +263,13 @@ export const InlineDatePair = ({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') cancel()
-    if (e.key === 'Enter') commit()
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void commit() }
   }
 
   if (!editing) {
     return (
       <button
-        onClick={() => { if (!readOnly) { openRef.current = true; setEditing(true) } }}
+        onClick={() => { if (!readOnly) { reset(); setEditing(true) } }}
         disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 4,
@@ -224,8 +294,6 @@ export const InlineDatePair = ({
   // 4つを1列に流すとどれが終了日か分からなくなる
   return (
     <div
-      ref={wrapRef}
-      onBlur={handleBlur}
       style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
       <div style={rowStyle}>
@@ -276,11 +344,13 @@ export const InlineDatePair = ({
           <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
         </div>
       )}
+      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
         <button
           type="button"
           onClick={cancel}
+          disabled={saving}
           style={{
             // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
@@ -292,13 +362,13 @@ export const InlineDatePair = ({
         </button>
         <button
           type="button"
-          onClick={commit}
-          disabled={reversed}
+          onClick={() => void commit()}
+          disabled={reversed || saving}
           style={{
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
             background: 'var(--accent)', color: 'var(--on-accent)',
             fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
-            cursor: reversed ? 'default' : 'pointer', opacity: reversed ? 0.5 : 1,
+            cursor: reversed || saving ? 'default' : 'pointer', opacity: reversed || saving ? 0.5 : 1,
           }}
         >
           {t('Done')}
@@ -558,7 +628,7 @@ export const MilestoneCreateForm = ({ onCreate, disabled }: {
 const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   milestone: MilestoneDto
   canEdit: boolean
-  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => void
+  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => Promise<unknown>
   onDelete: (milestone: MilestoneDto) => void
 }) => {
   const t = useT()
@@ -588,7 +658,11 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         checked={milestone.completed}
         disabled={!canEdit}
         onClick={e => e.stopPropagation()}
-        onChange={e => onPatch(milestone.id, { completed: e.target.checked })}
+        onChange={e => {
+          onPatch(milestone.id, { completed: e.target.checked }).catch((err: unknown) => {
+            toast.error(err instanceof Error ? err.message : t('Could not update this milestone'))
+          })
+        }}
         style={{ marginTop: 7, cursor: canEdit ? 'pointer' : 'not-allowed' }}
         aria-label={t('Complete')}
       />
@@ -643,7 +717,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   )
 }
 
-const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: boolean }) => {
+export const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: boolean }) => {
   const t = useT()
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
@@ -656,12 +730,13 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
       ? t('End date must be on or after the start date')
       : fallback
 
-  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => {
-    milestones.patchMutation.mutate(
-      { id, input },
-      { onError: error => toast.error(milestoneErrorMessage(error, t('Could not update this milestone'))) },
-    )
-  }
+  // 失敗はトーストで通知したうえで reject し直し、呼び出し側（インライン編集欄）が下書きを残せるようにする
+  // 失敗は翻訳済みの文言で reject する。インライン編集欄はそれを1回だけ表示し（トーストは重ねない）、
+  // 編集欄を持たない完了チェックだけが呼び出し側でトーストにする
+  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) =>
+    milestones.patchMutation.mutateAsync({ id, input }).catch((error: unknown) => {
+      throw new Error(milestoneErrorMessage(error, t('Could not update this milestone')))
+    })
 
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
@@ -721,7 +796,10 @@ interface OverviewTabProps {
 
 export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
   const t = useT()
+  // 即保存の項目（ステータス・場所）用。失敗はタイトル下のエラー欄に出す
   const patch = usePatchProject(project.id)
+  // 明示保存の編集欄（タイトル・日程・概要）用。失敗は各編集欄が自分で表示するので、共有のエラー欄とは分ける
+  const editPatch = usePatchProject(project.id)
   const archivePatch = usePatchProject(project.id)
   const deleteMutation = useDeleteProject(project.id)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
@@ -736,7 +814,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* タイトル */}
       <InlineText
         value={project.title}
-        onSave={v => patch.mutate({ title: v })}
+        onSave={v => editPatch.mutateAsync({ title: v })}
         placeholder={t('Project name')}
         large
         required
@@ -754,7 +832,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           <InlineDatePair
             startDate={project.startDate}
             endDate={project.endDate}
-            onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
+            onSave={(start, end) => editPatch.mutateAsync({ startDate: start, endDate: end })}
             readOnly={readOnly}
           />
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
@@ -785,7 +863,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
         <div style={cardLabelStyle}>{t('Summary')}</div>
         <InlineText
           value={project.description ?? ''}
-          onSave={v => patch.mutate({ description: v || null })}
+          onSave={v => editPatch.mutateAsync({ description: v || null })}
           placeholder={t('Click to enter a summary or goals…')}
           multiline
           readOnly={readOnly}

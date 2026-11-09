@@ -14,6 +14,7 @@ import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pin
 import { useProjectChannels } from '@/lib/chat/client'
 import { useApplyPlacePhoto, useClearProjectCoverPhoto, usePlacePhotos } from '@/hooks/use-project-cover-photo'
 import { useT } from '@/components/locale-provider'
+import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
 
 
 
@@ -112,6 +113,11 @@ interface ProjectPanelProps {
 
 export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: tabProp, onTabChange }: ProjectPanelProps) => {
   const t = useT()
+  // 概要タブの編集中の下書きは閉じると失われるので、確認してから閉じる（タブは keep-alive のため、タブ切替では失われない）
+  const handleClose = () => {
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and close?'))) return
+    onClose()
+  }
   const [internalTab, setInternalTab] = React.useState('chat')
   const tab = tabProp ?? internalTab
   const setTab = onTabChange ?? setInternalTab
@@ -220,7 +226,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
           {isMobile ? (
-            <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={handleClose} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="chevLeft" size={18}/>
             </button>
           ) : (
@@ -259,7 +265,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                   </div>
                 )}
               </div>
-              <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={handleClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="close" size={15}/>
               </button>
             </>

@@ -32,6 +32,7 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
+import { confirmDiscardUnsavedChanges, useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
 import {
   AI_CHAT_ACCESS_LEVELS,
@@ -275,6 +276,9 @@ const SettingsAccount = () => {
     if (user?.displayName) setDisplayName(user.displayName)
   }, [user?.displayName])
 
+  // 未保存の表示名がある間は、画面遷移やリロードの前に確認する
+  useUnsavedChanges(user !== undefined && displayName.trim() !== (user.displayName ?? ''))
+
   const nameMutation = useMutation({
     mutationFn: async () => {
       const nextName = displayName.trim()
@@ -488,7 +492,7 @@ const SettingsAccount = () => {
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && displayName.trim() && nameMutation.mutate()}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
@@ -1702,6 +1706,7 @@ const AiChatSystemPromptSection = () => {
   }, [loaded, saved])
 
   const unchanged = draft === saved
+  useUnsavedChanges(loaded && !readOnly && !unchanged)
   // 保存の応答を待つ間に書き足されたかを、await 後に最新の下書きで判定する。
   const draftRef = React.useRef(draft)
   draftRef.current = draft
@@ -1738,6 +1743,13 @@ const AiChatSystemPromptSection = () => {
             setDraft(e.target.value)
             // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
             setJustSaved(false)
+          }}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              if (!updateSettings.isPending && !unchanged && !readOnly && loaded) void handleSave()
+            }
           }}
           readOnly={readOnly}
           disabled={wsSettings === undefined}
@@ -1821,6 +1833,12 @@ const SettingsWorkspaceGeneral = () => {
   React.useEffect(() => {
     if (wsSettings !== undefined) setLabel(wsSettings.projectLabel ?? '')
   }, [wsSettings])
+
+  // 未保存のワークスペース名・説明・プロジェクトの呼び方がある間は、画面遷移やリロードの前に確認する
+  useUnsavedChanges(
+    !readOnly && ws !== undefined && wsSettings !== undefined &&
+      (wsName.trim() !== ws.name || wsDesc !== (ws.description ?? '') || label.trim() !== (wsSettings.projectLabel ?? '')),
+  )
 
   const nameMutation = useMutation({
     mutationFn: async () => {
@@ -2026,7 +2044,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsName}
                 onChange={(e) => setWsName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && wsName.trim() && nameMutation.mutate()}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
@@ -2073,7 +2091,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsDesc}
                 onChange={(e) => setWsDesc(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && descMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && descMutation.mutate()}
                 placeholder={t('e.g. Example University')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
@@ -2120,7 +2138,7 @@ const SettingsWorkspaceGeneral = () => {
                 placeholder={t('Projects')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleLabelSave()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}
@@ -3900,7 +3918,12 @@ export const PageSettings = () => {
               {group.items.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => router.push(`/settings/${s.id}`)}
+                  onClick={() => {
+                    if (s.id === section) return
+                    // 未保存の下書きがあるときは、破棄してよいか確認してから別のセクションへ移る
+                    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
+                    router.push(`/settings/${s.id}`)
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

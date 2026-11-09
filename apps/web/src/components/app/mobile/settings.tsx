@@ -9,6 +9,7 @@ import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
+import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
@@ -134,7 +135,11 @@ export function MobileSettingsDetail({ section }: { section: string }) {
   const resolvedSection = isSettingsSection(section, isOwner, navOptions) ? section : 'account'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => router.push('/settings')}/>
+      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => {
+        // 未保存の下書きがあるときは、破棄してよいか確認してから一覧へ戻る
+        if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
+        router.push('/settings')
+      }}/>
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <SettingsSectionContent section={resolvedSection}/>
       </div>
