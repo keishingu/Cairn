@@ -9,7 +9,7 @@ import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { confirmDiscardUnsavedChanges, suppressUnsavedChangesUnload } from '@/hooks/use-unsaved-changes'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
@@ -34,10 +34,13 @@ export function MobileSettings() {
   const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true, isGuest: me?.wsRole === 'guest' })
 
   async function handleLogout() {
+    // サインアウトする前に確認する
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (window.ReactNativeWebView) {
       if (window.cairnDeviceSignOut) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'DEVICE_SIGN_OUT_REQUESTED' }))
       } else {
+        suppressUnsavedChangesUnload()
         window.location.assign('/auth/mobile-signout?webview=1')
       }
       return
@@ -46,6 +49,7 @@ export function MobileSettings() {
       window.alert(t('Could not sign out. Please try again.'))
       return
     }
+    suppressUnsavedChangesUnload()
     window.location.replace('/auth/login')
   }
 

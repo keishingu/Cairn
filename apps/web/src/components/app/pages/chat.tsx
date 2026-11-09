@@ -555,7 +555,12 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
   useCommand('ctx.create', () => { if (canCreateWorkspaceChannel) setShowCreateChannel(true) })
   useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
-  useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
+  // 詳細サイドバーを閉じると、名前変更中の下書きなどが失われるので、閉じるときだけ確認する
+  const toggleDetail = () => {
+    if (detailOpen && !confirmLeave()) return
+    setDetailOpen(!detailOpen)
+  }
+  useCommand('chats.detail', () => { if (!isMobile) toggleDetail() })
 
   // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く。
   // 開いたら consume してシグナルを 0 に戻し、再マウント時の誤再オープンを防ぐ
@@ -1067,7 +1072,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
               <button
                 className="btn"
-                onClick={() => setDetailOpen(open => !open)}
+                onClick={toggleDetail}
                 style={{ background: detailOpen ? 'var(--card-hover)' : undefined }}
                 aria-pressed={detailOpen}
                 aria-label={detailLabel}

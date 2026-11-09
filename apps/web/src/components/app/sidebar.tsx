@@ -6,7 +6,7 @@ import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { InlineError } from './inline-error'
-import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { confirmDiscardUnsavedChanges, suppressUnsavedChangesUnload } from '@/hooks/use-unsaved-changes'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
@@ -193,9 +193,12 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   useCommand('app.workspaceMenu', () => setSwitcherOpen(o => !o))
 
   function switchWorkspace(id: string) {
+    // Cookie を書く前に確認する（書いた後に遷移をキャンセルされると、旧ワークスペースの画面が新ワークスペースへ保存する）
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
     // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
+    suppressUnsavedChangesUnload()
     window.location.href = '/chats'
   }
   const projectChildren: SidebarGroupItem[] = [
@@ -612,10 +615,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   }, [menuOpen])
 
   async function handleLogout() {
+    // サインアウトする前に確認する（後からキャンセルされると、サインアウト済みの画面に下書きが残る）
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (!(await signOutCurrentSession())) {
       window.alert(t('Could not sign out. Please try again.'))
       return
     }
+    suppressUnsavedChangesUnload()
     window.location.replace('/auth/login')
   }
 

@@ -3,6 +3,7 @@
 
 'use client'
 
+import { confirmDiscardUnsavedChanges, suppressUnsavedChangesUnload } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, UnreadBadge } from '../primitives'
@@ -39,8 +40,11 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
   })
 
   function switchWorkspace(id: string) {
+    // Cookie を書く前に確認する（書いた後に遷移をキャンセルされると、旧ワークスペースの画面が新ワークスペースへ保存する）
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setWsSwitcherOpen(false)
+    suppressUnsavedChangesUnload()
     window.location.href = '/chats'
   }
 

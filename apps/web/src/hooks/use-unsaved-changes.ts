@@ -9,6 +9,17 @@ import { useT } from '@/components/locale-provider'
  */
 const dirtyRegistry = new Set<symbol>()
 
+/** 確認済みの全画面遷移（ワークスペース切替・ログアウト）の前に立て、beforeunload の二重確認を止める。 */
+let unloadSuppressed = false
+
+/**
+ * 呼び出し側で `confirmDiscardUnsavedChanges` を済ませたうえで、全画面遷移（`location` の代入）の直前に呼ぶ。
+ * 以後このページの寿命の間 beforeunload の警告を出さない（確認の二重表示を避ける）。
+ */
+export function suppressUnsavedChangesUnload(): void {
+  unloadSuppressed = true
+}
+
 /** リンク遷移の確認に使う文言。dirty な編集欄が登録したときの表示言語の文言を保持する。 */
 let leaveMessage = 'You have unsaved changes. Discard them and leave?'
 
@@ -68,6 +79,7 @@ export function useUnsavedChanges(dirty: boolean): void {
     if (dirtyRegistry.size === 0) document.addEventListener('click', onDocumentClick, true)
     dirtyRegistry.add(token)
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (unloadSuppressed) return
       e.preventDefault()
       // 古いブラウザは returnValue の設定がないと確認を出さない
       e.returnValue = ''
