@@ -67,6 +67,34 @@ FOR EACH ROW
 WHEN (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL)
 EXECUTE FUNCTION public.settle_notifications_for_deleted_message();
 
+-- メッセージの物理削除はチャンネル削除のカスケードだけで起き、そのチャンネルの既読状態も一緒に消える。
+-- 残った未読の通知がベルとアプリアイコンの件数に数えられ続けないよう、既読にする。
+-- カスケードでは削除行が多くなるため、文単位で遷移テーブルからまとめて処理する。
+CREATE OR REPLACE FUNCTION public.settle_notifications_for_removed_messages()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE notifications n
+  SET read_at = now()
+  FROM old_rows o
+  WHERE n.data->>'messageId' = o.id::text
+    AND n.type IN ('mention', 'dm')
+    AND n.read_at IS NULL;
+
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.settle_notifications_for_removed_messages() FROM PUBLIC;
+
+DROP TRIGGER IF EXISTS settle_notifications_on_message_remove ON public.messages;
+CREATE TRIGGER settle_notifications_on_message_remove
+AFTER DELETE ON public.messages
+REFERENCING OLD TABLE AS old_rows
+FOR EACH STATEMENT EXECUTE FUNCTION public.settle_notifications_for_removed_messages();
+
 -- 既に削除されたメッセージの通知と、それで数がずれたチャンネルの未読メンション数を直す。
 DO $$
 BEGIN

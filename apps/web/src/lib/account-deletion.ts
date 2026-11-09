@@ -238,11 +238,6 @@ async function anonymizeAndRevoke(
     // ファイル・コメント・AI会話を削除する。プロジェクトやタスクなど共同作業の
     // 構造は残し、作成者参照は匿名化したprofilesへ向けたままにする。
     await tx.delete(notifications).where(sql`
-      ${notifications.data}->>'messageId' in (
-        select id::text from messages where sender_id = ${userId}
-      )
-    `)
-    await tx.delete(notifications).where(sql`
         ${notifications.data}->>'assignerId' = ${userId}
       `)
     await tx.delete(aiNudges).where(sql`
@@ -332,6 +327,13 @@ async function anonymizeAndRevoke(
       .update(messages)
       .set({ content: '', deletedAt: now, updatedAt: now })
       .where(eq(messages.senderId, userId))
+    // メッセージの削除トリガーが宛先の未読メンション数を数え直すため、通知は削除の後に消す
+    // （先に消すと宛先が分からず、受信者のバッジが残る）。
+    await tx.delete(notifications).where(sql`
+      ${notifications.data}->>'messageId' in (
+        select id::text from messages where sender_id = ${userId}
+      )
+    `)
     // AIアシスタントの添付は会話と一緒に行が消えるため、消す前に Storage の本体を削除の対象に控える。
     // 先に本人の会話をロックし、控えたあとに新しい添付の行が作られて本体だけが残ることを防ぐ
     // （添付の行は会話を外部キーで参照するため、ロック中は作れず、会話の削除後は作れない）
