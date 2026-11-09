@@ -163,17 +163,30 @@ export const onMessageCreated = inngest.createFunction(
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
         if (members.length === 0) return
-        const { db, notifications } = await import('@cairn/db')
-        await db.insert(notifications).values(
-          members.map((m) => ({
-            userId: m.userId,
-            workspaceId,
-            type: 'dm' as const,
-            title: senderName,
-            body: dmBody.slice(0, 200),
-            data: { messageId, channelId, senderName },
-          })),
-        )
+        const { db, notifications, messages } = await import('@cairn/db')
+        const { eq } = await import('drizzle-orm')
+        await db.transaction(async (tx) => {
+          // 削除と直列にし、既に削除されたメッセージの通知は既読で作る（削除時のトリガーと揃える）。
+          const [message] = await tx
+            .select({ deletedAt: messages.deletedAt })
+            .from(messages)
+            .where(eq(messages.id, messageId))
+            .for('share')
+            .limit(1)
+          if (!message) throw new Error(`Message not found: ${messageId}`)
+          const readAt = message.deletedAt ? new Date() : null
+          await tx.insert(notifications).values(
+            members.map((m) => ({
+              userId: m.userId,
+              workspaceId,
+              type: 'dm' as const,
+              title: senderName,
+              body: dmBody.slice(0, 200),
+              data: { messageId, channelId, senderName },
+              readAt,
+            })),
+          )
+        })
       })
 
       if (members.length > 0) {
@@ -472,12 +485,19 @@ export const onMessageCreated = inngest.createFunction(
             .where(and(
               eq(channelReadStates.channelId, channelId),
               inArray(channelReadStates.userId, recipients.map((recipient) => recipient.userId)),
+              // 削除済みのメッセージは読む手段がないため、全員既読として作る（削除時のトリガーと揃える）。
               sql`(
                 ${channelReadStates.lastReadMessageId} = ${messageId}::uuid
                 or ${channelReadStates.lastReadAt} >= (
                   select ${messages.createdAt}
                   from ${messages}
                   where ${messages.id} = ${messageId}
+                )
+                or exists (
+                  select 1
+                  from ${messages}
+                  where ${messages.id} = ${messageId}
+                    and ${messages.deletedAt} is not null
                 )
               )`,
             ))

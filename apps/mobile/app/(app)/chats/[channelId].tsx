@@ -1159,14 +1159,15 @@ export default function ChatThreadScreen() {
       messagesQuery.isError ||
       messagesRead.stale ||
       // 過去のメッセージを見ている間は、まだ見ていない最新の発言まで既読にしない（Web と同じ）
-      isHistoryView ||
-      messages.length === 0
+      isHistoryView
     )
       return
     if (confirmedFetchedChannelIdRef.current !== channelId) return
     if (markReadRef.current.isPending) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastReadMessageIdRef.current === lastId) return
+    // 空のチャンネルでも一度は既読にする。削除で空になったチャンネルに残った未読メンション数を、
+    // 開いた時点でサーバーに数え直させるため
+    const lastId = messages[messages.length - 1]?.id ?? `empty:${channelId}`
+    if (lastReadMessageIdRef.current === lastId) return
     // 成功した場合のみ ref を進める。失敗時は次のポーリングで同じメッセージに対して再試行する
     markReadRef.current.mutate(undefined, {
       onSuccess: () => {
