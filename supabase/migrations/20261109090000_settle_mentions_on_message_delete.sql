@@ -15,14 +15,28 @@ LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
-  WITH settled AS (
-    UPDATE notifications n
-    SET read_at = now()
+  -- 数え直しの前に、対象の既読状態の行を既読 API・通知ジョブと同じ user_id 順でロックする。
+  -- 同じ宛先へのメンションを含む別メッセージの削除が並行すると、ロック待ちの後も
+  -- 同じ文のスナップショットのままでは相手の通知を未読と数えてしまうため、
+  -- 通知の既読化と数え直しはロック取得後の別の文で行い、新しいスナップショットで数える。
+  PERFORM 1
+  FROM channel_read_states crs
+  WHERE (crs.user_id, crs.channel_id::text) IN (
+    SELECT n.user_id, n.data->>'channelId'
+    FROM notifications n
     WHERE n.data->>'messageId' = NEW.id::text
       AND n.type IN ('mention', 'dm')
       AND n.read_at IS NULL
-    RETURNING n.user_id, n.data->>'channelId' AS channel_id
   )
+  ORDER BY crs.user_id, crs.channel_id
+  FOR UPDATE;
+
+  UPDATE notifications n
+  SET read_at = now()
+  WHERE n.data->>'messageId' = NEW.id::text
+    AND n.type IN ('mention', 'dm')
+    AND n.read_at IS NULL;
+
   UPDATE channel_read_states crs
   SET unread_mention_count = (
         SELECT count(*)::integer
@@ -31,12 +45,14 @@ BEGIN
           AND n.type = 'mention'
           AND n.read_at IS NULL
           AND n.data->>'channelId' = crs.channel_id::text
-          AND n.data->>'messageId' <> NEW.id::text
       ),
       updated_at = now()
-  FROM (SELECT DISTINCT user_id, channel_id FROM settled) s
-  WHERE crs.user_id = s.user_id
-    AND crs.channel_id::text = s.channel_id;
+  WHERE (crs.user_id, crs.channel_id::text) IN (
+    SELECT n.user_id, n.data->>'channelId'
+    FROM notifications n
+    WHERE n.data->>'messageId' = NEW.id::text
+      AND n.type IN ('mention', 'dm')
+  );
 
   RETURN NULL;
 END;
