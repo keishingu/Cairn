@@ -16,6 +16,7 @@ SET search_path = public
 AS $$
 BEGIN
   -- 数え直しの前に、対象の既読状態の行を既読 API・通知ジョブと同じ user_id 順でロックする。
+  -- 数え直す行（既読済みの通知の宛先も含む）とロックする行は同じ条件にする。
   -- 同じ宛先へのメンションを含む別メッセージの削除が並行すると、ロック待ちの後も
   -- 同じ文のスナップショットのままでは相手の通知を未読と数えてしまうため、
   -- 通知の既読化と数え直しはロック取得後の別の文で行い、新しいスナップショットで数える。
@@ -26,7 +27,6 @@ BEGIN
     FROM notifications n
     WHERE n.data->>'messageId' = NEW.id::text
       AND n.type IN ('mention', 'dm')
-      AND n.read_at IS NULL
   )
   ORDER BY crs.user_id, crs.channel_id
   FOR UPDATE;
