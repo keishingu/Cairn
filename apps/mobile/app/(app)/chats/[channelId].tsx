@@ -8,7 +8,6 @@ import {
   BackHandler,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -19,9 +18,10 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { KeyboardAvoidingView, useKeyboardController } from 'react-native-keyboard-controller'
 import {
   ChannelMessagesError,
   parseMentions,
@@ -728,6 +728,14 @@ export default function ChatThreadScreen() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const navigation = useNavigation()
+  // KeyboardProvider はルートで無効にしてあるので、この画面を表示している間だけ有効にする
+  const { setEnabled: setKeyboardControllerEnabled } = useKeyboardController()
+  useFocusEffect(
+    React.useCallback(() => {
+      setKeyboardControllerEnabled(true)
+      return () => setKeyboardControllerEnabled(false)
+    }, [setKeyboardControllerEnabled]),
+  )
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
@@ -1819,8 +1827,8 @@ export default function ChatThreadScreen() {
   }
 
   return (
-    // Android も padding にする。targetSdk 36 の edge-to-edge ではキーボードが出てもウィンドウが縮まず、
-    // behavior を付けないと入力欄がキーボードの裏に隠れる。縮む端末では重なりが 0 になり余白は足されない
+    // RN 標準の KeyboardAvoidingView は Android で表示中のキーボードの高さ変化（Flick のクリップボード・顔文字パネル等）を
+    // 受け取れず入力欄が隠れるため、WindowInsets を直接追う react-native-keyboard-controller 版を使う
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: palette.bg, paddingTop: insets.top }]}
       behavior="padding"
