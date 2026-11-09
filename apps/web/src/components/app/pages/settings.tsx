@@ -1033,6 +1033,8 @@ const StatusRow = ({
   const [name, setName] = React.useState(status.name)
   const [color, setColor] = React.useState(status.color)
   const [confirmDel, setConfirmDel] = React.useState(false)
+  // 編集中で未保存の名前・色がある間は、画面遷移やリロードの前に確認する
+  useUnsavedChanges(editing && (name.trim() !== status.name || color !== status.color))
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1175,6 +1177,7 @@ const SettingsWorkflow = () => {
   const [showAdd, setShowAdd] = React.useState(false)
   const [newName, setNewName] = React.useState('')
   const [newColor, setNewColor] = React.useState('#3B82F6')
+  useUnsavedChanges(showAdd && newName.trim() !== '')
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -1835,10 +1838,11 @@ const SettingsWorkspaceGeneral = () => {
   }, [wsSettings])
 
   // 未保存のワークスペース名・説明・プロジェクトの呼び方がある間は、画面遷移やリロードの前に確認する
+  // ws 由来（名前・説明）と wsSettings 由来（呼び方）は、それぞれ自分のデータが読み込めたときに独立して追跡する
   useUnsavedChanges(
-    !readOnly && ws !== undefined && wsSettings !== undefined &&
-      (wsName.trim() !== ws.name || wsDesc !== (ws.description ?? '') || label.trim() !== (wsSettings.projectLabel ?? '')),
+    !readOnly && ws !== undefined && (wsName.trim() !== ws.name || wsDesc !== (ws.description ?? '')),
   )
+  useUnsavedChanges(!readOnly && wsSettings !== undefined && label.trim() !== (wsSettings.projectLabel ?? ''))
 
   const nameMutation = useMutation({
     mutationFn: async () => {

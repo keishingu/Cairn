@@ -16,11 +16,15 @@ export function useCancelEditOnEscape(
   onCancel: () => void,
 ): void {
   const onCancelRef = React.useRef(onCancel)
-  onCancelRef.current = onCancel
+  // 描画中ではなくコミット後に最新のコールバックへ差し替える
+  React.useLayoutEffect(() => {
+    onCancelRef.current = onCancel
+  })
   React.useEffect(() => {
     if (!active) return
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      // IME の変換取り消しの Esc では編集を取り消さない
+      if (e.key !== 'Escape' || e.isComposing) return
       const container = containerRef.current
       const focused = e.target instanceof Node ? e.target : document.activeElement
       if (!container || !focused || !container.contains(focused)) return

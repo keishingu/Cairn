@@ -13,6 +13,8 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
+import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { useT } from '@/components/locale-provider'
 import { useCommandDispatcher } from '@/hooks/use-command-dispatcher'
 import { CommandProvider, useCommands } from '@/lib/command-registry'
 import { ShortcutHints } from '@/components/app/shortcut-hints'
@@ -47,6 +49,7 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const t = useT()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
@@ -118,9 +121,13 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   const closeTopOverlay = React.useCallback(() => {
     if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
     if (notifOpen) { setNotifOpen(false); return true }
-    if (panelMember || panelProject) { closePanel(); return true }
+    if (panelMember || panelProject) {
+      // 未保存の下書きがあるときは確認し、拒否されたらパネルを開いたまま（Esc は処理済みとする）
+      if (confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and close?'))) closePanel()
+      return true
+    }
     return false
-  }, [notifOpen, panelMember, panelProject, closePanel])
+  }, [notifOpen, panelMember, panelProject, closePanel, t])
 
   // シェルが担うコマンド（ナビ・パレット・ヘルプ・通知・サイドバー・横断検索）
   useCommands({

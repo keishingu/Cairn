@@ -352,7 +352,8 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0 }}>
         {tabs.map(item => visitedTabs.has(item.id) ? (
           <div
-            key={item.id}
+            // プロジェクトごとに作り直し、編集中の下書きが別のプロジェクトへ持ち越されて保存されるのを防ぐ
+            key={`${project.id}:${item.id}`}
             style={{ flex: 1, minHeight: 0, display: tab === item.id ? 'flex' : 'none', flexDirection: 'column' }}
           >
             {renderTabContent(item.id)}

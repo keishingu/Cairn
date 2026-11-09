@@ -5,6 +5,7 @@
 
 import React from 'react'
 import type { ProfileAttributeColor, ProfileAttributeDto } from '@cairn/shared'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
@@ -80,6 +81,7 @@ function AttributeRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const [name, setName] = React.useState(attribute.name)
   const [color, setColor] = React.useState(attribute.color)
+  useUnsavedChanges(editing && (name.trim() !== attribute.name || color !== attribute.color))
 
   React.useEffect(() => {
     setName(attribute.name)
@@ -167,6 +169,7 @@ export function ProfileAttributesSettings() {
   const [adding, setAdding] = React.useState(false)
   const [name, setName] = React.useState('')
   const [color, setColor] = React.useState<ProfileAttributeColor>('slate')
+  useUnsavedChanges(adding && name.trim() !== '')
   const create = useCreateProfileAttribute()
   const cancelAdding = () => {
     setName('')

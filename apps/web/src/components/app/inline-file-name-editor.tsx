@@ -41,12 +41,14 @@ export const InlineFileNameEditor = ({ fileName, onSave, onCancel, fontSize = 13
     setIsSaving(true)
     try {
       await onSave(nextFileName)
-      onCancel()
     } catch {
       // 失敗の通知は onSave 側が行う。編集を開いたまま下書きを残す
       savingRef.current = false
       setIsSaving(false)
+      return
     }
+    // onCancel（編集を閉じる処理）の例外を保存失敗と取り違えないよう、try の外で呼ぶ
+    onCancel()
   }
 
   React.useEffect(() => {

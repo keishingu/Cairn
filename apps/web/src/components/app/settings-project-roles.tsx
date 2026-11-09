@@ -3,6 +3,7 @@
 import React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ProjectRoleDto } from '@/app/api/projects/roles/route'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectRoles } from '@/hooks/use-project-roles'
@@ -66,6 +67,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const [name, setName] = React.useState(role.name)
   const [color, setColor] = React.useState(role.color)
+  useUnsavedChanges(editing && (name.trim() !== role.name || color !== role.color))
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['project-roles'] })
 
   const save = useMutation({
@@ -201,6 +203,7 @@ export const SettingsProjectRoles = () => {
   const [adding, setAdding] = React.useState(false)
   const [name, setName] = React.useState('')
   const [color, setColor] = React.useState('#3B82F6')
+  useUnsavedChanges(adding && name.trim() !== '')
   const add = useMutation({
     mutationFn: async () => {
       const res = await fetchWithAuth('/api/projects/roles', {
