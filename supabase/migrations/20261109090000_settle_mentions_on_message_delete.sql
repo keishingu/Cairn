@@ -105,6 +105,14 @@ BEGIN
   WHERE n.type IN ('mention', 'dm')
     AND m.deleted_at IS NOT NULL;
 
+  -- 適用中にも通知ジョブが同じ行の未読数を足しうるため、トリガーと同じ順で先にロックし、
+  -- 数え直しはロック取得後の文の新しいスナップショットで行う。
+  PERFORM 1
+  FROM channel_read_states crs
+  JOIN settled_pairs s ON s.user_id = crs.user_id AND s.channel_id = crs.channel_id::text
+  ORDER BY crs.user_id, crs.channel_id
+  FOR UPDATE OF crs;
+
   UPDATE notifications n
   SET read_at = now()
   FROM messages m
