@@ -43,7 +43,7 @@
 
 ### 使うライブラリと仕組み（調査済み）
 
-- `expo-widgets@~55.0.20`（依存として `@expo/ui@~55.0.17` が入る）。`pnpm --filter @cairn/mobile add expo-widgets` 相当で追加。`expo-module.config.json` は `platforms: ["apple"]` で **iOS のみ**。
+- `expo-widgets@~55.0.20` と `@expo/ui@~55.0.17` の両方を `apps/mobile/package.json` の直接依存に追加する。`@expo/ui` は `expo-widgets` の依存でもあるが、このリポジトリは `.npmrc` で `shamefully-hoist=false` のため、ウィジェットの TSX が `@expo/ui/swift-ui` を直接 import する（型・JSX の解決）には直接依存でないと解決できない。`expo-widgets` の `expo-module.config.json` は `platforms: ["apple"]` で **iOS のみ**。
 - app config の plugin:
 
   ```ts
@@ -95,24 +95,27 @@ Web のプロジェクト一覧カレンダー（`apps/web/src/components/app/pa
 ### 更新タイミング（本体 JS）
 
 - `apps/mobile/lib/home-widget.ts`（純粋関数）: 上記3 API の結果と「今日」の日付文字列・`t`・URL ビルダーを受けて `TodayWidgetProps` を返す `buildTodayWidgetProps(...)`。日付比較は `YYYY-MM-DD` の文字列比較で行い、`today` は端末ローカルで作る。
-- `apps/mobile/hooks/use-home-widget.ts`: ログイン中かつ iOS のとき、React Query で3 API を取得し（既存の `queryClient`、query key にユーザー ID は含めない）、取得できたら `updateTimeline([{ date: now, props }, { date: 翌日0:00, props: 日付を進めた props }])` を書く。翌日分の props は同じデータで `today` を進めたもの（期限切れ判定が翌日に正しく変わる）。
-- 呼ぶ場所: `(app)` レイアウトのマウント時、前面復帰時（`AppState` active）、該当クエリの invalidate 後。Realtime の購読は増やさない（常時購読は `user:{me}` と表示中チャットだけ）。
-- **取得失敗時は古い表示を残す**（0件に置き換えない。アイコンバッジと同じ方針）。
-- サインアウト・別ユーザーへの入れ替え（`shouldClearAccountCache` と同じ境界）で「ログインしてください」の props に置き換える。
+- `apps/mobile/hooks/use-home-widget.ts`: ログイン中かつ iOS のとき、React Query で3 API を取得し（既存の `queryClient`、query key にユーザー ID は含めない）、取得できたら `updateTimeline(entries)` を書く。
+  - **タイムラインは今日から7日分**を、同じデータで `today` を1日ずつ進めた props で生成する（その日のプロジェクト・マイルストーン、その日以前が期日の未完了タスク。期限切れ判定も日ごとに変わる）。各項目の `date` はローカルの 0:00。
+  - **8日目の項目は `stale: true` の props**にし、レイアウトは予定を描かず「アプリを開いて更新してください」だけを出す。expo-widgets の provider（`TimelineProvider.swift`）は保存済みの項目を再読込するだけで新しい日付の props を作らないため、数日アプリを開かないと最後の項目が「今日の予定」として残り続ける。古い予定を今日のものとして見せないための終端。
+- 呼ぶ場所: 前面復帰時（`AppState` active）、該当クエリ（projects / milestones / tasks）の invalidate 後、ワークスペース切り替え後。Realtime の購読は増やさない（常時購読は `user:{me}` と表示中チャットだけ）。
+- **初期化はログイン前から行う**: `createWidget()` はレイアウトを App Group に保存する副作用を持ち、保存されるまでウィジェットは空（`EmptyView`）になる。そのため `createWidget()` と本フックは認証済みの `(app)` レイアウトではなく、`apps/mobile/app/_layout.tsx`（`AuthGuard` と同じ階層。`useQuickActionsRegistration` が置かれている場所）で動かし、未ログインの初回起動でも「ログインしてください」の props を書く。
+- **取得失敗時に古い表示を残すのは、同じユーザー・同じワークスペースの再取得に限る**（0件に置き換えない。アイコンバッジと同じ方針）。props に `workspaceId` を持たせ、`activateWorkspace()` によるワークスペース切り替え（`resetQueries` が走る）では前のワークスペースの予定を即座に消し、新しい取得が終わるまでは「更新中」、失敗したら「最新の情報を取得できませんでした」の props にする。別のワークスペースの行をタップして一致しない画面が開く状態を作らない。
+- **「ログインしてください」の props に置き換える条件**: サインアウト・別ユーザーへの入れ替え（`shouldClearAccountCache` と同じ境界）に加え、起動時にセッションが無いと確定したとき（`AuthGuard` が使う `isSessionConfirmedAbsent` と同じ判定。アプリ停止中にセッションが失効すると `SIGNED_OUT` を受けずに未ログインになるため）。どの場合も前回の予定を残さない。ネットワーク失敗で確定できないときは置き換えない。
 - `useHoldOtaReload` の対象ではない（入力状態を持たない）。
 
 ### ファイル配置の目安
 
 - `apps/mobile/widgets/today-widget.tsx`: `'widget'` ディレクティブ付きのレイアウト関数と `createWidget('TodayWidget', layout)`。props の型もここ。
-- `apps/mobile/lib/home-widget.ts` + `home-widget.test.ts`（日本語の `describe` / `test`）: 今日のプロジェクト・マイルストーン・タスクの抽出、並び、サイズ別の件数、空・未ログイン props、URL 組み立て。
+- `apps/mobile/lib/home-widget.ts` + `home-widget.test.ts`（日本語の `describe` / `test`）: 今日のプロジェクト・マイルストーン・タスクの抽出、並び、サイズ別の件数、7日分 + `stale` 終端のタイムライン生成、空・未ログイン・更新中・取得失敗・ワークスペース切り替えの props、URL 組み立て。
 - `apps/mobile/lib/home-widget-native.ts`: iOS だけ `expo-widgets` を遅延 require するラッパー。
-- `apps/mobile/hooks/use-home-widget.ts`。
+- `apps/mobile/hooks/use-home-widget.ts`（`app/_layout.tsx` から呼ぶ）。
 
 ### 設定変更
 
 - `apps/mobile/app.json`: `runtimeVersion` を `1.11.0` → `1.12.0`。`version` はストア配信のフローに合わせて更新（1.2.0 → 1.3.0 を提案、判断はユーザー）。
 - `apps/mobile/app.config.ts`: `expo-widgets` plugin を追加（上記）。
-- `apps/mobile/package.json`: `expo-widgets`。
+- `apps/mobile/package.json`: `expo-widgets` と `@expo/ui`（上記の理由で両方を直接依存に）。
 - `eas.json` の変更は不要。**初回の `eas build --platform ios` で extension の bundle ID（例: `com.oss-cairn.ExpoWidgetsTarget`）の証明書・プロビジョニングが対話的に作られる**可能性があるので、PR 本文にその旨を書く。
 - `npx expo prebuild --platform ios --clean` が通ること（生成物はコミットしない）と `pnpm --filter @cairn/mobile typecheck` / `test` を確認。iOS ビルド自体は CI・ローカルでは回せないので、PR に「EAS Build での確認が必要」と明記。
 
