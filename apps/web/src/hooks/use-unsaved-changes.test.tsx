@@ -62,4 +62,52 @@ describe('未保存の変更のガード（useUnsavedChanges）', () => {
     a.unmount()
     expect(hasUnsavedChanges()).toBe(true)
   })
+
+  describe('内部リンクのクリック', () => {
+    const clickLink = (attrs: Record<string, string>, init: MouseEventInit = {}) => {
+      const a = document.createElement('a')
+      for (const [k, v] of Object.entries(attrs)) a.setAttribute(k, v)
+      a.textContent = 'リンク'
+      document.body.appendChild(a)
+      // jsdom は遷移しないが、既定動作が止められたかを見るため一度だけ dispatch する
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init })
+      a.dispatchEvent(event)
+      a.remove()
+      return event
+    }
+
+    it('dirty のとき内部リンクは確認し、拒否すれば遷移を止める', () => {
+      render(<Probe dirty />)
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      const event = clickLink({ href: '/tasks' })
+      expect(confirm).toHaveBeenCalledTimes(1)
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('承諾すれば遷移を止めない', () => {
+      render(<Probe dirty />)
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      expect(clickLink({ href: '/tasks' }).defaultPrevented).toBe(false)
+    })
+
+    it('外部リンク・別タブ・ダウンロード・ハッシュのみ・修飾キー付きは確認しない', () => {
+      render(<Probe dirty />)
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      clickLink({ href: 'https://example.com/x' })
+      clickLink({ href: '/tasks', target: '_blank' })
+      clickLink({ href: '/file.pdf', download: '' })
+      clickLink({ href: '#section' })
+      clickLink({ href: '/tasks' }, { ctrlKey: true })
+      clickLink({ href: '/tasks', 'data-skip-unsaved-guard': '' })
+      expect(confirm).not.toHaveBeenCalled()
+    })
+
+    it('dirty でなければ確認せず、リスナーも外れている', () => {
+      const { rerender } = render(<Probe dirty />)
+      rerender(<Probe dirty={false} />)
+      const confirm = vi.spyOn(window, 'confirm')
+      clickLink({ href: '/tasks' })
+      expect(confirm).not.toHaveBeenCalled()
+    })
+  })
 })

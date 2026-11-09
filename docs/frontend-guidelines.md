@@ -111,7 +111,7 @@ const { data } = useQuery({
   4. blur（フォーカス移動）・編集欄の外の押下では保存も破棄もしない。下書きを残したまま編集を続けられる。ボタンを持つ編集フォームは外側クリックで確定しない
   5. 保存ボタンは「変更なし」「必須項目が空など不正」「保存中」のとき無効にする
   6. 成功したら編集を閉じ、失敗したら閉じずに下書きを残して `InlineError` などでエラーを出す。`onSave` は Promise を返し（`mutateAsync`）、編集欄が成否を判断できるようにする
-  7. 未保存の下書きがある間は `hooks/use-unsaved-changes.ts` の `useUnsavedChanges(dirty)` で登録する（`beforeunload` 警告と、画面遷移・パネルを閉じる前の `confirmDiscardUnsavedChanges(message)` 確認に使われる）。設定のテキスト欄にも同様に登録する
+  7. 未保存の下書きがある間は `hooks/use-unsaved-changes.ts` の `useUnsavedChanges(dirty)` で登録する（`beforeunload` 警告と、画面遷移・パネルを閉じる前の `confirmDiscardUnsavedChanges(message)` 確認に使われる）。クライアント遷移では `beforeunload` が働かないため、シェルのナビゲーション（`navigate`・モバイルのボトムナビ・ワークスペース作成など）と詳細パネルの切替（`useDetailPanel`）は `confirmDiscardUnsavedChanges` を通し、同一オリジンの内部リンクは dirty の間 `useUnsavedChanges` が文書全体の click ガードで確認する（自前で確認済みのリンクには `data-skip-unsaved-guard` を付けて二重確認を避ける）。設定のテキスト欄にも同様に登録する
   - 日付レンジのように入力欄が複数ある場合も同じ。「完了」/ `Enter` で確定、「キャンセル」/ `Esc` で取り消し。フォーカス移動や外側の押下では確定しない
   - ポップオーバー内の1行入力（サイドバーのステータスメッセージ）は `Enter` か小さな「保存」ボタンで保存し、メニューを閉じると下書きは破棄される
 - **フォーム（モーダル・設定画面など、複数項目をまとめて編集する文脈）は明示的な保存ボタンで確定する**

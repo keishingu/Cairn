@@ -103,11 +103,13 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
+    // 未保存の下書きがあるときは、破棄してよいか確認してから移る（クライアント遷移では beforeunload が働かない）
+    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (p === 'calendar') setProjectsView('calendar')
     else if (p === 'kanban') setProjectsView('kanban')
     else if (p === 'projects') setProjectsView('list')
     router.push(pagePath(p))
-  }, [router, setProjectsView])
+  }, [router, setProjectsView, t])
 
   // コールドスタート対策 A-1: サイドバー hover 時に遷移先ルートを先読みし、
   // RSC ペイロードとサーバーレス関数を温めてクリック時の初回遷移を速くする。
@@ -147,6 +149,8 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
     'global.help': () => setHelpOpen(true),
     // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
     'global.crossSearch': () => {
+      // 他ページへ移るときだけ確認する（チャット内ならパネルを開くだけ）
+      if (page !== 'chats' && !confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
       const params = new URLSearchParams(page === 'chats' ? searchParams.toString() : '')
       params.set('panel', 'global-search')
       router.push(`${page === 'chats' ? pathname : '/chats'}?${params.toString()}`)

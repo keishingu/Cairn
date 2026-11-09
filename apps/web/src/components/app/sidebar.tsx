@@ -6,6 +6,7 @@ import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { InlineError } from './inline-error'
+import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
@@ -300,7 +301,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                 ))}
                 <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
                 <button
-                  onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
+                  onClick={() => { setSwitcherOpen(false); if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return; router.push('/workspace/new') }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     width: '100%', padding: '8px 10px', borderRadius: 7,
@@ -430,7 +431,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
               ))}
               <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
               <button
-                onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
+                onClick={() => { setSwitcherOpen(false); if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return; router.push('/workspace/new') }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   width: '100%', padding: '8px 10px', borderRadius: 7,

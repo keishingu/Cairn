@@ -245,6 +245,8 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
         <Link
           href={`/chats/${encodeURIComponent(message.channelId)}?m=${encodeURIComponent(message.id)}`}
           className="btn btn-ghost btn-sm"
+          // この onClick で確認済みなので、文書全体のリンクガードは重ねない
+          data-skip-unsaved-guard
           onClick={onNavigate}
         >
           <Icon name="chat" size={13} />
