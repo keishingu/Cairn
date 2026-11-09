@@ -1830,12 +1830,13 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
 
     setInitialPositioned(true)
     const latestMessageId = latestMessages[latestMessages.length - 1]?.id
-    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
+    if (latestMessageId?.startsWith('optimistic-')) return
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
       pendingInitialReadRef.current = true
       return
     }
-    lastReadMessageIdRef.current = latestMessageId
+    // 空のチャンネルでも既読にする。削除で空になったチャンネルに残った未読メンション数を、開いた時点で数え直すため。
+    lastReadMessageIdRef.current = latestMessageId ?? null
     markChannelReadFn(channelId)
   }, [
     channelId,
