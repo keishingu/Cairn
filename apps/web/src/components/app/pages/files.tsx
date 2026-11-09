@@ -1,5 +1,6 @@
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
@@ -102,6 +103,7 @@ const FileRow = ({
 }) => {
   const t = useT()
   const router = useRouter()
+  const confirmLeave = useConfirmLeave()
   const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
@@ -220,7 +222,7 @@ const FileRow = ({
         <RowActionMenu
           actions={[
             ...(chatHref
-              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => router.push(chatHref) }]
+              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => { if (confirmLeave()) router.push(chatHref) } }]
               : []),
             { icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) },
             ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'

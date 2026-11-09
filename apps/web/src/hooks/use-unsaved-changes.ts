@@ -80,3 +80,15 @@ export function useUnsavedChanges(dirty: boolean): void {
     }
   }, [dirty, message])
 }
+
+/**
+ * ユーザー操作による画面遷移の直前に呼ぶ確認。未保存の下書きがなければ true、
+ * あれば「破棄して移動しますか？」を出し、承諾されたときだけ true を返す。
+ */
+export function useConfirmLeave(): () => boolean {
+  const t = useT()
+  return React.useCallback(
+    () => confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?')),
+    [t],
+  )
+}

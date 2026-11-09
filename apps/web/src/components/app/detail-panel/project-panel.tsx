@@ -1,5 +1,6 @@
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, AvatarStack, StatusChip, MountainPhoto, ArchivedBadge } from '../primitives'
@@ -151,6 +152,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
   const moreRef = React.useRef<HTMLDivElement>(null)
 
   const router = useRouter()
+  const confirmLeave = useConfirmLeave()
   const { data: pinnedProjects = [] } = usePinnedProjects()
   const pinProject = usePinProject()
   const unpinProject = useUnpinProject()
@@ -324,7 +326,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             className="btn btn-ghost"
             style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}
             disabled={!projectChannelId}
-            onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
+            onClick={() => { if (projectChannelId && confirmLeave()) router.push(`/chats/${projectChannelId}`) }}
           >
             <Icon name="chat" size={11}/> {t('Open chat')}
           </button>

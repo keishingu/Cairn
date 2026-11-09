@@ -1,5 +1,6 @@
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
@@ -336,6 +337,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
   const renameFile = useRenameFile()
   const [expanded, setExpanded] = React.useState(false)
   const [renamingFileId, setRenamingFileId] = React.useState<string | null>(null)
+  const confirmLeave = useConfirmLeave()
   const [textPreviewFile, setTextPreviewFile] = React.useState<ChannelFileDto | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
@@ -430,7 +432,11 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
                       { icon: 'eye', label: t('Open file'), onSelect: () => openFile(f) },
-                      { icon: 'edit', label: t('Rename'), onSelect: () => setRenamingFileId(f.id) },
+                      { icon: 'edit', label: t('Rename'), onSelect: () => {
+                        // 別のファイルの名前変更に未保存の下書きがあるときは、破棄してよいか確認してから切り替える
+                        if (renamingFileId !== null && renamingFileId !== f.id && !confirmLeave()) return
+                        setRenamingFileId(f.id)
+                      } },
                     ]}
                   /></div>
                 )}

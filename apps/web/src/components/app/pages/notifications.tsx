@@ -1,5 +1,6 @@
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, UnreadBadge, Switch } from '../primitives'
@@ -80,6 +81,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
   const t = useT()
   const [filter, setFilter] = React.useState('all')
   const router = useRouter()
+  const confirmLeave = useConfirmLeave()
   const { data: notifications = [], isLoading } = useNotifications(filter)
   const markRead = useMarkNotificationsRead()
   const push = usePushNotifications()
@@ -92,6 +94,8 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
   const handleMarkAllRead = () => markRead.mutate(undefined)
 
   const handleNotificationClick = (n: NotificationDto) => {
+    // 遷移先があるときだけ確認する（拒否されたら既読にもしない）
+    if (notificationHref(n) && !confirmLeave()) return
     if (n.readAt === null) markRead.mutate([n.id])
     const href = notificationHref(n)
     if (href) {

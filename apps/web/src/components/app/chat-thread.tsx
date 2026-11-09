@@ -3,6 +3,7 @@
 
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, isVideoAttachmentMime, matchMentionQuery, sortMentionCandidatesByProject, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
 import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
@@ -288,6 +289,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 }) {
   const t = useT()
   const router = useRouter()
+  const confirmLeave = useConfirmLeave()
   const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
   const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
@@ -679,7 +681,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   label: task.title,
                   verbatim: true,
                   hint: statusLabel(task.status),
-                  onSelect: () => router.push(`/tasks?taskId=${encodeURIComponent(task.id)}`),
+                  onSelect: () => { if (confirmLeave()) router.push(`/tasks?taskId=${encodeURIComponent(task.id)}`) },
                 }))}
               />
             </div>

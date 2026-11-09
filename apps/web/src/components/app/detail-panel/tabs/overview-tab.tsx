@@ -1,5 +1,6 @@
 'use client'
 
+import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, StatusChip } from '../../primitives'
@@ -651,13 +652,15 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   const t = useT()
   const router = useRouter()
   const overdue = isPastDue(milestone)
+  const confirmLeave = useConfirmLeave()
+  const goToThread = () => { if (confirmLeave()) router.push(`/chats/${milestone.channelId}`) }
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => router.push(`/chats/${milestone.channelId}`)}
-      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) router.push(`/chats/${milestone.channelId}`) }}
+      onClick={goToThread}
+      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) goToThread() }}
       style={{
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
@@ -705,7 +708,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
           </span>
           <button
             type="button"
-            onClick={() => router.push(`/chats/${milestone.channelId}`)}
+            onClick={goToThread}
             className="btn btn-ghost"
             style={{ height: 24, fontSize: 11.5, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
