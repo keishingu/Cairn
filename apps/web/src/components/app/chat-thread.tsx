@@ -1862,6 +1862,18 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     return () => document.removeEventListener('visibilitychange', markPendingInitialRead)
   }, [channelId, latestMessageId, markChannelReadFn])
 
+  // 空のチャンネルでも、最新の取得が終わって空と確定したら一度だけ既読にする。削除で空になったチャンネルに
+  // 残った未読メンション数を数え直すため。空のキャッシュを取り直している間は、未表示の新着まで既読にしないよう待つ。
+  const latestMessagesSettled = latestMessagesQuery.isSuccess && !latestMessagesQuery.isFetching
+  React.useEffect(() => {
+    if (!channelId || !initialPositioned || isHistoryView || latestMessageId || !latestMessagesSettled) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    const emptyReadKey = `empty:${channelId}`
+    if (lastReadMessageIdRef.current === emptyReadKey) return
+    lastReadMessageIdRef.current = emptyReadKey
+    markChannelReadFn(channelId)
+  }, [channelId, initialPositioned, isHistoryView, latestMessageId, latestMessagesSettled, markChannelReadFn])
+
   // 最新表示中に新着が届いたら自動で既読化する。履歴表示中・タブ非表示時は既読にしない。
   React.useEffect(() => {
     if (!channelId || !initialPositioned) return
