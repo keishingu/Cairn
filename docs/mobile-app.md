@@ -96,6 +96,7 @@ Android の共有メニューから Cairn へ画像・書類・URL・テキス�
 ## チャットの入力欄とキーボード
 
 - **ネイティブチャットの入力欄は `react-native-keyboard-controller` の `KeyboardAvoidingView` で持ち上げる**。RN 標準の `KeyboardAvoidingView` は Android（API 30 以上）で `keyboardDidShow` をキーボードの表示・非表示の切り替え時にしか受け取れず、表示したまま高さが変わる（Flick のクリップボード・顔文字パネル、広告付きのパネル、絵文字パネルなど）と入力欄が隠れる
+- チャット画面から開く入力付きのモーダル（リアクション選択・スレッドへ移動）も同じ版を使う。プロバイダーが有効な間は Android のモーダルのウィンドウが `adjustNothing` になり、RN 標準版では高さ変化に追従できない
 - `KeyboardProvider` はルートで `enabled={false}` にし、チャット画面がフォーカスされている間だけ `setEnabled(true)` にする。有効にするとモーダルのウィンドウを `adjustNothing` に変えるなどウィンドウの扱いが変わるため、WebView の画面やほかの画面に影響を広げない
 
 ## ホーム画面のクイックアクション

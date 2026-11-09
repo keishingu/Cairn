@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import {
   WORKSPACE_CHANNEL_NAME_MAX,
   defaultThreadNameFromMessage,
@@ -99,6 +99,7 @@ export function MoveToThreadSheet({ message, threads, palette, pending, error, o
   return (
     <Modal transparent visible={message !== null} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={pending ? undefined : onClose} />
+      {/* チャット画面から開くので KeyboardProvider は有効。RN 標準版はキーボードの高さ変化に追従しないためライブラリ版を使う */}
       <KeyboardAvoidingView
         behavior="padding"
         pointerEvents="box-none"

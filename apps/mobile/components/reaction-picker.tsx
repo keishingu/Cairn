@@ -1,7 +1,6 @@
 import React from 'react'
 import {
   FlatList,
-  KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Pressable,
@@ -13,6 +12,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { emojiCategories, reactionEmojis } from '../lib/reaction-emoji-catalog'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -94,6 +94,7 @@ export function ReactionPicker({
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       {/* Android の Modal は別のウィンドウなので、ルートの GestureHandlerRootView が届かない */}
       <GestureHandlerRootView style={styles.root}>
+      {/* チャット画面から開くので KeyboardProvider は有効。RN 標準版はキーボードの高さ変化に追従しないためライブラリ版を使う */}
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior="padding"
