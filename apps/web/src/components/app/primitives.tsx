@@ -377,11 +377,13 @@ const visuallyHidden: React.CSSProperties = {
   overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
 }
 
-export const Modal = ({ onClose, label, role = 'dialog', children }: {
+export const Modal = ({ onClose, label, role = 'dialog', placement = 'center', children }: {
   onClose: () => void
   /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
   label: string
   role?: 'dialog' | 'alertdialog'
+  /** bottom はモバイルのボトムシート。画面下端に余白なしで寄せる */
+  placement?: 'center' | 'bottom'
   children: React.ReactNode
 }) => {
   // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
@@ -402,7 +404,12 @@ export const Modal = ({ onClose, label, role = 'dialog', children }: {
           e.preventDefault()
           if (opener && document.contains(opener)) opener.focus()
         }}
-        style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        style={{
+          outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex',
+          ...(placement === 'bottom'
+            ? { flexDirection: 'column', justifyContent: 'flex-end', padding: 0 }
+            : { alignItems: 'center', justifyContent: 'center', padding: 24 }),
+        }}
       >
         {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
         <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
@@ -478,6 +485,37 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
+}
+
+// モバイルのボトムシート（プロジェクト作成シートが基準）の入力欄。PC の fieldInputStyle より大きく、タップしやすくする
+export function sheetFieldInputStyle(invalid: boolean): React.CSSProperties {
+  return {
+    width: '100%', height: 44, padding: '0 12px',
+    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
+    borderRadius: 10, background: 'var(--card-2)', color: 'var(--text)',
+    fontSize: 15, fontFamily: 'inherit', outline: 'none',
+    boxSizing: 'border-box',
+  }
+}
+
+export const sheetFieldLabelStyle: React.CSSProperties = {
+  fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
+}
+
+/**
+ * フォーム部品をどの見た目で描くか。ボトムシートの中身（TaskFormFields など）は
+ * PC のモーダルと共有しているため、外枠が sheet を配って入力欄・ラベルをシートの寸法に揃える
+ */
+export const FormVariantContext = React.createContext<'dialog' | 'sheet'>('dialog')
+
+export function useFieldInputStyle(): (invalid: boolean) => React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet' ? sheetFieldInputStyle : fieldInputStyle
+}
+
+export function useFieldLabelStyle(): React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet'
+    ? sheetFieldLabelStyle
+    : { fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 }
 
 export function fieldTextareaStyle(invalid: boolean): React.CSSProperties {

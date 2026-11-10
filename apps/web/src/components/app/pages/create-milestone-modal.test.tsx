@@ -2,7 +2,8 @@ import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { EditMilestoneModal } from './create-milestone-modal'
+import { CreateMilestoneModal, EditMilestoneModal } from './create-milestone-modal'
+import { AppShellContext } from '../app-shell-context'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 
@@ -93,6 +94,66 @@ describe('EditMilestoneModal', () => {
           startTime: '09:00',
           endTime: '18:00',
         }),
+      }),
+    )
+  })
+})
+
+function renderCreate(options: { isMobile: boolean; onCreated?: () => void }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const ui = (
+    <QueryClientProvider client={queryClient}>
+      <CreateMilestoneModal
+        projectId="project-1"
+        projectTitle="プロジェクトA"
+        defaultMonth="2026-06-13"
+        onClose={vi.fn()}
+        onCreated={options.onCreated ?? vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+  return render(options.isMobile ? (
+    <AppShellContext.Provider value={{
+      openPanel: () => {}, openMember: () => {}, openNotif: () => {}, isWebView: false, isMobile: true,
+      projectsView: 'list', setProjectsView: () => {}, crossSearchNonce: 0, consumeCrossSearch: () => {},
+    }}>{ui}</AppShellContext.Provider>
+  ) : ui)
+}
+
+describe('CreateMilestoneModal', () => {
+  beforeEach(() => mockFetch.mockReset())
+
+  it('PC では終了日が開始日より前なら作成を止め、入力を残したままエラーを出す', () => {
+    renderCreate({ isMobile: false })
+
+    fireEvent.change(screen.getByLabelText(/マイルストーン名/), { target: { value: '下見' } })
+    fireEvent.change(screen.getByLabelText('開始日'), { target: { value: '2026-06-12' } })
+    fireEvent.change(screen.getByLabelText('終了日'), { target: { value: '2026-06-10' } })
+    fireEvent.click(screen.getByRole('button', { name: '作成する' }))
+
+    expect(screen.getByText('終了日は開始日以降にしてください')).toBeInTheDocument()
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('下見')
+  })
+
+  it('モバイルではボトムシートのカレンダーで日程を選び、プロジェクトの月から開く', async () => {
+    const onCreated = vi.fn()
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ ...milestone, title: '下見' }), { status: 201 }))
+    renderCreate({ isMobile: true, onCreated })
+
+    expect(screen.getByRole('grid', { name: '2026年6月' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/マイルストーン名/), { target: { value: '下見' } })
+    const day = (n: number) => screen.getAllByRole('gridcell').find(c => c.textContent === String(n))!
+    fireEvent.click(day(14))
+    fireEvent.click(day(15))
+    fireEvent.click(screen.getByRole('button', { name: '作成する' }))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/projects/project-1/milestones',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ title: '下見', startDate: '2026-06-14', endDate: '2026-06-15' }),
       }),
     )
   })

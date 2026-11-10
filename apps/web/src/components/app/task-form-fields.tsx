@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { fieldInputStyle } from './primitives'
+import { FormVariantContext, useFieldInputStyle, useFieldLabelStyle } from './primitives'
 import { TaskAssigneeField } from './task-assignee-field'
 import { useT } from '@/components/locale-provider'
 import type { TaskDto } from '@/app/api/tasks/route'
@@ -31,14 +31,6 @@ interface TaskFormFieldsProps {
   onStatusChange?: (value: TaskDto['status']) => void
 }
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'var(--text-2)',
-  display: 'block',
-  marginBottom: 6,
-}
-
 export const TaskFormFields = ({
   title,
   onTitleChange,
@@ -61,6 +53,10 @@ export const TaskFormFields = ({
 }: TaskFormFieldsProps) => {
   const t = useT()
   const id = React.useId()
+  const fieldInputStyle = useFieldInputStyle()
+  const labelStyle = useFieldLabelStyle()
+  // モバイルのシートでは自動でフォーカスしない（開くアニメーション中にキーボードが出ると、保存ボタンがキーボードの裏に隠れる）
+  const autoFocusTitle = React.useContext(FormVariantContext) !== 'sheet'
   return (
     <>
       {!hideTitle && (
@@ -77,7 +73,7 @@ export const TaskFormFields = ({
             placeholder={titlePlaceholder}
             required
             // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
+            autoFocus={autoFocusTitle}
             style={fieldInputStyle(false)}
           />
           {titleNote}
@@ -115,7 +111,7 @@ export const TaskFormFields = ({
       )}
 
       <div style={{ display: 'flex', gap: 12 }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <label htmlFor={`${id}-priority`} style={labelStyle}>{t('Priority')}</label>
           <select
             id={`${id}-priority`}
@@ -129,7 +125,7 @@ export const TaskFormFields = ({
             <option value="low">{t('Low')}</option>
           </select>
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <label htmlFor={`${id}-due`} style={labelStyle}>{t('Due date')}</label>
           <input
             id={`${id}-due`}

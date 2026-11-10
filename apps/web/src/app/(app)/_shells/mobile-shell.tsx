@@ -237,7 +237,7 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, isMobile: true, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       {/* .app の部品スタイル（.btn 等）は子孫セレクタで当たる。全画面パネルや .app-root への portal が
           外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
       <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', ...mobileNavSpaceStyle(shouldRenderMobileNav(hideNav)) }}>
