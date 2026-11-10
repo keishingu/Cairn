@@ -27,7 +27,7 @@ import {
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
 import { summarizeChatCacheUsage } from '@/lib/ai/cache-usage'
-import { recordChatUsageAfterResponse, type ChatUsageError, type ChatUsageStep } from '@/lib/ai/chat-usage'
+import { chatUsageCharge, recordChatUsageAfterResponse, type ChatUsageError, type ChatUsageStep } from '@/lib/ai/chat-usage'
 import { createProposalTools } from '@/lib/ai/proposal-tools'
 import {
   SkillRunError,
@@ -288,7 +288,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
 
-  // この依頼で消費するクレジット（モデルごとに違う）
+  // 送信前に押さえる見積もりのクレジット（モデルごとに違う）。回答の後に原価で精算する（chat-usage.ts）
   const requestCredits = chatRequestCredits(chatModel)
 
   const assistantMessageId = crypto.randomUUID()
@@ -306,6 +306,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   let usageFinishedAt: number | null = null
   // finishRun が skillRunId を null に戻すため、記録用に run の ID を別に持つ
   let usageSkillRunId: string | null = null
+  // 押さえたクレジットを返金せずに残した（回答を保存した）か。true のときだけ原価で精算する
+  let chargeKept = false
   const scheduleUsageRecord = () => {
     if (usageScheduled) return
     usageScheduled = true
@@ -317,6 +319,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       skillRunId: usageSkillRunId,
       model: chatModel,
       requestCredits: isBillingEnabled() ? requestCredits : null,
+      charged: chargeKept,
       status: usageError || streamErrored ? 'failed' : 'success',
       error: usageError ?? (streamErrored ? 'stream_failed' : null),
       durationMs: (usageFinishedAt ?? Date.now()) - requestStartedAt,
@@ -561,7 +564,8 @@ export async function POST(req: Request, { params }: RouteContext) {
                   return typeof id === 'string' ? [id] : []
                 }),
               },
-              creditsUsed: isBillingEnabled() ? requestCredits : null,
+              // 回答の後に原価で精算する額（ai_chat_usage.credits_charged と同じ計算）
+              creditsUsed: isBillingEnabled() ? chatUsageCharge(chatModel, steps).credits : null,
             })
             if (
               !lastUserContent ||
@@ -613,6 +617,7 @@ export async function POST(req: Request, { params }: RouteContext) {
                 })
               })
               activeCreditReservationPending = false
+              chargeKept = true
               messagesSaved = true
               // 初回メッセージでタイトルを設定
               await db
@@ -630,6 +635,7 @@ export async function POST(req: Request, { params }: RouteContext) {
               const code = (e as { code?: unknown; cause?: { code?: unknown } } | null)
               if (requestedMessageId && (code?.code === '23505' || code?.cause?.code === '23505')) {
                 activeCreditReservationPending = false
+                chargeKept = true
                 console.warn('[AI chat] duplicate client message id; keeping the charge:', requestedMessageId)
                 return
               }

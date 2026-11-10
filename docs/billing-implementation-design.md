@@ -96,9 +96,12 @@ stripe_events              Webhook 冪等性（Stripe event id）
 
 ### AI 消費（`/ai` と AI PMO で共通）
 
-- **`/ai`**: モデル呼び出し前に独立トランザクションで `ai_consumption` を記帳して予約し（`reserveCreditsForActiveBenefit`）、生成・ストリーム・応答保存の失敗時は `adjustment` で冪等に返金する（`refundActiveBenefitReservation`）。応答保存とデビットは同一トランザクションではない
+- **`/ai`**: モデル呼び出し前に独立トランザクションで、モデルごとの**見積もり**（`BILLING_CONFIG.aiChatRequestCreditsByModel`。GPT-5・Claude Sonnet 5.5 が 30、Claude Opus 5.5 が 45）を `ai_consumption` で記帳して予約し（`reserveCreditsForActiveBenefit`）、残高が見積もり未満なら送らせない。生成・ストリーム・応答保存の失敗時は `adjustment` で冪等に返金する（`refundActiveBenefitReservation`）。応答保存とデビットは同一トランザクションではない
+- **`/ai` の原価精算**: 回答を保存した依頼は、応答の後（`after()`）に全ステップのトークンから原価（USD）を出し（`aiChatCostUsd`。単価は `aiChatModelPricingUsdPerMTok`）、`ceil(原価 × aiCostUsdToJpy(150) × aiCostCreditMultiplier(1.5))` クレジットを消費とする（`aiChatCreditsForCost`）。見積もりとの差を `ai_consumption` / `ref_id = settle:<assistant_message_id>` で冪等に記帳する（安ければ戻し、高ければ追加で引く）。追加で引いた結果、残高がマイナスになることがあり、その間は次の依頼を送れない。`ai_chat_usage` の行（`cost_usd` / `credits_charged`）と精算の記帳は同じトランザクション。記録に失敗した依頼は見積もりのまま残る（ログに出す）
+- 1クレジット ≒ ¥1 の売上（Solo ¥300 / 300 クレジット）に対して原価の1.5倍を消費する。2026-11 の本番の実測では1依頼の原価が平均 約¥30（Sonnet・Opus とも）で、固定の 10 / 20 クレジットでは原価を回収できなかったため、原価に応じた精算へ切り替えた。単価・為替が変わったら `BILLING_CONFIG` を更新する
+- **請求画面の「今月のAIの利用」**（`GET /api/billing/ai-usage`、PC の `/settings/billing`）: 本人には今月の自分の依頼ごとの消費（日時・モデル・石、新しい100件）と合計を見せる。owner / admin にはそれに加えてワークスペース全体のモデル別の回数・石の合計を見せる。誰がいつ使ったかは本人以外に出さない（`/ai` の会話は本人用のため）。精算を始める前の行は、保存した依頼の見積もり（`request_credits`）を消費として数える
 - **AI PMO**: Phase 1/2 ともナッジ配信時に `consumeCreditsForPassiveBenefit` で記帳し、残高がなければ配信しない。ルール巡回・Jev 一次判定・RAG の embedding 検索は消費しない
-- 単位は「1依頼 / 1配信 = N クレジット」。`/ai` の1依頼はモデルごとに決める（`BILLING_CONFIG.aiChatRequestCreditsByModel`。初期仮値は GPT-5・Claude Sonnet 5.5 が 10、原価が約2倍の Claude Opus 5.5 が 20）。モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行い、スキルのテスト実行は既定モデルの値を使う。AI PMO の1配信は 10（初期仮値）
+- モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行う。スキルのテスト実行は原価で精算せず、既定モデルの見積もりを消費する。AI PMO の1配信は 10（初期仮値）
 
 ### アップロード時の判定
 
