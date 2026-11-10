@@ -310,4 +310,20 @@ describe('クリックして編集する欄用フック（useDraftEditor）', ()
     expect(result.current.draft).toBe('書きかけ')
     expect(result.current.restored).toBeNull()
   })
+
+  it('enabled が true から false を経て true に戻ったら、無効の間に変わった下書きを読み直して復元する', () => {
+    writeDraft(scope, 'k', { value: '古い下書き', base: '元', updatedAt: Date.now() })
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useDraftField({ key: 'k', savedValue: '元', enabled }),
+      { initialProps: { enabled: true } },
+    )
+    expect(result.current.value).toBe('古い下書き')
+
+    rerender({ enabled: false })
+    writeDraft(scope, 'k', { value: '新しい下書き', base: '元', updatedAt: Date.now() })
+    rerender({ enabled: true })
+
+    expect(result.current.value).toBe('新しい下書き')
+    expect(result.current.restored).toEqual({ baseChanged: false })
+  })
 })

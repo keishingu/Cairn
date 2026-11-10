@@ -81,6 +81,8 @@ export function useTextDraft({ key, savedValue }: { key: string | null; savedVal
     pendingRef.current = null
     if (key === null || !settled) {
       ctxRef.current = null
+      // 読み取り済みの結果を捨てる（再び有効になったとき、古い下書きで復元を判定しないため）
+      setState(null)
       return
     }
     if (!userId || !workspaceId) {
