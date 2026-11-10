@@ -6,7 +6,7 @@
 // 誰がいつ使ったかは本人以外に出さない（/ai の会話は本人用のため）。
 
 import { BILLING_CONFIG } from '@cairn/core/billing'
-import type { WorkspaceRole } from '@/lib/permissions'
+import { isWorkspaceAdmin, type WorkspaceRole } from '@/lib/permissions'
 
 /** 本人の明細に返す件数の上限（今月の新しい順） */
 export const AI_USAGE_ITEMS_LIMIT = 100
@@ -31,8 +31,9 @@ export interface AiUsageDto {
   workspace: (AiUsageTotalsDto & { byModel: Array<AiUsageTotalsDto & { model: string }> }) | null
 }
 
+/** ワークスペース全体の合計を見られるのは owner / admin（権限の判定は lib/permissions に集約する） */
 export function canSeeWorkspaceAiUsage(role: WorkspaceRole): boolean {
-  return role === 'owner' || role === 'admin'
+  return isWorkspaceAdmin(role)
 }
 
 /** 請求のタイムゾーン（JST）での今月1日 0:00。JST は夏時間を持たないため固定オフセットで求める */
