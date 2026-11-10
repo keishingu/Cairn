@@ -53,7 +53,7 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   const changeDraft = editor.setDraft
 
   const cancel = () => {
-    editor.finish()
+    editor.discard()
     setEditing(false)
     setError(null)
   }
@@ -78,11 +78,12 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
 
   const save = async () => {
     if (!canSave) return
+    const submitted = draft
     setSaving(true)
     setError(null)
     try {
       await onSave(next)
-      editor.finish()
+      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not update the task'))
@@ -164,7 +165,7 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
   const changeDraft = editor.setDraft
 
   const cancel = () => {
-    editor.finish()
+    editor.discard()
     setEditing(false)
   }
 
@@ -188,8 +189,9 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
       cancel()
       return
     }
+    const submitted = draft
     onSave(next, () => {
-      editor.finish()
+      editor.finish(submitted)
       setEditing(false)
     })
   }

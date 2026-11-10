@@ -266,8 +266,11 @@ export interface DraftEditor {
   hasDraft: boolean
   /** 下書きを捨てて保存済みの値へ戻す（編集は続ける） */
   discard: () => void
-  /** 保存成功・キャンセルで編集を終えるときに呼ぶ。下書きとお知らせを消し、値を保存済みへ戻す。 */
-  finish: () => void
+  /**
+   * 保存成功で編集を終えるときに、送信した値（送信時点の draft）を渡す。いま入力中の値がそれと同じなら
+   * 下書きとお知らせを消して保存済みへ戻し、送信後に打ち足されていたらその新しい入力を残して下書きに保存する。
+   */
+  finish: (submitted: string) => void
 }
 
 /**
@@ -363,7 +366,15 @@ export function useDraftEditor({
     setDraftState(savedRef.current)
   }, [clear])
 
-  const finish = discard
+  const finish = React.useCallback((submitted: string) => {
+    if (valueRef.current === submitted) {
+      discard()
+      return
+    }
+    // 送信後に入力が増えた: 新しい入力を保ち、下書きとして残す
+    setRestored(null)
+    push(valueRef.current)
+  }, [discard, push])
 
   return { draft, setDraft, restored, hasDraft: store.stored !== null, discard, finish }
 }

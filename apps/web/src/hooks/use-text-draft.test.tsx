@@ -327,3 +327,28 @@ describe('クリックして編集する欄用フック（useDraftEditor）', ()
     expect(result.current.restored).toEqual({ baseChanged: false })
   })
 })
+
+describe('保存成功時の finish', () => {
+  it('送信時点の値のままなら下書きを消し、保存済みの値へ戻す', () => {
+    const { result } = renderHook(() => useDraftEditor({ key: 'k', savedValue: '元', active: true }))
+    act(() => result.current.setDraft('送信した値'))
+    act(() => { vi.advanceTimersByTime(500) })
+
+    act(() => result.current.finish('送信した値'))
+
+    expect(read('k')).toBeNull()
+    expect(result.current.draft).toBe('元')
+  })
+
+  it('送信後に打ち足されていたら、新しい入力を消さずに下書きとして残す', () => {
+    const { result } = renderHook(() => useDraftEditor({ key: 'k', savedValue: '元', active: true }))
+    act(() => result.current.setDraft('送信した値'))
+    act(() => result.current.setDraft('送信した値に打ち足し'))
+
+    act(() => result.current.finish('送信した値'))
+    act(() => { vi.advanceTimersByTime(500) })
+
+    expect(result.current.draft).toBe('送信した値に打ち足し')
+    expect(read('k')).toMatchObject({ value: '送信した値に打ち足し' })
+  })
+})

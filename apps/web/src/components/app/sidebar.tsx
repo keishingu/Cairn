@@ -608,9 +608,10 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   async function commitStatusMessage() {
     if (!statusMessageChanged || statusMessageMutation.isPending) return
     setStatusMessageError(null)
+    const submitted = statusMessageDraft
     try {
       await statusMessageMutation.mutateAsync(statusMessageTrimmed || null)
-      statusEditor.finish()
+      statusEditor.finish(submitted)
     } catch (e) {
       setStatusMessageError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
     }
@@ -674,6 +675,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '0 0 6px' }}>
         <input
           value={statusMessageDraft}
+          disabled={statusMessageMutation.isPending}
           aria-label={t('Status message')}
           onChange={e => changeStatusMessage(e.target.value)}
           onKeyDown={e => {

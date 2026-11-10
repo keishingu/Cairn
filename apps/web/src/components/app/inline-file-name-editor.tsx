@@ -47,7 +47,7 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
   const canSave = !isSaving && nextFileName !== '' && nextFileName !== fileName
 
   const cancel = () => {
-    editor.finish()
+    editor.discard()
     onCancel()
   }
 
@@ -58,6 +58,7 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
   // 明示保存: Enter / 保存ボタンで保存、Esc / キャンセルボタンで破棄。blur では何もしない
   const commit = async () => {
     if (!canSave || savingRef.current) return
+    const submitted = draft
     savingRef.current = true
     setIsSaving(true)
     try {
@@ -69,7 +70,7 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
       return
     }
     // onCancel（編集を閉じる処理）の例外を保存失敗と取り違えないよう、try の外で呼ぶ
-    editor.finish()
+    editor.finish(submitted)
     onCancel()
   }
 

@@ -82,7 +82,7 @@ export const InlineText = ({
   }
 
   const cancel = () => {
-    editor.finish()
+    editor.discard()
     setEditing(false)
     setError(null)
   }
@@ -103,11 +103,12 @@ export const InlineText = ({
 
   const save = async () => {
     if (!canSave) return
+    const submitted = draft
     setSaving(true)
     setError(null)
     try {
       await onSave(trimmed)
-      editor.finish()
+      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -267,15 +268,16 @@ export const InlineDatePair = ({
     // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
     if (saving || reversed) return
     if (unchanged) {
-      editor.finish()
+      editor.discard()
       setEditing(false)
       return
     }
+    const submitted = editor.draft
     setSaving(true)
     setError(null)
     try {
       await onSave(start || null, end || null, startClock || null, endClock || null)
-      editor.finish()
+      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -285,7 +287,7 @@ export const InlineDatePair = ({
   }
 
   const cancel = () => {
-    editor.finish()
+    editor.discard()
     setEditing(false)
     setError(null)
   }
