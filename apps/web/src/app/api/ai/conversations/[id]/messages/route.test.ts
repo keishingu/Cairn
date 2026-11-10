@@ -56,7 +56,7 @@ vi.mock('@/lib/ai/workspace-research', () => ({
 vi.mock('@/lib/ai/research-tools', () => ({ createResearchTools: () => ({}) }))
 // /ai の使用量の記録（応答後に非同期で書く）。評価する関数を受け取り、テストが応答の完了後に呼ぶ
 const { mockRecordUsage } = vi.hoisted(() => ({ mockRecordUsage: vi.fn() }))
-const { mockDbUpdate } = vi.hoisted(() => ({ mockDbUpdate: vi.fn() }))
+const { mockDbUpdate, mockDbTransaction } = vi.hoisted(() => ({ mockDbUpdate: vi.fn(), mockDbTransaction: vi.fn() }))
 vi.mock('@/lib/ai/chat-usage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/ai/chat-usage')>()),
   recordChatUsageAfterResponse: mockRecordUsage,
@@ -77,7 +77,7 @@ vi.mock('@cairn/db', () => {
   return {
     db: {
       select: () => chain,
-      transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ insert: () => ({ values: () => Promise.resolve() }) }),
+      transaction: (fn: (tx: unknown) => Promise<void>) => mockDbTransaction(fn),
       update: (...args: unknown[]) => mockDbUpdate(...args),
     },
     aiAttachments: { id: 'id', conversationId: 'conversationId', messageId: 'messageId' },
@@ -119,6 +119,9 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
   beforeEach(() => {
     process.env['OPENAI_API_KEY'] = 'test-key'
     mockDbUpdate.mockImplementation(() => ({ set: () => ({ where: () => Promise.resolve() }) }))
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) =>
+      fn({ insert: () => ({ values: () => Promise.resolve() }), update: () => ({ set: () => ({ where: () => Promise.resolve() }) }) }),
+    )
     mockIsBillingEnabled.mockReturnValue(false)
     mockRequireAiChatAccess.mockResolvedValue(null)
     mockSearchResearchDocuments.mockResolvedValue({ items: [] })
@@ -289,18 +292,24 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(mockStreamText).not.toHaveBeenCalled()
   })
 
-  it('system は先頭の2つの system メッセージで渡し、変わらない側にだけキャッシュの区切りを置く', async () => {
+  it('system は先頭の1つだけでキャッシュの区切りを置き、日時・ロールは最新の利用者メッセージの末尾に入れる', async () => {
     await streamedSystemPrompt('claude-sonnet-5-5', null)
 
     const { system, messages } = mockStreamText.mock.calls[0]![0] as {
       system?: string
-      messages: { role: string; providerOptions?: unknown }[]
+      messages: { role: string; content: unknown; providerOptions?: unknown }[]
     }
     expect(system).toBeUndefined()
-    expect(messages.slice(0, 2).map((message) => message.role)).toEqual(['system', 'system'])
+    expect(messages[0]!.role).toBe('system')
     expect(messages[0]!.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
-    expect(messages[1]!.providerOptions).toBeUndefined()
-    expect(messages.slice(2).every((message) => message.role !== 'system')).toBe(true)
+    expect(messages[0]!.content).not.toContain('現在日時:')
+    expect(messages.slice(1).every((message) => message.role !== 'system')).toBe(true)
+
+    const latest = messages.at(-1)!
+    expect(latest.role).toBe('user')
+    const parts = latest.content as { type: string; text: string; providerOptions?: unknown }[]
+    expect(parts.at(-2)?.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
+    expect(parts.at(-1)?.text).toMatch(/^<request-context>\n【この依頼の情報】\n現在日時: /)
   })
 
   it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {
@@ -407,17 +416,17 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(mockStreamText).not.toHaveBeenCalled()
   })
 
-  it('Opus の会話は、モデルごとのクレジット（20）で残高を確かめて予約する', async () => {
+  it('Opus の会話は、モデルごとの見積もり（45）で残高を確かめて予約する', async () => {
     mockIsBillingEnabled.mockReturnValue(true)
     process.env['ANTHROPIC_API_KEY'] = 'test-key'
-    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 15 })
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 44 })
     queueDbResults('gpt-5', null, { conversationModel: 'claude-opus-5-5' })
 
     const short = await postQuestion()
     expect(short.status).toBe(402)
     expect(mockReserveCredits).not.toHaveBeenCalled()
 
-    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 25 })
+    mockResolveUploadEntitlements.mockResolvedValue({ isActiveSupporter: true, creditBalance: 45 })
     mockReserveCredits.mockResolvedValue(true)
     mockStreamText.mockReturnValue({ mergeIntoDataStream: vi.fn() })
     queueDbResults('gpt-5', null, { conversationModel: 'claude-opus-5-5' })
@@ -426,7 +435,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     await enough.text()
 
     expect(enough.status).toBe(200)
-    expect(mockReserveCredits).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000010', 20, expect.any(String))
+    expect(mockReserveCredits).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000010', 45, expect.any(String))
   })
   it('/ai を使えないロールの依頼は、課金も回答もせず 403 を返す', async () => {
     mockIsBillingEnabled.mockReturnValue(true)
@@ -526,7 +535,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       expect(row.inputTokens).toBe(300)
     })
 
-    it('会話タイトルの更新だけが失敗しても、保存・課金済みなので成功として記録する', async () => {
+    it('会話タイトルの更新だけが失敗しても、保存・課金済みなので成功として記録し、原価で精算する', async () => {
       const options = await startStream()
       mockDbUpdate.mockImplementation(() => {
         throw new Error('title update failed')
@@ -535,7 +544,26 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
       await options.onFinish({ text: '回答', steps: [stepWithTools(100, 10, [])] })
 
       expect(mockRecordUsage).toHaveBeenCalledTimes(1)
-      expect(recordedRecord()).toMatchObject({ status: 'success', error: null })
+      expect(recordedRecord()).toMatchObject({ status: 'success', error: null, charged: true })
+    })
+
+    it('回答を保存できず返金した依頼は、原価で精算しない', async () => {
+      const options = await startStream()
+      mockDbTransaction.mockImplementation(() => {
+        throw new Error('save failed')
+      })
+
+      await options.onFinish({ text: '回答', steps: [stepWithTools(100, 10, [])] })
+
+      expect(recordedRecord()).toMatchObject({ status: 'failed', error: 'save_failed', charged: false })
+    })
+
+    it('ストリームが失敗した依頼は、原価で精算しない', async () => {
+      const options = await startStream()
+
+      await options.onError()
+
+      expect(recordedRecord()).toMatchObject({ status: 'failed', charged: false })
     })
 
     it('ステップの途中でストリームが失敗したら、完了済みのステップ付きで failed を記録する', async () => {

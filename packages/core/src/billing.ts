@@ -13,6 +13,13 @@ export {
 } from './domain/billing'
 export { BILLING_CONFIG, BYTES_PER_GIB } from './domain/billing-config'
 export {
+  aiChatCostUsd,
+  aiChatCreditsForCost,
+  isAiChatPricedModel,
+  type AiChatPricedModel,
+  type AiChatTokenUsage,
+} from './domain/ai-chat-cost'
+export {
   calculateStorageRentAccrual,
   settleStorageRent,
   type StorageRentSettlement,

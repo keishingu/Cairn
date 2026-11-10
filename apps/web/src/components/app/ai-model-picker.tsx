@@ -42,7 +42,7 @@ export function AiModelPicker({
   const label = (m: AiChatModel) => {
     const name = AI_CHAT_MODEL_LABELS[m]
     if (allowed && !allowed.includes(m)) return t('{model} (unavailable)', { model: name })
-    return credits ? t('{model} · {credits} credits', { model: name, credits: credits[m] }) : name
+    return credits ? t('{model} · about {credits} credits', { model: name, credits: credits[m] }) : name
   }
 
   return (

@@ -79,6 +79,16 @@ export function formatAppDate(locale: AppLocale, value: string | number | Date):
   return new Date(value).toLocaleDateString(INTL_LOCALE[locale])
 }
 
+/** 月日と時刻（請求画面の明細など、同じ月の中で並べる日時） */
+export function formatAppMonthDayTime(locale: AppLocale, value: string | number | Date): string {
+  return new Date(value).toLocaleString(INTL_LOCALE[locale], {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function resolveLocale(preference: LocalePreference, acceptLanguage: string | null | undefined): AppLocale {
   if (preference === 'ja' || preference === 'en' || preference === 'ko') return preference
   return localeFromAcceptLanguage(acceptLanguage)

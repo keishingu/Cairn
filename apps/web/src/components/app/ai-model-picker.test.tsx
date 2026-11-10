@@ -55,13 +55,13 @@ describe('AiModelPicker', () => {
     toastError.mockReset()
   })
 
-  it('owner が許可したモデルだけを、1回のクレジットと一緒に選ばせる', async () => {
+  it('owner が許可したモデルだけを、1回の目安のクレジットと一緒に選ばせる', async () => {
     renderPicker('gpt-5', ['gpt-5', 'claude-opus-5-5'])
 
     const select = await screen.findByRole('combobox', { name: 'モデル' })
     await waitFor(() => expect(select).toBeEnabled())
     const options = screen.getAllByRole('option').map(option => option.textContent)
-    expect(options).toEqual(['GPT-5・10 クレジット', 'Claude Opus 5.5・20 クレジット'])
+    expect(options).toEqual(['GPT-5・約 10 クレジット', 'Claude Opus 5.5・約 20 クレジット'])
   })
 
   it('選ぶと会話のモデルを保存し、一覧の会話のモデルも更新する', async () => {
