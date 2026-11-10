@@ -64,6 +64,7 @@ function renderFilesTab(channelId: string | null = 'channel-1', options: { isWeb
               openMember: () => {},
               openNotif: () => {},
               isWebView: true,
+              isMobile: true,
               projectsView: 'list',
               setProjectsView: () => {},
               crossSearchNonce: 0,

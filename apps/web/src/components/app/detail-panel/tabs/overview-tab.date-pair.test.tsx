@@ -4,9 +4,27 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { InlineDatePair, MilestoneCreateForm } from './overview-tab'
+import { InlineDatePair } from './overview-tab'
+import { AppShellContext } from '../../app-shell-context'
 
-vi.mock('@/components/locale-provider', () => ({ useT: () => (message: string) => message }))
+function renderOnMobile(ui: React.ReactElement) {
+  return render(
+    <AppShellContext.Provider value={{
+      openPanel: () => {}, openMember: () => {}, openNotif: () => {}, isWebView: false, isMobile: true,
+      projectsView: 'list', setProjectsView: () => {}, crossSearchNonce: 0, consumeCrossSearch: () => {},
+    }}>
+      {ui}
+    </AppShellContext.Provider>,
+  )
+}
+
+function tapDay(day: number) {
+  const cell = screen.getAllByRole('gridcell').find(c => c.textContent === String(day))
+  if (!cell) throw new Error(`day ${day} not found`)
+  fireEvent.click(cell)
+}
+
+vi.mock('@/components/locale-provider', () => ({ useT: () => (message: string) => message, useLocale: () => ({ locale: 'en' }) }))
 
 function openEditor(onSave = vi.fn()) {
   render(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={onSave}/>)
@@ -80,24 +98,49 @@ describe('日程のインライン編集（InlineDatePair）', () => {
   })
 })
 
-describe('マイルストーン追加フォーム（MilestoneCreateForm）', () => {
-  it('終了日が開始日より前の間は作成できず、入力を残したままエラーを表示する', () => {
-    const onCreate = vi.fn()
-    render(<MilestoneCreateForm onCreate={onCreate}/>)
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+describe('モバイルの日程シート（InlineDatePair）', () => {
+  it('終了日を選び直して保存すると、開始日を保ったまま1回だけ保存する', () => {
+    const onSave = vi.fn()
+    renderOnMobile(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={onSave} withTime={false}/>)
+    fireEvent.click(screen.getByRole('button', { name: /6\/12/ }))
 
-    fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: '下見' } })
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-06-12' } })
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
+    fireEvent.click(screen.getByRole('button', { name: /End date/ }))
+    tapDay(18)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date')
-    expect(screen.getByRole('button', { name: 'Create entry' })).toBeDisabled()
-    fireEvent.submit(screen.getByPlaceholderText('Title').closest('form')!)
-    expect(onCreate).not.toHaveBeenCalled()
-    expect(screen.getByPlaceholderText('Title')).toHaveValue('下見')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith('2026-06-12', '2026-06-18', null, null)
+    expect(screen.queryByRole('grid')).toBeNull()
+  })
 
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-13' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create entry' }))
-    expect(onCreate).toHaveBeenCalledWith({ title: '下見', startDate: '2026-06-12', endDate: '2026-06-13' })
+  it('キャンセルでは選び直した日程を保存しない', () => {
+    const onSave = vi.fn()
+    renderOnMobile(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={onSave} withTime={false}/>)
+    fireEvent.click(screen.getByRole('button', { name: /6\/12/ }))
+
+    tapDay(20)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.queryByRole('grid')).toBeNull()
+  })
+
+  it('プロジェクトの日程（時刻なし）では時刻欄を出さない', () => {
+    renderOnMobile(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={vi.fn()} withTime={false}/>)
+    fireEvent.click(screen.getByRole('button', { name: /6\/12/ }))
+
+    expect(screen.queryByLabelText('Start time')).toBeNull()
+  })
+
+  it('マイルストーンは時刻も保存し、変更していない時刻は保ったまま送る', () => {
+    const onSave = vi.fn()
+    renderOnMobile(<InlineDatePair startDate="2026-06-14" endDate="2026-06-14" startTime="03:24:00" onSave={onSave}/>)
+    fireEvent.click(screen.getByRole('button', { name: /6\/14/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /End date/ }))
+    tapDay(15)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave).toHaveBeenCalledWith('2026-06-14', '2026-06-15', '03:24', null)
   })
 })

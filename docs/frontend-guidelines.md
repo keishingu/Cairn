@@ -139,6 +139,14 @@ const { data } = useQuery({
 - 中身の要素に `role="dialog"` / `aria-modal` / `aria-label` を重ねて付けない（`Modal` 側が持つ）
 - モーダル内の部品が `createPortal` でメニューを出すときは、出し先を `portalHostFor(要素)` にする。`body` や `.app-root` に出すとモーダルの外になり、フォーカスできず操作できない
 
+### モバイルのフォーム・日程入力
+
+- **モバイルの作成・編集フォームは `components/app/mobile/form-sheet.tsx` の `MobileFormSheet`（ボトムシート）で出す**。プロジェクト作成シートが基準の見た目で、タスク作成（`TaskDialog`）もモバイルではこれに切り替わる。中身の入力欄は `useFieldInputStyle()` / `useFieldLabelStyle()` で描けば、PC のモーダルとシートで同じ部品を共有できる。シートはソフトウェアキーボードの高さだけ持ち上がる
+- **マイルストーンの作成・編集は入口に関わらず `pages/create-milestone-modal.tsx` の `CreateMilestoneModal` / `EditMilestoneModal` を開く**（PC はモーダル、モバイルはシートに自動で切り替わる）。画面ごとに別のフォームを作らない
+- **モバイルのシートでは開いた直後に入力欄へ自動でフォーカスしない**。開くアニメーション中にキーボードが出ると iOS がシートを持ち上げられず、保存ボタンがキーボードの裏に隠れる
+- **モバイルの日程入力は `components/app/mobile/date-range-sheet.tsx` の `DateRangePicker` / `DateRangeSheet`（自前のカレンダー）を使う**。iOS のネイティブ日付ピッカーは値の確定前にフォーカスが外れ、blur や外側タップで自動保存する作りと組み合わせると変更が失われる。保存は「保存」ボタンでだけ行う
+- 日付・時刻の `<input>` は iOS Safari で中身ぶんの最小幅を持ち親からはみ出すため、`globals.css` で `appearance:none; min-width:0` にしている。並べる親の flex / grid 子にも `minWidth: 0`（grid は `minmax(0, 1fr)`）を付ける
+
 ### 重なり順（z-index）
 
 画面をまたいで重なる要素（ナビ・メニュー・モーダル・トースト等）は `globals.css` の `--z-*` を使い、数値を直書きしない（`zIndex: 'var(--z-modal)'`）。コンポーネント内だけの前後関係（1〜10）は直書きでよい。

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fieldInputStyle } from '../primitives'
+import { useFieldInputStyle, useFieldLabelStyle } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { TaskDialog } from '../task-dialog'
 import { TaskFormFields } from '../task-form-fields'
@@ -97,30 +97,46 @@ export const CreateTaskModal = ({ onClose, channel }: CreateTaskModalProps) => {
         assigneeChannelIsPrivate={channel?.isPrivate ?? false}
         titlePlaceholder={t('Enter a task name...')}
         afterTitle={channel ? null : (
-          <div>
-            <label htmlFor={projectSelectId} style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>
-              {t('Projects')}{' '}
-              {isGuest
-                ? <span style={{ color: 'var(--red)' }}>*</span>
-                : <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>{t('(Optional)')}</span>}
-            </label>
-            <select
-              id={projectSelectId}
-              className="form-control"
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              required={isGuest}
-              style={{ ...fieldInputStyle(false), color: projectId ? 'var(--text)' : 'var(--text-4)' }}
-            >
-              {/* ゲストはプロジェクト未所属タスクを作成できないため「プロジェクトなし」を出さない */}
-              <option value="" disabled={isGuest}>{isGuest ? t('Select a project...') : t('No project')}</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </div>
+          <ProjectSelectField id={projectSelectId} value={projectId} onChange={setProjectId} projects={projects} isGuest={isGuest}/>
         )}
       />
     </TaskDialog>
+  )
+}
+
+// シート内で描くと入力欄がシートの寸法になるよう、フォームの外枠が配る見た目をここで読む
+const ProjectSelectField = ({ id, value, onChange, projects, isGuest }: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  projects: ProjectDto[]
+  isGuest: boolean
+}) => {
+  const t = useT()
+  const fieldInputStyle = useFieldInputStyle()
+  const labelStyle = useFieldLabelStyle()
+  return (
+    <div>
+      <label htmlFor={id} style={labelStyle}>
+        {t('Projects')}{' '}
+        {isGuest
+          ? <span style={{ color: 'var(--red)' }}>*</span>
+          : <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>{t('(Optional)')}</span>}
+      </label>
+      <select
+        id={id}
+        className="form-control"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        required={isGuest}
+        style={{ ...fieldInputStyle(false), color: value ? 'var(--text)' : 'var(--text-4)' }}
+      >
+        {/* ゲストはプロジェクト未所属タスクを作成できないため「プロジェクトなし」を出さない */}
+        <option value="" disabled={isGuest}>{isGuest ? t('Select a project...') : t('No project')}</option>
+        {projects.map(p => (
+          <option key={p.id} value={p.id}>{p.title}</option>
+        ))}
+      </select>
+    </div>
   )
 }

@@ -15,6 +15,9 @@ import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
+import { useAppShell } from '../../app-shell-context'
+import { DateRangeSheet } from '../../mobile/date-range-sheet'
+import { CreateMilestoneModal } from '../../pages/create-milestone-modal'
 
 
 const formatTime = (time: string | null) => time ? time.slice(0, 5) : null
@@ -106,7 +109,7 @@ const InlineText = ({
 }
 
 export const InlineDatePair = ({
-  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false,
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle,
 }: {
   startDate: string | null
   endDate: string | null
@@ -114,8 +117,14 @@ export const InlineDatePair = ({
   endTime?: string | null
   onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
   readOnly?: boolean
+  /** 時刻も編集する。プロジェクトは日付しか保存しないため false にし、入れても消える時刻欄を出さない */
+  withTime?: boolean
+  /** モバイルの日程シートの見出しの下に出す対象名 */
+  sheetSubtitle?: string
 }) => {
   const t = useT()
+  const { isMobile } = useAppShell()
+  const [sheetOpen, setSheetOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
@@ -196,10 +205,19 @@ export const InlineDatePair = ({
     if (e.key === 'Enter') commit()
   }
 
-  if (!editing) {
+  // モバイルはインライン編集をやめ、カレンダーで選んで「保存」で確定するシートを開く。
+  // ネイティブの日付ピッカーは値の確定前にフォーカスが外れ、外側タップでの自動確定と噛み合わず変更が失われるため
+  if (isMobile || !editing) {
     return (
+      <>
       <button
-        onClick={() => { if (!readOnly) { openRef.current = true; setEditing(true) } }}
+        type="button"
+        onClick={() => {
+          if (readOnly) return
+          if (isMobile) { setSheetOpen(true); return }
+          openRef.current = true
+          setEditing(true)
+        }}
         disabled={readOnly}
         style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 4,
@@ -213,6 +231,20 @@ export const InlineDatePair = ({
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
+      {sheetOpen && (
+        <DateRangeSheet
+          title={t('Dates')}
+          subtitle={sheetSubtitle}
+          startDate={startDate}
+          endDate={endDate}
+          startTime={startTime}
+          endTime={endTime}
+          withTime={withTime}
+          onSave={onSave}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
+      </>
     )
   }
 
@@ -238,14 +270,14 @@ export const InlineDatePair = ({
           onKeyDown={handleKeyDown}
           style={dateStyle}
         />
-        <input
+        {withTime && <input
           type="time"
           value={startClock}
           aria-label={t('Start time')}
           onChange={e => setStartClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}
-        />
+        />}
       </div>
       <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
       <div style={rowStyle}>
@@ -261,14 +293,14 @@ export const InlineDatePair = ({
           onKeyDown={handleKeyDown}
           style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
         />
-        <input
+        {withTime && <input
           type="time"
           value={endClock}
           aria-label={t('End time')}
           onChange={e => setEndClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}
-        />
+        />}
       </div>
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
@@ -445,116 +477,6 @@ const isPastDue = (milestone: MilestoneDto) => {
   return milestone.endDate < `${yyyy}-${mm}-${dd}`
 }
 
-export const MilestoneCreateForm = ({ onCreate, disabled }: {
-  onCreate: (input: { title: string; description?: string; startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => void
-  disabled?: boolean
-}) => {
-  const t = useT()
-  const [open, setOpen] = React.useState(false)
-  const [title, setTitle] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [startDate, setStartDate] = React.useState('')
-  const [endDate, setEndDate] = React.useState('')
-  const [startTime, setStartTime] = React.useState('')
-  const [endTime, setEndTime] = React.useState('')
-
-  const reversed = isEndBeforeStart(startDate, endDate)
-  const dateErrorId = React.useId()
-
-  const reset = () => {
-    setTitle('')
-    setDescription('')
-    setStartDate('')
-    setEndDate('')
-    setStartTime('')
-    setEndTime('')
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = title.trim()
-    if (!trimmed) return
-    // 送信するとフォームを閉じて入力を消すため、サーバーに拒否される逆転した期間は送る前に止める
-    if (reversed) return
-    onCreate({
-      title: trimmed,
-      ...(description.trim() ? { description: description.trim() } : {}),
-      ...(startDate ? { startDate } : {}),
-      ...(endDate ? { endDate } : {}),
-      ...(startTime ? { startTime } : {}),
-      ...(endTime ? { endTime } : {}),
-    })
-    reset()
-    setOpen(false)
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={disabled}
-        className="btn btn-ghost"
-        style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
-      >
-        <Icon name="plus" size={12}/> {t('Add')}
-      </button>
-    )
-  }
-
-  const inputStyle: React.CSSProperties = {
-    height: 32,
-    border: '1px solid var(--border)',
-    borderRadius: 7,
-    background: 'var(--card)',
-    color: 'var(--text)',
-    fontFamily: 'inherit',
-    fontSize: 12.5,
-    padding: '0 9px',
-    outline: 'none',
-  }
-
-  return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)' }}>
-      <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t('Title')} autoFocus style={inputStyle}/>
-      <textarea
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        placeholder={t('Description')}
-        rows={2}
-        style={{ ...inputStyle, height: 'auto', resize: 'vertical', paddingTop: 8, lineHeight: 1.5 }}
-      />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} aria-label={t('Start date')} style={inputStyle}/>
-        <input
-          type="date"
-          value={endDate}
-          min={startDate || undefined}
-          onChange={e => setEndDate(e.target.value)}
-          aria-label={t('End date')}
-          aria-invalid={reversed}
-          aria-describedby={reversed ? dateErrorId : undefined}
-          style={reversed ? { ...inputStyle, border: '1px solid var(--red)' } : inputStyle}
-        />
-      </div>
-      {reversed && (
-        // 終了日の入力欄から参照できるよう id を持つ要素で包む
-        <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} aria-label={t('Start time')} style={inputStyle}/>
-        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} aria-label={t('End time')} style={inputStyle}/>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button type="button" className="btn btn-ghost" onClick={() => { reset(); setOpen(false) }}>{t('Cancel')}</button>
-        <button type="submit" className="btn btn-primary" disabled={!title.trim() || reversed}>{t('Create entry')}</button>
-      </div>
-    </form>
-  )
-}
-
 const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   milestone: MilestoneDto
   canEdit: boolean
@@ -610,6 +532,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
               endTime={milestone.endTime}
               onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
               readOnly={!canEdit}
+              sheetSubtitle={milestone.title}
             />
           </span>
           <button
@@ -643,10 +566,11 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   )
 }
 
-const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: boolean }) => {
+const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStartDate = null }: { projectId: string; projectTitle: string; canEdit: boolean; projectStartDate?: string | null }) => {
   const t = useT()
   const milestones = useProjectMilestones(projectId)
   const [deleteTarget, setDeleteTarget] = React.useState<MilestoneDto | null>(null)
+  const [creating, setCreating] = React.useState(false)
 
   // API のエラー文は日本語固定で、通信失敗ではブラウザの英語文も来る。そのまま出すと表示言語と食い違うため、
   // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
@@ -665,18 +589,28 @@ const MilestoneSection = ({ projectId, canEdit }: { projectId: string; canEdit: 
 
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <div style={{ ...cardLabelStyle, marginBottom: 0 }}>{t('Milestones')}</div>
-        <div style={{ marginLeft: 'auto' }}>
-          <MilestoneCreateForm
-            disabled={!canEdit || milestones.createMutation.isPending}
-            onCreate={input => milestones.createMutation.mutate(input, {
-              onSuccess: () => toast.success(t('Milestone created')),
-              onError: error => toast.error(milestoneErrorMessage(error, t('Could not create the milestone'))),
-            })}
-          />
-        </div>
+        {/* チャットからの作成と同じフォーム（PC はモーダル、モバイルはボトムシート）を開く */}
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          disabled={!canEdit}
+          className="btn btn-ghost"
+          style={{ marginLeft: 'auto', height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+        >
+          <Icon name="plus" size={12}/> {t('Add')}
+        </button>
       </div>
+      {creating && (
+        <CreateMilestoneModal
+          projectId={projectId}
+          projectTitle={projectTitle}
+          defaultMonth={projectStartDate}
+          onClose={() => setCreating(false)}
+          onCreated={() => toast.success(t('Milestone created'))}
+        />
+      )}
       {milestones.isLoading ? (
         <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading…')}</div>
       ) : milestones.isError ? (
@@ -756,6 +690,8 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             endDate={project.endDate}
             onSave={(start, end) => patch.mutate({ startDate: start, endDate: end })}
             readOnly={readOnly}
+            withTime={false}
+            sheetSubtitle={project.title}
           />
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
@@ -792,7 +728,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
         />
       </div>
 
-      <MilestoneSection projectId={project.id} canEdit={canEdit} />
+      <MilestoneSection projectStartDate={project.startDate} projectId={project.id} projectTitle={project.title} canEdit={canEdit} />
 
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
