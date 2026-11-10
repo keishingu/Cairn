@@ -21,6 +21,13 @@ import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
+import {
+  addMessageImagesToGallery,
+  fetchMessageGalleryStatus,
+  galleryImagesOf,
+  MessageGalleryDialog,
+  type MessageGalleryImage,
+} from './message-gallery-dialog'
 import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
 import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
 import { ReactionPicker } from './reaction-picker'
@@ -231,7 +238,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -272,6 +279,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
   onMakeTask: (messageId: string) => void
+  /** 渡されたときだけ、画像の添付があればメニューに「ギャラリーに追加」を出す（プロジェクトのチャンネルで親が渡す） */
+  onAddToGallery?: ((messageId: string) => void) | undefined
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
@@ -433,10 +442,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     )
   }
 
+  const hasGalleryImage = galleryImagesOf(attachments).length > 0
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
     { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
+    ...(onAddToGallery && hasGalleryImage ? [{ icon: 'image' as const, label: t('Add to the gallery'), onSelect: () => onAddToGallery(messageId) }] : []),
     ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
@@ -1901,18 +1912,58 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     }
   }, [channelId, leaveHistoryView, queryClient])
 
+  // プロジェクトのチャンネルの、送信済みの通常メッセージだけ画像をギャラリーに追加できる
+  const canAddMessageToGallery = React.useCallback(
+    (message: { id: string; messageType: MessageType }) =>
+      projectId !== null && message.messageType !== 'system' && !message.id.startsWith('optimistic-'),
+    [projectId],
+  )
+
+  const addImagesToGallery = React.useCallback(async (messageId: string, fileIds: string[]) => {
+    const addedProjectId = await addMessageImagesToGallery(messageId, fileIds, t)
+    if (!addedProjectId) return false
+    void queryClient.invalidateQueries({ queryKey: ['project-gallery', addedProjectId] })
+    void queryClient.invalidateQueries({ queryKey: ['workspace-gallery'] })
+    return true
+  }, [queryClient, t])
+
+  const [galleryDialog, setGalleryDialog] = React.useState<{ messageId: string; images: MessageGalleryImage[]; addedFileIds: string[] } | null>(null)
+
+  // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶダイアログを出す（タスク化と同じ流れ）
+  const handleAddToGallery = React.useCallback(async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return
+    const images = galleryImagesOf(message.attachments)
+    if (images.length === 0) return
+    const status = await fetchMessageGalleryStatus(messageId, t)
+    if (!status) return
+    const added = new Set(status.addedFileIds)
+    const open = images.filter(image => !added.has(image.fileId))
+    if (open.length === 0) {
+      toast.success(t('Already in the gallery'))
+    } else if (images.length === 1 && open[0]) {
+      await addImagesToGallery(messageId, [open[0].fileId])
+    } else {
+      setGalleryDialog({ messageId, images, addedFileIds: status.addedFileIds })
+    }
+  }, [messages, addImagesToGallery, t])
+
   // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
   const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
     const imgs: (LightboxImage & { attachmentId: string })[] = []
     for (const m of messages) {
       for (const a of m.attachments) {
         if (isImageMime(a.mimeType)) {
-          imgs.push({ attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName })
+          const canAddToGallery = canAddMessageToGallery(m) && galleryImagesOf([a]).length > 0
+          imgs.push({
+            attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName,
+            ...(canAddToGallery ? { action: { label: t('Add to the gallery'), icon: 'image' as const, onSelect: () => { void addImagesToGallery(m.id, [a.fileId]) } } } : {}),
+          })
         }
       }
     }
     return imgs
-  }, [messages])
+  }, [messages, canAddMessageToGallery, addImagesToGallery, t])
 
   const openLightbox = React.useCallback((attachmentId: string) => {
     setLightboxIndex(prev => {
@@ -2439,6 +2490,14 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
       onDragLeave={handleListDragLeave}
       onDrop={handleListDrop}
     >
+      {galleryDialog && (
+        <MessageGalleryDialog
+          images={galleryDialog.images}
+          addedFileIds={galleryDialog.addedFileIds}
+          onSubmit={fileIds => addImagesToGallery(galleryDialog.messageId, fileIds)}
+          onClose={() => setGalleryDialog(null)}
+        />
+      )}
       {taskDialog && (
         <MessageTaskDialog
           candidates={taskDialog.candidates}
@@ -2529,6 +2588,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onReply={handleReply}
               onBookmark={handleBookmark}
               onMakeTask={handleMakeTask}
+              {...(!moveSelection && canAddMessageToGallery(item.message) ? { onAddToGallery: handleAddToGallery } : {})}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}

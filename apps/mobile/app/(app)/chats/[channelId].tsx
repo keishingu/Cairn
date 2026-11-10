@@ -50,6 +50,8 @@ import { MessageCard, type CardAction } from '../../../components/message-card'
 import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
+import { MessageGalleryPickerModal, type MessageGalleryPickerState } from '../../../components/message-gallery-picker'
+import { galleryImagesOf } from '../../../lib/message-gallery'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import type { ChatInfoFileDto } from '../../../hooks/use-chat-info'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -822,6 +824,8 @@ export default function ChatThreadScreen() {
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
   const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
+  const [galleryPicker, setGalleryPicker] = React.useState<(MessageGalleryPickerState & { messageId: string }) | null>(null)
+  const [galleryPickerError, setGalleryPickerError] = React.useState<string | null>(null)
   const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
@@ -1367,6 +1371,77 @@ export default function ChatThreadScreen() {
       }
     } catch {
       setSendError(t('Could not make a task from this message'))
+    }
+  }
+
+  const openProjectGallery = (id: string) => {
+    router.push({ pathname: '/(app)/projects/[id]', params: { id, tab: 'gallery' } })
+  }
+
+  // 選んだ画像をプロジェクトのギャラリーへ追加する。成功したら true。失敗は sendError（シートからはシート内）に出す。
+  const addImagesToGallery = async (messageId: string, fileIds: string[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setGalleryPickerError : setSendError
+    setSendError(null)
+    setGalleryPickerError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${messageId}/gallery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds }),
+      })
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        projectId?: string
+        addedCount?: number
+      }
+      const addedProjectId = data.projectId
+      if (!response.ok || typeof addedProjectId !== 'string' || typeof data.addedCount !== 'number') {
+        reportError(data.error ?? t('Could not add to the gallery'))
+        return false
+      }
+      const title =
+        data.addedCount === 0
+          ? t('Already in the gallery')
+          : data.addedCount === 1
+            ? t('Added to the gallery')
+            : t('Added {count} photos to the gallery', { count: data.addedCount })
+      Alert.alert(title, undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => openProjectGallery(addedProjectId) },
+      ])
+      return true
+    } catch {
+      reportError(t('Could not add to the gallery'))
+      return false
+    }
+  }
+
+  // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶシートを出す（Web・タスク化と同じ流れ）
+  const addToGallery = async (message: MessageDto) => {
+    setActionTarget(null)
+    setSendError(null)
+    const images = galleryImagesOf(message.attachments)
+    if (images.length === 0) return
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/gallery`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string; addedFileIds?: unknown }
+      if (!response.ok || !Array.isArray(data.addedFileIds)) {
+        setSendError(data.error ?? t('Could not add to the gallery'))
+        return
+      }
+      const addedFileIds = data.addedFileIds.filter((id): id is string => typeof id === 'string')
+      const added = new Set(addedFileIds)
+      const open = images.filter((image) => !added.has(image.fileId))
+      if (open.length === 0) {
+        Alert.alert(t('Already in the gallery'))
+      } else if (images.length === 1 && open[0]) {
+        await addImagesToGallery(message.id, [open[0].fileId])
+      } else {
+        setGalleryPickerError(null)
+        setGalleryPicker({ messageId: message.id, images, addedFileIds })
+      }
+    } catch {
+      setSendError(t('Could not add to the gallery'))
     }
   }
 
@@ -2483,6 +2558,15 @@ export default function ChatThreadScreen() {
                 palette={palette}
                 onPress={() => actionTarget && void makeTask(actionTarget)}
               />
+              {/* プロジェクトのチャンネルで画像の添付があるときだけ（追加先はそのプロジェクト） */}
+              {projectId && actionTarget && actionTarget.messageType !== 'system' && galleryImagesOf(actionTarget.attachments).length > 0 && (
+                <ActionButton
+                  icon="images-outline"
+                  label={t('Add to the gallery')}
+                  palette={palette}
+                  onPress={() => void addToGallery(actionTarget)}
+                />
+              )}
               <ActionButton
                 icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
                 label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
@@ -2667,6 +2751,17 @@ export default function ChatThreadScreen() {
           onClose={() => {
             setTaskPicker(null)
             setTaskPickerError(null)
+          }}
+        />
+        <MessageGalleryPickerModal
+          picker={galleryPicker}
+          auth={attachmentAuth}
+          palette={palette}
+          onSubmit={(fileIds) => (galleryPicker ? addImagesToGallery(galleryPicker.messageId, fileIds, true) : Promise.resolve(false))}
+          error={galleryPickerError}
+          onClose={() => {
+            setGalleryPicker(null)
+            setGalleryPickerError(null)
           }}
         />
         <LinkedTasksModal
