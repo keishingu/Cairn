@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
-import { FileNameDraftMarker, InlineFileNameEditor } from '../inline-file-name-editor'
+import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { RowActionMenu } from '../row-action-menu'
 import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
@@ -395,7 +395,6 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     {fileIcon}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <InlineFileNameEditor
-                        fileId={f.id}
                         fileName={f.fileName}
                         fontSize={12}
                         onSave={fileName => renameFile.mutateAsync({ fileId: f.id, fileName })}
@@ -421,7 +420,6 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.fileName}
                       </div>
-                      <FileNameDraftMarker fileId={f.id} fileName={f.fileName}/>
                       {fileMeta}
                     </div>
                   </button>

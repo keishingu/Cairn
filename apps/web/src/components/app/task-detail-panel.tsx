@@ -9,8 +9,6 @@ import { TaskDeleteDialog } from './task-delete-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { usePatchTask, useTaskDetail } from '@/hooks/use-tasks'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
-import { useDraftEditor } from '@/hooks/use-text-draft'
-import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useLocale, useT } from '@/components/locale-provider'
@@ -32,37 +30,19 @@ const sectionLabelStyle: React.CSSProperties = {
 }
 
 // ─── タイトル（クリックでその場編集） ─────────────────────────────
-// 明示保存: 保存ボタン / Enter で保存、キャンセルボタン / Esc で破棄。blur では何もしない。
-// 未保存のタイトルは端末に残し、開き直したときに復元を案内する
+// 明示保存: 保存ボタン / Enter で保存、キャンセルボタン / Esc で破棄。blur では何もしない
 
-const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string; onSave: (title: string) => Promise<unknown> }) => {
+const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string) => Promise<unknown> }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(title)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-
-  // 保存済みのタイトルとの比較は前後の空白を無視する
-  const editor = useDraftEditor({
-    key: `task:${taskId}:title`, savedValue: title, active: editing, isSame: (v, saved) => v.trim() === saved,
-  })
-  const { draft, restored } = editor
 
   const next = draft.trim()
   const canSave = !saving && next !== '' && next !== title
 
-  const changeDraft = editor.setDraft
-
-  const cancel = () => {
-    editor.discard()
-    setEditing(false)
-    setError(null)
-  }
-
-  // 下書きを捨てて保存済みのタイトルへ戻す（編集は続ける）
-  const discardDraft = () => {
-    editor.discard()
-    setError(null)
-  }
+  const cancel = () => { setEditing(false); setError(null) }
   const wrapRef = React.useRef<HTMLDivElement>(null)
   useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
 
@@ -72,18 +52,17 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   }, [saving])
 
   const startEdit = () => {
+    setDraft(title)
     setError(null)
     setEditing(true)
   }
 
   const save = async () => {
     if (!canSave) return
-    const submitted = draft
     setSaving(true)
     setError(null)
     try {
       await onSave(next)
-      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not update the task'))
@@ -95,14 +74,13 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   if (editing) {
     return (
       <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
         <input
           aria-label={t('Title')}
           className="form-control"
           value={draft}
           maxLength={200}
           disabled={saving}
-          onChange={e => changeDraft(e.target.value)}
+          onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save() } }}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
@@ -120,31 +98,27 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   }
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={startEdit}
-        aria-label={t('Edit title')}
-        title={t('Edit title')}
-        className="hover-bg"
-        style={{
-          width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
-          border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
-          fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
-          color: 'var(--text)', overflowWrap: 'anywhere',
-        }}
-      >
-        {formatTaskTitleForDisplay(title)}
-      </button>
-      {editor.hasDraft && <UnsavedDraftMarker style={{ marginTop: 8 }}/>}
-    </div>
+    <button
+      type="button"
+      onClick={startEdit}
+      aria-label={t('Edit title')}
+      title={t('Edit title')}
+      className="hover-bg"
+      style={{
+        width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
+        border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
+        fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
+        color: 'var(--text)', overflowWrap: 'anywhere',
+      }}
+    >
+      {formatTaskTitleForDisplay(title)}
+    </button>
   )
 }
 
 // ─── 説明（Markdown 表示 / 編集） ─────────────────────────────────
 
-const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
-  taskId: string
+const DescriptionSection = ({ description, saving, error, onSave }: {
   description: string | null
   saving: boolean
   error: string | null
@@ -153,24 +127,9 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
   const t = useT()
   const id = React.useId()
   const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState('')
 
-  // 保存済みの説明との比較では、空白だけの入力は説明なしと同じ
-  const editor = useDraftEditor({
-    key: `task:${taskId}:description`,
-    savedValue: description ?? '',
-    active: editing,
-    isSame: (v, saved) => (v.trim() === '' ? '' : v) === saved,
-  })
-  const { draft, restored } = editor
-  const changeDraft = editor.setDraft
-
-  const cancel = () => {
-    editor.discard()
-    setEditing(false)
-  }
-
-  // 下書きを捨てて保存済みの説明へ戻す（編集は続ける）
-  const discardDraft = editor.discard
+  const cancel = () => setEditing(false)
 
   const wrapRef = React.useRef<HTMLDivElement>(null)
   useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
@@ -180,7 +139,10 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
     if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
   }, [saving])
 
-  const startEdit = () => setEditing(true)
+  const startEdit = () => {
+    setDraft(description ?? '')
+    setEditing(true)
+  }
 
   const handleSave = () => {
     const next = draft.trim() === '' ? null : draft
@@ -189,11 +151,7 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
       cancel()
       return
     }
-    const submitted = draft
-    onSave(next, () => {
-      editor.finish(submitted)
-      setEditing(false)
-    })
+    onSave(next, () => setEditing(false))
   }
 
   return (
@@ -210,14 +168,13 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
 
       {editing ? (
         <div ref={wrapRef}>
-          {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft} style={{ marginBottom: 6 }}/>}
           <textarea
             id={`${id}-description`}
             className="form-control"
             value={draft}
             maxLength={DESCRIPTION_MAX_LENGTH}
             disabled={saving}
-            onChange={e => changeDraft(e.target.value)}
+            onChange={e => setDraft(e.target.value)}
             onKeyDown={e => {
               // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
@@ -256,7 +213,6 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
           {t('Add a description')}
         </button>
       )}
-      {!editing && editor.hasDraft && <UnsavedDraftMarker style={{ marginTop: 6 }}/>}
     </section>
   )
 }
@@ -373,7 +329,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
             </div>
           ) : (
             <>
-              <TitleEditor key={`title:${task.id}`} taskId={task.id} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
+              <TitleEditor key={`title:${task.id}`} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
 
               {patchFields.isError && (
                 <InlineError variant="box" onDismiss={() => patchFields.reset()}>
@@ -404,7 +360,6 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
 
               <DescriptionSection
                 key={`description:${task.id}`}
-                taskId={task.id}
                 description={task.description}
                 saving={patchDescription.isPending}
                 error={patchDescription.isError

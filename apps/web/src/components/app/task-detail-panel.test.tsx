@@ -58,8 +58,8 @@ function setTask(overrides: Partial<TaskDetailDto> = {}) {
 
 function renderPanel(isMobile = false) {
   const onClose = vi.fn()
-  const view = render(<TaskDetailPanel taskId="task-1" onClose={onClose} isMobile={isMobile} />)
-  return { onClose, unmount: view.unmount }
+  render(<TaskDetailPanel taskId="task-1" onClose={onClose} isMobile={isMobile} />)
+  return { onClose }
 }
 
 describe('TaskDetailPanel', () => {
@@ -214,79 +214,6 @@ describe('TaskDetailPanel', () => {
     expect(confirm).not.toHaveBeenCalled()
     expect(onClose).toHaveBeenCalledTimes(1)
     confirm.mockRestore()
-  })
-
-  it('タイトルの下書きはパネルを閉じても残り、開き直すと復元のお知らせと破棄ボタンを出す', async () => {
-    setTask()
-    const first = renderPanel()
-
-    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
-    first.unmount()
-
-    renderPanel()
-    // 表示モードに下書きがあることを示す
-    expect(await screen.findByText('未保存の下書き')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-
-    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応 追記')
-    expect(screen.getByText('保存されていない下書きを復元しました。')).toBeInTheDocument()
-    expect(screen.queryByText(/保存済みの内容が変更されています/)).toBeNull()
-    expect(mockPatchMutateAsync).not.toHaveBeenCalled()
-  })
-
-  it('タイトルの下書きを破棄すると保存済みのタイトルへ戻り、開き直しても復元されない', async () => {
-    setTask()
-    const first = renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
-    first.unmount()
-
-    const second = renderPanel()
-    await userEvent.click(await screen.findByRole('button', { name: 'タイトルを編集' }))
-    await userEvent.click(screen.getByRole('button', { name: '下書きを破棄' }))
-
-    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応')
-    expect(screen.queryByText('保存されていない下書きを復元しました。')).toBeNull()
-    second.unmount()
-
-    renderPanel()
-    expect(screen.queryByText('未保存の下書き')).toBeNull()
-  })
-
-  it('保存成功でタイトルの下書きを消し、保存済みの内容が変わっていたら復元時に知らせる', async () => {
-    setTask()
-    const first = renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
-    first.unmount()
-
-    // 下書きを書いた後に、別の人が保存済みのタイトルを変えた
-    setTask({ title: '別の人が変更したタイトル' })
-    const second = renderPanel()
-    await userEvent.click(await screen.findByRole('button', { name: 'タイトルを編集' }))
-    expect(screen.getByText(/この下書きを書いた後に、保存済みの内容が変更されています/)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: '保存' }))
-    await screen.findByRole('button', { name: 'タイトルを編集' })
-    second.unmount()
-
-    renderPanel()
-    expect(screen.queryByText('未保存の下書き')).toBeNull()
-  })
-
-  it('別のタスクへ切り替えると、前のタスクのタイトルは残らず新しいタスクのものだけを表示する', () => {
-    setTask({ id: 'task-1', title: 'タスクA' })
-    const view = render(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
-    expect(screen.getAllByRole('button', { name: 'タイトルを編集' })).toHaveLength(1)
-
-    setTask({ id: 'task-2', title: 'タスクB' })
-    view.rerender(<TaskDetailPanel taskId="task-2" onClose={vi.fn()} />)
-
-    const titles = screen.getAllByRole('button', { name: 'タイトルを編集' })
-    expect(titles).toHaveLength(1)
-    expect(titles[0]).toHaveTextContent('タスクB')
-    expect(screen.queryByText('タスクA')).toBeNull()
   })
 
   it('ステータス・優先度・期日の変更は即保存する', async () => {

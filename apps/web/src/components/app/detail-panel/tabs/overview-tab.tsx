@@ -14,8 +14,6 @@ import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
-import { useDraftEditor } from '@/hooks/use-text-draft'
-import { DraftNotice, UnsavedDraftMarker } from '../../draft-notice'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
 import { useAppShell } from '../../app-shell-context'
@@ -45,15 +43,12 @@ const cardLabelStyle: React.CSSProperties = {
 
 // ─── インライン編集フィールド ─────────────────────────────────────
 // テキストは明示保存。保存は保存ボタン / Enter（複数行は Cmd/Ctrl+Enter）、取り消しはキャンセルボタン / Esc。
-// フォーカスが外れても保存も破棄もしない（下書きを残したまま編集を続けられる）。
-// `draftKey` を渡すと、未保存の下書きを端末へ残し、開き直したときに復元を案内する（保存・キャンセルで消える）
+// フォーカスが外れても保存も破棄もしない（入力中の内容を残したまま編集を続けられる）
 export const InlineText = ({
-  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false, draftKey,
+  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false,
 }: {
   value: string
-  /** 編集対象を一意にする下書きのキー（例: `project:{id}:title`）。省略すると下書きを残さない */
-  draftKey?: string
-  /** 保存の成否を返す。reject したら編集を閉じず、下書きを残してエラーを表示する */
+  /** 保存の成否を返す。reject したら編集を閉じず、入力を残してエラーを表示する */
   onSave: (v: string) => Promise<unknown>
   placeholder?: string
   multiline?: boolean
@@ -63,36 +58,25 @@ export const InlineText = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(value)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  // 未保存の下書きは端末に残し、編集を始めたときに復元を案内する。保存済みの値との比較は前後の空白を無視する
-  const editor = useDraftEditor({
-    key: draftKey ?? null, savedValue: value, active: editing, isSame: (v, saved) => v.trim() === saved.trim(),
-  })
-  const { draft, restored } = editor
 
   const trimmed = draft.trim()
   const unchanged = trimmed === value.trim()
   const invalid = required && !trimmed
   const canSave = !saving && !unchanged && !invalid
 
-  const changeDraft = editor.setDraft
-
   const startEdit = () => {
     if (readOnly) return
+    setDraft(value)
     setError(null)
     setEditing(true)
   }
 
   const cancel = () => {
-    editor.discard()
     setEditing(false)
-    setError(null)
-  }
-
-  // 下書きを捨てて保存済みの値へ戻す（編集は続ける）
-  const discardDraft = () => {
-    editor.discard()
+    setDraft(value)
     setError(null)
   }
 
@@ -106,12 +90,10 @@ export const InlineText = ({
 
   const save = async () => {
     if (!canSave) return
-    const submitted = draft
     setSaving(true)
     setError(null)
     try {
       await onSave(trimmed)
-      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -143,7 +125,6 @@ export const InlineText = ({
       >
         {empty ? (placeholder ?? '') : value}
       </button>
-      {editor.hasDraft && !readOnly && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
       </>
     )
   }
@@ -157,7 +138,6 @@ export const InlineText = ({
 
   return (
     <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
       {multiline ? (
         <textarea
           value={draft}
@@ -167,7 +147,7 @@ export const InlineText = ({
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           style={{ ...fieldStyle, minHeight: 64 }}
-          onChange={e => changeDraft(e.target.value)}
+          onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -184,7 +164,7 @@ export const InlineText = ({
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           style={fieldStyle}
-          onChange={e => changeDraft(e.target.value)}
+          onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -204,25 +184,9 @@ export const InlineText = ({
   )
 }
 
-// 日付ペアの下書きは [開始日, 開始時刻, 終了日, 終了時刻] の JSON 文字列として持つ
-const serializeDatePair = (start: string, startClock: string, end: string, endClock: string) =>
-  JSON.stringify([start, startClock, end, endClock])
-
-const parseDatePair = (raw: string): [string, string, string, string] | null => {
-  try {
-    const v: unknown = JSON.parse(raw)
-    if (Array.isArray(v) && v.length === 4 && v.every(x => typeof x === 'string')) {
-      return v as [string, string, string, string]
-    }
-  } catch { /* 壊れた下書きは復元しない */ }
-  return null
-}
-
 export const InlineDatePair = ({
-  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, draftKey, withTime = true, sheetSubtitle,
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle,
 }: {
-  /** 編集対象を一意にする下書きのキー。省略すると下書きを残さない */
-  draftKey?: string
   startDate: string | null
   endDate: string | null
   startTime?: string | null
@@ -238,14 +202,22 @@ export const InlineDatePair = ({
   const { isMobile } = useAppShell()
   const [sheetOpen, setSheetOpen] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
+  const [start, setStart] = React.useState(startDate ?? '')
+  const [end, setEnd]     = React.useState(endDate ?? '')
+  const [startClock, setStartClock] = React.useState(formatTime(startTime) ?? '')
+  const [endClock, setEndClock] = React.useState(formatTime(endTime) ?? '')
+
+  // 編集中は入力を守り、外部の更新で上書きしない
+  React.useEffect(() => {
+    if (editing) return
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
+  }, [editing, startDate, endDate, startTime, endTime])
+
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-
-  // 4つの入力欄の値は、下書きと同じ直列化した1つの文字列で持つ（保存済みの値との比較・永続化を1か所にするため）
-  const savedSerialized = serializeDatePair(startDate ?? '', formatTime(startTime) ?? '', endDate ?? '', formatTime(endTime) ?? '')
-  const editor = useDraftEditor({ key: draftKey ?? null, savedValue: savedSerialized, active: editing })
-  const [start, startClock, end, endClock] = parseDatePair(editor.draft) ?? parseDatePair(savedSerialized)!
-  const restored = editor.restored
   const reversed = isEndBeforeStart(start, end)
   const dateErrorId = React.useId()
 
@@ -253,22 +225,18 @@ export const InlineDatePair = ({
     (start || null) === startDate && (end || null) === endDate &&
     (startClock || null) === formatTime(startTime) && (endClock || null) === formatTime(endTime)
 
-  // 入力の変更を反映する（4つの入力欄の現在値に、変更分を重ねる）
-  const change = (patch: Partial<{ start: string; startClock: string; end: string; endClock: string }>) => {
-    const next = { start, startClock, end, endClock, ...patch }
-    editor.setDraft(serializeDatePair(next.start, next.startClock, next.end, next.endClock))
+  const reset = () => {
+    setStart(startDate ?? '')
+    setEnd(endDate ?? '')
+    setStartClock(formatTime(startTime) ?? '')
+    setEndClock(formatTime(endTime) ?? '')
+    setError(null)
   }
 
   const startEdit = () => {
     if (readOnly) return
-    setError(null)
+    reset()
     setEditing(true)
-  }
-
-  // 下書きを捨てて保存済みの値へ戻す（編集は続ける）
-  const discardDraft = () => {
-    editor.discard()
-    setError(null)
   }
 
   // 確定は完了ボタン / Enter だけ。フォーカス移動や外側の押下では確定も破棄もしない
@@ -277,16 +245,13 @@ export const InlineDatePair = ({
     // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
     if (saving || reversed) return
     if (unchanged) {
-      editor.discard()
       setEditing(false)
       return
     }
-    const submitted = editor.draft
     setSaving(true)
     setError(null)
     try {
       await onSave(start || null, end || null, startClock || null, endClock || null)
-      editor.finish(submitted)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -296,9 +261,8 @@ export const InlineDatePair = ({
   }
 
   const cancel = () => {
-    editor.discard()
     setEditing(false)
-    setError(null)
+    reset()
   }
 
   // Esc は編集の取り消しだけにして、周りのパネルは閉じない
@@ -351,7 +315,6 @@ export const InlineDatePair = ({
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
-      {!isMobile && editor.hasDraft && !readOnly && <div><UnsavedDraftMarker/></div>}
       {sheetOpen && (
         <DateRangeSheet
           title={t('Dates')}
@@ -380,7 +343,6 @@ export const InlineDatePair = ({
       ref={wrapRef}
       style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
-      {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
       <div style={rowStyle}>
         <input
           type="date"
@@ -388,7 +350,7 @@ export const InlineDatePair = ({
           autoFocus
           aria-label={t('Start date')}
           disabled={saving}
-          onChange={e => change({ start: e.target.value })}
+          onChange={e => setStart(e.target.value)}
           onKeyDown={handleKeyDown}
           style={dateStyle}
         />
@@ -397,7 +359,7 @@ export const InlineDatePair = ({
           value={startClock}
           aria-label={t('Start time')}
           disabled={saving}
-          onChange={e => change({ startClock: e.target.value })}
+          onChange={e => setStartClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}
         />}
@@ -413,7 +375,7 @@ export const InlineDatePair = ({
           disabled={saving}
           aria-invalid={reversed}
           aria-describedby={reversed ? dateErrorId : undefined}
-          onChange={e => change({ end: e.target.value })}
+          onChange={e => setEnd(e.target.value)}
           onKeyDown={handleKeyDown}
           style={reversed ? { ...dateStyle, border: '1px solid var(--red)' } : dateStyle}
         />
@@ -422,7 +384,7 @@ export const InlineDatePair = ({
           value={endClock}
           aria-label={t('End time')}
           disabled={saving}
-          onChange={e => change({ endClock: e.target.value })}
+          onChange={e => setEndClock(e.target.value)}
           onKeyDown={handleKeyDown}
           style={timeStyle}
         />}
@@ -653,7 +615,6 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
           placeholder={t('Milestone name')}
           required
           readOnly={!canEdit}
-          draftKey={`milestone:${milestone.id}:title`}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: overdue ? 700 : 500 }}>
@@ -665,7 +626,6 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
               endTime={milestone.endTime}
               onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
               readOnly={!canEdit}
-              draftKey={`milestone:${milestone.id}:dates`}
               sheetSubtitle={milestone.title}
             />
           </span>
@@ -684,7 +644,6 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
           placeholder={t('Enter a description…')}
           multiline
           readOnly={!canEdit}
-          draftKey={`milestone:${milestone.id}:description`}
         />
       </div>
       {canEdit && (
@@ -814,7 +773,6 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
         large
         required
         readOnly={readOnly}
-        draftKey={`project:${project.id}:title`}
       />
 
       {patch.isError && (
@@ -830,7 +788,6 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             endDate={project.endDate}
             onSave={(start, end) => editPatch.mutateAsync({ startDate: start, endDate: end })}
             readOnly={readOnly}
-            draftKey={`project:${project.id}:dates`}
             withTime={false}
             sheetSubtitle={project.title}
           />
@@ -866,7 +823,6 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           placeholder={t('Click to enter a summary or goals…')}
           multiline
           readOnly={readOnly}
-          draftKey={`project:${project.id}:summary`}
         />
       </div>
 

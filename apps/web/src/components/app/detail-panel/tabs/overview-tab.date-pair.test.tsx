@@ -179,23 +179,4 @@ describe('モバイルの日程シート（InlineDatePair）', () => {
 
     expect(onSave).toHaveBeenCalledWith('2026-06-14', '2026-06-15', '03:24', null)
   })
-
-  it('日程の下書きは閉じても残り、開き直すと復元のお知らせを出す。破棄で保存済みの日程へ戻る', () => {
-    const draftKey = 'milestone:m1:dates'
-    const first = render(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={vi.fn()} draftKey={draftKey}/>)
-    fireEvent.click(screen.getByRole('button'))
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-30' } })
-    first.unmount()
-
-    render(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={vi.fn()} draftKey={draftKey}/>)
-    expect(screen.getByText('Unsaved draft')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /6\/12/ }))
-
-    expect(screen.getByLabelText('End date')).toHaveValue('2026-06-30')
-    expect(screen.getByText('Restored your unsaved draft.')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }))
-    expect(screen.getByLabelText('End date')).toHaveValue('2026-06-16')
-    expect(window.localStorage.length).toBe(0)
-  })
 })

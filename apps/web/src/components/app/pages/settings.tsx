@@ -32,9 +32,6 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
-import { clearAllDrafts } from '@/lib/drafts/draft-store'
-import { useDraftField } from '@/hooks/use-text-draft'
-import { DraftNotice } from '../draft-notice'
 import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
 import {
   AI_CHAT_ACCESS_LEVELS,
@@ -268,18 +265,15 @@ const SettingsAccount = () => {
   const router = useRouter()
   const { data: user, isLoading, isError } = useCurrentUser()
 
-  // 未保存の表示名は端末に残し、開き直したときに復元を案内する
-  const nameField = useDraftField({
-    key: 'settings:display-name',
-    savedValue: user?.displayName ?? '',
-    ready: user !== undefined,
-  })
-  const displayName = nameField.value
-  const setDisplayName = nameField.setValue
+  const [displayName, setDisplayName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
   const avatarInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    if (user?.displayName) setDisplayName(user.displayName)
+  }, [user?.displayName])
 
   const nameMutation = useMutation({
     mutationFn: async () => {
@@ -296,7 +290,6 @@ const SettingsAccount = () => {
       return nextName
     },
     onSuccess: (nextName) => {
-      nameField.commit(nextName)
       patchCurrentUserCache(queryClient, { displayName: nextName })
       void invalidateCurrentUserProfile(queryClient)
       setNameSaved(true)
@@ -382,8 +375,6 @@ const SettingsAccount = () => {
         }
       ).ReactNativeWebView
       nativeBridge?.postMessage(JSON.stringify({ type: 'account-deleted' }))
-      // アカウントを削除したら、この端末の下書きもすべて消す
-      clearAllDrafts()
 
       // Authユーザー削除後でもsupabase-jsは404/401を無視してローカル保存を消す。
       await createSupabaseClient()
@@ -512,9 +503,6 @@ const SettingsAccount = () => {
               </button>
             </div>
           </div>
-          {nameField.restored && (
-            <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} style={{ padding: '6px 16px' }} />
-          )}
           {nameMutation.isError && (
             <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
@@ -1038,15 +1026,9 @@ const StatusRow = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
-  // 未保存の名前は端末に残し、読み込み時に復元して編集欄を開く（色は選択なので下書きにしない）
-  const nameField = useDraftField({ key: `settings:status:${status.id}:name`, savedValue: status.name })
-  const name = nameField.value
-  const setName = nameField.setValue
+  const [name, setName] = React.useState(status.name)
   const [color, setColor] = React.useState(status.color)
   const [confirmDel, setConfirmDel] = React.useState(false)
-  React.useEffect(() => {
-    if (nameField.restored) setEditing(true)
-  }, [nameField.restored])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1058,7 +1040,6 @@ const StatusRow = ({
       if (!res.ok) throw new Error(t('Could not update'))
     },
     onSuccess: () => {
-      nameField.commit(name.trim())
       setEditing(false)
       onSaved()
     },
@@ -1112,9 +1093,6 @@ const StatusRow = ({
         background: 'var(--card-2)',
       }}
     >
-      {nameField.restored && (
-        <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} />
-      )}
       <div style={{ display: 'flex', gap: 8 }}>
         <input
           value={name}
@@ -1159,11 +1137,7 @@ const StatusRow = ({
         <button
           className="btn btn-ghost"
           style={{ height: 28, fontSize: 12, padding: '0 10px' }}
-          onClick={() => {
-            nameField.discard()
-            setColor(status.color)
-            setEditing(false)
-          }}
+          onClick={() => setEditing(false)}
         >
           {t('Cancel')}
         </button>
@@ -1195,14 +1169,8 @@ const SettingsWorkflow = () => {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['statuses'] })
 
   const [showAdd, setShowAdd] = React.useState(false)
-  // 追加欄の未保存の名前は端末に残し、読み込み時に復元して追加欄を開く
-  const newNameField = useDraftField({ key: 'settings:status:new:name', savedValue: '' })
-  const newName = newNameField.value
-  const setNewName = newNameField.setValue
+  const [newName, setNewName] = React.useState('')
   const [newColor, setNewColor] = React.useState('#3B82F6')
-  React.useEffect(() => {
-    if (newNameField.restored) setShowAdd(true)
-  }, [newNameField.restored])
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -1215,7 +1183,7 @@ const SettingsWorkflow = () => {
     },
     onSuccess: () => {
       setShowAdd(false)
-      newNameField.commit('')
+      setNewName('')
       setNewColor('#3B82F6')
       invalidate()
     },
@@ -1261,9 +1229,6 @@ const SettingsWorkflow = () => {
                 background: 'var(--card-2)',
               }}
             >
-              {newNameField.restored && (
-                <DraftNotice baseChanged={newNameField.restored.baseChanged} onDiscard={newNameField.discard} />
-              )}
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -1312,7 +1277,7 @@ const SettingsWorkflow = () => {
                   style={{ height: 28, fontSize: 12, padding: '0 10px' }}
                   onClick={() => {
                     setShowAdd(false)
-                    newNameField.discard()
+                    setNewName('')
                   }}
                 >
                   {t('Cancel')}
@@ -1723,17 +1688,18 @@ const AiChatSystemPromptSection = () => {
   const readOnly = !isOwner
   const loaded = wsSettings !== undefined
   const saved = wsSettings?.aiChatSystemPrompt ?? ''
+  const [draft, setDraft] = React.useState('')
   const [justSaved, setJustSaved] = React.useState(false)
-  // 未保存のプロンプトは端末に残し、読み込み時に復元する。保存済みのプロンプト自体が変わったときだけ、
-  // 未編集の入力を追従させる（モデル変更などで設定オブジェクトが差し替わっても入力を保つ）。
-  const promptField = useDraftField({
-    key: 'settings:ai-system-prompt',
-    savedValue: saved,
-    ready: loaded,
-    enabled: !readOnly,
-  })
-  const draft = promptField.value
-  const setDraft = promptField.setValue
+  // 直前に下書きへ反映した保存済みの値。モデル変更などで設定オブジェクトが差し替わっても、
+  // 保存済みのプロンプト自体が変わったときだけ、未編集の下書きを追従させる。
+  const syncedSavedRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (!loaded) return
+    const previous = syncedSavedRef.current
+    syncedSavedRef.current = saved
+    setDraft((current) => (previous === null || current === previous ? saved : current))
+  }, [loaded, saved])
 
   const unchanged = draft === saved
   // 保存の応答を待つ間に書き足されたかを、await 後に最新の下書きで判定する。
@@ -1753,7 +1719,7 @@ const AiChatSystemPromptSection = () => {
     // 実際に保存された値を表示し、保存されていない空白を残したまま「保存済み」に見せない。
     // 保存中に書き足した下書きは保存されていないので、残したまま「保存済み」も出さない。
     if (draftRef.current !== submitted) return
-    promptField.commit(updated.aiChatSystemPrompt ?? '')
+    setDraft(updated.aiChatSystemPrompt ?? '')
     setJustSaved(true)
     setTimeout(() => setJustSaved(false), 2000)
   }
@@ -1765,9 +1731,6 @@ const AiChatSystemPromptSection = () => {
         {t('Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.')}
       </p>
       <div className="card" style={{ padding: 14 }}>
-        {promptField.restored && (
-          <DraftNotice baseChanged={promptField.restored.baseChanged} onDiscard={promptField.discard} style={{ marginBottom: 8 }} />
-        )}
         <textarea
           aria-label={t('System prompt')}
           value={draft}
@@ -1848,27 +1811,23 @@ const SettingsWorkspaceGeneral = () => {
     queryFn: () => fetchWithAuth('/api/workspaces').then((r) => r.json()),
   })
 
-  // 未保存のワークスペース名・説明・プロジェクトの呼び方は端末に残し、読み込み時に復元する。
-  // ws 由来（名前・説明）と wsSettings 由来（呼び方）は、それぞれ自分のデータが読み込めたときに独立して扱う
-  const wsNameField = useDraftField({
-    key: 'settings:workspace-name', savedValue: ws?.name ?? '', ready: ws !== undefined, enabled: !readOnly,
-  })
-  const wsName = wsNameField.value
-  const setWsName = wsNameField.setValue
+  const [wsName, setWsName] = React.useState('')
   const [nameSaved, setNameSaved] = React.useState(false)
-  const wsDescField = useDraftField({
-    key: 'settings:workspace-description', savedValue: ws?.description ?? '', ready: ws !== undefined, enabled: !readOnly,
-  })
-  const wsDesc = wsDescField.value
-  const setWsDesc = wsDescField.setValue
+  const [wsDesc, setWsDesc] = React.useState('')
   const [descSaved, setDescSaved] = React.useState(false)
-  const labelField = useDraftField({
-    key: 'settings:project-label', savedValue: wsSettings?.projectLabel ?? '', ready: wsSettings !== undefined, enabled: !readOnly,
-  })
-  const label = labelField.value
-  const setLabel = labelField.setValue
+  const [label, setLabel] = React.useState('')
   const [labelSaved, setLabelSaved] = React.useState(false)
   const logoInputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    if (ws?.name) setWsName(ws.name)
+  }, [ws?.name])
+  React.useEffect(() => {
+    if (ws !== undefined) setWsDesc(ws.description ?? '')
+  }, [ws?.description])
+  React.useEffect(() => {
+    if (wsSettings !== undefined) setLabel(wsSettings.projectLabel ?? '')
+  }, [wsSettings])
 
   const nameMutation = useMutation({
     mutationFn: async () => {
@@ -1883,7 +1842,6 @@ const SettingsWorkspaceGeneral = () => {
       }
     },
     onSuccess: () => {
-      wsNameField.commit(wsName)
       void queryClient.invalidateQueries({ queryKey: ['workspace'] })
       setNameSaved(true)
       setTimeout(() => setNameSaved(false), 2000)
@@ -1903,7 +1861,6 @@ const SettingsWorkspaceGeneral = () => {
       }
     },
     onSuccess: () => {
-      wsDescField.commit(wsDesc)
       void queryClient.invalidateQueries({ queryKey: ['workspace'] })
       setDescSaved(true)
       setTimeout(() => setDescSaved(false), 2000)
@@ -1931,7 +1888,6 @@ const SettingsWorkspaceGeneral = () => {
 
   const handleLabelSave = async () => {
     await updateSettings.mutateAsync({ projectLabel: label })
-    labelField.commit(label)
     setLabelSaved(true)
     setTimeout(() => setLabelSaved(false), 2000)
   }
@@ -2100,9 +2056,6 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
-          {wsNameField.restored && (
-            <DraftNotice baseChanged={wsNameField.restored.baseChanged} onDiscard={wsNameField.discard} style={{ padding: '6px 16px' }} />
-          )}
           {nameMutation.isError && (
             <InlineError style={{ padding: '6px 16px' }}>{(nameMutation.error as Error).message}</InlineError>
           )}
@@ -2149,9 +2102,6 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
-          {wsDescField.restored && (
-            <DraftNotice baseChanged={wsDescField.restored.baseChanged} onDiscard={wsDescField.discard} style={{ padding: '6px 16px 10px' }} />
-          )}
           {descMutation.isError && (
             <InlineError style={{ padding: '6px 16px 10px' }}>{(descMutation.error as Error).message}</InlineError>
           )}
@@ -2195,9 +2145,6 @@ const SettingsWorkspaceGeneral = () => {
               </button>
             </div>
           </div>
-          {labelField.restored && (
-            <DraftNotice baseChanged={labelField.restored.baseChanged} onDiscard={labelField.discard} style={{ padding: '0 16px 10px' }} />
-          )}
         </div>
       </section>
 

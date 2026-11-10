@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
-import { FileNameDraftMarker, InlineFileNameEditor } from '../inline-file-name-editor'
+import { InlineFileNameEditor } from '../inline-file-name-editor'
 import { FileFilterToolbar } from '../file-filter-toolbar'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
@@ -160,7 +160,6 @@ const FileRow = ({
           {fileIcon}
           <div style={{ flex: 1, minWidth: 0 }}>
             <InlineFileNameEditor
-              fileId={file.id}
               fileName={file.fileName}
               onSave={(fileName) => onRename(file.id, fileName)}
               onCancel={() => setIsRenaming(false)}
@@ -212,7 +211,6 @@ const FileRow = ({
             >
               {file.fileName}
             </div>
-            <FileNameDraftMarker fileId={file.id} fileName={file.fileName}/>
             {fileMeta}
           </div>
         </a>

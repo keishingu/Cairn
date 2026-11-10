@@ -10,7 +10,6 @@ import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
-import { clearAllDrafts } from '@/lib/drafts/draft-store'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
   getSettingsNavGroups,
@@ -35,9 +34,6 @@ export function MobileSettings() {
 
   async function handleLogout() {
     if (window.ReactNativeWebView) {
-      // アプリ内 WebView のサインアウトは結果をこちらで受け取れないため、依頼を出す時点で端末の下書きを消す
-      // （サインアウトの完了後に残る個人データを避けることを優先する）
-      clearAllDrafts()
       if (window.cairnDeviceSignOut) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'DEVICE_SIGN_OUT_REQUESTED' }))
       } else {
