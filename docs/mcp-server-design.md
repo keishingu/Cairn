@@ -162,6 +162,9 @@ OAuth / MCP の基準は [MCP 2026-07-28 authorization](https://modelcontextprot
 | `list_my_tasks`   | read  | `GET /api/tasks?assignee=me`              |
 | `create_task`     | write | `POST /api/tasks`                         |
 | `complete_task`   | write | `PATCH /api/tasks/[id]`                   |
+| `list_milestones`  | read  | `GET /api/projects/[id]/milestones`                      |
+| `create_milestone` | write | `POST /api/projects/[id]/milestones`                     |
+| `update_milestone` | write | `PATCH /api/projects/[id]/milestones/[milestoneId]`（完了・期間・タイトル等） |
 | `post_message`    | write | `POST /api/channels/[channelId]/messages` |
 | `search_messages` | read  | `GET /api/search/messages?q=...`          |
 | `list_channels`         | read | `GET /api/research/channels`                         |

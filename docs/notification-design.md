@@ -40,12 +40,27 @@
 - Push の遷移先 URL は実ルート `/chats/{channelId}` に統一する（DM・メンション共通）
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
 - メッセージ作成と既読スナップショットはチャンネル行、メンション通知作成とチャンネル既読化は同じ `channel_read_states` 行をロックして、それぞれトランザクションを直列化する。メッセージの `created_at` はチャンネルロック取得後の時刻にし、既読位置とメンションの既読判定は DB のマイクロ秒精度を保ったまま比較する。既読時刻は既存値と取得した最新メッセージの新しい方を採用して単調増加させ、message ID は実際に開いた最新スナップショットを記録する。その時刻以前と削除済みメッセージ由来の通知だけを既読化した後、残った未読メンション通知行から `unread_mention_count` を再計算する。空チャンネルと未参加者の初期 read state は epoch を起点にし、ジョブの実行順にかかわらず未閲覧のメンションを未読として残す
+- **メッセージを削除したら、その `mention` / `dm` 通知を既読にし、宛先の `unread_mention_count` を数え直す**（DB トリガー `settle_notifications_on_message_delete`。本人の削除・通報対応・アプリ API など削除経路が複数あるため）。通知ジョブはメッセージ行を `FOR SHARE` でロックして削除と直列にし、既に削除済みなら通知を既読で作る。チャンネル削除のカスケードによる物理削除でも、残る通知を既読にする（`settle_notifications_on_message_remove`）。アカウント削除は本人の投稿を論理削除してから通知を消し、受信者の数え直しをトリガーに任せる。削除でチャンネルが空になっても、Web・アプリは最新の取得が終わって空と確定した時点で既読 API を呼んで数え直す
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
 - メンション配信が参加前のユーザーに作成した epoch 起点の合成 read state は、後からチャンネルへ参加した時点まで進める。実際の既読履歴がある state は保持する
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
 - 閲覧中 Push の判定（`classifyPushRecipients`）も同じファイル。10 秒猶予（`PUSH_GRACE_PERIOD`、Inngest `step.sleep`）後に既読を `last_read_at >= created_at` または `last_read_message_id` 一致で判定し、猶予中に削除されたメッセージの Push も送らない。タスク割り当て Push は対象外
 - 未実装: チャンネル別通知レベル・ミュート・DND、時間ベースのリマインダー、ファイル添付通知の廃止（バッジのみ化）。構想は [`archive/notification-ux-redesign.md`](./archive/notification-ux-redesign.md)
+
+## チャット一覧の未読表示
+
+- **件数バッジは自分宛てだけ**: チャンネル・スレッド・プロジェクトは未読メンション数（`unread_mention_count`）、DM は未読数をバッジにする。メンションのない新着は名前の太字（800）と一段明るい文字色だけで示す（通常は標準の太さ）。全新着に件数を出すと、急ぎでない会話まで開いて消したくなるため
+- Web のサイドバーと Expo のチャットタブの合計バッジも同じ基準で数える。判定は `packages/shared/src/chat-unread-display.ts` の `chatUnreadDisplay` に集約し、Web と Expo で揃える
+
+## チャット一覧の並び順とピン留め
+
+- 並び順はセクションごとに選ぶ。各見出しの「＋」の左（Expo は見出しの右端）の並び替えボタンから、プロジェクトは「作成順（既定）・更新順・実施日順・名前順」、チャンネルは「作成順（既定）・更新順・名前順」、DM は「名前順（既定）・更新順」。マイルストーン・スレッドは親の下のまま、アーカイブ欄は並べ替えない。選べる項目と判定は `packages/shared/src/chat-list-sort.ts`（`CHAT_LIST_SECTION_SORTS` / `sortChatList`）に集約し、Web と Expo で揃える
+  - 更新順: 最終投稿時刻（API の `lastMessageAt`。配下のマイルストーン・スレッドの投稿も親に含める）の新しい順。投稿のないものは末尾
+  - 実施日順: プロジェクトの開始日の古い順。日付のないプロジェクトは末尾
+- 並び順はセクション別・端末ごとの保存（Web は localStorage、Expo は AsyncStorage）で、Web とアプリでは同期しない
+- `lastMessageAt` はチャンネルごとに `idx_messages_channel` を末尾から1件引いて求める（`apps/web/src/lib/chat/last-message-at.ts`）。全件の max 集計にしない
+- ピン留めはプロジェクトだけで、サイドバーのピン留め（`pinned_projects`）と同じデータ。チャット一覧の「…」（Expo は長押し）から切り替え、ピン留めしたプロジェクトは並び順に関係なくプロジェクト欄の先頭に置く
 
 ## アプリアイコンのバッジ
 

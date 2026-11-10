@@ -40,6 +40,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
 import { useRealtimeChannel } from '../../../components/realtime-provider'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -299,6 +300,7 @@ function ChatMessageRow({
   onOpenTask,
   onShowTasks,
   onJumpToMessage,
+  onCardStale,
 }: {
   message: MessageDto
   palette: Palette
@@ -316,6 +318,8 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
   /** 返信の引用をタップしたときに、返信元のメッセージへ移動する */
   onJumpToMessage: (messageId: string) => void
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale: () => Promise<void>
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -323,7 +327,7 @@ function ChatMessageRow({
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useAppLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale, onCardStale), [message.id, message.blocksRevision, locale, onCardStale])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -727,6 +731,12 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
+  // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
+  // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする
+  // 読み込み済みのページはすべて取り直される（useInfiniteQuery）。取り直しの失敗はカードの下にエラーとして出すため throwOnError にする
+  const handleCardStale = React.useCallback(async () => {
+    if (channelId) await queryClient.invalidateQueries({ queryKey: ['messages', channelId] }, { throwOnError: true })
+  }, [channelId, queryClient])
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },
     messagesQuery,
@@ -1014,6 +1024,8 @@ export default function ChatThreadScreen() {
   channelIdRef.current = channelId
   const draftRef = React.useRef(draft)
   draftRef.current = draft
+  // 下書きは端末に保存していないため、未送信の入力や添付がある間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(draft.trim().length > 0 || upload.uploads.length > 0)
 
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
@@ -1147,14 +1159,15 @@ export default function ChatThreadScreen() {
       messagesQuery.isError ||
       messagesRead.stale ||
       // 過去のメッセージを見ている間は、まだ見ていない最新の発言まで既読にしない（Web と同じ）
-      isHistoryView ||
-      messages.length === 0
+      isHistoryView
     )
       return
     if (confirmedFetchedChannelIdRef.current !== channelId) return
     if (markReadRef.current.isPending) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastReadMessageIdRef.current === lastId) return
+    // 空のチャンネルでも一度は既読にする。削除で空になったチャンネルに残った未読メンション数を、
+    // 開いた時点でサーバーに数え直させるため
+    const lastId = messages[messages.length - 1]?.id ?? `empty:${channelId}`
+    if (lastReadMessageIdRef.current === lastId) return
     // 成功した場合のみ ref を進める。失敗時は次のポーリングで同じメッセージに対して再試行する
     markReadRef.current.mutate(undefined, {
       onSuccess: () => {
@@ -1376,7 +1389,8 @@ export default function ChatThreadScreen() {
     }
     // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
     // アプリ（Bot）はユーザーではないのでブロックの対象にしない
-    if (message.senderId === me?.id || message.blocked || message.senderApp) {
+    // 取り込んだ過去ログの送信者は紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    if (message.senderId === me?.id || message.blocked || message.senderApp || message.imported) {
       Alert.alert(t('Reported'), t('The moderators will review it.'))
       return
     }
@@ -1988,6 +2002,7 @@ export default function ChatThreadScreen() {
                         onOpenTask={openTask}
                         onShowTasks={setLinkedTasksSheet}
                         onJumpToMessage={jumpToMessage}
+                        onCardStale={handleCardStale}
                         {...(attachmentAuth ? { attachmentAuth } : {})}
                       />
                     </SwipeToReply>
@@ -2437,7 +2452,8 @@ export default function ChatThreadScreen() {
                   }}
                 />
               )}
-              {actionTarget?.senderId === me?.id && (
+              {/* 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する） */}
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported && (
                 <ActionButton
                   icon="create-outline"
                   label={t('Edit')}
@@ -2506,7 +2522,7 @@ export default function ChatThreadScreen() {
                     }}
                   />
                 )}
-              {actionTarget?.senderId === me?.id ? (
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported ? (
                 <ActionButton
                   icon="trash-outline"
                   label={t('Delete')}

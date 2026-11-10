@@ -5,15 +5,17 @@ import { useRouter } from 'next/navigation'
 import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
+import { InlineError } from './inline-error'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
-import { createClient } from '@/lib/supabase/client'
+import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { UserStatus } from '@/lib/user-status'
 import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
 import { useProjectChannels, useWorkspaceChannels, useWorkspaceDms } from '@/lib/chat/client'
 import { useCommand } from '@/lib/command-registry'
+import { chatUnreadDisplay } from '@cairn/shared'
 import { usePinnedProjects, useUnpinProject } from '@/lib/use-pinned-projects'
 import { useSidebarCurrentUser, useSidebarProjects, useSidebarWorkspace, useSidebarWorkspaceList } from '@/hooks/use-sidebar'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -173,11 +175,14 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   const { data: workspaceChannels = [] } = useWorkspaceChannels()
   const { data: dms = [] } = useWorkspaceDms()
   // アーカイブ済みのプロジェクト・チャンネル・スレッド（親チャンネルがアーカイブ済みの配下スレッドを含む）は
-  // 折りたたみで隠れているため、未読バッジ総数には含めない
+  // 折りたたみで隠れているため、未読バッジ総数には含めない。
+  // 一覧の行と同じく、件数は自分宛て（メンション・DM）だけを数える
   const totalChatUnread = React.useMemo(() => {
     const archivedParentIds = new Set(workspaceChannels.filter(c => c.archived && c.parentChannelId === null).map(c => c.id))
     const visibleWorkspaceChannels = workspaceChannels.filter(c => !c.archived && !(c.parentChannelId !== null && archivedParentIds.has(c.parentChannelId)))
-    return [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels, ...dms].reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)
+    const channelBadges = [...projectChannels.filter(c => !c.archived), ...visibleWorkspaceChannels]
+      .reduce((sum, c) => sum + chatUnreadDisplay(c).badgeCount, 0)
+    return channelBadges + dms.reduce((sum, d) => sum + chatUnreadDisplay(d, { directMessage: true }).badgeCount, 0)
   }, [projectChannels, workspaceChannels, dms])
   const { data: workspace } = useSidebarWorkspace()
   const { data: workspaceList = [] } = useSidebarWorkspaceList()
@@ -567,7 +572,6 @@ const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
   const t = useT()
-  const router = useRouter()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
@@ -582,10 +586,19 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     if (menuOpen) setStatusMessageDraft(me?.statusMessage ?? '')
   }, [menuOpen, me?.statusMessage])
 
-  function commitStatusMessage() {
-    const trimmed = statusMessageDraft.trim()
-    if (trimmed === (me?.statusMessage ?? '')) return
-    statusMessageMutation.mutate(trimmed || null)
+  const [statusMessageError, setStatusMessageError] = React.useState<string | null>(null)
+  const statusMessageTrimmed = statusMessageDraft.trim()
+  const statusMessageChanged = statusMessageTrimmed !== (me?.statusMessage ?? '')
+
+  // 明示保存: 保存ボタン / Enter だけ。blur では保存しない（メニューを閉じると下書きは破棄される）
+  async function commitStatusMessage() {
+    if (!statusMessageChanged || statusMessageMutation.isPending) return
+    setStatusMessageError(null)
+    try {
+      await statusMessageMutation.mutateAsync(statusMessageTrimmed || null)
+    } catch (e) {
+      setStatusMessageError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
+    }
   }
 
   React.useEffect(() => {
@@ -598,10 +611,11 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   }, [menuOpen])
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
-    router.refresh()
+    if (!(await signOutCurrentSession())) {
+      window.alert(t('Could not sign out. Please try again.'))
+      return
+    }
+    window.location.replace('/auth/login')
   }
 
   const userMenu = menuOpen && (
@@ -639,25 +653,36 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       >
         {t('Status message')}
       </div>
-      <input
-        value={statusMessageDraft}
-        onChange={e => setStatusMessageDraft(e.target.value)}
-        onBlur={commitStatusMessage}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            commitStatusMessage()
-            ;(e.currentTarget as HTMLInputElement).blur()
-          }
-        }}
-        placeholder={t('e.g. Out until Friday')}
-        maxLength={100}
-        style={{
-          width: '100%', boxSizing: 'border-box', padding: '6px 10px', margin: '0 0 6px',
-          borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
-          color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
-        }}
-      />
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '0 0 6px' }}>
+        <input
+          value={statusMessageDraft}
+          disabled={statusMessageMutation.isPending}
+          aria-label={t('Status message')}
+          onChange={e => { setStatusMessageDraft(e.target.value); setStatusMessageError(null) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              void commitStatusMessage()
+            }
+          }}
+          placeholder={t('e.g. Out until Friday')}
+          maxLength={100}
+          style={{
+            flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '6px 10px',
+            borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
+            color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => void commitStatusMessage()}
+          disabled={!statusMessageChanged || statusMessageMutation.isPending}
+        >
+          {t('Save')}
+        </button>
+      </div>
+      {statusMessageError && <InlineError style={{ fontSize: 11.5, padding: '0 10px 6px' }}>{statusMessageError}</InlineError>}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
       <button
         onClick={handleLogout}

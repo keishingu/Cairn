@@ -47,6 +47,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         eq(messages.senderId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
+        // 外部チャットから取り込んだ過去ログは、紐づけた本人でも編集・削除させない（docs/import-design.md §6）
+        eq(messages.imported, false),
       ))
       .limit(1)
 
@@ -92,6 +94,8 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         eq(messages.senderId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),
         isNull(messages.deletedAt),
+        // 外部チャットから取り込んだ過去ログは、紐づけた本人でも編集・削除させない（docs/import-design.md §6）
+        eq(messages.imported, false),
       ))
       .limit(1)
 

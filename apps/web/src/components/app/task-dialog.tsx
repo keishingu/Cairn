@@ -3,6 +3,8 @@
 import React from 'react'
 import { Modal, ModalHeader } from './primitives'
 import { useT } from '@/components/locale-provider'
+import { useAppShell } from './app-shell-context'
+import { MobileFormSheet } from './mobile/form-sheet'
 
 interface TaskDialogAction {
   label: string
@@ -47,6 +49,29 @@ export const TaskDialog = ({
   }
 
   const headerProps = subtitle ? { subtitle } : {}
+  const { isMobile } = useAppShell()
+
+  // モバイルはプロジェクト作成と同じボトムシートで出す（中央モーダルだと入力欄が小さく、見た目も揃わない）
+  if (isMobile) {
+    return (
+      <MobileFormSheet
+        icon="check"
+        title={title}
+        subtitle={subtitle}
+        onClose={onClose}
+        onSubmit={onSubmit}
+        submitLabel={submitLabel}
+        submittingLabel={submittingLabel}
+        isSubmitting={isSubmitting}
+        submitDisabled={submitDisabled}
+        disableClose={disableClose}
+        errorMessage={errorMessage}
+        leadingAction={leadingAction}
+      >
+        {children}
+      </MobileFormSheet>
+    )
+  }
 
   return (
     <Modal onClose={handleClose} label={title}>

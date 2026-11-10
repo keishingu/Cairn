@@ -155,6 +155,7 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
       openMember,
       openNotif: () => setNotifOpen(true),
       isWebView: false,
+      isMobile: false,
       projectsView,
       setProjectsView,
       crossSearchNonce,

@@ -2,9 +2,10 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { FEATURE_FLAGS } from '@cairn/shared'
+import { DEFAULT_CHAT_LIST_SORTS, FEATURE_FLAGS, chatUnreadDisplay, latestMessageAt, sortChatList, type ChatListSection, type ChatListSort, type ChatUnreadCounts } from '@cairn/shared'
 import { useT } from '@/components/locale-provider'
 import { Icon, Avatar, AvatarStack, UnreadBadge, portalHostFor } from '../primitives'
+import { ChatListSortMenu } from './chat-list-sort-menu'
 import { STORAGE_KEYS, chatArchivedThreadsCollapsedKey, chatCompletedMilestonesCollapsedKey } from '@/lib/storage-keys'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 import type { WorkspaceChannelDto } from '@/app/api/workspaces/channels/route'
@@ -28,17 +29,20 @@ const sectionAddButtonStyle: React.CSSProperties = {
 // hover で濃いグレー＋うっすら背景（ChatSidebarItem の hover と同じトーン）
 const sectionAddButtonClass = 'hover-bg-card hover-text'
 
-export const ChatSidebarSection = ({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd?: () => void }) => {
+export const ChatSidebarSection = ({ title, children, onAdd, sortMenu }: { title: string; children: React.ReactNode; onAdd?: () => void; sortMenu?: React.ReactNode }) => {
   const t = useT()
   return (
   <div style={{ marginBottom: 10 }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
-      {onAdd && (
-        <button onClick={onAdd} aria-label={t('Add {title}', { title })} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
-          <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
-        </button>
-      )}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+        {sortMenu}
+        {onAdd && (
+          <button onClick={onAdd} aria-label={t('Add {title}', { title })} className={sectionAddButtonClass} style={sectionAddButtonStyle}>
+            <Icon name="plus" size={13} strokeWidth={2.4} color="currentColor"/>
+          </button>
+        )}
+      </span>
     </div>
     <div>{children}</div>
   </div>
@@ -114,13 +118,18 @@ export function formatChannelPeriod(start: string | null, end: string | null, st
   return undefined
 }
 
-export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, badge, mobile, memberNames, memberCount, action }: {
+export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, dot, label, dateMeta, unread, directMessage = false, pinned = false, mobile, memberNames, memberCount, action }: {
   active?: boolean; onClick?: () => void; prefix?: string
-  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string; badge?: number; mobile?: boolean
+  avatar?: string; avatarUrl?: string; dot?: string; label: string; dateMeta?: string
+  /** 未読件数。メンションのない新着は太字だけで示し、件数バッジは自分宛て（メンション・DM）だけに付ける */
+  unread?: ChatUnreadCounts; directMessage?: boolean; mobile?: boolean
+  /** ピン留め中。並び順に関係なく先頭に固定されている理由を示す */
+  pinned?: boolean
   memberNames?: string[]; memberCount?: number
   action?: React.ReactNode
 }) => {
   const t = useT()
+  const unreadDisplay = unread ? chatUnreadDisplay(unread, { directMessage }) : null
   return (
   <div className="chat-sidebar-item" style={{ position: 'relative' }}>
     <button onClick={onClick} style={{
@@ -130,9 +139,10 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       borderBottom: mobile ? '1px solid var(--divider)' : 'none',
       border: mobile ? undefined : 'none',
       background: active && !mobile ? 'var(--card-hover)' : 'transparent',
-      color: active ? 'var(--text)' : 'var(--text-2)',
+      // 新着は最大の太さに加えて文字色も一段明るくし、件数バッジがなくても一目で分かるようにする
+      color: active || unreadDisplay?.unread ? 'var(--text)' : 'var(--text-2)',
       fontSize: mobile ? 15 : 13,
-      fontWeight: badge && badge > 0 ? 700 : 500,
+      fontWeight: unreadDisplay?.unread ? 800 : 400,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
       className={!active && !mobile ? 'hover-bg-card' : undefined}
@@ -158,11 +168,16 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       )}
       <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {pinned && (
+          <span role="img" aria-label={t('Pinned')} title={t('Pinned')} style={{ flexShrink: 0, display: 'inline-flex', alignSelf: 'center', color: 'var(--text-4)' }}>
+            <Icon name="pin" size={mobile ? 13 : 11}/>
+          </span>
+        )}
         {dateMeta && (
           <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
         )}
       </span>
-      {badge != null && <UnreadBadge count={badge} size={mobile ? 'md' : 'sm'} />}
+      {unreadDisplay && <UnreadBadge count={unreadDisplay.badgeCount} size={mobile ? 'md' : 'sm'} />}
       {memberNames && memberNames.length > 0 && mobile && (
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
@@ -354,7 +369,7 @@ const ProjectMilestoneItem = ({ channel, active, onSelectChannel, onEditMileston
         prefix="┗"
         label={channel.channelName}
         {...(period ? { dateMeta: period } : {})}
-        badge={channel.unreadCount}
+        unread={channel}
         mobile={isMobile}
         action={actions.length > 0 ? (
           <SidebarCreateMenu ownerLabel={channel.channelName} actions={actions} isMobile={isMobile} />
@@ -435,7 +450,7 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actio
       onClick={() => onSelectChannel(channel.id)}
       prefix="┗"
       label={name}
-      badge={channel.unreadCount}
+      unread={channel}
       mobile={isMobile}
       memberNames={channel.memberNames}
       memberCount={channel.memberCount}
@@ -447,7 +462,7 @@ const WorkspaceThreadItem = ({ channel, active, onSelectChannel, isMobile, actio
   )
 }
 
-const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, onEditMilestone, onSetMilestoneCompleted, isMobile }: {
+const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, channelId, onSelectChannel, onCreateMilestone, onEditMilestone, onSetMilestoneCompleted, pinned, onTogglePin, isMobile }: {
   general: ProjectChannelDto
   activeMilestones: ProjectChannelDto[]
   completedMilestones: ProjectChannelDto[]
@@ -456,6 +471,8 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   onCreateMilestone?: (project: { id: string; title: string }) => void
   onEditMilestone?: (milestone: ProjectChannelDto) => void
   onSetMilestoneCompleted?: (milestone: ProjectChannelDto, completed: boolean) => void
+  pinned: boolean
+  onTogglePin?: (projectId: string, pinned: boolean) => void
   isMobile: boolean
 }) => {
   const t = useT()
@@ -479,6 +496,14 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
   })
 
   const actions: SidebarMenuAction[] = []
+  if (onTogglePin) {
+    actions.push({
+      label: pinned ? t('Unpin') : t('Pin'),
+      icon: 'pin',
+      onSelect: () => onTogglePin(general.projectId, !pinned),
+      restoreFocus: true,
+    })
+  }
   if (onCreateMilestone) {
     actions.push({
       label: t('Create milestone'),
@@ -505,7 +530,8 @@ const ProjectChannelGroup = ({ general, activeMilestones, completedMilestones, c
         prefix="#"
         label={general.projectTitle}
         {...(period ? { dateMeta: period } : {})}
-        badge={general.unreadCount}
+        unread={general}
+        pinned={pinned}
         mobile={isMobile}
         action={actions.length > 0 ? (
           <SidebarCreateMenu ownerLabel={general.projectTitle} actions={actions} isMobile={isMobile} />
@@ -699,7 +725,7 @@ const WorkspaceChannelGroup = ({ channel, threads, archivedThreads, channelId, o
         onClick={() => onSelectChannel(channel.id)}
         prefix={channel.isPrivate ? 'lock' : '#'}
         label={channel.name ?? ''}
-        badge={channel.unreadCount}
+        unread={channel}
         mobile={isMobile}
         memberNames={channel.memberNames}
         memberCount={channel.memberCount}
@@ -746,18 +772,36 @@ export interface ChannelListProps {
   onSetWorkspaceChannelArchived?: (channel: WorkspaceChannelDto, archived: boolean) => void
   onDeleteWorkspaceChannel?: (channel: WorkspaceChannelDto) => void
   canManageWorkspaceChannel?: boolean
+  /** セクションごとの並び順。アーカイブ欄と、親の下のマイルストーン・スレッドは並べ替えない */
+  sorts?: Record<ChatListSection, ChatListSort>
+  /** 渡すと各セクション見出しの「＋」の左に並び替えボタンを出す */
+  onChangeSort?: (section: ChatListSection, sort: ChatListSort) => void
+  /** ピン留め中のプロジェクト（サイドバーのピン留めと同じもの）。プロジェクト欄の先頭に固定する */
+  pinnedProjectIds?: ReadonlySet<string>
+  onTogglePinProject?: (projectId: string, pinned: boolean) => void
+  /** ピン留めの取得に失敗したときのエラー文。未ピン扱いで黙って並べず、プロジェクト欄に出す */
+  pinnedProjectsError?: string
 }
 
-export const ChannelList = ({
-  channelId, onSelectChannel, projectChannels, workspaceChannels,
-  dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
-  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
-  canManageWorkspaceChannel = false,
-}: ChannelListProps) => {
-  const t = useT()
+const NO_PINNED_PROJECTS: ReadonlySet<string> = new Set()
+
+// ─── 一覧の並び（描画と ⌥↑↓ の順送りで共有） ─────────────────────────
+
+export interface ChannelListSectionsInput {
+  projectChannels: ProjectChannelDto[]
+  workspaceChannels: WorkspaceChannelDto[]
+  dms: DmChannelDto[]
+  sorts?: Record<ChatListSection, ChatListSort>
+  pinnedProjectIds?: ReadonlySet<string>
+}
+
+/** 一覧の各セクションを、選んだ並び順・ピン留めで組み立てる。画面の並びと順送りの順序をここで一致させる */
+export function buildChannelListSections({
+  projectChannels, workspaceChannels, dms, sorts = DEFAULT_CHAT_LIST_SORTS, pinnedProjectIds = NO_PINNED_PROJECTS,
+}: ChannelListSectionsInput) {
   const activeProjectChannels = projectChannels.filter(c => !c.archived)
   const archivedProjectChannels = projectChannels.filter(c => c.archived && c.milestoneId === null)
-  const projectGroups = activeProjectChannels
+  const projectGroups = sortChatList(activeProjectChannels
     .filter(c => c.milestoneId === null)
     .map(general => {
       const milestones = activeProjectChannels.filter(c => c.projectId === general.projectId && c.milestoneId !== null)
@@ -765,20 +809,61 @@ export const ChannelList = ({
         general,
         activeMilestones: milestones.filter(c => c.milestoneCompleted !== true),
         completedMilestones: milestones.filter(c => c.milestoneCompleted === true),
+        lastMessageAt: latestMessageAt([general.lastMessageAt, ...milestones.map(c => c.lastMessageAt)]),
       }
-    })
+    }), sorts.projects, {
+    name: group => group.general.projectTitle,
+    lastMessageAt: group => group.lastMessageAt,
+    startDate: group => group.general.startDate,
+    pinned: group => pinnedProjectIds.has(group.general.projectId),
+  })
   const parentWorkspaceChannels = workspaceChannels.filter(channel => channel.parentChannelId === null)
   const activeParentChannels = parentWorkspaceChannels.filter(channel => !channel.archived)
   const archivedParentChannels = parentWorkspaceChannels.filter(channel => channel.archived)
   // アーカイブ済みチャンネルの配下スレッドはサイドバーに出さない（親と一緒にアーカイブ扱い）。
-  const workspaceChannelGroups = activeParentChannels.map(channel => {
+  const workspaceChannelGroups = sortChatList(activeParentChannels.map(channel => {
     const children = workspaceChannels.filter(candidate => candidate.parentChannelId === channel.id)
     return {
       channel,
       threads: children.filter(candidate => !candidate.archived),
       archivedThreads: children.filter(candidate => candidate.archived),
+      lastMessageAt: latestMessageAt([channel.lastMessageAt, ...children.map(child => child.lastMessageAt)]),
     }
+  }), sorts.channels, {
+    name: group => group.channel.name ?? '',
+    lastMessageAt: group => group.lastMessageAt,
   })
+  const sortedDms = sortChatList(dms, sorts.dms, {
+    name: dm => dm.participantName,
+    lastMessageAt: dm => dm.lastMessageAt,
+  })
+  return { projectGroups, archivedProjectChannels, workspaceChannelGroups, archivedParentChannels, sortedDms }
+}
+
+/** 既定で表示される会話を、画面の上から順に並べた ID。⌥↑↓ の順送りに使う（畳まれたアーカイブ・完了済みは含めない） */
+export function orderedVisibleChannelIds(input: ChannelListSectionsInput): string[] {
+  const { projectGroups, workspaceChannelGroups, sortedDms } = buildChannelListSections(input)
+  return [
+    ...projectGroups.flatMap(group => [group.general.channelId, ...group.activeMilestones.map(channel => channel.channelId)]),
+    ...workspaceChannelGroups.flatMap(group => [group.channel.id, ...group.threads.map(thread => thread.id)]),
+    ...sortedDms.map(dm => dm.id),
+  ]
+}
+
+
+export const ChannelList = ({
+  channelId, onSelectChannel, projectChannels, workspaceChannels,
+  dms, members, isMobile = false, onAddProject, onAddChannel, onStartDm, onCreateMilestone, onEditMilestone,
+  onSetMilestoneCompleted, onCreateThread, onRenameWorkspaceChannel, onSetWorkspaceChannelArchived, onDeleteWorkspaceChannel,
+  canManageWorkspaceChannel = false, sorts = DEFAULT_CHAT_LIST_SORTS, onChangeSort, pinnedProjectIds = NO_PINNED_PROJECTS, onTogglePinProject, pinnedProjectsError,
+}: ChannelListProps) => {
+  const t = useT()
+  const { projectGroups, archivedProjectChannels, workspaceChannelGroups, archivedParentChannels, sortedDms } = buildChannelListSections({
+    projectChannels, workspaceChannels, dms, sorts, pinnedProjectIds,
+  })
+  const sortMenu = (section: ChatListSection, title: string) => onChangeSort
+    ? <ChatListSortMenu section={section} title={title} sort={sorts[section]} onChange={sort => onChangeSort(section, sort)}/>
+    : undefined
   const archivedProjectsContainActive = channelId !== null && archivedProjectChannels.some(c => c.channelId === channelId)
   const archivedChannelsContainActive = channelId !== null && archivedParentChannels.some(c => c.id === channelId)
   const parentChannelActions = (channel: WorkspaceChannelDto, withCreateThread: boolean) => workspaceRowActions({
@@ -802,7 +887,10 @@ export const ChannelList = ({
   })
   return (
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
-    <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})}>
+    <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})} sortMenu={sortMenu('projects', t('Projects'))}>
+      {pinnedProjectsError && (
+        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 11.5, color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
+      )}
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
           key={general.channelId}
@@ -814,6 +902,8 @@ export const ChannelList = ({
           {...(onCreateMilestone ? { onCreateMilestone } : {})}
           {...(onEditMilestone ? { onEditMilestone } : {})}
           {...(onSetMilestoneCompleted ? { onSetMilestoneCompleted } : {})}
+          pinned={pinnedProjectIds.has(general.projectId)}
+          {...(onTogglePinProject ? { onTogglePin: onTogglePinProject } : {})}
           isMobile={isMobile}
         />
       ))}
@@ -821,11 +911,11 @@ export const ChannelList = ({
     {archivedProjectChannels.length > 0 && (
       <ChatSidebarCollapsibleSection title={t('Archived projects')} count={archivedProjectChannels.length} containsActiveChannel={archivedProjectsContainActive}>
         {archivedProjectChannels.map(c => (
-          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} badge={c.unreadCount} mobile={isMobile}/>
+          <ChatSidebarItem key={c.channelId} active={channelId === c.channelId} onClick={() => onSelectChannel(c.channelId)} prefix="#" label={c.projectTitle} unread={c} mobile={isMobile}/>
         ))}
       </ChatSidebarCollapsibleSection>
     )}
-    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})}>
+    <ChatSidebarSection title={t('Channels')} {...(onAddChannel ? { onAdd: onAddChannel } : {})} sortMenu={sortMenu('channels', t('Channels'))}>
       {workspaceChannelGroups.map(({ channel, threads, archivedThreads }) => (
         <WorkspaceChannelGroup
           key={channel.id}
@@ -851,7 +941,7 @@ export const ChannelList = ({
               onClick={() => onSelectChannel(channel.id)}
               prefix={channel.isPrivate ? 'lock' : '#'}
               label={channel.name ?? ''}
-              badge={channel.unreadCount}
+              unread={channel}
               mobile={isMobile}
               memberNames={channel.memberNames}
               memberCount={channel.memberCount}
@@ -869,11 +959,14 @@ export const ChannelList = ({
             }}
           >
             <span>{t('Direct messages')}</span>
-          <DmPicker members={members} onStartDm={onStartDm}/>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            {sortMenu('dms', t('Direct messages'))}
+            <DmPicker members={members} onStartDm={onStartDm}/>
+          </span>
         </div>
         <div>
-          {dms.map(d => (
-            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} badge={d.unreadCount} mobile={isMobile}/>
+          {sortedDms.map(d => (
+            <ChatSidebarItem key={d.id} active={channelId === d.id} onClick={() => onSelectChannel(d.id)} avatar={d.participantName} {...(d.participantAvatarUrl ? { avatarUrl: d.participantAvatarUrl } : {})} label={d.participantName} unread={d} directMessage mobile={isMobile}/>
           ))}
         </div>
       </div>

@@ -38,9 +38,11 @@ import { ConfirmDialog } from '../confirm-dialog'
 import { BellButton } from '../sidebar'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { useChatListSorts } from '@/hooks/use-chat-list-sort'
+import { usePinnedProjects, usePinProject, useUnpinProject } from '@/lib/use-pinned-projects'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
-import { ChannelList } from './chat-channel-list'
-import { ChatDetailSidebar, ChatInfoDrawer, type ChatDetailMember } from './chat-detail-sidebar'
+import { ChannelList, orderedVisibleChannelIds } from './chat-channel-list'
+import { ChatDetailSidebar, ChatInfoDrawer, CHAT_DETAIL_MESSAGE_MIN_WIDTH, type ChatDetailMember } from './chat-detail-sidebar'
 import { useAppShell } from '../app-shell-context'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
@@ -334,6 +336,26 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const queryClient = useQueryClient()
   // PC のチャット一覧の幅。プロジェクト名が長いと既定幅では切れるため、利用者が広げられるようにする
   const sidebarResize = useResizableWidth({ storageKey: STORAGE_KEYS.chat_sidebar_width, defaultWidth: 240, min: 200, max: 480 })
+  // 会話列の幅からメッセージ欄の最低幅を引いた分だけ詳細を広げる。希望幅自体は保存したままにする
+  const conversationColumnRef = React.useRef<HTMLDivElement>(null)
+  const [conversationWidth, setConversationWidth] = React.useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const column = conversationColumnRef.current
+    if (!column) return
+    const update = () => setConversationWidth(column.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(column)
+    return () => observer.disconnect()
+  }, [])
+  const detailResize = useResizableWidth({
+    storageKey: STORAGE_KEYS.chat_detail_width,
+    defaultWidth: 280,
+    min: 240,
+    max: 480,
+    edge: 'start',
+    ceiling: conversationWidth == null ? undefined : conversationWidth - CHAT_DETAIL_MESSAGE_MIN_WIDTH,
+  })
 
   // /chats/<channelId> → channelId, /chats → null
   const urlChannelId = React.useMemo(() => {
@@ -541,13 +563,20 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     }
   }, [crossSearchNonce, isMobile, consumeCrossSearch])
 
-  // ⌥↑↓（順送り）: チャンネル一覧（プロジェクト → 全体 → DM の表示順）を前/次へ
+  const [chatListSorts, setChatListSort] = useChatListSorts()
+  const { data: pinnedProjects, error: pinnedProjectsError } = usePinnedProjects()
+  const pinnedProjectIds = React.useMemo(() => new Set((pinnedProjects ?? []).map(p => p.projectId)), [pinnedProjects])
+  const pinProject = usePinProject()
+  const unpinProject = useUnpinProject()
+  // サイドバーのピン留めと同じデータ。ここで変えるとサイドバーにも反映される
+  const handleTogglePinProject = (projectId: string, pinned: boolean) => {
+    const mutation = pinned ? pinProject : unpinProject
+    mutation.mutate(projectId, { onError: error => toast.error(error.message) })
+  }
+
+  // ⌥↑↓（順送り）: チャンネル一覧を画面の表示順（選んだ並び順・ピン留めを反映）で前/次へ
   const seekChannel = (dir: 'prev' | 'next') => {
-    const orderedIds = [
-      ...projectChannels.map(c => c.channelId),
-      ...workspaceChannels.map(c => c.id),
-      ...dms.map(d => d.id),
-    ]
+    const orderedIds = orderedVisibleChannelIds({ projectChannels, workspaceChannels, dms, sorts: chatListSorts, pinnedProjectIds })
     if (orderedIds.length === 0) return
     const idx = channelId ? orderedIds.indexOf(channelId) : -1
     const nextIdx = idx === -1
@@ -711,6 +740,11 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const channelListNode = (
     <ChannelList
+      sorts={chatListSorts}
+      onChangeSort={setChatListSort}
+      pinnedProjectIds={pinnedProjectIds}
+      {...(pinnedProjectsError ? { pinnedProjectsError: pinnedProjectsError.message } : {})}
+      onTogglePinProject={handleTogglePinProject}
       channelId={channelId}
       onSelectChannel={selectChannel}
       projectChannels={projectChannels}
@@ -960,6 +994,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }
 
   // ─── PC（3カラム）─────────────────────────────────────────────
+  const detailLabel = isProject ? t('About this project') : isDm ? t('Direct messages') : t('About this channel')
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       {createChannelUI}
@@ -1006,7 +1041,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         </div>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div ref={conversationColumnRef} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!globalSearchOpen && !bookmarksOpen && (
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
@@ -1025,6 +1060,16 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <AvatarStack names={memberNames} urls={memberAvatarUrls} size={26} max={5}/>
               <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
+              <button
+                className="btn"
+                onClick={() => setDetailOpen(open => !open)}
+                style={{ background: detailOpen ? 'var(--card-hover)' : undefined }}
+                aria-pressed={detailOpen}
+                aria-label={detailLabel}
+                title={detailLabel}
+              >
+                <Icon name="info" size={13}/>
+              </button>
               <BellButton/>
             </div>
           </div>
@@ -1043,6 +1088,9 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           </main>
 
           {detailOpen && <ChatDetailSidebar
+            width={detailResize.width}
+            messageMinWidth={CHAT_DETAIL_MESSAGE_MIN_WIDTH}
+            resize={{ dragging: detailResize.dragging, handleProps: detailResize.handleProps }}
             isProject={isProject}
             isDm={isDm}
             isPrivate={isPrivate}

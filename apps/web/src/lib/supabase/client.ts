@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createBrowserClient } from '@supabase/ssr'
+import { fetchWithRetryableAuthRefresh } from '@cairn/shared'
 
 export function createClient() {
   return createBrowserClient(
     process.env['NEXT_PUBLIC_SUPABASE_URL']!,
     process.env['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY']!,
+    { global: { fetch: fetchWithRetryableAuthRefresh } },
   )
 }

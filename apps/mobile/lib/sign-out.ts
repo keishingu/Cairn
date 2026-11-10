@@ -9,12 +9,12 @@ import { clearDeviceSession, supabase } from './supabase'
 export async function signOutFromDevice(): Promise<void> {
   try {
     if (!(await isDeviceOffline())) {
-      const { error } = await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
       if (!error) return
-      console.warn('[auth] サーバーのセッションを失効できませんでした:', error)
+      console.warn('[auth] サーバーのセッションを失効できませんでした')
     }
     await clearDeviceSession()
-  } catch (error) {
-    console.error('[auth] サインアウトに失敗しました:', error)
+  } catch {
+    console.error('[auth] サインアウトに失敗しました')
   }
 }

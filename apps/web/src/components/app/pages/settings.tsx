@@ -42,6 +42,8 @@ import {
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
+  formatAppMonthDayTime,
+  isAiChatModel,
   isCalendarWeekStart,
   type AccentId,
   type AiChatAccessLevel,
@@ -56,6 +58,8 @@ import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
 import { AutomationsSettings } from '../automations-settings'
 import { SettingsProjectRoles } from '../settings-project-roles'
+import { SettingsImport } from '../settings-import'
+import { useImportAccess } from '@/hooks/use-imports'
 
 const CreditPlacementBoard = dynamic(
   () =>
@@ -486,7 +490,7 @@ const SettingsAccount = () => {
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && displayName.trim() && nameMutation.mutate()}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
@@ -1467,7 +1471,7 @@ const AiAllowedModelsSection = () => {
       <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Models members can choose')}</h2>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
         {credits
-          ? t('Members can switch to these models in each conversation. Each request uses credits depending on the model.')
+          ? t('Members can switch to these models in each conversation. Each request uses credits based on its actual AI cost; the amounts shown are estimates.')
           : t('Members can switch to these models in each conversation.')}
       </p>
       <div className="card" role="group" aria-label={t('Models members can choose')} style={{ padding: 14, display: 'grid', gap: 10 }}>
@@ -1494,7 +1498,7 @@ const AiAllowedModelsSection = () => {
               <span style={{ fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
               {credits && (
                 <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  {t('{credits} credits per request', { credits: credits[model] })}
+                  {t('About {credits} credits per request', { credits: credits[model] })}
                 </span>
               )}
               {isDefault && (
@@ -1736,6 +1740,13 @@ const AiChatSystemPromptSection = () => {
             setDraft(e.target.value)
             // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
             setJustSaved(false)
+          }}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              if (!updateSettings.isPending && !unchanged && !readOnly && loaded) void handleSave()
+            }
           }}
           readOnly={readOnly}
           disabled={wsSettings === undefined}
@@ -2024,7 +2035,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsName}
                 onChange={(e) => setWsName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && wsName.trim() && nameMutation.mutate()}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
@@ -2071,7 +2082,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsDesc}
                 onChange={(e) => setWsDesc(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && descMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && descMutation.mutate()}
                 placeholder={t('e.g. Example University')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
@@ -2118,7 +2129,7 @@ const SettingsWorkspaceGeneral = () => {
                 placeholder={t('Projects')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleLabelSave()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}
@@ -3157,6 +3168,7 @@ const SettingsIntegrations = () => {
 
 import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
 import type { BillingSummaryDto } from '@/app/api/billing/summary/route'
+import { useBillingAiUsage } from '@/hooks/use-billing-ai-usage'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 
 const FREE_TIER_REFERENCE_GB = 10
@@ -3172,6 +3184,101 @@ export function resolveCreditPackFulfillmentPolling(input: {
   if (!input.isCreditPackReturn || input.sessionId === null) return 'idle'
   if (input.fulfilled === true) return 'fulfilled'
   return input.now - input.startedAt < CREDIT_PACK_FULFILLMENT_TIMEOUT_MS ? 'polling' : 'timed_out'
+}
+
+// 今月の /ai の消費。本人には自分の明細、owner / admin にはワークスペース全体のモデル別の合計も出す（API で絞る）
+export const SettingsBillingAiUsage = () => {
+  const t = useT()
+  const { locale } = useLocale()
+  const usageQuery = useBillingAiUsage()
+  const modelLabel = (model: string) => (isAiChatModel(model) ? AI_CHAT_MODEL_LABELS[model] : model)
+  const cellStyle: React.CSSProperties = { padding: '6px 8px', fontSize: 12.5, borderTop: '1px solid var(--border)' }
+  const numberCell: React.CSSProperties = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
+
+  return (
+    <section className="card" style={{ padding: 20, marginBottom: 16 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('AI usage this month')}</h2>
+      <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        {t('Each AI assistant request uses stones based on its actual AI cost. Longer investigations that read many files use more.')}
+      </p>
+      {usageQuery.isLoading ? (
+        <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+      ) : usageQuery.isError || !usageQuery.data ? (
+        <InlineError style={{ fontSize: 13 }}>{t('Could not load AI usage')}</InlineError>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12, fontSize: 13 }}>
+            <div>
+              <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('Your usage')}</div>
+              <div style={{ fontWeight: 700 }}>
+                {t('{requests} requests · {count} stones', { requests: usageQuery.data.mine.requests, count: usageQuery.data.mine.credits })}
+              </div>
+            </div>
+            {usageQuery.data.workspace && (
+              <div>
+                <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('Whole workspace')}</div>
+                <div style={{ fontWeight: 700 }}>
+                  {t('{requests} requests · {count} stones', { requests: usageQuery.data.workspace.requests, count: usageQuery.data.workspace.credits })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {usageQuery.data.workspace && usageQuery.data.workspace.byModel.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+              <thead>
+                <tr style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Model')}</th>
+                  <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Requests')}</th>
+                  <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Stones')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usageQuery.data.workspace.byModel.map((row) => (
+                  <tr key={row.model}>
+                    <td style={cellStyle}>{modelLabel(row.model)}</td>
+                    <td style={numberCell}>{row.requests}</td>
+                    <td style={numberCell}>{row.credits}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <h3 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700 }}>{t('Your requests')}</h3>
+          {usageQuery.data.mine.items.length === 0 ? (
+            <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('No AI requests this month.')}</div>
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'left' }}>
+                    <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Date and time')}</th>
+                    <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Model')}</th>
+                    <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Stones')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageQuery.data.mine.items.map((item, index) => (
+                    <tr key={`${item.createdAt}-${index}`}>
+                      <td style={cellStyle}>{formatAppMonthDayTime(locale, item.createdAt)}</td>
+                      <td style={cellStyle}>{modelLabel(item.model)}</td>
+                      <td style={numberCell}>{item.credits}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {usageQuery.data.mine.requests > usageQuery.data.mine.items.length && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-4)' }}>
+              {t('Showing the latest {count} requests.', { count: usageQuery.data.mine.items.length })}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
 }
 
 const SettingsBilling = () => {
@@ -3356,6 +3463,8 @@ const SettingsBilling = () => {
       {billingQuery.data?.billingEnabled && (
         <CreditPlacementBoard workspaceState={billingQuery.data.workspaceState} />
       )}
+
+      {billingQuery.data?.billingEnabled && <SettingsBillingAiUsage />}
 
       {billingActionError && (
         <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{billingActionError}</InlineError>
@@ -3742,7 +3851,7 @@ const SettingsDeveloper = () => {
 
 export function getSettingsNavGroups(
   isOwner: boolean,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
     { id: 'general', label: 'Workspace settings', icon: 'settings' },
@@ -3756,6 +3865,11 @@ export function getSettingsNavGroups(
       : []),
     { id: 'members', label: 'Members', icon: 'users' },
     { id: 'integrations', label: 'Integrations', icon: 'layers' },
+    // 取り込みは移行支援として運営側が行う。運営者（IMPORT_OPERATOR_USER_IDS）の owner / admin にだけ、
+    // フォルダの選択が要るので PC だけ出す（API も同じ条件で 403）
+    ...(options.isAdmin && options.isImportOperator && !options.isMobile
+      ? [{ id: 'import', label: 'Import from Teams', icon: 'download' } satisfies SettingsSectionMeta]
+      : []),
     ...(options.isMobile
       ? [{ id: 'contributions', label: 'Cairn', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
@@ -3809,6 +3923,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   billing: SettingsBilling,
   contributions: SettingsContributions,
   developer: SettingsDeveloper,
+  import: SettingsImport,
 }
 
 const DEFAULT_SECTION = 'account'
@@ -3816,7 +3931,7 @@ const DEFAULT_SECTION = 'account'
 export function isSettingsSection(
   id: string | null | undefined,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): id is string {
   return (
     id != null &&
@@ -3827,7 +3942,7 @@ export function isSettingsSection(
 export function settingsSectionLabel(
   id: string,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): string {
   for (const g of getSettingsNavGroups(isOwner, options)) {
     const item = g.items.find((i) => i.id === id)
@@ -3853,10 +3968,15 @@ export const PageSettings = () => {
   const t = useT()
   const pathname = usePathname()
   const router = useRouter()
-  const { isOwner, isGuest } = useWorkspacePermissions()
-  const navGroups = getSettingsNavGroups(isOwner, { isGuest })
+  const { isOwner, isGuest, isAdmin } = useWorkspacePermissions()
+  const importAccess = useImportAccess(isAdmin)
+  // 取り込み（運営者）か、取り込んだ投稿者の紐づけ（owner / admin）ができるときに「Teams から取り込む」を出す
+  const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true || importAccess.data?.canLink === true }
+  const navGroups = getSettingsNavGroups(isOwner, navOptions)
   const seg = pathname.split('/')[2]
-  const section = isSettingsSection(seg, isOwner, { isGuest }) ? seg : DEFAULT_SECTION
+  // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中・確認に失敗したときに /settings/import を開いても
+  // 既定の画面へ戻さず、取り込み画面の側で読み込み中・エラー（再試行できる）を出す
+  const section = isSettingsSection(seg, isOwner, navOptions) || (seg === 'import' && isAdmin && (importAccess.isPending || importAccess.isError)) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title={t('Settings')} />

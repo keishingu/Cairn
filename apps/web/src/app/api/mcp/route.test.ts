@@ -10,6 +10,8 @@ const {
   mockListMembers,
   mockGetMemberHistory,
   mockReadChannelMessages,
+  mockCreateMilestone,
+  mockUpdateMilestone,
 } = vi.hoisted(() => ({
   mockVerifyApiToken: vi.fn(),
   mockVerifyOAuthToken: vi.fn(),
@@ -21,6 +23,12 @@ const {
   mockReadChannelMessages: vi.fn<(req: Request) => Response>(() =>
     Response.json({ ok: true, items: [] }),
   ),
+  mockCreateMilestone: vi.fn<
+    (req: Request, context: { params: Promise<{ id: string }> }) => Response
+  >(() => Response.json({ id: 'milestone-1' }, { status: 201 })),
+  mockUpdateMilestone: vi.fn<
+    (req: Request, context: { params: Promise<{ id: string; milestoneId: string }> }) => Response
+  >(() => Response.json({ id: 'milestone-1', completed: true })),
 }))
 
 vi.mock('@cairn/db', () => ({ db: {} }))
@@ -56,6 +64,13 @@ vi.mock('@/app/api/projects/route', () => ({ GET: mockListProjects }))
 vi.mock('@/app/api/research/members/route', () => ({ GET: mockListMembers }))
 vi.mock('@/app/api/research/members/history/route', () => ({ GET: mockGetMemberHistory }))
 vi.mock('@/app/api/research/channels/messages/route', () => ({ GET: mockReadChannelMessages }))
+vi.mock('@/app/api/projects/[id]/milestones/route', () => ({
+  GET: vi.fn(() => Response.json([])),
+  POST: mockCreateMilestone,
+}))
+vi.mock('@/app/api/projects/[id]/milestones/[milestoneId]/route', () => ({
+  PATCH: mockUpdateMilestone,
+}))
 
 describe('MCP Route Handler', () => {
   it('Bearer PATがないリクエストを401で拒否する', async () => {
@@ -279,5 +294,107 @@ describe('MCP Route Handler', () => {
       },
     })
     expect(mockReadChannelMessages).toHaveBeenCalledTimes(1)
+  }, 15_000)
+  it('マイルストーンの一覧・作成・更新ツールを公開し、ID はパスに、残りは本文に渡す', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'write',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const send = async (body: unknown) => {
+      const response = await POST(
+        new Request('http://localhost/api/mcp', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            authorization: 'Bearer cairn_pat_test',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-06-18',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+
+    const toolsList = await send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    for (const name of ['list_milestones', 'create_milestone', 'update_milestone']) {
+      expect(toolsList).toContain(`"${name}"`)
+    }
+
+    const projectId = '20000000-0000-4000-8000-000000000001'
+    const milestoneId = '30000000-0000-4000-8000-000000000001'
+    await send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'create_milestone',
+        arguments: { projectId, title: '高所順応', startDate: '2026-08-01', startTime: '09:30' },
+      },
+    })
+    const [createReq, createContext] = mockCreateMilestone.mock.calls[0]!
+    expect(new URL(createReq.url).pathname).toBe(`/api/projects/${projectId}/milestones`)
+    expect(await createReq.json()).toEqual({
+      title: '高所順応',
+      startDate: '2026-08-01',
+      startTime: '09:30',
+    })
+    expect(await createContext.params).toEqual({ id: projectId })
+
+    await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: 'update_milestone',
+        arguments: { projectId, milestoneId, completed: true, endDate: null },
+      },
+    })
+    const [updateReq, updateContext] = mockUpdateMilestone.mock.calls[0]!
+    expect(updateReq.method).toBe('PATCH')
+    expect(await updateReq.json()).toEqual({ completed: true, endDate: null })
+    expect(await updateContext.params).toEqual({ id: projectId, milestoneId })
+  }, 15_000)
+
+  it('更新する項目がない update_milestone はルートを呼ばずにエラーにする', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'write',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    mockUpdateMilestone.mockClear()
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          authorization: 'Bearer cairn_pat_test',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'update_milestone',
+            arguments: {
+              projectId: '20000000-0000-4000-8000-000000000001',
+              milestoneId: '30000000-0000-4000-8000-000000000001',
+            },
+          },
+        }),
+      }),
+    )
+    expect(await response.text()).toContain('"isError":true')
+    expect(mockUpdateMilestone).not.toHaveBeenCalled()
   }, 15_000)
 })

@@ -7,9 +7,6 @@ import { useMe, useWorkspace } from '../hooks/use-account'
 import { useProjectChannels } from '../hooks/use-projects'
 import { useWorkspaceChannels, useWorkspaceDms } from '../hooks/use-chat-channels'
 import { chatTabUnreadCount } from '../lib/chat-tab-unread'
-import { unregisterPushTokenForSignOut } from '../lib/push-registration'
-import { useSession } from '../lib/session-context'
-import { signOutFromDevice } from '../lib/sign-out'
 import { useAppAppearance } from './appearance-provider'
 import { useT } from './locale-provider'
 import { useNotificationPanel } from './notification-panel-provider'
@@ -78,7 +75,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
   const { data: channels } = useProjectChannels()
   const { data: workspaceChannels } = useWorkspaceChannels()
   const { data: dms } = useWorkspaceDms()
-  const userId = useSession()?.user.id
   const { data: me } = useMe()
   const { data: workspace } = useWorkspace()
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -103,12 +99,6 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
     // チャットのタブは詳細を開いていても一覧へ戻す。pop がないと一覧が積み増され、戻ると閉じた詳細が再び開く
     if (route === 'chats') navigation.navigate(route, { screen: 'index', pop: true })
     else navigation.navigate(route)
-  }
-
-  const signOut = async () => {
-    closeOverlays()
-    if (userId) await unregisterPushTokenForSignOut(userId)
-    await signOutFromDevice()
   }
 
   const pressTab = (tab: (typeof TABS)[number]) => {
@@ -263,7 +253,7 @@ export function MobileNav({ state, navigation }: BottomTabBarProps) {
             ))}
             <TouchableOpacity
               style={[styles.menuItem, { borderTopColor: palette.divider }]}
-              onPress={() => void signOut()}
+              onPress={() => navigate('signout/index')}
             >
               <Ionicons name="log-out-outline" size={19} color={palette.redText} />
               <Text style={[styles.menuLabel, { color: palette.redText }]}>{t('Log out')}</Text>

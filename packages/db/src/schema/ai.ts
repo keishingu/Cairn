@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -316,5 +317,67 @@ export const aiAutomationRuns = pgTable(
     index('idx_ai_automation_runs_automation_started').on(t.automationId, t.startedAt),
     index('idx_ai_automation_runs_workspace_started').on(t.workspaceId, t.startedAt),
     check('ai_automation_runs_status_known', sql`${t.status} in ('running', 'success', 'silent', 'failed', 'skipped')`),
+  ],
+).enableRLS()
+
+export type AiChatUsageStatus = 'success' | 'failed'
+export type AiChatUsageError = 'stream_failed' | 'save_failed' | 'credit_reservation_failed' | 'skill_run_rejected'
+
+export interface AiChatUsageStep {
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number | null
+  cacheCreationInputTokens: number | null
+  toolNames: string[]
+  finishReason: string | null
+}
+
+/**
+ * `/ai` チャット1依頼ごとのトークン使用量。クレジット単価を実測の原価で決め直すための記録（本文は保存しない）。
+ * input_tokens の意味はプロバイダーで違う: Anthropic はキャッシュの読み書き分を含まず、OpenAI（GPT-5）はキャッシュ済みトークンを含む。
+ */
+export const aiChatUsage = pgTable(
+  'ai_chat_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    // 会話を削除しても原価の記録は残す
+    conversationId: uuid('conversation_id').references(() => aiConversations.id, { onDelete: 'set null' }),
+    // 失敗・返金した応答は ai_messages に保存されないため FK は張らない。1依頼1行を UNIQUE で保証する
+    assistantMessageId: uuid('assistant_message_id').notNull(),
+    skillRunId: uuid('skill_run_id').references(() => aiAutomationRuns.id, { onDelete: 'set null' }),
+    model: text('model').notNull(),
+    status: text('status').$type<AiChatUsageStatus>().notNull(),
+    error: text('error').$type<AiChatUsageError>(),
+    // 送信前に押さえた見積もりのクレジット。課金が無効な環境では null
+    requestCredits: integer('request_credits'),
+    // 全ステップの原価（USD）。原価から精算する前の行は null
+    // numeric は文字列で読み書きされる
+    costUsd: numeric('cost_usd', { precision: 12, scale: 6 }),
+    // 原価から精算して実際に消費したクレジット。課金が無効・返金した（回答を保存しなかった）依頼は null
+    creditsCharged: integer('credits_charged'),
+    steps: integer('steps').notNull(),
+    inputTokens: integer('input_tokens').notNull(),
+    outputTokens: integer('output_tokens').notNull(),
+    // null はプロバイダーが報告しなかったこと（0 ではない）
+    cacheReadInputTokens: integer('cache_read_input_tokens'),
+    cacheCreationInputTokens: integer('cache_creation_input_tokens'),
+    // 全 tool 呼び出しを呼び出し順に、重複を残して保存する
+    toolNames: text('tool_names').array().notNull().default(sql`'{}'::text[]`),
+    // ステップごとの内訳。1依頼内の tool 呼び出しの重なりでコストがどう膨らむかを見るため
+    stepUsage: jsonb('step_usage').$type<AiChatUsageStep[]>().notNull().default([]),
+    durationMs: integer('duration_ms').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('ai_chat_usage_assistant_message_unique').on(t.assistantMessageId),
+    index('idx_ai_chat_usage_workspace_created').on(t.workspaceId, t.createdAt),
+    index('idx_ai_chat_usage_model_created').on(t.model, t.createdAt),
+    // 請求画面の自分の明細（ワークスペース・本人ごとに新しい順）
+    index('idx_ai_chat_usage_workspace_user_created').on(t.workspaceId, t.userId, t.createdAt),
+    check('ai_chat_usage_status_known', sql`${t.status} in ('success', 'failed')`),
   ],
 ).enableRLS()

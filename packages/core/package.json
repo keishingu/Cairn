@@ -10,6 +10,10 @@
     "./billing": {
       "types": "./src/billing.ts",
       "default": "./src/billing.ts"
+    },
+    "./import": {
+      "types": "./src/import/index.ts",
+      "default": "./src/import/index.ts"
     }
   },
   "scripts": {

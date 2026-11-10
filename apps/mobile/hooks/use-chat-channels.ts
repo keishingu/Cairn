@@ -24,6 +24,8 @@ export interface WorkspaceChannelDto {
   memberAvatarUrls: (string | null)[]
   unreadCount: number
   unreadMentionCount: number
+  /** 旧APIは返さないため、未定義は投稿なしとして扱う */
+  lastMessageAt?: string | null
 }
 
 export interface DmChannelDto {
@@ -33,6 +35,8 @@ export interface DmChannelDto {
   participantAvatarUrl: string | null
   unreadCount: number
   unreadMentionCount: number
+  /** 旧APIは返さないため、未定義は投稿なしとして扱う */
+  lastMessageAt?: string | null
 }
 
 export interface WorkspaceMemberDto {

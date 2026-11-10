@@ -48,7 +48,7 @@ export const profiles = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('profiles_kind_check', sql`${t.kind} in ('human', 'bot')`),
+    check('profiles_kind_check', sql`${t.kind} in ('human', 'bot', 'import')`),
     check('profiles_theme_check', sql`${t.theme} in ('light', 'system', 'dark')`),
     check(
       'profiles_accent_id_check',

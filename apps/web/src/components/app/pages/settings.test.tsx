@@ -12,6 +12,7 @@ import {
   getSettingsNavGroups,
   isSettingsSection,
   resolveCreditPackFulfillmentPolling,
+  SettingsBillingAiUsage,
   SettingsSectionContent,
 } from './settings'
 
@@ -739,6 +740,17 @@ describe('AIオートメーションの設定セクション', () => {
   })
 })
 
+describe('Teams から取り込むの設定セクション', () => {
+  it('運営者の owner / admin にだけ PC で出し、運営者でない管理者・member・ゲスト・モバイルには出さない', () => {
+    expect(isSettingsSection('import', false, { isAdmin: true, isImportOperator: true })).toBe(true)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: true })).toBe(true)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: false })).toBe(false)
+    expect(isSettingsSection('import', false, { isAdmin: false, isImportOperator: true })).toBe(false)
+    expect(isSettingsSection('import', false, { isGuest: true, isImportOperator: true })).toBe(false)
+    expect(isSettingsSection('import', true, { isAdmin: true, isImportOperator: true, isMobile: true })).toBe(false)
+  })
+})
+
 describe('AIエージェントのモデル選択', () => {
   function renderAiSection(wsRole: 'owner' | 'member') {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
@@ -795,6 +807,76 @@ describe('AIエージェントのモデル選択', () => {
   })
 })
 
+describe('請求の今月のAIの利用', () => {
+  const mine = {
+    requests: 2,
+    credits: 75,
+    items: [
+      { createdAt: '2026-11-10T03:00:00.000Z', model: 'claude-opus-5-5', credits: 45 },
+      { createdAt: '2026-11-09T03:00:00.000Z', model: 'claude-sonnet-5-5', credits: 30 },
+    ],
+  }
+  function renderAiUsage(body: unknown, status = 200) {
+    fetchWithAuth.mockImplementation(async (input: string) => {
+      if (input === '/api/billing/ai-usage') return new Response(JSON.stringify(body), { status })
+      return new Response(JSON.stringify({}))
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsBillingAiUsage />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+  })
+
+  it('自分の依頼ごとの消費と合計を表示し、ワークスペース全体は API が返したときだけ出す', async () => {
+    renderAiUsage({ billingEnabled: true, periodStart: '2026-10-31T15:00:00.000Z', mine, workspace: null })
+
+    expect(await screen.findByText('2 回・75 石')).toBeInTheDocument()
+    expect(screen.getByText('Claude Opus 5.5')).toBeInTheDocument()
+    expect(screen.getByText('45')).toBeInTheDocument()
+    expect(screen.queryByText('ワークスペース全体')).not.toBeInTheDocument()
+  })
+
+  it('owner / admin にはワークスペース全体のモデル別の合計も表示する', async () => {
+    renderAiUsage({
+      billingEnabled: true,
+      periodStart: '2026-10-31T15:00:00.000Z',
+      mine,
+      workspace: {
+        requests: 12,
+        credits: 410,
+        byModel: [
+          { model: 'claude-opus-5-5', requests: 4, credits: 190 },
+          { model: 'claude-sonnet-5-5', requests: 8, credits: 220 },
+        ],
+      },
+    })
+
+    expect(await screen.findByText('ワークスペース全体')).toBeInTheDocument()
+    expect(screen.getByText('12 回・410 石')).toBeInTheDocument()
+    expect(screen.getByText('220')).toBeInTheDocument()
+  })
+
+  it('今月の依頼が無ければその旨を、取得に失敗したらエラーを表示する', async () => {
+    const empty = renderAiUsage({
+      billingEnabled: true,
+      periodStart: '2026-10-31T15:00:00.000Z',
+      mine: { requests: 0, credits: 0, items: [] },
+      workspace: null,
+    })
+    expect(await screen.findByText('今月のAIへの依頼はまだありません。')).toBeInTheDocument()
+    empty.unmount()
+
+    renderAiUsage({ error: 'failed' }, 500)
+    expect(await screen.findByText('AIの利用状況を取得できませんでした')).toBeInTheDocument()
+  })
+})
+
 describe('AIエージェントのメンバーが選べるモデル', () => {
   function renderAiSection(wsRole: 'owner' | 'member', allowed = ['gpt-5', 'claude-sonnet-5-5', 'claude-opus-5-5']) {
     fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
@@ -824,11 +906,11 @@ describe('AIエージェントのメンバーが選べるモデル', () => {
     fetchWithAuth.mockReset()
   })
 
-  it('owner は Opus を外せ、モデルごとの消費クレジットを表示する', async () => {
+  it('owner は Opus を外せ、モデルごとの目安の消費クレジットを表示する', async () => {
     renderAiSection('owner')
 
     const group = await screen.findByRole('group', { name: 'メンバーが選べるモデル' })
-    expect(await within(group).findByText('1回 20 クレジット')).toBeInTheDocument()
+    expect(await within(group).findByText('1回 約 20 クレジット')).toBeInTheDocument()
     const opus = within(group).getByRole('checkbox', { name: /Claude Opus 5\.5/ })
     await waitFor(() => expect(opus).toBeEnabled())
 

@@ -96,9 +96,12 @@ stripe_events              Webhook 冪等性（Stripe event id）
 
 ### AI 消費（`/ai` と AI PMO で共通）
 
-- **`/ai`**: モデル呼び出し前に独立トランザクションで `ai_consumption` を記帳して予約し（`reserveCreditsForActiveBenefit`）、生成・ストリーム・応答保存の失敗時は `adjustment` で冪等に返金する（`refundActiveBenefitReservation`）。応答保存とデビットは同一トランザクションではない
+- **`/ai`**: モデル呼び出し前に独立トランザクションで、モデルごとの**見積もり**（`BILLING_CONFIG.aiChatRequestCreditsByModel`。GPT-5・Claude Sonnet 5.5 が 30、Claude Opus 5.5 が 45）を `ai_consumption` で記帳して予約し（`reserveCreditsForActiveBenefit`）、残高が見積もり未満なら送らせない。生成・ストリーム・応答保存の失敗時は `adjustment` で冪等に返金する（`refundActiveBenefitReservation`）。応答保存とデビットは同一トランザクションではない
+- **`/ai` の原価精算**: 回答を保存した依頼は、応答の後（`after()`）に全ステップのトークンから原価（USD）を出し（`aiChatCostUsd`。単価は `aiChatModelPricingUsdPerMTok`）、`ceil(原価 × aiCostUsdToJpy(150) × aiCostCreditMultiplier(1.5))` クレジットを消費とする（`aiChatCreditsForCost`）。見積もりとの差を `ai_consumption` / `ref_id = settle:<assistant_message_id>` で冪等に記帳する（安ければ戻し、高ければ追加で引く）。追加で引いた結果、残高がマイナスになることがあり、その間は次の依頼を送れない。`ai_chat_usage` の行（`cost_usd` / `credits_charged`）と精算の記帳は同じトランザクション。記録に失敗した依頼は見積もりのまま残る（ログに出す）
+- 1クレジット ≒ ¥1 の売上（Solo ¥300 / 300 クレジット）に対して原価の1.5倍を消費する。2026-11 の本番の実測では1依頼の原価が平均 約¥30（Sonnet・Opus とも）で、固定の 10 / 20 クレジットでは原価を回収できなかったため、原価に応じた精算へ切り替えた。単価・為替が変わったら `BILLING_CONFIG` を更新する
+- **請求画面の「今月のAIの利用」**（`GET /api/billing/ai-usage`、PC の `/settings/billing`）: 本人には今月の自分の依頼ごとの消費（日時・モデル・石、新しい100件）と合計を見せる。owner / admin にはそれに加えてワークスペース全体のモデル別の回数・石の合計を見せる。誰がいつ使ったかは本人以外に出さない（`/ai` の会話は本人用のため）。精算を始める前の行は、保存した依頼の見積もり（`request_credits`）を消費として数える
 - **AI PMO**: Phase 1/2 ともナッジ配信時に `consumeCreditsForPassiveBenefit` で記帳し、残高がなければ配信しない。ルール巡回・Jev 一次判定・RAG の embedding 検索は消費しない
-- 単位は「1依頼 / 1配信 = N クレジット」。`/ai` の1依頼はモデルごとに決める（`BILLING_CONFIG.aiChatRequestCreditsByModel`。初期仮値は GPT-5・Claude Sonnet 5.5 が 10、原価が約2倍の Claude Opus 5.5 が 20）。モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行い、スキルのテスト実行は既定モデルの値を使う。AI PMO の1配信は 10（初期仮値）
+- モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行う。スキルのテスト実行も、既定モデルの見積もりを予約して、成功したら `/ai` と同じく原価で精算する（`ai_chat_usage` に `conversation_id` null・`skill_run_id` 付きで記録し、請求画面の本人の明細にも出る）。AI PMO の1配信は 10（初期仮値）
 
 ### アップロード時の判定
 
@@ -160,3 +163,92 @@ stripe_events              Webhook 冪等性（Stripe event id）
 - BYOK の開放範囲（思想優先で全開放 or 収益優先で Team 以上）
 - 消費税（Stripe Tax の要否）、口数変更時の proration 方針（現状 Stripe 既定）
 - Webhook 失敗時の運用（Stripe の自動リトライで足りるか、アラートを組むか）
+
+### AI チャットの原価の実測（`ai_chat_usage`）
+
+上のクレジット単価の本決定に使うため、`/ai` の1依頼ごとのトークン使用量を `ai_chat_usage` に記録する（応答を返した後に書くので、ストリームを待たせない）。保存するのは件数・トークン数・tool 名・所要時間・消費クレジットだけで、メッセージ本文や tool の引数・結果は保存しない。失敗した依頼（`status = 'failed'`。`error` は `stream_failed` / `save_failed` / `credit_reservation_failed` / `skill_run_rejected`）も、原価が発生した分は同じ行に残す。会話やスキル run を消しても行は残る。
+
+`input_tokens` の意味はプロバイダーで違う。Anthropic は **キャッシュの読み書き分を含まない**（`cache_read_input_tokens` / `cache_creation_input_tokens` は別枠）。OpenAI（GPT-5）は **キャッシュ済みトークンを含む**（`cache_read_input_tokens` はその内訳）。`request_credits` は失敗行でも予約しようとした数が入る（`stream_failed` / `save_failed` / `skill_run_rejected` は返金済み、`credit_reservation_failed` は未課金）ため、消費クレジットは成功行だけで数える。キャッシュ列の `null` は「プロバイダーが報告しなかった」ことで、0 ではない。原価の式もプロバイダーごとに分ける（下の d）。
+
+a) モデル別・1依頼あたりの入力 / 出力 / キャッシュ読みトークンの平均・中央値・p95（直近30日、成功のみ）
+
+```sql
+select model,
+       count(*) as requests,
+       round(avg(input_tokens)) as input_avg,
+       percentile_cont(0.5) within group (order by input_tokens) as input_p50,
+       percentile_cont(0.95) within group (order by input_tokens) as input_p95,
+       round(avg(output_tokens)) as output_avg,
+       percentile_cont(0.5) within group (order by output_tokens) as output_p50,
+       percentile_cont(0.95) within group (order by output_tokens) as output_p95,
+       round(avg(cache_read_input_tokens)) as cache_read_avg,
+       percentile_cont(0.5) within group (order by cache_read_input_tokens) as cache_read_p50,
+       percentile_cont(0.95) within group (order by cache_read_input_tokens) as cache_read_p95
+from ai_chat_usage
+where status = 'success' and created_at >= now() - interval '30 days'
+group by model
+order by model;
+```
+
+b) モデル別のステップ数（tool 呼び出しの重なり）の分布
+
+```sql
+select model, steps, count(*) as requests
+from ai_chat_usage
+where status = 'success' and created_at >= now() - interval '30 days'
+group by model, steps
+order by model, steps;
+```
+
+c) ワークスペース別の月次合計（JST）
+
+トークン列は失敗した依頼でも原価が出ているので全行を合計し、消費クレジットは返金済み・未課金の失敗行を除いて成功行だけを数える。
+
+```sql
+select workspace_id,
+       date_trunc('month', created_at at time zone 'Asia/Tokyo') as month,
+       count(*) as requests,
+       count(*) filter (where status = 'failed') as failed_requests,
+       sum(input_tokens) as input_tokens,
+       sum(output_tokens) as output_tokens,
+       sum(coalesce(cache_read_input_tokens, 0)) as cache_read_input_tokens,
+       sum(coalesce(cache_creation_input_tokens, 0)) as cache_creation_input_tokens,
+       sum(request_credits) filter (where status = 'success') as credits_charged
+from ai_chat_usage
+group by workspace_id, month
+order by month desc, requests desc;
+```
+
+d) 1依頼あたりの推定原価（円。為替は [`pricing-plan-design.md`](./pricing-plan-design.md) の ¥150/$）
+
+単価は USD / 100万トークン。**公開単価が変わったら `prices` の VALUES を更新する**（Anthropic は公開単価、OpenAI は 2025-08 時点の公開単価で要確認）。
+
+```sql
+with prices (model, provider, input, output, cache_read, cache_write) as (
+  values
+    ('claude-sonnet-5-5', 'anthropic', 2.00, 10.00, 0.20, 2.50),  -- cache_write は 5 分キャッシュ
+    ('claude-opus-5-5',   'anthropic', 4.00, 20.00, 0.20, 5.00),
+    ('gpt-5',             'openai',    1.25, 10.00, 0.125, 0.00)   -- OpenAI の公開単価（2025-08 時点、要確認）。cache_read は cached 単価
+)
+select u.model,
+       u.assistant_message_id,
+       u.created_at,
+       case p.provider
+         -- Anthropic: input はキャッシュ分を含まない
+         when 'anthropic' then
+           (u.input_tokens * p.input
+            + u.output_tokens * p.output
+            + coalesce(u.cache_read_input_tokens, 0) * p.cache_read
+            + coalesce(u.cache_creation_input_tokens, 0) * p.cache_write) / 1e6 * 150
+         -- OpenAI: input はキャッシュ済み分を含むので引いてから通常単価を掛ける
+         else
+           ((u.input_tokens - coalesce(u.cache_read_input_tokens, 0)) * p.input
+            + coalesce(u.cache_read_input_tokens, 0) * p.cache_read
+            + u.output_tokens * p.output) / 1e6 * 150
+       end as cost_jpy
+from ai_chat_usage u
+join prices p on p.model = u.model
+where u.created_at >= now() - interval '30 days';
+```
+
+モデル別の平均原価は、上のクエリを CTE にして `group by model` で `avg(cost_jpy)` / `percentile_cont(0.95)` を取る。

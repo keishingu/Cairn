@@ -27,6 +27,7 @@ import {
 import { AI_RESEARCH_LIMITS } from '@/lib/ai/research'
 import { createResearchTools } from '@/lib/ai/research-tools'
 import { summarizeChatCacheUsage } from '@/lib/ai/cache-usage'
+import { chatUsageCharge, recordChatUsageAfterResponse, type ChatUsageError, type ChatUsageStep } from '@/lib/ai/chat-usage'
 import { createProposalTools } from '@/lib/ai/proposal-tools'
 import {
   SkillRunError,
@@ -48,7 +49,7 @@ import {
   type StoredConversationMessage,
 } from './message-input'
 import { shouldPersistFinishedAssistantMessage } from './message-stream-lifecycle'
-import { buildChatSystemPrompt, toChatSystemMessages } from './system-prompt'
+import { buildChatModelMessages, buildChatSystemPrompt } from './system-prompt'
 import { requireAiChatAccess } from '@/lib/ai/chat-access'
 
 // スキルの呼び出しは読む → 判断する → 実行案を作る、まで tool calling を重ね、数分かかる（GPT-5 で3〜4分を確認）。
@@ -149,6 +150,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 }
 
 export async function POST(req: Request, { params }: RouteContext) {
+  const requestStartedAt = Date.now()
   const { id: conversationId } = await params
   const { ctx, error } = await getAuthContext()
   if (error) return error
@@ -286,7 +288,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: `${requiredApiKeyEnv} が設定されていません` }, { status: 503 })
   }
 
-  // この依頼で消費するクレジット（モデルごとに違う）
+  // 送信前に押さえる見積もりのクレジット（モデルごとに違う）。回答の後に原価で精算する（chat-usage.ts）
   const requestCredits = chatRequestCredits(chatModel)
 
   const assistantMessageId = crypto.randomUUID()
@@ -296,6 +298,34 @@ export async function POST(req: Request, { params }: RouteContext) {
   let activeCreditReservationFailed = false
   // 課金が無効でも、Claude の回答拒否などで途中終了した応答を成功として保存しない。
   let streamErrored = false
+  // 原価の実測用（ai_chat_usage）。応答の完了後に非同期で書くので、ここでは状態を持つだけ
+  const completedSteps: ChatUsageStep[] = []
+  let finishedSteps: ChatUsageStep[] | null = null
+  let usageError: ChatUsageError | null = null
+  let usageScheduled = false
+  let usageFinishedAt: number | null = null
+  // finishRun が skillRunId を null に戻すため、記録用に run の ID を別に持つ
+  let usageSkillRunId: string | null = null
+  // 押さえたクレジットを返金せずに残した（回答を保存した）か。true のときだけ原価で精算する
+  let chargeKept = false
+  const scheduleUsageRecord = () => {
+    if (usageScheduled) return
+    usageScheduled = true
+    recordChatUsageAfterResponse(() => ({
+      workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
+      conversationId,
+      assistantMessageId,
+      skillRunId: usageSkillRunId,
+      model: chatModel,
+      requestCredits: isBillingEnabled() ? requestCredits : null,
+      charged: chargeKept,
+      status: usageError || streamErrored ? 'failed' : 'success',
+      error: usageError ?? (streamErrored ? 'stream_failed' : null),
+      durationMs: (usageFinishedAt ?? Date.now()) - requestStartedAt,
+      steps: finishedSteps ?? completedSteps,
+    }))
+  }
   if (isBillingEnabled()) {
     const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
     if (!entitlements.isActiveSupporter) {
@@ -351,6 +381,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         assistantMessageId,
       ))
     ) {
+      usageError = 'credit_reservation_failed'
+      scheduleUsageRecord()
       return NextResponse.json(
         { error: 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。' },
         { status: 402 },
@@ -470,7 +502,10 @@ export async function POST(req: Request, { params }: RouteContext) {
   if (skill) {
     try {
       skillRunId = await reserveSkillRun(ctx, skill, { triggerKey: assistantMessageId, dryRun: false })
+      usageSkillRunId = skillRunId
     } catch (err) {
+      usageError = 'skill_run_rejected'
+      scheduleUsageRecord()
       await refundPendingActiveCredit()
       if (err instanceof SkillRunError) return NextResponse.json({ error: err.message }, { status: err.status })
       throw err
@@ -491,8 +526,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         }
         const result = streamText({
           model: chatLanguageModel(chatModel),
-          // system は messages の先頭に2つの system として渡す（stable 側にキャッシュの区切りを置くため。system-prompt.ts）
-          messages: [...toChatSystemMessages(systemPrompt), ...messages],
+          // stable は先頭の system、dynamic は最新の利用者メッセージの末尾に入れる（キャッシュの区切り。system-prompt.ts）
+          messages: buildChatModelMessages(systemPrompt, messages),
           tools: {
             ...createResearchTools(ctx),
             // 書き込みの実行案を作る tool は、スキルで許可された種類だけを渡す
@@ -500,12 +535,21 @@ export async function POST(req: Request, { params }: RouteContext) {
             ...(hasWebSearch ? { webSearch: webSearchTool } : {}),
           },
           maxSteps: skill ? AI_RESEARCH_LIMITS.skillToolSteps : AI_RESEARCH_LIMITS.toolSteps,
+          onStepFinish: (step) => {
+            completedSteps.push(step)
+          },
           onError: async () => {
             streamErrored = true
+            usageError ??= 'stream_failed'
+            usageFinishedAt ??= Date.now()
+            scheduleUsageRecord()
             await refundPendingActiveCredit()
             await finishRun({ status: 'failed', error: 'stream_failed' })
           },
           onFinish: async ({ text, steps }) => {
+            finishedSteps = steps
+            usageFinishedAt = Date.now()
+            scheduleUsageRecord()
             // プロンプトキャッシュが効いているかを本番ログで確かめられるようにする（cacheReadInputTokens が毎回 0 なら外れている）
             console.log('[AI chat] usage', { chatModel, ...summarizeChatCacheUsage(steps) })
             const toolResults = steps.flatMap((step) => step.toolResults.map((r) => r.result as unknown))
@@ -520,7 +564,8 @@ export async function POST(req: Request, { params }: RouteContext) {
                   return typeof id === 'string' ? [id] : []
                 }),
               },
-              creditsUsed: isBillingEnabled() ? requestCredits : null,
+              // 回答の後に原価で精算する額（ai_chat_usage.credits_charged と同じ計算）
+              creditsUsed: isBillingEnabled() ? chatUsageCharge(chatModel, steps).credits : null,
             })
             if (
               !lastUserContent ||
@@ -528,6 +573,7 @@ export async function POST(req: Request, { params }: RouteContext) {
             ) {
               return
             }
+            let messagesSaved = false
             try {
               const { aiConversations, aiMessages, db } = await import('@cairn/db')
               const { eq, and, isNull } = await import('drizzle-orm')
@@ -571,6 +617,8 @@ export async function POST(req: Request, { params }: RouteContext) {
                 })
               })
               activeCreditReservationPending = false
+              chargeKept = true
+              messagesSaved = true
               // 初回メッセージでタイトルを設定
               await db
                 .update(aiConversations)
@@ -587,9 +635,12 @@ export async function POST(req: Request, { params }: RouteContext) {
               const code = (e as { code?: unknown; cause?: { code?: unknown } } | null)
               if (requestedMessageId && (code?.code === '23505' || code?.cause?.code === '23505')) {
                 activeCreditReservationPending = false
+                chargeKept = true
                 console.warn('[AI chat] duplicate client message id; keeping the charge:', requestedMessageId)
                 return
               }
+              // タイトル更新だけの失敗は保存・課金済みなので成功のままにする
+              if (!messagesSaved) usageError ??= 'save_failed'
               await refundPendingActiveCredit()
               console.error('[AI chat] onFinish DB save failed:', e)
             }
@@ -599,6 +650,8 @@ export async function POST(req: Request, { params }: RouteContext) {
       } catch (err) {
         // streamText の生成前に失敗すると内側の onError は登録されないため、
         // createDataStreamResponse の外側ハンドラへ渡す前に予約を明示的に返金する。
+        usageError ??= 'stream_failed'
+        scheduleUsageRecord()
         await refundPendingActiveCredit()
         await finishRun({ status: 'failed', error: 'stream_failed' })
         throw err

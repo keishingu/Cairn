@@ -39,8 +39,12 @@ interface CreateGuestInviteResponse {
 export function useWorkspaceMembers(options?: { enabled?: boolean }) {
   return useQuery<WorkspaceMemberDto[]>({
     queryKey: ['workspace-members'],
-    queryFn: async (): Promise<WorkspaceMemberDto[]> =>
-      fetchWithAuth('/api/workspaces/members').then((r) => r.json()),
+    queryFn: async (): Promise<WorkspaceMemberDto[]> => {
+      const res = await fetchWithAuth('/api/workspaces/members')
+      // エラーの JSON をメンバー一覧として扱わない
+      if (!res.ok) throw new Error(`Failed to load workspace members (${res.status})`)
+      return res.json() as Promise<WorkspaceMemberDto[]>
+    },
     ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
   })
 }

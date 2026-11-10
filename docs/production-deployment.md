@@ -93,6 +93,7 @@ Vercel の Ignored Build Step（`apps/web/vercel.json` の `ignoreCommand`）で
   - 新形式 `sb_secret_...` は **Storage が JWT を要求するため `Invalid Compact JWS` で失敗**する。
 - **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**: 新形式 `sb_publishable_...`（Auth は新形式で動作）。
 - **`OIDC_SIGNING_KEYS`**: 「Cairn でログイン」の ID トークンの署名鍵（kid 付きの ES256 秘密鍵 JWK の配列）。Production と Preview で別の鍵にし、Sensitive として登録する。未設定だとトークンの交換と JWKS がエラーになる。作り方は `apps/web/.env.local.example`、入れ替えの手順は [`oidc-design.md`](./oidc-design.md) §8 の6。
+- **`IMPORT_OPERATOR_USER_IDS`**: Teams などの外部チャットの取り込みを使える運営者のユーザー ID（`profiles.id`、カンマ区切り）。取り込みは移行支援として運営側だけが行う。未設定なら取り込み画面も API も使えない（[`import-design.md`](./import-design.md)）
 - **Vercel Sandbox（動画の圧縮版）**: Inngest の `transcode-uploaded-video` が、Vercel 上の関数から OIDC で Vercel Sandbox（東京 `hnd1`）を起動して ffmpeg で 720p の圧縮版を作る。追加の環境変数は要らないが、1回の変換が最大 60 分かかるため Vercel は Pro プラン以上にする（Hobby は1セッション 45 分まで）。Vercel 外（ローカルの Inngest dev server など）で試すときは `vercel env pull` の `VERCEL_OIDC_TOKEN`、または `VERCEL_TOKEN` / `VERCEL_TEAM_ID` / `VERCEL_PROJECT_ID` を設定する。どれも無い環境では変換せず原本で再生する。Sandbox の利用料（CPU・メモリ・送信量）は Pro の月額クレジットから引かれる
 - **Supabase Storage の全体アップロード上限**: `cairn-preview` / `cairn-production` とも、ダッシュボードの **Storage → Settings → Upload file size limit** を **500 MB 以上**にする（Pro プラン以上が必要）。Solo の動画添付（500MiB）が、動画専用バケット `chat-videos` の上限（マイグレーションで 500MiB）より先にここで拒否されるため。マイグレーションでは変えられない
 - **「Cairn でログイン」のクライアント登録**: 運営者が対象環境の `DATABASE_URL` を指定して `node scripts/oidc-client.mjs create` で登録する（[`oidc-design.md`](./oidc-design.md) §8 の3）。

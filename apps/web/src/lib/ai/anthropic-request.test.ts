@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest'
-import { generateObject, streamText, tool } from 'ai'
+import { generateObject, streamText, tool, type CoreMessage } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 import { ClaudeRefusalError, withAnthropicCompat } from './anthropic-compat-middleware'
 import { summarizeChatCacheUsage } from './cache-usage'
-import { toChatSystemMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
+import { createOpenAI } from '@ai-sdk/openai'
+import { withConversationCache } from './conversation-cache-middleware'
+import { buildChatModelMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 
 // Claude 5.5 系は temperature / top_p / top_k / thinking / assistant prefill を既定以外で受け付けない。
 // 実 API には接続せず、AI SDK が送るリクエスト本文と、空の thinking ブロックを含むレスポンスの処理を確認する。
@@ -244,7 +246,7 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
     expect(errors[0]).toBeInstanceOf(ClaudeRefusalError)
   })
 
-  it('チャットの system は2ブロックで送り、変わらない側にだけ cache_control を付け、キャッシュの読み書きを集計できる', async () => {
+  it('チャットの system は変わらない部分だけを cache_control 付きで送り、依頼ごとの情報は利用者メッセージの末尾に入れ、キャッシュの読み書きを集計できる', async () => {
     const requests: Record<string, unknown>[] = []
     const anthropic = createAnthropic({
       apiKey: 'test-key',
@@ -270,10 +272,9 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
     let finishedSteps: Parameters<typeof summarizeChatCacheUsage>[0] = []
     const result = streamText({
       model: withAnthropicCompat(anthropic('claude-sonnet-5-5')),
-      messages: [
-        ...toChatSystemMessages({ stable: '変わらない指示', dynamic: '現在日時: 2026年10月31日' }),
+      messages: buildChatModelMessages({ stable: '変わらない指示', dynamic: '現在日時: 2026年10月31日' }, [
         { role: 'user', content: 'こんにちは' },
-      ],
+      ]),
       onFinish: ({ steps }) => {
         finishedSteps = steps
       },
@@ -282,12 +283,187 @@ describe('Anthropic プロバイダーのリクエストとレスポンス処理
 
     expect(requests[0]?.['system']).toEqual([
       { type: 'text', text: '変わらない指示', cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: '現在日時: 2026年10月31日' },
+    ])
+    expect(requests[0]?.['messages']).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'こんにちは', cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: '<request-context>\n現在日時: 2026年10月31日\n</request-context>' },
+        ],
+      },
     ])
     expect(summarizeChatCacheUsage(finishedSteps)).toMatchObject({
       steps: 1,
       cacheReadInputTokens: 18000,
       cacheCreationInputTokens: 0,
     })
+  })
+})
+
+const toolUseStep = (id: string, toolId: string): SseEvent[] => [
+  messageStart(id),
+  {
+    event: 'content_block_start',
+    data: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: toolId, name: 'lookup' } },
+  },
+  {
+    event: 'content_block_delta',
+    data: { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"q":"cairn"}' } },
+  },
+  { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+  ...messageEnd('tool_use'),
+]
+
+const finalTextStep: SseEvent[] = [
+  messageStart('msg_final'),
+  { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+  { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '完了' } } },
+  { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+  ...messageEnd('end_turn'),
+]
+
+type RequestMessage = { role: string; content: string | { type: string; cache_control?: unknown }[] }
+
+const countCacheControl = (request: Record<string, unknown>) =>
+  (JSON.stringify(request).match(/"cache_control"/g) ?? []).length
+
+const lastBlock = (message: RequestMessage | undefined) =>
+  Array.isArray(message?.content) ? message.content.at(-1) : undefined
+
+describe('会話キャッシュの境界', () => {
+  it('履歴と各ステップの tool 結果の末尾にキャッシュ境界が移動しながら付き、全体で4つを超えない', async () => {
+    const requests: Record<string, unknown>[] = []
+    const responses = [
+      sse(toolUseStep('msg_1', 'toolu_1')),
+      sse(toolUseStep('msg_2', 'toolu_2')),
+      sse(finalTextStep),
+    ]
+    const anthropic = createAnthropic({
+      apiKey: 'test-key',
+      fetch: (async (_url: unknown, init?: { body?: unknown }) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        const response = responses.shift()
+        if (!response) throw new Error('想定外の追加リクエスト')
+        return response
+      }) as unknown as typeof fetch,
+    })
+    const model = withConversationCache(withAnthropicCompat(anthropic('claude-sonnet-5-5')))
+
+    const result = streamText({
+      model,
+      messages: buildChatModelMessages({ stable: '変わらない指示', dynamic: '現在日時: 2026年10月31日' }, [
+        { role: 'user', content: '前の質問' },
+        { role: 'assistant', content: '前の回答' },
+        { role: 'user', content: '調べて' },
+      ]),
+      tools: {
+        lookup: tool({
+          description: '検索',
+          parameters: z.object({ q: z.string() }),
+          execute: async ({ q }) => ({ answer: `${q} の結果` }),
+        }),
+      },
+      maxSteps: 3,
+    })
+    await result.consumeStream()
+
+    expect(requests).toHaveLength(3)
+    for (const request of requests) {
+      expect(countCacheControl(request)).toBeLessThanOrEqual(4)
+      const system = request['system'] as { cache_control?: unknown }[]
+      expect(system).toHaveLength(1)
+      expect(system[0]?.cache_control).toEqual({ type: 'ephemeral' })
+      // 最新の利用者メッセージの本文（依頼ごとの情報の直前）には、全ステップで固定の境界が残る
+      const latestUser = (request['messages'] as RequestMessage[])[2]
+      const latestBlocks = latestUser?.content as { type: string; text?: string; cache_control?: unknown }[]
+      expect(latestBlocks[0]).toMatchObject({ type: 'text', text: '調べて', cache_control: { type: 'ephemeral' } })
+      expect(latestBlocks[1]?.text).toContain('<request-context>')
+    }
+
+    const toolResultBlocks = (request: Record<string, unknown>) =>
+      (request['messages'] as RequestMessage[]).flatMap((m) =>
+        Array.isArray(m.content) ? m.content.filter((b) => b.type === 'tool_result') : [],
+      )
+
+    // 1 ステップ目: system・利用者の本文・末尾（依頼ごとの情報）に移動する境界の3つ。
+    const first = requests[0]?.['messages'] as RequestMessage[]
+    expect(lastBlock(first.at(-1))?.cache_control).toEqual({ type: 'ephemeral' })
+    expect(countCacheControl(requests[0]!)).toBe(3)
+
+    // 2・3 ステップ目: 最新の利用者メッセージの境界は残り、末尾の tool_result に移動する境界が付く。
+    for (const [index, toolUseId] of [[1, 'toolu_1'], [2, 'toolu_2']] as const) {
+      const messages = requests[index]?.['messages'] as RequestMessage[]
+      expect(messages.at(-1)?.role).toBe('user')
+      const lastResult = lastBlock(messages.at(-1))
+      expect(lastResult).toMatchObject({ type: 'tool_result', tool_use_id: toolUseId })
+      expect(lastResult?.cache_control).toEqual({ type: 'ephemeral' })
+      expect(countCacheControl(requests[index]!)).toBe(3)
+    }
+
+    // 前のステップの tool_result からは境界が外れる（移動する）。
+    const thirdResults = toolResultBlocks(requests[2]!)
+    expect(thirdResults).toHaveLength(2)
+    expect(thirdResults[0]?.cache_control).toBeUndefined()
+    expect(thirdResults[1]?.cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('次の依頼では、前の依頼が利用者の本文に置いた境界までの接頭辞が同じ内容で送られ、履歴をキャッシュから読める', async () => {
+    const requests: Record<string, unknown>[] = []
+    const anthropic = createAnthropic({
+      apiKey: 'test-key',
+      fetch: (async (_url: unknown, init?: { body?: unknown }) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return sse(finalTextStep)
+      }) as unknown as typeof fetch,
+    })
+    const model = withConversationCache(withAnthropicCompat(anthropic('claude-sonnet-5-5')))
+    const send = async (dynamic: string, messages: CoreMessage[]) => {
+      const result = streamText({ model, messages: buildChatModelMessages({ stable: '変わらない指示', dynamic }, messages) })
+      await result.consumeStream()
+    }
+
+    await send('現在日時: 10:00', [{ role: 'user', content: '最初の質問' }])
+    await send('現在日時: 10:03', [
+      { role: 'user', content: '最初の質問' },
+      { role: 'assistant', content: '完了' },
+      { role: 'user', content: '次の質問' },
+    ])
+
+    // 1回目の境界（利用者の本文）までの接頭辞。境界の印そのものはキャッシュの一致に関わらないので除いて比べる
+    const prefix = (request: Record<string, unknown>) => {
+      const messages = request['messages'] as RequestMessage[]
+      const firstUser = messages[0]?.content as { type: string; text?: string }[]
+      return JSON.stringify({ system: request['system'], tools: request['tools'], firstUserText: firstUser[0]?.text })
+    }
+    const [first, second] = requests
+    const firstUserBlocks = (first?.['messages'] as RequestMessage[])[0]?.content as { cache_control?: unknown }[]
+    expect(firstUserBlocks[0]?.cache_control).toEqual({ type: 'ephemeral' })
+    expect(prefix(second!)).toBe(prefix(first!))
+    // 2回目の履歴には1回目の依頼ごとの情報が入らない（入ると次の依頼で一致しなくなる）
+    expect(JSON.stringify((second?.['messages'] as RequestMessage[]).slice(0, 2))).not.toContain('10:00')
+  })
+
+  it('OpenAI プロバイダーでは anthropic 用のキャッシュ指定がリクエスト本文に出ない', async () => {
+    const bodies: string[] = []
+    const openai = createOpenAI({
+      apiKey: 'test-key',
+      fetch: (async (_url: unknown, init?: { body?: unknown }) => {
+        bodies.push(String(init?.body))
+        return new Response('data: [DONE]\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      }) as unknown as typeof fetch,
+    })
+    const result = streamText({
+      model: openai('gpt-5'),
+      messages: buildChatModelMessages({ stable: '変わらない指示', dynamic: '現在日時' }, [
+        { role: 'user', content: 'こんにちは' },
+      ]),
+      onError: () => {},
+    })
+    await result.consumeStream()
+
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]).toContain('こんにちは')
+    expect(bodies[0]).not.toMatch(/cache_?control/i)
   })
 })

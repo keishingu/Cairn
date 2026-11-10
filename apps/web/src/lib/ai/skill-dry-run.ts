@@ -6,8 +6,9 @@
 
 import { generateText } from 'ai'
 import { chatRequestCredits } from './chat-model'
+import { chatUsageCharge, recordChatUsageAfterResponse, type ChatUsageStep } from './chat-usage'
 import { isAiChatModel } from '@cairn/shared'
-import { buildChatSystemPrompt, toChatSystemMessages } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
+import { buildChatModelMessages, buildChatSystemPrompt } from '@/app/api/ai/conversations/[id]/messages/system-prompt'
 import { refundActiveBenefitReservation, reserveCreditsForActiveBenefit } from '@/lib/billing/credits'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
@@ -84,7 +85,7 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
   }
 
   const triggerKey = `dry:${crypto.randomUUID()}`
-  // テスト実行はワークスペースの既定モデルで行い、そのモデルのクレジットを消費する
+  // テスト実行はワークスペースの既定モデルで行う。送る前にそのモデルの見積もりを押さえ、終わった後に原価で精算する
   const credits = chatRequestCredits(workspace.aiChatModel)
   if (!(await reserveCreditsForActiveBenefit(ctx.workspaceId, credits, triggerKey))) {
     throw new DryRunError(402, 'ワークスペースのクレジットが不足しています。設定の請求から石を追加してください。')
@@ -99,21 +100,39 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
   }
 
   const dryRun = { proposals: [] as DryRunProposal[] }
+  const startedAt = Date.now()
+  // 通常の /ai と同じく、ai_chat_usage に記録して原価で精算する（請求画面の自分の明細にも出る）。
+  // charged が false（返金した失敗）の行は消費を記録しない
+  const recordUsage = (input: { charged: boolean; steps: ChatUsageStep[] }) =>
+    recordChatUsageAfterResponse(() => ({
+      workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
+      conversationId: null,
+      assistantMessageId: crypto.randomUUID(),
+      skillRunId: runId,
+      model: workspace.aiChatModel,
+      requestCredits: isBillingEnabled() ? credits : null,
+      charged: input.charged,
+      status: input.charged ? 'success' : 'failed',
+      error: input.charged ? null : 'stream_failed',
+      durationMs: Date.now() - startedAt,
+      steps: input.steps,
+    }))
   try {
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full', timeStyle: 'short' })
     const result = await generateText({
       model: chatLanguageModel(workspace.aiChatModel),
-      messages: [
-        ...toChatSystemMessages(buildChatSystemPrompt({
+      messages: buildChatModelMessages(
+        buildChatSystemPrompt({
           now,
           role: ctx.role,
           contextSection: '',
           hasWebSearch: false,
           workspaceInstructions: workspace.aiChatSystemPrompt,
           skill,
-        })),
-        { role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` },
-      ],
+        }),
+        [{ role: 'user', content: `$${skill.name}${request.trim() ? ` ${request.trim()}` : ''}` }],
+      ),
       tools: {
         ...createResearchTools(ctx),
         ...createProposalTools(ctx, null, { allowed: skill.writeActions, dryRun }),
@@ -136,12 +155,15 @@ export async function dryRunSkill(ctx: AuthContext, id: string, request: string)
       status: 'success',
       evidence,
       output: { text: output.text, proposals: output.proposals, toolCalls: output.toolCalls },
-      creditsUsed: isBillingEnabled() ? credits : null,
+      // 応答の後に原価で精算する額（ai_chat_usage.credits_charged と同じ計算）
+      creditsUsed: isBillingEnabled() ? chatUsageCharge(workspace.aiChatModel, result.steps).credits : null,
     })
+    recordUsage({ charged: true, steps: result.steps })
     return output
   } catch (error) {
     console.error('[skill dry-run] failed', error)
     await refundActiveBenefitReservation(ctx.workspaceId, credits, triggerKey).catch(() => undefined)
+    recordUsage({ charged: false, steps: [] })
     await finishSkillRun(runId, { status: 'failed', error: error instanceof Error ? error.message.slice(0, 500) : 'unknown' })
     throw new DryRunError(500, 'テスト実行に失敗しました。時間をおいてもう一度お試しください')
   }

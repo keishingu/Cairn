@@ -1,5 +1,16 @@
 import React from 'react'
-import { FEATURE_FLAGS, workspaceChannelDeleteCopy } from '@cairn/shared'
+import {
+  CHAT_LIST_SECTION_SORTS,
+  CHAT_LIST_SORT_LABELS,
+  DEFAULT_CHAT_LIST_SORTS,
+  FEATURE_FLAGS,
+  type ChatListSection,
+  type ChatListSort,
+  chatUnreadDisplay,
+  latestMessageAt,
+  sortChatList,
+  workspaceChannelDeleteCopy,
+} from '@cairn/shared'
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +30,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import { useOfflineRead } from '../../../hooks/use-offline-read'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { OfflineBanner } from '../../../components/offline-banner'
 import { oldestSyncedAt } from '../../../lib/offline-cache'
 import type { ProjectChannelDto } from '../../../hooks/use-projects'
@@ -43,16 +55,20 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { NotificationButton } from '../../../components/native-app-header'
 import { WorkspaceSwitcherButton } from '../../../components/workspace-switcher-button'
 import { useMe } from '../../../hooks/use-account'
+import { useChatListSorts } from '../../../hooks/use-chat-list-sort'
+import { usePinnedProjectIds, useTogglePinProject } from '../../../hooks/use-pinned-projects'
 import { useT } from '../../../components/locale-provider'
 import { UserAvatar } from '../../../components/user-avatar'
 
 type ChannelItemProps = {
   channel: ProjectChannelDto
   milestone?: boolean
+  /** ピン留め中。並び順に関係なく先頭に固定されている理由を示す */
+  pinned?: boolean
   onOpenActions?: () => void
 }
 
-function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemProps) {
+function ChannelItem({ channel, milestone = false, pinned = false, onOpenActions }: ChannelItemProps) {
   const t = useT()
   const router = useRouter()
   const { palette } = useAppAppearance()
@@ -62,6 +78,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
     channel.startTime,
     channel.endTime,
   )
+  const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
       style={[styles.channelRow, { borderBottomColor: palette.divider }]}
@@ -104,7 +121,7 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
         </Text>
       </View>
       <View style={styles.channelCopy}>
-        <Text style={[styles.channelName, { color: palette.text }]} numberOfLines={1}>
+        <Text style={[styles.channelName, unread.unread && styles.channelNameUnread, { color: unread.unread ? palette.text : palette.text2 }]} numberOfLines={1}>
           {milestone ? channel.channelName : channel.projectTitle}
         </Text>
         {!milestone && period && (
@@ -113,13 +130,10 @@ function ChannelItem({ channel, milestone = false, onOpenActions }: ChannelItemP
           </Text>
         )}
       </View>
-      {channel.unreadCount > 0 && (
-        <View style={[styles.badge, { backgroundColor: palette.accent }]}>
-          <Text style={[styles.badgeText, { color: palette.onAccent }]}>
-            {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
-          </Text>
-        </View>
+      {pinned && (
+        <Ionicons name="pin" size={14} color={palette.text4} accessibilityLabel={t('Pinned')} />
       )}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -138,6 +152,7 @@ function WorkspaceChannelItem({
   const router = useRouter()
   const { palette } = useAppAppearance()
   const privateChannel = channel.isPrivate
+  const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
       style={[
@@ -183,12 +198,12 @@ function WorkspaceChannelItem({
         )}
       </View>
       <Text
-        style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
+        style={[styles.channelName, unread.unread && styles.channelNameUnread, styles.rowLabel, { color: unread.unread ? palette.text : palette.text2 }]}
         numberOfLines={1}
       >
         {channel.name ?? t('Untitled channel')}
       </Text>
-      {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -197,6 +212,7 @@ function WorkspaceChannelItem({
 function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
   const router = useRouter()
   const { palette } = useAppAppearance()
+  const unread = chatUnreadDisplay(channel, { directMessage: true })
   return (
     <TouchableOpacity
       style={[styles.channelRow, { borderBottomColor: palette.divider }]}
@@ -214,12 +230,12 @@ function DirectMessageItem({ channel }: { channel: DmChannelDto }) {
     >
       <UserAvatar name={channel.participantName} url={channel.participantAvatarUrl} size={36} />
       <Text
-        style={[styles.channelName, styles.rowLabel, { color: palette.text }]}
+        style={[styles.channelName, unread.unread && styles.channelNameUnread, styles.rowLabel, { color: unread.unread ? palette.text : palette.text2 }]}
         numberOfLines={1}
       >
         {channel.participantName}
       </Text>
-      {channel.unreadCount > 0 && <UnreadBadge count={channel.unreadCount} palette={palette} />}
+      {unread.badgeCount > 0 && <UnreadBadge count={unread.badgeCount} palette={palette} />}
       <Ionicons name="chevron-forward" size={16} color={palette.text4} />
     </TouchableOpacity>
   )
@@ -234,6 +250,8 @@ function UnreadBadge({ count, palette }: { count: number; palette: ThemePalette 
     </View>
   )
 }
+
+const NO_PINNED_PROJECTS: ReadonlySet<string> = new Set()
 
 type RowActionTarget =
   | { type: 'project'; channel: ProjectChannelDto; completedCount: number }
@@ -279,6 +297,8 @@ export default function ChatsScreen() {
   const [channelName, setChannelName] = React.useState('')
   const [privateChannel, setPrivateChannel] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+  // チャンネル・スレッドの作成や名前の変更の入力はメモリにしか無い。開いている間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(createMode !== null && createMode !== 'menu')
   const [rowActionTarget, setRowActionTarget] = React.useState<RowActionTarget | null>(null)
   const [threadParent, setThreadParent] = React.useState<WorkspaceChannelDto | null>(null)
   const [renamingChannel, setRenamingChannel] = React.useState<WorkspaceChannelDto | null>(null)
@@ -289,6 +309,13 @@ export default function ChatsScreen() {
     () => new Set(),
   )
   const [showArchivedProjects, setShowArchivedProjects] = React.useState(false)
+  const [chatListSorts, setChatListSort] = useChatListSorts()
+  // 並び替えシートを開いているセクション（見出しのボタンから開く）
+  const [sortSheetSection, setSortSheetSection] = React.useState<ChatListSection | null>(null)
+  // サイドバー（WebView）のピン留めと同じデータ。取得に失敗したら一覧の上に出し、黙って未ピン扱いにしない
+  const pinnedProjectsQuery = usePinnedProjectIds()
+  const pinnedProjectIds = pinnedProjectsQuery.data ?? NO_PINNED_PROJECTS
+  const togglePinProject = useTogglePinProject()
   const [showArchivedChannels, setShowArchivedChannels] = React.useState(false)
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
   const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
@@ -312,55 +339,77 @@ export default function ChatsScreen() {
         refetchProjectChannels(),
         workspaceChannelsQuery.refetch(),
         dmsQuery.refetch(),
+        // ピン留めは Realtime で届かないため、一覧に戻るたびに取り直す（WebView のサイドバーや別端末での変更）
+        pinnedProjectsQuery.refetch(),
       ])
     })
     return unsubscribe
-  }, [dmsQuery.refetch, navigation, refetchProjectChannels, workspaceChannelsQuery.refetch])
+  }, [dmsQuery.refetch, navigation, pinnedProjectsQuery.refetch, refetchProjectChannels, workspaceChannelsQuery.refetch])
   // Web の ChannelList と同じく、通常チャンネルの直下に未完了マイルストーンを並べる。
+  // 並び順は Web と同じ共通ロジック。ピン留めしたプロジェクトは先頭に固定する
   const { projectGroups, archivedProjects } = React.useMemo(() => {
     const active = (channels ?? []).filter((channel) => !channel.archived)
-    return {
-      projectGroups: active
-        .filter((channel) => channel.milestoneId === null)
-        .map((channel) => ({
+    const groups = active
+      .filter((channel) => channel.milestoneId === null)
+      .map((channel) => {
+        const milestones = active.filter(
+          (candidate) => candidate.projectId === channel.projectId && candidate.milestoneId !== null,
+        )
+        return {
           channel,
-          activeMilestones: active.filter(
-            (candidate) =>
-              candidate.projectId === channel.projectId &&
-              candidate.milestoneId !== null &&
-              candidate.milestoneCompleted !== true,
+          activeMilestones: milestones.filter((candidate) => candidate.milestoneCompleted !== true),
+          completedMilestones: milestones.filter((candidate) => candidate.milestoneCompleted === true),
+          lastMessageAt: latestMessageAt(
+            [channel, ...milestones].map((candidate) => candidate.lastMessageAt ?? null),
           ),
-          completedMilestones: active.filter(
-            (candidate) =>
-              candidate.projectId === channel.projectId &&
-              candidate.milestoneId !== null &&
-              candidate.milestoneCompleted === true,
-          ),
-        })),
+        }
+      })
+    return {
+      projectGroups: sortChatList(groups, chatListSorts.projects, {
+        name: (group) => group.channel.projectTitle,
+        lastMessageAt: (group) => group.lastMessageAt,
+        startDate: (group) => group.channel.startDate,
+        pinned: (group) => pinnedProjectIds.has(group.channel.projectId),
+      }),
       archivedProjects: (channels ?? []).filter(
         (channel) => channel.archived && channel.milestoneId === null,
       ),
     }
-  }, [channels])
+  }, [channels, chatListSorts.projects, pinnedProjectIds])
   // Web の ChannelList と同じく、アーカイブしたスレッドは親チャンネルの下に（既定は畳んで）並べ、
   // アーカイブ済みチャンネルは配下スレッドごと専用の欄に分ける。
   const { workspaceChannelGroups, archivedChannels } = React.useMemo(() => {
     const allChannels = workspaceChannels ?? []
     const parents = allChannels.filter((channel) => channel.parentChannelId == null)
+    const groups = parents
+      .filter((channel) => channel.archived !== true)
+      .map((channel) => {
+        const children = allChannels.filter((candidate) => candidate.parentChannelId === channel.id)
+        return {
+          channel,
+          threads: children.filter((candidate) => candidate.archived !== true),
+          archivedThreads: children.filter((candidate) => candidate.archived === true),
+          lastMessageAt: latestMessageAt(
+            [channel, ...children].map((candidate) => candidate.lastMessageAt ?? null),
+          ),
+        }
+      })
     return {
-      workspaceChannelGroups: parents
-        .filter((channel) => channel.archived !== true)
-        .map((channel) => {
-          const children = allChannels.filter((candidate) => candidate.parentChannelId === channel.id)
-          return {
-            channel,
-            threads: children.filter((candidate) => candidate.archived !== true),
-            archivedThreads: children.filter((candidate) => candidate.archived === true),
-          }
-        }),
+      workspaceChannelGroups: sortChatList(groups, chatListSorts.channels, {
+        name: (group) => group.channel.name ?? '',
+        lastMessageAt: (group) => group.lastMessageAt,
+      }),
       archivedChannels: parents.filter((channel) => channel.archived === true),
     }
-  }, [workspaceChannels])
+  }, [workspaceChannels, chatListSorts.channels])
+  const sortedDms = React.useMemo(
+    () =>
+      sortChatList(dms ?? [], chatListSorts.dms, {
+        name: (dm) => dm.participantName,
+        lastMessageAt: (dm) => dm.lastMessageAt ?? null,
+      }),
+    [dms, chatListSorts.dms],
+  )
 
   const openChatTool = (path: string, title: string) => {
     router.push({ pathname: '/(app)/chat-tools', params: { path, title } })
@@ -587,6 +636,12 @@ export default function ChatsScreen() {
       {showingCachedLists && listsSyncedAt !== null && (
         <OfflineBanner syncedAt={listsSyncedAt} retrying={isRetrying} onRetry={retryLists} />
       )}
+      {/* 圏外のキャッシュ表示中はオフラインバナーが状況を示すため、ピン留めの通信エラーは重ねて出さない */}
+      {pinnedProjectsQuery.error && !showingCachedLists && (
+        <Text style={[styles.pinnedError, { color: palette.redText }]}>
+          {pinnedProjectsQuery.error.message}
+        </Text>
+      )}
       <FlatList
         data={projectGroups}
         keyExtractor={({ channel }) => channel.channelId}
@@ -594,16 +649,15 @@ export default function ChatsScreen() {
           <View>
             <ChannelItem
               channel={item.channel}
-              {...(canManageChildChats
-                ? {
-                    onOpenActions: () =>
-                      setRowActionTarget({
-                        type: 'project',
-                        channel: item.channel,
-                        completedCount: item.completedMilestones.length,
-                      }),
-                  }
-                : {})}
+              pinned={pinnedProjectIds.has(item.channel.projectId)}
+              // ピン留めはゲストも使えるため、プロジェクトの長押しメニューは全員に出す
+              onOpenActions={() =>
+                setRowActionTarget({
+                  type: 'project',
+                  channel: item.channel,
+                  completedCount: item.completedMilestones.length,
+                })
+              }
             />
             {item.activeMilestones.map((milestone) => (
               <ChannelItem
@@ -637,7 +691,13 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Projects')}</Text>
+            <SectionHeading
+              title={t('Projects')}
+              section="projects"
+              sort={chatListSorts.projects}
+              onOpenSort={setSortSheetSection}
+              palette={palette}
+            />
           </>
         }
         ListFooterComponent={
@@ -667,7 +727,13 @@ export default function ChatsScreen() {
                   ))}
               </>
             )}
-            <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Channels')}</Text>
+            <SectionHeading
+              title={t('Channels')}
+              section="channels"
+              sort={chatListSorts.channels}
+              onOpenSort={setSortSheetSection}
+              palette={palette}
+            />
             {workspaceChannelGroups.map(({ channel, threads, archivedThreads }) => (
               <React.Fragment key={channel.id}>
                 <WorkspaceChannelItem
@@ -737,8 +803,14 @@ export default function ChatsScreen() {
             )}
             {FEATURE_FLAGS.dm && (
               <>
-                <Text style={[styles.sectionTitle, { color: palette.text4 }]}>{t('Direct messages')}</Text>
-                {(dms ?? []).map((channel) => (
+                <SectionHeading
+                  title={t('Direct messages')}
+                  section="dms"
+                  sort={chatListSorts.dms}
+                  onOpenSort={setSortSheetSection}
+                  palette={palette}
+                />
+                {sortedDms.map((channel) => (
                   <DirectMessageItem key={channel.id} channel={channel} />
                 ))}
               </>
@@ -1130,6 +1202,49 @@ export default function ChatsScreen() {
 
       <Modal
         transparent
+        visible={sortSheetSection !== null}
+        animationType="fade"
+        onRequestClose={() => setSortSheetSection(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setSortSheetSection(null)} />
+        <View
+          accessibilityRole="menu"
+          style={[
+            styles.actionSheet,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              paddingBottom: insets.bottom + 12,
+            },
+          ]}
+        >
+          <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
+          {sortSheetSection !== null && CHAT_LIST_SECTION_SORTS[sortSheetSection].map((option) => (
+            <Pressable
+              key={option}
+              accessibilityRole="menuitem"
+              accessibilityState={{ checked: chatListSorts[sortSheetSection] === option }}
+              style={[styles.actionSheetButton, { borderTopColor: palette.divider }]}
+              onPress={() => {
+                setChatListSort(sortSheetSection, option)
+                setSortSheetSection(null)
+              }}
+            >
+              <Ionicons
+                name="checkmark"
+                size={19}
+                color={chatListSorts[sortSheetSection] === option ? palette.accent : 'transparent'}
+              />
+              <Text style={[styles.actionSheetLabel, { color: palette.text }]}>
+                {t(CHAT_LIST_SORT_LABELS[option])}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
         visible={rowActionTarget !== null}
         animationType="fade"
         onRequestClose={() => setRowActionTarget(null)}
@@ -1149,15 +1264,34 @@ export default function ChatsScreen() {
           {rowActionTarget?.type === 'project' && (
             <>
               <ActionSheetButton
-                icon="flag-outline"
-                label={t('Create milestone')}
+                icon={pinnedProjectIds.has(rowActionTarget.channel.projectId) ? 'pin' : 'pin-outline'}
+                label={pinnedProjectIds.has(rowActionTarget.channel.projectId) ? t('Unpin') : t('Pin')}
                 palette={palette}
                 onPress={() => {
-                  const channel = rowActionTarget.channel
+                  const projectId = rowActionTarget.channel.projectId
+                  const pinned = !pinnedProjectIds.has(projectId)
                   setRowActionTarget(null)
-                  openCreateMilestone(channel)
+                  togglePinProject.mutate(
+                    { projectId, pinned },
+                    {
+                      onError: (mutationError) =>
+                        Alert.alert(t('Could not update the pin'), mutationError.message),
+                    },
+                  )
                 }}
               />
+              {canManageChildChats && (
+                <ActionSheetButton
+                  icon="flag-outline"
+                  label={t('Create milestone')}
+                  palette={palette}
+                  onPress={() => {
+                    const channel = rowActionTarget.channel
+                    setRowActionTarget(null)
+                    openCreateMilestone(channel)
+                  }}
+                />
+              )}
               {rowActionTarget.completedCount > 0 && (
                 <ActionSheetButton
                   icon={
@@ -1272,6 +1406,39 @@ export default function ChatsScreen() {
   )
 }
 
+/** セクション見出し。右端の並び替えボタンでそのセクションの並び順を選ぶ */
+function SectionHeading({
+  title,
+  section,
+  sort,
+  onOpenSort,
+  palette,
+}: {
+  title: string
+  section: ChatListSection
+  sort: ChatListSort
+  onOpenSort: (section: ChatListSection) => void
+  palette: ThemePalette
+}) {
+  const t = useT()
+  const customized = sort !== DEFAULT_CHAT_LIST_SORTS[section]
+  return (
+    <View style={styles.sectionHeading}>
+      <Text style={[styles.sectionTitleText, styles.rowLabel, { color: palette.text4 }]}>{title}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('Sort {title}', { title })}
+        accessibilityValue={{ text: t(CHAT_LIST_SORT_LABELS[sort]) }}
+        hitSlop={8}
+        style={styles.sectionSortButton}
+        onPress={() => onOpenSort(section)}
+      >
+        <Ionicons name="filter-outline" size={16} color={customized ? palette.accent : palette.text4} />
+      </Pressable>
+    </View>
+  )
+}
+
 function ActionSheetButton({
   icon,
   label,
@@ -1356,6 +1523,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sectionTitleText: { fontSize: 11, fontWeight: '700', letterSpacing: 1.1 },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+    paddingRight: 12,
+    paddingVertical: 4,
+  },
+  sectionSortButton: { padding: 4, borderRadius: 6 },
   sectionCount: { fontSize: 11, fontWeight: '600' },
   channelRow: {
     flexDirection: 'row',
@@ -1376,7 +1551,10 @@ const styles = StyleSheet.create({
   channelIconText: { fontSize: 18, fontWeight: '600' },
   channelCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowLabel: { flex: 1 },
-  channelName: { fontSize: 15, fontWeight: '600' },
+  // 通常は標準の太さと一段暗い色（text2）。新着があるときだけ太字＋明るい色にして、件数バッジなしでも気づけるようにする（Web と同じ）
+  channelName: { fontSize: 15, fontWeight: '400' },
+  channelNameUnread: { fontWeight: '800' },
+  pinnedError: { fontSize: 12.5, paddingHorizontal: 16, paddingVertical: 8 },
   projectTitle: { fontSize: 12 },
   badge: {
     borderRadius: 10,

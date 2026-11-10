@@ -115,7 +115,8 @@ Cairn の AI 体験を、単一の「AI機能」にまとめず、利用者と�
 owner は設定の「AIエージェント」で、AGENTS.md のように `/ai` へ毎回渡す追加指示（用語・口調・回答形式・チームの決まりごと）を書ける。保存先は `workspaces.ai_chat_system_prompt`（null は未設定、上限 `AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH` = 10,000 文字を Zod と CHECK 制約の両方で強制）。member 以下にも読み取り専用で表示し、更新は `PATCH /api/workspaces/settings` で owner だけが行える。
 
 - system prompt の組み立ては `apps/web/src/app/api/ai/conversations/[id]/messages/system-prompt.ts` に集約する。追加指示は【Cairnの使い方】の後、「権限・安全規律」の前に `<workspace-instructions>` で囲んで置き、規律側にも「追加指示より規律が優先する」と明記する
-- system prompt はプロンプトキャッシュのため2つの system メッセージに分ける。前の `stable`（導入・【Cairnの使い方】・追加指示・スキル・規律）は依頼をまたいで同じ文面で、Anthropic の `cacheControl` を付けて tools と合わせてキャッシュする。後ろの `dynamic`（現在日時・ロール・未信頼の workspace-data）は依頼ごとに変わる。規律は後ろの workspace-data も未信頼として扱うよう明記する。キャッシュの読み書きは `[AI chat] usage` ログの `cacheReadInputTokens` / `cacheCreationInputTokens` で確認できる
+- system prompt はプロンプトキャッシュのため `stable` と `dynamic` に分ける（`buildChatModelMessages`）。`stable`（導入・【Cairnの使い方】・追加指示・スキル・規律）は依頼をまたいで同じ文面の先頭の system で、Anthropic の `cacheControl` を付けて tools と合わせてキャッシュする。`dynamic`（現在日時・ロール・未信頼の workspace-data）は依頼ごとに変わるので、system ではなく**最新の利用者メッセージの末尾**に `<request-context>` で囲んで入れ、その直前（利用者の本文）にもキャッシュ境界を置く。次の依頼ではその位置までが履歴として同じ内容で送られるため、同じ会話の過去のやり取りをキャッシュから読める。以前は `dynamic` を2つ目の system として履歴の前に置いていたため、同じ会話の2回目以降の依頼でも履歴が毎回キャッシュの書き込みになっていた（2026-11 の実測では、キャッシュの書き込みが原価の約7割で、その多くは依頼内の tool 結果。履歴の書き直しはその一部）。`@ai-sdk/anthropic` v1 は会話の途中の system メッセージを送れないので、利用者メッセージのテキストとして渡す。利用者の本文・参照データ中の `<request-context>` は無害化し、ロールなどを詐称できないようにする。規律は workspace-data も未信頼として扱うよう明記する。キャッシュの読み書きは `[AI chat] usage` ログと `ai_chat_usage` の `cacheReadInputTokens` / `cacheCreationInputTokens` で確認できる
+- Claude の出力上限（thinking と本文の合計）は 32000（`ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS`）。上限に達して途中で切れた回答には、切れたことを伝える注記を末尾に足す（保存される本文と次の依頼の履歴にも残る）
 - 本文中の区切りタグは無害化し、ブロックを閉じて後ろへ指示を続けられないようにする。追加指示で認可・tool 方針・読み取り専用の制約は変えられない
 - モデルに関係なく同じ `system` に入れるため、GPT-5 / Claude のどちらを選んでも効く。未設定（空）のときは従来とまったく同じ文面になる
 - `ai_agents.system_prompt` / `agents_md` は使わない。`ai_agents` は §4 のAIメンバー用（スコープ・名前・モデル・作成者が必須の複数行）で、ワークスペースに1つの `/ai` 向け設定とは粒度が違い、モデルも `workspaces.ai_chat_model` と二重管理になるため
@@ -153,7 +154,7 @@ owner は設定の「AIエージェント」の「新しい資料を優先」で
 
 `/ai`（Web）では、入力欄のクリップ・ドラッグ＆ドロップ・貼り付けで、その会話だけで使うファイルを添付できる。ファイル一覧（`files`）には登録しない。
 
-- 対象は画像（JPEG・PNG・GIF・WebP）と、PDF・Word・Excel・PowerPoint・CSV・テキスト・Markdown。1回5ファイル・1ファイル10MBまで（`apps/web/src/lib/ai/attachment-types.ts`）。添付ありでもクレジットは通常と同じ1回分
+- 対象は画像（JPEG・PNG・GIF・WebP）と、PDF・Word・Excel・PowerPoint・CSV・テキスト・Markdown。1回5ファイル・1ファイル10MBまで（`apps/web/src/lib/ai/attachment-types.ts`）。添付した文書の本文も入力のトークンになるため、消費クレジット（原価で精算。[`billing-implementation-design.md`](./billing-implementation-design.md) の AI 消費）は大きい文書ほど多くなる
 - 本体は非公開の `ai-attachments` バケットに、`POST /api/ai/conversations/[id]/attachments` が発行した署名付き URL でクライアントから直接上げる（Vercel の本文上限を避けるため。チャットの添付と同じ方式）。行は `ai_attachments` で、送信までは `message_id` が null。送信時はクライアントが添付の ID だけを送り、サーバーが本人の・その会話の・未送信の添付であることを確かめてから Storage から読む。見つからない・アップロードが終わっていない・本文を取り出せない添付は黙って外さず、課金前にエラーで返す
 - 画像はそのままモデルに見せる。文書は `extractText` で本文を取り出し（Excel は添付だけで読む。ファイル一覧のインデックス対象には入れていない）、先頭5万文字までを `<attached-file>` で囲んだ未信頼データとして渡す。切り詰めたときはその旨も渡す。取り出した本文は `extracted_text` に保存し、同じ会話で続けて質問したときは読み直さずに渡す。履歴の画像は新しい4枚まで読み込み直し、それより古いものはファイル名だけ伝える
 - 送信前の添付は1つの状態（アップロード中・送れる・外している途中・アップロード失敗・外すのに失敗）で持ち、どれか1つでも送れる状態でなければ送信しない（入力欄と候補のボタンは同じ送信処理を通る）。送信済みのメッセージはサーバーを正とし、応答の後（保存が追いつくまで少し待つ）・会話を開いたとき・タブに戻ったときに保存済みの会話で置き換える（添付の期限付きリンクもそこで付け直す）。依頼のメッセージ ID はクライアントが送信時に決め、サーバーも同じ ID で保存する。受信中と、送った依頼の ID がまだ保存された会話に無い間は置き換えない（件数では比べない。送信に失敗した依頼や続けて送った依頼で食い違うため）。取り直せなかったときは知らせて、再読み込みできるようにする

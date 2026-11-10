@@ -60,6 +60,7 @@ const PATHS: Record<string, React.ReactNode> = {
   close:       <><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></>,
   more:        <><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></>,
   filter:      <><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5"/></>,
+  sort:        <><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></>,
   paperclip:   <><path d="M21 11l-9.5 9.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-9.5 9.5a2 2 0 0 1-3-3L15 7"/></>,
   smile:       <><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></>,
   send:        <><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
@@ -376,11 +377,13 @@ const visuallyHidden: React.CSSProperties = {
   overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
 }
 
-export const Modal = ({ onClose, label, role = 'dialog', children }: {
+export const Modal = ({ onClose, label, role = 'dialog', placement = 'center', children }: {
   onClose: () => void
   /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
   label: string
   role?: 'dialog' | 'alertdialog'
+  /** bottom はモバイルのボトムシート。画面下端に余白なしで寄せる */
+  placement?: 'center' | 'bottom'
   children: React.ReactNode
 }) => {
   // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
@@ -401,7 +404,12 @@ export const Modal = ({ onClose, label, role = 'dialog', children }: {
           e.preventDefault()
           if (opener && document.contains(opener)) opener.focus()
         }}
-        style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        style={{
+          outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex',
+          ...(placement === 'bottom'
+            ? { flexDirection: 'column', justifyContent: 'flex-end', padding: 0 }
+            : { alignItems: 'center', justifyContent: 'center', padding: 24 }),
+        }}
       >
         {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
         <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
@@ -477,6 +485,37 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
+}
+
+// モバイルのボトムシート（プロジェクト作成シートが基準）の入力欄。PC の fieldInputStyle より大きく、タップしやすくする
+export function sheetFieldInputStyle(invalid: boolean): React.CSSProperties {
+  return {
+    width: '100%', height: 44, padding: '0 12px',
+    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
+    borderRadius: 10, background: 'var(--card-2)', color: 'var(--text)',
+    fontSize: 15, fontFamily: 'inherit', outline: 'none',
+    boxSizing: 'border-box',
+  }
+}
+
+export const sheetFieldLabelStyle: React.CSSProperties = {
+  fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
+}
+
+/**
+ * フォーム部品をどの見た目で描くか。ボトムシートの中身（TaskFormFields など）は
+ * PC のモーダルと共有しているため、外枠が sheet を配って入力欄・ラベルをシートの寸法に揃える
+ */
+export const FormVariantContext = React.createContext<'dialog' | 'sheet'>('dialog')
+
+export function useFieldInputStyle(): (invalid: boolean) => React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet' ? sheetFieldInputStyle : fieldInputStyle
+}
+
+export function useFieldLabelStyle(): React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet'
+    ? sheetFieldLabelStyle
+    : { fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 }
 
 export function fieldTextareaStyle(invalid: boolean): React.CSSProperties {

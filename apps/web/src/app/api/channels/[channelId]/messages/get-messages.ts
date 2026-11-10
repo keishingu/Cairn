@@ -71,6 +71,7 @@ export async function getMessages({
       senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
+      imported: messages.imported,
       blocks: messageBlocks.blocks,
       blocksUpdatedAt: sql<string | null>`${messageBlocks.updatedAt}::text`,
       appName: apps.name,
@@ -133,6 +134,7 @@ export async function getMessages({
       senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
+      imported: boolean
       blocks: unknown
       blocksUpdatedAt: string | null
       appName: string | null
@@ -447,6 +449,7 @@ export async function getMessages({
       bookmarked: bookmarkedIds.has(row.id),
       linkedTasks: linkedTaskMap.get(row.id) ?? [],
       blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
+      ...(row.imported ? { imported: true } : {}),
       blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
       blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocksUpdatedAt) : null,
       ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
