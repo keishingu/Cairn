@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DRAFT_TTL_MS,
+  enableDraftWrites,
   clearAllDrafts,
   clearDraftsOfOtherUsers,
   clearUserDrafts,
@@ -169,6 +170,29 @@ describe('下書きの保存先（draft-store）', () => {
       expect(readDraft(scope, 'k')).toBeNull()
       expect(() => removeDraft(scope, 'k')).not.toThrow()
       expect(() => clearUserDrafts('user-1')).not.toThrow()
+    })
+  })
+
+  describe('セッション終了後の書き込み停止', () => {
+    it('clearAllDrafts の後は writeDraft が何も書かない', () => {
+      clearAllDrafts()
+
+      expect(writeDraft(scope, 'k', entry(Date.now()))).toBe(false)
+      expect(window.localStorage.length).toBe(0)
+    })
+
+    it('clearDraftsOfOtherUsers と clearUserDrafts は書き込みを止めない', () => {
+      clearDraftsOfOtherUsers('user-1')
+      clearUserDrafts('user-1')
+
+      expect(writeDraft(scope, 'k', entry(Date.now()))).toBe(true)
+    })
+
+    it('enableDraftWrites で解除できる（テスト用）', () => {
+      clearAllDrafts()
+      enableDraftWrites()
+
+      expect(writeDraft(scope, 'k', entry(Date.now()))).toBe(true)
     })
   })
 })

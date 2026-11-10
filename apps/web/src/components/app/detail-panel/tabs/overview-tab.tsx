@@ -14,7 +14,7 @@ import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
-import { useTextDraft } from '@/hooks/use-text-draft'
+import { useDraftEditor } from '@/hooks/use-text-draft'
 import { DraftNotice, UnsavedDraftMarker } from '../../draft-notice'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
 import type { MilestoneDto } from '@/app/api/projects/[id]/milestones/route'
@@ -60,45 +60,36 @@ export const InlineText = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
-  const [draft, setDraft] = React.useState(value)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  // 下書きを復元して編集を始めたか（お知らせと「下書きを破棄」の表示に使う）
-  const [restored, setRestored] = React.useState(false)
-  const store = useTextDraft({ key: draftKey ?? null, savedValue: value })
+  // 未保存の下書きは端末に残し、編集を始めたときに復元を案内する。保存済みの値との比較は前後の空白を無視する
+  const editor = useDraftEditor({
+    key: draftKey ?? null, savedValue: value, active: editing, isSame: (v, saved) => v.trim() === saved.trim(),
+  })
+  const { draft, restored } = editor
 
   const trimmed = draft.trim()
   const unchanged = trimmed === value.trim()
   const invalid = required && !trimmed
   const canSave = !saving && !unchanged && !invalid
 
-  const changeDraft = (next: string) => {
-    setDraft(next)
-    // 保存済みの値と同じ（前後の空白だけの差を含む）なら下書きは残さない
-    store.update(next.trim() === value.trim() ? value : next)
-  }
+  const changeDraft = editor.setDraft
 
   const startEdit = () => {
     if (readOnly) return
-    setDraft(store.stored ? store.stored.value : value)
-    setRestored(store.stored !== null)
     setError(null)
     setEditing(true)
   }
 
   const cancel = () => {
-    store.clear()
+    editor.finish()
     setEditing(false)
-    setRestored(false)
-    setDraft(value)
     setError(null)
   }
 
   // 下書きを捨てて保存済みの値へ戻す（編集は続ける）
   const discardDraft = () => {
-    store.clear()
-    setRestored(false)
-    setDraft(value)
+    editor.discard()
     setError(null)
   }
 
@@ -116,9 +107,8 @@ export const InlineText = ({
     setError(null)
     try {
       await onSave(trimmed)
-      store.clear()
+      editor.finish()
       setEditing(false)
-      setRestored(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
     } finally {
@@ -149,7 +139,7 @@ export const InlineText = ({
       >
         {empty ? (placeholder ?? '') : value}
       </button>
-      {store.stored && !readOnly && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
+      {editor.hasDraft && !readOnly && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
       </>
     )
   }
@@ -163,7 +153,7 @@ export const InlineText = ({
 
   return (
     <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft}/>}
+      {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
       {multiline ? (
         <textarea
           value={draft}
@@ -238,22 +228,14 @@ export const InlineDatePair = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
-  const [start, setStart] = React.useState(startDate ?? '')
-  const [end, setEnd]     = React.useState(endDate ?? '')
-  const [startClock, setStartClock] = React.useState(formatTime(startTime) ?? '')
-  const [endClock, setEndClock] = React.useState(formatTime(endTime) ?? '')
-
-  // 編集中は下書きを守り、外部の更新で上書きしない
-  React.useEffect(() => {
-    if (editing) return
-    setStart(startDate ?? '')
-    setEnd(endDate ?? '')
-    setStartClock(formatTime(startTime) ?? '')
-    setEndClock(formatTime(endTime) ?? '')
-  }, [editing, startDate, endDate, startTime, endTime])
-
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  // 4つの入力欄の値は、下書きと同じ直列化した1つの文字列で持つ（保存済みの値との比較・永続化を1か所にするため）
+  const savedSerialized = serializeDatePair(startDate ?? '', formatTime(startTime) ?? '', endDate ?? '', formatTime(endTime) ?? '')
+  const editor = useDraftEditor({ key: draftKey ?? null, savedValue: savedSerialized, active: editing })
+  const [start, startClock, end, endClock] = parseDatePair(editor.draft) ?? parseDatePair(savedSerialized)!
+  const restored = editor.restored
   const reversed = isEndBeforeStart(start, end)
   const dateErrorId = React.useId()
 
@@ -261,48 +243,21 @@ export const InlineDatePair = ({
     (start || null) === startDate && (end || null) === endDate &&
     (startClock || null) === formatTime(startTime) && (endClock || null) === formatTime(endTime)
 
-  const savedSerialized = serializeDatePair(startDate ?? '', formatTime(startTime) ?? '', endDate ?? '', formatTime(endTime) ?? '')
-  const store = useTextDraft({ key: draftKey ?? null, savedValue: savedSerialized })
-  const [restored, setRestored] = React.useState(false)
-
-  // 入力の変更を下書きへ反映する（4つの入力欄の現在値に、変更分を重ねて渡す）
+  // 入力の変更を反映する（4つの入力欄の現在値に、変更分を重ねる）
   const change = (patch: Partial<{ start: string; startClock: string; end: string; endClock: string }>) => {
     const next = { start, startClock, end, endClock, ...patch }
-    if (patch.start !== undefined) setStart(patch.start)
-    if (patch.end !== undefined) setEnd(patch.end)
-    if (patch.startClock !== undefined) setStartClock(patch.startClock)
-    if (patch.endClock !== undefined) setEndClock(patch.endClock)
-    store.update(serializeDatePair(next.start, next.startClock, next.end, next.endClock))
+    editor.setDraft(serializeDatePair(next.start, next.startClock, next.end, next.endClock))
   }
 
   const startEdit = () => {
     if (readOnly) return
-    reset()
-    const restoredValues = store.stored ? parseDatePair(store.stored.value) : null
-    if (restoredValues) {
-      setStart(restoredValues[0])
-      setStartClock(restoredValues[1])
-      setEnd(restoredValues[2])
-      setEndClock(restoredValues[3])
-    } else if (store.stored) {
-      store.clear()
-    }
-    setRestored(restoredValues !== null)
+    setError(null)
     setEditing(true)
   }
 
   // 下書きを捨てて保存済みの値へ戻す（編集は続ける）
   const discardDraft = () => {
-    store.clear()
-    setRestored(false)
-    reset()
-  }
-
-  const reset = () => {
-    setStart(startDate ?? '')
-    setEnd(endDate ?? '')
-    setStartClock(formatTime(startTime) ?? '')
-    setEndClock(formatTime(endTime) ?? '')
+    editor.discard()
     setError(null)
   }
 
@@ -312,18 +267,16 @@ export const InlineDatePair = ({
     // 逆転した期間は保存できないので、閉じずにその場で直してもらう（やめる時はキャンセル / Esc）
     if (saving || reversed) return
     if (unchanged) {
-      store.clear()
+      editor.finish()
       setEditing(false)
-      setRestored(false)
       return
     }
     setSaving(true)
     setError(null)
     try {
       await onSave(start || null, end || null, startClock || null, endClock || null)
-      store.clear()
+      editor.finish()
       setEditing(false)
-      setRestored(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
     } finally {
@@ -332,10 +285,9 @@ export const InlineDatePair = ({
   }
 
   const cancel = () => {
-    store.clear()
+    editor.finish()
     setEditing(false)
-    setRestored(false)
-    reset()
+    setError(null)
   }
 
   // Esc は編集の取り消しだけにして、周りのパネルは閉じない
@@ -381,7 +333,7 @@ export const InlineDatePair = ({
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
       </button>
-      {store.stored && !readOnly && <div><UnsavedDraftMarker/></div>}
+      {editor.hasDraft && !readOnly && <div><UnsavedDraftMarker/></div>}
       </>
     )
   }
@@ -397,7 +349,7 @@ export const InlineDatePair = ({
       ref={wrapRef}
       style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 300 }}
     >
-      {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft}/>}
+      {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
       <div style={rowStyle}>
         <input
           type="date"

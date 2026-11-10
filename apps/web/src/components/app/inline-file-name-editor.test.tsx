@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { useDraftScope } from '@/hooks/use-draft-scope'
 import { FileNameDraftMarker, InlineFileNameEditor } from './inline-file-name-editor'
 
 vi.mock('@/components/locale-provider', () => ({ useT: () => (message: string) => message }))
@@ -110,5 +111,27 @@ describe('ファイル名のインライン編集（InlineFileNameEditor）', ()
 
     render(<FileNameDraftMarker fileId="file-1" fileName="report.pdf" />)
     expect(screen.getByText('Unsaved draft')).toBeInTheDocument()
+  })
+
+  it('下書きの読み取り前（スコープ取得待ち）に入力した名前は、古い下書きで上書きされず、下書きとして残る', async () => {
+    window.localStorage.setItem(
+      'cairn:draft:user-1:ws-1:file:file-1:name',
+      JSON.stringify({ value: 'old.pdf', base: 'report.pdf', updatedAt: Date.now() }),
+    )
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope: null, settled: false }))
+    const { input, view } = (() => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const v = render(<InlineFileNameEditor fileId="file-1" fileName="report.pdf" onSave={onSave} onCancel={vi.fn()} />)
+      return { input: screen.getByLabelText('Change file name'), view: v }
+    })()
+
+    fireEvent.change(input, { target: { value: 'fresh.pdf' } })
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope: { userId: 'user-1', workspaceId: 'ws-1' }, settled: true }))
+    view.rerender(<InlineFileNameEditor fileId="file-1" fileName="report.pdf" onSave={vi.fn()} onCancel={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByLabelText('Change file name')).toHaveValue('fresh.pdf'))
+    expect(screen.queryByText('Restored your unsaved draft.')).toBeNull()
+    view.unmount()
+    expect(JSON.parse(window.localStorage.getItem('cairn:draft:user-1:ws-1:file:file-1:name')!).value).toBe('fresh.pdf')
   })
 })

@@ -3,7 +3,7 @@
 import React from 'react'
 import { useT } from '@/components/locale-provider'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
-import { useTextDraft } from '@/hooks/use-text-draft'
+import { useDraftEditor, useTextDraft } from '@/hooks/use-text-draft'
 import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
 import { Icon } from './primitives'
 
@@ -24,7 +24,6 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
   fontSize?: number
 }) => {
   const t = useT()
-  const [draft, setDraft] = React.useState(fileName)
   const [isSaving, setIsSaving] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const savingRef = React.useRef(false)
@@ -37,38 +36,18 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
     input.setSelectionRange(0, dotIndex > 0 ? dotIndex : fileName.length)
   }, [fileName])
 
+  // 未保存の名前は端末に残し、開き直したときに復元を案内する（閉じ方を問わず失われない）
+  const editor = useDraftEditor({
+    key: fileNameDraftKey(fileId), savedValue: fileName, active: true, isSame: (v, saved) => v.trim() === saved,
+  })
+  const { draft, restored } = editor
+  const changeDraft = editor.setDraft
+  const discardDraft = editor.discard
   const nextFileName = draft.trim()
   const canSave = !isSaving && nextFileName !== '' && nextFileName !== fileName
 
-  // 未保存の名前は端末に残し、開き直したときに復元を案内する（閉じ方を問わず失われない）
-  const store = useTextDraft({ key: fileNameDraftKey(fileId), savedValue: fileName })
-  const [restored, setRestored] = React.useState(false)
-  const appliedRef = React.useRef(false)
-  const storedRef = React.useRef(store.stored)
-  storedRef.current = store.stored
-  React.useEffect(() => {
-    if (!store.loaded || appliedRef.current) return
-    appliedRef.current = true
-    const entry = storedRef.current
-    if (entry) {
-      setDraft(entry.value)
-      setRestored(true)
-    }
-  }, [store.loaded])
-
-  const changeDraft = (next: string) => {
-    setDraft(next)
-    store.update(next.trim() === fileName ? fileName : next)
-  }
-
-  const discardDraft = () => {
-    store.clear()
-    setRestored(false)
-    setDraft(fileName)
-  }
-
   const cancel = () => {
-    store.clear()
+    editor.finish()
     onCancel()
   }
 
@@ -90,7 +69,7 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
       return
     }
     // onCancel（編集を閉じる処理）の例外を保存失敗と取り違えないよう、try の外で呼ぶ
-    store.clear()
+    editor.finish()
     onCancel()
   }
 
@@ -106,7 +85,7 @@ export const InlineFileNameEditor = ({ fileId, fileName, onSave, onCancel, fontS
 
   return (
     <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }} onClick={event => event.stopPropagation()}>
-      {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft}/>}
+      {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%' }}>
       <input
         ref={inputRef}

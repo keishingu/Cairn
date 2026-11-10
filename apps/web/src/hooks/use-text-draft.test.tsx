@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDraftScope } from './use-draft-scope'
-import { useDraftField, useTextDraft } from './use-text-draft'
-import { readDraft, writeDraft } from '@/lib/drafts/draft-store'
+import { useDraftEditor, useDraftField, useTextDraft } from './use-text-draft'
+import { clearAllDrafts, readDraft, writeDraft } from '@/lib/drafts/draft-store'
 
 const scope = { userId: 'user-1', workspaceId: 'ws-1' }
 const read = (key: string) => readDraft(scope, key)
@@ -239,5 +239,75 @@ describe('常時表示の入力欄用フック（useDraftField）', () => {
 
     expect(result.current.value).toBe('書きかけ')
     expect(result.current.restored).toEqual({ baseChanged: false })
+  })
+})
+
+describe('セッション終了と保留中の書き込み', () => {
+  it('入力の保留中に clearAllDrafts しても、タイマー・pagehide・アンマウントの書き切りで下書きが復活しない', () => {
+    const { result, unmount } = renderHook(() => useTextDraft({ key: 'k', savedValue: '元' }))
+    act(() => result.current.update('個人的な書きかけ'))
+
+    clearAllDrafts()
+    act(() => { vi.advanceTimersByTime(500) })
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    unmount()
+
+    expect(window.localStorage.length).toBe(0)
+  })
+})
+
+describe('クリックして編集する欄用フック（useDraftEditor）', () => {
+  it('編集を始めたときに下書きを入れて復元を知らせる', () => {
+    writeDraft(scope, 'k', { value: '書きかけ', base: '古い値', updatedAt: Date.now() })
+    const { result, rerender } = renderHook(({ active }) => useDraftEditor({ key: 'k', savedValue: '元', active }), {
+      initialProps: { active: false },
+    })
+    rerender({ active: true })
+
+    expect(result.current.draft).toBe('書きかけ')
+    expect(result.current.restored).toEqual({ baseChanged: true })
+  })
+
+  it('復元の判定前に打った入力は古い下書きに上書きされず、通知も出ない', () => {
+    writeDraft(scope, 'k', { value: '古い下書き', base: '元', updatedAt: Date.now() })
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope: null, settled: false }))
+    const { result, rerender } = renderHook(() => useDraftEditor({ key: 'k', savedValue: '元', active: true }))
+
+    act(() => result.current.setDraft('先に打った'))
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope, settled: true }))
+    rerender()
+
+    expect(result.current.draft).toBe('先に打った')
+    expect(result.current.restored).toBeNull()
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(read('k')).toMatchObject({ value: '先に打った' })
+  })
+
+  it('編集を閉じたとき保留中の書き込みを書き切り、すぐ開き直しても入力を復元する（メニューの開閉）', () => {
+    const { result, rerender } = renderHook(({ active }) => useDraftEditor({ key: 'k', savedValue: '元', active }), {
+      initialProps: { active: true },
+    })
+    act(() => result.current.setDraft('書きかけ'))
+
+    rerender({ active: false })
+    expect(read('k')).toMatchObject({ value: '書きかけ' })
+    rerender({ active: true })
+
+    expect(result.current.draft).toBe('書きかけ')
+    expect(result.current.restored).toEqual({ baseChanged: false })
+  })
+
+  it('編集中に保存済みの値が変わっても、入力済みの値は保ち、未編集なら追従する', () => {
+    const { result, rerender } = renderHook(({ saved }) => useDraftEditor({ key: 'k', savedValue: saved, active: true }), {
+      initialProps: { saved: '元' },
+    })
+    rerender({ saved: '更新1' })
+    expect(result.current.draft).toBe('更新1')
+
+    act(() => result.current.setDraft('書きかけ'))
+    rerender({ saved: '更新2' })
+
+    expect(result.current.draft).toBe('書きかけ')
+    expect(result.current.restored).toBeNull()
   })
 })

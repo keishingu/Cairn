@@ -252,3 +252,116 @@ export function useDraftField({
 
   return { value, setValue, restored, discard, commit }
 }
+
+export interface DraftEditor {
+  /** 編集中の値 */
+  draft: string
+  /** 入力のたびに呼ぶ。値を更新し、保存済みの値と異なる間は下書きとして端末に残す。 */
+  setDraft: (value: string) => void
+  /** 下書きを復元した直後は非 null（baseChanged は復元時点で保存済みの値が変わっていたか）。 */
+  restored: { baseChanged: boolean } | null
+  /** 端末に下書きが残っているか（表示モードの印に使う） */
+  hasDraft: boolean
+  /** 下書きを捨てて保存済みの値へ戻す（編集は続ける） */
+  discard: () => void
+  /** 保存成功・キャンセルで編集を終えるときに呼ぶ。下書きとお知らせを消し、値を保存済みへ戻す。 */
+  finish: () => void
+}
+
+/**
+ * クリックして編集する欄の下書きをまとめて扱う。`active`（編集中）になった時点で、保存済みの値で始め、
+ * 端末に下書きがあれば入れて復元を知らせる。下書きの読み取りが終わる前に入力があった場合は、
+ * 古い下書きで上書きせず入力を残して下書きとして保存する（復元とそのお知らせは行わない）。
+ * `isSame` は入力値と保存済みの値を「同じ」とみなす比較（前後の空白を無視するなど）。
+ * 編集を閉じる（active が false になる）ときは保留中の書き込みを書き切る。
+ */
+export function useDraftEditor({
+  key, savedValue, active, isSame,
+}: {
+  key: string | null
+  savedValue: string
+  active: boolean
+  isSame?: (value: string, saved: string) => boolean
+}): DraftEditor {
+  const store = useTextDraft({ key, savedValue })
+  const { update, clear, flush } = store
+  const [draft, setDraftState] = React.useState(savedValue)
+  const [restored, setRestored] = React.useState<{ baseChanged: boolean } | null>(null)
+
+  const savedRef = React.useRef(savedValue)
+  savedRef.current = savedValue
+  const isSameRef = React.useRef(isSame)
+  isSameRef.current = isSame
+  const storedRef = React.useRef(store.stored)
+  storedRef.current = store.stored
+  const valueRef = React.useRef(savedValue)
+  const decidedRef = React.useRef(false)
+  const touchedRef = React.useRef(false)
+
+  const push = React.useCallback((value: string) => {
+    const same = isSameRef.current ? isSameRef.current(value, savedRef.current) : value === savedRef.current
+    update(same ? savedRef.current : value)
+  }, [update])
+
+  // 編集を始めるたびに、保存済みの値で始めて復元を判定し直す
+  React.useEffect(() => {
+    if (!active) return
+    decidedRef.current = false
+    touchedRef.current = false
+    valueRef.current = savedRef.current
+    setDraftState(savedRef.current)
+    setRestored(null)
+  }, [active, key])
+
+  React.useEffect(() => {
+    if (!active || !store.loaded || decidedRef.current) return
+    decidedRef.current = true
+    if (touchedRef.current) {
+      // 読み取りを待つ間に入力があった: 入力を優先して残す
+      push(valueRef.current)
+      return
+    }
+    const entry = storedRef.current
+    if (entry) {
+      valueRef.current = entry.value
+      setDraftState(entry.value)
+      setRestored({ baseChanged: entry.base !== savedRef.current })
+    }
+  }, [active, store.loaded, key, push])
+
+  // 編集中に保存済みの値が変わったとき（保存の反映など）、入力が未編集の間だけ追従する。編集済みの入力は保つ
+  const prevSavedRef = React.useRef(savedValue)
+  React.useEffect(() => {
+    const previous = prevSavedRef.current
+    prevSavedRef.current = savedValue
+    if (!active || !decidedRef.current || previous === savedValue) return
+    if (valueRef.current === previous) {
+      valueRef.current = savedValue
+      setDraftState(savedValue)
+    }
+  }, [active, savedValue])
+
+  // 編集を閉じるとき（保存・キャンセル以外の閉じ方も含む）、保留中の書き込みを書き切る
+  React.useEffect(() => {
+    if (!active) return
+    return () => flush()
+  }, [active, flush])
+
+  const setDraft = React.useCallback((value: string) => {
+    valueRef.current = value
+    if (!decidedRef.current) touchedRef.current = true
+    setDraftState(value)
+    push(value)
+  }, [push])
+
+  const discard = React.useCallback(() => {
+    clear()
+    setRestored(null)
+    valueRef.current = savedRef.current
+    setDraftState(savedRef.current)
+  }, [clear])
+
+  const finish = discard
+
+  return { draft, setDraft, restored, hasDraft: store.stored !== null, discard, finish }
+}

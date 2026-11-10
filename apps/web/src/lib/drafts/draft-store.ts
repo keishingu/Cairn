@@ -32,6 +32,18 @@ export function draftStorageKey(scope: DraftScope, key: string): string {
   return `${DRAFT_KEY_PREFIX}${scope.userId}:${scope.workspaceId}:${key}`
 }
 
+/**
+ * セッションを終える操作（サインアウト・アカウント削除）の後は、このページの寿命の間、下書きを書かない。
+ * 保留中のデバウンス書き込みや pagehide / アンマウント時の書き切りが、消したばかりの個人の下書きを書き戻さないため。
+ * これらの操作は必ず画面遷移を伴うので、このページで下書きが再び必要になることはない。
+ */
+let writesDisabled = false
+
+/** テスト用: 書き込みの停止を解除する。 */
+export function enableDraftWrites(): void {
+  writesDisabled = false
+}
+
 function getStorage(): Storage | null {
   try {
     return typeof window === 'undefined' ? null : window.localStorage
@@ -78,6 +90,7 @@ export function readDraft(scope: DraftScope, key: string, now: number = Date.now
 
 /** 下書きを書く。書けなかった（容量超過など）ときは false。 */
 export function writeDraft(scope: DraftScope, key: string, entry: DraftEntry): boolean {
+  if (writesDisabled) return false
   const storage = getStorage()
   if (!storage) return false
   try {
@@ -123,6 +136,7 @@ export function pruneExpiredDrafts(now: number = Date.now()): void {
 
 /** 下書きをすべて（ユーザーを問わず）削除する。ユーザーが特定できないサインアウト・アカウント削除で使う。 */
 export function clearAllDrafts(): void {
+  writesDisabled = true
   const storage = getStorage()
   if (!storage) return
   try {

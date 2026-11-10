@@ -9,7 +9,7 @@ import { TaskDeleteDialog } from './task-delete-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { usePatchTask, useTaskDetail } from '@/hooks/use-tasks'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
-import { useTextDraft } from '@/hooks/use-text-draft'
+import { useDraftEditor } from '@/hooks/use-text-draft'
 import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
@@ -38,34 +38,29 @@ const sectionLabelStyle: React.CSSProperties = {
 const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string; onSave: (title: string) => Promise<unknown> }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
-  const [draft, setDraft] = React.useState(title)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  const [restored, setRestored] = React.useState(false)
-  const store = useTextDraft({ key: `task:${taskId}:title`, savedValue: title })
+  // 保存済みのタイトルとの比較は前後の空白を無視する
+  const editor = useDraftEditor({
+    key: `task:${taskId}:title`, savedValue: title, active: editing, isSame: (v, saved) => v.trim() === saved,
+  })
+  const { draft, restored } = editor
 
   const next = draft.trim()
   const canSave = !saving && next !== '' && next !== title
 
-  const changeDraft = (value: string) => {
-    setDraft(value)
-    // 保存済みと同じ（前後の空白だけの差を含む）なら下書きは残さない
-    store.update(value.trim() === title ? title : value)
-  }
+  const changeDraft = editor.setDraft
 
   const cancel = () => {
-    store.clear()
+    editor.finish()
     setEditing(false)
-    setRestored(false)
     setError(null)
   }
 
   // 下書きを捨てて保存済みのタイトルへ戻す（編集は続ける）
   const discardDraft = () => {
-    store.clear()
-    setRestored(false)
-    setDraft(title)
+    editor.discard()
     setError(null)
   }
   const wrapRef = React.useRef<HTMLDivElement>(null)
@@ -77,8 +72,6 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   }, [saving])
 
   const startEdit = () => {
-    setDraft(store.stored ? store.stored.value : title)
-    setRestored(store.stored !== null)
     setError(null)
     setEditing(true)
   }
@@ -89,9 +82,8 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
     setError(null)
     try {
       await onSave(next)
-      store.clear()
+      editor.finish()
       setEditing(false)
-      setRestored(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not update the task'))
     } finally {
@@ -102,7 +94,7 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
   if (editing) {
     return (
       <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft}/>}
+        {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft}/>}
         <input
           aria-label={t('Title')}
           className="form-control"
@@ -143,7 +135,7 @@ const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string;
       >
         {formatTaskTitleForDisplay(title)}
       </button>
-      {store.stored && <UnsavedDraftMarker style={{ marginTop: 8 }}/>}
+      {editor.hasDraft && <UnsavedDraftMarker style={{ marginTop: 8 }}/>}
     </div>
   )
 }
@@ -160,29 +152,24 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
   const t = useT()
   const id = React.useId()
   const [editing, setEditing] = React.useState(false)
-  const [draft, setDraft] = React.useState('')
 
-  const [restored, setRestored] = React.useState(false)
-  const store = useTextDraft({ key: `task:${taskId}:description`, savedValue: description ?? '' })
-
-  const changeDraft = (value: string) => {
-    setDraft(value)
-    // 保存済みと同じ（空白だけの入力は説明なしと同じ）なら下書きは残さない
-    store.update((value.trim() === '' ? '' : value) === (description ?? '') ? (description ?? '') : value)
-  }
+  // 保存済みの説明との比較では、空白だけの入力は説明なしと同じ
+  const editor = useDraftEditor({
+    key: `task:${taskId}:description`,
+    savedValue: description ?? '',
+    active: editing,
+    isSame: (v, saved) => (v.trim() === '' ? '' : v) === saved,
+  })
+  const { draft, restored } = editor
+  const changeDraft = editor.setDraft
 
   const cancel = () => {
-    store.clear()
+    editor.finish()
     setEditing(false)
-    setRestored(false)
   }
 
   // 下書きを捨てて保存済みの説明へ戻す（編集は続ける）
-  const discardDraft = () => {
-    store.clear()
-    setRestored(false)
-    setDraft(description ?? '')
-  }
+  const discardDraft = editor.discard
 
   const wrapRef = React.useRef<HTMLDivElement>(null)
   useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
@@ -192,11 +179,7 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
     if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
   }, [saving])
 
-  const startEdit = () => {
-    setDraft(store.stored ? store.stored.value : (description ?? ''))
-    setRestored(store.stored !== null)
-    setEditing(true)
-  }
+  const startEdit = () => setEditing(true)
 
   const handleSave = () => {
     const next = draft.trim() === '' ? null : draft
@@ -206,9 +189,8 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
       return
     }
     onSave(next, () => {
-      store.clear()
+      editor.finish()
       setEditing(false)
-      setRestored(false)
     })
   }
 
@@ -226,7 +208,7 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
 
       {editing ? (
         <div ref={wrapRef}>
-          {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft} style={{ marginBottom: 6 }}/>}
+          {restored && <DraftNotice baseChanged={restored.baseChanged} onDiscard={discardDraft} style={{ marginBottom: 6 }}/>}
           <textarea
             id={`${id}-description`}
             className="form-control"
@@ -272,7 +254,7 @@ const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
           {t('Add a description')}
         </button>
       )}
-      {!editing && store.stored && <UnsavedDraftMarker style={{ marginTop: 6 }}/>}
+      {!editing && editor.hasDraft && <UnsavedDraftMarker style={{ marginTop: 6 }}/>}
     </section>
   )
 }

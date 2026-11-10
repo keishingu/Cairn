@@ -7,7 +7,7 @@ import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { InlineError } from './inline-error'
 import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
-import { useTextDraft } from '@/hooks/use-text-draft'
+import { useDraftEditor } from '@/hooks/use-text-draft'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
@@ -583,37 +583,20 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const { data: me, statusMutation, statusMessageMutation } = useSidebarCurrentUser()
   const displayName = me?.displayName ?? '…'
 
-  const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
-  // 未保存のステータスメッセージは端末に残し、メニューを開き直したときに復元を案内する
-  const statusDraft = useTextDraft({ key: me ? 'sidebar:status-message' : null, savedValue: me?.statusMessage ?? '' })
-  const [statusDraftRestored, setStatusDraftRestored] = React.useState(false)
-  const statusStoredRef = React.useRef(statusDraft.stored)
-  statusStoredRef.current = statusDraft.stored
-  React.useEffect(() => {
-    if (!menuOpen) {
-      setStatusDraftRestored(false)
-      return
-    }
-    // 下書きの読み取りを待ってから、メニューを開いた時点の内容で初期化する
-    if (!statusDraft.loaded) return
-    const entry = statusStoredRef.current
-    if (entry) {
-      setStatusMessageDraft(entry.value)
-      setStatusDraftRestored(true)
-    } else {
-      setStatusMessageDraft(me?.statusMessage ?? '')
-    }
-  }, [menuOpen, me?.statusMessage, statusDraft.loaded])
-
-  function changeStatusMessage(next: string) {
-    setStatusMessageDraft(next)
-    statusDraft.update(next.trim() === (me?.statusMessage ?? '') ? (me?.statusMessage ?? '') : next)
-  }
+  // 未保存のステータスメッセージは端末に残し、メニューを開いたときに復元を案内する（復元の判定はメニューを開くたびに1回）。
+  // 開いている間は入力を保ち、保存済みの値が変わっても未編集のときだけ追従する。閉じるときに保留中の書き込みを書き切る
+  const statusEditor = useDraftEditor({
+    key: me ? 'sidebar:status-message' : null,
+    savedValue: me?.statusMessage ?? '',
+    active: menuOpen,
+    isSame: (v, saved) => v.trim() === saved,
+  })
+  const statusMessageDraft = statusEditor.draft
+  const statusDraftRestored = statusEditor.restored
+  const changeStatusMessage = statusEditor.setDraft
 
   function discardStatusDraft() {
-    statusDraft.clear()
-    setStatusDraftRestored(false)
-    setStatusMessageDraft(me?.statusMessage ?? '')
+    statusEditor.discard()
     setStatusMessageError(null)
   }
 
@@ -627,8 +610,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     setStatusMessageError(null)
     try {
       await statusMessageMutation.mutateAsync(statusMessageTrimmed || null)
-      statusDraft.clear()
-      setStatusDraftRestored(false)
+      statusEditor.finish()
     } catch (e) {
       setStatusMessageError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
     }
@@ -687,7 +669,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         {t('Status message')}
       </div>
       {statusDraftRestored && (
-        <DraftNotice baseChanged={statusDraft.baseChanged} onDiscard={discardStatusDraft} style={{ padding: '0 10px 6px' }}/>
+        <DraftNotice baseChanged={statusDraftRestored.baseChanged} onDiscard={discardStatusDraft} style={{ padding: '0 10px 6px' }}/>
       )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '0 0 6px' }}>
         <input
@@ -788,7 +770,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {me?.statusMessage ? me.statusMessage : t(statusLabel(me?.status))}
           </div>
-          {statusDraft.stored && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
+          {statusEditor.hasDraft && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
         </div>
       </button>
       {toggleBtn}
