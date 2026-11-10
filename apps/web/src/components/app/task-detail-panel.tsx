@@ -118,18 +118,23 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
 
 // ─── 説明（Markdown 表示 / 編集） ─────────────────────────────────
 
-const DescriptionSection = ({ description, saving, error, onSave }: {
+const DescriptionSection = ({ description, saving, error, onSave, onDiscardError }: {
   description: string | null
   saving: boolean
   error: string | null
   onSave: (value: string | null, onSuccess: () => void) => void
+  /** 前回の保存失敗を消す（開き直し・キャンセルで古いエラーを出さない） */
+  onDiscardError: () => void
 }) => {
   const t = useT()
   const id = React.useId()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState('')
 
-  const cancel = () => setEditing(false)
+  const cancel = () => {
+    onDiscardError()
+    setEditing(false)
+  }
 
   const wrapRef = React.useRef<HTMLDivElement>(null)
   useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
@@ -140,6 +145,7 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
   }, [saving])
 
   const startEdit = () => {
+    onDiscardError()
     setDraft(description ?? '')
     setEditing(true)
   }
@@ -279,6 +285,12 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
   // タイトルの明示保存用。失敗はタイトル編集欄が表示するので、即保存項目のエラー欄（patchFields）とは分ける
   const patchTitle = usePatchTask()
   const patchDescription = usePatchTask()
+  // 別のタスクへ切り替えたとき、前のタスクの説明の保存失敗を持ち越さない
+  const resetDescriptionRef = React.useRef(patchDescription.reset)
+  resetDescriptionRef.current = patchDescription.reset
+  React.useEffect(() => {
+    resetDescriptionRef.current()
+  }, [taskId])
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   const savePatch = (patch: Parameters<typeof patchFields.mutate>[0]['patch']) => {
@@ -366,6 +378,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
                   ? (patchDescription.error instanceof Error ? patchDescription.error.message : t('Could not update the task'))
                   : null}
                 onSave={handleSaveDescription}
+                onDiscardError={() => patchDescription.reset()}
               />
 
               <SourceMessageSection task={task} onNavigate={onClose} />

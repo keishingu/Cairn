@@ -13,7 +13,7 @@ const { mockUseTaskDetail, mockPatchMutate, mockPatchMutateAsync, mockPatchState
 
 vi.mock('@/hooks/use-tasks', () => ({
   useTaskDetail: mockUseTaskDetail,
-  usePatchTask: () => ({ mutate: mockPatchMutate, mutateAsync: mockPatchMutateAsync, reset: vi.fn(), ...mockPatchState }),
+  usePatchTask: () => ({ mutate: mockPatchMutate, mutateAsync: mockPatchMutateAsync, reset: () => { mockPatchState.isError = false; mockPatchState.error = null }, ...mockPatchState }),
   useDeleteTask: () => ({ mutateAsync: vi.fn() }),
 }))
 vi.mock('./task-assignee-field', () => ({
@@ -275,6 +275,25 @@ describe('TaskDetailPanel', () => {
     renderPanel()
 
     expect(screen.getByRole('alert')).toHaveTextContent('指定された担当者はこのタスクに割り当てできません')
+  })
+
+  it('説明の保存に失敗してもキャンセルして開き直せば、前回のエラーは出ない', async () => {
+    setTask()
+    const view = render(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: '説明を追加' }))
+    // 保存に失敗した状態を再現する（親を再描画してエラーを表示する）
+    mockPatchState.isError = true
+    mockPatchState.error = new Error('説明を保存できませんでした')
+    view.rerender(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    expect(screen.getAllByText('説明を保存できませんでした').length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    // キャンセルでミューテーションが reset され（モックでは状態が消え）、親が再描画される
+    expect(mockPatchState.isError).toBe(false)
+    view.rerender(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: '説明を追加' }))
+
+    expect(screen.queryByText('説明を保存できませんでした')).toBeNull()
   })
 
   it('元のメッセージを引用ブロックで表示し、チャットで開くリンクを出す', async () => {

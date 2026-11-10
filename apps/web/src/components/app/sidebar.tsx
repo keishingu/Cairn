@@ -658,7 +658,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           value={statusMessageDraft}
           disabled={statusMessageMutation.isPending}
           aria-label={t('Status message')}
-          onChange={e => setStatusMessageDraft(e.target.value)}
+          onChange={e => { setStatusMessageDraft(e.target.value); setStatusMessageError(null) }}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
