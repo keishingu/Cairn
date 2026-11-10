@@ -30,7 +30,7 @@ describe('マイルストーンのインライン編集の失敗表示', () => {
 
   it('タイトルの保存に失敗したら、編集欄のエラーを1回だけ表示し、トーストは出さない', async () => {
     mockPatchAsync.mockRejectedValue(new Error('通信に失敗しました'))
-    render(<MilestoneSection projectId="p1" canEdit />)
+    render(<MilestoneSection projectId="p1" projectTitle="P" canEdit />)
 
     fireEvent.click(screen.getByText('下見'))
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '本番' } })
@@ -43,7 +43,7 @@ describe('マイルストーンのインライン編集の失敗表示', () => {
 
   it('完了チェックの保存に失敗したときはトーストで知らせる', async () => {
     mockPatchAsync.mockRejectedValue(new Error('通信に失敗しました'))
-    render(<MilestoneSection projectId="p1" canEdit />)
+    render(<MilestoneSection projectId="p1" projectTitle="P" canEdit />)
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Complete' }))
 

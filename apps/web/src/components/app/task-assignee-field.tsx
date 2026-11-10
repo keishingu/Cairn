@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { Avatar, Icon, fieldInputStyle, portalHostFor } from './primitives'
+import { Avatar, Icon, fieldInputStyle, portalHostFor, useFieldInputStyle, useFieldLabelStyle } from './primitives'
 import { useWorkspaceMembers, useProjectMembers } from '@/hooks/use-project-members'
 import { useChannelMembers } from '@/lib/chat/client'
 import { useT } from '@/components/locale-provider'
@@ -29,18 +29,12 @@ interface TaskAssigneeFieldProps {
   currentAssignee?: { userId: string; displayName: string; avatarUrl: string | null } | null
 }
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'var(--text-2)',
-  display: 'block',
-  marginBottom: 6,
-}
-
 // ワークスペース全体から担当者を検索・選択する。プロジェクト選択時はプロジェクト内メンバーを
 // 上部に優先表示し「プロジェクト内」ラベルを付ける。
 export const TaskAssigneeField = ({ value, onChange, projectId, channelId, channelIsPrivate = false, currentAssignee }: TaskAssigneeFieldProps) => {
   const t = useT()
+  const triggerStyle = useFieldInputStyle()
+  const labelStyle = useFieldLabelStyle()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [menuPosition, setMenuPosition] = React.useState<{
@@ -210,7 +204,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
         type="button"
         onClick={() => setOpen(o => !o)}
         style={{
-          ...fieldInputStyle(false),
+          ...triggerStyle(false),
           display: 'flex',
           alignItems: 'center',
           gap: 8,
