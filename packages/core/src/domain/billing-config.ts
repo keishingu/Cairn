@@ -10,7 +10,7 @@ export const BILLING_CONFIG = {
   // /ai の1依頼で送信前に押さえる見積もりのクレジット（残高がこれ未満なら送れない）。実際の消費は回答の後に
   // 原価から精算する（aiChatCostUsd → aiChatCreditsForCost）。2026-11 の本番の実測の中央値（Sonnet 5.5 約¥22・
   // Opus 5.5 約¥30）に掛け率を掛けた値。キーは @cairn/shared の AI_CHAT_MODELS と同じ集合（core は shared に
-  // 依存しないため文字列で持ち、web のテストで一致を確かめる）。スキルのテスト実行（dry-run）はこの値で固定消費する
+  // 依存しないため文字列で持ち、web のテストで一致を確かめる）。スキルのテスト実行（dry-run）も同じく見積もりを押さえて原価で精算する
   aiChatRequestCreditsByModel: {
     'gpt-5': 30,
     'claude-sonnet-5-5': 30,

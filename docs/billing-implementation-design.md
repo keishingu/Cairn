@@ -101,7 +101,7 @@ stripe_events              Webhook 冪等性（Stripe event id）
 - 1クレジット ≒ ¥1 の売上（Solo ¥300 / 300 クレジット）に対して原価の1.5倍を消費する。2026-11 の本番の実測では1依頼の原価が平均 約¥30（Sonnet・Opus とも）で、固定の 10 / 20 クレジットでは原価を回収できなかったため、原価に応じた精算へ切り替えた。単価・為替が変わったら `BILLING_CONFIG` を更新する
 - **請求画面の「今月のAIの利用」**（`GET /api/billing/ai-usage`、PC の `/settings/billing`）: 本人には今月の自分の依頼ごとの消費（日時・モデル・石、新しい100件）と合計を見せる。owner / admin にはそれに加えてワークスペース全体のモデル別の回数・石の合計を見せる。誰がいつ使ったかは本人以外に出さない（`/ai` の会話は本人用のため）。精算を始める前の行は、保存した依頼の見積もり（`request_credits`）を消費として数える
 - **AI PMO**: Phase 1/2 ともナッジ配信時に `consumeCreditsForPassiveBenefit` で記帳し、残高がなければ配信しない。ルール巡回・Jev 一次判定・RAG の embedding 検索は消費しない
-- モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行う。スキルのテスト実行は原価で精算せず、既定モデルの見積もりを消費する。AI PMO の1配信は 10（初期仮値）
+- モデルはメンバーが会話ごとに選ぶため、どのモデルを選べるかは owner が `workspaces.ai_chat_allowed_models` で決める（[`10_ai_member_design.md`](./10_ai_member_design.md#会話ごとのモデル)）。残高の確認・予約・返金・run の記録はすべてその会話のモデルの値で行う。スキルのテスト実行も、既定モデルの見積もりを予約して、成功したら `/ai` と同じく原価で精算する（`ai_chat_usage` に `conversation_id` null・`skill_run_id` 付きで記録し、請求画面の本人の明細にも出る）。AI PMO の1配信は 10（初期仮値）
 
 ### アップロード時の判定
 
