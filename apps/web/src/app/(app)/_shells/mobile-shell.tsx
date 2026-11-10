@@ -27,7 +27,6 @@ import { PageGallery } from '@/components/app/pages/gallery'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { useT } from '@/components/locale-provider'
-import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
 
 const MOBILE_STORAGE_KEY = STORAGE_KEYS.projects_view_mob
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -174,7 +173,6 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
   const pathname = usePathname()
   const search = useSearchParams().toString()
   const router = useRouter()
-  const t = useT()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
@@ -271,11 +269,7 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
           {shouldRenderMobileNav(hideNav) && (
-            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => {
-              // 未保存の下書きがあるときは、破棄してよいか確認してから移る
-              if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
-              router.push(path)
-            }} onChangeView={setProjectsView} />
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
           )}
         </div>
       </div>

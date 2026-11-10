@@ -8,8 +8,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
-import { useT } from '@/components/locale-provider'
-import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 
@@ -60,7 +58,6 @@ export function useDetailPanel(): UseDetailPanelResult {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const t = useT()
 
   const openParam = searchParams.get('open') ?? ''
 
@@ -145,39 +142,25 @@ export function useDetailPanel(): UseDetailPanelResult {
     [router, pathname, searchParams],
   )
 
-  // 別のプロジェクト・メンバーへ切り替えると編集中の下書きが失われるので、確認してから移る。
-  // すでに開いている対象を開き直すだけなら確認しない。閉じる操作（引数なしの openPanel / closePanel）は
-  // 閉じるボタン側（ProjectPanel）が確認するので、ここでは重ねない
-  const confirmSwitch = useCallback(
-    (openValue: string): boolean => {
-      if (openParam === openValue) return true
-      return confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))
-    },
-    [openParam, t],
-  )
-
   const openPanel = useCallback(
     (project?: ProjectDto) => {
-      if (project && !confirmSwitch(`project-${project.id}`)) return
       router.push(buildUrl(project ? `project-${project.id}` : null), { scroll: false })
     },
-    [router, buildUrl, confirmSwitch],
+    [router, buildUrl],
   )
 
   const openProjectById = useCallback(
     (id: string) => {
-      if (!confirmSwitch(`project-${id}`)) return
       router.push(buildUrl(`project-${id}`), { scroll: false })
     },
-    [router, buildUrl, confirmSwitch],
+    [router, buildUrl],
   )
 
   const openMember = useCallback(
     (userId: string) => {
-      if (!confirmSwitch(`member-${userId}`)) return
       router.push(buildUrl(`member-${userId}`), { scroll: false })
     },
-    [router, buildUrl, confirmSwitch],
+    [router, buildUrl],
   )
 
   const closePanel = useCallback(

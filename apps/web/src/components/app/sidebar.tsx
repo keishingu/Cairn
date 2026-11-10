@@ -6,7 +6,9 @@ import { Icon, UnreadBadge } from './primitives'
 import { Avatar } from './primitives'
 import { useAppShell } from './app-shell-context'
 import { InlineError } from './inline-error'
-import { confirmDiscardUnsavedChanges, suppressUnsavedChangesUnload } from '@/hooks/use-unsaved-changes'
+import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
+import { useTextDraft } from '@/hooks/use-text-draft'
+import { clearUserDrafts } from '@/lib/drafts/draft-store'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
@@ -193,12 +195,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   useCommand('app.workspaceMenu', () => setSwitcherOpen(o => !o))
 
   function switchWorkspace(id: string) {
-    // Cookie を書く前に確認する（書いた後に遷移をキャンセルされると、旧ワークスペースの画面が新ワークスペースへ保存する）
-    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     document.cookie = `cairn_workspace_id=${id}; path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
     setSwitcherOpen(false)
     // サーバーキャッシュ・TanStack Query・ルーターキャッシュをすべて破棄
-    suppressUnsavedChangesUnload()
     window.location.href = '/chats'
   }
   const projectChildren: SidebarGroupItem[] = [
@@ -304,7 +303,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                 ))}
                 <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
                 <button
-                  onClick={() => { setSwitcherOpen(false); if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return; router.push('/workspace/new') }}
+                  onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     width: '100%', padding: '8px 10px', borderRadius: 7,
@@ -434,7 +433,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
               ))}
               <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }} />
               <button
-                onClick={() => { setSwitcherOpen(false); if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return; router.push('/workspace/new') }}
+                onClick={() => { setSwitcherOpen(false); router.push('/workspace/new') }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   width: '100%', padding: '8px 10px', borderRadius: 7,
@@ -586,9 +585,38 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   const displayName = me?.displayName ?? '…'
 
   const [statusMessageDraft, setStatusMessageDraft] = React.useState('')
+  // 未保存のステータスメッセージは端末に残し、メニューを開き直したときに復元を案内する
+  const statusDraft = useTextDraft({ key: me ? 'sidebar:status-message' : null, savedValue: me?.statusMessage ?? '' })
+  const [statusDraftRestored, setStatusDraftRestored] = React.useState(false)
+  const statusStoredRef = React.useRef(statusDraft.stored)
+  statusStoredRef.current = statusDraft.stored
   React.useEffect(() => {
-    if (menuOpen) setStatusMessageDraft(me?.statusMessage ?? '')
-  }, [menuOpen, me?.statusMessage])
+    if (!menuOpen) {
+      setStatusDraftRestored(false)
+      return
+    }
+    // 下書きの読み取りを待ってから、メニューを開いた時点の内容で初期化する
+    if (!statusDraft.loaded) return
+    const entry = statusStoredRef.current
+    if (entry) {
+      setStatusMessageDraft(entry.value)
+      setStatusDraftRestored(true)
+    } else {
+      setStatusMessageDraft(me?.statusMessage ?? '')
+    }
+  }, [menuOpen, me?.statusMessage, statusDraft.loaded])
+
+  function changeStatusMessage(next: string) {
+    setStatusMessageDraft(next)
+    statusDraft.update(next.trim() === (me?.statusMessage ?? '') ? (me?.statusMessage ?? '') : next)
+  }
+
+  function discardStatusDraft() {
+    statusDraft.clear()
+    setStatusDraftRestored(false)
+    setStatusMessageDraft(me?.statusMessage ?? '')
+    setStatusMessageError(null)
+  }
 
   const [statusMessageError, setStatusMessageError] = React.useState<string | null>(null)
   const statusMessageTrimmed = statusMessageDraft.trim()
@@ -600,6 +628,8 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
     setStatusMessageError(null)
     try {
       await statusMessageMutation.mutateAsync(statusMessageTrimmed || null)
+      statusDraft.clear()
+      setStatusDraftRestored(false)
     } catch (e) {
       setStatusMessageError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
     }
@@ -615,13 +645,12 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
   }, [menuOpen])
 
   async function handleLogout() {
-    // サインアウトする前に確認する（後からキャンセルされると、サインアウト済みの画面に下書きが残る）
-    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (!(await signOutCurrentSession())) {
       window.alert(t('Could not sign out. Please try again.'))
       return
     }
-    suppressUnsavedChangesUnload()
+    // 共有端末に個人の下書きを残さない（サインアウトに成功したときだけ消す）
+    if (me?.id) clearUserDrafts(me.id)
     window.location.replace('/auth/login')
   }
 
@@ -660,11 +689,14 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       >
         {t('Status message')}
       </div>
+      {statusDraftRestored && (
+        <DraftNotice baseChanged={statusDraft.baseChanged} onDiscard={discardStatusDraft} style={{ padding: '0 10px 6px' }}/>
+      )}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '0 0 6px' }}>
         <input
           value={statusMessageDraft}
           aria-label={t('Status message')}
-          onChange={e => setStatusMessageDraft(e.target.value)}
+          onChange={e => changeStatusMessage(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -759,6 +791,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {me?.statusMessage ? me.statusMessage : t(statusLabel(me?.status))}
           </div>
+          {statusDraft.stored && <UnsavedDraftMarker style={{ marginTop: 2 }}/>}
         </div>
       </button>
       {toggleBtn}

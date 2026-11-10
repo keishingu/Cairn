@@ -1668,6 +1668,8 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not save the chat list order': '채팅 목록의 정렬 순서를 저장할 수 없습니다',
   'Could not load pinned projects': '고정한 프로젝트를 불러올 수 없습니다',
   'Could not save the changes': '변경 사항을 저장하지 못했습니다',
-  'You have unsaved changes. Discard them and leave?': '저장되지 않은 변경 사항이 있습니다. 변경 사항을 버리고 이동하시겠습니까?',
-  'You have unsaved changes. Discard them and close?': '저장되지 않은 변경 사항이 있습니다. 변경 사항을 버리고 닫으시겠습니까?',
+  'Unsaved draft': '저장되지 않은 임시 저장본',
+  'Restored your unsaved draft.': '저장되지 않은 임시 저장본을 복원했습니다.',
+  'The saved content has changed since you wrote this draft.': '이 임시 저장본을 작성한 이후 저장된 내용이 변경되었습니다.',
+  'Discard draft': '임시 저장본 삭제',
 }

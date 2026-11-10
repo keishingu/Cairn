@@ -1,12 +1,11 @@
 'use client'
 
-import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon, Avatar, StatusChip } from '../primitives'
 import { ChannelMemberSheet } from '../mobile/channel-member-sheet'
 import { FileTypeIcon, GoogleDocsIcon } from '../file-type-icon'
-import { InlineFileNameEditor } from '../inline-file-name-editor'
+import { FileNameDraftMarker, InlineFileNameEditor } from '../inline-file-name-editor'
 import { RowActionMenu } from '../row-action-menu'
 import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
@@ -337,7 +336,6 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
   const renameFile = useRenameFile()
   const [expanded, setExpanded] = React.useState(false)
   const [renamingFileId, setRenamingFileId] = React.useState<string | null>(null)
-  const confirmLeave = useConfirmLeave()
   const [textPreviewFile, setTextPreviewFile] = React.useState<ChannelFileDto | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
@@ -397,6 +395,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     {fileIcon}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <InlineFileNameEditor
+                        fileId={f.id}
                         fileName={f.fileName}
                         fontSize={12}
                         onSave={fileName => renameFile.mutateAsync({ fileId: f.id, fileName })}
@@ -422,6 +421,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.fileName}
                       </div>
+                      <FileNameDraftMarker fileId={f.id} fileName={f.fileName}/>
                       {fileMeta}
                     </div>
                   </button>
@@ -432,11 +432,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
                       { icon: 'eye', label: t('Open file'), onSelect: () => openFile(f) },
-                      { icon: 'edit', label: t('Rename'), onSelect: () => {
-                        // 別のファイルの名前変更に未保存の下書きがあるときは、破棄してよいか確認してから切り替える
-                        if (renamingFileId !== null && renamingFileId !== f.id && !confirmLeave()) return
-                        setRenamingFileId(f.id)
-                      } },
+                      { icon: 'edit', label: t('Rename'), onSelect: () => setRenamingFileId(f.id) },
                     ]}
                   /></div>
                 )}

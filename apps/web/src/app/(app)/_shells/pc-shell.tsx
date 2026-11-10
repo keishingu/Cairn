@@ -13,8 +13,6 @@ import { PageNotifications } from '@/components/app/pages/notifications'
 import { AppShellContext } from '@/components/app/app-shell-context'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
-import { confirmDiscardUnsavedChanges } from '@/hooks/use-unsaved-changes'
-import { useT } from '@/components/locale-provider'
 import { useCommandDispatcher } from '@/hooks/use-command-dispatcher'
 import { CommandProvider, useCommands } from '@/lib/command-registry'
 import { ShortcutHints } from '@/components/app/shortcut-hints'
@@ -49,7 +47,6 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const t = useT()
 
   const { panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, closePanel } = useDetailPanel()
 
@@ -103,13 +100,11 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   }, [pathnameSection])
 
   const navigate = React.useCallback((p: PageId) => {
-    // 未保存の下書きがあるときは、破棄してよいか確認してから移る（クライアント遷移では beforeunload が働かない）
-    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (p === 'calendar') setProjectsView('calendar')
     else if (p === 'kanban') setProjectsView('kanban')
     else if (p === 'projects') setProjectsView('list')
     router.push(pagePath(p))
-  }, [router, setProjectsView, t])
+  }, [router, setProjectsView])
 
   // コールドスタート対策 A-1: サイドバー hover 時に遷移先ルートを先読みし、
   // RSC ペイロードとサーバーレス関数を温めてクリック時の初回遷移を速くする。
@@ -123,13 +118,9 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
   const closeTopOverlay = React.useCallback(() => {
     if (typeof document !== 'undefined' && document.querySelector('[data-cairn-modal]')) return false
     if (notifOpen) { setNotifOpen(false); return true }
-    if (panelMember || panelProject) {
-      // 未保存の下書きがあるときは確認し、拒否されたらパネルを開いたまま（Esc は処理済みとする）
-      if (confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and close?'))) closePanel()
-      return true
-    }
+    if (panelMember || panelProject) { closePanel(); return true }
     return false
-  }, [notifOpen, panelMember, panelProject, closePanel, t])
+  }, [notifOpen, panelMember, panelProject, closePanel])
 
   // シェルが担うコマンド（ナビ・パレット・ヘルプ・通知・サイドバー・横断検索）
   useCommands({
@@ -149,8 +140,6 @@ function PCShellInner({ children, overlay }: { children: React.ReactNode; overla
     'global.help': () => setHelpOpen(true),
     // 遷移後も検索を維持し、同じURLで閉じた検索の再表示はnonceで伝える。
     'global.crossSearch': () => {
-      // 他ページへ移るときだけ確認する（チャット内ならパネルを開くだけ）
-      if (page !== 'chats' && !confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
       const params = new URLSearchParams(page === 'chats' ? searchParams.toString() : '')
       params.set('panel', 'global-search')
       router.push(`${page === 'chats' ? pathname : '/chats'}?${params.toString()}`)

@@ -1,12 +1,11 @@
 'use client'
 
-import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Icon, Avatar } from '../primitives'
 import { ConfirmDialog } from '../confirm-dialog'
 import { RowActionMenu } from '../row-action-menu'
-import { InlineFileNameEditor } from '../inline-file-name-editor'
+import { FileNameDraftMarker, InlineFileNameEditor } from '../inline-file-name-editor'
 import { FileFilterToolbar } from '../file-filter-toolbar'
 import { FileTypeIcon, GoogleDocsIcon, IndexDot } from '../file-type-icon'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
@@ -103,7 +102,6 @@ const FileRow = ({
 }) => {
   const t = useT()
   const router = useRouter()
-  const confirmLeave = useConfirmLeave()
   const [isRenaming, setIsRenaming] = React.useState(false)
   const sizeStr = formatFileSize(file.fileSize)
   const dateStr = formatDate(file.createdAt)
@@ -162,6 +160,7 @@ const FileRow = ({
           {fileIcon}
           <div style={{ flex: 1, minWidth: 0 }}>
             <InlineFileNameEditor
+              fileId={file.id}
               fileName={file.fileName}
               onSave={(fileName) => onRename(file.id, fileName)}
               onCancel={() => setIsRenaming(false)}
@@ -213,6 +212,7 @@ const FileRow = ({
             >
               {file.fileName}
             </div>
+            <FileNameDraftMarker fileId={file.id} fileName={file.fileName}/>
             {fileMeta}
           </div>
         </a>
@@ -222,7 +222,7 @@ const FileRow = ({
         <RowActionMenu
           actions={[
             ...(chatHref
-              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => { if (confirmLeave()) router.push(chatHref) } }]
+              ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => router.push(chatHref) }]
               : []),
             { icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) },
             ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'

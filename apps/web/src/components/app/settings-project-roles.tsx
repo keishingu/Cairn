@@ -3,7 +3,8 @@
 import React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ProjectRoleDto } from '@/app/api/projects/roles/route'
-import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { useDraftField } from '@/hooks/use-text-draft'
+import { DraftNotice } from './draft-notice'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import { useProjectRoles } from '@/hooks/use-project-roles'
@@ -65,9 +66,14 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
   const queryClient = useQueryClient()
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
-  const [name, setName] = React.useState(role.name)
+  // 未保存の名前は端末に残し、読み込み時に復元して編集欄を開く（色は選択なので下書きにしない）
+  const nameField = useDraftField({ key: `settings:project-role:${role.id}:name`, savedValue: role.name, enabled: canEdit })
+  const name = nameField.value
+  const setName = nameField.setValue
   const [color, setColor] = React.useState(role.color)
-  useUnsavedChanges(editing && (name.trim() !== role.name || color !== role.color))
+  React.useEffect(() => {
+    if (nameField.restored) setEditing(true)
+  }, [nameField.restored])
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['project-roles'] })
 
   const save = useMutation({
@@ -80,6 +86,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
       if (!res.ok) throw new Error(await apiError(res, t('Could not update')))
     },
     onSuccess: async () => {
+      nameField.commit(name.trim())
       setEditing(false)
       await invalidate()
     },
@@ -150,6 +157,9 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         background: 'var(--card-2)',
       }}
     >
+      {nameField.restored && (
+        <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} />
+      )}
       <input
         aria-label={t('Role name')}
         name="roleName"
@@ -178,7 +188,11 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         <button
           className="btn btn-ghost"
           style={{ height: 28, fontSize: 12 }}
-          onClick={() => setEditing(false)}
+          onClick={() => {
+            nameField.discard()
+            setColor(role.color)
+            setEditing(false)
+          }}
         >
           {t('Cancel')}
         </button>
@@ -201,9 +215,14 @@ export const SettingsProjectRoles = () => {
   const queryClient = useQueryClient()
   const { data: roles = [], isLoading, error } = useProjectRoles()
   const [adding, setAdding] = React.useState(false)
-  const [name, setName] = React.useState('')
+  // 追加欄の未保存の名前は端末に残し、読み込み時に復元して追加欄を開く
+  const nameField = useDraftField({ key: 'settings:project-role:new:name', savedValue: '', enabled: isAdmin })
+  const name = nameField.value
+  const setName = nameField.setValue
   const [color, setColor] = React.useState('#3B82F6')
-  useUnsavedChanges(adding && name.trim() !== '')
+  React.useEffect(() => {
+    if (nameField.restored) setAdding(true)
+  }, [nameField.restored])
   const add = useMutation({
     mutationFn: async () => {
       const res = await fetchWithAuth('/api/projects/roles', {
@@ -215,7 +234,7 @@ export const SettingsProjectRoles = () => {
     },
     onSuccess: async () => {
       setAdding(false)
-      setName('')
+      nameField.commit('')
       setColor('#3B82F6')
       await queryClient.invalidateQueries({ queryKey: ['project-roles'] })
     },
@@ -263,6 +282,9 @@ export const SettingsProjectRoles = () => {
                 background: 'var(--card-2)',
               }}
             >
+              {nameField.restored && (
+                <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} />
+              )}
               <input
                 aria-label={t('New role name')}
                 name="newRoleName"
@@ -297,7 +319,7 @@ export const SettingsProjectRoles = () => {
                   style={{ height: 28, fontSize: 12 }}
                   onClick={() => {
                     setAdding(false)
-                    setName('')
+                    nameField.discard()
                   }}
                 >
                   {t('Cancel')}

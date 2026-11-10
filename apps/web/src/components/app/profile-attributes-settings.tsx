@@ -5,7 +5,8 @@
 
 import React from 'react'
 import type { ProfileAttributeColor, ProfileAttributeDto } from '@cairn/shared'
-import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { useDraftField } from '@/hooks/use-text-draft'
+import { DraftNotice } from './draft-notice'
 import { useT } from '@/components/locale-provider'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import {
@@ -79,20 +80,28 @@ function AttributeRow({
   const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
-  const [name, setName] = React.useState(attribute.name)
+  // 未保存の名前は端末に残し、読み込み時に復元して編集欄を開く（色は選択なので下書きにしない）
+  const nameField = useDraftField({
+    key: `settings:profile-attribute:${attribute.id}:name`,
+    savedValue: attribute.name,
+    enabled: canManage,
+  })
+  const name = nameField.value
+  const setName = nameField.setValue
   const [color, setColor] = React.useState(attribute.color)
-  useUnsavedChanges(editing && (name.trim() !== attribute.name || color !== attribute.color))
+  React.useEffect(() => {
+    if (nameField.restored) setEditing(true)
+  }, [nameField.restored])
 
   React.useEffect(() => {
-    setName(attribute.name)
     setColor(attribute.color)
-  }, [attribute.name, attribute.color])
+  }, [attribute.color])
 
   const update = useUpdateProfileAttribute(attribute.id)
   const remove = useDeleteProfileAttribute(attribute.id)
 
   const handleCancelEditing = () => {
-    setName(attribute.name)
+    nameField.discard()
     setColor(attribute.color)
     setEditing(false)
     update.reset()
@@ -100,6 +109,7 @@ function AttributeRow({
   const handleUpdate = () => {
     update.mutate({ name: name.trim(), color }, {
       onSuccess: () => {
+        nameField.commit(name.trim())
         setEditing(false)
       },
     })
@@ -111,6 +121,9 @@ function AttributeRow({
         <label htmlFor={`profile-attribute-${attribute.id}`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
           {t('Attribute name')}
         </label>
+        {nameField.restored && (
+          <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} style={{ marginBottom: 6 }} />
+        )}
         <input
           id={`profile-attribute-${attribute.id}`}
           name="profileAttributeName"
@@ -147,7 +160,7 @@ function AttributeRow({
       </div>
       {canManage && (
         <RowActionMenu actions={[
-          { icon: 'edit', label: 'Edit', onSelect: () => { setName(attribute.name); setColor(attribute.color); update.reset(); setEditing(true) } },
+          { icon: 'edit', label: 'Edit', onSelect: () => { setColor(attribute.color); update.reset(); setEditing(true) } },
           { icon: 'trash', label: 'Delete', danger: true, onSelect: () => setConfirmDelete(true) },
         ]} />
       )}
@@ -167,12 +180,17 @@ export function ProfileAttributesSettings() {
   const { isAdmin } = useWorkspacePermissions()
   const { data: attributes = [], isLoading, error } = useProfileAttributes()
   const [adding, setAdding] = React.useState(false)
-  const [name, setName] = React.useState('')
+  // 追加欄の未保存の名前は端末に残し、読み込み時に復元して追加欄を開く
+  const nameField = useDraftField({ key: 'settings:profile-attribute:new:name', savedValue: '', enabled: isAdmin })
+  const name = nameField.value
+  const setName = nameField.setValue
   const [color, setColor] = React.useState<ProfileAttributeColor>('slate')
-  useUnsavedChanges(adding && name.trim() !== '')
+  React.useEffect(() => {
+    if (nameField.restored) setAdding(true)
+  }, [nameField.restored])
   const create = useCreateProfileAttribute()
   const cancelAdding = () => {
-    setName('')
+    nameField.discard()
     setColor('slate')
     setAdding(false)
     create.reset()
@@ -181,7 +199,7 @@ export function ProfileAttributesSettings() {
   const handleCreate = () => {
     create.mutate({ name: name.trim(), color }, {
       onSuccess: () => {
-        setName('')
+        nameField.commit('')
         setColor('slate')
         setAdding(false)
       },
@@ -210,6 +228,9 @@ export function ProfileAttributesSettings() {
           {adding && (
             <div style={{ padding: 16, background: 'var(--card-2)', borderBottom: attributes.length > 0 ? '1px solid var(--divider)' : 'none' }}>
               <label htmlFor="new-profile-attribute" style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>{t('Attribute name')}</label>
+              {nameField.restored && (
+                <DraftNotice baseChanged={nameField.restored.baseChanged} onDiscard={nameField.discard} style={{ marginBottom: 6 }} />
+              )}
               <input
                 id="new-profile-attribute"
                 name="newProfileAttributeName"

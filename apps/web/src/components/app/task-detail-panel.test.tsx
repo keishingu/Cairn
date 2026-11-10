@@ -58,8 +58,8 @@ function setTask(overrides: Partial<TaskDetailDto> = {}) {
 
 function renderPanel(isMobile = false) {
   const onClose = vi.fn()
-  render(<TaskDetailPanel taskId="task-1" onClose={onClose} isMobile={isMobile} />)
-  return { onClose }
+  const view = render(<TaskDetailPanel taskId="task-1" onClose={onClose} isMobile={isMobile} />)
+  return { onClose, unmount: view.unmount }
 }
 
 describe('TaskDetailPanel', () => {
@@ -202,20 +202,77 @@ describe('TaskDetailPanel', () => {
     )
   })
 
-  it('未保存の下書きがあるときに閉じると確認し、拒否すれば閉じない', async () => {
+  it('未保存の下書きがあっても、閉じる操作は確認なしで閉じる', async () => {
     setTask()
     const { onClose } = renderPanel()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const confirm = vi.spyOn(window, 'confirm')
 
     await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
     await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
     await userEvent.click(screen.getByRole('button', { name: '閉じる' }))
-    expect(confirm).toHaveBeenCalledTimes(1)
-    expect(onClose).not.toHaveBeenCalled()
 
-    await userEvent.click(screen.getByRole('button', { name: '閉じる' }))
+    expect(confirm).not.toHaveBeenCalled()
     expect(onClose).toHaveBeenCalledTimes(1)
     confirm.mockRestore()
+  })
+
+  it('タイトルの下書きはパネルを閉じても残り、開き直すと復元のお知らせと破棄ボタンを出す', async () => {
+    setTask()
+    const first = renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    first.unmount()
+
+    renderPanel()
+    // 表示モードに下書きがあることを示す
+    expect(await screen.findByText('未保存の下書き')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+
+    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応 追記')
+    expect(screen.getByText('保存されていない下書きを復元しました。')).toBeInTheDocument()
+    expect(screen.queryByText(/保存済みの内容が変更されています/)).toBeNull()
+    expect(mockPatchMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('タイトルの下書きを破棄すると保存済みのタイトルへ戻り、開き直しても復元されない', async () => {
+    setTask()
+    const first = renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    first.unmount()
+
+    const second = renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.click(screen.getByRole('button', { name: '下書きを破棄' }))
+
+    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応')
+    expect(screen.queryByText('保存されていない下書きを復元しました。')).toBeNull()
+    second.unmount()
+
+    renderPanel()
+    expect(screen.queryByText('未保存の下書き')).toBeNull()
+  })
+
+  it('保存成功でタイトルの下書きを消し、保存済みの内容が変わっていたら復元時に知らせる', async () => {
+    setTask()
+    const first = renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    first.unmount()
+
+    // 下書きを書いた後に、別の人が保存済みのタイトルを変えた
+    setTask({ title: '別の人が変更したタイトル' })
+    const second = renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: 'タイトルを編集' }))
+    expect(screen.getByText(/この下書きを書いた後に、保存済みの内容が変更されています/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('button', { name: 'タイトルを編集' })
+    second.unmount()
+
+    renderPanel()
+    expect(screen.queryByText('未保存の下書き')).toBeNull()
   })
 
   it('ステータス・優先度・期日の変更は即保存する', async () => {
@@ -306,7 +363,7 @@ describe('TaskDetailPanel', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('未保存のタイトルがあるとき、チャットで開くリンクは確認し、拒否すれば閉じず遷移も止める', async () => {
+  it('未保存のタイトルがあっても、チャットで開くリンクは確認せず閉じて遷移する', async () => {
     setTask({
       sourceMessageId: 'message-1',
       isLinkedToMessage: true,
@@ -316,21 +373,16 @@ describe('TaskDetailPanel', () => {
       },
     })
     const { onClose } = renderPanel()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const confirm = vi.spyOn(window, 'confirm')
 
     await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
     await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
     const link = screen.getByRole('link', { name: 'チャットで開く' })
-    let prevented = false
-    // React のハンドラは root で動くので、その後段の document で既定動作が止められたかを見る
-    const onDocClick = (e: MouseEvent) => { prevented = e.defaultPrevented; e.preventDefault() }
-    document.addEventListener('click', onDocClick)
+    link.addEventListener('click', e => e.preventDefault())
     await userEvent.click(link)
-    document.removeEventListener('click', onDocClick)
 
-    expect(confirm).toHaveBeenCalledTimes(1)
-    expect(prevented).toBe(true)
-    expect(onClose).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
     confirm.mockRestore()
   })
 

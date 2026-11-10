@@ -267,6 +267,90 @@ describe('SettingsSectionContent', () => {
     })
   })
 
+  describe('表示名の下書き', () => {
+    const DRAFT_KEY = 'cairn:draft:user-1:ws-1:settings:display-name'
+
+    function mockMe(displayName: string) {
+      fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
+        if (input === '/api/me' && !init?.method) {
+          return {
+            ok: true,
+            json: async () => ({ id: 'user-1', displayName, email: 'taro@example.com', avatarUrl: null, wsRole: 'member' }),
+          }
+        }
+        if (input === '/api/me' && init?.method === 'PATCH') return { ok: true, json: async () => ({}) }
+        throw new Error(`unexpected fetch: ${input}`)
+      })
+    }
+
+    it('入力途中で設定を離れても、開き直すと下書きを入れて復元のお知らせを出す', async () => {
+      const user = userEvent.setup()
+      mockMe('山田 太郎')
+      const first = renderAccountSection()
+      const input = await first.findByDisplayValue('山田 太郎')
+      await user.clear(input)
+      await user.type(input, '書きかけの名前')
+      first.unmount()
+
+      renderAccountSection()
+      expect(await screen.findByDisplayValue('書きかけの名前')).toBeInTheDocument()
+      expect(screen.getByText('保存されていない下書きを復元しました。')).toBeInTheDocument()
+      expect(screen.queryByText(/保存済みの内容が変更されています/)).toBeNull()
+      // 復元しただけでは保存しない
+      expect(fetchWithAuth).not.toHaveBeenCalledWith('/api/me', expect.objectContaining({ method: 'PATCH' }))
+    })
+
+    it('「下書きを破棄」で保存済みの表示名へ戻し、下書きを消す', async () => {
+      const user = userEvent.setup()
+      mockMe('山田 太郎')
+      const first = renderAccountSection()
+      const input = await first.findByDisplayValue('山田 太郎')
+      await user.clear(input)
+      await user.type(input, '書きかけの名前')
+      first.unmount()
+
+      renderAccountSection()
+      await screen.findByDisplayValue('書きかけの名前')
+      await user.click(screen.getByRole('button', { name: '下書きを破棄' }))
+
+      expect(screen.getByDisplayValue('山田 太郎')).toBeInTheDocument()
+      expect(screen.queryByText('保存されていない下書きを復元しました。')).toBeNull()
+      expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull()
+    })
+
+    it('保存に成功すると下書きを消す', async () => {
+      const user = userEvent.setup()
+      mockMe('山田 太郎')
+      const first = renderAccountSection()
+      const input = await first.findByDisplayValue('山田 太郎')
+      await user.clear(input)
+      await user.type(input, '新しい名前')
+      first.unmount()
+
+      const second = renderAccountSection()
+      await second.findByDisplayValue('新しい名前')
+      await user.click(screen.getByRole('button', { name: '保存' }))
+
+      await waitFor(() => expect(screen.queryByText('保存されていない下書きを復元しました。')).toBeNull())
+      expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull()
+    })
+
+    it('下書きを書いた後に保存済みの表示名が変わっていたら、そのことも知らせる', async () => {
+      const user = userEvent.setup()
+      mockMe('山田 太郎')
+      const first = renderAccountSection()
+      const input = await first.findByDisplayValue('山田 太郎')
+      await user.clear(input)
+      await user.type(input, '書きかけの名前')
+      first.unmount()
+
+      mockMe('他の人が変えた名前')
+      renderAccountSection()
+      await screen.findByDisplayValue('書きかけの名前')
+      expect(screen.getByText(/この下書きを書いた後に、保存済みの内容が変更されています/)).toBeInTheDocument()
+    })
+  })
+
   it('ユーザー情報の取得失敗を表示する', async () => {
     fetchWithAuth.mockImplementation(async () => ({
       ok: false,

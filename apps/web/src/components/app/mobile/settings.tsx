@@ -9,8 +9,8 @@ import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
 import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { confirmDiscardUnsavedChanges, suppressUnsavedChangesUnload } from '@/hooks/use-unsaved-changes'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
+import { clearUserDrafts } from '@/lib/drafts/draft-store'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
   getSettingsNavGroups,
@@ -34,13 +34,13 @@ export function MobileSettings() {
   const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true, isGuest: me?.wsRole === 'guest' })
 
   async function handleLogout() {
-    // サインアウトする前に確認する
-    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
     if (window.ReactNativeWebView) {
+      // アプリ内 WebView のサインアウトは結果をこちらで受け取れないため、依頼を出す時点で端末の下書きを消す
+      // （サインアウトの完了後に残る個人データを避けることを優先する）
+      if (me?.id) clearUserDrafts(me.id)
       if (window.cairnDeviceSignOut) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'DEVICE_SIGN_OUT_REQUESTED' }))
       } else {
-        suppressUnsavedChangesUnload()
         window.location.assign('/auth/mobile-signout?webview=1')
       }
       return
@@ -49,7 +49,8 @@ export function MobileSettings() {
       window.alert(t('Could not sign out. Please try again.'))
       return
     }
-    suppressUnsavedChangesUnload()
+    // 共有端末に個人の下書きを残さない（サインアウトに成功したときだけ消す）
+    if (me?.id) clearUserDrafts(me.id)
     window.location.replace('/auth/login')
   }
 
@@ -139,11 +140,7 @@ export function MobileSettingsDetail({ section }: { section: string }) {
   const resolvedSection = isSettingsSection(section, isOwner, navOptions) ? section : 'account'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => {
-        // 未保存の下書きがあるときは、破棄してよいか確認してから一覧へ戻る
-        if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and leave?'))) return
-        router.push('/settings')
-      }}/>
+      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => router.push('/settings')}/>
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <SettingsSectionContent section={resolvedSection}/>
       </div>

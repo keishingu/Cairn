@@ -9,7 +9,8 @@ import { TaskDeleteDialog } from './task-delete-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { usePatchTask, useTaskDetail } from '@/hooks/use-tasks'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
-import { confirmDiscardUnsavedChanges, useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import { useTextDraft } from '@/hooks/use-text-draft'
+import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useLocale, useT } from '@/components/locale-provider'
@@ -31,21 +32,42 @@ const sectionLabelStyle: React.CSSProperties = {
 }
 
 // ─── タイトル（クリックでその場編集） ─────────────────────────────
-// 明示保存: 保存ボタン / Enter で保存、キャンセルボタン / Esc で破棄。blur では何もしない
+// 明示保存: 保存ボタン / Enter で保存、キャンセルボタン / Esc で破棄。blur では何もしない。
+// 未保存のタイトルは端末に残し、開き直したときに復元を案内する
 
-const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string) => Promise<unknown> }) => {
+const TitleEditor = ({ taskId, title, onSave }: { taskId: string; title: string; onSave: (title: string) => Promise<unknown> }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(title)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
+  const [restored, setRestored] = React.useState(false)
+  const store = useTextDraft({ key: `task:${taskId}:title`, savedValue: title })
+
   const next = draft.trim()
   const canSave = !saving && next !== '' && next !== title
 
-  useUnsavedChanges(editing && next !== title)
+  const changeDraft = (value: string) => {
+    setDraft(value)
+    // 保存済みと同じ（前後の空白だけの差を含む）なら下書きは残さない
+    store.update(value.trim() === title ? title : value)
+  }
 
-  const cancel = () => { setEditing(false); setError(null) }
+  const cancel = () => {
+    store.clear()
+    setEditing(false)
+    setRestored(false)
+    setError(null)
+  }
+
+  // 下書きを捨てて保存済みのタイトルへ戻す（編集は続ける）
+  const discardDraft = () => {
+    store.clear()
+    setRestored(false)
+    setDraft(title)
+    setError(null)
+  }
   const wrapRef = React.useRef<HTMLDivElement>(null)
   useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
 
@@ -55,7 +77,8 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
   }, [saving])
 
   const startEdit = () => {
-    setDraft(title)
+    setDraft(store.stored ? store.stored.value : title)
+    setRestored(store.stored !== null)
     setError(null)
     setEditing(true)
   }
@@ -66,7 +89,9 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
     setError(null)
     try {
       await onSave(next)
+      store.clear()
       setEditing(false)
+      setRestored(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not update the task'))
     } finally {
@@ -77,13 +102,14 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
   if (editing) {
     return (
       <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft}/>}
         <input
           aria-label={t('Title')}
           className="form-control"
           value={draft}
           maxLength={200}
           disabled={saving}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => changeDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save() } }}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
@@ -101,27 +127,31 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
   }
 
   return (
-    <button
-      type="button"
-      onClick={startEdit}
-      aria-label={t('Edit title')}
-      title={t('Edit title')}
-      className="hover-bg"
-      style={{
-        width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
-        border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
-        fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
-        color: 'var(--text)', overflowWrap: 'anywhere',
-      }}
-    >
-      {formatTaskTitleForDisplay(title)}
-    </button>
+    <div>
+      <button
+        type="button"
+        onClick={startEdit}
+        aria-label={t('Edit title')}
+        title={t('Edit title')}
+        className="hover-bg"
+        style={{
+          width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
+          border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
+          fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
+          color: 'var(--text)', overflowWrap: 'anywhere',
+        }}
+      >
+        {formatTaskTitleForDisplay(title)}
+      </button>
+      {store.stored && <UnsavedDraftMarker style={{ marginTop: 8 }}/>}
+    </div>
   )
 }
 
 // ─── 説明（Markdown 表示 / 編集） ─────────────────────────────────
 
-const DescriptionSection = ({ description, saving, error, onSave }: {
+const DescriptionSection = ({ taskId, description, saving, error, onSave }: {
+  taskId: string
   description: string | null
   saving: boolean
   error: string | null
@@ -132,10 +162,30 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState('')
 
-  const dirty = editing && (draft.trim() === '' ? null : draft) !== (description ?? null)
-  useUnsavedChanges(dirty)
+  const [restored, setRestored] = React.useState(false)
+  const store = useTextDraft({ key: `task:${taskId}:description`, savedValue: description ?? '' })
+
+  const changeDraft = (value: string) => {
+    setDraft(value)
+    // 保存済みと同じ（空白だけの入力は説明なしと同じ）なら下書きは残さない
+    store.update((value.trim() === '' ? '' : value) === (description ?? '') ? (description ?? '') : value)
+  }
+
+  const cancel = () => {
+    store.clear()
+    setEditing(false)
+    setRestored(false)
+  }
+
+  // 下書きを捨てて保存済みの説明へ戻す（編集は続ける）
+  const discardDraft = () => {
+    store.clear()
+    setRestored(false)
+    setDraft(description ?? '')
+  }
+
   const wrapRef = React.useRef<HTMLDivElement>(null)
-  useCancelEditOnEscape(wrapRef, editing && !saving, () => setEditing(false))
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
 
   // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
   React.useEffect(() => {
@@ -143,7 +193,8 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
   }, [saving])
 
   const startEdit = () => {
-    setDraft(description ?? '')
+    setDraft(store.stored ? store.stored.value : (description ?? ''))
+    setRestored(store.stored !== null)
     setEditing(true)
   }
 
@@ -151,10 +202,14 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
     const next = draft.trim() === '' ? null : draft
     // 変更がなければ保存せず閉じる
     if (next === (description ?? null)) {
-      setEditing(false)
+      cancel()
       return
     }
-    onSave(next, () => setEditing(false))
+    onSave(next, () => {
+      store.clear()
+      setEditing(false)
+      setRestored(false)
+    })
   }
 
   return (
@@ -171,13 +226,14 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
 
       {editing ? (
         <div ref={wrapRef}>
+          {restored && <DraftNotice baseChanged={store.baseChanged} onDiscard={discardDraft} style={{ marginBottom: 6 }}/>}
           <textarea
             id={`${id}-description`}
             className="form-control"
             value={draft}
             maxLength={DESCRIPTION_MAX_LENGTH}
             disabled={saving}
-            onChange={e => setDraft(e.target.value)}
+            onChange={e => changeDraft(e.target.value)}
             onKeyDown={e => {
               // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
@@ -192,7 +248,7 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
           />
           {error && <InlineError style={{ marginTop: 8 }}>{error}</InlineError>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <button type="button" className="btn btn-sm" onClick={() => setEditing(false)} disabled={saving}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
             <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
               {saving ? t('Saving…') : t('Save')}
             </button>
@@ -216,13 +272,14 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
           {t('Add a description')}
         </button>
       )}
+      {!editing && store.stored && <UnsavedDraftMarker style={{ marginTop: 6 }}/>}
     </section>
   )
 }
 
 // ─── 元のメッセージ ──────────────────────────────────────────────
 
-const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNavigate: (e: React.MouseEvent) => void }) => {
+const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNavigate: () => void }) => {
   const t = useT()
   const { locale } = useLocale()
   const message = task.sourceMessage
@@ -245,8 +302,6 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
         <Link
           href={`/chats/${encodeURIComponent(message.channelId)}?m=${encodeURIComponent(message.id)}`}
           className="btn btn-ghost btn-sm"
-          // この onClick で確認済みなので、文書全体のリンクガードは重ねない
-          data-skip-unsaved-guard
           onClick={onNavigate}
         >
           <Icon name="chat" size={13} />
@@ -290,20 +345,12 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
     patchFields.mutate({ id: taskId, patch })
   }
 
-  // 未保存の下書き（タイトル・説明）があるときは、破棄してよいか確認してから閉じる
-  const requestClose = () => {
-    if (!confirmDiscardUnsavedChanges(t('You have unsaved changes. Discard them and close?'))) return false
-    onClose()
-    return true
-  }
-  const handleClose = () => { requestClose() }
-
   const handleSaveDescription = (value: string | null, onSuccess: () => void) => {
     patchDescription.mutate({ id: taskId, patch: { description: value } }, { onSuccess })
   }
 
   return (
-    <Modal onClose={handleClose} label={t('Task details')}>
+    <Modal onClose={onClose} label={t('Task details')}>
       <aside
         data-task-detail-panel
         style={{
@@ -320,7 +367,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
           <ModalHeader
             title={t('Task details')}
             {...(task ? { subtitle: taskScopeLabel(task, t) } : {})}
-            onClose={handleClose}
+            onClose={onClose}
           />
         </div>
 
@@ -342,7 +389,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
             </div>
           ) : (
             <>
-              <TitleEditor title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
+              <TitleEditor key={task.id} taskId={task.id} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
 
               {patchFields.isError && (
                 <InlineError variant="box" onDismiss={() => patchFields.reset()}>
@@ -372,6 +419,8 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
               </div>
 
               <DescriptionSection
+                key={task.id}
+                taskId={task.id}
                 description={task.description}
                 saving={patchDescription.isPending}
                 error={patchDescription.isError
@@ -380,7 +429,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
                 onSave={handleSaveDescription}
               />
 
-              <SourceMessageSection task={task} onNavigate={e => { if (!requestClose()) e.preventDefault() }} />
+              <SourceMessageSection task={task} onNavigate={onClose} />
 
               <footer
                 style={{

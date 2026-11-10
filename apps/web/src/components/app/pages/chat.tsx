@@ -1,6 +1,5 @@
 'use client'
 
-import { useConfirmLeave } from '@/hooks/use-unsaved-changes'
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -326,7 +325,6 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
 export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const t = useT()
   const router = useRouter()
-  const confirmLeave = useConfirmLeave()
   const pathname = usePathname()
   const search = useSearchParams().toString()
   const params = React.useMemo(() => new URLSearchParams(search), [search])
@@ -526,7 +524,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [availableChannelIds, channelId, fallbackChannelId, hasResolvedInitialChannelLists, isMobile, router, search])
 
   const selectChannel = (id: string) => {
-    if (!confirmLeave()) return
     setChannelId(id)
     setSearchOpen(false)
     setGlobalSearchOpen(false)
@@ -555,12 +552,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   // ⌥N 新規チャンネル / ⌥S 検索 / ⌥D 詳細パネル（PC のみ）
   useCommand('ctx.create', () => { if (canCreateWorkspaceChannel) setShowCreateChannel(true) })
   useCommand('ctx.searchFocus', () => { if (!isMobile) setSearchOpen(true) })
-  // 詳細サイドバーを閉じると、名前変更中の下書きなどが失われるので、閉じるときだけ確認する
-  const toggleDetail = () => {
-    if (detailOpen && !confirmLeave()) return
-    setDetailOpen(!detailOpen)
-  }
-  useCommand('chats.detail', () => { if (!isMobile) toggleDetail() })
+  useCommand('chats.detail', () => { if (!isMobile) setDetailOpen(o => !o) })
 
   // ⌘⇧F: 横断検索（シェルが chats へ遷移し crossSearchNonce を増やす）。マウント済みでも開く。
   // 開いたら consume してシグナルを 0 に戻し、再マウント時の誤再オープンを防ぐ
@@ -597,7 +589,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   useCommand('seq.next', () => seekChannel('next'))
 
   const jumpToChannelMessage = (chanId: string, messageId: string) => {
-    if (!confirmLeave()) return
     setGlobalSearchOpen(false)
     setBookmarksOpen(false)
     setTargetMessage({ id: messageId })
@@ -734,7 +725,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
 
   const handleOpenProject = () => {
     if (currentChannel) {
-      if (!confirmLeave()) return
       setShowInfo(false)
       // チャット上にパネルを重ねず、プロジェクトページを開いた状態へ遷移する
       router.push(`/projects?open=project-${currentChannel.projectId}`)
@@ -955,7 +945,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
         <MobileHeader
           title={channelName}
           subtitle={channelSubtitle}
-          onBack={() => { if (confirmLeave()) router.push('/chats') }}
+          onBack={() => router.push('/chats')}
           right={
             <div style={{ display: 'flex', gap: 4 }}>
               <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={16}/></button>
@@ -1072,7 +1062,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
               <button className="btn" onClick={() => { setSearchOpen(s => !s); updateUrlPanel(searchOpen ? null : 'search') }} style={{ background: searchOpen ? 'var(--card-hover)' : undefined }}><Icon name="search" size={13}/></button>
               <button
                 className="btn"
-                onClick={toggleDetail}
+                onClick={() => setDetailOpen(open => !open)}
                 style={{ background: detailOpen ? 'var(--card-hover)' : undefined }}
                 aria-pressed={detailOpen}
                 aria-label={detailLabel}
