@@ -289,18 +289,24 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     expect(mockStreamText).not.toHaveBeenCalled()
   })
 
-  it('system は先頭の2つの system メッセージで渡し、変わらない側にだけキャッシュの区切りを置く', async () => {
+  it('system は先頭の1つだけでキャッシュの区切りを置き、日時・ロールは最新の利用者メッセージの末尾に入れる', async () => {
     await streamedSystemPrompt('claude-sonnet-5-5', null)
 
     const { system, messages } = mockStreamText.mock.calls[0]![0] as {
       system?: string
-      messages: { role: string; providerOptions?: unknown }[]
+      messages: { role: string; content: unknown; providerOptions?: unknown }[]
     }
     expect(system).toBeUndefined()
-    expect(messages.slice(0, 2).map((message) => message.role)).toEqual(['system', 'system'])
+    expect(messages[0]!.role).toBe('system')
     expect(messages[0]!.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
-    expect(messages[1]!.providerOptions).toBeUndefined()
-    expect(messages.slice(2).every((message) => message.role !== 'system')).toBe(true)
+    expect(messages[0]!.content).not.toContain('現在日時:')
+    expect(messages.slice(1).every((message) => message.role !== 'system')).toBe(true)
+
+    const latest = messages.at(-1)!
+    expect(latest.role).toBe('user')
+    const parts = latest.content as { type: string; text: string; providerOptions?: unknown }[]
+    expect(parts.at(-2)?.providerOptions).toEqual({ anthropic: { cacheControl: { type: 'ephemeral' } } })
+    expect(parts.at(-1)?.text).toMatch(/^<request-context>\n【この依頼の情報】\n現在日時: /)
   })
 
   it('ワークスペースのシステムプロンプトが未設定なら、追加指示のブロックを入れない', async () => {
