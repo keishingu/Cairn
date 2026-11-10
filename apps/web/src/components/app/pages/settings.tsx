@@ -3168,7 +3168,7 @@ const SettingsIntegrations = () => {
 
 import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
 import type { BillingSummaryDto } from '@/app/api/billing/summary/route'
-import type { AiUsageDto } from '@/lib/billing/ai-usage'
+import { useBillingAiUsage } from '@/hooks/use-billing-ai-usage'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 
 const FREE_TIER_REFERENCE_GB = 10
@@ -3190,14 +3190,7 @@ export function resolveCreditPackFulfillmentPolling(input: {
 export const SettingsBillingAiUsage = () => {
   const t = useT()
   const { locale } = useLocale()
-  const usageQuery = useQuery({
-    queryKey: ['billing-ai-usage'],
-    queryFn: async () => {
-      const res = await fetchWithAuth('/api/billing/ai-usage')
-      if (!res.ok) throw new Error(t('Could not load AI usage'))
-      return res.json() as Promise<AiUsageDto>
-    },
-  })
+  const usageQuery = useBillingAiUsage()
   const modelLabel = (model: string) => (isAiChatModel(model) ? AI_CHAT_MODEL_LABELS[model] : model)
   const cellStyle: React.CSSProperties = { padding: '6px 8px', fontSize: 12.5, borderTop: '1px solid var(--border)' }
   const numberCell: React.CSSProperties = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
