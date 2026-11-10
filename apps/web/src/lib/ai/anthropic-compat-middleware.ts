@@ -19,7 +19,16 @@ import {
 // 3. @ai-sdk/anthropic v1 は maxTokens 未指定時に 4096 を送る。Claude 5.5 系は thinking と本文が
 //    max_tokens を共有するため、4096 では複数ツールの調査中に思考だけで上限に達し、ツール呼び出しや
 //    回答が空のまま課金される。呼び出し側が指定しないときは余裕のある上限を補う。
-export const ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 16000
+//    16000 では、複数の長いファイルを読んだ後の比較・まとめの回答が本番で途中で切れた（2026-11 の実測で
+//    finishReason "length" が2件）。上限は課金額を増やさない（使った分だけ）ので 32000 に上げる。
+//    これを超える長さでは /ai の1回の送信の上限（maxDuration 300 秒）にも近づくため、これ以上は上げない
+export const ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 32000
+
+// 5. 上限に達して回答が途中で切れた（stop_reason "max_tokens" → finishReason "length"）ことを利用者に伝える。
+//    黙っていると、途中までの回答が完成した回答として表示・保存される。回答の末尾に注記を流し、
+//    保存される本文と次の依頼の履歴にも残す（モデルも前の回答が途中だったと分かり、続きを書ける）
+export const TRUNCATED_ANSWER_NOTICE =
+  '\n\n---\n（回答が長くなりすぎたため、ここで途中で切れています。続きが必要なら「続けて」と送るか、範囲を絞って質問し直してください）'
 
 // 4. Claude 5.5 系は安全上の理由で回答を控えると HTTP 200 + stop_reason "refusal" を返す。
 //    @ai-sdk/anthropic v1 はこれを finishReason "unknown" に丸めるため（本実装はサーバーツールを
@@ -55,6 +64,8 @@ export const anthropicCompatMiddleware: LanguageModelV1Middleware = {
             hasReasoningInBlock = false
           } else if (chunk.type === 'finish' && chunk.finishReason === 'unknown') {
             controller.enqueue({ type: 'error', error: new ClaudeRefusalError() })
+          } else if (chunk.type === 'finish' && chunk.finishReason === 'length') {
+            controller.enqueue({ type: 'text-delta', textDelta: TRUNCATED_ANSWER_NOTICE })
           }
           controller.enqueue(chunk)
         },
