@@ -35,6 +35,7 @@ pnpm Workspace + Turborepo。`pnpm dev` / `build` / `typecheck` / `lint` / `test
 ## テスト
 
 - vitest。テストは対象の隣に置き（`foo.ts` → `foo.test.ts`）、`describe` / `test` の説明文は日本語
+- **全件テスト（`pnpm test`）はローカルで回さず CI に任せる**。ローカルでは変更したファイルのテストだけを実行する
 
 ## ブランチ・デプロイ
 
