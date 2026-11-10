@@ -1670,4 +1670,5 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not read the chat list order': '채팅 목록의 정렬 순서를 불러올 수 없습니다',
   'Could not save the chat list order': '채팅 목록의 정렬 순서를 저장할 수 없습니다',
   'Could not load pinned projects': '고정한 프로젝트를 불러올 수 없습니다',
+  'Could not save the changes': '변경 사항을 저장하지 못했습니다',
 }

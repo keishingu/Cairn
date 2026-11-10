@@ -488,7 +488,7 @@ const SettingsAccount = () => {
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && displayName.trim() && nameMutation.mutate()}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
@@ -1739,6 +1739,13 @@ const AiChatSystemPromptSection = () => {
             // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
             setJustSaved(false)
           }}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              if (!updateSettings.isPending && !unchanged && !readOnly && loaded) void handleSave()
+            }
+          }}
           readOnly={readOnly}
           disabled={wsSettings === undefined}
           maxLength={AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH}
@@ -2026,7 +2033,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsName}
                 onChange={(e) => setWsName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && wsName.trim() && nameMutation.mutate()}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
@@ -2073,7 +2080,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsDesc}
                 onChange={(e) => setWsDesc(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && descMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && descMutation.mutate()}
                 placeholder={t('e.g. Example University')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
@@ -2120,7 +2127,7 @@ const SettingsWorkspaceGeneral = () => {
                 placeholder={t('Projects')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleLabelSave()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}

@@ -1671,4 +1671,5 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not read the chat list order': 'チャット一覧の並び順を読み込めませんでした',
   'Could not save the chat list order': 'チャット一覧の並び順を保存できませんでした',
   'Could not load pinned projects': 'ピン留めしたプロジェクトを読み込めませんでした',
+  'Could not save the changes': '変更を保存できませんでした',
 }
