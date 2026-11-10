@@ -14,7 +14,7 @@ type RouteContext = { params: Promise<{ id: string; milestoneId: string }> }
 
 export async function PATCH(req: Request, { params }: RouteContext) {
   const { id: projectId, milestoneId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' })
   if (error) return error
 
   let body: unknown
