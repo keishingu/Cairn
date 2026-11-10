@@ -135,7 +135,7 @@ describe('日程のインライン編集（InlineDatePair）', () => {
 })
 
 describe('モバイルの日程シート（InlineDatePair）', () => {
-  it('終了日を選び直して保存すると、開始日を保ったまま1回だけ保存する', () => {
+  it('終了日を選び直して保存すると、開始日を保ったまま1回だけ保存する', async () => {
     const onSave = vi.fn()
     renderOnMobile(<InlineDatePair startDate="2026-06-12" endDate="2026-06-16" onSave={onSave} withTime={false}/>)
     fireEvent.click(screen.getByRole('button', { name: /6\/12/ }))
@@ -146,7 +146,7 @@ describe('モバイルの日程シート（InlineDatePair）', () => {
 
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(onSave).toHaveBeenCalledWith('2026-06-12', '2026-06-18', null, null)
-    expect(screen.queryByRole('grid')).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('grid')).toBeNull())
   })
 
   it('キャンセルでは選び直した日程を保存しない', () => {

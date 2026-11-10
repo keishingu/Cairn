@@ -197,7 +197,8 @@ interface DateRangeSheetProps {
   endTime?: string | null
   /** 時刻も編集する（マイルストーン）。プロジェクトは日付だけを保存するため出さない */
   withTime?: boolean
-  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => void
+  /** 保存の成否を返す。reject したらシートを閉じず、選んだ日付を残してエラーを表示する */
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => unknown
   onClose: () => void
 }
 
@@ -213,13 +214,26 @@ export function DateRangeSheet({
   const initialEndTime = endTime?.slice(0, 5) ?? ''
   const [value, setValue] = React.useState<DateRangeValue>({ start: startDate, end: endDate, startTime: initialStartTime, endTime: initialEndTime })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (saving) return
     // 終了を選ばなければ開始日だけの予定として保存する（表示も開始日だけになる）
     const nst = withTime ? (value.startTime || null) : (startTime ?? null)
     const net = withTime ? (value.endTime || null) : (endTime ?? null)
     if (value.start !== startDate || value.end !== endDate || (withTime && (value.startTime !== initialStartTime || value.endTime !== initialEndTime))) {
-      onSave(value.start, value.end, nst, net)
+      setSaving(true)
+      setError(null)
+      try {
+        await onSave(value.start, value.end, nst, net)
+      } catch (err) {
+        setError(err instanceof Error && err.message ? err.message : t('Could not save the changes'))
+        setSaving(false)
+        return
+      }
+      setSaving(false)
     }
     onClose()
   }
@@ -232,10 +246,15 @@ export function DateRangeSheet({
       onClose={onClose}
       onSubmit={handleSubmit}
       submitLabel={t('Save')}
-      submittingLabel={t('Save')}
-      isSubmitting={false}
+      submittingLabel={t('Saving…')}
+      isSubmitting={saving}
+      disableClose={saving}
+      errorMessage={error ?? undefined}
     >
-      <DateRangePicker value={value} onChange={setValue} withTime={withTime}/>
+      {/* 保存中は入力を無効にする（fieldset の disabled は中のボタン・入力にまとめて効く） */}
+      <fieldset disabled={saving} style={{ display: 'contents', border: 'none', margin: 0, padding: 0, minWidth: 0 }}>
+        <DateRangePicker value={value} onChange={setValue} withTime={withTime}/>
+      </fieldset>
     </MobileFormSheet>
   )
 }
