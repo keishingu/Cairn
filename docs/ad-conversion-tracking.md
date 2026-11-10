@@ -9,7 +9,7 @@
    - ChatGPT 広告: Ads Manager のリンク先を `https://oss-cairn.com/?utm_source=chatgpt&utm_medium=cpc&utm_campaign=<キャンペーン名>` にする。OpenAI はさらに `oppref`（クリック ID）を付ける
 2. middleware が `oppref` を一次 Cookie `cairn_oppref`（HttpOnly・30 日）に保存する。どのページに着地しても、ログイン済みで `/chats` へ転送されるときも保存する
 3. ワークスペースを作ると、`/api/auth/setup` が Inngest に `workspace/created` を送る。Cookie の `oppref`、Web かモバイルか、作成した画面の URL（クエリは除く）を含む
-4. Inngest 関数 `report-workspace-conversion` が送る
+4. Inngest 関数が送る。片方が失敗してももう片方は送られるよう、送信先ごとに関数を分けている（`report-workspace-conversion-posthog` / `report-workspace-conversion-openai`）
    - **PostHog**: `workspace_created`（`distinct_id` は user ID、`uuid` はワークスペース ID）。プロパティは `workspace_id` / `client` / `is_first_workspace` / `from_chatgpt_ad`。ブラウザ側の `identify` で LP 訪問時の匿名 ID とつながるので、初回 UTM（`$initial_utm_source` など）で分けて集計できる
    - **OpenAI Conversions API**: `oppref` があり、本人が初めて作ったワークスペースのときだけ `registration_completed` を送る。`id` は `workspace_created:<ワークスペース ID>`。連絡先などのマッチング情報は送らない
    - 送信に失敗したら Inngest が再試行する。どちらも固定の ID を使うので二重に数えない
@@ -22,7 +22,8 @@
 
 ## 確認
 
-- 疎通は Conversions API の `validate_only: true` で確かめられる。送られたイベントは `GET https://api.ads.openai.com/v1/conversions/events?pid=<PIXEL-ID>` で直近 15 分ほどを見られる（広告主 API キーが必要）
+- リクエストの形は Conversions API の `validate_only: true` で確かめられる。この場合イベントは保存されず、下のイベント一覧にも出ない
+- 実際に送られたイベントは `GET https://api.ads.openai.com/v1/conversions/events?pid=<PIXEL-ID>` で直近 15 分ほどの一部を見られる（広告主 API キーが必要）。サーバーから送ったものは `channel` が `server_to_server` になる
 - PostHog では Funnel を「`$pageview`（初回 UTM で分割）→ `lp_cta_clicked` → `workspace_created`」で組む
 
 ## 計測できないもの

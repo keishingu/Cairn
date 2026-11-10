@@ -27,33 +27,39 @@ export async function isFirstWorkspaceOf(userId: string, workspaceId: string): P
   return first.id === workspaceId
 }
 
-// 外部への送信は失敗したら Inngest が再試行する。どちらも同じ id / uuid を送るので二重に数えない
-export const reportWorkspaceConversion = inngest.createFunction(
-  { id: 'report-workspace-conversion' },
+// 送信先ごとに関数を分け、片方が再試行を使い切って失敗しても、もう片方は送られるようにする。
+// 失敗したら Inngest が再試行する。どちらも固定の id / uuid を送るので二重に数えない
+
+export const reportWorkspaceConversionToPostHog = inngest.createFunction(
+  { id: 'report-workspace-conversion-posthog' },
   { event: WORKSPACE_CREATED_EVENT },
   async ({ event, step }) => {
     const data = event.data as WorkspaceCreatedEventData
-    const posthogConfigured = Boolean(process.env['NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN'])
-    const openAiConfigured = isOpenAiAdsConfigured()
-    if (!posthogConfigured && !(openAiConfigured && data.oppref)) {
-      return { skipped: 'not configured' }
-    }
+    if (!process.env['NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN']) return { skipped: 'not configured' }
 
-    // 本人が最初に作ったワークスペースなら新規登録のコンバージョン
     const isFirstWorkspace = await step.run('check-first-workspace', () =>
       isFirstWorkspaceOf(data.userId, data.workspaceId),
     )
+    await step.run('capture-posthog', () => capturePostHogWorkspaceCreated(data, isFirstWorkspace))
+    return { sent: true, isFirstWorkspace }
+  },
+)
 
-    if (posthogConfigured) {
-      await step.run('capture-posthog', () => capturePostHogWorkspaceCreated(data, isFirstWorkspace))
-    }
+// ChatGPT 広告には「新規登録」として送るため、広告のクリックがあり、初めてのワークスペースのときだけ
+export const reportWorkspaceConversionToOpenAi = inngest.createFunction(
+  { id: 'report-workspace-conversion-openai' },
+  { event: WORKSPACE_CREATED_EVENT },
+  async ({ event, step }) => {
+    const data = event.data as WorkspaceCreatedEventData
+    if (!isOpenAiAdsConfigured()) return { skipped: 'not configured' }
+    if (!data.oppref) return { skipped: 'not from ChatGPT ad' }
 
-    // ChatGPT 広告は「新規登録」として送るため、初めてのワークスペースで、広告のクリックがあるときだけ
-    const sendToOpenAi = openAiConfigured && Boolean(data.oppref) && isFirstWorkspace
-    if (sendToOpenAi) {
-      await step.run('send-openai-conversion', () => sendOpenAiConversion(data))
-    }
+    const isFirstWorkspace = await step.run('check-first-workspace', () =>
+      isFirstWorkspaceOf(data.userId, data.workspaceId),
+    )
+    if (!isFirstWorkspace) return { skipped: 'not first workspace' }
 
-    return { posthog: posthogConfigured, openai: sendToOpenAi }
+    await step.run('send-openai-conversion', () => sendOpenAiConversion(data))
+    return { sent: true }
   },
 )
