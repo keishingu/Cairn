@@ -373,7 +373,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
             </div>
           ) : (
             <>
-              <TitleEditor key={task.id} taskId={task.id} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
+              <TitleEditor key={`title:${task.id}`} taskId={task.id} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
 
               {patchFields.isError && (
                 <InlineError variant="box" onDismiss={() => patchFields.reset()}>
@@ -403,7 +403,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
               </div>
 
               <DescriptionSection
-                key={task.id}
+                key={`description:${task.id}`}
                 taskId={task.id}
                 description={task.description}
                 saving={patchDescription.isPending}

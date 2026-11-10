@@ -275,6 +275,20 @@ describe('TaskDetailPanel', () => {
     expect(screen.queryByText('未保存の下書き')).toBeNull()
   })
 
+  it('別のタスクへ切り替えると、前のタスクのタイトルは残らず新しいタスクのものだけを表示する', () => {
+    setTask({ id: 'task-1', title: 'タスクA' })
+    const view = render(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    expect(screen.getAllByRole('button', { name: 'タイトルを編集' })).toHaveLength(1)
+
+    setTask({ id: 'task-2', title: 'タスクB' })
+    view.rerender(<TaskDetailPanel taskId="task-2" onClose={vi.fn()} />)
+
+    const titles = screen.getAllByRole('button', { name: 'タイトルを編集' })
+    expect(titles).toHaveLength(1)
+    expect(titles[0]).toHaveTextContent('タスクB')
+    expect(screen.queryByText('タスクA')).toBeNull()
+  })
+
   it('ステータス・優先度・期日の変更は即保存する', async () => {
     setTask()
     renderPanel()
