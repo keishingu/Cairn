@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DRAFT_TTL_MS,
+  clearAllDrafts,
+  clearDraftsOfOtherUsers,
   clearUserDrafts,
   draftStorageKey,
   pruneExpiredDrafts,
@@ -106,6 +108,31 @@ describe('下書きの保存先（draft-store）', () => {
       expect(window.localStorage.getItem('cairn:accent')).toBe('emerald')
     })
 
+    it('clearAllDrafts は全ユーザーの下書きを消し、下書き以外のキーは残す', () => {
+      writeDraft(scope, 'a', entry(Date.now()))
+      writeDraft({ userId: 'user-2', workspaceId: 'ws-9' }, 'b', entry(Date.now()))
+      window.localStorage.setItem('cairn:accent', 'emerald')
+
+      clearAllDrafts()
+
+      expect(window.localStorage.length).toBe(1)
+      expect(window.localStorage.getItem('cairn:accent')).toBe('emerald')
+    })
+
+    it('clearDraftsOfOtherUsers は認証中のユーザー以外の下書きだけを消す（前方一致の別ユーザーも消す）', () => {
+      writeDraft(scope, 'a', entry(Date.now()))
+      writeDraft({ userId: 'user-1', workspaceId: 'ws-2' }, 'b', entry(Date.now()))
+      writeDraft({ userId: 'user-2', workspaceId: 'ws-1' }, 'c', entry(Date.now()))
+      writeDraft({ userId: 'user-10', workspaceId: 'ws-1' }, 'd', entry(Date.now()))
+
+      clearDraftsOfOtherUsers('user-1')
+
+      expect(readDraft(scope, 'a')).not.toBeNull()
+      expect(readDraft({ userId: 'user-1', workspaceId: 'ws-2' }, 'b')).not.toBeNull()
+      expect(readDraft({ userId: 'user-2', workspaceId: 'ws-1' }, 'c')).toBeNull()
+      expect(readDraft({ userId: 'user-10', workspaceId: 'ws-1' }, 'd')).toBeNull()
+    })
+
     it('ユーザー ID が別のユーザー ID の前方一致でも巻き込まない', () => {
       writeDraft({ userId: 'user-1', workspaceId: 'ws-1' }, 'a', entry(Date.now()))
       writeDraft({ userId: 'user-10', workspaceId: 'ws-1' }, 'a', entry(Date.now()))
@@ -131,6 +158,8 @@ describe('下書きの保存先（draft-store）', () => {
       expect(() => removeDraft(scope, 'k')).not.toThrow()
       expect(() => pruneExpiredDrafts()).not.toThrow()
       expect(() => clearUserDrafts('user-1')).not.toThrow()
+      expect(() => clearAllDrafts()).not.toThrow()
+      expect(() => clearDraftsOfOtherUsers('user-1')).not.toThrow()
     })
 
     it('localStorage へのアクセス自体が例外のとき（ブロックされたサイトデータ）も同様', () => {

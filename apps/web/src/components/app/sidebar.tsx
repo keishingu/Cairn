@@ -8,7 +8,6 @@ import { useAppShell } from './app-shell-context'
 import { InlineError } from './inline-error'
 import { DraftNotice, UnsavedDraftMarker } from './draft-notice'
 import { useTextDraft } from '@/hooks/use-text-draft'
-import { clearUserDrafts } from '@/lib/drafts/draft-store'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
@@ -649,8 +648,6 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       window.alert(t('Could not sign out. Please try again.'))
       return
     }
-    // 共有端末に個人の下書きを残さない（サインアウトに成功したときだけ消す）
-    if (me?.id) clearUserDrafts(me.id)
     window.location.replace('/auth/login')
   }
 

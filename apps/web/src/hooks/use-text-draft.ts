@@ -194,14 +194,19 @@ export function useDraftField({
   baseChangedRef.current = draft.baseChanged
   const decidedRef = React.useRef(false)
   const syncedRef = React.useRef<string | null>(null)
+  // 復元の判定前（ユーザー・ワークスペースや権限の取得待ち）に入力された値。判定後も新しい入力を優先する
+  const valueRef = React.useRef(savedValue)
+  const touchedRef = React.useRef(false)
 
-  // キーが変わったら復元を判定し直す
+  // キー・有効/無効が変わったら復元を判定し直す（権限の確定前は enabled=false で、確定後に true になる）
   React.useEffect(() => {
     decidedRef.current = false
     syncedRef.current = null
+    touchedRef.current = false
     setRestored(null)
-  }, [key])
+  }, [key, enabled])
 
+  const { update, clear } = draft
   const waiting = enabled && !draft.loaded
   React.useEffect(() => {
     if (!ready || waiting) return
@@ -210,19 +215,25 @@ export function useDraftField({
     if (!decidedRef.current) {
       decidedRef.current = true
       const entry = enabled ? storedRef.current : null
-      if (entry) {
+      if (touchedRef.current) {
+        // 判定を待つ間に入力があった: 古い下書きや保存済みの値で上書きせず、入力を下書きとして残す
+        update(valueRef.current)
+      } else if (entry) {
+        valueRef.current = entry.value
         setValueState(entry.value)
         setRestored({ baseChanged: baseChangedRef.current })
       } else {
+        valueRef.current = savedValue
         setValueState(savedValue)
       }
       return
     }
     setValueState(current => (previous === null || current === previous ? savedValue : current))
-  }, [ready, waiting, enabled, savedValue, key])
+  }, [ready, waiting, enabled, savedValue, key, update])
 
-  const { update, clear } = draft
   const setValue = React.useCallback((next: string) => {
+    valueRef.current = next
+    if (!decidedRef.current) touchedRef.current = true
     setValueState(next)
     update(next)
   }, [update])

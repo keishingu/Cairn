@@ -121,6 +121,31 @@ export function pruneExpiredDrafts(now: number = Date.now()): void {
   }
 }
 
+/** 下書きをすべて（ユーザーを問わず）削除する。ユーザーが特定できないサインアウト・アカウント削除で使う。 */
+export function clearAllDrafts(): void {
+  const storage = getStorage()
+  if (!storage) return
+  try {
+    for (const k of collectKeys(storage, DRAFT_KEY_PREFIX)) storage.removeItem(k)
+  } catch {
+    /* 削除できなくてもサインアウト等は止めない */
+  }
+}
+
+/** 認証中のユーザー以外の下書きを削除する。セッション切れや同じ端末での別ユーザーのサインインに備える。 */
+export function clearDraftsOfOtherUsers(currentUserId: string): void {
+  const storage = getStorage()
+  if (!storage) return
+  try {
+    const own = `${DRAFT_KEY_PREFIX}${currentUserId}:`
+    for (const k of collectKeys(storage, DRAFT_KEY_PREFIX)) {
+      if (!k.startsWith(own)) storage.removeItem(k)
+    }
+  } catch {
+    /* 掃除に失敗しても、他人の下書きは userId の名前空間で読まれない */
+  }
+}
+
 /** そのユーザーの下書きを（ワークスペースを問わず）すべて削除する。サインアウト時に使う。 */
 export function clearUserDrafts(userId: string): void {
   const storage = getStorage()

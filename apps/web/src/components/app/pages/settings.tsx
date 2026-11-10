@@ -32,6 +32,7 @@ import type { GcalCalendarDto } from '@/app/api/calendar/google/calendars/route'
 import type { ApiTokenDto } from '@/app/api/api-tokens/route'
 import type { McpOAuthConnectionDto } from '@/app/api/oauth/connections/route'
 import type { OidcGrantDto } from '@/app/api/oidc/grants/route'
+import { clearAllDrafts } from '@/lib/drafts/draft-store'
 import { useDraftField } from '@/hooks/use-text-draft'
 import { DraftNotice } from '../draft-notice'
 import { useCairnLoginGrants, useRevokeCairnLoginGrant } from '@/hooks/use-cairn-login-grants'
@@ -381,6 +382,8 @@ const SettingsAccount = () => {
         }
       ).ReactNativeWebView
       nativeBridge?.postMessage(JSON.stringify({ type: 'account-deleted' }))
+      // アカウントを削除したら、この端末の下書きもすべて消す
+      clearAllDrafts()
 
       // Authユーザー削除後でもsupabase-jsは404/401を無視してローカル保存を消す。
       await createSupabaseClient()

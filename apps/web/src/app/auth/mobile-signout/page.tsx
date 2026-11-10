@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useT } from '@/components/locale-provider'
+import { clearAllDrafts } from '@/lib/drafts/draft-store'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 
 export default function MobileSignOutPage() {
@@ -13,6 +14,7 @@ export default function MobileSignOutPage() {
     setFailed(false)
     const bridge = window.ReactNativeWebView
     if (!bridge) {
+      clearAllDrafts()
       window.location.replace('/auth/login')
       return
     }

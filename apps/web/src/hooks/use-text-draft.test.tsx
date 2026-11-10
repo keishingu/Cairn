@@ -210,4 +210,34 @@ describe('常時表示の入力欄用フック（useDraftField）', () => {
     expect(result.current.value).toBe('元')
     expect(result.current.restored).toBeNull()
   })
+
+  it('復元の判定前（スコープ取得待ち）に入力した値は、後から古い下書きや保存済みの値で上書きされず、下書きとして残る', () => {
+    writeDraft(scope, 'k', { value: '古い下書き', base: '元', updatedAt: Date.now() })
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope: null, settled: false }))
+    const { result, rerender } = renderHook(() => useDraftField({ key: 'k', savedValue: '元' }))
+
+    act(() => result.current.setValue('今打った値'))
+    vi.mocked(useDraftScope).mockImplementation(() => ({ scope, settled: true }))
+    rerender()
+
+    expect(result.current.value).toBe('今打った値')
+    expect(result.current.restored).toBeNull()
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(read('k')).toMatchObject({ value: '今打った値' })
+  })
+
+  it('enabled が false から true になったら、その時点で下書きを読み直して復元する', () => {
+    writeDraft(scope, 'k', { value: '書きかけ', base: '元', updatedAt: Date.now() })
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useDraftField({ key: 'k', savedValue: '元', enabled }),
+      { initialProps: { enabled: false } },
+    )
+    expect(result.current.value).toBe('元')
+    expect(result.current.restored).toBeNull()
+
+    rerender({ enabled: true })
+
+    expect(result.current.value).toBe('書きかけ')
+    expect(result.current.restored).toEqual({ baseChanged: false })
+  })
 })
