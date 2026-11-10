@@ -5,7 +5,7 @@
 ## 流れ
 
 1. 広告のリンク先に UTM を付ける。PostHog が LP の `$pageview` から拾い、初回の流入元として人物に残す
-   - ai-origami の自社広告: `utm_source=origami_ai&utm_medium=house_ad&utm_campaign=cairn_video&utm_content=feed`（origami-ai リポジトリの `components/AdSenseInFeedAd.tsx`）
+   - 別プロジェクトのサイトに出している自社広告: `utm_medium=house_ad` とサイトごとの `utm_source` を付ける（リンクは掲載先のサイト側で管理する）
    - ChatGPT 広告: Ads Manager のリンク先を `https://oss-cairn.com/?utm_source=chatgpt&utm_medium=cpc&utm_campaign=<キャンペーン名>` にする。OpenAI はさらに `oppref`（クリック ID）を付ける
 2. middleware が `oppref` を一次 Cookie `cairn_oppref`（HttpOnly・30 日）に保存する。どのページに着地しても、ログイン済みで `/chats` へ転送されるときも保存する
 3. ワークスペースを作ると、`/api/auth/setup` が Inngest に `workspace/created` を送る。Cookie の `oppref`、Web かモバイルか、作成した画面の URL（クエリは除く）を含む
