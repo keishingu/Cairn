@@ -20,7 +20,8 @@ export const BILLING_CONFIG = {
   // 原価の1.5倍を消費する（粗利 約33%。決済手数料・為替の変動・記録していない原価の余裕を含む）
   aiCostCreditMultiplier: 1.5,
   aiCostUsdToJpy: 150,
-  // /ai のモデルの単価（USD / 100万トークン）。プロバイダーの価格改定に合わせて更新する。
+  // /ai のモデルの単価（USD / 100万トークン。Batch ではない標準の価格）。プロバイダーの価格改定に合わせて更新する。
+  // GPT-5 は OpenAI のモデルページ（developers.openai.com/docs/models/gpt-5）の値（2026-11 に確認）。
   // Anthropic の inputTokens はキャッシュの読み書きを含まず、cacheWrite は5分キャッシュ（入力の1.25倍）。
   // OpenAI の inputTokens はキャッシュから読んだ分を含み、キャッシュの書き込みに追加の料金は無い
   aiChatModelPricingUsdPerMTok: {
