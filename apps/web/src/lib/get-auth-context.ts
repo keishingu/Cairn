@@ -21,11 +21,15 @@ import { getVerifiedMcpRequest } from './mcp-request-context'
 
 export { WORKSPACE_COOKIE } from './workspace-cookie'
 
-// サーバーレス関数インスタンス内でワークスペース ID + role をキャッシュし、
-// warm リクエストでの DB 往復を省く（キーは userId:workspaceId、TTL: 5分）
+// 所属の再照合を省略してよい時間。非活性化・退出の遮断は最大この秒数遅れる。
+// 毎回 DB を待つと、Fluid のプロビジョンドメモリが I/O 待ちのあいだ課金され続ける。
+export const MEMBERSHIP_RECHECK_TTL_MS = 30_000
+// cookie が無いリクエストが、どの workspace を候補にするかのヒント。再照合の省略には使わない。
+const MEMBERSHIP_HINT_TTL_MS = 5 * 60 * 1000
+
 const workspaceCache = new Map<
   string,
-  { workspaceId: string; role: WorkspaceRole; expiresAt: number }
+  { workspaceId: string; role: WorkspaceRole; freshUntil: number; hintExpiresAt: number }
 >()
 
 export interface AuthContext {
@@ -160,12 +164,18 @@ export async function getAuthContext(options?: {
   const preferredWorkspaceId =
     requestedWorkspaceId ?? cookieStore.get(WORKSPACE_COOKIE)?.value ?? null
 
-  // cookie / cache はどの workspace を候補にするかのヒントに使うだけで、
-  // active membership の再照合は毎回行う。これがないと、非活性化された直後でも
-  // warm instance の 5 分 cache が旧 workspace を返し続け、遮断が遅延する。
+  // freshUntil 以内は active membership の再照合を省略する（最大 MEMBERSHIP_RECHECK_TTL_MS の遮断遅延）。
+  // それを過ぎたあとも hintExpiresAt までは、cookie が無いときの候補 workspace にだけ使う。
   const cacheKey = preferredWorkspaceId ? `${userId}:${preferredWorkspaceId}` : userId
+  const now = Date.now()
   const cached = workspaceCache.get(cacheKey)
-  const cachedWorkspaceId = cached && cached.expiresAt > Date.now() ? cached.workspaceId : null
+  if (cached && cached.freshUntil > now) {
+    return {
+      ctx: { userId, workspaceId: cached.workspaceId, role: cached.role },
+      error: null,
+    }
+  }
+  const cachedWorkspaceId = cached && cached.hintExpiresAt > now ? cached.workspaceId : null
 
   try {
     const { db } = await import('@cairn/db')
@@ -187,7 +197,7 @@ export async function getAuthContext(options?: {
       return row ?? null
     }
 
-    // cookie / cache の候補 workspace も active membership として毎回再照合する
+    // TTL を過ぎた候補は active membership として引き直す。無効なら他の active 所属へ落とす。
     const workspaceCandidate = preferredWorkspaceId ?? cachedWorkspaceId
     if (workspaceCandidate) {
       const preferred = await findActiveMembership(workspaceCandidate)
@@ -195,7 +205,8 @@ export async function getAuthContext(options?: {
         workspaceCache.set(cacheKey, {
           workspaceId: preferred.workspaceId,
           role: preferred.role,
-          expiresAt: Date.now() + 5 * 60 * 1000,
+          freshUntil: Date.now() + MEMBERSHIP_RECHECK_TTL_MS,
+          hintExpiresAt: Date.now() + MEMBERSHIP_HINT_TTL_MS,
         })
         return {
           ctx: { userId, workspaceId: preferred.workspaceId, role: preferred.role },
@@ -218,7 +229,8 @@ export async function getAuthContext(options?: {
     workspaceCache.set(cacheKey, {
       workspaceId: member.workspaceId,
       role: member.role,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      freshUntil: Date.now() + MEMBERSHIP_RECHECK_TTL_MS,
+      hintExpiresAt: Date.now() + MEMBERSHIP_HINT_TTL_MS,
     })
     return { ctx: { userId, workspaceId: member.workspaceId, role: member.role }, error: null }
   } catch (err) {

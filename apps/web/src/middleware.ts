@@ -127,6 +127,16 @@ export async function middleware(request: NextRequest) {
   return withCookies(supabaseResponse)
 }
 
+// 公開ページは関数（Middleware）を起こさない。認証が要るパスだけ残す。
+// `/` のログイン済みリダイレクトは LP の HTML に埋め込んだスクリプトが行う（CDN キャッシュを分けないため）。
+// ここの文字列はビルド時に静的解析されるので、変数に出さない。
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.webmanifest|api/).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.webmanifest|api/|privacy$|terms$|developers(?:/|$)|teams(?:/|$)|robots\\.txt$|sitemap\\.xml$|cairn-lp\\.(?:css|js)$|og-image\\.(?:png|svg)$|badges/|\\.well-known/|oidc/\\.well-known/|oidc/jwks\\.json$).+)',
+  ],
+}
+
+export function shouldRunMiddleware(pathname: string): boolean {
+  const pattern = config.matcher[0]
+  return pattern ? new RegExp(`^${pattern}$`).test(pathname) : true
 }

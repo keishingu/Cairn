@@ -18,6 +18,7 @@ import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 import { ActiveChannelContext } from './use-realtime-channel'
 import { projectQueryKeys } from '@/hooks/use-projects'
+import { setRealtimeFocusCatchUp } from '@/lib/realtime-focus'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -77,6 +78,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const joinedChannelIdsRef = React.useRef(new Set<string>())
 
   // status が disconnected に留まった時だけ degraded を立てる
+  React.useEffect(() => {
+    setRealtimeFocusCatchUp(status !== 'connected')
+    return () => setRealtimeFocusCatchUp(true)
+  }, [status])
+
   React.useEffect(() => {
     if (status === 'connecting') {
       setDegraded(false)

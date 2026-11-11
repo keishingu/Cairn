@@ -373,24 +373,38 @@ describe('get-auth-context', () => {
     })
   })
 
-  it('warm cache があっても active membership を毎回再照合し、非活性化を即時反映する', async () => {
-    mockHeaders.mockResolvedValue(new Headers())
-    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
-    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+  it('所属の再照合は 30 秒以内なら DB を引かず、期限後は非活性化を反映する', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-11T00:00:00Z'))
+    try {
+      mockHeaders.mockResolvedValue(new Headers())
+      mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+      mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
 
-    const { getAuthContext } = await import('./get-auth-context')
+      const { getAuthContext, MEMBERSHIP_RECHECK_TTL_MS } = await import('./get-auth-context')
 
-    // 1回目: active 所属あり → cache に載る
-    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1' }]))
-    const first = await getAuthContext()
-    expect(first).toEqual({ ctx: { userId: 'user-1', workspaceId: 'ws-1' }, error: null })
+      mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+      const first = await getAuthContext()
+      expect(first).toEqual({
+        ctx: { userId: 'user-1', workspaceId: 'ws-1', role: 'member' },
+        error: null,
+      })
 
-    // 2回目: 非活性化され active view から消えた → cache 候補を再照合して弾き、他 active も無い → 403
-    mockDb.select
-      .mockReturnValueOnce(selectChain([])) // cached ws-1 の再照合 = 空
-      .mockReturnValueOnce(selectChain([])) // フォールバックも空
-    const second = await getAuthContext()
-    expect(second.ctx).toBeNull()
-    expect(second.error).not.toBeNull()
+      mockDb.select.mockClear()
+      const second = await getAuthContext()
+      expect(mockDb.select).not.toHaveBeenCalled()
+      expect(second).toEqual(first)
+
+      vi.setSystemTime(new Date(Date.now() + MEMBERSHIP_RECHECK_TTL_MS + 1))
+      mockDb.select
+        .mockReturnValueOnce(selectChain([]))
+        .mockReturnValueOnce(selectChain([]))
+      const third = await getAuthContext()
+      expect(mockDb.select).toHaveBeenCalled()
+      expect(third.ctx).toBeNull()
+      expect(third.error?.status).toBe(403)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { acceptLanguageFromTags, LOCALE_PREFERENCE_COOKIE, resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
+import { acceptLanguageFromTags, LOCALE_PREFERENCE_COOKIE, readLocalePreferenceCookie, resolveLocale, translate, type AppLocale, type LocalePreference } from '@cairn/shared'
 
 type LocaleContextValue = {
   locale: AppLocale
@@ -29,9 +29,30 @@ function browserAcceptLanguage(): string | null {
   return acceptLanguageFromTags(tags)
 }
 
-export function LocaleProvider({ initialLocale, initialPreference, children }: { initialLocale: AppLocale; initialPreference: LocalePreference; children: React.ReactNode }) {
+export function LocaleProvider({
+  initialLocale,
+  initialPreference,
+  syncFromBrowser = false,
+  children,
+}: {
+  initialLocale: AppLocale
+  initialPreference: LocalePreference
+  // ルートレイアウトは cookies()/headers() を呼ばない（公開ページを静的に保つ）。
+  // 描画前に cookie と navigator.languages で、サーバーが Accept-Language から決めていたのと同じ言語へ合わせる。
+  syncFromBrowser?: boolean
+  children: React.ReactNode
+}) {
   const [preference, setPreferenceState] = React.useState(initialPreference)
   const [locale, setLocale] = React.useState(initialLocale)
+
+  React.useLayoutEffect(() => {
+    if (!syncFromBrowser) return
+    const nextPreference = readLocalePreferenceCookie(document.cookie)
+    const resolved = resolveLocale(nextPreference, browserAcceptLanguage())
+    setPreferenceState(nextPreference)
+    setLocale(resolved)
+    document.documentElement.lang = resolved
+  }, [syncFromBrowser])
 
   const setPreference = React.useCallback((next: LocalePreference) => {
     const resolved = resolveLocale(next, browserAcceptLanguage())

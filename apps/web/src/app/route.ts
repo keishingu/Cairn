@@ -4,17 +4,19 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
-import { injectPublicPageHeadScripts } from '@/lib/lp/head-scripts'
+import { injectLoggedInHomeRedirect, injectPublicPageHeadScripts, PUBLIC_PAGE_CACHE_CONTROL } from '@/lib/lp/head-scripts'
 
-// 計測タグの有無を実行時の環境変数で決めるため、ビルド時に固定しない
-export const dynamic = 'force-dynamic'
+// 1 時間 CDN に載せる。計測タグは再検証のときに環境変数から埋め直す（リクエストごとには読まない）。
+// ログイン済みの /chats への戻りは、キャッシュを人ごとに分けずに head のスクリプトが行う。
+export const revalidate = 3600
 
 export async function GET() {
   const html = await readFile(join(process.cwd(), 'public/index.html'), 'utf8')
 
-  return new NextResponse(injectPublicPageHeadScripts(html), {
+  return new NextResponse(injectLoggedInHomeRedirect(injectPublicPageHeadScripts(html)), {
     headers: {
       'content-type': 'text/html; charset=utf-8',
+      'Cache-Control': PUBLIC_PAGE_CACHE_CONTROL,
     },
   })
 }

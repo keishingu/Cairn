@@ -15,6 +15,8 @@ describe('RootRoute', () => {
     const { response, html } = await fetchLp()
 
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(response.headers.get('cache-control')).toBe('public, s-maxage=3600, stale-while-revalidate=86400')
+    expect(html).toContain("location.replace('/chats')")
     expect(html).toContain('<title>Cairn')
     expect(html).toContain('property="og:image"')
   })
