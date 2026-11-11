@@ -6,11 +6,12 @@
 // ファイル一覧（['files']）やギャラリーなど、Broadcast が届かないものは対象外で、タブ復帰時に取り直す。
 // tasks は含めない。チャンネルのないタスクは broadcast_tasks_changes / broadcast_tasks_activity_to_users が
 // 配信せず、マイタスクと詳細は同じ ['tasks'] 配下なので、接続中でもフォーカスで取り直す。
+// projects も含めない。projects テーブルに Broadcast は無く、作成とカバー写真だけの更新は
+// チャンネルの system メッセージも出さない。接続中でも一覧はタブ復帰で取り直す。
 const REALTIME_INVALIDATED_ROOTS = new Set([
   'project-channels',
   'workspace-channels',
   'dms',
-  'projects',
   'messages',
   'channel-files',
   'notifications',
