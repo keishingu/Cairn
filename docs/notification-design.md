@@ -77,7 +77,7 @@
 | トピック | 配信元テーブル | 用途 |
 |---|---|---|
 | `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`message_blocks`、`tasks` | 表示中のチャットの本文・リアクション・カード・タスクの印の更新シグナル |
-| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク |
+| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`）、`files`、`projects`、`milestones` | ベル・AI nudge 更新、既読のデバイス間同期、チャンネルの作成・名称・アーカイブ・参加、画面外の未読・一覧・タスク、ファイル一覧、プロジェクト一覧 |
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
 - トリガーは `supabase/migrations/0034_realtime_broadcast.sql` ほか後続マイグレーションで追加

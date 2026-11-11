@@ -115,6 +115,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
               }
             }
           }
+          if (table === 'files') {
+            void queryClient.invalidateQueries({ queryKey: ['files'] })
+            void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
+          }
+          if (table === 'projects' || table === 'milestones') {
+            void queryClient.invalidateQueries({ queryKey: ['projects'] })
+            void invalidateChannelListQueries(queryClient)
+          }
         })
       userChannel.subscribe((status, error) => {
         if (cancelled) return
@@ -124,6 +132,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // 切断中の既読・新着を取り直す。背景から戻った直後の再取得は再接続より先に走りうる
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+          void queryClient.invalidateQueries({ queryKey: ['projects'] })
+          void queryClient.invalidateQueries({ queryKey: ['files'] })
+          void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
           // 画面外のチャンネルのメッセージも切断中は届かないため古い扱いにする（表示中は channel トピックの JOIN で取り直す）
           void queryClient.invalidateQueries({ queryKey: ['messages'], refetchType: 'none' })
           // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す

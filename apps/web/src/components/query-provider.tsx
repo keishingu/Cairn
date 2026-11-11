@@ -17,8 +17,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            // 既定はタブ復帰で取り直す。止めるのは、書き込みがすべて Broadcast されるキーだけ
-            // （realtime-coverage.ts）。切断中はそれも取り直す。
+            // 既定はタブ復帰で取り直す。止めるのは BROADCAST_COVERED_QUERY_KEYS だけ。
+            // 切断中はそれも取り直す。再接続時の invalidate は realtime-provider が行う。
             refetchOnWindowFocus,
           },
         },
