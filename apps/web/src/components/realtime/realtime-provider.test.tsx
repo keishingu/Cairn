@@ -341,6 +341,23 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files', 'channel-1'] })
   })
 
+  it('ファイル名の変更は開いているチャットのメッセージも取り直す', async () => {
+    const { queryClient } = renderProvider(['channel-1'])
+    await connectUserTopic()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({
+        event: 'UPDATE',
+        payload: { table: 'files', operation: 'UPDATE' },
+      })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['files'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files'] })
+  })
+
   it('user トピックのメッセージ通知で一覧と画面外チャンネルのメッセージを更新し、届いている表示中のチャットは二重に取らない', async () => {
     const { queryClient } = renderProvider(['open-1'])
     await connectUserTopic()

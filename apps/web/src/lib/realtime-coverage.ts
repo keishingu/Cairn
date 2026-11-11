@@ -11,6 +11,7 @@
 export const BROADCAST_COVERED_QUERY_KEYS = {
   // messages の INSERT/UPDATE（編集・ソフトデリート）、message_reactions、message_blocks。
   // 表示中は channel トピック、画面外のメッセージは user トピック。
+  // 添付のファイル名は files 行だけが変わる。files の Broadcast でも messages を invalidate する。
   messages: ['messages'] as const,
   // notifications の INSERT/UPDATE/DELETE。badge-count もこの配下。
   notifications: ['notifications'] as const,

@@ -180,10 +180,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
               void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.notifications })
             }
           } else if (table === 'files') {
-            // アップロード・削除・索引状態・添付の付け外し。本文は載せず、一覧を取り直す。
+            // アップロード・削除・索引状態・添付の付け外し・ファイル名。
+            // 開いているチャットのメッセージは files.fileName を結合しているので、一覧と一緒に取り直す。
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.files })
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectFiles })
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.channelFiles })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.messages })
           } else if (table === 'projects') {
             // 作成・カバー写真・その他の列。プロジェクトチャンネル一覧の題名と期間もここから引いている。
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projects })

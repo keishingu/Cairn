@@ -118,6 +118,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'files') {
             void queryClient.invalidateQueries({ queryKey: ['files'] })
             void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
+            // メッセージは添付のファイル名を結合している
+            void queryClient.invalidateQueries({ queryKey: ['messages'] })
           }
           if (table === 'projects' || table === 'milestones') {
             void queryClient.invalidateQueries({ queryKey: ['projects'] })
