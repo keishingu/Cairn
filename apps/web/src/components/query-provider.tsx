@@ -18,7 +18,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 60 * 1000,
             // Realtime が invalidate するクエリだけ、接続中のフォーカス再取得を止める。
-            // それ以外（ファイル一覧など）はタブ復帰で取り直す。切断中は全部取り直す。
+            // それ以外（ファイル一覧、チャンネルのないタスクなど）はタブ復帰で取り直す。切断中は全部取り直す。
             refetchOnWindowFocus,
           },
         },

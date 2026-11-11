@@ -4,12 +4,13 @@
 // realtime-provider.tsx が invalidate する queryKey の先頭と揃える。
 // ここにあるクエリだけ、接続中のフォーカス再取得を止める。
 // ファイル一覧（['files']）やギャラリーなど、Broadcast が届かないものは対象外で、タブ復帰時に取り直す。
+// tasks は含めない。チャンネルのないタスクは broadcast_tasks_changes / broadcast_tasks_activity_to_users が
+// 配信せず、マイタスクと詳細は同じ ['tasks'] 配下なので、接続中でもフォーカスで取り直す。
 const REALTIME_INVALIDATED_ROOTS = new Set([
   'project-channels',
   'workspace-channels',
   'dms',
   'projects',
-  'tasks',
   'messages',
   'channel-files',
   'notifications',
