@@ -8,7 +8,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { isPostHogConfigured, posthog } from '@/lib/posthog'
-import { refetchOnWindowFocusWhenRealtimeDown } from '@/lib/realtime-focus'
+import { refetchOnWindowFocus } from '@/lib/realtime-focus'
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -17,8 +17,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            // 接続中は Realtime の invalidate が更新を運ぶ。切断中だけ、タブ復帰で stale なクエリを取り直す。
-            refetchOnWindowFocus: refetchOnWindowFocusWhenRealtimeDown,
+            // Realtime が invalidate するクエリだけ、接続中のフォーカス再取得を止める。
+            // それ以外（ファイル一覧など）はタブ復帰で取り直す。切断中は全部取り直す。
+            refetchOnWindowFocus,
           },
         },
       }),
