@@ -16,6 +16,7 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 
 - **UA でデバイス出し分け**: middleware が `x-device` をセットし、`app/(app)/layout.tsx` で PC / モバイルシェルを切り替える。レスポンシブ CSS は使わない
 - **ルートレイアウトで `cookies()` / `headers()` を呼ばない**。呼ぶと開発者ドキュメント・規約・LP まで動的になり CDN に載らない。言語は `LocaleProvider` の `syncFromBrowser` が cookie と `navigator.languages` から描画前に決める
+- **接続中のフォーカス再取得を止めてよい query は `BROADCAST_COVERED_QUERY_KEYS` だけ**。書き込みの一部しか Broadcast されないキー（tasks / projects / channels / files）は入れない。足すときは `realtime-provider` の invalidate も同じ定数にする
 - **`.btn` などの部品クラスは `.app` 配下でしか効かない**（`globals.css` が `.app .btn` の子孫セレクタ）。シェルのルートは `app app-root` にし、全画面パネルや portal をその外に出さない（外れるとモバイルのプロジェクト詳細でボタンの見た目が崩れる）
 - **認証後の既定画面は `/chats`**。数字ナビはチャット `1`、プロジェクト一覧・カレンダー・カンバン・マイタスク `2`〜`5`
 - **プロジェクトビューは localStorage のみで永続化**（`STORAGE_KEYS.projects_view_pc` / `_mob`）。URL パラメータは使わない
