@@ -15,6 +15,7 @@ describe('フォーカス時の再取得', () => {
     expect(refetchOnWindowFocus({ queryKey: ['tasks'] })).toBe(true)
     expect(refetchOnWindowFocus({ queryKey: ['tasks', 'detail', 't1'] })).toBe(true)
     expect(refetchOnWindowFocus({ queryKey: ['projects'] })).toBe(true)
+    expect(refetchOnWindowFocus({ queryKey: ['workspace-channels'] })).toBe(true)
 
     setRealtimeFocusCatchUp(true)
     expect(refetchOnWindowFocus({ queryKey: ['messages', 'channel-1'] })).toBe(true)

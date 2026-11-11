@@ -8,9 +8,10 @@
 // 配信せず、マイタスクと詳細は同じ ['tasks'] 配下なので、接続中でもフォーカスで取り直す。
 // projects も含めない。projects テーブルに Broadcast は無く、作成とカバー写真だけの更新は
 // チャンネルの system メッセージも出さない。接続中でも一覧はタブ復帰で取り直す。
+// workspace-channels も含めない。公開チャンネルの作成は channels への INSERT だけで、
+// broadcast_workspace_channel_changes は UPDATE/DELETE しか配らない。
 const REALTIME_INVALIDATED_ROOTS = new Set([
   'project-channels',
-  'workspace-channels',
   'dms',
   'messages',
   'channel-files',
