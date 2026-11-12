@@ -73,7 +73,7 @@ export const SegmentedControl = ({ options, value, onChange }: SegmentedControlP
           border: 'none',
           background: value === opt.id ? 'var(--card)' : 'transparent',
           color: value === opt.id ? 'var(--text)' : 'var(--text-3)',
-          fontSize: 12,
+          fontSize: 'var(--fs-sm)',
           fontWeight: value === opt.id ? 600 : 500,
           cursor: 'pointer',
           fontFamily: 'inherit',

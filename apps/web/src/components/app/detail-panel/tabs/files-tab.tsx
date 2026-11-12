@@ -45,14 +45,14 @@ function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
   if (status === 'pending') {
     return (
-      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
+      <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
         {t('Indexing')}
       </span>
     )
   }
   if (status === 'failed') {
     return (
-      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
+      <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
         {t('Private')}
       </span>
     )
@@ -227,7 +227,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
   if (isLoading) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
         {t('Loading…')}
       </div>
     )
@@ -235,7 +235,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
 
   if (isError) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
         {t('Could not load files')}
       </div>
     )
@@ -283,7 +283,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       )}
 
       {finalizeRetries.map(item => (
-        <div key={item.id} role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, marginBottom: 8, borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12 }}>
+        <div key={item.id} role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, marginBottom: 8, borderRadius: 6, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>
           <span style={{ flex: 1 }}>{item.file.name}: {item.error}</span>
           <button type="button" className="btn btn-xs" disabled={item.isRetrying} onClick={() => void retryFinalize(item.id)}>
             {item.isRetrying ? t('Uploading...') : t('Retry')}
@@ -295,7 +295,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
       ))}
 
       {files.length === 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13, padding: '24px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)', padding: '24px 0' }}>
           {t('There are no files yet')}
         </div>
       )}
@@ -326,12 +326,12 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
                 <IndexDot status={f.indexingStatus}/>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {f.isLatest && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
+                  {f.isLatest && <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? t('External link') : meta}</div>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)' }}>{isLink ? t('External link') : meta}</div>
               </div>
             </a>
 

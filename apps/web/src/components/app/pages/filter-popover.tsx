@@ -157,7 +157,7 @@ export const FilterPopover = ({
                 style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
               />
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.name}</span>
+              <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{s.name}</span>
             </label>
           )
         })}
@@ -186,12 +186,12 @@ export const FilterPopover = ({
                   <span style={{
                     width: 20, height: 20, borderRadius: '50%',
                     background: 'var(--accent-soft)', color: 'var(--accent)',
-                    fontSize: 10, fontWeight: 600, flexShrink: 0,
+                    fontSize: 'var(--fs-2xs)', fontWeight: 600, flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {name.charAt(0)}
                   </span>
-                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{name}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{name}</span>
                 </label>
               )
             })}

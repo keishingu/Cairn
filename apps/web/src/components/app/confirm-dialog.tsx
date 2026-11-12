@@ -57,9 +57,9 @@ export const ConfirmDialog = ({
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="alertTriangle" size={16}/>
           </div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
+          <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>{message}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>{message}</div>
         {error && (
           <InlineError variant="box" style={{ marginBottom: 12 }}>{error}</InlineError>
         )}

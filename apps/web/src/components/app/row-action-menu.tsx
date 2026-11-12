@@ -142,11 +142,11 @@ export const RowActionMenu = ({ actions, triggerStyle, trigger }: {
               key={`${index}-${a.label}`}
               type="button"
               onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(false); btnRef.current?.focus(); a.onSelect() }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: a.danger ? 'var(--red-text)' : 'var(--text-2)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', border: 'none', background: 'transparent', color: a.danger ? 'var(--red-text)' : 'var(--text-2)', fontSize: 'var(--fs-md)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', whiteSpace: 'nowrap' }}
             >
               <Icon name={a.icon} size={13}/>
               {a.verbatim ? <span style={{ display: 'block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.label}</span> : <span>{t(a.label)}</span>}
-              {a.hint && <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 12, color: 'var(--text-4)' }}>{a.hint}</span>}
+              {a.hint && <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{a.hint}</span>}
             </button>
           ))}
         </div>

@@ -43,19 +43,19 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
   }, [generalChannel, projectScopedChannels, selectedChannelId])
 
   if (isLoading) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading…')}</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading…')}</div>
   }
   if (isError) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load channels')}</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{t('Could not load channels')}</div>
   }
   if (!activeChannel) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Channel not found')}</div>
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Channel not found')}</div>
   }
 
   return (
     <>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}># {activeChannel.milestoneId ? activeChannel.channelName : activeChannel.projectTitle}</span>
+        <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}># {activeChannel.milestoneId ? activeChannel.channelName : activeChannel.projectTitle}</span>
         {projectScopedChannels.length > 1 && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
             {projectScopedChannels.map(channel => {
@@ -75,7 +75,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
                     background: active ? 'var(--accent-soft)' : 'var(--card)',
                     color: active ? 'var(--accent-text)' : 'var(--text-2)',
                     padding: '0 8px',
-                    fontSize: 12,
+                    fontSize: 'var(--fs-sm)',
                     fontWeight: active ? 600 : 500,
                     fontFamily: 'inherit',
                     cursor: 'pointer',
@@ -89,7 +89,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
             })}
           </div>
         )}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)' }}>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
           <Icon name="users" size={13}/> {project.memberCount}
         </span>
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}><Icon name="search" size={14}/></button>

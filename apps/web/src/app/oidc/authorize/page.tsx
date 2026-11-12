@@ -67,32 +67,32 @@ export default async function OidcAuthorizePage({
   return (
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
-        <div style={{ fontSize: 24, fontWeight: 600 }}>Cairn</div>
-        <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>{t('Sign in with Cairn')}</p>
+        <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, letterSpacing: '-0.02em' }}>Cairn</div>
+        <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)', margin: '4px 0 24px' }}>{t('Sign in with Cairn')}</p>
 
         <div style={summaryStyle}>
           <div style={labelStyle}>{t('App requesting access')}</div>
           <div style={{ fontWeight: 600 }}>{authorization.clientName}</div>
-          <div style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
+          <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-xs)', marginTop: 2 }}>
             {new URL(authorization.redirectUri).hostname}
           </div>
         </div>
 
         <div style={{ ...labelStyle, marginBottom: 8 }}>{t('Information shared with this app')}</div>
         <div style={summaryStyle}>
-          <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13, lineHeight: 1.7 }}>
+          <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 'var(--fs-md)', lineHeight: 1.7 }}>
             {scopes.map((scope) => (
               <li key={scope}>{t(scope)}</li>
             ))}
           </ul>
           {user.email && (
-            <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 8 }}>
+            <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', marginTop: 8 }}>
               {t('Signed in as {email}', { email: user.email })}
             </div>
           )}
         </div>
 
-        <p style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1.6 }}>
+        <p style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', lineHeight: 1.6 }}>
           {t('This app receives only the information above. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.')}
         </p>
         <ConsentForm params={Object.fromEntries(params)} />
@@ -105,8 +105,8 @@ function ConsentError({ message, t }: { message: string; t: TranslateFn }) {
   return (
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
-        <h1 style={{ fontSize: 18, margin: 0 }}>{t('Could not verify the sign-in request')}</h1>
-        <p style={{ color: 'var(--red-text)', fontSize: 13 }}>{message}</p>
+        <h1 style={{ fontSize: 'var(--fs-2xl)', margin: 0 }}>{t('Could not verify the sign-in request')}</h1>
+        <p style={{ color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{message}</p>
       </div>
     </main>
   )
@@ -127,4 +127,4 @@ const summaryStyle = {
   background: 'var(--card-2)',
   marginBottom: 20,
 }
-const labelStyle = { color: 'var(--text-3)', fontSize: 12, fontWeight: 600 }
+const labelStyle = { color: 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: 600 }

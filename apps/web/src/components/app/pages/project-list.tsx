@@ -41,7 +41,7 @@ function LatestMessagePreview({ message }: { message: ProjectDto['latestMessage'
   const content = message?.content || t('(Attachment)')
   const text = message ? `${message.senderName}: ${content}` : t('No messages yet')
   return (
-    <div title={text} style={{ fontSize: 12, lineHeight: '18px', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <div title={text} style={{ fontSize: 'var(--fs-sm)', lineHeight: '18px', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
       {message ? <><span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{message.senderName}: </span>{content}</> : text}
     </div>
   )
@@ -243,7 +243,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('Search all projects, including archived…')}
-                style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+                style={{ flex: 1, fontSize: 'var(--fs-md)', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
                 onKeyDown={e => { if (e.key === 'Escape') { setMobileSearchOpen(false); setSearch('') } }}
               />
               {search && (
@@ -270,12 +270,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
                 background: filter === f.id ? 'var(--accent)' : 'var(--card-2)',
                 color: filter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
-                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                fontSize: 'var(--fs-md)', fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               } : {
                 height: 34, padding: '0 14px', border: 'none', background: 'transparent',
                 color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-                fontSize: 13, fontWeight: filter === f.id ? 600 : 500,
+                fontSize: 'var(--fs-md)', fontWeight: filter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
                 borderBottom: filter === f.id ? '2px solid var(--accent)' : '2px solid transparent',
                 marginBottom: -1,
@@ -283,7 +283,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 whiteSpace: 'nowrap',
               }}>
                 {f.label}
-                {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
+                {!isMobile && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', fontWeight: 600 }}>{f.n}</span>}
               </button>
             ))}
           </div>
@@ -321,7 +321,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               >
                 <Icon name="filter" size={13}/> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
-                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 600, padding: '1px 5px' }}>
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 'var(--fs-2xs)', fontWeight: 600, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
                   </span>
                 )}
@@ -355,11 +355,11 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
         paddingBottom: isMobile ? MOBILE_FAB_LIST_PADDING : undefined,
       }}>
         {isLoading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading...')}</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
         ) : isError ? (
-          <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Could not load projects. Please reload.')}</div>
+          <div role="alert" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Could not load projects. Please reload.')}</div>
         ) : filteredProjects.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No projects found')}</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('No projects found')}</div>
         ) : view === 'table' && !isMobile ? (
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -372,12 +372,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 return (
                   <button key={col} onClick={() => setTableSortPersisted(col)} style={{
                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: 12, fontWeight: 500,
+                    fontSize: 'var(--fs-sm)', fontWeight: 500,
                     color: active ? 'var(--text)' : 'var(--text-3)',
                     display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
                   }}>
                     {labels[col]}
-                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                    <span style={{ fontSize: 'var(--fs-2xs)', opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
                   </button>
                 )
               })}
@@ -388,12 +388,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 return (
                   <button onClick={() => setTableSortPersisted(col)} style={{
                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: 12, fontWeight: 500,
+                    fontSize: 'var(--fs-sm)', fontWeight: 500,
                     color: active ? 'var(--text)' : 'var(--text-3)',
                     display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
                   }}>
                     {t('Progress')}
-                    <span style={{ fontSize: 9, opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+                    <span style={{ fontSize: 'var(--fs-2xs)', opacity: active ? 1 : 0.35 }}>{active ? (tableSort.dir === 'asc' ? '▲' : '▼') : '▲'}</span>
                   </button>
                 )
               })()}
@@ -414,12 +414,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                  <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                     {isSearching && p.archived && <ArchivedBadge/>}
                   </div>
-                  <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
@@ -457,17 +457,17 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.title}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
+                      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 8 }}>
                         {formatDates(p.startDate, p.endDate)}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                         {isSearching && p.archived && <ArchivedBadge/>}
                         <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={20}/>
-                        <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2 }}>{t('{count} people', { count: p.memberCount })}</span>
+                        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginLeft: 2 }}>{t('{count} people', { count: p.memberCount })}</span>
                       </div>
                       <div style={{ marginTop: 8 }}><LatestMessagePreview message={p.latestMessage}/></div>
                     </div>
@@ -497,12 +497,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {t('{count} people', { count: p.memberCount })}</div>
+                    <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {t('{count} people', { count: p.memberCount })}</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                       {p.taskCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--text-3)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                           <Icon name="check" size={12}/>{p.completedTaskCount}/{p.taskCount}
                         </span>
                       )}

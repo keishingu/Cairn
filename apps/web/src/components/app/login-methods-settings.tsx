@@ -120,8 +120,8 @@ function IdentityRow({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+        <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
           {identity.identity_data?.['email']
             ? String(identity.identity_data['email'])
             : t('Linked')}
@@ -154,15 +154,15 @@ function UnlinkedProviderRow({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+        <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
           {t('Not linked. Link {label} to sign in to the same account next time.', { label })}
         </div>
       </div>
       <button
         type="button"
         className="btn btn-ghost"
-        style={{ height: 30, fontSize: 12, padding: '0 12px', flexShrink: 0 }}
+        style={{ height: 30, fontSize: 'var(--fs-sm)', padding: '0 12px', flexShrink: 0 }}
         disabled={busy}
         onClick={onLink}
       >
@@ -286,13 +286,13 @@ export function LoginMethodsSettings() {
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>{t('Sign-in methods')}</h2>
-      <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 13, lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Sign-in methods')}</h2>
+      <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 'var(--fs-md)', lineHeight: 1.5 }}>
         {t('You can add more than one sign-in method to the same account. You can link Apple here even when using Hide My Email.')}
       </p>
       <div className="card" style={{ padding: 0 }}>
         {isLoading ? (
-          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+          <div style={{ padding: 16, fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : isError ? (
           <InlineError style={{ padding: 16 }}>{(error as Error).message}</InlineError>
         ) : (
@@ -308,7 +308,7 @@ export function LoginMethodsSettings() {
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        style={{ height: 30, fontSize: 12, padding: '0 12px' }}
+                        style={{ height: 30, fontSize: 'var(--fs-sm)', padding: '0 12px' }}
                         disabled={!canUnlink || unlinkIdentity.isPending}
                         onClick={() => setUnlinkTarget(identity)}
                       >
@@ -340,7 +340,7 @@ export function LoginMethodsSettings() {
               <div
                 style={{
                   padding: '14px 16px',
-                  fontSize: 12,
+                  fontSize: 'var(--fs-sm)',
                   color: 'var(--text-3)',
                   borderBottom: googleIdentity ? undefined : '1px solid var(--divider)',
                 }}

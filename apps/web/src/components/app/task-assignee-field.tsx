@@ -265,7 +265,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
               <span style={{ flex: 1 }}>{t('No assignee')}</span>
             </button>
             {filtered.length === 0 ? (
-              <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('No matching members')}</div>
+              <div style={{ padding: '10px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('No matching members')}</div>
             ) : (
               filtered.map(c => (
                 <button
@@ -280,7 +280,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
                   </span>
                   {c.inProject && (
                     <span style={{
-                      fontSize: 10, fontWeight: 600, color: 'var(--accent-text)',
+                      fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--accent-text)',
                       background: 'var(--accent-soft)', padding: '2px 6px', borderRadius: 4, flexShrink: 0,
                     }}>{t('In this project')}</span>
                   )}
@@ -306,7 +306,7 @@ function optionStyle(selected: boolean): React.CSSProperties {
     border: 'none',
     background: selected ? 'var(--accent-soft)' : 'transparent',
     color: selected ? 'var(--accent-text)' : 'var(--text)',
-    fontSize: 13,
+    fontSize: 'var(--fs-md)',
     fontFamily: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',

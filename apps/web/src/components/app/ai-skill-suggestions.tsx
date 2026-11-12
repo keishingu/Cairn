@@ -26,9 +26,9 @@ export function SkillSuggestions({ input, onSelect }: { input: string; onSelect:
   return (
     <div role="listbox" aria-label={t('Skills')} style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
       {error ? (
-        <div role="alert" style={{ padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>{error.message}</div>
+        <div role="alert" style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{error.message}</div>
       ) : skills.length === 0 ? (
-        <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('No matching skills. Admins can add skills in Settings > AI automations.')}</div>
+        <div style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('No matching skills. Admins can add skills in Settings > AI automations.')}</div>
       ) : skills.map(skill => (
         <button
           key={skill.id}
@@ -39,8 +39,8 @@ export function SkillSuggestions({ input, onSelect }: { input: string; onSelect:
           className="hover-bg"
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
         >
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>${skill.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{instructionToPlainText(skill.instruction)}</span>
+          <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>${skill.name}</span>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{instructionToPlainText(skill.instruction)}</span>
         </button>
       ))}
     </div>

@@ -41,7 +41,7 @@ const SidebarItem = ({ icon, label, active, badge, onClick, onPrefetch, indent }
     padding: indent ? '7px 10px 7px 30px' : '8px 10px', borderRadius: 8, border: 'none',
     background: active ? 'var(--card-hover)' : 'transparent',
     color: active ? 'var(--text)' : 'var(--text-2)',
-    fontWeight: active ? 600 : 500, fontSize: indent ? 13 : 14,
+    fontWeight: active ? 600 : 500, fontSize: indent ? 'var(--fs-md)' : 'var(--fs-lg)',
     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
     transition: 'background .12s', position: 'relative',
   }}
@@ -82,7 +82,7 @@ const SidebarGroup = ({ icon, label, page, setPage, prefetchPage, items }: Sideb
         padding: '8px 10px', borderRadius: 8, border: 'none',
         background: 'transparent',
         color: isChildActive ? 'var(--text)' : 'var(--text-2)',
-        fontWeight: isChildActive ? 600 : 500, fontSize: 14,
+        fontWeight: isChildActive ? 600 : 500, fontSize: 'var(--fs-lg)',
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
         className="hover-bg"
@@ -130,7 +130,7 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
           padding: '6px 10px', borderRadius: 7, border: 'none',
           background: hovered ? 'var(--card-2)' : 'transparent',
-          color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', textAlign: 'left',
+          color: 'var(--text-2)', fontSize: 'var(--fs-md)', cursor: 'pointer', textAlign: 'left',
           fontFamily: 'inherit', paddingRight: hovered ? 28 : 10,
         }}
       >
@@ -218,7 +218,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
         : workspace?.name
-          ? <span style={{ fontSize: 14, fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
+          ? <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
           : <Icon name="mountain" size={18} strokeWidth={2.2}/>
       }
     </div>
@@ -280,7 +280,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                       width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                       background: 'var(--accent)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'var(--on-accent)', fontSize: 12, fontWeight: 600,
+                      color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600,
                     }}>
                       {ws.logoUrl
                         // eslint-disable-next-line @next/next/no-img-element
@@ -289,7 +289,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                       }
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {ws.name}
                       </div>
                     </div>
@@ -317,7 +317,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                   }}>
                     <Icon name="plus" size={14} color="var(--text-4)"/>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{t('Create a new workspace')}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', fontWeight: 500 }}>{t('Create a new workspace')}</span>
                 </button>
               </div>
             </>
@@ -368,9 +368,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         >
           {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
             {workspace?.description && (
-              <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.2 }}>{workspace.description}</div>
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)', lineHeight: 1.2 }}>{workspace.description}</div>
             )}
           </div>
           <Icon name="chevDown" size={14} color="var(--text-3)"/>
@@ -410,7 +410,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                     background: 'var(--accent)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'var(--on-accent)', fontSize: 12, fontWeight: 600,
+                    color: 'var(--on-accent)', fontSize: 'var(--fs-sm)', fontWeight: 600,
                   }}>
                     {ws.logoUrl
                       // eslint-disable-next-line @next/next/no-img-element
@@ -419,7 +419,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                     }
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ws.name}
                     </div>
                   </div>
@@ -447,7 +447,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                 }}>
                   <Icon name="plus" size={14} color="var(--text-4)"/>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{t('Create a new workspace')}</span>
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 500 }}>{t('Create a new workspace')}</span>
               </button>
             </div>
           </>
@@ -632,7 +632,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             width: '100%', padding: '7px 10px', borderRadius: 7, border: 'none',
-            background: 'transparent', color: 'var(--text)', fontSize: 13,
+            background: 'transparent', color: 'var(--text)', fontSize: 'var(--fs-md)',
             fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
           }}
           className="hover-bg"
@@ -664,7 +664,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           style={{
             flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '6px 10px',
             borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
-            color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
+            color: 'var(--text)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
           }}
         />
         <button
@@ -676,13 +676,13 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           {t('Save')}
         </button>
       </div>
-      {statusMessageError && <InlineError style={{ fontSize: 12, padding: '0 10px 6px' }}>{statusMessageError}</InlineError>}
+      {statusMessageError && <InlineError style={{ fontSize: 'var(--fs-sm)', padding: '0 10px 6px' }}>{statusMessageError}</InlineError>}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
       <button
         onClick={handleLogout}
         style={{
           width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none',
-          background: 'transparent', color: 'var(--red-text)', fontSize: 13,
+          background: 'transparent', color: 'var(--red-text)', fontSize: 'var(--fs-md)',
           fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
         }}
@@ -743,8 +743,8 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       >
         {avatarWithDot}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {me?.statusMessage ? me.statusMessage : t(statusLabel(me?.status))}
           </div>
         </div>
@@ -788,8 +788,8 @@ export function TopBar({ title, subtitle, children }: TopBarProps) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>{title}</h1>
-          {subtitle && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{subtitle}</span>}
+          <h1 style={{ margin: 0, fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)' }}>{title}</h1>
+          {subtitle && <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{subtitle}</span>}
         </div>
       </div>
       {children}

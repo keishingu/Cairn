@@ -11,7 +11,7 @@ export default async function VerifyEmailPage() {
 
   return (
     <div style={{ width: '100%', maxWidth: 400, textAlign: 'center' }}>
-      <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+      <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
         Cairn
       </div>
       <div style={{
@@ -25,8 +25,8 @@ export default async function VerifyEmailPage() {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, color: 'var(--text-3)' }}>
           <Icon name="inbox" size={32} strokeWidth={1.5}/>
         </div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Confirmation email sent')}</div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Confirmation email sent')}</div>
+        <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.6 }}>
           {t('Click the link in the email to activate your account.')}{' '}
           {t('If it does not arrive, check your spam folder.')}
         </div>

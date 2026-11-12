@@ -175,7 +175,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           alignItems: 'center',
           justifyContent: 'center',
           color: 'var(--text-4)',
-          fontSize: 13,
+          fontSize: 'var(--fs-md)',
         }}
       >
         {t('Loading…')}
@@ -192,7 +192,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
           alignItems: 'center',
           justifyContent: 'center',
           color: 'var(--red-text)',
-          fontSize: 13,
+          fontSize: 'var(--fs-md)',
         }}
       >
         {t('Could not load the gallery')}
@@ -247,7 +247,7 @@ export const GalleryTab = ({ projectId }: { projectId: string }) => {
             }}
           >
             <Icon name="image" size={28} />
-            <span style={{ fontSize: 13 }}>{t('No photos yet')}</span>
+            <span style={{ fontSize: 'var(--fs-md)' }}>{t('No photos yet')}</span>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>

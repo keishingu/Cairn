@@ -106,9 +106,9 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
             flexShrink: 0,
           }}
         />
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600 }}>{role.name}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--fs-md)', fontWeight: 600 }}>{role.name}</span>
         {role.isDefault && (
-          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Default for new members')}</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{t('Default for new members')}</span>
         )}
         {canEdit && (
           <RowActionMenu
@@ -162,27 +162,27 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
           borderRadius: 7,
           background: 'var(--card)',
           color: 'var(--text)',
-          fontSize: 13,
+          fontSize: 'var(--fs-md)',
           fontFamily: 'inherit',
         }}
       />
       <ColorPicker value={color} onChange={setColor} />
       {save.error && (
-        <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>
+        <div role="alert" style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>
           {save.error.message}
         </div>
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
           className="btn btn-ghost"
-          style={{ height: 28, fontSize: 12 }}
+          style={{ height: 28, fontSize: 'var(--fs-sm)' }}
           onClick={() => setEditing(false)}
         >
           {t('Cancel')}
         </button>
         <button
           className="btn btn-primary"
-          style={{ height: 28, fontSize: 12 }}
+          style={{ height: 28, fontSize: 'var(--fs-sm)' }}
           disabled={!name.trim() || save.isPending}
           onClick={() => save.mutate()}
         >
@@ -223,19 +223,19 @@ export const SettingsProjectRoles = () => {
       <h1 className="page-title">
         {t('Roles')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {t('Manage roles for project members.')}
       </p>
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>{t('Role list')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Role list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {isLoading && (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
               {t('Loading...')}
             </div>
           )}
           {error && (
-            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 12 }}>
+            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>
               {t('Could not load roles')}
             </div>
           )}
@@ -278,20 +278,20 @@ export const SettingsProjectRoles = () => {
                   borderRadius: 7,
                   background: 'var(--card)',
                   color: 'var(--text)',
-                  fontSize: 13,
+                  fontSize: 'var(--fs-md)',
                   fontFamily: 'inherit',
                 }}
               />
               <ColorPicker value={color} onChange={setColor} />
               {add.error && (
-                <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>
+                <div role="alert" style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>
                   {add.error.message}
                 </div>
               )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   className="btn btn-ghost"
-                  style={{ height: 28, fontSize: 12 }}
+                  style={{ height: 28, fontSize: 'var(--fs-sm)' }}
                   onClick={() => {
                     setAdding(false)
                     setName('')
@@ -301,7 +301,7 @@ export const SettingsProjectRoles = () => {
                 </button>
                 <button
                   className="btn btn-primary"
-                  style={{ height: 28, fontSize: 12 }}
+                  style={{ height: 28, fontSize: 'var(--fs-sm)' }}
                   disabled={!name.trim() || add.isPending}
                   onClick={() => add.mutate()}
                 >
@@ -326,7 +326,7 @@ export const SettingsProjectRoles = () => {
                   background: 'transparent',
                   color: 'var(--text-3)',
                   fontFamily: 'inherit',
-                  fontSize: 13,
+                  fontSize: 'var(--fs-md)',
                   fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',

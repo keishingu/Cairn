@@ -141,7 +141,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       background: active && !mobile ? 'var(--card-hover)' : 'transparent',
       // 新着は最大の太さに加えて文字色も一段明るくし、件数バッジがなくても一目で分かるようにする
       color: active || unreadDisplay?.unread ? 'var(--text)' : 'var(--text-2)',
-      fontSize: mobile ? 15 : 13,
+      fontSize: mobile ? 'var(--fs-xl)' : 'var(--fs-md)',
       fontWeight: unreadDisplay?.unread ? 600 : 400,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
@@ -153,9 +153,9 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         </span>
       ) : prefix ? (
         mobile ? (
-          <span style={{ width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', fontSize: 18 }}>{prefix}</span>
+          <span style={{ width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', fontSize: 'var(--fs-2xl)' }}>{prefix}</span>
         ) : (
-          <span style={{ fontSize: 13, color: 'var(--text-3)', width: 14, textAlign: 'center' }}>{prefix}</span>
+          <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', width: 14, textAlign: 'center' }}>{prefix}</span>
         )
       ) : null}
       {avatar && (
@@ -174,7 +174,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
           </span>
         )}
         {dateMeta && (
-          <span style={{ flexShrink: 0, fontSize: mobile ? 11 : 10, color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
+          <span style={{ flexShrink: 0, fontSize: mobile ? 'var(--fs-xs)' : 'var(--fs-2xs)', color: 'var(--text-4)', fontWeight: 500, whiteSpace: 'nowrap' }}>{dateMeta}</span>
         )}
       </span>
       {unreadDisplay && <UnreadBadge count={unreadDisplay.badgeCount} size={mobile ? 'md' : 'sm'} />}
@@ -182,7 +182,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
       {memberCount != null && !mobile && memberCount > 0 && (
-        <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
       )}
     </button>
     {action && (
@@ -318,7 +318,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
               style={{
                 width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
                 border: 'none', borderRadius: 6, background: 'transparent', color: action.danger ? 'var(--red-text)' : 'var(--text-2)',
-                cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 13, textAlign: 'left',
+                cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 'var(--fs-md)', textAlign: 'left',
                 whiteSpace: 'nowrap',
               }}
               className="hover-bg"
@@ -669,7 +669,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
               className="hover-bg"
             >
               <Avatar name={m.displayName} url={m.avatarUrl ?? null} size={20}/>
-              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{m.displayName}</span>
+              <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
         </div>, portalHostFor(ref.current)!,
@@ -889,7 +889,7 @@ export const ChannelList = ({
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
     <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})} sortMenu={sortMenu('projects', t('Projects'))}>
       {pinnedProjectsError && (
-        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 12, color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
+        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
       )}
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup

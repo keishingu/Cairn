@@ -631,7 +631,7 @@ const MilestoneDotText = ({
       display: 'flex', alignItems: 'center', gap: 5,
       background: 'transparent', border: 'none',
       color: completed ? 'var(--text-4)' : color,
-      fontSize: 11, fontWeight: 600,
+      fontSize: 'var(--fs-xs)', fontWeight: 600,
       padding: '0 4px', textAlign: 'left',
       fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
       opacity: completed ? 0.65 : 1,
@@ -714,7 +714,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
               style={{ width: 14, height: 14, accentColor: c.color, cursor: 'pointer' }}
             />
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name === UNNAMED_CALENDAR ? t('(Untitled)') : c.name}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name === UNNAMED_CALENDAR ? t('(Untitled)') : c.name}</span>
           </label>
         ))}
       </div>
@@ -830,7 +830,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
           <div key={d} data-testid="weekday-label" style={{
-            padding: '8px 12px', fontSize: 12, fontWeight: 500,
+            padding: '8px 12px', fontSize: 'var(--fs-sm)', fontWeight: 500,
             color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
             textAlign: 'left',
           }}>{t(d)}</div>
@@ -864,7 +864,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
               }}>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: cell.isToday ? 600 : 500,
+                  fontSize: 'var(--fs-md)', fontWeight: cell.isToday ? 600 : 500,
                   width: cell.isToday ? 24 : 'auto', height: cell.isToday ? 24 : 'auto',
                   borderRadius: cell.isToday ? '50%' : 0,
                   background: cell.isToday ? 'var(--accent)' : 'transparent',
@@ -911,7 +911,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                       height: EVENT_H, borderRadius: 5,
                       background: cfg.bg, color: cfg.text,
                       border: 'none', borderLeft: `3px solid ${cfg.bar}`,
-                      fontSize: 11, fontWeight: 600,
+                      fontSize: 'var(--fs-xs)', fontWeight: 600,
                       padding: '0 7px', textAlign: 'left',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
@@ -961,7 +961,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                       height: EVENT_H, borderRadius: 5,
                       background: e.color + '15', color: e.color,
                       borderLeft: `3px dashed ${e.color}`,
-                      fontSize: 11, fontWeight: 500,
+                      fontSize: 'var(--fs-xs)', fontWeight: 500,
                       padding: '0 7px',
                       display: 'flex', alignItems: 'center',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -984,7 +984,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                         height: EVENT_H, borderRadius: 5,
                         background: e.color + '15', color: e.color,
                         borderLeft: `3px dashed ${e.color}`,
-                        fontSize: 11, fontWeight: 500,
+                        fontSize: 'var(--fs-xs)', fontWeight: 500,
                         padding: '0 7px',
                         display: 'flex', alignItems: 'center',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1018,7 +1018,7 @@ const CalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, gcalEvents
                       width: `calc(${colW}% - 8px)`,
                       height: EVENT_H, padding: '0 4px',
                       display: 'flex', alignItems: 'center',
-                      fontSize: 11, fontWeight: 600, color: 'var(--text-3)',
+                      fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-3)',
                       whiteSpace: 'nowrap', pointerEvents: 'auto',
                     }}
                     title={names.join('\n')}
@@ -1150,7 +1150,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
         <div />
         {cells.map((cell, i) => (
           <div key={i} style={{
-            padding: '8px 12px', fontSize: 12, fontWeight: 500,
+            padding: '8px 12px', fontSize: 'var(--fs-sm)', fontWeight: 500,
             color: weekdayColor(cell.fullDate.getDay(), 'var(--text-3)'),
             textAlign: 'left',
             display: 'flex', alignItems: 'center', gap: 6,
@@ -1158,7 +1158,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
             {t(WEEKDAY_KEYS[cell.fullDate.getDay()]!)}
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: cell.isToday ? 600 : 500,
+              fontSize: 'var(--fs-md)', fontWeight: cell.isToday ? 600 : 500,
               width: 22, height: 22, borderRadius: '50%',
               background: cell.isToday ? 'var(--accent)' : 'transparent',
               color: cell.isToday ? 'var(--on-accent)' : 'var(--text-2)',
@@ -1169,7 +1169,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
 
       {/* 終日エリア（Cairnプロジェクト・終日Googleイベント） */}
       <div style={{ display: 'grid', gridTemplateColumns: `${GUTTER_W}px repeat(7, 1fr)`, borderBottom: '1px solid var(--border)', flexShrink: 0, paddingRight: scrollbarWidth }}>
-        <div style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>{t('All day')}</div>
+        <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-3)', textAlign: 'center', paddingTop: 6 }}>{t('All day')}</div>
         <div
           ref={gridBodyRef}
           style={{ gridColumn: '2 / -1', position: 'relative', minHeight: Math.max(bodyHeight, 32), cursor: isDragging.current ? 'crosshair' : 'default', userSelect: 'none' }}
@@ -1221,7 +1221,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                         height: EVENT_H, borderRadius: 5,
                         background: cfg.bg, color: cfg.text,
                         border: 'none', borderLeft: `3px solid ${cfg.bar}`,
-                        fontSize: 11, fontWeight: 600,
+                        fontSize: 'var(--fs-xs)', fontWeight: 600,
                         padding: '0 7px', textAlign: 'left',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
@@ -1264,7 +1264,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                     height: EVENT_H, borderRadius: 5,
                     background: e.color + '15', color: e.color,
                     borderLeft: `3px dashed ${e.color}`,
-                    fontSize: 11, fontWeight: 500,
+                    fontSize: 'var(--fs-xs)', fontWeight: 500,
                     padding: '0 7px',
                     display: 'flex', alignItems: 'center',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1300,7 +1300,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
             {Array.from({ length: 24 }).map((_, h) => (
               <div key={h} style={{
                 position: 'absolute', top: h * HOUR_HEIGHT - 6, right: 8,
-                fontSize: 10, color: 'var(--text-3)', whiteSpace: 'nowrap',
+                fontSize: 'var(--fs-2xs)', color: 'var(--text-3)', whiteSpace: 'nowrap',
               }}>
                 {h}:00
               </div>
@@ -1338,7 +1338,7 @@ const CalendarWeekGrid = ({ weekStart, events, gcalEvents = [], milestoneEvents 
                   borderRadius: 4,
                   background: e.color + '20', color: e.color,
                   borderLeft: `3px dashed ${e.color}`,
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.3,
+                  fontSize: 'var(--fs-xs)', fontWeight: 500, lineHeight: 1.3,
                   padding: '2px 5px',
                   overflow: 'hidden', textOverflow: 'ellipsis',
                   opacity: 0.9,
@@ -1528,7 +1528,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         {days.map((d, i) => (
           <div key={d} data-testid="weekday-label" style={{
-            padding: '4px 0', fontSize: 10, fontWeight: 600, textAlign: 'center',
+            padding: '4px 0', fontSize: 'var(--fs-2xs)', fontWeight: 600, textAlign: 'center',
             color: weekdayColor(columnWeekday(i, weekStartsOn), 'var(--text-3)'),
           }}>{t(d)}</div>
         ))}
@@ -1569,7 +1569,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                 >
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 22, height: 22, borderRadius: '50%', fontSize: 12,
+                    width: 22, height: 22, borderRadius: '50%', fontSize: 'var(--fs-sm)',
                     fontWeight: isSelected || cell.isToday ? 600 : 400,
                     background: isSelected || cell.isToday ? 'var(--accent)' : 'transparent',
                     color: isSelected || cell.isToday
@@ -1601,7 +1601,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                         height: MOBILE_EVENT_H, borderRadius: 2,
                         background: barColor + '18', color: barColor,
                         border: 'none',
-                        fontSize: 9, fontWeight: 600,
+                        fontSize: 'var(--fs-2xs)', fontWeight: 600,
                         padding: '0 2px', textAlign: 'left',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontFamily: 'inherit', pointerEvents: 'auto', cursor: 'pointer',
@@ -1627,7 +1627,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                       background: e.milestone.completed ? 'var(--card-2)' : barColor + '18',
                       color: fgColor,
                       border: 'none',
-                      fontSize: 9, fontWeight: 600,
+                      fontSize: 'var(--fs-2xs)', fontWeight: 600,
                       padding: '0 2px', textAlign: 'left',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: e.project ? 'pointer' : 'default',
@@ -1654,7 +1654,7 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                       left: `calc(${col * colW}% + 1px)`,
                       top: MOBILE_DATE_AREA + overflowInfo.lane * (MOBILE_EVENT_H + MOBILE_EVENT_GAP),
                       width: `calc(${colW}% - 2px)`,
-                      fontSize: 9, color: 'var(--text-3)',
+                      fontSize: 'var(--fs-2xs)', color: 'var(--text-3)',
                       lineHeight: '12px',
                       overflow: 'hidden',
                     }}
@@ -1691,7 +1691,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto', paddingBottom: 'var(--mobile-nav-clearance)' }}>
       <div style={{
         padding: '12px 16px 8px',
-        fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
+        fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)',
         borderBottom: '1px solid var(--divider)',
         position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
       }}>
@@ -1707,7 +1707,7 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
       ) : (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {dayProjects.length === 0 && dayMilestones.length === 0 ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 13, padding: '0 24px', textAlign: 'center' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-4)', fontSize: 'var(--fs-md)', padding: '0 24px', textAlign: 'center' }}>
               <div>{t('Nothing scheduled')}</div>
               {onCreateDate && (
                 <button
@@ -1751,11 +1751,11 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
               >
                 <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.title}
                   </div>
                   {dateStr && (
-                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                   )}
                 </div>
                 <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'} />
@@ -1781,10 +1781,10 @@ const MobileDayEvents = ({ date, projects, milestones, projectMap, onCreateDate,
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {label}
                   </div>
-                  {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
+                  {dateStr && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
                 </div>
               </button>
             )
@@ -1820,7 +1820,7 @@ const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selected
     <div style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)', padding: '6px 0 8px', flexShrink: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
         {days.map((day, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, marginBottom: 4, color: weekdayColor(day.getDay(), 'var(--text-3)') }}>{t(WEEKDAY_KEYS[day.getDay()]!)}</div>
+          <div key={i} style={{ textAlign: 'center', fontSize: 'var(--fs-xs)', fontWeight: 600, marginBottom: 4, color: weekdayColor(day.getDay(), 'var(--text-3)') }}>{t(WEEKDAY_KEYS[day.getDay()]!)}</div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
@@ -1840,7 +1840,7 @@ const MobileWeekStrip = ({ weekStart, projects, milestones, projectMap, selected
             }}>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 34, height: 34, borderRadius: '50%', fontSize: 15,
+                width: 34, height: 34, borderRadius: '50%', fontSize: 'var(--fs-xl)',
                 fontWeight: isSelected || isToday ? 600 : 400,
                 background: isSelected ? 'var(--accent)' : isToday ? 'var(--accent-soft)' : 'transparent',
                 color: isSelected ? 'var(--on-accent)' : weekdayColor(day.getDay(), 'var(--text)'),
@@ -1906,7 +1906,7 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
 
   if (sorted.length === 0) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
         {t('Nothing scheduled this month')}
       </div>
     )
@@ -1928,7 +1928,7 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
           <React.Fragment key={`${item.kind}-${item.id}`}>
             {showDateHeader && dateLabel && (
               <div style={{
-                padding: '10px 16px 4px', fontSize: 12, fontWeight: 600,
+                padding: '10px 16px 4px', fontSize: 'var(--fs-sm)', fontWeight: 600,
                 color: 'var(--text-3)', letterSpacing: '0.02em',
                 position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
               }}>
@@ -1950,11 +1950,11 @@ const MobileTimelineView = ({ year, month, projects, milestones, projectMap, onP
                 <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {item.kind === 'project' ? item.project.title : formatMilestoneLabel(item.milestone, t)}
                 </div>
                 {dateStr && (
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                 )}
               </div>
               {item.kind === 'project' && <StatusChip name={item.project.statusName ?? ''} color={item.project.statusColor ?? '#9CA3AF'} />}
@@ -2034,7 +2034,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
 
   if (timelineItems.length === 0) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 14 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-lg)' }}>
         {t('Nothing scheduled this month')}
       </div>
     )
@@ -2050,7 +2050,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
           <div key={index} style={{ marginBottom: 24 }}>
             {/* 日付ヘッダー */}
             <div style={{
-              padding: '8px 24px', fontSize: 13, fontWeight: 600,
+              padding: '8px 24px', fontSize: 'var(--fs-md)', fontWeight: 600,
               color: isToday ? 'var(--accent)' : 'var(--text-3)',
               letterSpacing: '0.02em',
               position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1,
@@ -2059,7 +2059,7 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
               {dateLabel}
               {isToday && (
                 <span style={{
-                  marginLeft: 8, fontSize: 11, fontWeight: 600,
+                  marginLeft: 8, fontSize: 'var(--fs-xs)', fontWeight: 600,
                   background: 'var(--accent)', color: 'var(--on-accent)',
                   padding: '2px 6px', borderRadius: 4,
                 }}>
@@ -2091,14 +2091,14 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                   >
                     <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: cfg.bar, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.title}
                       </div>
                       {dateStr && (
-                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
+                        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>
                       )}
                       {p.memberNames.length > 0 && (
-                        <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', marginTop: 2 }}>
                           {p.memberNames.join(', ')}
                         </div>
                       )}
@@ -2132,10 +2132,10 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                     className="hover-bg"
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: cfg.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {label}
                       </div>
-                      {dateStr && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
+                      {dateStr && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{dateStr}</div>}
                     </div>
                   </button>
                 )
@@ -2154,16 +2154,16 @@ const PCTimelineView = ({ year, month, projects, milestones = [], projectMap = n
                 >
                   <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: ev.calendarColor ?? '#4285F4', flexShrink: 0, opacity: 0.7 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-2)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 500, color: 'var(--text-2)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ev.title}
                     </div>
                     {ev.startTime && (
-                      <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 2 }}>
+                      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 2 }}>
                         {ev.startTime}{ev.endTime ? ` - ${ev.endTime}` : ''}
                       </div>
                     )}
                     {ev.calendarName && (
-                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', marginTop: 2 }}>
                         {ev.calendarName}
                       </div>
                     )}
@@ -2184,7 +2184,7 @@ function CalendarLoadNotice({ children, style }: { children: React.ReactNode; st
   return (
     <div role="alert" style={{
       marginBottom: 14, padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--red-text)', fontSize: 13, border: '1px solid var(--red)', background: 'var(--red-soft)',
+      color: 'var(--red-text)', fontSize: 'var(--fs-md)', border: '1px solid var(--red)', background: 'var(--red-soft)',
       ...style,
     }}>
       <Icon name="alertTriangle" size={15} />
@@ -2480,7 +2480,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               >
                 <Icon name="chevLeft" size={16} />
               </button>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', minWidth: calView === 'week' ? 100 : 72, textAlign: 'center' }}>
+              <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)', minWidth: calView === 'week' ? 100 : 72, textAlign: 'center' }}>
                 {periodLabel}
               </span>
               <button
@@ -2499,7 +2499,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               onClick={() => setCalViewPersisted(v)}
               style={{
                 flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
-                fontSize: 13, fontWeight: calView === v ? 600 : 500,
+                fontSize: 'var(--fs-md)', fontWeight: calView === v ? 600 : 500,
                 color: calView === v ? 'var(--accent)' : 'var(--text-3)',
                 borderBottom: `2px solid ${calView === v ? 'var(--accent)' : 'transparent'}`,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
@@ -2603,7 +2603,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
                 <Icon name="chevRight" size={15} />
               </button>
             </div>
-            <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', padding: '0 4px', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', padding: '0 4px', whiteSpace: 'nowrap' }}>
               {periodLabel}
             </span>
           </div>
@@ -2649,7 +2649,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
               >
                 <Icon name="filter" size={13} /> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
-                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 600, padding: '1px 5px' }}>
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 'var(--fs-2xs)', fontWeight: 600, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
                   </span>
                 )}
@@ -2728,7 +2728,7 @@ export const PageCalendar = ({ openPanel, isMobile = false }: PageCalendarProps)
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, fontSize: 12, color: 'var(--text-3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
         {allStatuses.map(s => (
           <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color + '18', borderLeft: `2px solid ${s.color}` }} />

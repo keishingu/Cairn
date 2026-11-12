@@ -57,7 +57,7 @@ function AutomationForm({
   }))
   return (
     <div style={{ padding: 16, background: 'var(--card-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>
         {t('Skill name')}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span aria-hidden="true" style={{ color: 'var(--text-3)', fontWeight: 600 }}>$</span>
@@ -74,7 +74,7 @@ function AutomationForm({
         </div>
         <span style={{ fontWeight: 400, color: 'var(--text-4)' }}>{t('Start with a lowercase letter; use lowercase letters, numbers, and hyphens. Members call it as ${name} in the AI assistant.', { name: input.name || 'assign-reviewer' })}</span>
       </label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>
         {/* 候補の一覧（ボタン）を label の中に入れないため、label は入力欄と id で結ぶ */}
         <label htmlFor={instructionId}>{t('Instructions')}</label>
         <InstructionEditor
@@ -85,21 +85,21 @@ function AutomationForm({
         />
       </div>
       <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <legend style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{t('What it may do after approval')}</legend>
+        <legend style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, marginBottom: 6 }}>{t('What it may do after approval')}</legend>
         {WRITE_ACTION_OPTIONS.map(option => (
-          <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-md)' }}>
             <input type="checkbox" checked={input.writeActions.includes(option.id)} onChange={() => toggle(option.id)}/>
             {t(option.label)}
           </label>
         ))}
-        <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
+        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
           {t('Leave everything unchecked for a read-only skill. Each write is shown as an approval card and runs only after the caller approves it.')}
         </span>
       </fieldset>
-      <p role="note" style={{ margin: 0, padding: '8px 10px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
+      <p role="note" style={{ margin: 0, padding: '8px 10px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 'var(--fs-sm)', color: 'var(--text-2)', lineHeight: 1.6 }}>
         {t('The name, instructions, allowed actions, and creator are visible to every member. If the instructions evaluate or report on people, members can see that too.')}
       </p>
-      {error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 12 }}>{error.message}</p>}
+      {error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{error.message}</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" className="btn" onClick={onCancel}>{t('Cancel')}</button>
         <button
@@ -141,20 +141,20 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
     <div style={{ padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }} data-testid="automation-row">
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>${automation.name}</span>
-          <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Skill')}</span>
+          <span style={{ fontWeight: 600, fontSize: 'var(--fs-lg)' }}>${automation.name}</span>
+          <span style={{ fontSize: 'var(--fs-xs)', padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Skill')}</span>
           {!automation.enabled && (
-            <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Paused')}</span>
+            <span style={{ fontSize: 'var(--fs-xs)', padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Paused')}</span>
           )}
         </div>
         <div style={{ color: 'var(--text-2)' }}><InstructionPreview text={automation.instruction}/></div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
           {t('Allowed after approval')}: {writeLabels.length > 0 ? writeLabels.join(t(', ')) : t('Read only')}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
           {t('Created by {name}', { name: automation.createdBy?.name ?? t('Unknown member') })}
         </div>
-        {update.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 12 }}>{update.error.message}</p>}
+        {update.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{update.error.message}</p>}
         {testing && <DryRunPanel automation={automation} onClose={() => setTesting(false)}/>}
       </div>
       {canManage && (
@@ -216,7 +216,7 @@ function ProposalPayload({ proposal }: { proposal: DryRunResultDto['proposals'][
     ].filter((row): row is [string, string] => row !== null)
     if (rows.length === 0) return null
     return (
-      <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
+      <div style={{ marginTop: 4, fontSize: 'var(--fs-sm)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
         {rows.map(([label, value]) => <div key={label}>{label}: {value}</div>)}
       </div>
     )
@@ -232,7 +232,7 @@ function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClo
   const result = run.data
   return (
     <div data-testid="automation-dry-run" style={{ marginTop: 6, padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6 }}>
+      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.6 }}>
         {t('A test run reads and decides with your permissions, but creates no approval cards and writes nothing. It uses credits and counts toward the daily run limit.')}
       </div>
       <input
@@ -250,18 +250,18 @@ function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClo
           {run.isPending ? t('Running…') : t('Run test')}
         </button>
       </div>
-      {run.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 12 }}>{run.error.message}</p>}
+      {run.error && <p role="alert" style={{ margin: 0, color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{run.error.message}</p>}
       {result && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 'var(--fs-md)' }}>
           <div style={{ fontWeight: 600 }}>{t('Answer')}</div>
           <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)' }}>
             <MarkdownContent content={result.text || t('(No answer)')}/>
           </div>
           <div style={{ fontWeight: 600 }}>{t('Actions it would propose')}</div>
           {result.proposals.length === 0 ? (
-            <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('None')}</div>
+            <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>{t('None')}</div>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--fs-md)' }}>
               {result.proposals.map((proposal, index) => (
                 <li key={index}>
                   {t(DRY_RUN_ACTION_LABELS[proposal.actionType] ?? proposal.actionType)}: {proposalTargets(proposal)}
@@ -272,14 +272,14 @@ function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClo
             </ul>
           )}
           <div style={{ fontWeight: 600 }}>{t('What it read')}</div>
-          <div style={{ color: 'var(--text-3)', fontSize: 12 }}>
+          <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>
             {result.evidence.length === 0
               ? t('None')
               : result.evidence.slice(0, 30).map(item => String(item['label'] ?? item['id'])).join(t(', '))}
             {result.evidence.length > 30 && ` ${t('{count} more', { count: result.evidence.length - 30 })}`}
           </div>
           {result.toolCalls.some(call => !call.ok) && (
-            <div role="alert" style={{ color: 'var(--red-text)', fontSize: 12 }}>
+            <div role="alert" style={{ color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>
               {t('Some tools failed: {names}', { names: result.toolCalls.filter(call => !call.ok).map(call => call.toolName).join(', ') })}
             </div>
           )}
@@ -301,7 +301,7 @@ export function AutomationsSettings() {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
           <h1 className="page-title">{t('AI automations')}</h1>
-          <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 'var(--fs-md)', lineHeight: 1.6 }}>
             {t('Define skills that the AI runs from written instructions. Members call a skill as $name in the AI assistant, and any write runs only after the caller approves it.')}
           </p>
         </div>
@@ -326,18 +326,18 @@ export function AutomationsSettings() {
             </div>
           )}
           {isLoading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
           ) : error ? (
-            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 13 }}>{error.message}</div>
+            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{error.message}</div>
           ) : automations.length === 0 && !adding ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('No automations yet.')}</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('No automations yet.')}</div>
           ) : automations.map((automation, index) => (
             <div key={automation.id} style={{ borderBottom: index < automations.length - 1 ? '1px solid var(--divider)' : 'none' }}>
               <AutomationRow automation={automation} canManage={isAdmin} />
             </div>
           ))}
         </div>
-        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 12 }}>{t('Only admins can add, edit, pause, or delete automations.')}</p>}
+        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 'var(--fs-sm)' }}>{t('Only admins can add, edit, pause, or delete automations.')}</p>}
       </section>
     </div>
   )

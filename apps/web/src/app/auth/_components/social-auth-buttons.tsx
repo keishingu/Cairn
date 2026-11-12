@@ -56,7 +56,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
           border: '1px solid var(--border-2)',
           background: loadingProvider ? 'var(--border-2)' : 'var(--card)',
           color: loadingProvider ? 'var(--text-4)' : 'var(--text)',
-          fontSize: 14,
+          fontSize: 'var(--fs-lg)',
           fontWeight: 500,
           cursor: loadingProvider ? 'default' : 'pointer',
           fontFamily: 'inherit',
@@ -64,7 +64,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
         }}
       >
         {loadingProvider === 'google' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <GoogleIcon />
@@ -87,7 +87,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
           border: '1px solid var(--border-2)',
           background: loadingProvider ? 'var(--border-2)' : 'var(--card)',
           color: loadingProvider ? 'var(--text-4)' : 'var(--text)',
-          fontSize: 14,
+          fontSize: 'var(--fs-lg)',
           fontWeight: 500,
           cursor: loadingProvider ? 'default' : 'pointer',
           fontFamily: 'inherit',
@@ -95,7 +95,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
         }}
       >
         {loadingProvider === 'apple' ? (
-          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('Redirecting...')}</span>
         ) : (
           <>
             <AppleIcon />
@@ -113,7 +113,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
             background: 'var(--red-soft)',
             border: '1px solid var(--red)',
             color: 'var(--red-text)',
-            fontSize: 13,
+            fontSize: 'var(--fs-md)',
           }}
         >
           {error}

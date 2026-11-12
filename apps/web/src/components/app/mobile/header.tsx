@@ -110,7 +110,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : workspace?.name
-                ? <span style={{ fontSize: 12, fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
+                ? <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
                 : <Icon name="mountain" size={13} strokeWidth={2.2} />
             }
           </button>
@@ -147,7 +147,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
                       width: 26, height: 26, borderRadius: 7, flexShrink: 0,
                       background: 'var(--accent)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'var(--on-accent)', fontSize: 11, fontWeight: 600, overflow: 'hidden',
+                      color: 'var(--on-accent)', fontSize: 'var(--fs-xs)', fontWeight: 600, overflow: 'hidden',
                     }}>
                       {ws.logoUrl
                         // eslint-disable-next-line @next/next/no-img-element
@@ -155,7 +155,7 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
                         : ws.name.slice(0, 1)
                       }
                     </div>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ws.name}
                     </span>
                     {ws.id === workspace?.id && <Icon name="check" size={13} color="var(--accent)" />}
@@ -166,14 +166,14 @@ export function MobileHeader({ title, subtitle, onBack, right }: MobileHeaderPro
           )}
         </div>
       ) : (
-        <button onClick={onBack} style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontFamily: 'inherit' }}>
+        <button onClick={onBack} style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-xl)', fontFamily: 'inherit' }}>
           <Icon name="chevLeft" size={18}/>
         </button>
       )}
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <h1 style={{ margin: 0, fontSize: subtitle ? 15 : 17, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
-        {subtitle && <p style={{ margin: 0, fontSize: 12, color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
+        <h1 style={{ margin: 0, fontSize: subtitle ? 'var(--fs-xl)' : 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h1>
+        {subtitle && <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 1 }}>{subtitle}</p>}
       </div>
       {/* ベルは常に右端に固定し、その他のアイコン（検索など）はベルの左に並べる */}
       {right}

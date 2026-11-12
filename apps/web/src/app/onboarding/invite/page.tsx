@@ -67,11 +67,11 @@ export default function OnboardingInvitePage() {
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Invite members')}</div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('Share an invite link to add members.')}<br />{t('You can also invite people later from the members page.')}</div>
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Invite members')}</div>
+          <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.6 }}>{t('Share an invite link to add members.')}<br />{t('You can also invite people later from the members page.')}</div>
         </div>
 
         <div style={{
@@ -86,7 +86,7 @@ export default function OnboardingInvitePage() {
         }}>
           {/* 有効期限選択 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {EXPIRES_OPTIONS.map(opt => (
                 <button
@@ -100,7 +100,7 @@ export default function OnboardingInvitePage() {
                     border: `1.5px solid ${expiresIn === opt.value ? 'var(--accent)' : 'var(--border-2)'}`,
                     background: expiresIn === opt.value ? 'var(--accent-soft, color-mix(in srgb, var(--accent) 12%, transparent))' : 'var(--bg)',
                     color: expiresIn === opt.value ? 'var(--accent)' : 'var(--text-3)',
-                    fontSize: 13,
+                    fontSize: 'var(--fs-md)',
                     fontWeight: expiresIn === opt.value ? 600 : 400,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
@@ -128,7 +128,7 @@ export default function OnboardingInvitePage() {
                 <div style={{
                   padding: '8px 12px', borderRadius: 8,
                   background: 'var(--red-soft)', border: '1px solid var(--red)',
-                  color: 'var(--red-text)', fontSize: 13,
+                  color: 'var(--red-text)', fontSize: 'var(--fs-md)',
                 }}>
                   {generateError}
                 </div>
@@ -150,7 +150,7 @@ export default function OnboardingInvitePage() {
               }}>
                 <div style={{
                   flex: 1,
-                  fontSize: 13,
+                  fontSize: 'var(--fs-md)',
                   color: 'var(--text-3)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -164,7 +164,7 @@ export default function OnboardingInvitePage() {
               {/* モバイルはQRコードも表示 */}
               {isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '12px 0' }}>
-                  <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 500 }}>{t('You can also invite with a QR code')}</div>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', fontWeight: 500 }}>{t('You can also invite with a QR code')}</div>
                   <div style={{
                     padding: 12,
                     background: '#fff',
@@ -208,7 +208,7 @@ function StepDot({ label, done, active }: { label: string; done?: boolean; activ
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: 12,
+      fontSize: 'var(--fs-sm)',
       fontWeight: 600,
       flexShrink: 0,
     }}>

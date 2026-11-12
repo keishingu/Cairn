@@ -172,7 +172,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isMobile ? '4px 16px 8px' : '10px 12px 8px' }}>
-          <span style={{ fontSize: isMobile ? 15 : 13, fontWeight: 600, color: 'var(--text)' }}>{t('Reaction')}</span>
+          <span style={{ fontSize: isMobile ? 'var(--fs-xl)' : 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>{t('Reaction')}</span>
           <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn icon-btn-sm">
             <Icon name="close" size={14}/>
           </button>
@@ -184,12 +184,12 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
               type="button"
               aria-label={t('Add {emoji}', { emoji })}
               onClick={() => select(emoji)}
-              style={{ ...chipButton, height: isMobile ? 48 : 40, fontSize: isMobile ? 24 : 20 }}
+              style={{ ...chipButton, height: isMobile ? 48 : 40, fontSize: isMobile ? 'var(--fs-3xl)' : 'var(--fs-3xl)' }}
             >{emoji}</button>
           ))}
         </div>
         {history.error && (
-          <div role="alert" style={{ padding: isMobile ? '6px 16px 0' : '6px 12px 0', fontSize: 12, color: 'var(--red-text)' }}>
+          <div role="alert" style={{ padding: isMobile ? '6px 16px 0' : '6px 12px 0', fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>
             {t('Could not load recent reactions')}
           </div>
         )}
@@ -199,7 +199,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
             type="button"
             aria-expanded={expanded}
             onClick={() => setExpanded(value => !value)}
-            style={{ ...chipButton, width: '100%', height: isMobile ? 44 : 34, gap: 4, color: 'var(--text-2)', fontSize: 13, fontWeight: 600 }}
+            style={{ ...chipButton, width: '100%', height: isMobile ? 44 : 34, gap: 4, color: 'var(--text-2)', fontSize: 'var(--fs-md)', fontWeight: 600 }}
           >
             {expanded ? t('Show less') : t('Show more')}
             <Icon name={expanded ? 'chevDown' : 'chevUp'} size={14}/>
@@ -209,12 +209,12 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
       {expanded && (
         <div style={{ padding: isMobile ? '10px 16px 0' : '10px 12px 0', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {catalogError ? (
-            <div role="alert" style={{ fontSize: 13, color: 'var(--red-text)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div role="alert" style={{ fontSize: 'var(--fs-md)', color: 'var(--red-text)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
               {t('Could not load the emoji list')}
               <button type="button" className="btn" onClick={() => { setCatalogError(false); setCatalogAttempt(n => n + 1) }}>{t('Retry')}</button>
             </div>
           ) : !catalog ? (
-            <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>{t('Loading…')}</div>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', padding: '8px 0' }}>{t('Loading…')}</div>
           ) : (
             <>
               <input
@@ -236,7 +236,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
                       type="button"
                       aria-pressed={selected}
                       onClick={() => { setCategory(item.id); setSearch('') }}
-                      style={{ ...chipButton, flexShrink: 0, height: 28, padding: '0 10px', fontSize: 12, whiteSpace: 'nowrap', color: selected ? 'var(--accent-text)' : 'var(--text-2)', background: selected ? 'var(--accent-soft)' : 'var(--card-2)' }}
+                      style={{ ...chipButton, flexShrink: 0, height: 28, padding: '0 10px', fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap', color: selected ? 'var(--accent-text)' : 'var(--text-2)', background: selected ? 'var(--accent-soft)' : 'var(--card-2)' }}
                     >{t(REACTION_EMOJI_CATEGORY_LABELS[item.id] ?? item.id)}</button>
                   )
                 })}
@@ -249,13 +249,13 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
                     aria-label={t('Skin tone {number}', { number: index + 1 })}
                     aria-pressed={tone === index}
                     onClick={() => setTone(index)}
-                    style={{ ...chipButton, width: 30, height: 28, fontSize: 16, background: tone === index ? 'var(--accent-soft)' : 'var(--card-2)' }}
+                    style={{ ...chipButton, width: 30, height: 28, fontSize: 'var(--fs-xl)', background: tone === index ? 'var(--accent-soft)' : 'var(--card-2)' }}
                   >{emoji}</button>
                 ))}
               </div>
               <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', height: isMobile ? 260 : 220 }}>
                 {entries.length === 0 ? (
-                  <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>{t('No emoji found')}</div>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', padding: '8px 0' }}>{t('No emoji found')}</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)' }}>
                     {entries.map(item => (
@@ -266,7 +266,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
                         title={item.name}
                         onClick={() => select(item.native)}
                         className="reaction-picker-cell"
-                        style={{ border: 'none', background: 'transparent', borderRadius: 8, height: 38, fontSize: 22, cursor: 'pointer', padding: 0 }}
+                        style={{ border: 'none', background: 'transparent', borderRadius: 8, height: 38, fontSize: 'var(--fs-3xl)', cursor: 'pointer', padding: 0 }}
                       >{item.native}</button>
                     ))}
                   </div>

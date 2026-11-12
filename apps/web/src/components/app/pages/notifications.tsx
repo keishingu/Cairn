@@ -106,13 +106,13 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
       <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: isMobile ? 'min(86vw, 360px)' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: isMobile ? 61 : 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ padding: isMobile ? 'max(16px, env(safe-area-inset-top)) 18px 12px' : '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
               {t('Notifications')}
               <UnreadBadge count={unreadCount} />
             </h2>
             <button
               className="btn btn-ghost"
-              style={{ height: 28, fontSize: 12, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: unreadCount === 0 ? 0.4 : 1 }}
+              style={{ height: 28, fontSize: 'var(--fs-sm)', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4, opacity: unreadCount === 0 ? 0.4 : 1 }}
               onClick={handleMarkAllRead}
               disabled={unreadCount === 0 || markRead.isPending}
             >
@@ -121,7 +121,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
             {push.permission !== 'unsupported' && push.permission !== 'denied' && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="bell" size={14} color={push.permission === 'granted' ? 'var(--accent)' : 'var(--text-3)'} />
-                {!isMobile && <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{t('Push notifications')}</span>}
+                {!isMobile && <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{t('Push notifications')}</span>}
                 <Switch
                   size="sm"
                   checked={push.permission === 'granted'}
@@ -137,16 +137,16 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
             {FILTERS.map(f => (
-              <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--card-hover)' : 'transparent', color: filter === f.id ? 'var(--text)' : 'var(--text-3)', fontSize: 12, fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>{t(f.label)}</button>
+              <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: filter === f.id ? 'var(--card-hover)' : 'transparent', color: filter === f.id ? 'var(--text)' : 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: filter === f.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>{t(f.label)}</button>
             ))}
           </div>
         </div>
 
         <div style={{ flex: 1, overflow: 'auto' }}>
           {isLoading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('Loading…')}</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Loading…')}</div>
           ) : notifications.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t('No matching notifications')}</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('No matching notifications')}</div>
           ) : notifications.map((n) => {
             const cfg = TYPE_CONFIG[n.type]
             const isUnread = n.readAt === null
@@ -163,17 +163,17 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {senderName ?? (n.type === 'ai' ? t('AI assistant') : n.title)}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-4)', flexShrink: 0 }}>· {formatNotificationTime(n.createdAt, t)}</span>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', flexShrink: 0 }}>· {formatNotificationTime(n.createdAt, t)}</span>
                   </div>
                   {senderName && (
-                    <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', lineHeight: 1.5 }}>
                       {n.title.replace(senderName + ' ', '')}
                     </div>
                   )}
-                  <div style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.5 }}>{parseMentionText(n.body)}</div>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', lineHeight: 1.5 }}>{parseMentionText(n.body)}</div>
                 </div>
               </div>
             )

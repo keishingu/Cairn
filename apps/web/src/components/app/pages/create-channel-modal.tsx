@@ -90,8 +90,8 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
                     }}
                   >
                     <Icon name={opt.icon} size={20} color={selected ? opt.text : 'var(--text-3)'}/>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: selected ? opt.text : 'var(--text-2)' }}>{opt.label}</span>
-                    <span style={{ fontSize: 11, color: selected ? opt.text : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{opt.desc}</span>
+                    <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: selected ? opt.text : 'var(--text-2)' }}>{opt.label}</span>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: selected ? opt.text : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{opt.desc}</span>
                   </button>
                 )
               })}
@@ -102,7 +102,7 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
         {/* Footer */}
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10 }}>
           {isPrivate && (
-            <span style={{ fontSize: 12, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon name="users" size={12}/>
               {t('You can invite members after creating the channel')}
             </span>

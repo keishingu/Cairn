@@ -62,11 +62,11 @@ export default function OnboardingPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Create workspace')}</div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Create workspace')}</div>
+          <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.6 }}>
             {t('Create a workspace with your team or organization name.')}
             <br />
             {t('You can invite members later.')}
@@ -82,7 +82,7 @@ export default function OnboardingPage() {
         }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
+              <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
               <input
                 type="text"
                 value={workspaceName}
@@ -95,14 +95,14 @@ export default function OnboardingPage() {
                   padding: '9px 12px',
                   border: '1px solid var(--border-2)',
                   borderRadius: 8,
-                  fontSize: 14,
+                  fontSize: 'var(--fs-lg)',
                   color: 'var(--text)',
                   background: 'var(--bg)',
                   outline: 'none',
                   fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('You can change this later')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('You can change this later')}</div>
             </div>
 
             {error && (
@@ -112,7 +112,7 @@ export default function OnboardingPage() {
                 background: 'var(--red-soft)',
                 border: '1px solid var(--red)',
                 color: 'var(--red-text)',
-                fontSize: 13,
+                fontSize: 'var(--fs-md)',
               }}>
                 {error}
               </div>
@@ -146,7 +146,7 @@ function StepDot({ label, done, active }: { label: string; done?: boolean; activ
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: 12,
+      fontSize: 'var(--fs-sm)',
       fontWeight: 600,
       flexShrink: 0,
     }}>

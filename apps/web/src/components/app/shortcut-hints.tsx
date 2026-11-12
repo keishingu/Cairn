@@ -93,7 +93,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
         display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, maxWidth: '90vw',
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '.04em' }}>
+      <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-4)', letterSpacing: '.04em' }}>
         {prefix} ・ {title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -104,7 +104,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
                 <kbd
                   key={k}
                   style={{
-                    fontFamily: 'inherit', fontSize: 12, fontWeight: 600, lineHeight: 1,
+                    fontFamily: 'inherit', fontSize: 'var(--fs-sm)', fontWeight: 600, lineHeight: 1,
                     minWidth: 22, textAlign: 'center', padding: '4px 6px',
                     background: 'var(--card-2)', border: '1px solid var(--border)',
                     borderRadius: 6, color: 'var(--text)',
@@ -114,7 +114,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
                 </kbd>
               ))}
             </span>
-            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t(h.label)}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{t(h.label)}</span>
           </div>
         ))}
       </div>

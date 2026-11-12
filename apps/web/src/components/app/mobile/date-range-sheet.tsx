@@ -83,8 +83,8 @@ export function DateRangePicker({ value, onChange, withTime = false, defaultMont
           fontFamily: 'inherit', cursor: 'pointer',
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 600, color: active ? 'var(--accent-text)' : 'var(--text-3)' }}>{label}</div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: iso ? 'var(--text)' : 'var(--text-4)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: active ? 'var(--accent-text)' : 'var(--text-3)' }}>{label}</div>
+        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: iso ? 'var(--text)' : 'var(--text-4)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {formatDay(iso)}
         </div>
       </button>
@@ -108,7 +108,7 @@ export function DateRangePicker({ value, onChange, withTime = false, defaultMont
           <button type="button" aria-label={t('Previous month')} onClick={() => setView(v => shiftMonth(v.year, v.monthIndex, -1))} style={navButtonStyle}>
             <Icon name="chevLeft" size={18}/>
           </button>
-          <div aria-live="polite" style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{monthLabel}</div>
+          <div aria-live="polite" style={{ flex: 1, textAlign: 'center', fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{monthLabel}</div>
           <button type="button" aria-label={t('Next month')} onClick={() => setView(v => shiftMonth(v.year, v.monthIndex, 1))} style={navButtonStyle}>
             <Icon name="chevRight" size={18}/>
           </button>
@@ -116,7 +116,7 @@ export function DateRangePicker({ value, onChange, withTime = false, defaultMont
 
         <div role="grid" aria-label={monthLabel} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', rowGap: 2 }}>
           {weekdayLabels.map((w, i) => (
-            <div key={`w${i}`} role="columnheader" style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: i === 0 ? 'var(--red-text)' : 'var(--text-4)', padding: '4px 0' }}>{w}</div>
+            <div key={`w${i}`} role="columnheader" style={{ textAlign: 'center', fontSize: 'var(--fs-sm)', fontWeight: 600, color: i === 0 ? 'var(--red-text)' : 'var(--text-4)', padding: '4px 0' }}>{w}</div>
           ))}
           {cells.map((iso, i) => {
             if (!iso) return <div key={`e${i}`}/>
@@ -149,7 +149,7 @@ export function DateRangePicker({ value, onChange, withTime = false, defaultMont
                     border: iso === today && !edge ? '1px solid var(--accent)' : 'none',
                     background: edge ? 'var(--accent)' : 'transparent',
                     color: edge ? 'var(--on-accent)' : 'var(--text)',
-                    fontSize: 15, fontWeight: edge ? 600 : 500, fontFamily: 'inherit', cursor: 'pointer',
+                    fontSize: 'var(--fs-xl)', fontWeight: edge ? 600 : 500, fontFamily: 'inherit', cursor: 'pointer',
                     touchAction: 'manipulation',
                   }}
                 >
@@ -179,7 +179,7 @@ export function DateRangePicker({ value, onChange, withTime = false, defaultMont
           type="button"
           onClick={() => { setTarget('start'); onChange({ start: null, end: null, startTime: '', endTime: '' }) }}
           className="btn btn-ghost"
-          style={{ alignSelf: 'flex-start', height: 36, fontSize: 14 }}
+          style={{ alignSelf: 'flex-start', height: 36, fontSize: 'var(--fs-lg)' }}
         >
           {t('Clear dates')}
         </button>

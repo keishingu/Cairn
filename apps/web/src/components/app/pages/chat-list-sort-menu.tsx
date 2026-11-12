@@ -75,7 +75,7 @@ export const ChatListSortMenu = ({ section, title, sort, onChange }: {
               className="hover-bg-card"
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, border: 'none',
-                background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 400, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
+                background: 'transparent', color: 'var(--text)', fontSize: 'var(--fs-md)', fontWeight: 400, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
               }}
             >
               <span style={{ width: 14, display: 'inline-flex', color: 'var(--accent-text)' }}>

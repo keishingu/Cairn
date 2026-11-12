@@ -67,12 +67,12 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
 
   const buttonStyle: React.CSSProperties = compact || iconOnly
     ? { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: compact ? 2 : '4px 6px', borderRadius: 5, display: 'inline-flex', alignItems: 'center' }
-    : { border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }
+    : { border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }
 
   if (query.isError) {
     // 読み込めなかったことを黙って隠さない
     return (
-      <button type="button" onClick={() => void query.refetch()} style={{ ...buttonStyle, color: 'var(--red-text)', fontSize: 12, fontFamily: 'inherit' }} title={t('Retry')}>
+      <button type="button" onClick={() => void query.refetch()} style={{ ...buttonStyle, color: 'var(--red-text)', fontSize: 'var(--fs-sm)', fontFamily: 'inherit' }} title={t('Retry')}>
         {t('Could not load apps')}
       </button>
     )
@@ -140,12 +140,12 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
                   if (app.inChannel) void invoke({ app, command: entry.command })
                   else setConfirming({ app, command: entry.command })
                 }}
-                style={{ width: '100%', height: MENU_ITEM_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 13, textAlign: 'left', whiteSpace: 'nowrap' }}
+                style={{ width: '100%', height: MENU_ITEM_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 'var(--fs-md)', textAlign: 'left', whiteSpace: 'nowrap' }}
                 className="hover-bg"
               >
                 <Icon name="list" size={14} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t(entry.label)}</span>
-                <span style={{ marginLeft: 'auto', color: 'var(--text-4)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{appName}</span>
+                <span style={{ marginLeft: 'auto', color: 'var(--text-4)', fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{appName}</span>
               </button>
             )
           })}
@@ -155,8 +155,8 @@ export function AppEntryButtons({ channelId, onError, compact, iconOnly }: { cha
       {confirming && (
         <Modal onClose={() => setConfirming(null)} label={t('Add {app} to this channel?', { app: displayAppName({ name: confirming.app.appName, firstParty: confirming.app.firstParty }, t) })} role="alertdialog">
           <div className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-            <h2 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{t('Add {app} to this channel?', { app: displayAppName({ name: confirming.app.appName, firstParty: confirming.app.firstParty }, t) })}</h2>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16 }}>{t('The app will be able to post to this channel.')}</div>
+            <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{t('Add {app} to this channel?', { app: displayAppName({ name: confirming.app.appName, firstParty: confirming.app.firstParty }, t) })}</h2>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16 }}>{t('The app will be able to post to this channel.')}</div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn" onClick={() => setConfirming(null)}>{t('Cancel')}</button>
               <button

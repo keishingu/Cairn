@@ -138,7 +138,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
         // URL ボタンの押下の通知は、ほかの操作の送信中・書き換え待ちでも送る（リンクは常に開けるため）
         <CardBlock key={block.blockId} block={block} mentionNames={mentionNames} onAction={busy ? undefined : run} onLinkAction={run} pendingAction={pendingAction} />
       ))}
-      {actionError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{actionError}</div>}
+      {actionError && <div role="alert" style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{actionError}</div>}
     </div>
   )
 })
@@ -147,7 +147,7 @@ export const MessageCard = React.memo(function MessageCard({ blocks, fallbackTex
 export function CardBlock({ block, mentionNames, onAction, onLinkAction, pendingAction }: { block: RenderBlock; mentionNames?: Map<string, string> | undefined; onAction?: CardRun | undefined; onLinkAction?: CardRun | undefined; pendingAction?: PendingAction | null | undefined }) {
   switch (block.type) {
     case 'header':
-      return <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
+      return <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.4 }}>{block.text}</div>
     case 'section':
       return (
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -170,7 +170,7 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction, pending
       )
     case 'context':
       return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
           {/* バーのある行では、長い文字を行ごと次へ送らずバーの横で折り返す（バーだけが1行に残らないように） */}
           {block.elements.map((element, index) => <ContextElement key={index} element={element} mentionNames={mentionNames} fill={block.elements.some((item) => item.type === 'meter')} />)}
         </div>
@@ -178,7 +178,7 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction, pending
     case 'image':
       return (
         <figure style={{ margin: 0 }}>
-          {block.title && <figcaption style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4 }}>{block.title}</figcaption>}
+          {block.title && <figcaption style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 4 }}>{block.title}</figcaption>}
           <ExternalImage url={block.url} alt={block.alt} style={{ maxWidth: '100%', maxHeight: 320, borderRadius: 8, border: '1px solid var(--border)' }} />
         </figure>
       )
@@ -186,7 +186,7 @@ export function CardBlock({ block, mentionNames, onAction, onLinkAction, pending
       return <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '2px 0', width: '100%' }} />
     case 'markdown':
       // 普段のメッセージと同じ部品で描く（Mermaid も図になる）。外部から届いた本文なので画像とリンクは制限する
-      return <div style={{ fontSize: 14, color: 'var(--text)', minWidth: 0 }}><MarkdownContent content={block.text} mentionNames={mentionNames} external /></div>
+      return <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text)', minWidth: 0 }}><MarkdownContent content={block.text} mentionNames={mentionNames} external /></div>
     case 'unsupported':
       return <UnsupportedPart />
   }
@@ -244,7 +244,7 @@ function CardSelect({ element, blockId, mentionNames, onAction }: { element: Ext
         disabled={!onAction}
         value={value}
         onChange={(event) => (element.confirm ? setPending(event.target.value) : void commit(event.target.value))}
-        style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 12, padding: '0 8px', maxWidth: 240 }}
+        style={{ height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 'var(--fs-sm)', padding: '0 8px', maxWidth: 240 }}
       >
         {element.initialValue === undefined && <option value="" disabled>{element.placeholder ?? t('Choose an option')}</option>}
         {/* ブラウザ標準の select は2行を描けないため、説明は選択肢の名前に続けて出す（隠さない） */}
@@ -276,8 +276,8 @@ function CardConfirmDialog({ confirm, mentionNames, onConfirm, onClose }: { conf
   return (
     <Modal onClose={onClose} label={confirm.title} role="alertdialog">
       <div className="card" style={{ position: 'relative', width: 380, maxWidth: '90vw', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{confirm.title}</h2>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{confirm.title}</h2>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 16, overflowWrap: 'break-word' }}>
           <RenderTextView text={confirm.text} mentionNames={mentionNames} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -334,7 +334,7 @@ function UnsupportedPart() {
 
 function UnsupportedNotice({ children }: { children: React.ReactNode }) {
   return (
-    <div role="note" style={{ fontSize: 12, color: 'var(--text-3)', border: '1px dashed var(--border-2)', borderRadius: 6, padding: '4px 8px' }}>
+    <div role="note" style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', border: '1px dashed var(--border-2)', borderRadius: 6, padding: '4px 8px' }}>
       {children}
     </div>
   )

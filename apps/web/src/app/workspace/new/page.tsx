@@ -53,11 +53,11 @@ export default function NewWorkspacePage() {
     }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Create a new workspace')}</div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('Create a workspace for another team or purpose.')}</div>
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Create a new workspace')}</div>
+          <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)' }}>{t('Create a workspace for another team or purpose.')}</div>
         </div>
 
         <div style={{
@@ -69,7 +69,7 @@ export default function NewWorkspacePage() {
         }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
+              <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
               <input
                 type="text"
                 value={workspaceName}
@@ -82,7 +82,7 @@ export default function NewWorkspacePage() {
                   padding: '9px 12px',
                   border: '1px solid var(--border-2)',
                   borderRadius: 8,
-                  fontSize: 14,
+                  fontSize: 'var(--fs-lg)',
                   color: 'var(--text)',
                   background: 'var(--bg)',
                   outline: 'none',
@@ -95,7 +95,7 @@ export default function NewWorkspacePage() {
               <div style={{
                 padding: '8px 12px', borderRadius: 8,
                 background: 'var(--red-soft)', border: '1px solid var(--red)',
-                color: 'var(--red-text)', fontSize: 13,
+                color: 'var(--red-text)', fontSize: 'var(--fs-md)',
               }}>
                 {error}
               </div>

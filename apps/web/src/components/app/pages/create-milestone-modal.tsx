@@ -137,7 +137,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
             <label htmlFor="milestone-title" style={sheetFieldLabelStyle}>
               {t('Milestone name')} <span style={{ color: 'var(--red)' }}>*</span>
             </label>
-            <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{title.length}/100</span>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{title.length}/100</span>
           </div>
           <input
             id="milestone-title"
@@ -149,13 +149,13 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
             aria-invalid={!!titleError}
             style={sheetFieldInputStyle(!!titleError)}
           />
-          {titleError && <div role="alert" style={{ marginTop: 5, fontSize: 12, color: 'var(--red-text)' }}>{titleError}</div>}
+          {titleError && <div role="alert" style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{titleError}</div>}
         </div>
 
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <label htmlFor="milestone-description" style={sheetFieldLabelStyle}>{t('Description')}</label>
-            <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{description.length}/1000</span>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{description.length}/1000</span>
           </div>
           <textarea
             id="milestone-description"
@@ -178,11 +178,11 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
               defaultMonth={defaultMonth}
             />
           </div>
-          {endDateError && <div role="alert" style={{ marginTop: 5, fontSize: 12, color: 'var(--red-text)' }}>{endDateError}</div>}
+          {endDateError && <div role="alert" style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{endDateError}</div>}
         </div>
 
         {!editing && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
             <Icon name="chat" size={12}/>
             {t('A dedicated chat is also created')}
           </div>
@@ -234,7 +234,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           </Field>
 
           <fieldset style={{ margin: 0, padding: 0, border: 'none' }}>
-            <legend style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Period')}</legend>
+            <legend style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Period')}</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
               <Field label={t('Start date')} htmlFor="milestone-start-date">
                 <input
@@ -286,7 +286,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
 
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {!editing && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
               <Icon name="chat" size={12}/>
               {t('A dedicated chat is also created')}
             </span>
@@ -342,7 +342,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
       <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
           <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
-          <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>{t('Loading...')}</div>
+          <div style={{ padding: '32px 22px', color: 'var(--text-3)', fontSize: 'var(--fs-md)', textAlign: 'center' }}>{t('Loading...')}</div>
         </div>
       </Modal>
     )
@@ -353,7 +353,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
       <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
           <ModalHeader icon="flag" title={t('Edit milestone')} subtitle={projectTitle} onClose={onClose}/>
-          <div style={{ padding: '32px 22px', color: 'var(--danger)', fontSize: 13, textAlign: 'center' }}>
+          <div style={{ padding: '32px 22px', color: 'var(--danger)', fontSize: 'var(--fs-md)', textAlign: 'center' }}>
             {t('Could not load the milestone')}
           </div>
         </div>

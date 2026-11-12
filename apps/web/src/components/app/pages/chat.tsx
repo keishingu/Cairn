@@ -114,7 +114,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={t('Search messages…')}
-          style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+          style={{ flex: 1, fontSize: 'var(--fs-md)', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
@@ -125,20 +125,20 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
       {/* Results */}
       <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 0' : '8px 0' }}>
         {!debouncedQuery ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
-            <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
+            <div style={{ padding: '6px 16px 2px', fontSize: 'var(--fs-xs)', color: 'var(--text-4)', fontWeight: 600 }}>
               {results.length === 50
                 ? t('{count} or more results', { count: results.length })
                 : t('{count} results', { count: results.length })}
@@ -158,10 +158,10 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
                 className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
                   {highlightMatch(msg.content, debouncedQuery)}
                 </div>
               </div>
@@ -205,7 +205,7 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={t('Search all channels…')}
-          style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+          style={{ flex: 1, fontSize: 'var(--fs-md)', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
           onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         />
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
@@ -216,20 +216,20 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
       {/* Results */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {!debouncedQuery ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('Enter a keyword')}
           </div>
         ) : isFetching ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('Searching…')}
           </div>
         ) : results.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('No messages match "{query}"', { query: debouncedQuery })}
           </div>
         ) : (
           <>
-            <div style={{ padding: '6px 16px 2px', fontSize: 11, color: 'var(--text-4)', fontWeight: 600 }}>
+            <div style={{ padding: '6px 16px 2px', fontSize: 'var(--fs-xs)', color: 'var(--text-4)', fontWeight: 600 }}>
               {results.length === 50
                 ? t('{count} or more results', { count: results.length })
                 : t('{count} results', { count: results.length })}
@@ -245,13 +245,13 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
                 className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                  <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                     {msg.channelName}
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+                  <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
                   {highlightMatch(msg.content, debouncedQuery)}
                 </div>
               </div>
@@ -279,16 +279,16 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: isMobile ? '8px 12px' : '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', flexShrink: 0 }}>
         <Icon name="bookmark" size={14} color="var(--accent)"/>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Bookmarks')}</span>
+        <span style={{ flex: 1, fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Bookmarks')}</span>
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)', padding: 2 }}>
           <Icon name="close" size={14}/>
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {isFetching && bookmarks.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
         ) : bookmarks.length === 0 ? (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('No bookmarked messages yet')}
           </div>
         ) : (
@@ -303,13 +303,13 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
               className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                   {msg.channelName}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                 {msg.content.replace(/<@[^|>\s]+\|([^>\n]+)>/g, '@$1')}
               </div>
             </div>
@@ -1016,7 +1016,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           style={{ position: 'absolute', top: 0, bottom: 0, right: -4, width: 7, cursor: 'col-resize', zIndex: 1, touchAction: 'none' }}
         />
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{t('Chats')}</h2>
+          <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600 }}>{t('Chats')}</h2>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="btn"
@@ -1046,14 +1046,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
                 {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {channelSubtitle}
               </div>
             </div>

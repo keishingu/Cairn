@@ -168,7 +168,7 @@ export const InlineText = ({
           }}
         />
       )}
-      {error && <InlineError style={{ fontSize: 12 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={!canSave}>
@@ -278,7 +278,7 @@ export const InlineDatePair = ({
   const inputStyle: React.CSSProperties = {
     height: coarse ? 40 : 30, padding: coarse ? '0 6px' : '0 8px', borderRadius: 6, minWidth: 0, boxSizing: 'border-box',
     border: '1px solid var(--border)', background: 'var(--card)',
-    color: 'var(--text)', fontSize: coarse ? 16 : 13, fontFamily: 'inherit', outline: 'none',
+    color: 'var(--text)', fontSize: coarse ? 'var(--fs-xl)' : 'var(--fs-md)', fontFamily: 'inherit', outline: 'none',
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -305,7 +305,7 @@ export const InlineDatePair = ({
         }}
         title={readOnly ? undefined : t('Click to edit')}
       >
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+        <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>
           {formatDateRange(startDate, endDate, startTime, endTime)}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
@@ -359,7 +359,7 @@ export const InlineDatePair = ({
           style={timeStyle}
         />}
       </div>
-      <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
+      <span style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', lineHeight: 1 }}>{t('to')}</span>
       <div style={rowStyle}>
         <input
           type="date"
@@ -387,10 +387,10 @@ export const InlineDatePair = ({
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
         <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 12 }}>{t('End date must be on or after the start date')}</InlineError>
+          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date must be on or after the start date')}</InlineError>
         </div>
       )}
-      {error && <InlineError style={{ fontSize: 12 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
         <button
@@ -401,7 +401,7 @@ export const InlineDatePair = ({
             // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)',
-            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+            fontSize: coarse ? 'var(--fs-lg)' : 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
           }}
         >
           {t('Cancel')}
@@ -413,7 +413,7 @@ export const InlineDatePair = ({
           style={{
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
             background: 'var(--accent)', color: 'var(--on-accent)',
-            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            fontSize: coarse ? 'var(--fs-lg)' : 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit',
             cursor: reversed || saving ? 'default' : 'pointer', opacity: reversed || saving ? 0.5 : 1,
           }}
         >
@@ -474,7 +474,7 @@ const InlineStatus = ({
               style={{
                 display: 'flex', alignItems: 'center', gap: 7, width: '100%',
                 padding: '7px 10px', border: 'none', background: 'transparent',
-                color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
@@ -506,7 +506,7 @@ const InlineLocation = ({
     width: '100%', height: 34, padding: '0 12px',
     border: '1px solid var(--accent)', borderRadius: 7,
     background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    fontSize: 'var(--fs-md)', fontFamily: 'inherit', outline: 'none',
     boxSizing: 'border-box',
   }
 
@@ -524,7 +524,7 @@ const InlineLocation = ({
         title={readOnly ? undefined : t('Click to edit')}
       >
         <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
-        <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-md)', color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {location ?? (readOnly ? t('Not set') : t('Set a location…'))}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
@@ -544,7 +544,7 @@ const InlineLocation = ({
       <button
         onClick={() => setEditing(false)}
         className="btn btn-ghost"
-        style={{ alignSelf: 'flex-start', height: 26, fontSize: 12, padding: '0 8px' }}
+        style={{ alignSelf: 'flex-start', height: 26, fontSize: 'var(--fs-sm)', padding: '0 8px' }}
       >
         {t('Cancel')}
       </button>
@@ -612,7 +612,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
           readOnly={!canEdit}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 12, fontWeight: overdue ? 600 : 500 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: overdue ? 600 : 500 }}>
             <Icon name="calendar" size={11}/>
             <InlineDatePair
               startDate={milestone.startDate}
@@ -628,7 +628,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
             type="button"
             onClick={goToThread}
             className="btn btn-ghost"
-            style={{ height: 24, fontSize: 12, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            style={{ height: 24, fontSize: 'var(--fs-sm)', padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <Icon name="chat" size={11}/> {t('Thread')}
           </button>
@@ -687,7 +687,7 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
           onClick={() => setCreating(true)}
           disabled={!canEdit}
           className="btn btn-ghost"
-          style={{ marginLeft: 'auto', height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+          style={{ marginLeft: 'auto', height: 30, fontSize: 'var(--fs-sm)', display: 'inline-flex', alignItems: 'center', gap: 5, ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
         >
           <Icon name="plus" size={12}/> {t('Add')}
         </button>
@@ -702,9 +702,9 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
         />
       )}
       {milestones.isLoading ? (
-        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('Loading…')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('Loading…')}</div>
       ) : milestones.isError ? (
-        <div style={{ fontSize: 13, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
       ) : milestones.data && milestones.data.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {milestones.data.map(m => (
@@ -718,7 +718,7 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 13, color: 'var(--text-4)', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)', lineHeight: 1.6 }}>
           {t('No milestones yet.')}
         </div>
       )}
@@ -771,7 +771,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       />
 
       {patch.isError && (
-        <InlineError style={{ fontSize: 12, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
+        <InlineError style={{ fontSize: 'var(--fs-sm)', marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
 
       {/* 日程 + ステータス */}
@@ -786,7 +786,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             withTime={false}
             sheetSubtitle={project.title}
           />
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
           <div className="section-label" style={{ marginBottom: 4 }}>{t('Status')}</div>
@@ -826,7 +826,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
         <div className="section-label" style={{ marginBottom: 4 }}>{t('Archive')}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
           {project.archived
             ? t('This project is archived. Unarchiving shows it in the project list again.')
             : t('Archiving moves it to the Archive tab. Data is kept.')}
@@ -842,7 +842,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           disabled={archivePatch.isPending || !canEdit}
           title={canEdit ? undefined : t('Changing the archive requires member access or higher')}
           className="btn btn-ghost"
-          style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
+          style={{ height: 30, fontSize: 'var(--fs-sm)', display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
           <Icon name={project.archived ? 'refresh' : 'archive'} size={13}/>
           {archivePatch.isPending ? t('Working...') : project.archived ? t('Unarchive') : t('Archive project')}
@@ -856,7 +856,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}
           title={canDelete ? undefined : t('Deleting a project requires admin access or higher')}
-          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 13, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
+          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 'var(--fs-md)', fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
         >
           {t('Delete this project')}
         </button>

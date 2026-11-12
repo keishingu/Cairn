@@ -10,7 +10,7 @@ const inputStyle: React.CSSProperties = {
   width: '100%', height: 44, padding: '0 12px',
   border: '1px solid var(--border)',
   borderRadius: 10, background: 'var(--card-2)',
-  color: 'var(--text)', fontSize: 15,
+  color: 'var(--text)', fontSize: 'var(--fs-xl)',
   fontFamily: 'inherit', outline: 'none',
   boxSizing: 'border-box',
 }
@@ -92,8 +92,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             <Icon name="hash" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{t('New channel')}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('Enter the channel details')}</div>
+            <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{t('New channel')}</div>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 1 }}>{t('Enter the channel details')}</div>
           </div>
           <button
             onClick={onClose}
@@ -108,10 +108,10 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
           {/* Name */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
+              <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>
                 {t('Channel name')} <span style={{ color: 'var(--red)' }}>*</span>
               </label>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{name.length}/60</span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{name.length}/60</span>
             </div>
             <input
               ref={nameRef}
@@ -121,8 +121,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
               style={nameError ? inputErrorStyle : inputStyle}
             />
             {nameError && (
-              <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+              <div style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 'var(--fs-2xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
                 {nameError}
               </div>
             )}
@@ -130,7 +130,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
 
           {/* 公開 / 非公開 */}
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
+            <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
               {t('Visibility')} <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -146,8 +146,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
                 }}
               >
                 <Icon name="hash" size={20} color={!isPrivate ? 'var(--accent-text)' : 'var(--text-3)'}/>
-                <span style={{ fontSize: 13, fontWeight: 600, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-2)' }}>{t('Public')}</span>
-                <span style={{ fontSize: 11, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Anyone can join')}</span>
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: !isPrivate ? 'var(--accent-text)' : 'var(--text-2)' }}>{t('Public')}</span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: !isPrivate ? 'var(--accent-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Anyone can join')}</span>
               </button>
               <button
                 type="button"
@@ -161,8 +161,8 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
                 }}
               >
                 <Icon name="lock" size={20} color={isPrivate ? 'var(--amber-text)' : 'var(--text-3)'}/>
-                <span style={{ fontSize: 13, fontWeight: 600, color: isPrivate ? 'var(--amber-text)' : 'var(--text-2)' }}>{t('Private')}</span>
-                <span style={{ fontSize: 11, color: isPrivate ? 'var(--amber-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Invited members only')}</span>
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: isPrivate ? 'var(--amber-text)' : 'var(--text-2)' }}>{t('Private')}</span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: isPrivate ? 'var(--amber-text)' : 'var(--text-4)', textAlign: 'center', lineHeight: 1.4 }}>{t('Invited members only')}</span>
               </button>
             </div>
           </div>
@@ -183,7 +183,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             onClick={onClose}
             disabled={mutation.isPending}
             className="btn btn-lg"
-            style={{ flex: 1, height: 46, borderRadius: 12, fontSize: 15 }}
+            style={{ flex: 1, height: 46, borderRadius: 12, fontSize: 'var(--fs-xl)' }}
           >
             {t('Cancel')}
           </button>
@@ -191,7 +191,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             onClick={handleSubmit}
             disabled={mutation.isPending}
             className="btn btn-primary btn-lg"
-            style={{ flex: 2, height: 46, borderRadius: 12, fontSize: 15 }}
+            style={{ flex: 2, height: 46, borderRadius: 12, fontSize: 'var(--fs-xl)' }}
           >
             {mutation.isPending ? t('Creating…') : t('Create')}
           </button>

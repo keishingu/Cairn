@@ -51,13 +51,13 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
         padding: isMobile ? `6px 10px var(--mobile-nav-clearance)` : '0 24px 24px',
       }}>
         {isLoading && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
             {t('Loading…')}
           </div>
         )}
 
         {isError && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
             {t('Could not load the gallery')}
           </div>
         )}
@@ -65,8 +65,8 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
         {!isLoading && !isError && items.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
             <Icon name="image" size={36}/>
-            <span style={{ fontSize: 14 }}>{t('No photos yet')}</span>
-            <span style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
+            <span style={{ fontSize: 'var(--fs-lg)' }}>{t('No photos yet')}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
           </div>
         )}
 
@@ -100,10 +100,10 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
                   loading="lazy"
                 />
                 <div style={{ padding: '8px 10px' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.projectTitle}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', marginTop: 2 }}>
                     {formatDate(item.takenAt, item.createdAt)}
                   </div>
                 </div>
