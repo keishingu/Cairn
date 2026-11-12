@@ -17,6 +17,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 import { ActiveChannelContext } from './use-realtime-channel'
+import { setRealtimeFocusCatchUp } from '@/lib/realtime-focus'
 import { projectQueryKeys } from '@/hooks/use-projects'
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected'
@@ -75,6 +76,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const activeChannelIdsKey = React.useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
   // SUBSCRIBED 済みの channel トピック。届いている間は user トピック側でメッセージを再取得しない（二重取得を避ける）
   const joinedChannelIdsRef = React.useRef(new Set<string>())
+
+  // 接続中だけタブ復帰時の再取得を間引く（query-provider の refetchOnWindowFocus）
+  React.useEffect(() => {
+    setRealtimeFocusCatchUp(status !== 'connected')
+    return () => setRealtimeFocusCatchUp(true)
+  }, [status])
 
   // status が disconnected に留まった時だけ degraded を立てる
   React.useEffect(() => {
