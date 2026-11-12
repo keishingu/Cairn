@@ -29,6 +29,7 @@ export const BROADCAST_COVERED_QUERY_KEYS = {
   // project_members の追加・削除・役割変更（人数・参加・主催）。
   // 進捗（taskCount / completedTaskCount）は tasks の Broadcast で projects を invalidate する。
   // 最新メッセージの新着・削除は、チャンネル一覧の取り直し（projects を含む）で更新する。
+  // ゲストのタスクとファイルは project_members で絞られる。projects の受信で tasks と files も取り直す。
   projects: ['projects'] as const,
   // channels の作成・名称・アーカイブと、channel_members、表示名。マイルストーン列は milestones。
   workspaceChannels: ['workspace-channels'] as const,

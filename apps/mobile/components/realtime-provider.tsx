@@ -116,6 +116,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
                 void queryClient.invalidateQueries({ queryKey: ['notifications'] })
               }
             }
+            if (table === 'channel_members') {
+              // 参加の追加・削除は、そのチャンネルのタスクとファイルの可視範囲も変える
+              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+              void queryClient.invalidateQueries({ queryKey: ['files'] })
+              void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
+            }
           }
           if (table === 'files') {
             void queryClient.invalidateQueries({ queryKey: ['files'] })
@@ -126,6 +132,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           if (table === 'projects' || table === 'milestones') {
             void queryClient.invalidateQueries({ queryKey: ['projects'] })
             void invalidateChannelListQueries(queryClient)
+            if (table === 'projects') {
+              // ゲストのタスクとファイルはプロジェクト参加で絞られる
+              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+              void queryClient.invalidateQueries({ queryKey: ['files'] })
+              void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
+            }
           }
         })
       userChannel.subscribe((status, error) => {

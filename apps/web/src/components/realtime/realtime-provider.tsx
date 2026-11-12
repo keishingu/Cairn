@@ -16,7 +16,7 @@ import { useCurrentUser } from '@/hooks/use-current-user'
 import { isRealtimeUnauthorized } from '@/lib/realtime-unauthorized'
 import { RealtimeIndicator } from './realtime-indicator'
 import { ActiveChannelContext } from './use-realtime-channel'
-import { setRealtimeFocusCatchUp } from '@/lib/realtime-focus'
+import { clearMessageChannelFocusCatchUp, setMessageChannelFocusCatchUp, setRealtimeFocusCatchUp } from '@/lib/realtime-focus'
 import {
   BROADCAST_COVERED_QUERY_KEYS,
   coveredChannelFilesQueryKey,
@@ -171,8 +171,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             scheduleListInvalidate()
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.notifications })
           } else if (table === 'channel_members') {
-            // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
+            // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない。
+            // 参加の追加・削除は、そのチャンネルのタスクとファイルの可視範囲も変える。
             scheduleListInvalidate()
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.tasks })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.files })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectFiles })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.channelFiles })
           } else if (table === 'channels') {
             // 作成・名称・アーカイブ・削除。削除後は channel トピックの認可が消えるため、ここへ届ける。
             scheduleListInvalidate()
@@ -191,8 +196,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           } else if (table === 'projects') {
             // 作成・カバー写真・参加。プロジェクトチャンネル一覧の題名と期間もここから引いている。
             // 進捗は tasks の活動通知で、最新メッセージの新着・削除はチャンネル一覧の取り直しで更新する。
+            // ゲストのタスクとファイルは project_members で絞られる。行の更新と区別できないので、ここで一緒に取り直す。
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projects })
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectChannels })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.tasks })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.files })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectFiles })
+            void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.channelFiles })
           } else if (table === 'milestones') {
             // マイルストーンの題名・期間・完了はプロジェクトチャンネル一覧に出る。
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectChannels })
@@ -270,6 +280,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   // ─── チャンネルトピック（表示中のチャットだけ。messages / message_reactions / message_blocks / tasks）──
   // 表示中のチャットの変化に追従して join/leave を差分反映する
   const topicChannelsRef = React.useRef<Map<string, RealtimeChannel>>(new Map())
+  // 購読失敗のたびに取り直すと、切断中の再試行で REST が増える。復帰するまでは1回にする。
+  const failedChannelRefetchRef = React.useRef(new Set<string>())
 
   React.useEffect(() => {
     // setAuth 完了前の join は認可で弾かれるため、ユーザートピック接続後にのみ join する
@@ -285,6 +297,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         void supabase.removeChannel(ch)
         current.delete(id)
         joined.delete(id)
+        setMessageChannelFocusCatchUp(id, false)
+        failedChannelRefetchRef.current.delete(id)
         // 購読をやめた後の編集・リアクションは届かない。次に開いたときに取り直すよう古い扱いにする
         void queryClient.invalidateQueries({ queryKey: coveredMessagesQueryKey(id), refetchType: 'none' })
         void queryClient.invalidateQueries({ queryKey: coveredChannelFilesQueryKey(id), refetchType: 'none' })
@@ -293,6 +307,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     for (const id of wanted) {
       if (current.has(id)) continue
+      // JOIN 完了まではリアクションとブロックが届かない。そのチャットだけタブ復帰で取り直す。
+      setMessageChannelFocusCatchUp(id, true)
       const ch = supabase
         .channel(`channel:${id}`, { config: { private: true } })
         .on('broadcast', { event: '*' }, (message) => {
@@ -313,13 +329,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (current.get(id) !== ch) return
         if (subStatus === 'SUBSCRIBED') {
           joined.add(id)
+          setMessageChannelFocusCatchUp(id, false)
+          failedChannelRefetchRef.current.delete(id)
           // 表示開始から JOIN 完了まで・再接続までの間の変化を取り直す
           void queryClient.invalidateQueries({ queryKey: coveredMessagesQueryKey(id) })
           void queryClient.invalidateQueries({ queryKey: coveredChannelFilesQueryKey(id) })
           return
         }
-        // JOIN できていない間は user トピックの通知で表示中のメッセージを再取得する
+        // JOIN できていない間は user トピックの通知で表示中のメッセージを再取得する。
+        // リアクションとブロックは channel トピックにしか無いので、失敗時に1回取り直し、以降はタブ復帰で取る。
         joined.delete(id)
+        setMessageChannelFocusCatchUp(id, true)
+        if (
+          (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT')
+          && !failedChannelRefetchRef.current.has(id)
+        ) {
+          failedChannelRefetchRef.current.add(id)
+          void queryClient.invalidateQueries({ queryKey: coveredMessagesQueryKey(id) })
+        }
         if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
           console.error(`[Realtime] channel:${id} subscription failed:`, subStatus, err?.message ?? err)
           // 未参加の非公開チャンネルは何回 JOIN しても直らない。ライブラリの再 JOIN を止める。
@@ -344,6 +371,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       for (const ch of topicChannels.values()) void supabase.removeChannel(ch)
       topicChannels.clear()
       joined.clear()
+      clearMessageChannelFocusCatchUp()
     }
   }, [])
 
