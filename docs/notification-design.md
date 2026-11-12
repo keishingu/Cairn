@@ -81,7 +81,7 @@
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
 - トリガーは `supabase/migrations/0034_realtime_broadcast.sql` ほか後続マイグレーションで追加
-- Web のタブ復帰時の再取得（`refetchOnWindowFocus`、`apps/web/src/lib/realtime-focus.ts`）は、Realtime 切断中は毎回、接続中は最後の取得から 5 分を過ぎたクエリだけ。Broadcast されない変更は接続中は最大 5 分遅れて出る。クエリごとに「Broadcast で追えるか」の対応表を作って再取得を止める方式は、書き込み経路の抜けを塞ぎ続けることになるため採らない
+- Web のタブ復帰時の再取得（`refetchOnWindowFocus`、`apps/web/src/lib/realtime-focus.ts`）は、Realtime 切断中は毎回、接続中は最後にサーバーから取得してから 5 分以上たったクエリだけ（`setQueryData` の手動書き込みは数えない）。Broadcast されない変更は、接続中は 5 分以上たった後のタブ復帰まで画面に出ない（5 分の時点で自動では取り直さない）。クエリごとに「Broadcast で追えるか」の対応表を作って再取得を止める方式は、書き込み経路の抜けを塞ぎ続けることになるため採らない
 
 ### user トピックへのチャンネル活動の配信
 

@@ -8,7 +8,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { isPostHogConfigured, posthog } from '@/lib/posthog'
-import { refetchOnWindowFocus } from '@/lib/realtime-focus'
+import { recordQueryFetchSuccess, refetchOnWindowFocus } from '@/lib/realtime-focus'
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -23,6 +23,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           },
         },
       }),
+  )
+
+  // タブ復帰の判定に使う「最後にサーバーから取得した時刻」を記録する
+  useEffect(
+    () => queryClient.getQueryCache().subscribe((event) => recordQueryFetchSuccess(event)),
+    [queryClient],
   )
 
   // ログアウト時に前アカウントのキャッシュ（プロジェクト一覧・チャット一覧など）が
