@@ -1,7 +1,7 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { QueryCacheNotifyEvent } from '@tanstack/react-query'
+import type { Query, QueryCacheNotifyEvent, StaleTime } from '@tanstack/react-query'
 
 // Realtime 接続中のタブ復帰では、最後に取得してからこの時間を過ぎたクエリだけを取り直す。
 // Broadcast で追えない変更（設定・ステータス名など）は、接続中はこの時間を過ぎた後のタブ復帰まで画面に出ない。
@@ -26,10 +26,25 @@ export function recordQueryFetchSuccess(event: QueryCacheNotifyEvent, now: numbe
   lastFetchedAt.set(event.query, now)
 }
 
-export function refetchOnWindowFocus(query: object, now: number = Date.now()): boolean {
+// 数値で返せない staleTime（Infinity・'static'）は、意図して取り直さないクエリとして扱う。
+function finiteStaleTime(query: Query): number | null {
+  // staleTime は observer の options から query.options へ入る（QueryOptions の型には無い）
+  const option = (query.options as { staleTime?: StaleTime | ((query: Query) => StaleTime) }).staleTime
+  const value = typeof option === 'function' ? option(query) : option
+  if (value === undefined) return 0
+  if (value === 'static' || !Number.isFinite(value)) return null
+  return value
+}
+
+export function refetchOnWindowFocus(query: Query, now: number = Date.now()): boolean | 'always' {
   if (catchUp) return true
   const fetchedAt = lastFetchedAt.get(query)
-  // 取得の記録が無い（手動で入れただけ等）クエリは取り直す
+  // 取得の記録が無い（手動で入れただけ等）クエリは、staleTime に従って取り直す
   if (fetchedAt === undefined) return true
-  return now - fetchedAt >= CONNECTED_FOCUS_REFETCH_AFTER_MS
+  const staleTime = finiteStaleTime(query)
+  if (staleTime === null) return true
+  const elapsed = now - fetchedAt
+  // 手動書き込みで dataUpdatedAt が新しいと、true では staleTime 内とみなされ取り直されない。
+  // 取得からの経過で判定し、超えていれば 'always' で staleTime を問わず取り直す。
+  return elapsed >= Math.max(CONNECTED_FOCUS_REFETCH_AFTER_MS, staleTime) ? 'always' : false
 }
