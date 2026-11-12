@@ -456,7 +456,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
       </div>
 
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
+        <div className="section-label" style={{ padding: '4px 10px 8px' }}
         >
           {t('Workspace')}
         </div>
@@ -466,7 +466,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
           <SidebarItem icon="check" label={t('My tasks')} active={page === 'tasks'} onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
+        <div className="section-label" style={{ padding: '20px 10px 8px' }}
         >
           {t('Library')}
         </div>
@@ -478,7 +478,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
           )}
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
+        <div className="section-label" style={{ padding: '20px 10px 8px' }}
         >
           {t('Manage')}
         </div>
@@ -487,7 +487,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
           <SidebarItem icon="settings" label={t('Settings')}     active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
+        <div className="section-label" style={{ padding: '20px 10px 8px' }}
         >
           {t('Pinned {label}', { label: projectLabel })}
         </div>
@@ -621,7 +621,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 'var(--z-dropdown)',
       minWidth: 160,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
+      <div className="section-label" style={{ padding: '4px 10px 8px' }}
       >
         {t('Status')}
       </div>
@@ -643,7 +643,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         </button>
       ))}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
+      <div className="section-label" style={{ padding: '4px 10px 8px' }}
       >
         {t('Status message')}
       </div>

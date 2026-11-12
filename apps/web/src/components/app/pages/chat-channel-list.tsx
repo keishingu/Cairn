@@ -33,7 +33,7 @@ export const ChatSidebarSection = ({ title, children, onAdd, sortMenu }: { title
   const t = useT()
   return (
   <div style={{ marginBottom: 10 }}>
-    <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="section-label" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
         {sortMenu}
@@ -82,9 +82,9 @@ const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS
     <div style={{ marginBottom: 10 }}>
       <button
         onClick={toggle}
+        className="section-label"
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 4,
-          fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
           padding: '6px 10px',
           background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
         }}
@@ -955,7 +955,7 @@ export const ChannelList = ({
     )}
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+        <div className="section-label" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
           >
             <span>{t('Direct messages')}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>

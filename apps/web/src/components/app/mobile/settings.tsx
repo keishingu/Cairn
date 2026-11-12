@@ -82,7 +82,7 @@ export function MobileSettings() {
         {/* セクション一覧 */}
         {navGroups.map(group => (
           <div key={group.label} style={{ margin: '16px 16px 0' }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, paddingLeft: 4 }}
+            <div className="section-label" style={{ marginBottom: 8, paddingLeft: 4 }}
             >
               {t(group.label)}
             </div>

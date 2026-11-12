@@ -36,11 +36,6 @@ export function formatDateRange(start: string | null, end: string | null, startT
   return `${startLabel} ~ ${fmt(end)}${et ? ` ${et}` : ''}`
 }
 
-const cardLabelStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
- marginBottom: 4,
-}
-
 // ─── インライン編集フィールド ─────────────────────────────────────
 // テキストは明示保存。保存は保存ボタン / Enter（複数行は Cmd/Ctrl+Enter）、取り消しはキャンセルボタン / Esc。
 // フォーカスが外れても保存も破棄もしない（入力中の内容を残したまま編集を続けられる）
@@ -685,7 +680,7 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <div style={{ ...cardLabelStyle, marginBottom: 0 }}>{t('Milestones')}</div>
+        <div className="section-label">{t('Milestones')}</div>
         {/* チャットからの作成と同じフォーム（PC はモーダル、モバイルはボトムシート）を開く */}
         <button
           type="button"
@@ -782,7 +777,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       {/* 日程 + ステータス */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>{t('Dates')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Dates')}</div>
           <InlineDatePair
             startDate={project.startDate}
             endDate={project.endDate}
@@ -794,7 +789,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>{t('Status')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Status')}</div>
           <InlineStatus
             statusName={project.statusName}
             onSave={name => patch.mutate({ statusName: name })}
@@ -805,7 +800,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 場所 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Location')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Location')}</div>
         <InlineLocation
           location={project.location}
           onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
@@ -816,7 +811,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* サマリー */}
       <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Summary')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Summary')}</div>
         <InlineText
           value={project.description ?? ''}
           onSave={v => editPatch.mutateAsync({ description: v || null })}
@@ -830,7 +825,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Archive')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Archive')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
           {project.archived
             ? t('This project is archived. Unarchiving shows it in the project list again.')
@@ -856,7 +851,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Delete')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Delete')}</div>
         <button
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}

@@ -56,11 +56,6 @@ export interface ChatDetailSidebarProps {
   isMobile?: boolean
 }
 
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
- marginBottom: 8,
-}
-
 function formatDate(iso: string): string {
   // Postgres date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
@@ -364,7 +359,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={SECTION_LABEL}>{t('Files')}</div>
+      <div className="section-label" style={{ marginBottom: 8 }}>{t('Files')}</div>
       {isLoading ? (
         <div style={{ fontSize: 12, color: 'var(--text-4)', padding: '4px 0' }}>{t('Loading...')}</div>
       ) : isError ? (
@@ -561,7 +556,7 @@ const ChatDetailContent = ({
 
     {memberLabel && (
     <div style={{ padding: '12px 16px' }}>
-      <div style={SECTION_LABEL}>{memberLabel}</div>
+      <div className="section-label" style={{ marginBottom: 8 }}>{memberLabel}</div>
       {channelMembers.length === 0 ? (
         <div style={{ fontSize: 12, color: 'var(--text-4)', padding: '4px 0' }}>{t('No members')}</div>
       ) : channelMembers.map((m, i) => {

@@ -53,7 +53,7 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       {placeId && (
         <>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 5 }}>{t('Place photos')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Place photos')}</div>
           {photosLoading ? (
             <div style={{ fontSize: 12, color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Icon name="loader" size={12}/> {t('Fetching...')}
@@ -79,7 +79,7 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
         </>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 5 }}>{t('Default')}</div>
+      <div className="section-label" style={{ marginBottom: 4 }}>{t('Default')}</div>
       <div>
         <button
           type="button"

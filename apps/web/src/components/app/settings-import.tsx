@@ -96,7 +96,7 @@ export function SettingsImport() {
   if (!isAdmin) {
     return (
       <div>
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600 }}>{t('Import from Teams')}</h1>
+        <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t('Import from Teams')}</h1>
         {isWorkspaceAdmin && importAccess.isError ? (
           <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
             <InlineError variant="box">
@@ -222,7 +222,7 @@ export function SettingsImport() {
 
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600 }}>{t('Import from Teams')}</h1>
+      <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t('Import from Teams')}</h1>
       <p style={{ ...noteStyle, marginBottom: 20 }}>
         {t('Import past group conversations from a Microsoft Teams (personal) export into Cairn channels. The export is read in your browser, and nothing is saved until you press Import.')}
       </p>

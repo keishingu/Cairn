@@ -697,7 +697,7 @@ const GcalCalendarPopover = ({ containerRef, calendars, hidden, onChange, onClos
       width: 220, background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-dropdown)', padding: 12,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8 }}>
+      <div className="section-label" style={{ marginBottom: 8 }}>
         {t('Calendars to show')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

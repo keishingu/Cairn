@@ -147,7 +147,7 @@ export const Avatar = ({ name = '', url, size = 28, ring = false, style }: Avata
   return (
     <div style={{
       ...base,
-      background: g[1],
+      background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
       color: '#fff', fontWeight: 600, fontSize: size * 0.42,
     }}>{initials}</div>
   )

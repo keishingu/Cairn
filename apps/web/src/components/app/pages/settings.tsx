@@ -133,7 +133,7 @@ const SettingsSafety = () => {
     if (!res.ok) throw new Error(t('Could not unblock the user'))
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-blocks'] }) })
   return <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('Safety and support')}</h1>
+    <h1 className="page-title">{t('Safety and support')}</h1>
     <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Manage blocked users and legal or contact links.')}</p>
     <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 14 }}>{t('Blocked users')}</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>{t('Loading...')}</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>{t('You have not blocked anyone.')}</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>{t('Unblock')}</button></div>)}</div></section>
     <section><h2 style={{ fontSize: 14 }}>{t('Legal and support')}</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{t(link.label)}</a>)}</div></section>
@@ -415,7 +415,7 @@ const SettingsAccount = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Account')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -786,7 +786,7 @@ const SettingsAppearance = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('Appearance')}</h1>
+      <h1 className="page-title">{t('Appearance')}</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
 
       <section style={{ marginBottom: 24 }}>
@@ -1193,7 +1193,7 @@ const SettingsWorkflow = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Workflow')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -1352,7 +1352,7 @@ const SettingsAI = () => {
   const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
   <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+    <h1 className="page-title">
       {t('AI agent')}
     </h1>
     <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -1918,7 +1918,7 @@ const SettingsWorkspaceGeneral = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Workspace settings')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -2784,7 +2784,7 @@ const SettingsIntegrations = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Integrations')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -3379,7 +3379,7 @@ const SettingsBilling = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Billing')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
@@ -3638,7 +3638,7 @@ const SettingsDeveloper = () => {
   if (!isOwner) {
     return (
       <div>
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600 }}>
+        <h1 className="page-title" style={{ margin: '0 0 6px' }}>
           {t('Developer info')}
         </h1>
         <p style={{ color: 'var(--text-3)', fontSize: 13 }}>
@@ -3651,9 +3651,7 @@ const SettingsDeveloper = () => {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-        <h1
-          style={{ margin: 0, fontSize: 22, fontWeight: 600, flex: 1 }}
-        >
+        <h1 className="page-title" style={{ margin: 0, flex: 1 }}>
           {t('Developer info')}
         </h1>
         <button
@@ -3954,7 +3952,7 @@ export function SettingsSectionContent({ section }: { section: string }) {
   if (Comp) return <Comp />
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 600 }}>{t(settingsSectionLabel(section))}</h1>
+      <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t(settingsSectionLabel(section))}</h1>
       <p style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Settings for this section are not ready yet.')}</p>
     </div>
   )

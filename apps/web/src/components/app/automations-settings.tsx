@@ -300,7 +300,7 @@ export function AutomationsSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('AI automations')}</h1>
+          <h1 className="page-title">{t('AI automations')}</h1>
           <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
             {t('Define skills that the AI runs from written instructions. Members call a skill as $name in the AI assistant, and any write runs only after the caller approves it.')}
           </p>

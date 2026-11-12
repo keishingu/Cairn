@@ -138,7 +138,7 @@ export const FilterPopover = ({
         controls[nextIndex]?.focus()
         controls[nextIndex]?.scrollIntoView?.({ block: 'nearest' })
       }}>
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8 }}>
+      <div className="section-label" style={{ marginBottom: 8 }}>
         {t('Status')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -165,7 +165,7 @@ export const FilterPopover = ({
 
       {allMembers.length > 0 && (
         <>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, marginTop: 12 }}>
+          <div className="section-label" style={{ marginBottom: 8, marginTop: 12 }}>
             {t('Participants')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

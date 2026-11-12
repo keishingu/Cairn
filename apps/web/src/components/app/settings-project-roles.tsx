@@ -220,7 +220,7 @@ export const SettingsProjectRoles = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
+      <h1 className="page-title">
         {t('Roles')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>

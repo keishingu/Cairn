@@ -179,6 +179,10 @@
 .app *::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; border: 2px solid transparent; }
 .app *::-webkit-scrollbar-track { background: transparent; }
 
+/* 文字の階層は太さではなくサイズと色で付ける。画面ごとの余白や配置はインライン style で上書きする */
+.app .page-title { margin: 0 0 4px; font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.app .section-label { font-size: 12px; font-weight: 500; color: var(--text-3); }
+
 .app .btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; font-family: inherit; }
 .app .btn { justify-content:center; white-space:nowrap; }
 .app .btn:disabled { opacity:.5; cursor:not-allowed; }

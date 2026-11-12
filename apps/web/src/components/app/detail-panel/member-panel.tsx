@@ -604,10 +604,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         padding: isMobile ? '0' : '12px 16px',
         paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
       }}>
-        <div style={{
-          fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
-          padding: isMobile ? '14px 16px 6px' : '0 0 4px',
-        }}>
+        <div className="section-label" style={{ padding: isMobile ? '16px 16px 8px' : '0 0 4px' }}>
           {t('Project history')}
         </div>
 

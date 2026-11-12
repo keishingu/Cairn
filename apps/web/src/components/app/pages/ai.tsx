@@ -226,7 +226,7 @@ function ConversationSidebar({
         )}
         {groups.map(group => (
           <React.Fragment key={group}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '8px 10px' }}>{t(group)}</div>
+            <div className="section-label" style={{ padding: '8px 10px' }}>{t(group)}</div>
             {(grouped[group] ?? []).map(c => (
               <button
                 key={c.id}

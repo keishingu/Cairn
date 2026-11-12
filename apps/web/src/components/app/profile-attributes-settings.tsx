@@ -189,7 +189,7 @@ export function ProfileAttributesSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('Profile attributes')}</h1>
+          <h1 className="page-title">{t('Profile attributes')}</h1>
           <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
             {t('Manage shared labels and colors for members. Attributes are shared across every project in the workspace.')}
           </p>

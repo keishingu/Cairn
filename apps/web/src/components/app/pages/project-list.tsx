@@ -364,7 +364,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <div style={{ minWidth: 796 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>
+            <div className="section-label" style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
                 const labels: Record<SortKey, string> = { title: t('Projects'), status: t('Status'), date: t('Schedule'), progress: t('Progress') }
