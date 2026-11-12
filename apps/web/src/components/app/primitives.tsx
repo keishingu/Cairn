@@ -87,6 +87,7 @@ const PATHS: Record<string, React.ReactNode> = {
   list:        <><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></>,
   layers:      <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
   lock:        <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></>,
+  shield:      <><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/></>,
   hash:        <><line x1="5" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="19" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></>,
   tent:        <><path d="M3 20l9-15 9 15z"/><path d="M12 5v15"/><path d="M9 20l3-4 3 4"/></>,
   mic:         <><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 12a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></>,
@@ -250,7 +251,7 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
       height: sm ? 16 : 18, minWidth: sm ? 16 : 18, padding: '0 5px',
       borderRadius: 999, boxSizing: 'border-box', lineHeight: 1,
       background: 'var(--accent)', color: 'var(--on-accent)',
-      fontSize: sm ? 10 : 11, fontWeight: 700,
+      fontSize: sm ? 'var(--fs-2xs)' : 'var(--fs-xs)', fontWeight: 600,
       ...style,
     }}>
       {count > max ? `${max}+` : count}
@@ -335,7 +336,7 @@ export const TopBarSearch = ({ value, onChange, placeholder }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={resolvedPlaceholder}
-        style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+        style={{ flex: 1, fontSize: 'var(--fs-md)', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
           // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
@@ -360,8 +361,8 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <Icon name={icon} size={26}/>
       </div>
-      <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
+      <h2 style={{ margin: '0 0 6px', fontSize: 'var(--fs-2xl)', fontWeight: 600 }}>{name}</h2>
+      <p style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--text-3)', lineHeight: 1.6 }}>
         {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
     </div>
@@ -441,8 +442,8 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       </div>
     )}
     <div style={{ flex: 1, minWidth: 0 }}>
-      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
-      {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
+      <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
+      {subtitle && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
     <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
@@ -460,16 +461,16 @@ interface FieldProps {
 export const Field = ({ label, hint, required, error, children, htmlFor }: FieldProps) => (
   <label htmlFor={htmlFor} style={{ display: 'block' }}>
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
+      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
         {label}
         {required && <span style={{ color: 'var(--red)', marginLeft: 4 }}>*</span>}
       </span>
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{hint}</span>}
     </div>
     {children}
     {error && (
-      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
+      <div style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 'var(--fs-2xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
         {error}
       </div>
     )}
@@ -481,7 +482,7 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     width: '100%', height: 36, padding: '0 12px',
     border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit',
+    fontSize: 'var(--fs-md)', fontFamily: 'inherit',
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
@@ -493,13 +494,13 @@ export function sheetFieldInputStyle(invalid: boolean): React.CSSProperties {
     width: '100%', height: 44, padding: '0 12px',
     border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: 10, background: 'var(--card-2)', color: 'var(--text)',
-    fontSize: 15, fontFamily: 'inherit', outline: 'none',
+    fontSize: 'var(--fs-xl)', fontFamily: 'inherit', outline: 'none',
     boxSizing: 'border-box',
   }
 }
 
 export const sheetFieldLabelStyle: React.CSSProperties = {
-  fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
+  fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
 }
 
 /**
@@ -515,7 +516,7 @@ export function useFieldInputStyle(): (invalid: boolean) => React.CSSProperties 
 export function useFieldLabelStyle(): React.CSSProperties {
   return React.useContext(FormVariantContext) === 'sheet'
     ? sheetFieldLabelStyle
-    : { fontSize: 12, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
+    : { fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 }
 
 export function fieldTextareaStyle(invalid: boolean): React.CSSProperties {

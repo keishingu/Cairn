@@ -883,7 +883,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'No members yet': '아직 멤버가 없습니다',
   'No messages yet': '아직 메시지가 없습니다',
   'No messages match "{query}"': '"{query}"와(과) 일치하는 메시지가 없습니다',
-  'No messages yet. Send the first one!': '아직 메시지가 없습니다. 첫 메시지를 보내 보세요!',
+  'No messages yet. Send the first one!': '아직 메시지가 없습니다. 첫 메시지를 보내 보세요.',
   'No messages yet. Send the first one.': '아직 메시지가 없습니다. 첫 메시지를 보내 보세요.',
   'No milestones yet.': '아직 마일스톤이 없습니다.',
   'No notifications yet': '아직 알림이 없습니다',

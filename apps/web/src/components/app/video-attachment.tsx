@@ -39,7 +39,7 @@ export function VideoAttachment({
             background: 'var(--card-2)',
             border: '1px solid var(--border)',
             color: 'var(--text-3)',
-            fontSize: 12.5,
+            fontSize: 'var(--fs-md)',
           }}
         >
           {t('This video cannot be played in this browser. Download it to watch.')}
@@ -61,7 +61,7 @@ export function VideoAttachment({
           }}
         />
       )}
-      <div style={{ display: 'flex', gap: 10, minWidth: 0, fontSize: 11.5 }}>
+      <div style={{ display: 'flex', gap: 10, minWidth: 0, fontSize: 'var(--fs-sm)' }}>
         <a
           href={downloadHref}
           download={fileName}
@@ -77,7 +77,7 @@ export function VideoAttachment({
       </div>
       {/* 支援状態を取れないときは「原本なし」として黙って隠さず、失敗を見せて再試行させる */}
       {uploadRights.isError && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--red-text)' }}>
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>
           <span>{t('Could not check whether you can download original files.')}</span>
           <button
             type="button"

@@ -103,7 +103,7 @@ export function MermaidDiagram({ definition }: MermaidDiagramProps) {
         borderRadius: 8,
         background: 'var(--card-2)',
         color: state.error ? 'var(--red-text)' : 'var(--text-3)',
-        fontSize: 12,
+        fontSize: 'var(--fs-sm)',
       }}
       aria-busy={!state.svg && !state.error}
     >

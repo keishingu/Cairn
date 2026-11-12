@@ -262,13 +262,13 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
           pointerEvents: 'none',
         }}>
           {item.caption && (
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
               {item.caption}
             </div>
           )}
           {(images.length > 1 || item.meta) && (
             <div style={{
-              fontSize: 12, color: 'rgba(255,255,255,0.65)',
+              fontSize: 'var(--fs-sm)', color: 'rgba(255,255,255,0.65)',
               background: 'rgba(0,0,0,0.4)', padding: '3px 10px', borderRadius: 20,
             }}>
               {images.length > 1 ? `${index + 1} / ${images.length}` : ''}

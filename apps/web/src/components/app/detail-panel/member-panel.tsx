@@ -91,18 +91,18 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
           <Icon name="folder" size={16}/>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
             {project.title}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
             {project.archived && <ArchivedBadge/>}
-            <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
               {formatDateRange(project.startDate, project.endDate)}
             </span>
           </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: roleColor, background: roleBackground, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+        <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: roleColor, background: roleBackground, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
           {roleLabel}
         </span>
         <Icon name="chevRight" size={14} color="var(--text-4)"/>
@@ -132,7 +132,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12.5, fontWeight: 600, color: 'var(--text)',
+          fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           marginBottom: 3,
         }}>
@@ -141,13 +141,13 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
           {project.archived && <ArchivedBadge/>}
-          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>
             {formatDateRange(project.startDate, project.endDate)}
           </span>
         </div>
       </div>
       <span style={{
-        fontSize: 10.5, fontWeight: 700, flexShrink: 0,
+        fontSize: 'var(--fs-xs)', fontWeight: 600, flexShrink: 0,
         color: roleColor, background: roleBackground,
         padding: '2px 7px', borderRadius: 4,
       }}>
@@ -300,7 +300,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         aria-label={t('Change workspace role')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
-          fontSize: isMobile ? 11 : 10.5, fontWeight: 700,
+          fontSize: isMobile ? 'var(--fs-xs)' : 'var(--fs-xs)', fontWeight: 600,
           color: rs.c, background: rs.bg,
           padding: isMobile ? '2px 6px 2px 8px' : '2px 6px 2px 8px', borderRadius: 4,
           border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -333,7 +333,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 padding: isMobile ? '10px 14px' : '7px 12px', border: 'none',
                 background: currentRole === role ? 'var(--card-2)' : 'transparent',
                 color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
-                fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
+                fontSize: isMobile ? 'var(--fs-lg)' : 'var(--fs-md)', fontWeight: currentRole === role ? 600 : 500,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
               }}
               className={currentRole !== role ? 'hover-bg' : undefined}
@@ -345,7 +345,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       )}
     </div>
   ) : (
-    <span style={{ fontSize: isMobile ? 11 : 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+    <span style={{ fontSize: isMobile ? 'var(--fs-xs)' : 'var(--fs-xs)', fontWeight: 600, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
       {t(WS_ROLE_LABEL[currentRole])}
     </span>
   )
@@ -403,18 +403,18 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             >
               <Icon name="chevLeft" size={18}/>
             </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>{t('Member details')}</span>
+            <span style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', flex: 1 }}>{t('Member details')}</span>
           </div>
           <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+              <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}
               </div>
               {member.email && (
                 <div
                   style={{
-                    fontSize: 13,
+                    fontSize: 'var(--fs-md)',
                     color: 'var(--text-4)',
                     marginBottom: 6,
                     overflow: 'hidden',
@@ -427,7 +427,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {roleBadge}
-                <span style={{ fontSize: 12, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="clock" size={11}/> {formatJoinedAt(member.joinedAt, t)}
                 </span>
               </div>
@@ -448,13 +448,13 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         >
           <Avatar name={member.displayName} size={52}/>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+            <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>
               {member.displayName}
             </div>
             {member.email && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   color: 'var(--text-4)',
                   marginBottom: 6,
                   overflow: 'hidden',
@@ -467,7 +467,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {roleBadge}
-              <span style={{ fontSize: 11, color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 <Icon name="clock" size={10}/>
                 {formatJoinedAt(member.joinedAt, t)}
               </span>
@@ -490,12 +490,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
 
       <div style={{ padding: isMobile ? '12px 16px' : '10px 16px', borderBottom: '1px solid var(--divider)', background: isMobile ? 'var(--card)' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: profileAttributes.length > 0 || editingAttributes ? 8 : 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>{t('Attributes')}</span>
+          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-4)', letterSpacing: '0.06em' }}>{t('Attributes')}</span>
           {canEditAttributes && !editingAttributes && (
             <button
               type="button"
               onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
-              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
             >
               {t('Edit')}
             </button>
@@ -504,11 +504,11 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         {editingAttributes ? (
           <div>
             {attributeOptionsLoading ? (
-              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Loading...')}</div>
+              <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)' }}>{t('Loading...')}</div>
             ) : attributeOptionsError ? (
-              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>{t('Could not load the attribute list')}</div>
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{t('Could not load the attribute list')}</div>
             ) : attributeOptions.length === 0 ? (
-              <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Create attributes in settings.')}</div>
+              <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)' }}>{t('Create attributes in settings.')}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {attributeOptions.map(attribute => {
@@ -540,14 +540,14 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 })}
               </div>
             )}
-            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{t('{count}/5 items', { count: draftAttributeIds.length })}</div>
-            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
+            <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 'var(--fs-xs)', fontVariantNumeric: 'tabular-nums' }}>{t('{count}/5 items', { count: draftAttributeIds.length })}</div>
+            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 'var(--fs-sm)', marginTop: 6 }}>{attributeError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
               <button
                 type="button"
                 onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(false); setAttributeError(null) }}
                 className="btn btn-ghost"
-                style={{ height: 30, padding: '0 10px', fontSize: 12 }}
+                style={{ height: 30, padding: '0 10px', fontSize: 'var(--fs-sm)' }}
               >
                 {t('Cancel')}
               </button>
@@ -556,7 +556,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 onClick={handleSaveAttributes}
                 disabled={attributeMutation.isPending || attributeOptionsLoading || !!attributeOptionsError}
                 className="btn btn-primary"
-                style={{ height: 30, padding: '0 12px', fontSize: 12 }}
+                style={{ height: 30, padding: '0 12px', fontSize: 'var(--fs-sm)' }}
               >
                 {attributeMutation.isPending ? t('Saving...') : t('Save')}
               </button>
@@ -565,7 +565,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         ) : profileAttributes.length > 0 ? (
           <ProfileAttributeBadges attributes={profileAttributes} />
         ) : (
-          <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('Not set')}</span>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('Not set')}</span>
         )}
       </div>
 
@@ -581,18 +581,18 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           borderRight: '1px solid var(--divider)',
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
-          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
+          <span style={{ fontSize: isMobile ? 'var(--fs-3xl)' : 'var(--fs-3xl)', fontWeight: 600, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.length}
           </span>
-          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
+          <span style={{ fontSize: isMobile ? 'var(--fs-sm)' : 'var(--fs-xs)', color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
             <Icon name="folder" size={isMobile ? 12 : 11}/> {t('Joined projects')}
           </span>
         </div>
         <div style={{ flex: 1, padding: isMobile ? '12px 20px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
+          <span style={{ fontSize: isMobile ? 'var(--fs-3xl)' : 'var(--fs-3xl)', fontWeight: 600, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.filter(p => p.role === 'leader' || p.role === 'subleader').length}
           </span>
-          <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
+          <span style={{ fontSize: isMobile ? 'var(--fs-sm)' : 'var(--fs-xs)', color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
             <Icon name="users" size={isMobile ? 12 : 11}/> {t('Leadership experience')}
           </span>
         </div>
@@ -604,11 +604,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         padding: isMobile ? '0' : '12px 16px',
         paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
       }}>
-        <div style={{
-          fontSize: 11, fontWeight: 600, color: 'var(--text-4)',
-          letterSpacing: '0.06em', textTransform: 'uppercase',
-          padding: isMobile ? '14px 16px 6px' : '0 0 4px',
-        }}>
+        <div className="section-label" style={{ padding: isMobile ? '16px 16px 8px' : '0 0 4px' }}>
           {t('Project history')}
         </div>
 
@@ -630,7 +626,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             gap: isMobile ? 10 : 8, padding: isMobile ? '40px 16px' : '32px 0', color: 'var(--text-4)',
           }}>
             <Icon name="folder" size={isMobile ? 32 : 28}/>
-            <span style={{ fontSize: isMobile ? 14 : 12.5 }}>{t('No joined projects')}</span>
+            <span style={{ fontSize: isMobile ? 'var(--fs-lg)' : 'var(--fs-md)' }}>{t('No joined projects')}</span>
           </div>
         ) : (
           sortedProjects.map(p => (

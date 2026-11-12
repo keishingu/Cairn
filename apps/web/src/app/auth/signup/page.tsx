@@ -82,10 +82,10 @@ function SignupForm() {
   return (
     <div style={{ width: '100%', maxWidth: 400 }}>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+        <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{inviteToken ? t('Create an account and join') : t('Create a new workspace')}</div>
+        <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)' }}>{inviteToken ? t('Create an account and join') : t('Create a new workspace')}</div>
       </div>
 
       <div style={{
@@ -99,13 +99,13 @@ function SignupForm() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{t('or continue with email')}</span>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', whiteSpace: 'nowrap' }}>{t('or continue with email')}</span>
           <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Display name')}</label>
+            <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Display name')}</label>
             <input
               type="text"
               value={displayName}
@@ -117,7 +117,7 @@ function SignupForm() {
                 padding: '9px 12px',
                 border: '1px solid var(--border-2)',
                 borderRadius: 8,
-                fontSize: 14,
+                fontSize: 'var(--fs-lg)',
                 color: 'var(--text)',
                 background: 'var(--bg)',
                 outline: 'none',
@@ -127,7 +127,7 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
+            <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -139,7 +139,7 @@ function SignupForm() {
                 padding: '9px 12px',
                 border: '1px solid var(--border-2)',
                 borderRadius: 8,
-                fontSize: 14,
+                fontSize: 'var(--fs-lg)',
                 color: 'var(--text)',
                 background: 'var(--bg)',
                 outline: 'none',
@@ -149,7 +149,7 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
+            <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
@@ -161,7 +161,7 @@ function SignupForm() {
                 padding: '9px 12px',
                 border: '1px solid var(--border-2)',
                 borderRadius: 8,
-                fontSize: 14,
+                fontSize: 'var(--fs-lg)',
                 color: 'var(--text)',
                 background: 'var(--bg)',
                 outline: 'none',
@@ -177,7 +177,7 @@ function SignupForm() {
               background: 'var(--red-soft)',
               border: '1px solid var(--red)',
               color: 'var(--red-text)',
-              fontSize: 12.5,
+              fontSize: 'var(--fs-md)',
             }}>
               {error}
             </div>
@@ -194,8 +194,8 @@ function SignupForm() {
         </form>
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-3)' }}>
-        <div style={{ marginBottom: 12, fontSize: 12 }}>
+      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
+        <div style={{ marginBottom: 12, fontSize: 'var(--fs-sm)' }}>
           <Link href="/terms">{t('Terms')}</Link>
           {t(' · ')}
           <Link href="/privacy">{t('Privacy policy')}</Link>

@@ -69,7 +69,7 @@ const ToastRow = ({ item, leaving }: RenderedToast) => {
         >
           <Icon name={v.icon} size={13} strokeWidth={2.2} />
         </span>
-        <span style={{ flex: 1, padding: '2px 0', fontSize: 13, fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word' }}>
+        <span style={{ flex: 1, padding: '2px 0', fontSize: 'var(--fs-md)', fontWeight: 500, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word' }}>
           {item.message}
         </span>
         {item.action && (
@@ -77,7 +77,7 @@ const ToastRow = ({ item, leaving }: RenderedToast) => {
             href={item.action.href}
             className="btn btn-ghost"
             onClick={() => dismissToast(item.id)}
-            style={{ height: 26, padding: '0 8px', fontSize: 12, flexShrink: 0, alignSelf: 'center', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+            style={{ height: 26, padding: '0 8px', fontSize: 'var(--fs-sm)', flexShrink: 0, alignSelf: 'center', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
           >
             {item.action.label}
           </a>

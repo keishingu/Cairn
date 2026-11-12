@@ -30,7 +30,7 @@ export function RealtimeIndicator() {
         background: 'var(--card)',
         border: '1px solid var(--border)',
         boxShadow: 'var(--shadow-lg)',
-        fontSize: 12.5,
+        fontSize: 'var(--fs-md)',
         fontWeight: 600,
         color: 'var(--text-2)',
       }}

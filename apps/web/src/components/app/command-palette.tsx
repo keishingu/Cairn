@@ -59,11 +59,11 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={t('Search commands…')}
-          style={{ border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', padding: '14px 16px', fontSize: 15, color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
+          style={{ border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', padding: '14px 16px', fontSize: 'var(--fs-xl)', color: 'var(--text)', outline: 'none', fontFamily: 'inherit' }}
         />
         <div style={{ overflowY: 'auto', padding: 6 }}>
           {filtered.length === 0 && (
-            <div style={{ padding: '16px', fontSize: 13, color: 'var(--text-4)', textAlign: 'center' }}>{t('No matches')}</div>
+            <div style={{ padding: '16px', fontSize: 'var(--fs-md)', color: 'var(--text-4)', textAlign: 'center' }}>{t('No matches')}</div>
           )}
           {filtered.map((c, i) => (
             <button
@@ -74,11 +74,11 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderRadius: 8,
                 background: i === index ? 'var(--card-2)' : 'transparent', cursor: 'pointer',
-                fontSize: 13.5, color: 'var(--text)', fontFamily: 'inherit',
+                fontSize: 'var(--fs-lg)', color: 'var(--text)', fontFamily: 'inherit',
               }}
             >
               <span>{t(c.title)}</span>
-              <kbd style={{ fontFamily: 'inherit', fontSize: 11, padding: '2px 6px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+              <kbd style={{ fontFamily: 'inherit', fontSize: 'var(--fs-xs)', padding: '2px 6px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
                 {formatCommandKeys(c, mac)}
               </kbd>
             </button>

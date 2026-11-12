@@ -125,7 +125,7 @@ const FileRow = ({
   const fileMeta = (
     <div
       style={{
-        fontSize: 11,
+        fontSize: 'var(--fs-xs)',
         color: 'var(--text-3)',
         marginTop: 2,
         overflow: 'hidden',
@@ -201,7 +201,7 @@ const FileRow = ({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
-                fontSize: 13,
+                fontSize: 'var(--fs-md)',
                 fontWeight: 600,
                 color: 'var(--text)',
                 overflow: 'hidden',
@@ -310,13 +310,13 @@ const FileSection = ({
     >
       <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
       <Icon name="folder" size={14} color="var(--text-3)" />
-      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', flex: 1 }}>
+      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', flex: 1 }}>
         {label}
       </span>
       {count !== undefined && (
         <span
           style={{
-            fontSize: 11,
+            fontSize: 'var(--fs-xs)',
             fontWeight: 600,
             color: 'var(--text-3)',
             background: 'var(--card)',
@@ -585,7 +585,7 @@ export const PageFiles = ({
         {facetsQuery.isError && (
           <div
             role="alert"
-            style={{ margin: isMobile ? 12 : '16px 20px 0', fontSize: 12.5, color: 'var(--danger)' }}
+            style={{ margin: isMobile ? 12 : '16px 20px 0', fontSize: 'var(--fs-md)', color: 'var(--danger)' }}
           >
             {facetsQuery.error.message}
           </div>
@@ -614,7 +614,7 @@ export const PageFiles = ({
               height: '60%',
               gap: 12,
               color: 'var(--danger)',
-              fontSize: 13,
+              fontSize: 'var(--fs-md)',
             }}
           >
             {filesQuery.error.message}
@@ -648,8 +648,8 @@ export const PageFiles = ({
             >
               <Icon name="file" size={22} />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No files')}</div>
-            <div style={{ fontSize: 12.5 }}>
+            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('No files')}</div>
+            <div style={{ fontSize: 'var(--fs-md)' }}>
               {listParams === ''
                 ? t('Files you send in chat show up here')
                 : t('No files match this filter')}
@@ -702,14 +702,14 @@ export const PageFiles = ({
             </div>
             <div ref={sentinelRef} />
             {isFetchingNextPage && (
-              <div style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--text-3)' }}>
+              <div style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
                 {t('Loading...')}
               </div>
             )}
             {filesQuery.isFetchNextPageError && (
               <div
                 role="alert"
-                style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--danger)' }}
+                style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 'var(--fs-md)', color: 'var(--danger)' }}
               >
                 {filesQuery.error?.message}{' '}
                 <button className="btn" onClick={() => void fetchNextPage()}>
@@ -793,8 +793,8 @@ export const PageFiles = ({
                 style={{
                   flex: 1,
                   minWidth: 0,
-                  fontSize: 14,
-                  fontWeight: 700,
+                  fontSize: 'var(--fs-lg)',
+                  fontWeight: 600,
                   color: 'var(--text)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -808,7 +808,7 @@ export const PageFiles = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  fontSize: 12,
+                  fontSize: 'var(--fs-sm)',
                   color: 'var(--accent)',
                   textDecoration: 'none',
                   fontWeight: 600,
@@ -836,16 +836,16 @@ export const PageFiles = ({
                 padding: isMobile ? 16 : 24,
                 overflowY: 'auto',
                 color: 'var(--text)',
-                fontSize: 14,
+                fontSize: 'var(--fs-lg)',
                 lineHeight: 1.7,
               }}
             >
               {isTextPreviewLoading ? (
-                <div style={{ color: 'var(--text-3)', fontSize: 13 }}>
+                <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
                   {t('Loading text...')}
                 </div>
               ) : isTextPreviewError ? (
-                <div style={{ color: 'var(--danger)', fontSize: 13 }}>
+                <div style={{ color: 'var(--danger)', fontSize: 'var(--fs-md)' }}>
                   {t('Could not load the text preview.')}
                 </div>
               ) : isMarkdownFile(textPreviewFile) ? (
@@ -861,7 +861,7 @@ export const PageFiles = ({
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                     fontFamily: 'inherit',
-                    fontSize: 14,
+                    fontSize: 'var(--fs-lg)',
                     lineHeight: 1.7,
                   }}
                 >

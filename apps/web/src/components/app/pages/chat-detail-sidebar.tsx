@@ -56,11 +56,6 @@ export interface ChatDetailSidebarProps {
   isMobile?: boolean
 }
 
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)',
-  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8,
-}
-
 function formatDate(iso: string): string {
   // Postgres date 列の 'YYYY-MM-DD' を UTC 解釈せずローカル日付として扱う（負オフセットで前日になるのを防ぐ）
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
@@ -127,15 +122,15 @@ const TextFilePreviewDialog = ({ file, onClose }: { file: ChannelFileDto; onClos
       <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px, 100%)', maxHeight: 'min(760px, 90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-pop)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <FileTypeIcon mimeType={file.mimeType} fileName={file.fileName} fileId={file.id}/>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>
-          <a href={`/api/attachments/${file.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>{t('Open in a new tab')}</a>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</div>
+          <a href={`/api/attachments/${file.id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 'var(--fs-sm)', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>{t('Open in a new tab')}</a>
           <button onClick={onClose} aria-label={t('Close preview')} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', padding: 4 }}><Icon name="close" size={16}/></button>
         </div>
-        <div style={{ padding: 24, overflowY: 'auto', color: 'var(--text)', fontSize: 14, lineHeight: 1.7 }}>
-          {isLoading ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Loading text...')}</div>
-            : isError ? <div style={{ color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load the text preview.')}</div>
+        <div style={{ padding: 24, overflowY: 'auto', color: 'var(--text)', fontSize: 'var(--fs-lg)', lineHeight: 1.7 }}>
+          {isLoading ? <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Loading text...')}</div>
+            : isError ? <div style={{ color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{t('Could not load the text preview.')}</div>
               : isMarkdownFile(file) ? <MarkdownContent content={content ?? ''} fontSize={14} lineHeight={1.7}/>
-                : <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.7 }}>{content ?? ''}</pre>}
+                : <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: 'var(--fs-lg)', lineHeight: 1.7 }}>{content ?? ''}</pre>}
         </div>
       </div>
     </div>
@@ -166,7 +161,7 @@ const ExpandableDescription = ({ text }: { text: string }) => {
   return (
     <div>
       <div style={{ position: 'relative' }}>
-        <p ref={ref} style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...collapsedStyle }}>
+        <p ref={ref} style={{ margin: 0, fontSize: 'var(--fs-md)', lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...collapsedStyle }}>
           {text}
         </p>
         {clamped && !expanded && (
@@ -176,7 +171,7 @@ const ExpandableDescription = ({ text }: { text: string }) => {
       {clamped && (
         <button
           onClick={() => setExpanded(e => !e)}
-          style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+          style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
         >
           {expanded ? t('Close') : t('Read more')}
         </button>
@@ -229,12 +224,12 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <Icon name="check" size={12} color="var(--accent)"/>
           {t('Tasks')}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 600 }}>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', fontWeight: 600 }}>
             {completed} / {total}
           </span>
           {channel && (
@@ -251,11 +246,11 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
       </div>
 
       {isLoading ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('Loading...')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('Loading...')}</div>
       ) : isError ? (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '8px 0 2px' }}>{error.message}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)', padding: '8px 0 2px' }}>{error.message}</div>
       ) : tasks.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('No tasks yet')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '8px 0 2px' }}>{t('No tasks yet')}</div>
       ) : (
         <div>
           <div style={{ position: 'relative' }}>
@@ -280,14 +275,14 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
                     </button>
                     {task.sourceMessageId ? (
                       <button type="button" onClick={() => onJumpToMessage(task.sourceMessageId!)} title={t('Go to the message that created this task')}
-                        style={{ padding: 0, border: 'none', background: 'transparent', font: 'inherit', fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1, textAlign: 'left', cursor: 'pointer' }}>
+                        style={{ padding: 0, border: 'none', background: 'transparent', font: 'inherit', fontSize: 'var(--fs-md)', lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1, textAlign: 'left', cursor: 'pointer' }}>
                         {formatTaskTitleForDisplay(task.title)}
                         <span aria-label={t('Linked to a message')} style={{ display: 'inline-flex', marginLeft: 4, verticalAlign: 'text-bottom' }}>
                           <Icon name="chat" size={11} color="var(--text-4)"/>
                         </span>
                       </button>
                     ) : (
-                      <span style={{ fontSize: 12.5, lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
+                      <span style={{ fontSize: 'var(--fs-md)', lineHeight: 1.5, color: done ? 'var(--text-4)' : 'var(--text-2)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word', flex: 1 }}>
                         {formatTaskTitleForDisplay(task.title)}
                       </span>
                     )}
@@ -311,7 +306,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
           {clamped && (
             <button
               onClick={() => setExpanded(e => !e)}
-              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
               {expanded ? t('Show less') : t('Show all')}
             </button>
@@ -364,13 +359,13 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-      <div style={SECTION_LABEL}>{t('Files')}</div>
+      <div className="section-label" style={{ marginBottom: 8 }}>{t('Files')}</div>
       {isLoading ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('Loading...')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0' }}>{t('Loading...')}</div>
       ) : isError ? (
-        <div style={{ fontSize: 11.5, color: 'var(--red-text)', padding: '4px 0' }}>{t('Could not load files')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)', padding: '4px 0' }}>{t('Could not load files')}</div>
       ) : files.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('No files yet')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0' }}>{t('No files yet')}</div>
       ) : (
         <div>
           {visibleFiles.map((f: ChannelFileDto) => {
@@ -382,7 +377,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
             const fileIcon = isLink && f.externalUrl
               ? <GoogleDocsIcon url={f.externalUrl} width={26} height={30}/>
               : <FileTypeIcon mimeType={f.mimeType} fileName={f.fileName} fileId={f.id} width={26} height={30}/>
-            const fileMeta = <div style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{meta}</div>
+            const fileMeta = <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{meta}</div>
 
             return (
               <div
@@ -417,7 +412,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     style={{ flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', cursor: canJump ? 'pointer' : 'default' }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.fileName}
                       </div>
                       {fileMeta}
@@ -440,7 +435,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
           {hasMore && (
             <button
               onClick={() => setExpanded(e => !e)}
-              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+              style={{ marginTop: 4, border: 'none', background: 'transparent', color: 'var(--accent-text)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
             >
               {expanded ? t('Show less') : t('Show all')}
             </button>
@@ -484,14 +479,14 @@ const ChatDetailContent = ({
   <>
     {isProject ? (
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--divider)' }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</div>
+        <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{channelName}</div>
         {project && formatDateRange(project.startDate, project.endDate, t) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>
             <Icon name="calendar" size={12} color="var(--text-4)"/>
             {formatDateRange(project.startDate, project.endDate, t)}
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>{t('Project channel')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 4 }}>{t('Project channel')}</div>
         <button
           onClick={onOpenProject}
           className="btn btn-block"
@@ -509,7 +504,7 @@ const ChatDetailContent = ({
             : isPrivate
               ? <Icon name="lock" size={14} color="var(--amber-text)"/>
               : <Icon name="hash" size={14} color="var(--text-3)"/>}
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>{channelName}</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{channelName}</span>
         </div>
         {isDm && (
           <button
@@ -526,7 +521,7 @@ const ChatDetailContent = ({
           <>
             <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--amber-soft)', border: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="lock" size={12} color="var(--amber-text)"/>
-              <span style={{ fontSize: 11.5, color: 'var(--amber-text)', fontWeight: 600 }}>{t('Only invited members can view this')}</span>
+              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--amber-text)', fontWeight: 600 }}>{t('Only invited members can view this')}</span>
             </div>
             <button
               onClick={onInviteMember}
@@ -561,9 +556,9 @@ const ChatDetailContent = ({
 
     {memberLabel && (
     <div style={{ padding: '12px 16px' }}>
-      <div style={SECTION_LABEL}>{memberLabel}</div>
+      <div className="section-label" style={{ marginBottom: 8 }}>{memberLabel}</div>
       {channelMembers.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0' }}>{t('No members')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0' }}>{t('No members')}</div>
       ) : channelMembers.map((m, i) => {
         const clickable = !!m.userId
         return (
@@ -584,7 +579,7 @@ const ChatDetailContent = ({
               <Avatar name={m.name} url={m.url} size={24}/>
               <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
             </div>
-            <span style={{ fontSize: 12.5, color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
           </div>
         )
       })}
@@ -628,7 +623,7 @@ export const ChatDetailSidebar = ({
     )}
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)' }}>
-        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(panelTitle(props))}</h3>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t(panelTitle(props))}</h3>
       </div>
       <ChatDetailContent {...props}/>
     </div>
@@ -645,7 +640,7 @@ export const ChatInfoDrawer = ({ onClose, ...props }: ChatDetailSidebarProps & {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', zIndex: 'var(--z-drawer-backdrop)', animation: 'notifFadeIn .15s ease-out' }}/>
     <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(86vw, 360px)', background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: 'var(--z-drawer)', display: 'flex', flexDirection: 'column', overflow: 'auto', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
       <div style={{ padding: '14px 16px 12px', paddingTop: 'max(14px, env(safe-area-inset-top))', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, flex: 1 }}>{t(panelTitle(props))}</h3>
+        <h3 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, flex: 1 }}>{t(panelTitle(props))}</h3>
         <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'var(--card-2)', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Icon name="close" size={15}/>
         </button>
