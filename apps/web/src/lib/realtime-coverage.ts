@@ -25,7 +25,8 @@ export const BROADCAST_COVERED_QUERY_KEYS = {
   channelFiles: ['channel-files'] as const,
   // tasks の INSERT/UPDATE/DELETE。チャンネルのないタスクはワークスペースの所属者へ届く。
   tasks: ['tasks'] as const,
-  // projects の INSERT/UPDATE/DELETE（作成・カバー写真・題名・期間・アーカイブを含む）。
+  // projects の INSERT/UPDATE/DELETE（作成・カバー写真・題名・期間・アーカイブ）と、
+  // project_members の追加・削除・役割変更（人数・参加・主催）。
   projects: ['projects'] as const,
   // channels の作成・名称・アーカイブと、channel_members、表示名。マイルストーン列は milestones。
   workspaceChannels: ['workspace-channels'] as const,
