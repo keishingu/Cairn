@@ -61,6 +61,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     tasksTimerRef.current = setTimeout(() => {
       tasksTimerRef.current = null
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      // プロジェクト一覧の進捗は tasks から集計する
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     }, TASKS_DEBOUNCE_MS)
   }, [queryClient])
 

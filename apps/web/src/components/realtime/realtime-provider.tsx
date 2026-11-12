@@ -111,6 +111,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     tasksTimerRef.current = setTimeout(() => {
       tasksTimerRef.current = null
       void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.tasks })
+      // 一覧の進捗（taskCount / completedTaskCount）は tasks から集計する。
+      void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projects })
     }, TASKS_DEBOUNCE_MS)
   }, [queryClient])
 
@@ -187,7 +189,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.channelFiles })
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.messages })
           } else if (table === 'projects') {
-            // 作成・カバー写真・その他の列。プロジェクトチャンネル一覧の題名と期間もここから引いている。
+            // 作成・カバー写真・参加。プロジェクトチャンネル一覧の題名と期間もここから引いている。
+            // 進捗は tasks の活動通知で、最新メッセージの新着・削除はチャンネル一覧の取り直しで更新する。
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projects })
             void queryClient.invalidateQueries({ queryKey: BROADCAST_COVERED_QUERY_KEYS.projectChannels })
           } else if (table === 'milestones') {
