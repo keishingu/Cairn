@@ -4,6 +4,8 @@
 import type { MetadataRoute } from 'next'
 import { DOC_PAGES, DOCS_LOCALES, docPath } from './developers/_content/pages'
 
+export const dynamic = 'force-static'
+
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {

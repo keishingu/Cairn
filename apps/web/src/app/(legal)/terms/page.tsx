@@ -4,6 +4,8 @@
 import type { Metadata } from 'next'
 import { LegalPage } from '../_components/legal-page'
 
+export const dynamic = 'force-static'
+
 export const metadata: Metadata = {
   title: '利用規約 | Cairn',
   description: 'クラウド版Cairnおよびモバイルアプリの利用条件を定めます。',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { injectPublicPageHeadScripts } from './head-scripts'
+import { hasSupabaseSessionCookie, injectLoggedInHomeRedirect, injectPublicPageHeadScripts } from './head-scripts'
 
 const HTML = '<html><head><title>x</title></head><body></body></html>'
 const env = (values: Record<string, string>) => values as unknown as NodeJS.ProcessEnv
@@ -32,6 +32,17 @@ describe('injectPublicPageHeadScripts', () => {
 
     expect(html).toContain('window.__CAIRN_LP_POSTHOG__={"token":"phc_x","host":"https://us.i.posthog.com"};')
     expect(html).toContain('gtag/js?id=AW-1')
+  })
+
+  it('ログイン済みのセッション Cookie があるときだけホームからアプリへ戻す判定になる', () => {
+    expect(hasSupabaseSessionCookie('sb-abc-auth-token=eyJ; other=1')).toBe(true)
+    expect(hasSupabaseSessionCookie('sb-abc-auth-token.0=chunk')).toBe(true)
+    expect(hasSupabaseSessionCookie('sb-abc-auth-token-code-verifier=xyz')).toBe(false)
+    expect(hasSupabaseSessionCookie('')).toBe(false)
+
+    const html = injectLoggedInHomeRedirect(HTML)
+    expect(html).toContain("location.replace('/chats')")
+    expect(html.indexOf("location.replace('/chats')")).toBeLessThan(html.indexOf('</head>'))
   })
 
   it('head が無い HTML では計測を入れられないため例外にする', () => {

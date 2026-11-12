@@ -31,6 +31,25 @@ function googleAdsTagScript(env: NodeJS.ProcessEnv): string {
   )
 }
 
+// CDN が 1 時間キャッシュし、期限後は再生成が終わるまで古い HTML を返す。
+// 計測タグは生成時（ビルドと、その後の再検証）の環境変数で決まる。リクエストごとに関数は走らない。
+export const PUBLIC_PAGE_CACHE_CONTROL = 'public, s-maxage=3600, stale-while-revalidate=86400'
+
+// ログイン済みの `/` は Middleware を通さず、共有キャッシュの HTML に載せたスクリプトで /chats へ戻す。
+// Supabase のセッション Cookie（sb-…-auth-token と分割された .0）だけを見る。OAuth 途中の code-verifier では戻さない。
+const SUPABASE_SESSION_COOKIE = String.raw`(?:^|; )sb-[^=;]*-auth-token(?:\.\d+)?=`
+
+export function hasSupabaseSessionCookie(cookieHeader: string): boolean {
+  return new RegExp(SUPABASE_SESSION_COOKIE).test(cookieHeader)
+}
+
+export function injectLoggedInHomeRedirect(html: string): string {
+  if (!html.includes('</head>')) throw new Error('公開ページの HTML に </head> がありません')
+  const script =
+    `<script>(function(){try{if(new RegExp(${JSON.stringify(SUPABASE_SESSION_COOKIE)}).test(document.cookie))location.replace('/chats')}catch(e){}})()</script>\n`
+  return html.replace('</head>', `${script}</head>`)
+}
+
 export function injectPublicPageHeadScripts(html: string, env: NodeJS.ProcessEnv = process.env): string {
   const scripts = posthogConfigScript(env) + googleAdsTagScript(env)
   if (!scripts) return html
