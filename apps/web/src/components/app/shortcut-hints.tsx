@@ -93,7 +93,7 @@ export function ShortcutHints({ page }: { page: PageId }) {
         display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, maxWidth: '90vw',
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '.04em' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '.04em' }}>
         {prefix} ・ {title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

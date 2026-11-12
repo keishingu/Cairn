@@ -426,7 +426,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   if (messageType === 'system') {
     return (
       <div data-message-id={messageId} style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px' }}>
-        <span style={{ fontSize: 11.5, color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
           {toPlainSnippet(content, id => mentionNames?.get(id))}
         </span>
       </div>
@@ -506,21 +506,21 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
           <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{displaySenderName}</span>
+            <span style={{ fontSize: compact ? 13 : 14, fontWeight: 600, color: 'var(--text)' }}>{displaySenderName}</span>
             {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
             {senderApp && (
-              <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 600 }}>
                 {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
               </span>
             )}
             {/* 外部チャットから取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
             {imported && (
-              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 700 }}>
+              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 10, fontWeight: 600 }}>
                 {t('Imported from Teams')}
               </span>
             )}
             {visibleProjectRole && (
-              <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 700 }}>
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 10, fontWeight: 600 }}>
                 {visibleProjectRole}
               </span>
             )}
@@ -546,8 +546,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
           </button>
@@ -567,7 +567,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               style={{
                 width: '100%', border: '1px solid var(--accent)', borderRadius: 8,
                 background: 'var(--card)', padding: '6px 10px',
-                fontSize: compact ? 13 : 13.5, color: 'var(--text)', outline: 'none',
+                fontSize: compact ? 13 : 14, color: 'var(--text)', outline: 'none',
                 fontFamily: 'inherit', lineHeight: 1.5, resize: 'none', boxSizing: 'border-box',
               }}
             />
@@ -578,12 +578,12 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </div>
           </div>
         ) : messageType === 'blocks' ? (
-          <div style={{ fontSize: compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
+          <div style={{ fontSize: compact ? 13 : 14, color: 'var(--text-2)', lineHeight: 1.6 }}>
             <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} onAction={handleCardAction} revision={blocksRevision} />
           </div>
         ) : (
           content && (
-            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
+            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 14, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
               {emojiOnly ? content : (
                 <MarkdownContent
                   content={content}
@@ -629,7 +629,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   padding: '8px 12px', borderRadius: 8,
                   background: 'var(--card-2)', border: '1px solid var(--border)',
                   color: 'var(--text-2)', textDecoration: 'none',
-                  fontSize: 12.5, maxWidth: 240,
+                  fontSize: 13, maxWidth: 240,
                 }}
               >
                 <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
@@ -647,7 +647,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           const chipStyle: React.CSSProperties = {
             display: 'inline-flex', alignItems: 'center', gap: 4,
             height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
-            fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
+            fontSize: 12, fontWeight: 600, textDecoration: 'none',
             background: allDone ? 'var(--card-2)' : 'var(--accent-soft)',
             border: `1px solid ${allDone ? 'var(--border)' : 'var(--accent-border)'}`,
             color: allDone ? 'var(--text-3)' : 'var(--accent-text)',
@@ -1078,7 +1078,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
-            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>
+            <span style={{ fontSize: 14, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>
               @{m.displayName}
               {m.kind !== 'user' ? (
                 <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-4)', fontWeight: 500 }}>
@@ -1126,8 +1126,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '6px 10px' : '8px 14px', borderBottom: '1px solid var(--divider)' }}>
       <Icon name="reply" size={13} color="var(--accent)"/>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Reply to {name}', { name: replyTarget.senderName })}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{t('Reply to {name}', { name: replyTarget.senderName })}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || t('(Attachment)')}
         </div>
       </div>
@@ -1144,7 +1144,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           {isImageMime(a.mimeType) && a.previewUrl ? (
             <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
           ) : (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12.5, maxWidth: 240 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 13, maxWidth: 240 }}>
               <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.fileName}</span>
             </div>
@@ -1155,7 +1155,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               position: 'absolute', top: -4, right: -4,
               width: 16, height: 16, borderRadius: '50%',
               background: 'var(--text-3)', border: 'none',
-              color: 'var(--bg)', fontSize: 9, fontWeight: 700,
+              color: 'var(--bg)', fontSize: 9, fontWeight: 600,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: 'inherit', lineHeight: 1,
             }}
@@ -1163,7 +1163,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
         </div>
       ))}
       {finalizeRetries.map(item => (
-        <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 11.5, maxWidth: 340 }}>
+        <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 12, maxWidth: 340 }}>
           <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}: {item.error}</span>
           <button type="button" className="btn btn-xs" disabled={item.isRetrying} onClick={() => onRetryFinalize(item.id)}>{item.isRetrying ? t('Uploading...') : t('Retry')}</button>
           <button type="button" aria-label={t('Remove {name}', { name: item.file.name })} disabled={item.isRetrying} onClick={() => onRemoveFinalizeRetry(item.id)} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>✕</button>
@@ -1219,14 +1219,14 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)', position: 'relative' }} {...dropHandlers}>
         {hiddenFileInput}
         {sendError && (
-          <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendError}</InlineError>
+          <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 12 }}>{sendError}</InlineError>
         )}
         {sendKeyError && (
-          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 11.5 }}>{sendKeyError}</InlineError>
+          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 12 }}>{sendKeyError}</InlineError>
         )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
         <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -1300,23 +1300,23 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
       <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         {/* スマホ幅ではラベル付きのボタンが1行に収まらないため、アイコンだけにする（折り返しは念のため残す） */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          <button onClick={() => imageInputRef.current?.click()} aria-label={t('Image')} title={t('Image')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <button onClick={() => imageInputRef.current?.click()} aria-label={t('Image')} title={t('Image')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="image" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Image')}</>}
           </button>
-          <button onClick={() => docInputRef.current?.click()} aria-label={t('Files')} title={t('Files')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <button onClick={() => docInputRef.current?.click()} aria-label={t('Files')} title={t('Files')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="paperclip" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Files')}</>}
           </button>
-          <button onClick={onCreateTextFile} aria-label={t('Text file')} title={t('Text file')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+          <button onClick={onCreateTextFile} aria-label={t('Text file')} title={t('Text file')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
             <Icon name="file-text" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Text file')}</>}
           </button>
           {appEntryButtons}
-          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
             </span>
@@ -1393,10 +1393,10 @@ const AiNudgeCard = ({
         <Icon name="sparkles" size={14}/>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>AI PMO · {nudge.title}</div>
-        <div style={{ fontSize: 10.5, color: 'var(--accent-text)', marginTop: 1 }}>{t('Only you can see this message')}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>AI PMO · {nudge.title}</div>
+        <div style={{ fontSize: 11, color: 'var(--accent-text)', marginTop: 1 }}>{t('Only you can see this message')}</div>
       </div>
-      <time style={{ marginLeft: 'auto', alignSelf: 'flex-start', fontSize: 10.5, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
+      <time style={{ marginLeft: 'auto', alignSelf: 'flex-start', fontSize: 11, color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
         {formatChatMessageTime(nudge.createdAt)}
       </time>
     </div>
@@ -1406,20 +1406,20 @@ const AiNudgeCard = ({
         <a
           href={`/tasks?taskId=${encodeURIComponent(nudge.taskId)}`}
           className="btn btn-ghost"
-          style={{ height: 28, padding: '0 9px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
+          style={{ height: 28, padding: '0 9px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
         >
           <Icon name="external-link" size={11}/> {t('Open task')}
         </a>
       )}
       {nudge.taskId && (
-        <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={onComplete} disabled={completing || feedbackPending}>
+        <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 12 }} onClick={onComplete} disabled={completing || feedbackPending}>
           {completing ? t('Updating…') : t('Mark complete')}
         </button>
       )}
-      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('later')} disabled={feedbackPending || completing}>
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 12 }} onClick={() => onFeedback('later')} disabled={feedbackPending || completing}>
         {t('Later')}
       </button>
-      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 11.5 }} onClick={() => onFeedback('not_helpful')} disabled={feedbackPending || completing}>
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 12 }} onClick={() => onFeedback('not_helpful')} disabled={feedbackPending || completing}>
         {t('This is fine')}
       </button>
     </div>
@@ -2471,7 +2471,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         ) : isError ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>{t('Could not load messages')}</div>
         ) : timeline.length === 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('No messages yet. Send the first one!')}</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('No messages yet. Send the first one.')}</div>
         ) : (
           <>
           {isLoadingOlder && (
@@ -2480,7 +2480,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           {loadOlderError && (
             <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 12 }}>
               {t('Could not load older messages.')}
-              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 11.5 }}>{t('Retry')}</button>
+              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 12 }}>{t('Retry')}</button>
             </div>
           )}
           {timeline.map(item => item.kind === 'nudge' ? (

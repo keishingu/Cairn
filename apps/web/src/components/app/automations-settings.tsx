@@ -60,7 +60,7 @@ function AutomationForm({
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, fontWeight: 600 }}>
         {t('Skill name')}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span aria-hidden="true" style={{ color: 'var(--text-3)', fontWeight: 700 }}>$</span>
+          <span aria-hidden="true" style={{ color: 'var(--text-3)', fontWeight: 600 }}>$</span>
           <input
             name="automationName"
             autoComplete="off"
@@ -141,7 +141,7 @@ function AutomationRow({ automation, canManage }: { automation: AutomationDto; c
     <div style={{ padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }} data-testid="automation-row">
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>${automation.name}</span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>${automation.name}</span>
           <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Skill')}</span>
           {!automation.enabled && (
             <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>{t('Paused')}</span>
@@ -261,7 +261,7 @@ function DryRunPanel({ automation, onClose }: { automation: AutomationDto; onClo
           {result.proposals.length === 0 ? (
             <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('None')}</div>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
               {result.proposals.map((proposal, index) => (
                 <li key={index}>
                   {t(DRY_RUN_ACTION_LABELS[proposal.actionType] ?? proposal.actionType)}: {proposalTargets(proposal)}
@@ -300,7 +300,7 @@ export function AutomationsSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('AI automations')}</h1>
+          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('AI automations')}</h1>
           <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
             {t('Define skills that the AI runs from written instructions. Members call a skill as $name in the AI assistant, and any write runs only after the caller approves it.')}
           </p>

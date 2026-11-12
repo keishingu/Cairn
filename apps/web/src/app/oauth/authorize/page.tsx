@@ -61,12 +61,12 @@ export default async function OAuthAuthorizePage({
   return (
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
-        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em' }}>Cairn</div>
+        <div style={{ fontSize: 24, fontWeight: 600 }}>Cairn</div>
         <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>{t('MCP connection authorization')}</p>
 
         <div style={summaryStyle}>
           <div style={labelStyle}>{t('Connected from')}</div>
-          <div style={{ fontWeight: 700 }}>{authorization.clientName}</div>
+          <div style={{ fontWeight: 600 }}>{authorization.clientName}</div>
           <div style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
             {new URL(authorization.redirectUri).hostname}
           </div>
@@ -103,7 +103,7 @@ export default async function OAuthAuthorizePage({
 
           <div style={{ ...labelStyle, marginBottom: 8 }}>{t('Requested permissions')}</div>
           <div style={summaryStyle}>
-            <div style={{ fontWeight: 700 }}>
+            <div style={{ fontWeight: 600 }}>
               {authorization.scope === 'write' ? t('Read and write access') : t('Read')}
             </div>
             <ul
@@ -111,7 +111,7 @@ export default async function OAuthAuthorizePage({
                 margin: '8px 0 0',
                 paddingLeft: 18,
                 color: 'var(--text-3)',
-                fontSize: 12.5,
+                fontSize: 13,
                 lineHeight: 1.7,
               }}
             >
@@ -121,9 +121,9 @@ export default async function OAuthAuthorizePage({
           </div>
 
           {!defaultWorkspace && (
-            <div style={{ color: 'var(--red-text)', fontSize: 12.5, marginBottom: 12 }}>{t('Guests cannot authorize an MCP OAuth connection. A member workspace or higher is required.')}</div>
+            <div style={{ color: 'var(--red-text)', fontSize: 13, marginBottom: 12 }}>{t('Guests cannot authorize an MCP OAuth connection. A member workspace or higher is required.')}</div>
           )}
-          <p style={{ color: 'var(--text-4)', fontSize: 11.5, lineHeight: 1.6 }}>{t('After connecting, your current Cairn role and each tool permission still apply. You can revoke access anytime from Settings, Integrations.')}</p>
+          <p style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1.6 }}>{t('After connecting, your current Cairn role and each tool permission still apply. You can revoke access anytime from Settings, Integrations.')}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
             <button className="btn btn-ghost" type="submit" name="decision" value="deny">{t('Cancel')}</button>
             <button
@@ -167,4 +167,4 @@ const summaryStyle = {
   background: 'var(--card-2)',
   marginBottom: 20,
 }
-const labelStyle = { color: 'var(--text-3)', fontSize: 11.5, fontWeight: 600 }
+const labelStyle = { color: 'var(--text-3)', fontSize: 12, fontWeight: 600 }

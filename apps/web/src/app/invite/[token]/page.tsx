@@ -85,8 +85,8 @@ export default function InvitePage() {
             <div style={{ width: 48, height: 48, margin: '0 auto 16px', borderRadius: 12, background: 'var(--red-soft)', color: 'var(--red-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="alertTriangle" size={22} />
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{t('This invite link is invalid')}</div>
-            <div style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('This link has expired or has been deleted.')}<br />{t('Ask the person who invited you for a new link.')}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('This invite link is invalid')}</div>
+            <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>{t('This link has expired or has been deleted.')}<br />{t('Ask the person who invited you for a new link.')}</div>
           </div>
         </div>
       </div>
@@ -122,7 +122,7 @@ export default function InvitePage() {
             <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 4 }}>
               {t('{name} invited you', { name: info.createdByName })}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>
+            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
               {info.workspaceName}
             </div>
             {info.projectName && (
@@ -179,7 +179,7 @@ export default function InvitePage() {
         {/* モバイルはQRコード表示 */}
         {isMobile && inviteUrl && (
           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('You can also share this QR code')}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{t('You can also share this QR code')}</div>
             <div style={{ padding: 12, background: '#fff', borderRadius: 12, border: '1px solid var(--border)' }}>
               <QRCodeSVG value={inviteUrl} size={140} />
             </div>
@@ -201,7 +201,7 @@ const centeredStyle: React.CSSProperties = {
 
 const logoStyle: React.CSSProperties = {
   fontSize: 28,
-  fontWeight: 800,
+  fontWeight: 600,
   color: 'var(--text)',
   letterSpacing: '-0.02em',
   marginBottom: 8,
@@ -234,7 +234,7 @@ const errorStyle: React.CSSProperties = {
   background: 'var(--red-soft)',
   border: '1px solid var(--red)',
   color: 'var(--red-text)',
-  fontSize: 12.5,
+  fontSize: 13,
 }
 
 function primaryButtonStyle(disabled: boolean): React.CSSProperties {

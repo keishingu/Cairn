@@ -147,7 +147,7 @@ export const Avatar = ({ name = '', url, size = 28, ring = false, style }: Avata
   return (
     <div style={{
       ...base,
-      background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
+      background: g[1],
       color: '#fff', fontWeight: 600, fontSize: size * 0.42,
     }}>{initials}</div>
   )
@@ -250,7 +250,7 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
       height: sm ? 16 : 18, minWidth: sm ? 16 : 18, padding: '0 5px',
       borderRadius: 999, boxSizing: 'border-box', lineHeight: 1,
       background: 'var(--accent)', color: 'var(--on-accent)',
-      fontSize: sm ? 10 : 11, fontWeight: 700,
+      fontSize: sm ? 10 : 11, fontWeight: 600,
       ...style,
     }}>
       {count > max ? `${max}+` : count}
@@ -335,7 +335,7 @@ export const TopBarSearch = ({ value, onChange, placeholder }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={resolvedPlaceholder}
-        style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+        style={{ flex: 1, fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
           // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
@@ -360,7 +360,7 @@ export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) 
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <Icon name={icon} size={26}/>
       </div>
-      <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
+      <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 600 }}>{name}</h2>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
         {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
@@ -441,8 +441,8 @@ export const ModalHeader = ({ icon, title, subtitle, onClose }: {
       </div>
     )}
     <div style={{ flex: 1, minWidth: 0 }}>
-      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
-      {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
+      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
+      {subtitle && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
     <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
@@ -468,8 +468,8 @@ export const Field = ({ label, hint, required, error, children, htmlFor }: Field
     </div>
     {children}
     {error && (
-      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
+      <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
         {error}
       </div>
     )}
@@ -499,7 +499,7 @@ export function sheetFieldInputStyle(invalid: boolean): React.CSSProperties {
 }
 
 export const sheetFieldLabelStyle: React.CSSProperties = {
-  fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
+  fontSize: 13, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
 }
 
 /**

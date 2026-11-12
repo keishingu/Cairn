@@ -108,7 +108,7 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
         />
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600 }}>{role.name}</span>
         {role.isDefault && (
-          <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>{t('Default for new members')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Default for new members')}</span>
         )}
         {canEdit && (
           <RowActionMenu
@@ -162,13 +162,13 @@ const RoleRow = ({ role, canEdit }: { role: ProjectRoleDto; canEdit: boolean }) 
           borderRadius: 7,
           background: 'var(--card)',
           color: 'var(--text)',
-          fontSize: 12.5,
+          fontSize: 13,
           fontFamily: 'inherit',
         }}
       />
       <ColorPicker value={color} onChange={setColor} />
       {save.error && (
-        <div role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
+        <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>
           {save.error.message}
         </div>
       )}
@@ -220,14 +220,14 @@ export const SettingsProjectRoles = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>
         {t('Roles')}
       </h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
         {t('Manage roles for project members.')}
       </p>
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Role list')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>{t('Role list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {isLoading && (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
@@ -278,13 +278,13 @@ export const SettingsProjectRoles = () => {
                   borderRadius: 7,
                   background: 'var(--card)',
                   color: 'var(--text)',
-                  fontSize: 12.5,
+                  fontSize: 13,
                   fontFamily: 'inherit',
                 }}
               />
               <ColorPicker value={color} onChange={setColor} />
               {add.error && (
-                <div role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
+                <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>
                   {add.error.message}
                 </div>
               )}
@@ -326,7 +326,7 @@ export const SettingsProjectRoles = () => {
                   background: 'transparent',
                   color: 'var(--text-3)',
                   fontFamily: 'inherit',
-                  fontSize: 12.5,
+                  fontSize: 13,
                   fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',

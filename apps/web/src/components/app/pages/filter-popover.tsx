@@ -138,7 +138,7 @@ export const FilterPopover = ({
         controls[nextIndex]?.focus()
         controls[nextIndex]?.scrollIntoView?.({ block: 'nearest' })
       }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8 }}>
         {t('Status')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -157,7 +157,7 @@ export const FilterPopover = ({
                 style={{ width: 14, height: 14, accentColor: s.color, cursor: 'pointer' }}
               />
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.name}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{s.name}</span>
             </label>
           )
         })}
@@ -165,7 +165,7 @@ export const FilterPopover = ({
 
       {allMembers.length > 0 && (
         <>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, marginTop: 12 }}>
             {t('Participants')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -186,12 +186,12 @@ export const FilterPopover = ({
                   <span style={{
                     width: 20, height: 20, borderRadius: '50%',
                     background: 'var(--accent-soft)', color: 'var(--accent)',
-                    fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    fontSize: 10, fontWeight: 600, flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {name.charAt(0)}
                   </span>
-                  <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{name}</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{name}</span>
                 </label>
               )
             })}

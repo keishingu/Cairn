@@ -280,7 +280,7 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
                   </span>
                   {c.inProject && (
                     <span style={{
-                      fontSize: 10, fontWeight: 700, color: 'var(--accent-text)',
+                      fontSize: 10, fontWeight: 600, color: 'var(--accent-text)',
                       background: 'var(--accent-soft)', padding: '2px 6px', borderRadius: 4, flexShrink: 0,
                     }}>{t('In this project')}</span>
                   )}
@@ -306,7 +306,7 @@ function optionStyle(selected: boolean): React.CSSProperties {
     border: 'none',
     background: selected ? 'var(--accent-soft)' : 'transparent',
     color: selected ? 'var(--accent-text)' : 'var(--text)',
-    fontSize: 12.5,
+    fontSize: 13,
     fontFamily: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',

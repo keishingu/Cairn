@@ -55,7 +55,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
   return (
     <>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}># {activeChannel.milestoneId ? activeChannel.channelName : activeChannel.projectTitle}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}># {activeChannel.milestoneId ? activeChannel.channelName : activeChannel.projectTitle}</span>
         {projectScopedChannels.length > 1 && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
             {projectScopedChannels.map(channel => {
@@ -75,8 +75,8 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
                     background: active ? 'var(--accent-soft)' : 'var(--card)',
                     color: active ? 'var(--accent-text)' : 'var(--text-2)',
                     padding: '0 8px',
-                    fontSize: 11.5,
-                    fontWeight: active ? 700 : 500,
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 500,
                     fontFamily: 'inherit',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
@@ -89,7 +89,7 @@ export const ChatTab = ({ project, isMobile }: { project: ProjectDto; isMobile?:
             })}
           </div>
         )}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-3)' }}>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-3)' }}>
           <Icon name="users" size={13}/> {project.memberCount}
         </span>
         <button style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}><Icon name="search" size={14}/></button>

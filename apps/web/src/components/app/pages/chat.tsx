@@ -158,7 +158,7 @@ const ChatMessageSearch = ({ channelId, onClose, onJump, isMobile = false }: Cha
                 className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
@@ -245,10 +245,10 @@ const CrossChannelSearch = ({ onClose, onJump, isMobile = false }: CrossChannelS
                 className="hover-bg"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                     {msg.channelName}
                   </span>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word' }}>
@@ -303,10 +303,10 @@ const BookmarksPanel = ({ onClose, onJump, isMobile = false }: BookmarksPanelPro
               className="hover-bg"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent-text)', background: 'var(--accent-soft)', padding: '1px 6px', borderRadius: 999 }}>
                   {msg.channelName}
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{msg.senderName}</span>
                 <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatSearchDate(msg.createdAt)}</span>
               </div>
               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -1016,7 +1016,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           style={{ position: 'absolute', top: 0, bottom: 0, right: -4, width: 7, cursor: 'col-resize', zIndex: 1, touchAction: 'none' }}
         />
         <div style={{ padding: '14px 14px 8px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Chats')}</h2>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{t('Chats')}</h2>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
               className="btn"
@@ -1046,14 +1046,14 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
                 {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
                 {channelSubtitle}
               </div>
             </div>

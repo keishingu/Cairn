@@ -116,7 +116,7 @@ const TaskRow = ({ task, onToggle, onOpen, onDelete, toggling, selected, index }
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
           {/* キーボードで Tab 移動した人も詳細を開けるよう、タイトルは button にする（開く処理は行の onClick が受ける） */}
           <button type="button" style={{
-            fontSize: 13.5, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left',
+            fontSize: 14, fontWeight: 500, fontFamily: 'inherit', textAlign: 'left',
             padding: 0, border: 'none', background: 'transparent', cursor: 'pointer',
             minWidth: 0,
             color: isDone ? 'var(--text-3)' : 'var(--text)',
@@ -144,12 +144,12 @@ const TaskRow = ({ task, onToggle, onOpen, onDelete, toggling, selected, index }
             </Link>
           )}
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{taskScopeLabel(task, t)}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{taskScopeLabel(task, t)}</div>
       </div>
 
       {task.priority && !isDone && (
         <span style={{
-          fontSize: 10.5, fontWeight: 700,
+          fontSize: 11, fontWeight: 600,
           color: PRIORITY_COLOR[task.priority],
           padding: '2px 7px', borderRadius: 4, background: 'var(--card-2)',
           flexShrink: 0,
@@ -158,7 +158,7 @@ const TaskRow = ({ task, onToggle, onOpen, onDelete, toggling, selected, index }
 
       {due && !isDone && (
         <span style={{
-          fontSize: 11.5, fontWeight: 500,
+          fontSize: 12, fontWeight: 500,
           color: due.overdue ? 'var(--red-text)' : 'var(--text-3)',
           background: due.overdue ? 'var(--red-soft)' : 'transparent',
           padding: due.overdue ? '2px 6px' : '0',
@@ -172,7 +172,7 @@ const TaskRow = ({ task, onToggle, onOpen, onDelete, toggling, selected, index }
 
       {task.status === 'in_progress' && (
         <span style={{
-          fontSize: 10.5, fontWeight: 700,
+          fontSize: 11, fontWeight: 600,
           color: 'var(--violet-text)', background: 'var(--violet-soft)',
           padding: '2px 7px', borderRadius: 4, flexShrink: 0,
         }}>{t('In progress')}</span>
@@ -231,7 +231,7 @@ const Section = ({ label, count, tasks, onToggle, onOpen, onDelete, togglingId, 
         }}
       >
         <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.02em' }}>{label}</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', background: 'var(--card)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 999 }}>{count}</span>
       </button>
       {open && tasks.map((t, i) => (
@@ -410,7 +410,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
                   borderRadius: 6, border: 'none',
                   background: filter === f.id ? 'var(--card-hover)' : 'transparent',
                   color: filter === f.id ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: isMobile ? 12 : 12.5, fontWeight: filter === f.id ? 600 : 500,
+                  fontSize: isMobile ? 12 : 13, fontWeight: filter === f.id ? 600 : 500,
                   cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
                 }}
               >{f.label}</button>
@@ -456,7 +456,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               <Icon name="check" size={22} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No tasks')}</div>
-            <div style={{ fontSize: 12.5 }}>
+            <div style={{ fontSize: 13 }}>
               {filter === 'all' ? t('Try adding a task') : t('No tasks in "{status}"', { status: t(STATUS_LABEL[filter as TaskDto['status']]) })}
             </div>
           </div>

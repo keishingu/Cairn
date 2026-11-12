@@ -67,12 +67,12 @@ export default async function OidcAuthorizePage({
   return (
     <main className="app app-root" style={pageStyle}>
       <div className="card" style={cardStyle}>
-        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em' }}>Cairn</div>
+        <div style={{ fontSize: 24, fontWeight: 600 }}>Cairn</div>
         <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 24px' }}>{t('Sign in with Cairn')}</p>
 
         <div style={summaryStyle}>
           <div style={labelStyle}>{t('App requesting access')}</div>
-          <div style={{ fontWeight: 700 }}>{authorization.clientName}</div>
+          <div style={{ fontWeight: 600 }}>{authorization.clientName}</div>
           <div style={{ color: 'var(--text-4)', fontSize: 11, marginTop: 2 }}>
             {new URL(authorization.redirectUri).hostname}
           </div>
@@ -80,19 +80,19 @@ export default async function OidcAuthorizePage({
 
         <div style={{ ...labelStyle, marginBottom: 8 }}>{t('Information shared with this app')}</div>
         <div style={summaryStyle}>
-          <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.7 }}>
+          <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13, lineHeight: 1.7 }}>
             {scopes.map((scope) => (
               <li key={scope}>{t(scope)}</li>
             ))}
           </ul>
           {user.email && (
-            <div style={{ color: 'var(--text-4)', fontSize: 11.5, marginTop: 8 }}>
+            <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 8 }}>
               {t('Signed in as {email}', { email: user.email })}
             </div>
           )}
         </div>
 
-        <p style={{ color: 'var(--text-4)', fontSize: 11.5, lineHeight: 1.6 }}>
+        <p style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1.6 }}>
           {t('This app receives only the information above. It cannot read or change your projects, conversations, or files in Cairn. You can revoke access anytime from Settings, Integrations.')}
         </p>
         <ConsentForm params={Object.fromEntries(params)} />
@@ -127,4 +127,4 @@ const summaryStyle = {
   background: 'var(--card-2)',
   marginBottom: 20,
 }
-const labelStyle = { color: 'var(--text-3)', fontSize: 11.5, fontWeight: 600 }
+const labelStyle = { color: 'var(--text-3)', fontSize: 12, fontWeight: 600 }

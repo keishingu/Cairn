@@ -106,7 +106,7 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
       <aside style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: isMobile ? 'min(86vw, 360px)' : 400, background: 'var(--card)', borderLeft: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)', zIndex: isMobile ? 61 : 31, display: 'flex', flexDirection: 'column', animation: 'notifSlideIn .2s cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ padding: isMobile ? 'max(16px, env(safe-area-inset-top)) 18px 12px' : '16px 18px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
               {t('Notifications')}
               <UnreadBadge count={unreadCount} />
             </h2>
@@ -169,11 +169,11 @@ export const PageNotifications = ({ onClose, isMobile = false }: PageNotificatio
                     <span style={{ fontSize: 11, color: 'var(--text-4)', flexShrink: 0 }}>· {formatNotificationTime(n.createdAt, t)}</span>
                   </div>
                   {senderName && (
-                    <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>
                       {n.title.replace(senderName + ' ', '')}
                     </div>
                   )}
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.5 }}>{parseMentionText(n.body)}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.5 }}>{parseMentionText(n.body)}</div>
                 </div>
               </div>
             )

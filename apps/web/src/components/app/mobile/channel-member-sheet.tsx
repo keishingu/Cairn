@@ -70,7 +70,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
             <Icon name="userPlus" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('Invite members')}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{t('Invite members')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('You can add workspace members')}</div>
           </div>
           <button
@@ -98,10 +98,10 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
               }}>
                 <Avatar name={m.displayName} url={m.avatarUrl} size={38}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.displayName}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 1 }}>
                     {t(m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : m.role === 'guest' ? 'Guest' : 'Member')}
                   </div>
                 </div>
@@ -113,7 +113,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                     border: added ? 'none' : '1px solid var(--border)',
                     background: added ? 'var(--accent-soft)' : 'var(--card-2)',
                     color: added ? 'var(--accent-text)' : 'var(--text-2)',
-                    fontSize: 12.5, fontWeight: 600,
+                    fontSize: 13, fontWeight: 600,
                     cursor: added || loading || !!pendingId ? 'default' : 'pointer',
                     fontFamily: 'inherit',
                     display: 'flex', alignItems: 'center', gap: 4,

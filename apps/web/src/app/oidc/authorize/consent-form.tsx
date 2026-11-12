@@ -20,7 +20,7 @@ export function ConsentForm({ params }: { params: Record<string, string> }) {
         <input key={key} type="hidden" name={key} value={value} />
       ))}
       {state?.error && (
-        <div role="alert" style={{ color: 'var(--red-text)', fontSize: 12.5, marginTop: 12 }}>{t(state.error)}</div>
+        <div role="alert" style={{ color: 'var(--red-text)', fontSize: 13, marginTop: 12 }}>{t(state.error)}</div>
       )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
         <button className="btn btn-ghost" type="submit" name="decision" value="deny" disabled={pending}>

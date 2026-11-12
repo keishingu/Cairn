@@ -97,7 +97,7 @@ const MemberRow = ({
             {member.displayName}
           </button>
         </div>
-        <span style={{ fontSize: 10.5, fontWeight: 700, color: member.roleColor }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: member.roleColor }}>
           {member.roleName}
         </span>
         {canRemove && (
@@ -137,14 +137,14 @@ const MemberRow = ({
           </select>
           <button
             className="btn btn-ghost"
-            style={{ height: 30, fontSize: 11.5 }}
+            style={{ height: 30, fontSize: 12 }}
             onClick={() => setEditingRole(false)}
           >
             {t('Cancel')}
           </button>
           <button
             className="btn btn-primary"
-            style={{ height: 30, fontSize: 11.5 }}
+            style={{ height: 30, fontSize: 12 }}
             disabled={!selectedRoleId || changingRole}
             onClick={() => {
               void saveRole()
@@ -154,7 +154,7 @@ const MemberRow = ({
           </button>
           </div>
           {roleError && (
-            <div role="alert" style={{ marginTop: 6, fontSize: 11.5, color: 'var(--red-text)' }}>
+            <div role="alert" style={{ marginTop: 6, fontSize: 12, color: 'var(--red-text)' }}>
               {roleError}
             </div>
           )}
@@ -245,7 +245,7 @@ const InvitePanel = ({
       >
         <Icon name="chevLeft" size={14} />
       </button>
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{t('Add members')}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t('Add members')}</span>
     </div>
 
     {/* Scrollable content */}
@@ -266,11 +266,9 @@ const InvitePanel = ({
         <>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--text-4)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-3)',
               marginBottom: 6,
             }}
           >
@@ -313,7 +311,7 @@ const InvitePanel = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      transition: 'all .1s',
+                      transition: 'background-color .1s, border-color .1s',
                     }}
                   >
                     {selected && <Icon name="check" size={9} color="var(--on-accent)" />}
@@ -343,11 +341,9 @@ const InvitePanel = ({
           {/* Role picker */}
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--text-4)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-3)',
               marginBottom: 8,
             }}
           >
@@ -369,7 +365,7 @@ const InvitePanel = ({
                     background: 'transparent',
                     color: sel ? role.color : 'var(--text-3)',
                     fontSize: 12,
-                    fontWeight: sel ? 700 : 500,
+                    fontWeight: sel ? 600 : 500,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     transition: 'border-color .1s, color .1s',
@@ -476,12 +472,12 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
         >
           <Icon name="chevLeft" size={14}/>
         </button>
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{t('Invite an external guest')}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{t('Invite an external guest')}</span>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 12px' }}>
-        <p style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>
           {t('Sharing this link lets the recipient join the workspace as a guest and adds them to this project.')}
         </p>
 
@@ -518,7 +514,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
               <CopyButton text={url} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
             </div>
 
-            <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 12, lineHeight: 1.5 }}>
               {t('Expires in 30 days')}
             </p>
 
@@ -530,7 +526,7 @@ const GuestInvitePanel = ({ projectId, onClose }: GuestInvitePanelProps) => {
                 borderRadius: 8, border: '1px solid var(--red)',
                 background: 'transparent',
                 color: revokeInviteMutation.isPending ? 'var(--text-4)' : 'var(--red)',
-                fontSize: 12.5, fontWeight: 600,
+                fontSize: 13, fontWeight: 600,
                 cursor: revokeInviteMutation.isPending ? 'not-allowed' : 'pointer',
                 fontFamily: 'inherit',
               }}
@@ -647,7 +643,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
                   alignItems: 'center',
                   gap: 7,
                   margin: '0 0 4px',
-                  fontSize: 11.5,
+                  fontSize: 12,
                   color: 'var(--text-3)',
                 }}
               >
@@ -700,7 +696,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
             border: '1px dashed var(--border-2)',
             background: 'transparent',
             color: 'var(--text-3)',
-            fontSize: 12.5,
+            fontSize: 13,
             fontWeight: 600,
             cursor: canManageMembers && roles.length > 0 ? 'pointer' : 'not-allowed',
             opacity: canManageMembers && roles.length > 0 ? 1 : 0.5,
@@ -725,7 +721,7 @@ export const MembersTab = ({ projectId, onMemberClick }: MembersTabProps) => {
               border: '1px dashed var(--border-2)',
               background: 'transparent',
               color: 'var(--text-4)',
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
               fontFamily: 'inherit',

@@ -45,7 +45,7 @@ const StatusChipSelector = ({ statuses, value, onChange }: StatusChipSelectorPro
           border: `1.5px solid ${selected ? s.color : 'var(--border)'}`,
           background: selected ? s.color + '22' : 'var(--card)',
           color: selected ? 'var(--text)' : 'var(--text-2)',
-          fontSize: 12, fontWeight: selected ? 700 : 500,
+          fontSize: 12, fontWeight: selected ? 600 : 500,
           fontFamily: 'inherit', cursor: 'pointer',
           transition: 'background .12s, border-color .12s',
         }}
@@ -95,7 +95,7 @@ const CoverPicker = ({ onPhotoNameChange, placePhotos, selectedPhotoName }: Cove
       <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon name="image" size={16} color="var(--text-4)"/>
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('The cover photo is set automatically')}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('The cover photo is set automatically')}</div>
           <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>{t('Enter a place to choose a cover photo')}</div>
         </div>
       </div>
@@ -164,7 +164,7 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
           <span style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text-4)' }}>{t('Select tags (optional)')}</span>
         )}
         {selectedTags.map(tag => (
-          <span key={tag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 4px 3px 8px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>
+          <span key={tag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 4px 3px 8px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color }}/>
             {t(tag.name)}
             <button type="button" onClick={() => onChange(value.filter(id => id !== tag.id))} style={{ width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
@@ -172,18 +172,18 @@ const TagPicker = ({ value, onChange, available = TAG_PRESETS }: TagPickerProps)
             </button>
           </span>
         ))}
-        <button type="button" onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, background: open ? 'var(--accent-soft)' : 'transparent', border: `1px dashed ${open ? 'var(--accent)' : 'var(--border-2)'}`, color: open ? 'var(--accent-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+        <button type="button" onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, background: open ? 'var(--accent-soft)' : 'transparent', border: `1px dashed ${open ? 'var(--accent)' : 'var(--border-2)'}`, color: open ? 'var(--accent-text)' : 'var(--text-3)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
           <Icon name="plus" size={11} strokeWidth={2.5}/> {t('Add')}
         </button>
       </div>
       {open && (
         <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'var(--card)', border: '1px solid var(--border)', maxHeight: 140, overflow: 'auto' }}>
           {unselected.length === 0 ? (
-            <div style={{ padding: '6px 4px', fontSize: 11.5, color: 'var(--text-4)' }}>{t('All tags are selected')}</div>
+            <div style={{ padding: '6px 4px', fontSize: 12, color: 'var(--text-4)' }}>{t('All tags are selected')}</div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {unselected.map(tag => (
-                <button key={tag.id} type="button" onClick={() => onChange([...value, tag.id])} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                <button key={tag.id} type="button" onClick={() => onChange([...value, tag.id])} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
                   onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--accent-soft)'; el.style.borderColor = 'var(--accent)'; el.style.color = 'var(--accent-text)' }}
                   onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--card-2)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-2)' }}
                 >
@@ -243,7 +243,7 @@ const MemberPicker = ({ members, value, onChange }: MemberPickerProps) => (
             {selected && <Icon name="check" size={9} color="var(--on-accent)"/>}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {member.displayName}
             </div>
             {member.email && (
@@ -523,7 +523,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={previewUrl} alt={t('Cover')} style={{ width: '100%', height: 90, objectFit: 'cover', display: 'block' }}/>
                     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px', gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {form.title || t('Project name')}
                       </span>
                       {form.status && (() => {
@@ -540,7 +540,7 @@ export const CreateProjectModal = ({ onClose, onCreated, initialStartDate, initi
 
         {/* Footer */}
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="users" size={12}/>
             {t('You can also add members when you create this')}
           </span>

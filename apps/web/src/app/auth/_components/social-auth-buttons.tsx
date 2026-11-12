@@ -113,7 +113,7 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
             background: 'var(--red-soft)',
             border: '1px solid var(--red)',
             color: 'var(--red-text)',
-            fontSize: 12.5,
+            fontSize: 13,
           }}
         >
           {error}

@@ -286,7 +286,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
 
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {!editing && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-3)' }}>
               <Icon name="chat" size={12}/>
               {t('A dedicated chat is also created')}
             </span>

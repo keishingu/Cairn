@@ -57,7 +57,7 @@ const KanbanCard = ({ project, barColor, onClick, onDragStart, onDragEnd, draggi
         {project.title}
       </div>
       {dateStr && (
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <AvatarStack names={project.memberNames} size={20} max={4} />
@@ -119,10 +119,10 @@ const KanbanColumn = ({
       }}
     >
       <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: text, letterSpacing: '0.01em' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: text, letterSpacing: '0.01em' }}>
           {status.name}
         </span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: text, opacity: 0.7 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: text, opacity: 0.7 }}>
           {isLoading ? '…' : items.length}
         </span>
       </div>

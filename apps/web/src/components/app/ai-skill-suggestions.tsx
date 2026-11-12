@@ -40,7 +40,7 @@ export function SkillSuggestions({ input, onSelect }: { input: string; onSelect:
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
         >
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>${skill.name}</span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{instructionToPlainText(skill.instruction)}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{instructionToPlainText(skill.instruction)}</span>
         </button>
       ))}
     </div>

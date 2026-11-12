@@ -33,7 +33,7 @@ export const ChatSidebarSection = ({ title, children, onAdd, sortMenu }: { title
   const t = useT()
   return (
   <div style={{ marginBottom: 10 }}>
-    <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <span>{title}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
         {sortMenu}
@@ -84,8 +84,8 @@ const ChatSidebarCollapsibleSection = ({ title, count, storageKey = STORAGE_KEYS
         onClick={toggle}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 4,
-          fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em',
-          padding: '6px 10px', textTransform: 'uppercase',
+          fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
+          padding: '6px 10px',
           background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
         }}
       >
@@ -142,14 +142,14 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
       // 新着は最大の太さに加えて文字色も一段明るくし、件数バッジがなくても一目で分かるようにする
       color: active || unreadDisplay?.unread ? 'var(--text)' : 'var(--text-2)',
       fontSize: mobile ? 15 : 13,
-      fontWeight: unreadDisplay?.unread ? 800 : 400,
+      fontWeight: unreadDisplay?.unread ? 600 : 400,
       cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
     }}
       className={!active && !mobile ? 'hover-bg-card' : undefined}
     >
-      {prefix === 'lock' ? (
+      {prefix === 'lock' || prefix === 'sparkles' ? (
         <span style={{ width: mobile ? 36 : 14, height: mobile ? 36 : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: mobile ? 8 : undefined, background: mobile ? 'var(--card-2)' : undefined, color: 'var(--text-3)' }}>
-          <Icon name="lock" size={mobile ? 18 : 12}/>
+          <Icon name={prefix} size={mobile ? 18 : 12}/>
         </span>
       ) : prefix ? (
         mobile ? (
@@ -182,7 +182,7 @@ export const ChatSidebarItem = ({ active, onClick, prefix, avatar, avatarUrl, do
         <AvatarStack names={memberNames} size={22} max={3}/>
       )}
       {memberCount != null && !mobile && memberCount > 0 && (
-        <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 500, flexShrink: 0 }}>{t('{count} members', { count: memberCount })}</span>
       )}
     </button>
     {action && (
@@ -318,7 +318,7 @@ const SidebarCreateMenu = ({ ownerLabel, actions, isMobile }: {
               style={{
                 width: '100%', height: 34, display: 'flex', alignItems: 'center', gap: 8,
                 border: 'none', borderRadius: 6, background: 'transparent', color: action.danger ? 'var(--red-text)' : 'var(--text-2)',
-                cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
+                cursor: 'pointer', padding: '0 9px', fontFamily: 'inherit', fontSize: 13, textAlign: 'left',
                 whiteSpace: 'nowrap',
               }}
               className="hover-bg"
@@ -669,7 +669,7 @@ const DmPicker = ({ members, onStartDm }: DmPickerProps) => {
               className="hover-bg"
             >
               <Avatar name={m.displayName} url={m.avatarUrl ?? null} size={20}/>
-              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{m.displayName}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{m.displayName}</span>
             </button>
           ))}
         </div>, portalHostFor(ref.current)!,
@@ -889,7 +889,7 @@ export const ChannelList = ({
   <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? '8px 0' : '8px 6px', paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined }}>
     <ChatSidebarSection title={t('Projects')} {...(onAddProject ? { onAdd: onAddProject } : {})} sortMenu={sortMenu('projects', t('Projects'))}>
       {pinnedProjectsError && (
-        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 11.5, color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
+        <div role="alert" style={{ padding: '4px 10px 6px', fontSize: 12, color: 'var(--red-text)' }}>{pinnedProjectsError}</div>
       )}
       {projectGroups.map(({ general, activeMilestones, completedMilestones }) => (
         <ProjectChannelGroup
@@ -955,8 +955,7 @@ export const ChannelList = ({
     )}
     {FEATURE_FLAGS.dm && (
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
           >
             <span>{t('Direct messages')}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
@@ -972,7 +971,7 @@ export const ChannelList = ({
       </div>
     )}
     <ChatSidebarSection title={t('Apps')}>
-      <ChatSidebarItem prefix="✨" label={t('AI assistant')} mobile={isMobile} />
+      <ChatSidebarItem prefix="sparkles" label={t('AI assistant')} mobile={isMobile} />
     </ChatSidebarSection>
   </div>
   )

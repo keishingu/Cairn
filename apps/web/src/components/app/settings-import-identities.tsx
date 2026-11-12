@@ -57,7 +57,7 @@ export function ImportedIdentitiesPanel({ enabled }: { enabled: boolean }) {
   return (
     <section style={{ marginBottom: 24 }}>
       <h2 style={{ fontSize: 14 }}>{t('Imported participants')}</h2>
-      <p style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
         {t('Match participants of the imported conversations to members. Their past messages and reactions are then shown as the member. Choose a member only when you have confirmed it is the same person.')}
       </p>
       {membersQuery.isError && (

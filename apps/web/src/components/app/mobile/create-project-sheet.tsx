@@ -136,7 +136,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
       {/* Title */}
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
             {t('Project name')} <span style={{ color: 'var(--red)' }}>*</span>
           </label>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{title.length}/60</span>
@@ -149,7 +149,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
         />
         {titleError && (
           <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+            <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
             {titleError}
           </div>
         )}
@@ -158,7 +158,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
       {/* Description */}
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Description')}</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Description')}</label>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
         </div>
         <textarea
@@ -173,7 +173,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
       {/* Location */}
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Location')}</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Location')}</label>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
         </div>
         <LocationInput
@@ -203,7 +203,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
       {/* Cover photo */}
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Cover photo')}</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Cover photo')}</label>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{t('Optional')}</span>
         </div>
 
@@ -275,7 +275,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={previewUrl} alt={t('Cover preview')} style={{ width: '100%', height: 80, objectFit: 'cover', display: 'block' }}/>
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', display: 'flex', alignItems: 'flex-end', padding: '8px 10px' }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {title || t('Project name')}
                     </span>
                   </div>
@@ -288,7 +288,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
 
       <div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Members')}</label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Members')}</label>
           <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{memberUserIds.length > 0 ? t('{count} selected members', { count: memberUserIds.length }) : t('Optional')}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
@@ -345,7 +345,7 @@ export function CreateProjectSheet({ onClose, onCreated, initialStartDate = '', 
 
       {/* Dates: 日程の編集と同じカレンダーで選ぶ */}
       <div>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Dates')}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>{t('Dates')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <DateRangePicker
             value={{ start: startDate || null, end: endDate || null, startTime: '', endTime: '' }}

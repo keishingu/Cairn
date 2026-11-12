@@ -73,7 +73,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
       >
         <ModalHeader icon="flag" title={t('Report message')} onClose={close} />
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7 }}>
             {t('Choose why you are reporting this message. The moderators will review it.')}
           </p>
           <div role="radiogroup" aria-label={t('Report reason')} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

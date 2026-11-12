@@ -102,7 +102,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
             </span>
           </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: roleColor, background: roleBackground, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: roleColor, background: roleBackground, padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>
           {roleLabel}
         </span>
         <Icon name="chevRight" size={14} color="var(--text-4)"/>
@@ -132,7 +132,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12.5, fontWeight: 600, color: 'var(--text)',
+          fontSize: 13, fontWeight: 600, color: 'var(--text)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           marginBottom: 3,
         }}>
@@ -147,7 +147,7 @@ const ProjectRow = ({ project, onClick, isMobile }: ProjectRowProps) => {
         </div>
       </div>
       <span style={{
-        fontSize: 10.5, fontWeight: 700, flexShrink: 0,
+        fontSize: 11, fontWeight: 600, flexShrink: 0,
         color: roleColor, background: roleBackground,
         padding: '2px 7px', borderRadius: 4,
       }}>
@@ -300,7 +300,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         aria-label={t('Change workspace role')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
-          fontSize: isMobile ? 11 : 10.5, fontWeight: 700,
+          fontSize: isMobile ? 11 : 11, fontWeight: 600,
           color: rs.c, background: rs.bg,
           padding: isMobile ? '2px 6px 2px 8px' : '2px 6px 2px 8px', borderRadius: 4,
           border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -333,7 +333,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
                 padding: isMobile ? '10px 14px' : '7px 12px', border: 'none',
                 background: currentRole === role ? 'var(--card-2)' : 'transparent',
                 color: currentRole === role ? 'var(--text)' : 'var(--text-2)',
-                fontSize: isMobile ? 14 : 12.5, fontWeight: currentRole === role ? 600 : 500,
+                fontSize: isMobile ? 14 : 13, fontWeight: currentRole === role ? 600 : 500,
                 cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
               }}
               className={currentRole !== role ? 'hover-bg' : undefined}
@@ -345,7 +345,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       )}
     </div>
   ) : (
-    <span style={{ fontSize: isMobile ? 11 : 10.5, fontWeight: 700, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
+    <span style={{ fontSize: isMobile ? 11 : 11, fontWeight: 600, color: rs.c, background: rs.bg, padding: '2px 8px', borderRadius: 4 }}>
       {t(WS_ROLE_LABEL[currentRole])}
     </span>
   )
@@ -403,12 +403,12 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             >
               <Icon name="chevLeft" size={18}/>
             </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', flex: 1 }}>{t('Member details')}</span>
+            <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{t('Member details')}</span>
           </div>
           <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <Avatar name={member.displayName} url={member.avatarUrl} size={52}/>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>
                 {member.displayName}
               </div>
               {member.email && (
@@ -448,13 +448,13 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         >
           <Avatar name={member.displayName} size={52}/>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>
               {member.displayName}
             </div>
             {member.email && (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 13,
                   color: 'var(--text-4)',
                   marginBottom: 6,
                   overflow: 'hidden',
@@ -495,7 +495,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             <button
               type="button"
               onClick={() => { setDraftAttributeIds(profileAttributes.map(attribute => attribute.id)); setEditingAttributes(true); setAttributeError(null) }}
-              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 2, fontFamily: 'inherit' }}
             >
               {t('Edit')}
             </button>
@@ -506,7 +506,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             {attributeOptionsLoading ? (
               <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Loading...')}</div>
             ) : attributeOptionsError ? (
-              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5 }}>{t('Could not load the attribute list')}</div>
+              <div role="alert" style={{ color: 'var(--red-text)', fontSize: 12 }}>{t('Could not load the attribute list')}</div>
             ) : attributeOptions.length === 0 ? (
               <div style={{ color: 'var(--text-4)', fontSize: 12 }}>{t('Create attributes in settings.')}</div>
             ) : (
@@ -541,7 +541,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
               </div>
             )}
             <div style={{ marginTop: 6, color: 'var(--text-4)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>{t('{count}/5 items', { count: draftAttributeIds.length })}</div>
-            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 11.5, marginTop: 6 }}>{attributeError}</div>}
+            {attributeError && <div role="alert" style={{ color: 'var(--red-text)', fontSize: 12, marginTop: 6 }}>{attributeError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }}>
               <button
                 type="button"
@@ -581,7 +581,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           borderRight: '1px solid var(--divider)',
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
-          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
+          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 600, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.length}
           </span>
           <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
@@ -589,7 +589,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
           </span>
         </div>
         <div style={{ flex: 1, padding: isMobile ? '12px 20px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: 'var(--text)' }}>
+          <span style={{ fontSize: isMobile ? 22 : 20, fontWeight: 600, color: 'var(--text)' }}>
             {isLoading ? '—' : projects.filter(p => p.role === 'leader' || p.role === 'subleader').length}
           </span>
           <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: isMobile ? 2 : 0 }}>
@@ -605,8 +605,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         paddingBottom: isMobile ? 'var(--mobile-nav-clearance)' : undefined,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: 'var(--text-4)',
-          letterSpacing: '0.06em', textTransform: 'uppercase',
+          fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
           padding: isMobile ? '14px 16px 6px' : '0 0 4px',
         }}>
           {t('Project history')}
@@ -630,7 +629,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
             gap: isMobile ? 10 : 8, padding: isMobile ? '40px 16px' : '32px 0', color: 'var(--text-4)',
           }}>
             <Icon name="folder" size={isMobile ? 32 : 28}/>
-            <span style={{ fontSize: isMobile ? 14 : 12.5 }}>{t('No joined projects')}</span>
+            <span style={{ fontSize: isMobile ? 14 : 13 }}>{t('No joined projects')}</span>
           </div>
         ) : (
           sortedProjects.map(p => (

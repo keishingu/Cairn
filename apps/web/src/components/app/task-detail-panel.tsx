@@ -84,7 +84,7 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save() } }}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
-          style={{ ...fieldInputStyle(false), fontSize: 15, fontWeight: 700 }}
+          style={{ ...fieldInputStyle(false), fontSize: 15, fontWeight: 600 }}
         />
         {error && <InlineError>{error}</InlineError>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -107,7 +107,7 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
       style={{
         width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
         border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
-        fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
+        fontFamily: 'inherit', fontSize: 16, fontWeight: 600, lineHeight: 1.45,
         color: 'var(--text)', overflowWrap: 'anywhere',
       }}
     >
@@ -202,7 +202,7 @@ const DescriptionSection = ({ description, saving, error, onSave, onDiscardError
           </div>
         </div>
       ) : description ? (
-        <div style={{ fontSize: 13.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+        <div style={{ fontSize: 14, color: 'var(--text)', overflowWrap: 'anywhere' }}>
           <MarkdownContent content={description} />
         </div>
       ) : (
@@ -236,7 +236,7 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
     return (
       <section>
         <div style={{ ...sectionLabelStyle, marginBottom: 6 }}>{t('Original message')}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('The original message is no longer available')}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{t('The original message is no longer available')}</div>
       </section>
     )
   }
@@ -262,8 +262,8 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <Avatar name={message.senderName} url={message.senderAvatarUrl} size={22} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{message.senderName}</span>
-          <time dateTime={message.createdAt} style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{message.senderName}</span>
+          <time dateTime={message.createdAt} style={{ fontSize: 12, color: 'var(--text-3)' }}>
             {new Date(message.createdAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
           </time>
         </div>
@@ -331,7 +331,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
           }}
         >
           {isLoading ? (
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{t('Loading...')}</div>
           ) : isError || !task ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
               <InlineError variant="box" style={{ alignSelf: 'stretch' }}>
@@ -389,7 +389,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 }}
               >
-                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
                   {t('Created by {name} on {date}', {
                     name: task.createdByName ?? t('Unknown member'),
                     date: new Date(task.createdAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }),

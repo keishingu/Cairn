@@ -172,7 +172,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isMobile ? '4px 16px 8px' : '10px 12px 8px' }}>
-          <span style={{ fontSize: isMobile ? 15 : 13, fontWeight: 700, color: 'var(--text)' }}>{t('Reaction')}</span>
+          <span style={{ fontSize: isMobile ? 15 : 13, fontWeight: 600, color: 'var(--text)' }}>{t('Reaction')}</span>
           <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn icon-btn-sm">
             <Icon name="close" size={14}/>
           </button>
@@ -209,12 +209,12 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
       {expanded && (
         <div style={{ padding: isMobile ? '10px 16px 0' : '10px 12px 0', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {catalogError ? (
-            <div role="alert" style={{ fontSize: 12.5, color: 'var(--red-text)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div role="alert" style={{ fontSize: 13, color: 'var(--red-text)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
               {t('Could not load the emoji list')}
               <button type="button" className="btn" onClick={() => { setCatalogError(false); setCatalogAttempt(n => n + 1) }}>{t('Retry')}</button>
             </div>
           ) : !catalog ? (
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)', padding: '8px 0' }}>{t('Loading…')}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>{t('Loading…')}</div>
           ) : (
             <>
               <input
@@ -255,7 +255,7 @@ export const ReactionPicker = ({ anchorRef, onSelect, onClose, isMobile = false 
               </div>
               <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', height: isMobile ? 260 : 220 }}>
                 {entries.length === 0 ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', padding: '8px 0' }}>{t('No emoji found')}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '8px 0' }}>{t('No emoji found')}</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)' }}>
                     {entries.map(item => (

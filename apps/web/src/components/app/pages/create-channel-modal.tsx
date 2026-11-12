@@ -102,7 +102,7 @@ export function CreateChannelModal({ onClose, onCreated }: CreateChannelModalPro
         {/* Footer */}
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10 }}>
           {isPrivate && (
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon name="users" size={12}/>
               {t('You can invite members after creating the channel')}
             </span>

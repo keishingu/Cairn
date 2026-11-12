@@ -95,13 +95,13 @@ function PendingActionCard({ id }: { id: string }) {
         </label>
       ))}
       {pending && editing && action.actionType === 'post_message' && (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{t('Mentions are written as <@member ID>. Keep them as they are to notify the member.')}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('Mentions are written as <@member ID>. Keep them as they are to notify the member.')}</div>
       )}
       {action.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 12 }}>{action.error}</div>}
       {decide.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 12 }}>{decide.error instanceof Error ? decide.error.message : String(decide.error)}</div>}
       {pending && (
         <>
-          <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
             {action.actionType === 'post_message'
               ? t('Cairn AI will post this with your name as the approver. Only you can see this card.')
               : t('This runs with your permissions when you approve it. Only you can see this card.')}
@@ -184,7 +184,7 @@ function ActionDetails({ action }: { action: PendingActionDto }) {
   if (action.actionType === 'invite_project_member' && !('role' in display)) rows.push([t('Project role'), t('Member')])
   if (rows.length === 0) return null
   return (
-    <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 12px', fontSize: 12.5 }}>
+    <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 12px', fontSize: 13 }}>
       {rows.map(([label, value]) => (
         <React.Fragment key={label}>
           <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

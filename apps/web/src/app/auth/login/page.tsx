@@ -73,7 +73,7 @@ function LoginForm() {
   return (
     <div style={{ width: '100%', maxWidth: 400 }}>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+        <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{t('Sign in to your account')}</div>
@@ -95,7 +95,7 @@ function LoginForm() {
               borderRadius: 8,
               background: 'var(--green-soft)',
               color: 'var(--green-text)',
-              fontSize: 12.5,
+              fontSize: 13,
             }}
           >
             {t('Your account has been deleted.')}
@@ -111,7 +111,7 @@ function LoginForm() {
               background: 'var(--red-soft)',
               border: '1px solid var(--red)',
               color: 'var(--red-text)',
-              fontSize: 12.5,
+              fontSize: 13,
             }}
           >
             {t('Could not finish signing in. Please try again.')}
@@ -127,7 +127,7 @@ function LoginForm() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -149,7 +149,7 @@ function LoginForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
@@ -177,7 +177,7 @@ function LoginForm() {
               background: 'var(--red-soft)',
               border: '1px solid var(--red)',
               color: 'var(--red-text)',
-              fontSize: 12.5,
+              fontSize: 13,
             }}>
               {error}
             </div>

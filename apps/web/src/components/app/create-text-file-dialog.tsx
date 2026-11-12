@@ -72,7 +72,7 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder={t('e.g. memo')}
-                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'var(--input)', color: 'var(--text)', fontSize: 13.5, outline: 'none', fontFamily: 'inherit' }}
+                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'var(--input)', color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'inherit' }}
                 onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
                 onBlur={e => (e.target.style.borderColor = 'var(--border-2)')}
               />
@@ -82,7 +82,7 @@ export const CreateTextFileDialog = ({ onClose, onCreated }: Props) => {
               <select
                 value={ext}
                 onChange={e => setExt(e.target.value as 'txt' | 'md')}
-                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'var(--input)', color: 'var(--text)', fontSize: 13.5, outline: 'none', fontFamily: 'inherit', cursor: 'pointer', minWidth: 80 }}
+                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-2)', background: 'var(--input)', color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'inherit', cursor: 'pointer', minWidth: 80 }}
               >
                 <option value="txt">.txt</option>
                 <option value="md">.md</option>

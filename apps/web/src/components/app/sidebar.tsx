@@ -41,7 +41,7 @@ const SidebarItem = ({ icon, label, active, badge, onClick, onPrefetch, indent }
     padding: indent ? '7px 10px 7px 30px' : '8px 10px', borderRadius: 8, border: 'none',
     background: active ? 'var(--card-hover)' : 'transparent',
     color: active ? 'var(--text)' : 'var(--text-2)',
-    fontWeight: active ? 600 : 500, fontSize: indent ? 13 : 13.5,
+    fontWeight: active ? 600 : 500, fontSize: indent ? 13 : 14,
     cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
     transition: 'background .12s', position: 'relative',
   }}
@@ -82,7 +82,7 @@ const SidebarGroup = ({ icon, label, page, setPage, prefetchPage, items }: Sideb
         padding: '8px 10px', borderRadius: 8, border: 'none',
         background: 'transparent',
         color: isChildActive ? 'var(--text)' : 'var(--text-2)',
-        fontWeight: isChildActive ? 600 : 500, fontSize: 13.5,
+        fontWeight: isChildActive ? 600 : 500, fontSize: 14,
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
         className="hover-bg"
@@ -130,7 +130,7 @@ const PinnedProjectItem = ({ name, dot, onClick, onUnpin }: PinnedProjectItemPro
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
           padding: '6px 10px', borderRadius: 7, border: 'none',
           background: hovered ? 'var(--card-2)' : 'transparent',
-          color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer', textAlign: 'left',
+          color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', textAlign: 'left',
           fontFamily: 'inherit', paddingRight: hovered ? 28 : 10,
         }}
       >
@@ -209,16 +209,16 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
   const logoEl = (
     <div style={{
       width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-      background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
+      background: workspace?.logoUrl ? 'var(--border)' : 'var(--accent)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', overflow: 'hidden',
-      boxShadow: workspace?.logoUrl ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
+      color: 'var(--on-accent)', overflow: 'hidden',
+      boxShadow: 'none',
     }}>
       {workspace?.logoUrl
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
         : workspace?.name
-          ? <span style={{ fontSize: 14, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+          ? <span style={{ fontSize: 14, fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
           : <Icon name="mountain" size={18} strokeWidth={2.2}/>
       }
     </div>
@@ -278,9 +278,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                   >
                     <div style={{
                       width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                      background: 'linear-gradient(135deg, #10B981, #0891B2)',
+                      background: 'var(--accent)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontSize: 12, fontWeight: 700,
+                      color: 'var(--on-accent)', fontSize: 12, fontWeight: 600,
                     }}>
                       {ws.logoUrl
                         // eslint-disable-next-line @next/next/no-img-element
@@ -368,7 +368,7 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
         >
           {logoEl}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{workspace?.name ?? '…'}</div>
             {workspace?.description && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.2 }}>{workspace.description}</div>
             )}
@@ -408,9 +408,9 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
                 >
                   <div style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                    background: 'linear-gradient(135deg, #10B981, #0891B2)',
+                    background: 'var(--accent)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontSize: 12, fontWeight: 700,
+                    color: 'var(--on-accent)', fontSize: 12, fontWeight: 600,
                   }}>
                     {ws.logoUrl
                       // eslint-disable-next-line @next/next/no-img-element
@@ -456,23 +456,21 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
       </div>
 
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 12px' }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
-          }}
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
         >
           {t('Workspace')}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <SidebarItem icon="chat" label={t('Chats')} badge={totalChatUnread || undefined} active={page === 'chats'} onClick={() => setPage('chats')} onPrefetch={() => prefetchPage?.('chats')}/>
           <SidebarGroup icon="folder" label={projectLabel} page={page} setPage={setPage} prefetchPage={prefetchPage} items={projectChildren}/>
           <SidebarItem icon="check" label={t('My tasks')} active={page === 'tasks'} onClick={() => setPage('tasks')} onPrefetch={() => prefetchPage?.('tasks')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase',
-          }}
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
         >
           {t('Library')}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <SidebarItem icon="file"     label={t('Files')}       active={page === 'files'}   onClick={() => setPage('files')} onPrefetch={() => prefetchPage?.('files')}/>
           <SidebarItem icon="image"    label={t('Gallery')}     active={page === 'gallery'} onClick={() => setPage('gallery')} onPrefetch={() => prefetchPage?.('gallery')}/>
           {aiChatAllowed !== false && (
@@ -480,18 +478,16 @@ export const Sidebar = ({ page, setPage, prefetchPage, openPanel, collapsed = fa
           )}
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '14px 10px 6px', textTransform: 'uppercase',
-          }}
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
         >
           {t('Manage')}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <SidebarItem icon="users"    label={t('Members')} active={page === 'members'}  onClick={() => setPage('members')} onPrefetch={() => prefetchPage?.('members')}/>
           <SidebarItem icon="settings" label={t('Settings')}     active={page === 'settings'} onClick={() => setPage('settings')} onPrefetch={() => prefetchPage?.('settings')}/>
         </div>
 
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '18px 10px 8px', textTransform: 'uppercase',
-          }}
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '20px 10px 8px' }}
         >
           {t('Pinned {label}', { label: projectLabel })}
         </div>
@@ -625,8 +621,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       borderRadius: 10, boxShadow: 'var(--shadow-pop)', padding: 6, zIndex: 'var(--z-dropdown)',
       minWidth: 160,
     }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
-        }}
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
       >
         {t('Status')}
       </div>
@@ -648,8 +643,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
         </button>
       ))}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '4px 10px 6px', textTransform: 'uppercase',
-        }}
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', padding: '4px 10px 8px' }}
       >
         {t('Status message')}
       </div>
@@ -670,7 +664,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           style={{
             flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '6px 10px',
             borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)',
-            color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+            color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
           }}
         />
         <button
@@ -682,7 +676,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
           {t('Save')}
         </button>
       </div>
-      {statusMessageError && <InlineError style={{ fontSize: 11.5, padding: '0 10px 6px' }}>{statusMessageError}</InlineError>}
+      {statusMessageError && <InlineError style={{ fontSize: 12, padding: '0 10px 6px' }}>{statusMessageError}</InlineError>}
       <div style={{ margin: '4px 0', height: 1, background: 'var(--border)' }}/>
       <button
         onClick={handleLogout}
@@ -749,7 +743,7 @@ function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolea
       >
         {avatarWithDot}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
           <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {me?.statusMessage ? me.statusMessage : t(statusLabel(me?.status))}
           </div>
@@ -794,7 +788,7 @@ export function TopBar({ title, subtitle, children }: TopBarProps) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>{title}</h1>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>{title}</h1>
           {subtitle && <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{subtitle}</span>}
         </div>
       </div>

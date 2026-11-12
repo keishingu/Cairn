@@ -119,14 +119,14 @@ export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px 16px' }}>
       {tasks.length === 0 ? (
-        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12.5 }}>
+        <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
           {t('No tasks')}
         </div>
       ) : (
         <>
           {todoTasks.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', padding: '4px 0 6px', letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', padding: '4px 0 6px', letterSpacing: '0.04em' }}>
                 {t('Incomplete ({count})', { count: todoTasks.length })}
               </div>
               {todoTasks.map(task => (
@@ -147,13 +147,13 @@ export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)' }}
                   />
-                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>{formatTaskTitleForDisplay(task.title)}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: 'var(--text)' }}>{formatTaskTitleForDisplay(task.title)}</span>
                   {task.priority && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: PRIORITY_COLOR[task.priority], padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLOR[task.priority], padding: '2px 6px', borderRadius: 4, background: 'var(--card-2)' }}>
                       {t(PRIORITY_LABEL[task.priority] ?? task.priority)}
                     </span>
                   )}
-                  {task.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
+                  {task.dueDate && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
                   {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
@@ -168,7 +168,7 @@ export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
           )}
           {doneTasks.length > 0 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', padding: '14px 0 6px', letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', padding: '14px 0 6px', letterSpacing: '0.04em' }}>
                 {t('Done ({count})', { count: doneTasks.length })}
               </div>
               {doneTasks.map(task => (
@@ -189,8 +189,8 @@ export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
                   >
                     <Icon name="check" size={10} strokeWidth={3} />
                   </button>
-                  <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'line-through' }}>{formatTaskTitleForDisplay(task.title)}</span>
-                  {task.dueDate && <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
+                  <span style={{ flex: 1, fontSize: 13, color: 'var(--text-3)', textDecoration: 'line-through' }}>{formatTaskTitleForDisplay(task.title)}</span>
+                  {task.dueDate && <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{task.dueDate.slice(5).replace('-', '/')}</span>}
                   {task.assigneeName && <Avatar name={task.assigneeName} url={task.assigneeAvatarUrl} size={20} />}
                   <RowActionMenu
                     actions={[
@@ -211,7 +211,7 @@ export const TasksTab = ({ project, isMobile = false }: TasksTabProps) => {
           marginTop: 12, width: '100%', padding: '9px',
           borderRadius: 8, border: '1px dashed var(--border-2)',
           background: 'transparent', color: 'var(--text-3)',
-          fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, cursor: 'pointer',
           fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         }}
       >

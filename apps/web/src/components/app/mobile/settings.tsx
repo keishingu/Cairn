@@ -65,12 +65,11 @@ export function MobileSettings() {
         >
           <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={56}/>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{me?.displayName ?? ''}</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)' }}>{me?.displayName ?? ''}</div>
             <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{me?.email ?? ''}</div>
             {me?.wsRole && (
               <div style={{ marginTop: 6 }}>
-                <span style={{ fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600,
-                  }}
+                <span style={{ fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}
                 >
                   {t(ROLE_LABEL[me.wsRole])}
                 </span>
@@ -83,8 +82,7 @@ export function MobileSettings() {
         {/* セクション一覧 */}
         {navGroups.map(group => (
           <div key={group.label} style={{ margin: '16px 16px 0' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4,
-              }}
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, paddingLeft: 4 }}
             >
               {t(group.label)}
             </div>
@@ -103,7 +101,7 @@ export function MobileSettings() {
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Icon name={item.icon} size={16} color="var(--text-2)"/>
                   </div>
-                  <span style={{ flex: 1, fontSize: 14.5, color: 'var(--text)', fontWeight: 500 }}>{t(item.label)}</span>
+                  <span style={{ flex: 1, fontSize: 15, color: 'var(--text)', fontWeight: 500 }}>{t(item.label)}</span>
                   <Icon name="chevRight" size={14} color="var(--text-4)"/>
                 </button>
               ))}
@@ -113,8 +111,7 @@ export function MobileSettings() {
 
         {/* ログアウト */}
         <div style={{ margin: '24px 16px 0' }}>
-          <button onClick={handleLogout} style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-            }}
+          <button onClick={handleLogout} style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             {t('Log out')}
           </button>

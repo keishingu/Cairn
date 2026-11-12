@@ -141,7 +141,7 @@ export function InstructionEditor({ id, value, onChange, placeholder }: { id: st
           ))}
         </div>
       )}
-      <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>
+      <span style={{ fontSize: 12, color: 'var(--text-4)' }}>
         {t('Type @ for members, attributes, and project roles, or # for channels. Picked items are saved by ID, so renames and duplicate names do not change their meaning.')}
       </span>
       {/<[@#]/.test(value) && (

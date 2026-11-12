@@ -74,7 +74,7 @@ export function CommandPalette({ onClose, page }: { onClose: () => void; page: P
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderRadius: 8,
                 background: i === index ? 'var(--card-2)' : 'transparent', cursor: 'pointer',
-                fontSize: 13.5, color: 'var(--text)', fontFamily: 'inherit',
+                fontSize: 14, color: 'var(--text)', fontFamily: 'inherit',
               }}
             >
               <span>{t(c.title)}</span>

@@ -92,7 +92,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             <Icon name="hash" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('New channel')}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{t('New channel')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{t('Enter the channel details')}</div>
           </div>
           <button
@@ -108,7 +108,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
           {/* Name */}
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>
                 {t('Channel name')} <span style={{ color: 'var(--red)' }}>*</span>
               </label>
               <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{name.length}/60</span>
@@ -122,7 +122,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
             />
             {nameError && (
               <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+                <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
                 {nameError}
               </div>
             )}
@@ -130,7 +130,7 @@ export function CreateChannelSheet({ onClose, onCreated }: CreateChannelSheetPro
 
           {/* 公開 / 非公開 */}
           <div>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 8 }}>
               {t('Visibility')} <span style={{ color: 'var(--red)' }}>*</span>
             </label>
             <div style={{ display: 'flex', gap: 8 }}>

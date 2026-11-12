@@ -146,7 +146,7 @@ export const RowActionMenu = ({ actions, triggerStyle, trigger }: {
             >
               <Icon name={a.icon} size={13}/>
               {a.verbatim ? <span style={{ display: 'block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.label}</span> : <span>{t(a.label)}</span>}
-              {a.hint && <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 11.5, color: 'var(--text-4)' }}>{a.hint}</span>}
+              {a.hint && <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 12, color: 'var(--text-4)' }}>{a.hint}</span>}
             </button>
           ))}
         </div>

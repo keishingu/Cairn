@@ -35,16 +35,16 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
   return (
     <Modal onClose={onClose} label={t('Keyboard shortcuts')}>
       <div className="card" style={{ position: 'relative', width: 600, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', padding: 22, boxShadow: 'var(--shadow-lg)' }}>
-        <h2 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{t('Keyboard shortcuts')}</h2>
+        <h2 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{t('Keyboard shortcuts')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
           {sections.map(s => (
             <div key={s.layer}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '.04em', marginBottom: 8 }}>{s.title}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '.04em', marginBottom: 8 }}>{s.title}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {s.rows.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{r.label}</span>
-                    <kbd style={{ fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, padding: '3px 7px', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.keys}</kbd>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{r.label}</span>
+                    <kbd style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '3px 7px', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', whiteSpace: 'nowrap' }}>{r.keys}</kbd>
                   </div>
                 ))}
               </div>
@@ -52,14 +52,13 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
           ))}
           {isDesktop && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '.04em', marginBottom: 8,
-                }}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', letterSpacing: '.04em', marginBottom: 8 }}
               >
                 {t('Desktop')}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{t('Next / previous (channel or conversation)')}</span>
-                <kbd style={{ fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600, padding: '3px 7px', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', whiteSpace: 'nowrap' }}>Ctrl Tab / Ctrl ⇧ Tab</kbd>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{t('Next / previous (channel or conversation)')}</span>
+                <kbd style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '3px 7px', background: 'var(--card-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', whiteSpace: 'nowrap' }}>Ctrl Tab / Ctrl ⇧ Tab</kbd>
               </div>
             </div>
           )}

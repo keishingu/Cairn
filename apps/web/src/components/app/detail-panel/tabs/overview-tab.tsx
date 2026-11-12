@@ -37,8 +37,8 @@ export function formatDateRange(start: string | null, end: string | null, startT
 }
 
 const cardLabelStyle: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)',
-  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4,
+  fontSize: 12, fontWeight: 500, color: 'var(--text-3)',
+ marginBottom: 4,
 }
 
 // ─── インライン編集フィールド ─────────────────────────────────────
@@ -103,7 +103,7 @@ export const InlineText = ({
   }
 
   const fontSize = large ? 15 : 13
-  const fontWeight = large ? 700 : 400
+  const fontWeight = large ? 600 : 400
 
   if (!editing) {
     const empty = value === ''
@@ -173,7 +173,7 @@ export const InlineText = ({
           }}
         />
       )}
-      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 12 }}>{error}</InlineError>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={!canSave}>
@@ -283,7 +283,7 @@ export const InlineDatePair = ({
   const inputStyle: React.CSSProperties = {
     height: coarse ? 40 : 30, padding: coarse ? '0 6px' : '0 8px', borderRadius: 6, minWidth: 0, boxSizing: 'border-box',
     border: '1px solid var(--border)', background: 'var(--card)',
-    color: 'var(--text)', fontSize: coarse ? 16 : 12.5, fontFamily: 'inherit', outline: 'none',
+    color: 'var(--text)', fontSize: coarse ? 16 : 13, fontFamily: 'inherit', outline: 'none',
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -310,7 +310,7 @@ export const InlineDatePair = ({
         }}
         title={readOnly ? undefined : t('Click to edit')}
       >
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
           {formatDateRange(startDate, endDate, startTime, endTime)}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
@@ -392,10 +392,10 @@ export const InlineDatePair = ({
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
         <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+          <InlineError style={{ fontSize: 12 }}>{t('End date must be on or after the start date')}</InlineError>
         </div>
       )}
-      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 12 }}>{error}</InlineError>}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
         <button
@@ -479,7 +479,7 @@ const InlineStatus = ({
               style={{
                 display: 'flex', alignItems: 'center', gap: 7, width: '100%',
                 padding: '7px 10px', border: 'none', background: 'transparent',
-                color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
@@ -511,7 +511,7 @@ const InlineLocation = ({
     width: '100%', height: 34, padding: '0 12px',
     border: '1px solid var(--accent)', borderRadius: 7,
     background: 'var(--card)', color: 'var(--text)',
-    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    fontSize: 13, fontFamily: 'inherit', outline: 'none',
     boxSizing: 'border-box',
   }
 
@@ -549,7 +549,7 @@ const InlineLocation = ({
       <button
         onClick={() => setEditing(false)}
         className="btn btn-ghost"
-        style={{ alignSelf: 'flex-start', height: 26, fontSize: 11.5, padding: '0 8px' }}
+        style={{ alignSelf: 'flex-start', height: 26, fontSize: 12, padding: '0 8px' }}
       >
         {t('Cancel')}
       </button>
@@ -617,7 +617,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
           readOnly={!canEdit}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: overdue ? 700 : 500 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 12, fontWeight: overdue ? 600 : 500 }}>
             <Icon name="calendar" size={11}/>
             <InlineDatePair
               startDate={milestone.startDate}
@@ -633,7 +633,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
             type="button"
             onClick={goToThread}
             className="btn btn-ghost"
-            style={{ height: 24, fontSize: 11.5, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            style={{ height: 24, fontSize: 12, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <Icon name="chat" size={11}/> {t('Thread')}
           </button>
@@ -707,9 +707,9 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
         />
       )}
       {milestones.isLoading ? (
-        <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading…')}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('Loading…')}</div>
       ) : milestones.isError ? (
-        <div style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
+        <div style={{ fontSize: 13, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
       ) : milestones.data && milestones.data.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {milestones.data.map(m => (
@@ -723,7 +723,7 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12.5, color: 'var(--text-4)', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-4)', lineHeight: 1.6 }}>
           {t('No milestones yet.')}
         </div>
       )}
@@ -776,7 +776,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       />
 
       {patch.isError && (
-        <InlineError style={{ fontSize: 11.5, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
+        <InlineError style={{ fontSize: 12, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
 
       {/* 日程 + ステータス */}
@@ -791,7 +791,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             withTime={false}
             sheetSubtitle={project.title}
           />
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
           <div style={cardLabelStyle}>{t('Status')}</div>
@@ -861,7 +861,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}
           title={canDelete ? undefined : t('Deleting a project requires admin access or higher')}
-          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
+          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 13, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
         >
           {t('Delete this project')}
         </button>

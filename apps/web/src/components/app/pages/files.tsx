@@ -310,7 +310,7 @@ const FileSection = ({
     >
       <Icon name={open ? 'chevDown' : 'chevRight'} size={12} color="var(--text-3)" />
       <Icon name="folder" size={14} color="var(--text-3)" />
-      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', flex: 1 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', flex: 1 }}>
         {label}
       </span>
       {count !== undefined && (
@@ -585,7 +585,7 @@ export const PageFiles = ({
         {facetsQuery.isError && (
           <div
             role="alert"
-            style={{ margin: isMobile ? 12 : '16px 20px 0', fontSize: 12.5, color: 'var(--danger)' }}
+            style={{ margin: isMobile ? 12 : '16px 20px 0', fontSize: 13, color: 'var(--danger)' }}
           >
             {facetsQuery.error.message}
           </div>
@@ -649,7 +649,7 @@ export const PageFiles = ({
               <Icon name="file" size={22} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No files')}</div>
-            <div style={{ fontSize: 12.5 }}>
+            <div style={{ fontSize: 13 }}>
               {listParams === ''
                 ? t('Files you send in chat show up here')
                 : t('No files match this filter')}
@@ -702,14 +702,14 @@ export const PageFiles = ({
             </div>
             <div ref={sentinelRef} />
             {isFetchingNextPage && (
-              <div style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--text-3)' }}>
+              <div style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-3)' }}>
                 {t('Loading...')}
               </div>
             )}
             {filesQuery.isFetchNextPageError && (
               <div
                 role="alert"
-                style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 12.5, color: 'var(--danger)' }}
+                style={{ padding: '8px 0 16px', textAlign: 'center', fontSize: 13, color: 'var(--danger)' }}
               >
                 {filesQuery.error?.message}{' '}
                 <button className="btn" onClick={() => void fetchNextPage()}>
@@ -794,7 +794,7 @@ export const PageFiles = ({
                   flex: 1,
                   minWidth: 0,
                   fontSize: 14,
-                  fontWeight: 700,
+                  fontWeight: 600,
                   color: 'var(--text)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',

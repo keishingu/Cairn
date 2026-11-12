@@ -321,7 +321,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
               >
                 <Icon name="filter" size={13}/> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
-                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 600, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
                   </span>
                 )}
@@ -364,7 +364,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
           /* PC table view */
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <div style={{ minWidth: 796 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(200px, 1fr) 120px 120px 120px 100px', gap: 16, padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>
               <span/>
               {(['title','status','date'] as SortKey[]).map((col) => {
                 const labels: Record<SortKey, string> = { title: t('Projects'), status: t('Status'), date: t('Schedule'), progress: t('Progress') }
@@ -372,7 +372,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 return (
                   <button key={col} onClick={() => setTableSortPersisted(col)} style={{
                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    fontSize: 12, fontWeight: 500,
                     color: active ? 'var(--text)' : 'var(--text-3)',
                     display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
                   }}>
@@ -388,7 +388,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                 return (
                   <button onClick={() => setTableSortPersisted(col)} style={{
                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                    fontSize: 12, fontWeight: 500,
                     color: active ? 'var(--text)' : 'var(--text-3)',
                     display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'inherit',
                   }}>
@@ -414,12 +414,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = selected ? 'var(--accent-soft)' : 'transparent'}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 3, background: accent }}/>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <StatusChip name={p.statusName ?? ''} color={p.statusColor ?? '#9CA3AF'}/>
                     {isSearching && p.archived && <ArchivedBadge/>}
                   </div>
-                  <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{formatDates(p.startDate, p.endDate)}</span>
                   <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                   <div style={{ height: 6, borderRadius: 3, background: 'var(--divider)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${progress}%`, background: accent, borderRadius: 3 }}/>
@@ -457,7 +457,7 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     </div>
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.title}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
@@ -497,12 +497,12 @@ export const ProjectListView = ({ openPanel, isMobile, externalSearch }: Project
                     </div>
                   </div>
                   <div style={{ padding: '12px 14px 14px' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{p.title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>{formatDates(p.startDate, p.endDate)} · {t('{count} people', { count: p.memberCount })}</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <AvatarStack names={p.memberNames} urls={p.memberAvatarUrls} size={22}/>
                       {p.taskCount > 0 && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11.5, color: 'var(--text-3)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--text-3)' }}>
                           <Icon name="check" size={12}/>{p.completedTaskCount}/{p.taskCount}
                         </span>
                       )}

@@ -66,7 +66,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
             <Icon name="image" size={36}/>
             <span style={{ fontSize: 14 }}>{t('No photos yet')}</span>
-            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
           </div>
         )}
 
@@ -100,7 +100,7 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
                   loading="lazy"
                 />
                 <div style={{ padding: '8px 10px' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.projectTitle}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>

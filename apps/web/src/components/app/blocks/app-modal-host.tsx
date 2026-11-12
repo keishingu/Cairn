@@ -151,11 +151,11 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
       <div className="card" style={{ width: 480, maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{appName}</div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
         </div>
         <div style={{ padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!modal ? (
-            <div role="alert" style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('This form cannot be shown in this version. Reload the page to see it.')}</div>
+            <div role="alert" style={{ fontSize: 13, color: 'var(--red-text)' }}>{t('This form cannot be shown in this version. Reload the page to see it.')}</div>
           ) : (
             <>
               {modal.blocks.map((block) => (
@@ -205,7 +205,7 @@ function ModalBlock({ block, value, error, mentionNames, onChange }: { block: Re
         {block.optional && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: 'var(--text-3)' }}>{t('Optional')}</span>}
       </label>
       <InputElement id={id} element={block.element} value={value} invalid={!!error} onChange={onChange} />
-      {block.hint && <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{block.hint}</div>}
+      {block.hint && <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{block.hint}</div>}
       {error && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{viewFieldErrorMessage(error, t)}</div>}
     </div>
   )

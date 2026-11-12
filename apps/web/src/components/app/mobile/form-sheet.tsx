@@ -104,7 +104,7 @@ export function MobileFormSheet({
             <Icon name={icon} size={16}/>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{title}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{title}</div>
             {subtitle && (
               <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subtitle}</div>
             )}
@@ -133,7 +133,7 @@ export function MobileFormSheet({
           {errorMessage && (
             <div
               role="alert"
-              style={{ fontSize: 12.5, color: 'var(--red-text)', background: 'var(--red-soft)', padding: '8px 12px', margin: '8px 20px 0', borderRadius: 8, flexShrink: 0 }}
+              style={{ fontSize: 13, color: 'var(--red-text)', background: 'var(--red-soft)', padding: '8px 12px', margin: '8px 20px 0', borderRadius: 8, flexShrink: 0 }}
             >
               {errorMessage}
             </div>

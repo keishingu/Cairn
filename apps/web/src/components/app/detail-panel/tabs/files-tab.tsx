@@ -45,14 +45,14 @@ function IndexingBadge({ status }: { status: string | undefined }) {
   if (!status || status === 'indexed' || status === 'skipped') return null
   if (status === 'pending') {
     return (
-      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--card-2)', color: 'var(--text-3)', flexShrink: 0 }}>
         {t('Indexing')}
       </span>
     )
   }
   if (status === 'failed') {
     return (
-      <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--red-soft)', color: 'var(--red-text)', flexShrink: 0 }}>
         {t('Private')}
       </span>
     )
@@ -326,9 +326,9 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
                 <IndexDot status={f.indexingStatus}/>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {f.fileName}
-                  {f.isLatest && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
+                  {f.isLatest && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: 'var(--accent)', color: 'var(--on-accent)', flexShrink: 0 }}>{t('Latest')}</span>}
                   {isLink && <IndexingBadge status={f.indexingStatus}/>}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isLink ? t('External link') : meta}</div>

@@ -82,7 +82,7 @@ function SignupForm() {
   return (
     <div style={{ width: '100%', maxWidth: 400 }}>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+        <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
           Cairn
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-3)' }}>{inviteToken ? t('Create an account and join') : t('Create a new workspace')}</div>
@@ -105,7 +105,7 @@ function SignupForm() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Display name')}</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Display name')}</label>
             <input
               type="text"
               value={displayName}
@@ -127,7 +127,7 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Email')}</label>
             <input
               type="email"
               value={email}
@@ -149,7 +149,7 @@ function SignupForm() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)' }}>{t('Password')}</label>
             <input
               type="password"
               value={password}
@@ -177,7 +177,7 @@ function SignupForm() {
               background: 'var(--red-soft)',
               border: '1px solid var(--red)',
               color: 'var(--red-text)',
-              fontSize: 12.5,
+              fontSize: 13,
             }}>
               {error}
             </div>

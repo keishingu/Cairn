@@ -179,7 +179,7 @@ export function MoveToThreadDialog({
                   />
                 </Field>
               ) : threads.length === 0 ? (
-                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('No threads to move to yet')}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{t('No threads to move to yet')}</span>
               ) : (
                 <Field label={t('Existing thread')} required htmlFor="move-to-thread-existing">
                   <select

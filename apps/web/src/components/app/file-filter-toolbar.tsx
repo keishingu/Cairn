@@ -118,7 +118,7 @@ export function FileFilterToolbar({
             aria-label={t('Search files')}
             style={{
               flex: 1,
-              fontSize: 12.5,
+              fontSize: 13,
               background: 'transparent',
               border: 'none',
               outline: 'none',
@@ -164,7 +164,7 @@ export function FileFilterToolbar({
                   border: 'none',
                   background: active ? 'var(--card-hover)' : 'transparent',
                   color: active ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: isMobile ? 12 : 12.5,
+                  fontSize: isMobile ? 12 : 13,
                   fontWeight: active ? 600 : 500,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
@@ -197,7 +197,7 @@ export function FileFilterToolbar({
                     background: 'transparent',
                     padding: isMobile ? '6px 3px 6px 8px' : '6px 3px 6px 10px',
                     color: 'inherit',
-                    fontSize: isMobile ? 12 : 12.5,
+                    fontSize: isMobile ? 12 : 13,
                     fontWeight: active ? 600 : 500,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
@@ -225,7 +225,7 @@ export function FileFilterToolbar({
             )
           })}
           {isLoadingSavedFilters && (
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
               {t('Loading...')}
             </span>
           )}
@@ -254,7 +254,7 @@ export function FileFilterToolbar({
                 color: 'var(--on-accent)',
                 borderRadius: 999,
                 fontSize: 10,
-                fontWeight: 700,
+                fontWeight: 600,
                 padding: '1px 5px',
               }}
             >
@@ -265,7 +265,7 @@ export function FileFilterToolbar({
       </div>
 
       {savedFiltersError && (
-        <span role="alert" style={{ fontSize: 11.5, color: 'var(--red-text)' }}>
+        <span role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>
           {t('Could not load saved filters')}
         </span>
       )}
@@ -289,7 +289,7 @@ export function FileFilterToolbar({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 4,
-                fontSize: 11.5,
+                fontSize: 12,
                 color: 'var(--text-3)',
               }}
             >
@@ -308,7 +308,7 @@ export function FileFilterToolbar({
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              fontSize: 11.5,
+              fontSize: 12,
               color: 'var(--text-3)',
             }}
           >
@@ -333,7 +333,7 @@ export function FileFilterToolbar({
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              fontSize: 11.5,
+              fontSize: 12,
               color: 'var(--text-3)',
             }}
           >
@@ -357,7 +357,7 @@ export function FileFilterToolbar({
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              fontSize: 11.5,
+              fontSize: 12,
               color: 'var(--text-3)',
             }}
           >
@@ -374,7 +374,7 @@ export function FileFilterToolbar({
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              fontSize: 11.5,
+              fontSize: 12,
               color: 'var(--text-3)',
             }}
           >
@@ -395,7 +395,7 @@ export function FileFilterToolbar({
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-              fontSize: 11.5,
+              fontSize: 12,
               color: 'var(--text-3)',
               flex: isMobile ? '1 1 180px' : '0 1 240px',
             }}

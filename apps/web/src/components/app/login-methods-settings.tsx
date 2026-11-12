@@ -121,7 +121,7 @@ function IdentityRow({
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
           {identity.identity_data?.['email']
             ? String(identity.identity_data['email'])
             : t('Linked')}
@@ -155,7 +155,7 @@ function UnlinkedProviderRow({
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
           {t('Not linked. Link {label} to sign in to the same account next time.', { label })}
         </div>
       </div>
@@ -286,8 +286,8 @@ export function LoginMethodsSettings() {
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Sign-in methods')}</h2>
-      <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 12.5, lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>{t('Sign-in methods')}</h2>
+      <p style={{ margin: '0 0 10px', color: 'var(--text-3)', fontSize: 13, lineHeight: 1.5 }}>
         {t('You can add more than one sign-in method to the same account. You can link Apple here even when using Hide My Email.')}
       </p>
       <div className="card" style={{ padding: 0 }}>

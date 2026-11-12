@@ -111,7 +111,7 @@ export const TaskDialog = ({
             <div
               role="alert"
               style={{
-                fontSize: 12.5,
+                fontSize: 13,
                 color: 'var(--red-text)',
                 background: 'var(--red-soft)',
                 padding: '8px 12px',

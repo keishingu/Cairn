@@ -129,7 +129,7 @@ export const PageKanban = ({ openPanel, isMobile = false }: PageKanbanProps) => 
               >
                 <Icon name="filter" size={13} /> {t('Filter')}
                 {(statusFilter.length + memberFilter.length) > 0 && (
-                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>
+                  <span style={{ marginLeft: 4, background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 600, padding: '1px 5px' }}>
                     {statusFilter.length + memberFilter.length}
                   </span>
                 )}

@@ -189,7 +189,7 @@ export function ProfileAttributesSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Profile attributes')}</h1>
+          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 600 }}>{t('Profile attributes')}</h1>
           <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
             {t('Manage shared labels and colors for members. Attributes are shared across every project in the workspace.')}
           </p>
@@ -202,7 +202,7 @@ export function ProfileAttributesSettings() {
       </div>
 
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Attribute list')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600 }}>{t('Attribute list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {adding && (
             <div style={{ padding: 16, background: 'var(--card-2)', borderBottom: attributes.length > 0 ? '1px solid var(--divider)' : 'none' }}>

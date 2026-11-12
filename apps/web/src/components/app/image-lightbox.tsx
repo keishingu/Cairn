@@ -262,7 +262,7 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
           pointerEvents: 'none',
         }}>
           {item.caption && (
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
               {item.caption}
             </div>
           )}

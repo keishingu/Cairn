@@ -43,7 +43,7 @@ export function ProfileAttributeBadges({
               borderRadius: 4,
               background: color.background,
               color: color.text,
-              fontSize: compact ? 10 : 10.5,
+              fontSize: compact ? 10 : 11,
               fontWeight: 600,
               lineHeight: 1.4,
               overflowWrap: 'anywhere',
