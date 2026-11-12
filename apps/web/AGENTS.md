@@ -17,7 +17,6 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 - **`.btn` などの部品クラスは `.app` 配下でしか効かない**（`globals.css` が `.app .btn` の子孫セレクタ）。シェルのルートは `app app-root` にし、全画面パネルや portal をその外に出さない（外れるとモバイルのプロジェクト詳細でボタンの見た目が崩れる）
 - **認証後の既定画面は `/chats`**。数字ナビはチャット `1`、プロジェクト一覧・カレンダー・カンバン・マイタスク `2`〜`5`
 - **プロジェクトビューは localStorage のみで永続化**（`STORAGE_KEYS.projects_view_pc` / `_mob`）。URL パラメータは使わない
-- **接続中のフォーカス再取得を止めてよい query は `BROADCAST_COVERED_QUERY_KEYS` だけ**。足すときは、そのデータを変える書き込みがすべて Broadcast され、`realtime-provider` が同じ定数で invalidate すること。ギャラリーとチャンネル参加者一覧は対象外
 - **設定は `/settings/[section]` の URL 駆動**。定義と本体は `src/components/app/pages/settings.tsx` に集約し PC / モバイルで共有する
 - **表示文言は i18next**。キーは英語の UI 文（`t('Sign in with Google')`）。翻訳カタログは `packages/shared/src/i18n/ja.ts` と `ko.ts`（英語はキー原文）。`translate()` は呼び出しごとに `lng` を渡すので、サーバー側でインスタンスの言語は切り替えない。言語は `profiles.locale`（`ja` / `en` / `ko` / `system`）で、`system` は Accept-Language と `navigator.languages` を同じ順で解決する。URL にロケールを付けない。ワークスペースのプロジェクト呼び方は未設定（null）のときだけ訳し、保存済みの文字列はそのまま出す
 - **外部チャットから取り込んだ過去ログは `messages.imported = true`**。未読・未読の初期位置・AI の巡回はこの印で除外し、編集・削除 API は拒否する。新しく未読や巡回の対象を数える経路を足すときも同じ条件を入れる。取り込みには通常の投稿 API（`postMessage`。通知が飛ぶ）を使わない（[`docs/import-design.md`](../../docs/import-design.md)）

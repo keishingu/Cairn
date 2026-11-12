@@ -17,8 +17,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            // 既定はタブ復帰で取り直す。止めるのは BROADCAST_COVERED_QUERY_KEYS だけ。
-            // 切断中はそれも取り直す。再接続時の invalidate は realtime-provider が行う。
+            // Realtime 切断中はタブ復帰のたびに取りこぼしを回収する。接続中は Broadcast が
+            // 表示中のデータを更新するので、最後の取得から 5 分を過ぎたクエリだけ取り直す。
             refetchOnWindowFocus,
           },
         },

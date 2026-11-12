@@ -1,72 +1,35 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { BROADCAST_COVERED_QUERY_KEYS, FOCUS_REFETCH_EXEMPT_ROOTS } from './realtime-coverage'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
-  clearMessageChannelFocusCatchUp,
+  CONNECTED_FOCUS_REFETCH_AFTER_MS,
   refetchOnWindowFocus,
-  setMessageChannelFocusCatchUp,
   setRealtimeFocusCatchUp,
 } from './realtime-focus'
 
-// 行の Broadcast だけでは足りないもの。ギャラリーは gallery_items、参加者一覧は別クエリ。
-const NOT_COVERED_ROOTS = [
-  'project-gallery',
-  'channel-members',
-  'bookmarks',
-  'workspace',
-  'workspace-members',
-  'pinned-projects',
-  'me',
-] as const
+const NOW = 1_000_000_000
 
-describe('フォーカス時の再取得', () => {
-  it('接続中に止めるのは、書き込みがすべて Broadcast されるキーだけ', () => {
-    clearMessageChannelFocusCatchUp()
-    setRealtimeFocusCatchUp(false)
-    for (const root of FOCUS_REFETCH_EXEMPT_ROOTS) {
-      expect(refetchOnWindowFocus({ queryKey: [root, 'child'] })).toBe(false)
-    }
-    for (const root of NOT_COVERED_ROOTS) {
-      expect(refetchOnWindowFocus({ queryKey: [root] })).toBe(true)
-    }
+function queryUpdatedAgo(ms: number) {
+  return { state: { dataUpdatedAt: NOW - ms } }
+}
 
+describe('タブ復帰時の再取得', () => {
+  afterEach(() => setRealtimeFocusCatchUp(true))
+
+  it('Realtime 切断中は、取得直後でも取り直す', () => {
     setRealtimeFocusCatchUp(true)
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'channel-1'] })).toBe(true)
-    expect(refetchOnWindowFocus({ queryKey: ['files', 'list'] })).toBe(true)
-    expect(refetchOnWindowFocus({ queryKey: ['tasks'] })).toBe(true)
+    expect(refetchOnWindowFocus(queryUpdatedAgo(0), NOW)).toBe(true)
   })
 
-  it('channel トピックが切れているチャットのメッセージだけ、接続中でもタブ復帰で取り直す', () => {
+  it('接続中は、最後の取得から一定時間たつまで取り直さない', () => {
     setRealtimeFocusCatchUp(false)
-    setMessageChannelFocusCatchUp('channel-1', true)
-
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'channel-1'] })).toBe(true)
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'channel-2'] })).toBe(false)
-    expect(refetchOnWindowFocus({ queryKey: ['files', 'list'] })).toBe(false)
-
-    setMessageChannelFocusCatchUp('channel-1', false)
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'channel-1'] })).toBe(false)
+    expect(refetchOnWindowFocus(queryUpdatedAgo(CONNECTED_FOCUS_REFETCH_AFTER_MS - 1), NOW)).toBe(false)
+    expect(refetchOnWindowFocus(queryUpdatedAgo(CONNECTED_FOCUS_REFETCH_AFTER_MS), NOW)).toBe(true)
   })
 
-  it('免除キーは realtime-provider が同じ定数で invalidate する', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'src/components/realtime/realtime-provider.tsx'),
-      'utf8',
-    )
-    const viaHelper: Record<string, string> = {
-      messages: 'coveredMessagesQueryKey(',
-      channelFiles: 'coveredChannelFilesQueryKey(',
-    }
-    for (const name of Object.keys(BROADCAST_COVERED_QUERY_KEYS)) {
-      const needle = viaHelper[name] ?? `BROADCAST_COVERED_QUERY_KEYS.${name}`
-      expect(source).toContain(needle)
-    }
-    for (const root of NOT_COVERED_ROOTS) {
-      expect(FOCUS_REFETCH_EXEMPT_ROOTS).not.toContain(root)
-    }
+  it('接続中でも、一度も取得していないクエリは取り直す', () => {
+    setRealtimeFocusCatchUp(false)
+    expect(refetchOnWindowFocus({ state: { dataUpdatedAt: 0 } }, NOW)).toBe(true)
   })
 })

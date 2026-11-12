@@ -61,8 +61,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     tasksTimerRef.current = setTimeout(() => {
       tasksTimerRef.current = null
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      // プロジェクト一覧の進捗は tasks から集計する
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     }, TASKS_DEBOUNCE_MS)
   }, [queryClient])
 
@@ -116,28 +114,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
                 void queryClient.invalidateQueries({ queryKey: ['notifications'] })
               }
             }
-            if (table === 'channel_members') {
-              // 参加の追加・削除は、そのチャンネルのタスクとファイルの可視範囲も変える
-              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-              void queryClient.invalidateQueries({ queryKey: ['files'] })
-              void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
-            }
-          }
-          if (table === 'files') {
-            void queryClient.invalidateQueries({ queryKey: ['files'] })
-            void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
-            // メッセージは添付のファイル名を結合している
-            void queryClient.invalidateQueries({ queryKey: ['messages'] })
-          }
-          if (table === 'projects' || table === 'milestones') {
-            void queryClient.invalidateQueries({ queryKey: ['projects'] })
-            void invalidateChannelListQueries(queryClient)
-            if (table === 'projects') {
-              // ゲストのタスクとファイルはプロジェクト参加で絞られる
-              void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-              void queryClient.invalidateQueries({ queryKey: ['files'] })
-              void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
-            }
           }
         })
       userChannel.subscribe((status, error) => {
@@ -148,9 +124,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // 切断中の既読・新着を取り直す。背景から戻った直後の再取得は再接続より先に走りうる
           void queryClient.invalidateQueries({ queryKey: ['notifications'] })
           void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-          void queryClient.invalidateQueries({ queryKey: ['projects'] })
-          void queryClient.invalidateQueries({ queryKey: ['files'] })
-          void queryClient.invalidateQueries({ queryKey: ['channel-files'] })
           // 画面外のチャンネルのメッセージも切断中は届かないため古い扱いにする（表示中は channel トピックの JOIN で取り直す）
           void queryClient.invalidateQueries({ queryKey: ['messages'], refetchType: 'none' })
           // アプリのモーダルは Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す

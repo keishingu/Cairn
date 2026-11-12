@@ -99,7 +99,6 @@ function removedTopics() {
   })
 }
 
-import { refetchOnWindowFocus } from '@/lib/realtime-focus'
 import { RealtimeProvider } from './realtime-provider'
 import { useRealtimeChannel } from './use-realtime-channel'
 
@@ -255,10 +254,6 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['files'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-files'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files'] })
   })
 
   it('channels の削除 broadcast で一覧・タスク・通知を再取得する', async () => {
@@ -346,23 +341,6 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files', 'channel-1'] })
   })
 
-  it('ファイル名の変更は開いているチャットのメッセージも取り直す', async () => {
-    const { queryClient } = renderProvider(['channel-1'])
-    await connectUserTopic()
-    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
-
-    act(() => {
-      channelRecords[0]?.broadcastCallback?.({
-        event: 'UPDATE',
-        payload: { table: 'files', operation: 'UPDATE' },
-      })
-    })
-
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['files'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['channel-files'] })
-  })
-
   it('user トピックのメッセージ通知で一覧と画面外チャンネルのメッセージを更新し、届いている表示中のチャットは二重に取らない', async () => {
     const { queryClient } = renderProvider(['open-1'])
     await connectUserTopic()
@@ -404,31 +382,6 @@ describe('RealtimeProvider', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'open-1'] })
-  })
-
-  it('channel トピックの失敗ではそのチャットを1回取り直し、タブ復帰でも取り直す', async () => {
-    const { queryClient } = renderProvider(['open-1'])
-    await connectUserTopic()
-    const topic = channelRecords.find(record => record.topic === 'channel:open-1')
-    act(() => {
-      topic?.callback?.('SUBSCRIBED')
-    })
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'open-1'] })).toBe(false)
-
-    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
-    act(() => {
-      topic?.callback?.('CHANNEL_ERROR', { message: 'socket closed' })
-      topic?.callback?.('CHANNEL_ERROR', { message: 'socket closed' })
-    })
-
-    expect(invalidate.mock.calls.filter(([arg]) => JSON.stringify(arg) === JSON.stringify({ queryKey: ['messages', 'open-1'] }))).toHaveLength(1)
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'open-1'] })).toBe(true)
-    expect(refetchOnWindowFocus({ queryKey: ['files'] })).toBe(false)
-
-    act(() => {
-      topic?.callback?.('SUBSCRIBED')
-    })
-    expect(refetchOnWindowFocus({ queryKey: ['messages', 'open-1'] })).toBe(false)
   })
 
   it('user トピックのタスク通知でタスク一覧と画面外チャンネルの印を更新する', async () => {
