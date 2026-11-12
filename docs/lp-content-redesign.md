@@ -39,7 +39,7 @@ Solo の説明は「容量」ではなく「AI と原本」を軸にする。無
 | 3 | ツールを分けなくていい `#connect` | 発言がそのままタスクになる（「タスク化する」・行選択で複数・元の発言へ戻れる）/ プロジェクトごとにまとまる（スレッドへの切り出し）/ カレンダー・カンバンとマイルストーンチャット |
 | 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
 | 5 | 細かいところ `#details` | 圏外でも読める・送れる、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone・Android アプリとブラウザ（App Store / Google Play リンク。PDF のアプリ内表示、iPhone は Office も）、キーボード、電気通信事業届出、投票、DM と非公開チャンネル、返信通知。12 枚（3 列 × 4 行） |
-| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月。AI・動画のアップロード・原本の保存と DL・100GB 超・追加購入）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談（導入支援と団体向け専用アプリの開発）。注記はクレジットの単位（10 / 20）・有効期限なし・貢献の記録 |
+| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月。AI・動画のアップロード・原本の保存と DL・100GB 超・追加購入）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談（導入支援と団体向け専用アプリの開発）。注記はクレジットの消費（質問ごとに AI の利用料に応じて。目安 約30 / 約45）・有効期限なし・貢献の記録 |
 | 7 | AI `#ai` | 4 カード（2×2）: 構造があるから答えが当たる（権限準拠・根拠リンク、Solo）/ システムプロンプト・モデル選択・使える人の制限 / Skill（提案→承認→実行、定義は全員に公開）/ MCP（Claude・Cursor・Codex、チャンネル・メンバー・経歴の読み取り） |
 | 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる / 団体に合わせたアプリを載せられる（Slack 互換のアプリ基盤はプレビュー、Cairn でログイン）。4 カード（`prob-grid--two` で 2×2）。GitHub と要望受付ワークスペースへの導線 |
 | 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、AI が読む範囲、ゲスト、会社・団体に合わせた導入・開発、Teams コミュニティからの移行、スマホアプリ |
@@ -67,7 +67,7 @@ Solo の説明は「容量」ではなく「AI と原本」を軸にする。無
 |---|---|
 | メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
 | ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `MAX_FILE_SIZE`。引き上げは [keishingu/Cairn#769](https://github.com/keishingu/Cairn/pull/769)。**#769 より先に LP を本番に出さない** |
-| Solo ¥300/月、100GB を超える保存、月 300 クレジット、質問 1 回 10〜20 クレジット（GPT-5・Claude Sonnet 10 / Claude Opus 20）、追加 ¥500 で 400 クレジット、有効期限なし | `BILLING_CONFIG`（`aiChatRequestCreditsByModel` / `creditPackCredits`）。失効処理は無い（`credit_ledger`） |
+| Solo ¥300/月、100GB を超える保存、月 300 クレジット、質問ごとに AI の利用料に応じて消費（目安は GPT-5・Claude Sonnet 約30 / Claude Opus 約45）、追加 ¥500 で 400 クレジット、有効期限なし | `BILLING_CONFIG`（`aiChatRequestCreditsByModel` が目安、`aiCostCreditMultiplier` / `creditPackCredits`）。失効処理は無い（`credit_ledger`） |
 | 誰がいつ積んだかの記録が残る | `/api/billing/contributions`（[`billing-implementation-design.md`](./billing-implementation-design.md) §4） |
 | AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
 | 動画のアップロード（500MB/ファイル）は Solo | `MAX_VIDEO_ATTACHMENT_BYTES`、`resolveUploadRights`（[keishingu/Cairn#778](https://github.com/keishingu/Cairn/pull/778)） |
@@ -100,7 +100,7 @@ Solo の説明は「容量」ではなく「AI と原本」を軸にする。無
 - **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない。正式公開したら `#ai` に「期限と停滞を本人にだけ知らせる。管理者にも見えない。Solo が 1 人いればワークスペース全員に届く」のカードを足し、料金のリードに「全員の AI 通知の原資になる」を戻す（根拠: [`ai-pmo-design.md`](./ai-pmo-design.md) §2.3、課金設計原則 3）
 - **石・ケルン・風化の用語**: LP では「クレジット」で説明する
 - **Team の確定価格**: 「目安」「準備中」と必ず併記する
-- **Solo の AI 回数**: 回数で書かない（「月 30 回」は不可）。モデルで消費が違い（10 / 20）、保存と AI の自動通知も同じクレジットを消費するため、「300 クレジット、質問 1 回 10〜20」の形で書く
+- **Solo の AI 回数**: 回数で書かない（「月 30 回」は不可）。質問ごとに AI の利用料で消費が変わり、保存と AI の自動通知も同じクレジットを消費するため、「300 クレジット、質問ごとに利用料に応じて消費（目安 約30〜45）」の形で書く
 - **チェックボックス記法**: 「☑ がタスクになる」「完了のチェックが同期する」は廃止した旧仕様。本文のチェックボックスはタスクにならない
 - **外部リポジトリ・個別開発アプリの固有名**: 用途（装備の貸出管理など）で書く。本リポジトリは公開のため
 - **非公開の顧客名**

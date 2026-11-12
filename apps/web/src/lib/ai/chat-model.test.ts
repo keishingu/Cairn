@@ -13,9 +13,12 @@ describe('モデル別のクレジット', () => {
     expect(Object.keys(BILLING_CONFIG.aiChatRequestCreditsByModel).sort()).toEqual([...AI_CHAT_MODELS].sort())
   })
 
-  test('Opus は他のモデルより多く消費する', () => {
+  test('Opus は他のモデルより多く見積もる', () => {
     expect(chatRequestCredits('claude-opus-5-5')).toBeGreaterThan(chatRequestCredits('claude-sonnet-5-5'))
-    expect(chatRequestCredits('gpt-5')).toBe(BILLING_CONFIG.activeAiRequestCredits)
+  })
+
+  test('選べるモデルはすべて単価があり、原価から精算できる', () => {
+    expect(Object.keys(BILLING_CONFIG.aiChatModelPricingUsdPerMTok).sort()).toEqual([...AI_CHAT_MODELS].sort())
   })
 })
 

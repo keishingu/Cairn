@@ -10,6 +10,11 @@ import { GET as listProjectFilesRoute } from '@/app/api/projects/[id]/files/rout
 import { GET as readFileRoute } from '@/app/api/files/[id]/content/route'
 import { GET as listTasksRoute, POST as createTaskRoute } from '@/app/api/tasks/route'
 import { PATCH as updateTaskRoute } from '@/app/api/tasks/[id]/route'
+import {
+  GET as listMilestonesRoute,
+  POST as createMilestoneRoute,
+} from '@/app/api/projects/[id]/milestones/route'
+import { PATCH as updateMilestoneRoute } from '@/app/api/projects/[id]/milestones/[milestoneId]/route'
 import { POST as postMessageRoute } from '@/app/api/channels/[channelId]/messages/route'
 import { GET as searchMessagesRoute } from '@/app/api/search/messages/route'
 import { GET as listChannelsRoute } from '@/app/api/research/channels/route'
@@ -39,6 +44,9 @@ type ToolResult = {
   content: Array<{ type: 'text'; text: string }>
   isError?: boolean
 }
+
+// マイルストーン API（@cairn/shared の timeStringSchema）と同じ HH:MM 形式
+const milestoneTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
 async function routeResult(responsePromise: Promise<Response> | Response): Promise<ToolResult> {
   const response = await responsePromise
@@ -197,6 +205,92 @@ const mcpHandler = createMcpHandler(
     )
 
     server.registerTool(
+      'list_milestones',
+      {
+        title: 'List milestones',
+        description:
+          'List milestones of a visible project, ordered by start date. Each milestone has its own discussion channel (channelId).',
+        inputSchema: z.object({ projectId: z.uuid() }),
+        annotations: { readOnlyHint: true },
+      },
+      async ({ projectId }) =>
+        routeResult(
+          listMilestonesRoute(
+            new Request(`http://cairn.local/api/projects/${projectId}/milestones`),
+            { params: Promise.resolve({ id: projectId }) },
+          ),
+        ),
+    )
+
+    server.registerTool(
+      'create_milestone',
+      {
+        title: 'Create milestone',
+        description:
+          'Create a milestone in a project as the current user. Dates are YYYY-MM-DD and times are HH:MM. The change is announced in the project channel.',
+        inputSchema: z.object({
+          projectId: z.uuid(),
+          title: z.string().trim().min(1).max(100),
+          description: z.string().max(1000).optional(),
+          startDate: z.iso.date().optional(),
+          endDate: z.iso.date().optional(),
+          startTime: milestoneTimeSchema.optional(),
+          endTime: milestoneTimeSchema.optional(),
+        }),
+        annotations: { readOnlyHint: false, destructiveHint: false },
+      },
+      async ({ projectId, ...body }) =>
+        routeResult(
+          createMilestoneRoute(
+            new Request(`http://cairn.local/api/projects/${projectId}/milestones`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(body),
+            }),
+            { params: Promise.resolve({ id: projectId }) },
+          ),
+        ),
+    )
+
+    server.registerTool(
+      'update_milestone',
+      {
+        title: 'Update milestone',
+        description:
+          'Update a milestone: title, description, period, or completion. Pass null to clear description, dates or times. Omitted fields stay unchanged. Period and completion changes are announced in the project channel.',
+        inputSchema: z
+          .object({
+            projectId: z.uuid(),
+            milestoneId: z.uuid(),
+            title: z.string().trim().min(1).max(100).optional(),
+            description: z.string().max(1000).nullable().optional(),
+            startDate: z.iso.date().nullable().optional(),
+            endDate: z.iso.date().nullable().optional(),
+            startTime: milestoneTimeSchema.nullable().optional(),
+            endTime: milestoneTimeSchema.nullable().optional(),
+            completed: z.boolean().optional(),
+          })
+          .refine(
+            ({ projectId: _projectId, milestoneId: _milestoneId, ...fields }) =>
+              Object.values(fields).some((value) => value !== undefined),
+            { message: 'At least one field to update is required' },
+          ),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      },
+      async ({ projectId, milestoneId, ...body }) =>
+        routeResult(
+          updateMilestoneRoute(
+            new Request(`http://cairn.local/api/projects/${projectId}/milestones/${milestoneId}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(body),
+            }),
+            { params: Promise.resolve({ id: projectId, milestoneId }) },
+          ),
+        ),
+    )
+
+    server.registerTool(
       'post_message',
       {
         title: 'Post message',
@@ -349,7 +443,7 @@ const mcpHandler = createMcpHandler(
     )
   },
   {
-    serverInfo: { name: 'cairn', version: '0.3.0' },
+    serverInfo: { name: 'cairn', version: '0.4.0' },
     instructions:
       'These tools act on behalf of the human Cairn user who authorized the credential. Read and write access is limited to its fixed workspace.',
   },

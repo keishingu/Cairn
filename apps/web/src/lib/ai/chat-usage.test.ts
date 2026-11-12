@@ -5,7 +5,13 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('next/server', () => ({ after: vi.fn() }))
 
-import { buildChatUsageRow, type ChatUsageRecord, type ChatUsageStep } from './chat-usage'
+import {
+  buildChatUsageRow,
+  chatUsageCharge,
+  chatUsageSettlement,
+  type ChatUsageRecord,
+  type ChatUsageStep,
+} from './chat-usage'
 
 const step = (
   promptTokens: number,
@@ -28,11 +34,47 @@ const record = (overrides: Partial<ChatUsageRecord> = {}): ChatUsageRecord => ({
   skillRunId: null,
   model: 'claude-sonnet-5-5',
   requestCredits: 10,
+  charged: true,
   status: 'success',
   error: null,
   durationMs: 1234,
   steps: [],
   ...overrides,
+})
+
+describe('原価に応じた消費クレジット', () => {
+  // Sonnet 5.5: 出力 $10 / 100万。出力 20,000 トークン = $0.2 → ¥30 × 1.5 = 45 クレジット
+  const sonnetSteps = [step(0, 20_000, [], { anthropic: { cacheCreationInputTokens: 0, cacheReadInputTokens: 0 } })]
+
+  test('回答を保存した依頼は、原価と原価から換算したクレジットを記録する', () => {
+    const row = buildChatUsageRow(record({ requestCredits: 30, steps: sonnetSteps }))
+
+    expect(row.costUsd).toBe('0.200000')
+    expect(row.creditsCharged).toBe(45)
+  })
+
+  test('返金した依頼・課金が無効な環境は消費を記録しない（原価は記録する）', () => {
+    expect(buildChatUsageRow(record({ charged: false, steps: sonnetSteps }))).toMatchObject({ costUsd: '0.200000', creditsCharged: null })
+    expect(buildChatUsageRow(record({ requestCredits: null, steps: sonnetSteps })).creditsCharged).toBeNull()
+  })
+
+  test('見積もりより高ければ差を追加で引き、安ければ差を戻す', () => {
+    const higher = chatUsageSettlement(buildChatUsageRow(record({ requestCredits: 30, steps: sonnetSteps })))
+    expect(higher).toEqual({ delta: -15, refId: 'settle:msg-1' })
+
+    const lower = chatUsageSettlement(buildChatUsageRow(record({ requestCredits: 60, steps: sonnetSteps })))
+    expect(lower).toEqual({ delta: 15, refId: 'settle:msg-1' })
+  })
+
+  test('差が無い・消費していない依頼は精算しない', () => {
+    expect(chatUsageSettlement(buildChatUsageRow(record({ requestCredits: 45, steps: sonnetSteps })))).toBeNull()
+    expect(chatUsageSettlement(buildChatUsageRow(record({ charged: false, steps: sonnetSteps })))).toBeNull()
+    expect(chatUsageSettlement(buildChatUsageRow(record({ requestCredits: null, steps: sonnetSteps })))).toBeNull()
+  })
+
+  test('chatUsageCharge は記録と同じ計算で原価とクレジットを返す', () => {
+    expect(chatUsageCharge('claude-sonnet-5-5', sonnetSteps)).toEqual({ costUsd: 0.2, credits: 45 })
+  })
 })
 
 describe('buildChatUsageRow', () => {

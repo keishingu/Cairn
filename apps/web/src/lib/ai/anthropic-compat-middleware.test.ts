@@ -3,7 +3,11 @@
 
 import { describe, expect, it } from 'vitest'
 import type { LanguageModelV1, LanguageModelV1StreamPart } from 'ai'
-import { ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS, anthropicCompatMiddleware } from './anthropic-compat-middleware'
+import {
+  ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+  TRUNCATED_ANSWER_NOTICE,
+  anthropicCompatMiddleware,
+} from './anthropic-compat-middleware'
 
 async function collect(parts: LanguageModelV1StreamPart[]): Promise<LanguageModelV1StreamPart[]> {
   const doStream = async () => ({
@@ -89,5 +93,31 @@ describe('anthropicCompatMiddleware の出力上限', () => {
   it('呼び出し側が maxTokens を指定したときはその値を保つ', async () => {
     const next = await transform({ prompt: [], inputFormat: 'messages', mode: { type: 'regular' }, maxTokens: 500 })
     expect(next.maxTokens).toBe(500)
+  })
+
+  it('長い比較・まとめの回答が切れないよう、補う上限は 32000 にする', () => {
+    expect(ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS).toBe(32000)
+  })
+})
+
+describe('anthropicCompatMiddleware の途中で切れた回答', () => {
+  const finish = (finishReason: 'length' | 'stop') =>
+    ({ type: 'finish', finishReason, usage: { promptTokens: 1, completionTokens: 1 } }) as LanguageModelV1StreamPart
+
+  it('上限に達して終わったときは、finish の直前に途中で切れたことを伝える注記を流す', async () => {
+    const out = await collect([{ type: 'text-delta', textDelta: '途中までの回答' }, finish('length')])
+
+    expect(out).toEqual([
+      { type: 'text-delta', textDelta: '途中までの回答' },
+      { type: 'text-delta', textDelta: TRUNCATED_ANSWER_NOTICE },
+      finish('length'),
+    ])
+    expect(TRUNCATED_ANSWER_NOTICE).toContain('途中で切れています')
+  })
+
+  it('通常の終了では注記を足さない', async () => {
+    const out = await collect([{ type: 'text-delta', textDelta: '回答' }, finish('stop')])
+
+    expect(out).toEqual([{ type: 'text-delta', textDelta: '回答' }, finish('stop')])
   })
 })

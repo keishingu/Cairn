@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -351,8 +352,13 @@ export const aiChatUsage = pgTable(
     model: text('model').notNull(),
     status: text('status').$type<AiChatUsageStatus>().notNull(),
     error: text('error').$type<AiChatUsageError>(),
-    // 課金が無効な環境では null
+    // 送信前に押さえた見積もりのクレジット。課金が無効な環境では null
     requestCredits: integer('request_credits'),
+    // 全ステップの原価（USD）。原価から精算する前の行は null
+    // numeric は文字列で読み書きされる
+    costUsd: numeric('cost_usd', { precision: 12, scale: 6 }),
+    // 原価から精算して実際に消費したクレジット。課金が無効・返金した（回答を保存しなかった）依頼は null
+    creditsCharged: integer('credits_charged'),
     steps: integer('steps').notNull(),
     inputTokens: integer('input_tokens').notNull(),
     outputTokens: integer('output_tokens').notNull(),
@@ -370,6 +376,8 @@ export const aiChatUsage = pgTable(
     unique('ai_chat_usage_assistant_message_unique').on(t.assistantMessageId),
     index('idx_ai_chat_usage_workspace_created').on(t.workspaceId, t.createdAt),
     index('idx_ai_chat_usage_model_created').on(t.model, t.createdAt),
+    // 請求画面の自分の明細（ワークスペース・本人ごとに新しい順）
+    index('idx_ai_chat_usage_workspace_user_created').on(t.workspaceId, t.userId, t.createdAt),
     check('ai_chat_usage_status_known', sql`${t.status} in ('success', 'failed')`),
   ],
 ).enableRLS()
