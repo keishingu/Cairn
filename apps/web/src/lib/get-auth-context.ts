@@ -27,6 +27,10 @@ export const MEMBERSHIP_RECHECK_TTL_MS = 30_000
 // cookie が無いリクエストが、どの workspace を候補にするかのヒント。再照合の省略には使わない。
 const MEMBERSHIP_HINT_TTL_MS = 5 * 60 * 1000
 
+function isElevatedRole(role: WorkspaceRole): boolean {
+  return role === 'owner' || role === 'admin'
+}
+
 const workspaceCache = new Map<
   string,
   { workspaceId: string; role: WorkspaceRole; freshUntil: number; hintExpiresAt: number }
@@ -169,7 +173,9 @@ export async function getAuthContext(options?: {
   const cacheKey = preferredWorkspaceId ? `${userId}:${preferredWorkspaceId}` : userId
   const now = Date.now()
   const cached = workspaceCache.get(cacheKey)
-  if (cached && cached.freshUntil > now) {
+  // owner / admin は管理操作の判定に ctx.role が使われるため、降格をすぐ効かせるよう毎回再照合する。
+  // 省略するのは member / guest だけ（昇格の反映が遅れるのは権限が狭い側なので許容する）。
+  if (cached && cached.freshUntil > now && !isElevatedRole(cached.role)) {
     return {
       ctx: { userId, workspaceId: cached.workspaceId, role: cached.role },
       error: null,

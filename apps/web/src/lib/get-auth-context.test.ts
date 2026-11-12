@@ -407,4 +407,22 @@ describe('get-auth-context', () => {
       vi.useRealTimers()
     }
   })
+
+  it.each(['owner', 'admin'] as const)('%s は 30 秒以内でも毎回再照合し、降格をすぐ反映する', async (role) => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+
+    const { getAuthContext } = await import('./get-auth-context')
+
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role }]))
+    const first = await getAuthContext()
+    expect(first.ctx?.role).toBe(role)
+
+    // キャッシュの期限内に member へ降格された
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'member' }]))
+    const second = await getAuthContext()
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+    expect(second.ctx?.role).toBe('member')
+  })
 })
