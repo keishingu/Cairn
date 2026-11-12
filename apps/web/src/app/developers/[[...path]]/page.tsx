@@ -6,8 +6,10 @@ import { notFound } from 'next/navigation'
 import { DocsPage } from '../_components/docs-page'
 import { DOC_PAGES, DOCS_LOCALES, docPath, resolveDocPath } from '../_content/pages'
 
-// アプリ開発者向けの公開ドキュメント（未ログインで閲覧可。middleware の isDevelopersRoute）。
-// 日本語は /developers/<slug>、英語は /developers/en/<slug>。どれもビルド時に静的に作り、知らないパスは 404 にする
+// アプリ開発者向けの公開ドキュメント（未ログインで閲覧可。Middleware の matcher からも外してある）。
+// 日本語は /developers/<slug>、英語は /developers/en/<slug>。どれもビルド時に静的に作り、知らないパスは 404 にする。
+// ルートレイアウトが cookies()/headers() を読むと、ここで force-static にしてもビルドが失敗する。
+export const dynamic = 'force-static'
 export const dynamicParams = false
 
 // LP・sitemap と同じく公開 URL を固定で書く（root layout に metadataBase がないため）

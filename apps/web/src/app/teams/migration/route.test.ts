@@ -19,6 +19,8 @@ describe('/teams/migration', () => {
     const { response, html } = await fetchPage()
 
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(response.headers.get('cache-control')).toBe('public, s-maxage=3600, stale-while-revalidate=86400')
+    expect(html).not.toContain("location.replace('/chats')")
     expect(html).not.toContain('<!-- @teams-')
     expect(html).toContain('data-page="teams-migration"')
     expect(html).toContain('<script src="/cairn-lp.js"></script>')
