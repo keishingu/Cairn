@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
-import { deactivateMembership, reactivateMembership } from '@/lib/access/lifecycle'
+import { deactivateMembership, reactivateMembership, lockMembershipAndActiveOwners } from '@/lib/access/lifecycle'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
 type WorkspaceRole = (typeof VALID_ROLES)[number]
@@ -44,7 +44,7 @@ export async function PATCH(
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and, count, sql } = await import('drizzle-orm')
+    const { eq, and, count } = await import('drizzle-orm')
 
     const callerRole = ctx.role
     if (!isWorkspaceAdmin(callerRole)) {
@@ -52,6 +52,16 @@ export async function PATCH(
     }
 
     const response = await db.transaction(async (tx) => {
+      // 操作者・対象・active owner を同順でロックし、権限を変更直前に再照合する。
+      await lockMembershipAndActiveOwners(tx, ctx.workspaceId, targetUserId, ctx.userId)
+      const [actor] = await tx.select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
+        .limit(1)
+      if (!actor || actor.membershipStatus !== 'active' || !isWorkspaceAdmin(actor.role)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const callerRole = actor.role
       const [target] = await tx
         .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
         .from(workspaceMembers)
@@ -92,17 +102,8 @@ export async function PATCH(
         }
       }
 
-      // owner を降格する場合、archive と同じ owner 行ロックに参加して active owner 不在を防ぐ。
+      // 既に active owner 行をロック済みなので、最後の owner を数える。
       if (currentRole === 'owner' && target.membershipStatus === 'active' && newRole !== 'owner') {
-        await tx.execute(sql`
-          select 1
-          from workspace_members
-          where workspace_id = ${ctx.workspaceId}
-            and role = 'owner'
-            and membership_status = 'active'
-          for update
-        `)
-
         const ownerCountRows = await tx
           .select({ ownerCount: count() })
           .from(activeWorkspaceMembers)
@@ -184,7 +185,7 @@ async function handleStatusChange(
       return NextResponse.json({ userId: targetUserId, status: 'inactive' })
     }
 
-    const result = await reactivateMembership(workspaceId, targetUserId)
+    const result = await reactivateMembership(workspaceId, targetUserId, callerUserId)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     try {
       const { inngest } = await import('@/lib/inngest/client')
