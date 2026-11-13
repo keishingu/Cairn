@@ -101,7 +101,7 @@ describe('Push購読の登録', () => {
   test('Web Pushの購読は従来どおり保存する', async () => {
     const body = {
       deviceType: 'web',
-      endpoint: 'https://push.example.test/subscription-1',
+      endpoint: 'https://fcm.googleapis.com/subscription-1',
       keys: { p256dh: 'public-key', auth: 'auth-key' },
     }
     const response = await subscribe(body)
@@ -113,6 +113,16 @@ describe('Push購読の登録', () => {
       set: { keys: body.keys },
     })
     expect(mockConflictNothing).not.toHaveBeenCalled()
+  })
+
+  test('許可対象外のWeb Push送信先を保存しない', async () => {
+    const response = await subscribe({
+      deviceType: 'web', endpoint: 'https://127.0.0.1:9443/local-test',
+      keys: { p256dh: 'public-key', auth: 'auth-key' },
+    })
+
+    expect(response.status).toBe(422)
+    expect(mockInsert).not.toHaveBeenCalled()
   })
 
   test('未認証の購読は保存しない', async () => {
@@ -143,11 +153,11 @@ describe('Push購読の解除', () => {
   })
 
   test('Web Pushは従来どおりendpointで自分の購読だけを外す', async () => {
-    const response = await unsubscribe({ endpoint: 'https://push.example.test/subscription-1' })
+    const response = await unsubscribe({ endpoint: 'https://fcm.googleapis.com/subscription-1' })
 
     expect(response.status).toBe(200)
     expect(mockWhere).toHaveBeenCalledWith({
-      and: [{ eq: ['user_id', 'user-1'] }, { eq: ['endpoint', 'https://push.example.test/subscription-1'] }],
+      and: [{ eq: ['user_id', 'user-1'] }, { eq: ['endpoint', 'https://fcm.googleapis.com/subscription-1'] }],
     })
   })
 

@@ -65,7 +65,7 @@ vi.mock('@/lib/notifications/badge', () => ({
 const webSubscription = {
   id: 'subscription-1',
   deviceType: 'web',
-  endpoint: 'https://push.example.test/subscription-1',
+  endpoint: 'https://fcm.googleapis.com/subscription-1',
   keys: { p256dh: 'p256dh', auth: 'auth' },
   expoToken: null,
 }
@@ -95,6 +95,19 @@ describe('sendPushToUser', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.clearAllMocks()
+  })
+
+  test('保存済みの許可対象外の送信先には送らない', async () => {
+    mockWhere.mockResolvedValue([
+      { ...webSubscription, id: 'unsafe', endpoint: 'https://127.0.0.1:9443/local-test' },
+      webSubscription,
+    ])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(mockSendNotification).toHaveBeenCalledTimes(1)
+    expect(mockSendNotification.mock.calls[0]![0]).toMatchObject({ endpoint: webSubscription.endpoint })
   })
 
   test('通常のPushは未読数でアプリアイコンバッジを更新する', async () => {

@@ -4,6 +4,7 @@
 import webpush from 'web-push'
 import { Expo } from 'expo-server-sdk'
 import { expoPushData } from './expo-push-data'
+import { isAllowedWebPushEndpoint } from './endpoint'
 
 const VAPID_PUBLIC_KEY = process.env['VAPID_PUBLIC_KEY']
 const VAPID_PRIVATE_KEY = process.env['VAPID_PRIVATE_KEY']
@@ -72,7 +73,7 @@ export async function sendPushToUser(
 
   const webSubs =
     VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY
-      ? subs.filter((s) => s.deviceType === 'web' && s.endpoint && s.keys?.p256dh && s.keys?.auth)
+      ? subs.filter((s) => s.deviceType === 'web' && s.endpoint && isAllowedWebPushEndpoint(s.endpoint) && s.keys?.p256dh && s.keys?.auth)
       : []
   const expoSubs = subs.filter((s) => s.deviceType === 'expo' && s.expoToken)
 

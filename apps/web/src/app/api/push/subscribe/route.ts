@@ -5,10 +5,11 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Expo } from 'expo-server-sdk'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { isAllowedWebPushEndpoint } from '@/lib/push/endpoint'
 
 const webSchema = z.object({
   deviceType: z.literal('web'),
-  endpoint: z.string().url(),
+  endpoint: z.string().url().refine(isAllowedWebPushEndpoint, { message: 'Invalid Web Push endpoint' }),
   keys: z.object({ p256dh: z.string(), auth: z.string() }),
 })
 
