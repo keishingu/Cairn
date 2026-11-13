@@ -1923,13 +1923,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [galleryDialog, setGalleryDialog] = React.useState<{ messageId: string; images: MessageGalleryImage[]; addedFileIds: string[] } | null>(null)
 
   // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶダイアログを出す（タスク化と同じ流れ）
+  // 取得待ちの間に別のメッセージで操作したら、古い取得結果で状態を上書きしない
+  const galleryRequestRef = React.useRef(0)
   const handleAddToGallery = React.useCallback(async (messageId: string) => {
     const message = messages.find(m => m.id === messageId)
     if (!message) return
     const images = galleryImagesOf(message.attachments)
     if (images.length === 0) return
+    const request = ++galleryRequestRef.current
     const status = await fetchGalleryStatus(messageId)
-    if (!status) return
+    if (!status || request !== galleryRequestRef.current) return
     const added = new Set(status.addedFileIds)
     const open = images.filter(image => !added.has(image.fileId))
     if (open.length === 0) {
@@ -2485,6 +2488,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     >
       {galleryDialog && (
         <MessageGalleryDialog
+          key={galleryDialog.messageId}
           images={galleryDialog.images}
           addedFileIds={galleryDialog.addedFileIds}
           onSubmit={fileIds => addImagesToGallery(galleryDialog.messageId, fileIds)}

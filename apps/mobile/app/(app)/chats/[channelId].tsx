@@ -1131,6 +1131,8 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setReactionPeople(null)
+    setGalleryPicker(null)
+    setGalleryPickerError(null)
     setAttachmentPreview(null)
     setProfileTarget(null)
     setProfilePending(null)
@@ -1418,13 +1420,17 @@ export default function ChatThreadScreen() {
 
   // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶシートを出す（Web・タスク化と同じ流れ）
   const addToGallery = async (message: MessageDto) => {
+    const menuDismissed = waitActionMenuDismissed()
     setActionTarget(null)
     setSendError(null)
     const images = galleryImagesOf(message.attachments)
     if (images.length === 0) return
+    // 取得中にチャンネルを切り替えたら、前のチャンネルの結果でシートを開かない
+    const startedChannelId = channelId
     try {
       const response = await apiFetch(`/api/messages/${message.id}/gallery`)
       const data = (await response.json().catch(() => ({}))) as { error?: string; addedFileIds?: unknown }
+      if (previousChannelIdRef.current !== startedChannelId) return
       if (!response.ok || !Array.isArray(data.addedFileIds)) {
         setSendError(data.error ?? t('Could not add to the gallery'))
         return
@@ -1437,6 +1443,9 @@ export default function ChatThreadScreen() {
       } else if (images.length === 1 && open[0]) {
         await addImagesToGallery(message.id, [open[0].fileId])
       } else {
+        // iOS は操作メニューが閉じ終わる前に別の Modal を出すと表示が捨てられる
+        await menuDismissed
+        if (previousChannelIdRef.current !== startedChannelId) return
         setGalleryPickerError(null)
         setGalleryPicker({ messageId: message.id, images, addedFileIds })
       }
@@ -1886,6 +1895,14 @@ export default function ChatThreadScreen() {
 
   // iOS は閉じかけの操作メニューの上に別の Modal を出すと表示が捨てられるため、メニューが閉じ終えてから（onDismiss で）開く
   const pendingSelectTextRef = React.useRef<string | null>(null)
+  const actionMenuDismissedRef = React.useRef<(() => void) | null>(null)
+  // 操作メニューが閉じ終わるのを待つ。onDismiss は iOS でしか呼ばれないので、Android はすぐ解決する
+  const waitActionMenuDismissed = (): Promise<void> => {
+    if (Platform.OS !== 'ios') return Promise.resolve()
+    return new Promise((resolve) => {
+      actionMenuDismissedRef.current = resolve
+    })
+  }
   const beginSelectText = (message: MessageDto) => {
     setActionTarget(null)
     const text = parseMentions(message.content, t)
@@ -2489,6 +2506,8 @@ export default function ChatThreadScreen() {
           animationType="fade"
           onRequestClose={() => setActionTarget(null)}
           onDismiss={() => {
+            actionMenuDismissedRef.current?.()
+            actionMenuDismissedRef.current = null
             const pending = pendingSelectTextRef.current
             pendingSelectTextRef.current = null
             if (pending !== null) setSelectableText(pending)
