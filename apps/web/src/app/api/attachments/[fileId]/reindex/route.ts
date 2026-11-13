@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { canAccessFile } from '@/lib/permissions'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -17,13 +18,19 @@ export async function POST(_req: Request, { params }: RouteContext) {
     const { eq, and, sql } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, mimeType: files.mimeType })
+      .select({
+        id: files.id, workspaceId: files.workspaceId, projectId: files.projectId,
+        uploadedBy: files.uploadedBy, metadata: files.metadata,
+        storagePath: files.storagePath, mimeType: files.mimeType,
+      })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+    if (!(await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role))) {
+      return new NextResponse(null, { status: 403 })
+    }
     if (!file.storagePath || !file.mimeType) return NextResponse.json({ error: 'このファイルは再インデックスできません' }, { status: 422 })
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
