@@ -291,14 +291,20 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockCreateSignedUrl).not.toHaveBeenCalled()
   })
 
-  it('最適化済みPDFは派生物を短期署名URLで返す', async () => {
+  it('最適化済みPDFは派生物を登録時のファイル名つきで返す', async () => {
     fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
     fileRow.derivedStoragePath = 'ws/ch/user/pdf-derivatives/file.pdf'
+    fileRow.fileName = '見積書.pdf'
     fileRow.metadata = { pdfCompressionStatus: 'ready' }
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), routeParams())
-    expect(res.status).toBe(302)
-    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.derivedStoragePath, 60, undefined)
+    expect(res.status).toBe(200)
+    expect(mockDownload).toHaveBeenCalledWith(fileRow.derivedStoragePath)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+    expect(res.headers.get('Content-Type')).toBe('application/pdf')
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `inline; filename="___.pdf"; filename*=UTF-8''%E8%A6%8B%E7%A9%8D%E6%9B%B8.pdf`,
+    )
   })
 
   it('thumb取得時に新しいPDFの原本へフォールバックしない', async () => {
