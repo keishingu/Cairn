@@ -3,23 +3,32 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockDb, clientRows } = vi.hoisted(() => {
+const { mockDb, clientRows, grantRows, insertValues } = vi.hoisted(() => {
   const clientRows: { current: unknown[] } = { current: [] }
+  const grantRows: { current: unknown[] } = { current: [] }
+  const insertValues = vi.fn(async () => [])
   const mockDb = {
+    transaction: vi.fn(async (fn) => fn({
+      select: () => ({ from: () => ({ where: () => ({ limit: () => ({ for: async () => grantRows.current }) }) }) }),
+      insert: () => ({ values: insertValues }),
+      update: () => ({ set: () => ({ where: async () => [] }) }),
+    })),
     select: vi.fn(() => ({
       from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => clientRows.current) })) })),
     })),
   }
-  return { mockDb, clientRows }
+  return { mockDb, clientRows, grantRows, insertValues }
 })
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
+  oidcGrants: { id: 'id', userId: 'userId', clientId: 'clientId', scope: 'scope', revokedAt: 'revokedAt' },
+  oidcAuthorizationCodes: {},
   oidcClients: { clientId: 'clientId', clientName: 'clientName', redirectUris: 'redirectUris', disabledAt: 'disabledAt' },
 }))
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn(), isNull: vi.fn() }))
 
-import { buildOidcRedirect, OidcAuthorizeError, validateOidcAuthorizationRequest } from './authorization'
+import { buildOidcRedirect, issueOidcAuthorizationCode, OidcAuthorizeError, validateOidcAuthorizationRequest } from './authorization'
 
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'
 
@@ -106,5 +115,32 @@ describe('buildOidcRedirect', () => {
     expect(buildOidcRedirect('https://app.example/cb?x=1', { code: 'c', state: null })).toBe(
       'https://app.example/cb?x=1&code=c',
     )
+  })
+})
+
+
+describe('同意済み grant による自動認可', () => {
+  const authorization = {
+    clientId: 'client', clientName: 'App', redirectUri: 'https://app.example/callback',
+    scope: 'openid profile', state: null, nonce: null, codeChallenge: CHALLENGE,
+  }
+  beforeEach(() => { insertValues.mockClear() })
+
+  it('確認時に失効済みなら grant とコードを作らず同意を求める', async () => {
+    grantRows.current = []
+    expect(await issueOidcAuthorizationCode({ userId: 'user', authTime: new Date(), authorization }, true)).toBeNull()
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('有効な grant が不足するスコープを勝手に広げない', async () => {
+    grantRows.current = [{ id: 'grant', scope: 'openid' }]
+    expect(await issueOidcAuthorizationCode({ userId: 'user', authTime: new Date(), authorization }, true)).toBeNull()
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('有効な grant がスコープを含む場合はコードを発行する', async () => {
+    grantRows.current = [{ id: 'grant', scope: 'openid profile' }]
+    expect(await issueOidcAuthorizationCode({ userId: 'user', authTime: new Date(), authorization }, true)).toContain('code=')
+    expect(insertValues).toHaveBeenCalledOnce()
   })
 })

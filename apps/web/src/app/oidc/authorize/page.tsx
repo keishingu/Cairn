@@ -7,7 +7,6 @@ import { getAuthUser } from '@/lib/get-auth-context'
 import { readRequestLocale } from '@/lib/i18n/request-locale'
 import {
   buildOidcRedirect,
-  hasActiveOidcGrant,
   issueOidcAuthorizationCode,
   OidcAuthorizeError,
   validateOidcAuthorizationRequest,
@@ -52,15 +51,12 @@ export default async function OidcAuthorizePage({
   const { userId, user, error: authError } = await getAuthUser()
   if (authError || !userId) redirect(`/auth/login?next=${encodeURIComponent(`/oidc/authorize?${params}`)}`)
 
-  if (await hasActiveOidcGrant(userId, authorization.clientId, authorization.scope)) {
-    redirect(
-      await issueOidcAuthorizationCode({
-        userId,
-        authTime: oidcAuthTime(user),
-        authorization,
-      }),
-    )
-  }
+  const destination = await issueOidcAuthorizationCode({
+    userId,
+    authTime: oidcAuthTime(user),
+    authorization,
+  }, true)
+  if (destination) redirect(destination)
 
   const scopes = describeOidcScopes(authorization.scope)
 
