@@ -302,6 +302,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockDownload).toHaveBeenCalledWith(fileRow.derivedStoragePath)
     expect(mockCreateSignedUrl).not.toHaveBeenCalled()
     expect(res.headers.get('Content-Type')).toBe('application/pdf')
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store')
     expect(res.headers.get('Content-Disposition')).toBe(
       `inline; filename="___.pdf"; filename*=UTF-8''%E8%A6%8B%E7%A9%8D%E6%9B%B8.pdf`,
     )

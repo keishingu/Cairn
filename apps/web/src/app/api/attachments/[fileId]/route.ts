@@ -144,7 +144,8 @@ export async function GET(req: Request, { params }: RouteContext) {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': buildContentDisposition('inline', file.fileName),
-            'Cache-Control': 'private, max-age=3600',
+            // 転送していた頃と同じく、表示のたびに認可を確かめるためブラウザに保存させない
+            'Cache-Control': 'private, no-store',
           },
         })
       }
