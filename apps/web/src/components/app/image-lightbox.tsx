@@ -26,6 +26,14 @@ export interface LightboxImage {
   caption?: React.ReactNode
   /** 枚数カウンタの横に表示する補足情報（撮影日など） */
   meta?: React.ReactNode
+  /** 閉じるボタンの左に出す、この画像への操作（チャットの「ギャラリーに追加」など） */
+  action?: LightboxImageAction
+}
+
+export interface LightboxImageAction {
+  label: string
+  icon: React.ComponentProps<typeof Icon>['name']
+  onSelect: () => void
 }
 
 /** ダブルタップとみなす間隔(ms)と、その間の許容ぶれ幅(px) */
@@ -277,6 +285,23 @@ export const ImageLightbox = ({ images, index, onIndexChange, onClose }: {
             </div>
           )}
         </div>
+      )}
+
+      {item.action && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); item.action?.onSelect() }}
+          style={{
+            position: 'absolute', top: 16, right: 60,
+            height: 36, padding: '0 12px', borderRadius: 10,
+            border: 'none', background: 'rgba(255,255,255,0.15)',
+            color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <Icon name={item.action.icon} size={16}/>
+          {item.action.label}
+        </button>
       )}
 
       {/* 閉じるボタン */}
