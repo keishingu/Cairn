@@ -5,10 +5,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
-import {
-  assertOriginalStorageAllowed,
-  ORIGINAL_UPLOAD_ENTITLEMENT_ERROR,
-} from '@/lib/billing/original-storage'
+import { canStoreOriginal } from '@/lib/billing/original-storage'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { ATTACHMENTS_BUCKET } from '@/lib/attachments/thumbnail'
 import {
@@ -203,7 +200,7 @@ export async function POST(req: Request, { params }: RouteContext) {
     const entitlements = pending.length > 0
       ? await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
       : null
-    const keepOriginal = entitlements?.rights.canUploadOriginal ?? false
+    let keepOriginal = entitlements?.rights.canUploadOriginal ?? false
 
     const supabase = createServiceRoleClient()
     let addedCount = 0
@@ -256,6 +253,8 @@ export async function POST(req: Request, { params }: RouteContext) {
         )
       }
 
+      // 精算後の再判定で原本を保存できなくなったら、原本は捨てて圧縮版だけを登録する
+      let originalKept = originalStoragePath !== null
       try {
         await db.transaction(async (tx) => {
           // 連打・並行リクエストで同じ添付を二重に追加しないよう、追加元ごとに直列化する
@@ -273,8 +272,9 @@ export async function POST(req: Request, { params }: RouteContext) {
           if (duplicate) throw new Error(DUPLICATE_ERROR)
 
           if (originalStoragePath) {
-            await assertOriginalStorageAllowed(tx, ctx.workspaceId, ctx.userId)
+            originalKept = await canStoreOriginal(tx, ctx.workspaceId, ctx.userId)
           }
+          const storedOriginalPath = originalKept ? originalStoragePath : null
 
           const [file] = await tx
             .insert(files)
@@ -282,12 +282,12 @@ export async function POST(req: Request, { params }: RouteContext) {
               workspaceId: ctx.workspaceId,
               projectId,
               uploadedBy: ctx.userId,
-              storagePath: originalStoragePath,
+              storagePath: storedOriginalPath,
               derivedStoragePath,
               fileName: image.fileName,
-              mimeType: originalStoragePath ? image.mimeType : GALLERY_DERIVED_MIME_TYPE,
+              mimeType: storedOriginalPath ? image.mimeType : GALLERY_DERIVED_MIME_TYPE,
               derivedMimeType: GALLERY_DERIVED_MIME_TYPE,
-              fileSize: originalStoragePath ? original.byteLength : null,
+              fileSize: storedOriginalPath ? original.byteLength : null,
               derivedFileSize: derived.byteLength,
               fileType: 'image',
             })
@@ -308,13 +308,19 @@ export async function POST(req: Request, { params }: RouteContext) {
           await recordStorageUsageDelta(
             ctx.workspaceId,
             {
-              originalBytes: originalStoragePath ? original.byteLength : 0,
+              originalBytes: storedOriginalPath ? original.byteLength : 0,
               derivedBytes: derived.byteLength,
             },
             tx,
           )
         })
         addedCount += 1
+        if (originalStoragePath && !originalKept) {
+          // 以降の画像も原本は保存しない。登録しなかった原本の複製はここで消す
+          keepOriginal = false
+          const { error: removeError } = await supabase.storage.from(GALLERY_ORIGINALS_BUCKET).remove([originalStoragePath])
+          if (removeError) console.error('[/api/messages/[messageId]/gallery] cleanup failed:', removeError)
+        }
       } catch (transactionError) {
         await removeUploaded()
         if (transactionError instanceof Error && transactionError.message === DUPLICATE_ERROR) {
@@ -328,12 +334,6 @@ export async function POST(req: Request, { params }: RouteContext) {
     const body: MessageGalleryAddResponse = { projectId, addedCount, alreadyAddedCount }
     return NextResponse.json(body, { status: addedCount > 0 ? 201 : 200 })
   } catch (err) {
-    if (err instanceof Error && err.message === ORIGINAL_UPLOAD_ENTITLEMENT_ERROR) {
-      return NextResponse.json(
-        { error: 'オリジナルを保存するには、残高のある有効な支援が必要です' },
-        { status: 403 },
-      )
-    }
     console.error('[/api/messages/[messageId]/gallery POST]', err)
     return NextResponse.json({ error: 'ギャラリーへの追加に失敗しました' }, { status: 500 })
   }

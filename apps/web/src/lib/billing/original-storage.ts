@@ -10,15 +10,15 @@ export const ORIGINAL_UPLOAD_ENTITLEMENT_ERROR = 'original-upload-entitlement-re
 
 /**
  * 原本（家賃対象）を登録する直前に、usage 行をロックして未請求家賃を精算した後の
- * 残高・本人の支援状態を確認する。満たさなければ ORIGINAL_UPLOAD_ENTITLEMENT_ERROR を投げる。
- * トランザクションの外での事前判定（resolveUploadEntitlements）だけに依存しないために使う。
+ * 残高・本人の支援状態を確認する。トランザクションの外での事前判定
+ * （resolveUploadEntitlements）だけに依存しないために使う。
  */
-export async function assertOriginalStorageAllowed(
+export async function canStoreOriginal(
   tx: StorageRentTransaction,
   workspaceId: string,
   userId: string,
-): Promise<void> {
-  if (!isBillingEnabled()) return
+): Promise<boolean> {
+  if (!isBillingEnabled()) return true
   await settleWorkspaceStorageRent(tx, workspaceId)
   const [[balance], [subscription]] = await Promise.all([
     tx
@@ -39,7 +39,16 @@ export async function assertOriginalStorageAllowed(
       )
       .limit(1),
   ])
-  if (!subscription || Number(balance?.balance ?? 0) <= 0) {
+  return subscription !== undefined && Number(balance?.balance ?? 0) > 0
+}
+
+/** canStoreOriginal を満たさなければ ORIGINAL_UPLOAD_ENTITLEMENT_ERROR を投げる */
+export async function assertOriginalStorageAllowed(
+  tx: StorageRentTransaction,
+  workspaceId: string,
+  userId: string,
+): Promise<void> {
+  if (!(await canStoreOriginal(tx, workspaceId, userId))) {
     throw new Error(ORIGINAL_UPLOAD_ENTITLEMENT_ERROR)
   }
 }

@@ -18,7 +18,7 @@ const {
   mockRequireChannelAccess,
   mockRequireProjectAccess,
   mockResolveUploadEntitlements,
-  mockAssertOriginalStorageAllowed,
+  mockCanStoreOriginal,
   mockRecordStorageUsageDelta,
   mockSelectResult,
   mockTxSelectResult,
@@ -33,7 +33,7 @@ const {
   mockRequireChannelAccess: vi.fn(),
   mockRequireProjectAccess: vi.fn(),
   mockResolveUploadEntitlements: vi.fn(),
-  mockAssertOriginalStorageAllowed: vi.fn(),
+  mockCanStoreOriginal: vi.fn(),
   mockRecordStorageUsageDelta: vi.fn(),
   // db.select の結果（呼び出し順に消費する）
   mockSelectResult: vi.fn(),
@@ -54,8 +54,7 @@ vi.mock('@/lib/permissions', () => ({
 }))
 vi.mock('@/lib/billing/entitlements', () => ({ resolveUploadEntitlements: mockResolveUploadEntitlements }))
 vi.mock('@/lib/billing/original-storage', () => ({
-  assertOriginalStorageAllowed: mockAssertOriginalStorageAllowed,
-  ORIGINAL_UPLOAD_ENTITLEMENT_ERROR: 'original-upload-entitlement-required',
+  canStoreOriginal: mockCanStoreOriginal,
 }))
 vi.mock('@/lib/billing/storage-usage', () => ({ recordStorageUsageDelta: mockRecordStorageUsageDelta }))
 vi.mock('@/lib/gallery-from-chat', async (importOriginal) => ({
@@ -159,7 +158,7 @@ beforeEach(() => {
   mockRequireChannelAccess.mockResolvedValue(null)
   mockRequireProjectAccess.mockResolvedValue(null)
   mockResolveUploadEntitlements.mockResolvedValue({ rights: { canUploadOriginal: true } })
-  mockAssertOriginalStorageAllowed.mockResolvedValue(undefined)
+  mockCanStoreOriginal.mockResolvedValue(true)
   mockRecordStorageUsageDelta.mockResolvedValue(undefined)
   mockTxSelectResult.mockReturnValue([])
   // jsdom の Blob は arrayBuffer() を持たないため、Storage の download が返す形だけを用意する
@@ -230,7 +229,7 @@ describe('POST /api/messages/[messageId]/gallery', () => {
     expect(mockDownload).toHaveBeenCalledWith('chat-attachments', imageRow(IMAGE_A).storagePath)
     const uploadedBuckets = mockUpload.mock.calls.map(([bucket]) => bucket).sort()
     expect(uploadedBuckets).toEqual(['gallery', 'gallery-originals'])
-    expect(mockAssertOriginalStorageAllowed).toHaveBeenCalled()
+    expect(mockCanStoreOriginal).toHaveBeenCalled()
 
     const [file] = insertedInto('files')
     expect(file).toMatchObject({ projectId: PROJECT_ID, fileType: 'image', fileSize: 4, derivedFileSize: 2 })
@@ -263,7 +262,7 @@ describe('POST /api/messages/[messageId]/gallery', () => {
 
     expect(res.status).toBe(201)
     expect(mockUpload.mock.calls.map(([bucket]) => bucket)).toEqual(['gallery'])
-    expect(mockAssertOriginalStorageAllowed).not.toHaveBeenCalled()
+    expect(mockCanStoreOriginal).not.toHaveBeenCalled()
     expect(insertedInto('files')[0]).toMatchObject({ storagePath: null, fileSize: null, mimeType: 'image/webp' })
     expect(mockRecordStorageUsageDelta).toHaveBeenCalledWith(
       WORKSPACE_ID,
@@ -301,17 +300,31 @@ describe('POST /api/messages/[messageId]/gallery', () => {
     expect(mockRemove.mock.calls.map(([bucket]) => bucket).sort()).toEqual(['gallery', 'gallery-originals'])
   })
 
-  it('確定直前に残高・支援が無くなっていたら 403 を返し、コピーした実体を消す', async () => {
+  it('確定直前に残高・支援が無くなっていたら、原本は捨てて圧縮版だけを追加する', async () => {
     mockSelectResult
       .mockReturnValueOnce([messageRow])
-      .mockReturnValueOnce([imageRow(IMAGE_A)])
+      .mockReturnValueOnce([imageRow(IMAGE_A), imageRow(IMAGE_B)])
       .mockReturnValueOnce([])
-    mockAssertOriginalStorageAllowed.mockRejectedValue(new Error('original-upload-entitlement-required'))
+    mockCanStoreOriginal.mockResolvedValue(false)
 
-    const res = await callPost({ fileIds: [IMAGE_A] })
+    const res = await callPost({ fileIds: [IMAGE_A, IMAGE_B] })
 
-    expect(res.status).toBe(403)
-    expect(mockRemove).toHaveBeenCalled()
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ projectId: PROJECT_ID, addedCount: 2, alreadyAddedCount: 0 })
+    const inserted = insertedInto('files')
+    expect(inserted).toHaveLength(2)
+    for (const file of inserted) {
+      expect(file).toMatchObject({ storagePath: null, fileSize: null, mimeType: 'image/webp' })
+    }
+    expect(mockRecordStorageUsageDelta).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      { originalBytes: 0, derivedBytes: 2 },
+      expect.anything(),
+    )
+    // 1枚目で複製した原本は消し、2枚目以降は原本を複製しない
+    expect(mockRemove.mock.calls.map(([bucket]) => bucket)).toEqual(['gallery-originals'])
+    expect(mockUpload.mock.calls.filter(([bucket]) => bucket === 'gallery-originals')).toHaveLength(1)
+    expect(mockCanStoreOriginal).toHaveBeenCalledTimes(1)
   })
 
   it('チャット添付の取得に失敗したら 500 を返し、ギャラリーには何も登録しない', async () => {
