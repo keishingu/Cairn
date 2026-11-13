@@ -27,3 +27,5 @@ pnpm --filter @cairn/desktop generate-icons  # apps/web/public/ の PNG から .
 1. `pnpm desktop:dev` で起動する
 2. DevTools のコンソールで `'serviceWorker' in navigator && 'PushManager' in window` が `true` になることを確認する
 3. 通知パネル（ベルアイコン）の ON/OFF で、通知許可ダイアログが出ることを確認する
+
+外部 HTTP(S) リンクと外部へのリダイレクトは既定ブラウザで開き、Web 以外のスキームは拒否する。同一オリジンの遷移はデスクトップ内で開く。

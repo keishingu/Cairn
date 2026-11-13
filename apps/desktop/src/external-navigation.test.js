@@ -25,6 +25,7 @@ describe('registerExternalNavigation', () => {
     let handler
     const openedUrls = []
     const webContents = {
+      on: () => {},
       setWindowOpenHandler: value => {
         handler = value
       },
@@ -38,4 +39,30 @@ describe('registerExternalNavigation', () => {
     assert.deepEqual(handler({ url: 'https://example.com/docs' }), { action: 'deny' })
     assert.deepEqual(openedUrls, ['https://example.com/docs'])
   })
+
+  test('同一ウィンドウの遷移とリダイレクトも送信先を検証する', () => {
+    const handlers = {}
+    const openedUrls = []
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on: (name, handler) => { handlers[name] = handler },
+    }
+    registerExternalNavigation(webContents, APP_URL, async url => { openedUrls.push(url) })
+
+    for (const name of ['will-navigate', 'will-redirect']) {
+      let prevented = false
+      const event = { isMainFrame: true, url: `${APP_URL}/projects`, preventDefault: () => { prevented = true } }
+      handlers[name](event)
+      assert.equal(prevented, false)
+      event.url = 'https://example.com/docs'
+      handlers[name](event)
+      assert.equal(prevented, true)
+      prevented = false
+      event.url = 'file:///etc/passwd'
+      handlers[name](event)
+      assert.equal(prevented, true)
+    }
+    assert.deepEqual(openedUrls, ['https://example.com/docs', 'https://example.com/docs'])
+  })
+
 })
