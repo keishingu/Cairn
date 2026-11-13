@@ -21,9 +21,8 @@ import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
 import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
 import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
+import { useMessageGallery } from '@/hooks/use-message-gallery'
 import {
-  addMessageImagesToGallery,
-  fetchMessageGalleryStatus,
   galleryImagesOf,
   MessageGalleryDialog,
   type MessageGalleryImage,
@@ -1919,13 +1918,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     [projectId],
   )
 
-  const addImagesToGallery = React.useCallback(async (messageId: string, fileIds: string[]) => {
-    const addedProjectId = await addMessageImagesToGallery(messageId, fileIds, t)
-    if (!addedProjectId) return false
-    void queryClient.invalidateQueries({ queryKey: ['project-gallery', addedProjectId] })
-    void queryClient.invalidateQueries({ queryKey: ['workspace-gallery'] })
-    return true
-  }, [queryClient, t])
+  const { fetchStatus: fetchGalleryStatus, addImages: addImagesToGallery } = useMessageGallery()
 
   const [galleryDialog, setGalleryDialog] = React.useState<{ messageId: string; images: MessageGalleryImage[]; addedFileIds: string[] } | null>(null)
 
@@ -1935,7 +1928,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     if (!message) return
     const images = galleryImagesOf(message.attachments)
     if (images.length === 0) return
-    const status = await fetchMessageGalleryStatus(messageId, t)
+    const status = await fetchGalleryStatus(messageId)
     if (!status) return
     const added = new Set(status.addedFileIds)
     const open = images.filter(image => !added.has(image.fileId))
@@ -1946,7 +1939,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     } else {
       setGalleryDialog({ messageId, images, addedFileIds: status.addedFileIds })
     }
-  }, [messages, addImagesToGallery, t])
+  }, [messages, fetchGalleryStatus, addImagesToGallery, t])
 
   // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
   const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {

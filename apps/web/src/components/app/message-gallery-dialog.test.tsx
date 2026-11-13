@@ -7,7 +7,6 @@ import {
   galleryImagesOf,
   initialGallerySelection,
   MessageGalleryDialog,
-  projectGalleryHref,
 } from './message-gallery-dialog'
 
 vi.mock('@/components/locale-provider', () => ({
@@ -39,12 +38,6 @@ describe('initialGallerySelection', () => {
     )
 
     expect([...selection]).toEqual(['a', 'c'])
-  })
-})
-
-describe('projectGalleryHref', () => {
-  test('プロジェクトのギャラリータブを開く URL を返す', () => {
-    expect(projectGalleryHref('p1')).toBe('/projects?open=project-p1&tab=gallery')
   })
 })
 

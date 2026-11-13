@@ -4,17 +4,9 @@
 'use client'
 
 import React from 'react'
-import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { isGalleryImageMimeType } from '@/lib/gallery-upload'
-import type {
-  MessageGalleryAddResponse,
-  MessageGalleryStatusResponse,
-} from '@/app/api/messages/[messageId]/gallery/route'
 import { TaskDialog } from './task-dialog'
-
-type TranslateFn = (message: string, values?: Record<string, string | number>) => string
 
 /** ダイアログで選ぶ画像（メッセージの添付） */
 export interface MessageGalleryImage {
@@ -29,59 +21,6 @@ export function galleryImagesOf<T extends { fileId: string; fileName: string; mi
   return attachments
     .filter(attachment => attachment.mimeType !== null && isGalleryImageMimeType(attachment.mimeType))
     .map(attachment => ({ fileId: attachment.fileId, fileName: attachment.fileName }))
-}
-
-export function projectGalleryHref(projectId: string): string {
-  return `/projects?open=project-${encodeURIComponent(projectId)}&tab=gallery`
-}
-
-/** 追加済みの画像を取得する。失敗したらトーストで知らせて null を返す */
-export async function fetchMessageGalleryStatus(
-  messageId: string,
-  t: TranslateFn,
-): Promise<MessageGalleryStatusResponse | null> {
-  try {
-    const res = await fetchWithAuth(`/api/messages/${messageId}/gallery`)
-    const body = await res.json().catch(() => null) as (Partial<MessageGalleryStatusResponse> & { error?: unknown }) | null
-    if (!res.ok || typeof body?.projectId !== 'string' || !Array.isArray(body.addedFileIds)) {
-      toast.error(typeof body?.error === 'string' ? body.error : t('Could not add to the gallery'))
-      return null
-    }
-    return { projectId: body.projectId, addedFileIds: body.addedFileIds }
-  } catch {
-    toast.error(t('Could not add to the gallery'))
-    return null
-  }
-}
-
-/** 選んだ画像をプロジェクトのギャラリーへ追加する。成否はトーストで知らせ、成功したら projectId を返す */
-export async function addMessageImagesToGallery(
-  messageId: string,
-  fileIds: string[],
-  t: TranslateFn,
-): Promise<string | null> {
-  try {
-    const res = await fetchWithAuth(`/api/messages/${messageId}/gallery`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileIds }),
-    })
-    const body = await res.json().catch(() => null) as (Partial<MessageGalleryAddResponse> & { error?: unknown }) | null
-    if (!res.ok || typeof body?.projectId !== 'string' || typeof body.addedCount !== 'number') {
-      toast.error(typeof body?.error === 'string' ? body.error : t('Could not add to the gallery'))
-      return null
-    }
-    const message = body.addedCount === 0
-      ? t('Already in the gallery')
-      : body.addedCount === 1
-        ? t('Added to the gallery')
-        : t('Added {count} photos to the gallery', { count: body.addedCount })
-    toast.success(message, { action: { label: t('Open'), href: projectGalleryHref(body.projectId) } })
-    return body.projectId
-  } catch {
-    toast.error(t('Could not add to the gallery'))
-    return null
-  }
 }
 
 /** 初期選択: 未追加の画像すべて */
