@@ -127,6 +127,16 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(403)
   })
 
+  it('ロック後に管理者権限を失った操作者には理由を返す', async () => {
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
+    mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(OTHER_USER_ID, 'admin'), { params: Promise.resolve({ userId: OTHER_USER_ID }) })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'この操作には管理者以上の権限が必要です' })
+    expect(mockDb.update).not.toHaveBeenCalled()
+  })
+
   it('admin は member を admin に昇格できる', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'admin', membershipStatus: 'active' }]))

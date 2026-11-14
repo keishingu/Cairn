@@ -49,7 +49,7 @@ export async function PATCH(
 
     const callerRole = ctx.role
     if (!isWorkspaceAdmin(callerRole)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
     }
 
     const response = await db.transaction(async (tx) => {
@@ -57,7 +57,7 @@ export async function PATCH(
       await lockMembershipAndActiveOwners(tx, ctx.workspaceId, targetUserId, ctx.userId)
       const callerRole = await getWorkspaceRole(ctx.workspaceId, ctx.userId, tx)
       if (!isWorkspaceAdmin(callerRole)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
       }
       const [target] = await tx
         .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
@@ -152,7 +152,7 @@ async function handleStatusChange(
 
     const callerRole = await getWorkspaceMemberRole(workspaceId, callerUserId)
     if (!isWorkspaceAdmin(callerRole)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
     }
 
     const [target] = await db

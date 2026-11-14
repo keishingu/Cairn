@@ -178,7 +178,15 @@ describe('access/lifecycle', () => {
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
       const { reactivateMembership } = await import('./lifecycle')
       const result = await reactivateMembership('ws', 'target', 'actor')
-      expect(result).toMatchObject({ ok: false, status: 403 })
+      expect(result).toEqual({ ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' })
+      expect(mockDb.update).not.toHaveBeenCalled()
+    })
+
+    it('非活性化された操作者は非活性化できない', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([]))
+      const { deactivateMembership } = await import('./lifecycle')
+      const result = await deactivateMembership('ws', 'target', 'actor')
+      expect(result).toEqual({ ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' })
       expect(mockDb.update).not.toHaveBeenCalled()
     })
   })

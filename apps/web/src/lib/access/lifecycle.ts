@@ -72,7 +72,7 @@ export async function deactivateMembership(
     await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, deactivatedBy)
     const actorRole = await getWorkspaceRole(workspaceId, deactivatedBy, tx)
     if (!isWorkspaceAdmin(actorRole)) {
-      return { ok: false, status: 403, error: 'Forbidden' }
+      return { ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' }
     }
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
@@ -108,7 +108,7 @@ export async function reactivateMembership(
     await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, actorUserId)
     const actorRole = await getWorkspaceRole(workspaceId, actorUserId, tx)
     if (!isWorkspaceAdmin(actorRole)) {
-      return { ok: false, status: 403, error: 'Forbidden' }
+      return { ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' }
     }
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
