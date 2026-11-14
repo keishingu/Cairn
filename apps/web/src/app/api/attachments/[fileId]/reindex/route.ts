@@ -29,7 +29,10 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
     if (!file) return new NextResponse(null, { status: 404 })
     if (!(await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role))) {
-      return new NextResponse(null, { status: 403 })
+      return NextResponse.json(
+        { error: `現在のロール（${ctx.role}）では、このファイルを閲覧する権限がありません` },
+        { status: 403 },
+      )
     }
     if (!file.storagePath || !file.mimeType) return NextResponse.json({ error: 'このファイルは再インデックスできません' }, { status: 422 })
 

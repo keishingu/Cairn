@@ -33,6 +33,9 @@ describe('添付ファイルの再インデックス', () => {
     const { POST } = await import('./route')
     const response = await POST(new Request('http://localhost'), params)
     expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({
+      error: '現在のロール（guest）では、このファイルを閲覧する権限がありません',
+    })
     expect(access).toHaveBeenCalledWith('workspace', 'guest', file, 'guest')
     expect(deleteWhere).not.toHaveBeenCalled()
     expect(updateSet).not.toHaveBeenCalled()
