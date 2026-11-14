@@ -45,6 +45,30 @@ describe('EditMilestoneModal', () => {
     await waitFor(() => expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('他の人の値'))
   })
 
+  it('競合後の再取得中は入力と保存を停止し、失敗時には入力を保持して再開する', async () => {
+    mockFetch.mockImplementation(async (_url, init) => init?.method === 'PATCH'
+      ? new Response(JSON.stringify({ error: 'milestone_conflict' }), { status: 409 })
+      : new Response(JSON.stringify([milestone]), { status: 200 }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><EditMilestoneModal projectId="project-1" projectTitle="P" milestoneId="milestone-1" onClose={vi.fn()} /></QueryClientProvider>)
+    const title = await screen.findByLabelText(/マイルストーン名/)
+    fireEvent.change(title, { target: { value: '編集中の値' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    await screen.findByRole('alert')
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    let finish: (value: Response) => void = () => { throw new Error('not initialized') }
+    mockFetch.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve }))
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を読み込む' }))
+    expect(title).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: '読み込み中…' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '読み込み中…' }).every(button => button.hasAttribute('disabled'))).toBe(true)
+    finish(new Response('{}', { status: 500 }))
+    await screen.findByText('マイルストーンを読み込めませんでした')
+    await waitFor(() => expect(title).toBeEnabled())
+    expect(title).toHaveValue('編集中の値')
+    expect(screen.getByRole('button', { name: '最新の内容を読み込む' })).toBeEnabled()
+  })
+
   it('初回の再取得が失敗したらキャッシュで編集させずエラーを表示する', async () => {
     mockFetch.mockResolvedValue(new Response('{}', { status: 500 }))
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })

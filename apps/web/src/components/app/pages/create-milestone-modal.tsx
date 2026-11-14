@@ -56,6 +56,7 @@ interface MilestoneFormModalProps {
   defaultMonth?: string | null
   onReload?: () => void
   reloadError?: string
+  reloading?: boolean
   backgroundError?: string
 }
 
@@ -72,7 +73,7 @@ const modalCardStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
-function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null, onReload, reloadError, backgroundError }: MilestoneFormModalProps) {
+function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null, onReload, reloadError, backgroundError, reloading = false }: MilestoneFormModalProps) {
   const t = useT()
   const { isMobile } = useAppShell()
   const editing = initialMilestone != null
@@ -98,6 +99,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    if (reloading || pending) return
 
     let invalid = false
     const trimmedTitle = title.trim()
@@ -129,7 +131,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
   const conflictMessage = conflict && (
     <div role="alert" style={{ color: 'var(--red-text)', padding: '0 20px' }}>
       {t('This milestone was updated by someone else. Reload to continue.')}{' '}
-      <button type="button" className="btn" onClick={onReload}>{t('Reload milestone')}</button>
+      <button type="button" className="btn" onClick={onReload} disabled={reloading || pending}>{reloading ? t('Loading...') : t('Reload milestone')}</button>
       {reloadError && <div>{reloadError}</div>}
     </div>
   )
@@ -148,12 +150,13 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
         onClose={onClose}
         onSubmit={handleSubmit}
         submitLabel={editing ? t('Save changes') : t('Create')}
-        submittingLabel={editing ? t('Saving…') : t('Creating…')}
-        isSubmitting={pending}
-        disableClose={pending}
+        isSubmitting={pending || reloading}
+        submittingLabel={reloading ? t('Loading...') : (editing ? t('Saving…') : t('Creating…'))}
+        disableClose={pending || reloading}
       >
         {conflictMessage}
         {backgroundErrorMessage}
+        <fieldset disabled={reloading} style={{ display: 'flex', flexDirection: 'column', gap: 18, margin: 0, padding: 0, border: 0, minWidth: 0 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <label htmlFor="milestone-title" style={sheetFieldLabelStyle}>
@@ -203,6 +206,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           {endDateError && <div role="alert" style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{endDateError}</div>}
         </div>
 
+        </fieldset>
         {!editing && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
             <Icon name="chat" size={12}/>
@@ -214,7 +218,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
   }
 
   return (
-    <Modal onClose={() => { if (!pending) onClose() }} label={heading}>
+    <Modal onClose={() => { if (!pending && !reloading) onClose() }} label={heading}>
       <form
         onSubmit={handleSubmit}
         style={modalCardStyle}
@@ -223,12 +227,12 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           icon="flag"
           title={editing ? t('Edit milestone') : t('Create milestone')}
           subtitle={projectTitle}
-          onClose={() => { if (!pending) onClose() }}
+          onClose={() => { if (!pending && !reloading) onClose() }}
         />
 
         {conflictMessage}
         {backgroundErrorMessage}
-        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto' }}>
+        <fieldset disabled={reloading} style={{ margin: 0, border: 0, minWidth: 0, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto' }}>
           <Field label={t('Milestone name')} required error={titleError} hint={`${title.length}/100`} htmlFor="milestone-title">
             <input
               id="milestone-title"
@@ -306,7 +310,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
               </Field>
             </div>
           </fieldset>
-        </div>
+        </fieldset>
 
         <footer style={{ padding: '12px 20px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {!editing && (
@@ -316,9 +320,9 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
             </span>
           )}
           <div style={{ flex: 1 }}/>
-          <button type="button" className="btn" onClick={onClose} disabled={pending}>{t('Cancel')}</button>
-          <button type="submit" className="btn btn-primary" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
-            {pending ? (editing ? t('Saving…') : t('Creating…')) : (editing ? t('Save changes') : t('Create'))}
+          <button type="button" className="btn" onClick={onClose} disabled={pending || reloading}>{t('Cancel')}</button>
+          <button type="submit" className="btn btn-primary" disabled={pending || reloading} style={{ opacity: pending || reloading ? 0.7 : 1 }}>
+            {reloading ? t('Loading...') : pending ? (editing ? t('Saving…') : t('Creating…')) : (editing ? t('Save changes') : t('Create'))}
           </button>
         </footer>
       </form>
@@ -363,6 +367,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
   const milestone = milestones.data?.find(item => item.id === milestoneId)
   const [formVersion, setFormVersion] = React.useState(0)
   const [reloadError, setReloadError] = React.useState('')
+  const [reloading, setReloading] = React.useState(false)
   // キャッシュがあっても、この画面を開いてからの取得成功を待つ。以後の背景取得失敗は入力中のフォームを破棄しない。
   const [initialFetchSucceeded, setInitialFetchSucceeded] = React.useState(false)
   React.useEffect(() => {
@@ -399,13 +404,16 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
       key={formVersion}
       initialMilestone={milestone}
       reloadError={reloadError}
-      backgroundError={milestones.isError ? t('Could not load the milestone') : ''}
+      reloading={reloading}
+      backgroundError={milestones.isError && !reloadError ? t('Could not load the milestone') : ''}
       onReload={() => {
+        if (reloading) return
         setReloadError('')
+        setReloading(true)
         void milestones.refetch().then(result => {
           if (result.isSuccess) setFormVersion(version => version + 1)
           else setReloadError(t('Could not load the milestone'))
-        })
+        }).catch(() => setReloadError(t('Could not load the milestone'))).finally(() => setReloading(false))
       }}
       pending={milestones.patchMutation.isPending}
       onClose={onClose}
