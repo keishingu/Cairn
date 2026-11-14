@@ -222,16 +222,16 @@ const FileRow = ({
             ...(chatHref
               ? [{ icon: 'chat', label: t('Go to chat'), onSelect: () => router.push(chatHref) }]
               : []),
-            { icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) },
+            ...(file.canMutate ? [{ icon: 'edit', label: t('Rename'), onSelect: () => setIsRenaming(true) }] : []),
             ...(REINDEXABLE_MIME_TYPES.has(file.mimeType ?? '') && file.fileType !== 'link'
               ? [{ icon: 'refresh', label: t('Reindex'), onSelect: () => onReindex(file.id) }]
               : []),
-            {
+            ...(file.canMutate ? [{
               icon: 'trash',
               label: t('Delete'),
               danger: true,
               onSelect: () => onDelete(file.id, file.fileName),
-            },
+            }] : []),
           ]}
         />
       )}

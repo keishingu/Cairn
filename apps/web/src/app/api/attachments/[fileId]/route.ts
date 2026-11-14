@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { canAccessFile } from '@/lib/permissions'
+import { canAccessFile, canMutateFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { CHAT_VIDEOS_BUCKET, groupAttachmentPathsByBucket, isVideoMimeType } from '@/lib/attachments'
@@ -294,14 +294,15 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         uploadedBy: files.uploadedBy,
         fileName: files.fileName,
         fileType: files.fileType,
+        metadata: files.metadata,
       })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
-    if (!canAccess) return new NextResponse(null, { status: 403 })
+    const canAccess = await canMutateFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return NextResponse.json({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' }, { status: 403 })
 
     if (fileName) {
       if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
@@ -356,8 +357,8 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
-    if (!canAccess) return new NextResponse(null, { status: 403 })
+    const canAccess = await canMutateFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return NextResponse.json({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' }, { status: 403 })
 
     // ベクトルデータを先に削除
     await db

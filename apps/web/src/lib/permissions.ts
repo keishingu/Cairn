@@ -6,6 +6,7 @@ import { FEATURE_FLAGS } from '@cairn/shared'
 import { db, channels, channelMembers, projects, projectMembers, messages, messageAttachments } from '@cairn/db'
 import { eq, and, sql, inArray } from 'drizzle-orm'
 import { getWorkspaceRole, isWorkspaceMember, type WorkspaceRole } from './access/membership'
+import { canManageAccessibleFile } from './files/mutation-permission'
 
 // role の解決・判定・active 要求は access/membership に一元化した（active_workspace_members
 // ビュー経由で非活性メンバーを構造的に除外し、role 参照系がすべて非活性を 403 で弾く）。
@@ -230,6 +231,14 @@ export async function canAccessFile(
   if (allCandidateChannelIds.length === 0) return false
 
   return canAccessViaAnyChannel(workspaceId, userId, role, allCandidateChannelIds)
+}
+
+// 更新・削除は最新の active membership と閲覧範囲の両方を再確認する。
+export async function canMutateFile(workspaceId: string, userId: string, file: FileAccessRow): Promise<boolean> {
+  if (file.workspaceId !== workspaceId) return false
+  const role = await getWorkspaceRole(workspaceId, userId)
+  if (!canManageAccessibleFile(userId, file.uploadedBy, role)) return false
+  return canAccessFile(workspaceId, userId, file, role)
 }
 
 // 指定チャンネル群のうち少なくとも1つにアクセスできるか一括チェックする。

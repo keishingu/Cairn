@@ -425,7 +425,7 @@ const ChannelFilesSection = ({ channelId, onJumpToMessage }: {
                     triggerStyle={{ padding: '3px 4px' }}
                     actions={[
                       { icon: 'eye', label: t('Open file'), onSelect: () => openFile(f) },
-                      { icon: 'edit', label: t('Rename'), onSelect: () => setRenamingFileId(f.id) },
+                      ...(f.canMutate ? [{ icon: 'edit', label: t('Rename'), onSelect: () => setRenamingFileId(f.id) }] : []),
                     ]}
                   /></div>
                 )}

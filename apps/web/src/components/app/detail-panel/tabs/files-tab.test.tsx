@@ -13,8 +13,12 @@ import { useProjectFiles } from '@/hooks/use-project-files'
 import { AppShellContext } from '../../app-shell-context'
 
 // 送信の手順（URL 発行 → Storage → 登録）は upload-client.test.ts で確かめる。ここでは画面の振る舞いだけを見る
-vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/attachments/upload-client')>()),
+vi.mock('@/lib/attachments/upload-client', () => ({
+  AttachmentUploadError: class extends Error {
+    constructor(readonly failure: string, readonly serverMessage?: string, readonly retryFinalize?: () => Promise<unknown>) {
+      super(serverMessage ?? failure)
+    }
+  },
   uploadAttachment: vi.fn(),
 }))
 const heic2anyMock = vi.hoisted(() => vi.fn())
@@ -131,9 +135,21 @@ describe('ファイルタブ', () => {
     expect(input?.accept).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation')
   })
 
+  it('変更権限がないファイルには削除と最新版設定を表示しない', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', canMutate: false, uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    renderFilesTab()
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+    expect(screen.queryByRole('button', { name: translate('ja', 'Delete') })).toBeNull()
+    expect(screen.queryByRole('button', { name: translate('ja', 'Mark as latest') })).toBeNull()
+  })
+
   it('PDF のアクションメニューから原本ダウンロード URL を開く', async () => {
     vi.mocked(useProjectFiles).mockReturnValue({
-      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', canMutate: true, uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
       isLoading: false,
       isError: false,
       deleteMutation: { mutateAsync: vi.fn() },
@@ -155,7 +171,7 @@ describe('ファイルタブ', () => {
 
   it('アプリ（WebView）では支援者向けの原本ダウンロードをメニューに出さない', async () => {
     vi.mocked(useProjectFiles).mockReturnValue({
-      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', canMutate: true, uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
       isLoading: false,
       isError: false,
       deleteMutation: { mutateAsync: vi.fn() },
@@ -301,7 +317,7 @@ describe('ファイルタブ', () => {
 
   describe('原本ダウンロードの権利', () => {
     const pdfFiles = {
-      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', canMutate: true, uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
       isLoading: false,
       isError: false,
       deleteMutation: { mutateAsync: vi.fn() },
@@ -339,7 +355,7 @@ describe('ファイルタブ', () => {
     it('動画の原本は取得できる本人にだけ項目を出し、それ以外には課金の案内も出さない', async () => {
       const videoFiles = {
         ...pdfFiles,
-        data: [{ id: 'video-1', fileName: 'clip.mov', mimeType: 'video/quicktime', fileSize: 8, fileType: 'video', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+        data: [{ id: 'video-1', fileName: 'clip.mov', mimeType: 'video/quicktime', fileSize: 8, fileType: 'video', canMutate: true, uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
       } as unknown as ReturnType<typeof useProjectFiles>
       vi.mocked(useProjectFiles).mockReturnValue(videoFiles)
       const { unmount } = renderFilesTab()

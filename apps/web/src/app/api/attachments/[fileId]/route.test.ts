@@ -10,6 +10,7 @@ const FILE_ID = '30000000-0000-0000-0000-000000000001'
 const {
   mockGetAuthContext,
   mockCanAccessFile,
+  mockCanMutateFile,
   mockDownload,
   mockCreateSignedUrl,
   mockResolveUploadEntitlements,
@@ -27,6 +28,7 @@ const {
   mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockCanMutateFile: vi.fn(),
   mockDownload: vi.fn(),
   mockCreateSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: 'https://storage.test/signed' }, error: null }),
   mockResolveUploadEntitlements: vi.fn(),
@@ -54,7 +56,7 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
+vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile, canMutateFile: mockCanMutateFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: {
@@ -124,6 +126,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
+    mockCanMutateFile.mockResolvedValue(true)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canDownloadOriginal: false } })
     mockDownload.mockResolvedValue({
       data: 'file body',
@@ -144,6 +147,19 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       }),
     }))
     mockTransactionSelectLimit.mockResolvedValue([{ id: FILE_ID }])
+  })
+
+  it.each(['PATCH', 'DELETE'])('%s では閲覧できても変更権限がなければ拒否する', async (method) => {
+    mockCanMutateFile.mockResolvedValue(false)
+    const route = await import('./route')
+    const request = new Request('http://localhost/', {
+      method, ...(method === 'PATCH' ? { body: JSON.stringify({ fileName: 'new.pdf' }) } : {}),
+    })
+    const res = await route[method as 'PATCH' | 'DELETE'](request, routeParams())
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' })
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
   })
 
   afterEach(() => {
@@ -319,7 +335,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
   })
 
   it('閲覧権限が無いファイルは PATCH が 403 を返す', async () => {
-    mockCanAccessFile.mockResolvedValue(false)
+    mockCanMutateFile.mockResolvedValue(false)
     const { PATCH } = await import('./route')
     const req = new Request('http://localhost/', {
       method: 'PATCH',
@@ -375,7 +391,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
   })
 
   it('閲覧権限が無いファイルは DELETE が 403 を返す', async () => {
-    mockCanAccessFile.mockResolvedValue(false)
+    mockCanMutateFile.mockResolvedValue(false)
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
     expect(res.status).toBe(403)
