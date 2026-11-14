@@ -188,10 +188,51 @@ export function decodeMessageCursor(cursor: string): { createdAt: string; id: st
   return { createdAt, id }
 }
 
+// チャンネル名から読む1チャンネルを決める。候補は listResearchChannels と同じ権限確認済みの非DMだけなので、
+// DM・アクセスできないチャンネルは「見つからない」と同じ扱いになり、存在を明かさない
+async function resolveReadableChannel(
+  ctx: AuthContext,
+  scope: ResearchScope,
+  input: { channelId?: string | undefined; channelName?: string | undefined },
+) {
+  const channelName = input.channelName?.trim().replace(/^#/, '').trim().toLowerCase() ?? ''
+  if (!!input.channelId === !!channelName) {
+    throw new ResearchInputError('channelId と channelName のどちらか一方だけを指定してください')
+  }
+  if (input.channelId) {
+    const [channel] = await loadAccessibleChannels(ctx, scope, { channelId: input.channelId })
+    if (!channel) {
+      throw new ResearchAccessError('指定されたチャンネルは見つからないか、アクセスできません')
+    }
+    return channel
+  }
+  const accessible = await loadAccessibleChannels(ctx, scope, {})
+  const exact = accessible.filter((row) => row.name.trim().toLowerCase() === channelName)
+  // アーカイブ済みは、他に該当がないときだけ候補にする
+  const active = exact.filter((row) => !row.archivedAt)
+  const candidates = active.length > 0 ? active : exact
+  if (candidates.length === 0) {
+    throw new ResearchInputError(
+      `チャンネル「#${channelName}」は見つからないか、アクセスできません。list_channels で名前を確認してください`,
+    )
+  }
+  if (candidates.length > 1) {
+    const list = candidates
+      .slice(0, 10)
+      .map((row) => `#${row.name} (channelId: ${row.id}, プロジェクト: ${row.projectTitle ?? 'なし'})`)
+      .join(' / ')
+    throw new ResearchInputError(
+      `チャンネル名「#${channelName}」に該当するチャンネルが複数あります。channelId を指定して読み直してください: ${list}`,
+    )
+  }
+  return candidates[0]!
+}
+
 export async function readResearchChannelMessages(
   ctx: AuthContext,
   input: {
-    channelId: string
+    channelId?: string | undefined
+    channelName?: string | undefined
     since?: string | undefined
     until?: string | undefined
     cursor?: string | undefined
@@ -200,10 +241,7 @@ export async function readResearchChannelMessages(
   now = new Date(),
 ) {
   const scope = await resolveScope(ctx)
-  const [channel] = await loadAccessibleChannels(ctx, scope, { channelId: input.channelId })
-  if (!channel) {
-    throw new ResearchAccessError('指定されたチャンネルは見つからないか、アクセスできません')
-  }
+  const channel = await resolveReadableChannel(ctx, scope, input)
   const limit = clampResearchLimit(input.limit, AI_RESEARCH_LIMITS.messages)
   const until = input.until ? new Date(input.until) : now
   const since = input.since
@@ -420,23 +458,15 @@ export interface ResearchMember {
   evidence: ResearchEvidence[]
 }
 
-export async function listResearchMembers(
+// list_members と get_member_history（フィルタ指定）が同じ可視範囲で対象を決めるための共通処理。
+// ゲストの見える範囲・非活性メンバーの除外・属性の完全一致(OR)をここに集約し、片方だけ広がらないようにする
+async function loadVisibleResearchMembers(
   ctx: AuthContext,
-  input: {
-    query?: string | undefined
-    attributeNames?: string[] | undefined
-    includeInactive?: boolean | undefined
-    limit?: number | undefined
-  } = {},
+  scope: ResearchScope,
+  input: { query?: string; attributeNames?: string[]; includeInactive: boolean },
 ) {
-  const scope = await resolveScope(ctx)
-  const limit = clampResearchLimit(input.limit, AI_RESEARCH_LIMITS.members)
-  // 非活性メンバーはメンバー一覧でも管理者だけが見られる
-  const includeInactive = (input.includeInactive ?? false) && isWorkspaceAdmin(scope.role)
   const query = input.query?.trim().toLowerCase() ?? ''
-  const attributeNames = [
-    ...new Set((input.attributeNames ?? []).map((name) => name.trim()).filter(Boolean)),
-  ]
+  const attributeNames = input.attributeNames ?? []
   const visibleUserIds = await guestVisibleUserIds(ctx, scope)
 
   const { db, profiles, workspaceMembers } = await import('@cairn/db')
@@ -455,7 +485,7 @@ export async function listResearchMembers(
       and(
         eq(workspaceMembers.workspaceId, ctx.workspaceId),
         visibleUserIds ? inArray(workspaceMembers.userId, visibleUserIds) : undefined,
-        includeInactive ? undefined : eq(workspaceMembers.membershipStatus, 'active'),
+        input.includeInactive ? undefined : eq(workspaceMembers.membershipStatus, 'active'),
       ),
     )
     .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
@@ -463,7 +493,7 @@ export async function listResearchMembers(
     ctx.workspaceId,
     rows.map((row) => row.userId),
   )
-  const matched = rows.flatMap((row) => {
+  return rows.flatMap((row) => {
     const memberAttributes = (attributes.get(row.userId) ?? []).map(({ id, name }) => ({ id, name }))
     if (query && !row.name.toLowerCase().includes(query)) return []
     if (
@@ -474,6 +504,28 @@ export async function listResearchMembers(
     }
     return [{ row, memberAttributes }]
   })
+}
+
+function normalizeNames(names: string[] | undefined | null): string[] {
+  return [...new Set((names ?? []).map((name) => name.trim()).filter(Boolean))]
+}
+
+export async function listResearchMembers(
+  ctx: AuthContext,
+  input: {
+    query?: string | undefined
+    attributeNames?: string[] | undefined
+    includeInactive?: boolean | undefined
+    limit?: number | undefined
+  } = {},
+) {
+  const scope = await resolveScope(ctx)
+  const limit = clampResearchLimit(input.limit, AI_RESEARCH_LIMITS.members)
+  // 非活性メンバーはメンバー一覧でも管理者だけが見られる
+  const includeInactive = (input.includeInactive ?? false) && isWorkspaceAdmin(scope.role)
+  const query = input.query?.trim().toLowerCase() ?? ''
+  const attributeNames = normalizeNames(input.attributeNames)
+  const matched = await loadVisibleResearchMembers(ctx, scope, { query, attributeNames, includeInactive })
   const items: ResearchMember[] = matched.slice(0, limit).map(({ row, memberAttributes }) => ({
     userId: row.userId,
     name: row.name,
@@ -497,6 +549,52 @@ export async function listResearchMembers(
       limit,
     },
   }
+}
+
+// get_member_history に属性・プロジェクト役割で対象を任せるときの解決。
+// list_members と同じ可視範囲（ゲスト範囲・活性のみ）の中から、属性(OR)と、見えるプロジェクトでの役割名(OR)の両方を満たす人を返す
+export async function resolveResearchMemberIdsByFilter(
+  ctx: AuthContext,
+  scope: ResearchScope,
+  input: { attributeNames: string[]; projectRoleNames: string[] },
+): Promise<string[]> {
+  const matched = await loadVisibleResearchMembers(ctx, scope, {
+    attributeNames: input.attributeNames,
+    includeInactive: false,
+  })
+  const candidateIds = matched.map(({ row }) => row.userId)
+  if (input.projectRoleNames.length === 0 || candidateIds.length === 0) return candidateIds
+
+  const { db, projectMembers, projectRoles, projects } = await import('@cairn/db')
+  const { and, eq, inArray } = await import('drizzle-orm')
+  const roleRows = await db
+    .select({
+      userId: projectMembers.userId,
+      role: projectMembers.role,
+      roleName: projectRoles.name,
+    })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .leftJoin(
+      projectRoles,
+      and(eq(projectMembers.roleId, projectRoles.id), eq(projectRoles.workspaceId, ctx.workspaceId)),
+    )
+    .where(
+      and(
+        inArray(projectMembers.userId, candidateIds),
+        eq(projects.workspaceId, ctx.workspaceId),
+        // ゲストは参加しているプロジェクトの役割だけを見る（見えないプロジェクトの存在を役割経由で漏らさない）
+        scope.guestProjectIds ? inArray(projects.id, scope.guestProjectIds) : undefined,
+      ),
+    )
+  const matchedUserIds = new Set(
+    roleRows
+      .filter((row) =>
+        input.projectRoleNames.includes(row.roleName ?? LEGACY_PROJECT_ROLE_NAMES[row.role]),
+      )
+      .map((row) => row.userId),
+  )
+  return candidateIds.filter((id) => matchedUserIds.has(id))
 }
 
 export interface ResearchMemberHistoryProject {
@@ -535,10 +633,27 @@ export interface ResearchMemberHistory {
 // 比較表を作れるよう複数人まとめて返す。各プロジェクトの添付ファイルは read_file で本文を読める。
 export async function getResearchMemberHistory(
   ctx: AuthContext,
-  input: { userIds: string[]; includeFiles?: boolean | undefined },
+  input: {
+    userIds?: string[] | undefined
+    attributeNames?: string[] | undefined
+    projectRoleNames?: string[] | undefined
+    includeFiles?: boolean | undefined
+  },
 ) {
+  const explicitIds = input.userIds && input.userIds.length > 0 ? [...new Set(input.userIds)] : null
+  const attributeNames = normalizeNames(input.attributeNames)
+  const projectRoleNames = normalizeNames(input.projectRoleNames)
+  const hasFilters = attributeNames.length > 0 || projectRoleNames.length > 0
+  if (!explicitIds && !hasFilters) {
+    throw new ResearchInputError('userIds / attributeNames / projectRoleNames のいずれかを指定してください')
+  }
   const scope = await resolveScope(ctx)
-  const requestedIds = [...new Set(input.userIds)]
+  // フィルタ指定時は list_members と同じ可視範囲で対象を決め、userIds も併せて指定されたら共通部分に絞る
+  const requestedIds = hasFilters
+    ? (await resolveResearchMemberIdsByFilter(ctx, scope, { attributeNames, projectRoleNames })).filter(
+        (id) => !explicitIds || explicitIds.includes(id),
+      )
+    : explicitIds!
   const userIds = requestedIds.slice(0, AI_RESEARCH_LIMITS.memberHistoryUsers)
   const includeFiles = input.includeFiles ?? true
   const visibleUserIds = await guestVisibleUserIds(ctx, scope)
@@ -579,7 +694,7 @@ export async function getResearchMemberHistory(
       (!visibleUserIds || visibleUserIds.includes(row.userId)),
   )
   const visibleIds = visibleMembers.map((row) => row.userId)
-  const notFoundUserIds = userIds.filter((id) => !visibleIds.includes(id))
+  const notFoundUserIds = (hasFilters ? (explicitIds ?? []) : userIds).filter((id) => !visibleIds.includes(id))
   if (visibleIds.length === 0) {
     return {
       ok: true as const,
@@ -588,7 +703,7 @@ export async function getResearchMemberHistory(
       returnedCount: 0,
       notFoundUserIds,
       truncated: requestedIds.length > userIds.length,
-      appliedFilters: { includeFiles, maxUsers: AI_RESEARCH_LIMITS.memberHistoryUsers },
+      appliedFilters: { includeFiles, attributeNames, projectRoleNames, maxUsers: AI_RESEARCH_LIMITS.memberHistoryUsers },
     }
   }
 
@@ -731,6 +846,8 @@ export async function getResearchMemberHistory(
     truncated: anyTruncated,
     appliedFilters: {
       includeFiles,
+      attributeNames,
+      projectRoleNames,
       maxUsers: AI_RESEARCH_LIMITS.memberHistoryUsers,
       maxProjectsPerUser: AI_RESEARCH_LIMITS.memberHistoryProjects,
       // 返したプロジェクト数から決めた、今回の1プロジェクトあたりのファイル上限
