@@ -5,6 +5,7 @@
 import { createECDH, randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import https from 'node:https'
+import type { IncomingMessage } from 'node:http'
 import webpush from 'web-push'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -36,16 +37,16 @@ describe('Web Pushの実際の送信先', () => {
       expoToken: null,
     }])
 
-    const request = vi.spyOn(https, 'request').mockImplementation(((options: unknown, callback: (response: EventEmitter) => void) => {
+    const request = vi.spyOn(https, 'request').mockImplementation(((options: unknown, callback?: (response: IncomingMessage) => void) => {
       const req = new EventEmitter() as EventEmitter & { write: () => void; end: () => void }
       req.write = () => {}
       req.end = () => {
         const response = Object.assign(new EventEmitter(), { statusCode: 201, headers: {} })
-        callback(response)
+        callback?.(response as IncomingMessage)
         response.emit('end')
       }
       return req
-    }) as typeof https.request)
+    }) as unknown as typeof https.request)
 
     vi.resetModules()
     const { sendPushToUser } = await import('./send')
