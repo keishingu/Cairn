@@ -12,9 +12,11 @@ import {
   isRetryableSendError,
   parseStoredMessageQueue,
   persistThenStartSend,
+  sendQueuedForUser,
   type QueuedMessage,
 } from '../lib/offline-message-queue'
 import { useSession } from '../lib/session-context'
+import { supabase } from '../lib/supabase'
 import { useT } from './locale-provider'
 
 interface QueueContextValue {
@@ -44,6 +46,13 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const userId = session?.user.id
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
+  const currentUserRef = React.useRef(userId)
+  currentUserRef.current = userId
+  const mountedRef = React.useRef(false)
+  React.useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const [ready, setReady] = React.useState(false)
   const [restoreError, setRestoreError] = React.useState<string | null>(null)
   const [restoreNonce, setRestoreNonce] = React.useState(0)
@@ -98,7 +107,8 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   }, [restoreNonce, storageKey])
 
   const flush = React.useCallback(async () => {
-    if (!ready || !storageKey || !canUseNetwork || flushingRef.current) return
+    if (!ready || !storageKey || !userId || !canUseNetwork || flushingRef.current) return
+    const isCurrentAccount = () => mountedRef.current && currentUserRef.current === userId
     flushingRef.current = true
     // 復帰時にまとめて送ることがあるので、振動は1メッセージごとではなく1回の送信処理につき1度にする
     let sent = false
@@ -113,18 +123,30 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             message.id === item.id ? { ...message, status: 'sending' } : message,
           ),
         )
+        if (!isCurrentAccount()) break
         try {
-          const res = await apiFetch(`/api/channels/${item.channelId}/messages`, {
-            method: 'POST',
-            body: JSON.stringify({
-              clientMessageId: item.id,
-              content: item.content,
-              ...(item.parentMessageId ? { parentMessageId: item.parentMessageId } : {}),
-              ...(item.attachmentFileIds?.length
-                ? { attachmentFileIds: item.attachmentFileIds }
-                : {}),
-            }),
-          })
+          const res = await sendQueuedForUser(userId, isCurrentAccount,
+            async () => (await supabase.auth.getSession()).data.session,
+            (sendSession) => apiFetch(`/api/channels/${item.channelId}/messages`, {
+              method: 'POST',
+              body: JSON.stringify({
+                clientMessageId: item.id,
+                content: item.content,
+                ...(item.parentMessageId ? { parentMessageId: item.parentMessageId } : {}),
+                ...(item.attachmentFileIds?.length
+                  ? { attachmentFileIds: item.attachmentFileIds }
+                  : {}),
+              }),
+            }, sendSession),
+          )
+          if (!res) {
+            if (isCurrentAccount()) {
+              await updateMessages((current) => current.map((message) =>
+                message.id === item.id ? { ...message, status: 'waiting' } : message,
+              ))
+            }
+            break
+          }
           if (!res.ok) {
             const error = new Error(t('Could not send ({status})', { status: res.status })) as Error & {
               status: number
@@ -161,7 +183,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     }
     if (failed) haptics.sendFailed()
     else if (sent) haptics.messageSent()
-  }, [canUseNetwork, qc, ready, storageKey, t, updateMessages])
+  }, [canUseNetwork, qc, ready, storageKey, t, updateMessages, userId])
 
   React.useEffect(() => {
     if (!ready) return
