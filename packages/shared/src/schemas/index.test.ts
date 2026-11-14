@@ -236,6 +236,19 @@ describe('createMilestoneSchema', () => {
   })
 })
 
+describe('マイルストーン期間の順序', () => {
+  it('逆転した日付と同日の逆転した時刻を拒否する', () => {
+    expect(createMilestoneSchema.safeParse({ title: '予定', startDate: '2026-08-10', endDate: '2026-08-09' }).success).toBe(false)
+    expect(createMilestoneSchema.safeParse({ title: '予定', startDate: '2026-08-10', endDate: '2026-08-10', startTime: '15:00', endTime: '10:00' }).success).toBe(false)
+    expect(patchMilestoneSchema.safeParse({ startDate: '2026-08-10', endDate: '2026-08-10', startTime: '15:00', endTime: '10:00' }).success).toBe(false)
+  })
+  it('同時刻、日をまたぐ期間、日付未指定を受け入れる', () => {
+    expect(createMilestoneSchema.safeParse({ title: '予定', startDate: '2026-08-10', endDate: '2026-08-10', startTime: '15:00', endTime: '15:00' }).success).toBe(true)
+    expect(createMilestoneSchema.safeParse({ title: '予定', startDate: '2026-08-10', endDate: '2026-08-11', startTime: '15:00', endTime: '10:00' }).success).toBe(true)
+    expect(createMilestoneSchema.safeParse({ title: '予定', startTime: '15:00', endTime: '10:00' }).success).toBe(true)
+  })
+})
+
 describe('patchMilestoneSchema', () => {
   it('completed だけの更新を受け入れる', () => {
     const result = patchMilestoneSchema.safeParse({ completed: true })

@@ -581,6 +581,7 @@ export const KO_MESSAGES: Record<string, string> = {
   Emerald: '에메랄드',
   Emoji: '이모지',
   'End date': '종료일',
+  'End date and time must be on or after the start': '종료 일시는 시작 일시 이후여야 합니다',
   'End date must be on or after the start date': '종료일은 시작일 이후여야 합니다',
   'End time': '종료 시각',
   'Enter 100 characters or fewer': '100자 이내로 입력하세요',

@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import {
   Field,
   Icon,
@@ -104,8 +105,8 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
       setTitleError('')
     }
 
-    if (startDate && endDate && endDate < startDate) {
-      setEndDateError(t('End date must be on or after the start date'))
+    if (isMilestonePeriodReversed({ startDate, endDate, startTime, endTime })) {
+      setEndDateError(t('End date and time must be on or after the start'))
       invalid = true
     } else {
       setEndDateError('')
@@ -303,6 +304,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
 }
 
 export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreated, defaultMonth = null }: CreateMilestoneModalProps) {
+  const t = useT()
   const createMilestone = useCreateProjectMilestone(projectId)
 
   return (
@@ -325,7 +327,7 @@ export function CreateMilestoneModal({ projectId, projectTitle, onClose, onCreat
             onCreated(milestone)
             onClose()
           },
-          onError: error => onError(error.message),
+          onError: error => onError(error.message === MILESTONE_PERIOD_ERROR ? t('End date and time must be on or after the start') : error.message),
         },
       )}
     />
@@ -381,7 +383,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
         },
         {
           onSuccess: onClose,
-          onError: error => onError(error.message),
+          onError: error => onError(error.message === MILESTONE_PERIOD_ERROR ? t('End date and time must be on or after the start') : error.message),
         },
       )}
     />

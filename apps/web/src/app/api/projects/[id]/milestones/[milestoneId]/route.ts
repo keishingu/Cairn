@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { patchMilestoneSchema } from '@cairn/shared'
+import { patchMilestoneSchema, isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { lockProjectUpdateChannel, postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
 import { projectUpdateChange, type ProjectUpdateChange } from '@/lib/chat/project-update-message'
-import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import type { MilestoneDto } from '../route'
@@ -26,7 +25,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   const parsed = patchMilestoneSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+    const error = parsed.error.issues.some(issue => issue.message === MILESTONE_PERIOD_ERROR) ? MILESTONE_PERIOD_ERROR : parsed.error.flatten()
+    return NextResponse.json({ error }, { status: 422 })
   }
 
   try {
@@ -85,10 +85,12 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       if (!previous) return { kind: 'not_found' as const }
 
       // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
-      const datesInBody = 'startDate' in parsed.data || 'endDate' in parsed.data
+      const datesInBody = ['startDate', 'endDate', 'startTime', 'endTime'].some(key => key in parsed.data)
       const nextStartDate = 'startDate' in parsed.data ? (parsed.data.startDate ?? null) : previous.startDate
       const nextEndDate = 'endDate' in parsed.data ? (parsed.data.endDate ?? null) : previous.endDate
-      if (datesInBody && isEndBeforeStart(nextStartDate, nextEndDate)) {
+      const nextStartTime = 'startTime' in parsed.data ? (parsed.data.startTime ?? null) : previous.startTime
+      const nextEndTime = 'endTime' in parsed.data ? (parsed.data.endTime ?? null) : previous.endTime
+      if (datesInBody && isMilestonePeriodReversed({ startDate: nextStartDate, endDate: nextEndDate, startTime: nextStartTime, endTime: nextEndTime })) {
         return { kind: 'date_order' as const }
       }
 
@@ -118,7 +120,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
     if (outcome.kind === 'not_found') return new NextResponse(null, { status: 404 })
     if (outcome.kind === 'date_order') {
-      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+      return NextResponse.json({ error: MILESTONE_PERIOD_ERROR }, { status: 422 })
     }
     const updated = outcome.row
 

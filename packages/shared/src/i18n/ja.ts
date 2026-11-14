@@ -581,6 +581,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Emerald: 'エメラルド',
   Emoji: '絵文字',
   'End date': '終了日',
+  'End date and time must be on or after the start': '終了日時は開始日時以降にしてください',
   'End date must be on or after the start date': '終了日は開始日以降にしてください',
   'End time': '終了時刻',
   'Enter 100 characters or fewer': '100文字以内で入力してください',

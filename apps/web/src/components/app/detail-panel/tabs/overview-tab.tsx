@@ -11,7 +11,8 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
+import { DATE_ORDER_ERROR } from '@/lib/date-range'
+import { isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
@@ -213,7 +214,7 @@ export const InlineDatePair = ({
 
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const reversed = isEndBeforeStart(start, end)
+  const reversed = isMilestonePeriodReversed({ startDate: start, endDate: end, startTime: startClock, endTime: endClock })
   const dateErrorId = React.useId()
 
   const unchanged =
@@ -387,7 +388,7 @@ export const InlineDatePair = ({
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
         <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date must be on or after the start date')}</InlineError>
+          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date and time must be on or after the start')}</InlineError>
         </div>
       )}
       {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
@@ -665,8 +666,8 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
   // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
   // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
   const milestoneErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error && error.message === DATE_ORDER_ERROR
-      ? t('End date must be on or after the start date')
+    error instanceof Error && (error.message === DATE_ORDER_ERROR || error.message === MILESTONE_PERIOD_ERROR)
+      ? t('End date and time must be on or after the start')
       : fallback
 
   // 失敗はトーストで通知したうえで reject し直し、呼び出し側（インライン編集欄）が下書きを残せるようにする

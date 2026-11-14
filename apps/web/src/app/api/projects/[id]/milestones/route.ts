@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { createMilestoneSchema } from '@cairn/shared'
+import { createMilestoneSchema, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
 import { projectUpdateChange } from '@/lib/chat/project-update-message'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
@@ -83,7 +83,8 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   const parsed = createMilestoneSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+    const error = parsed.error.issues.some(issue => issue.message === MILESTONE_PERIOD_ERROR) ? MILESTONE_PERIOD_ERROR : parsed.error.flatten()
+    return NextResponse.json({ error }, { status: 422 })
   }
   if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
     return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
