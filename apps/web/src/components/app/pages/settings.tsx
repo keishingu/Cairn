@@ -2742,9 +2742,15 @@ const SettingsIntegrations = () => {
   })
 
   const connectGcal = async () => {
-    const res = await fetchWithAuth('/api/calendar/google/connect')
-    const { url } = (await res.json()) as { url?: string; error?: string }
-    if (url) window.location.href = url
+    try {
+      const res = await fetchWithAuth('/api/calendar/google/connect')
+      const { url } = (await res.json()) as { url?: string; error?: string }
+      if (!res.ok || !url) throw new Error('Could not start calendar OAuth')
+      if (window.cairnDesktop?.startCalendarOAuth) await window.cairnDesktop.startCalendarOAuth(url)
+      else window.location.href = url
+    } catch {
+      toast.error(t('Could not connect. Try again.'))
+    }
   }
 
   const disconnectGcal = useMutation({
@@ -3339,7 +3345,10 @@ const SettingsBilling = () => {
       })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
@@ -3353,7 +3362,10 @@ const SettingsBilling = () => {
       const res = await fetchWithAuth('/api/billing/portal', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open the billing portal'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open the billing portal'))
@@ -3367,7 +3379,10 @@ const SettingsBilling = () => {
       const res = await fetchWithAuth('/api/billing/credit-packs/checkout', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
