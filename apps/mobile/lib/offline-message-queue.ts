@@ -65,3 +65,16 @@ export function parseStoredMessageQueue(raw: string | null): QueuedMessage[] {
     return []
   }
 }
+
+/** 保存後にセッションが切り替わっていても、別アカウントで本文を送らない。 */
+export async function sendQueuedForUser<TSession extends { user: { id: string } }, TResult>(
+  userId: string,
+  isCurrentAccount: () => boolean,
+  getSession: () => Promise<TSession | null>,
+  send: (session: TSession) => Promise<TResult>,
+): Promise<TResult | null> {
+  if (!isCurrentAccount()) return null
+  const session = await getSession()
+  if (!isCurrentAccount() || session?.user.id !== userId) return null
+  return send(session)
+}
