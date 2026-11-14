@@ -102,3 +102,9 @@ export function retryQueuedMessage(message: QueuedMessage, workspaceId: string):
 export function canRetryInWorkspace(workspaceId: string, selected: string | null, generation: number, currentGeneration: number): boolean {
   return generation === currentGeneration && (!selected || selected === workspaceId)
 }
+
+/** 保存済み選択を優先し、初回の未選択時だけ API が返す既定先を使う。 */
+export function resolveQueueWorkspace(ready: boolean, selectedWorkspaceId: string | null, defaultWorkspaceId: string | undefined): string | undefined {
+  if (!ready) return undefined
+  return selectedWorkspaceId || defaultWorkspaceId
+}

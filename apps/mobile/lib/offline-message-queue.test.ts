@@ -6,6 +6,7 @@ import {
   pendingMessages,
   retryQueuedMessage,
   canRetryInWorkspace,
+  resolveQueueWorkspace,
   parseStoredMessageQueue,
   persistThenStartSend,
   sendQueuedForUser,
@@ -55,6 +56,21 @@ describe('オフラインメッセージキュー', () => {
     expect(messagesForWorkspace(restored, 'workspace-b').map((item) => item.id)).toEqual(['b', 'legacy'])
     expect(messagesForWorkspace(restored, null)).toEqual([])
     expect(pendingMessages(restored).map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
+  it('圏外の起動でも保存済みの選択先でキューの表示・保存先を決める', () => {
+    const workspaceId = resolveQueueWorkspace(true, 'workspace-a', undefined)
+    expect(workspaceId).toBe('workspace-a')
+    const messages = parseStoredMessageQueue(JSON.stringify([
+      { id: 'a', channelId: 'ch', workspaceId: 'workspace-a', content: '本文', createdAt: '2026-01-01' },
+      { id: 'b', channelId: 'ch', workspaceId: 'workspace-b', content: '別', createdAt: '2026-01-01' },
+    ]))
+    expect(messagesForWorkspace(messages, workspaceId).map((item) => item.id)).toEqual(['a'])
+    expect(resolveQueueWorkspace(true, 'workspace-b', 'workspace-a')).toBe('workspace-b')
+    expect(messagesForWorkspace(messages, resolveQueueWorkspace(true, 'workspace-b', 'workspace-a')).map((item) => item.id)).toEqual(['b'])
+    expect(resolveQueueWorkspace(false, null, 'workspace-a')).toBeUndefined()
+    expect(resolveQueueWorkspace(true, null, undefined)).toBeUndefined()
+    expect(resolveQueueWorkspace(true, null, 'workspace-a')).toBe('workspace-a')
   })
 
   it('旧403の本文を保持し、明示再送時だけ所属先を固定する', () => {

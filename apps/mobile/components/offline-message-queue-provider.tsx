@@ -15,6 +15,7 @@ import {
   pendingMessages,
   retryQueuedMessage,
   canRetryInWorkspace,
+  resolveQueueWorkspace,
   persistThenStartSend,
   sendQueuedForUser,
   type QueuedMessage,
@@ -53,8 +54,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const userId = session?.user.id
   const workspace = useWorkspace()
   const selectedWorkspace = useSelectedWorkspaceId(userId)
-  const workspaceId = selectedWorkspace.ready && (!selectedWorkspace.workspaceId || selectedWorkspace.workspaceId === workspace.data?.id)
-    ? workspace.data?.id : undefined
+  const workspaceId = resolveQueueWorkspace(selectedWorkspace.ready, selectedWorkspace.workspaceId, workspace.data?.id)
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
   const selectionGenerationRef = React.useRef(0)
