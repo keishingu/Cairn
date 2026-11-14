@@ -11,6 +11,7 @@ import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
 import { postCardAction } from '@/lib/apps/card-actions'
 import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
+import { useBlockChatUser } from '@/hooks/use-block-chat-user'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Avatar, Modal, ModalHeader } from './primitives'
@@ -237,7 +238,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onBlocked, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onBlock, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -283,7 +284,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
-  onBlocked?: ((userId: string) => Promise<void>) | undefined
+  onBlock?: ((userId: string) => Promise<void>) | undefined
   /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
   onMoveToThread?: (messageId: string) => void
   /** 渡されたときだけアバターを押して送信者のメンバー詳細を開ける（ワークスペースの在籍者で、アプリ・システムの発言でないとき） */
@@ -417,12 +418,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     toast.success(t('Reported the message'))
   }
   const blockUser = async () => {
-    const res = await fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
-    if (!res.ok) {
-      const data = await res.json().catch(() => null) as { error?: string } | null
-      throw new Error(data?.error ?? t('Could not block the user'))
-    }
-    await onBlocked?.(senderId)
+    if (!onBlock) throw new Error(t('Could not block the user'))
+    await onBlock(senderId)
     toast.success(t('Blocked the user'))
   }
 
@@ -1619,6 +1616,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const [initialPositioned, setInitialPositioned] = React.useState(false)
   const pendingDraftRef = React.useRef('')
   const queryClient = useQueryClient()
+  const { mutateAsync: blockChatUser } = useBlockChatUser()
   // 挿入順のリスト。同名ラベルが衝突しても出現順で正しい tokenId に変換できる
   const mentionInsertionsRef = React.useRef<{ tokenId: string; displayName: string }[]>([])
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
@@ -1896,25 +1894,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
   }, [channelId, initialPositioned, initialUnreadPosition, isHistoryView, latestMessageId, markChannelReadFn, showScrollToLatest])
-
-  const handleBlocked = React.useCallback(async (userId: string) => {
-    await Promise.all([
-      queryClient.cancelQueries({ queryKey: ['messages'] }),
-      queryClient.cancelQueries({ queryKey: ['message-history'] }),
-    ])
-    // 再取得が遅延・失敗しても、ブロックした相手の添付を画面に残さない。
-    const hideBlocked = (current: MessageDto[] | undefined) => current?.map(message =>
-      message.senderId === userId ? { ...message, blocked: true, attachments: [] } : message,
-    )
-    queryClient.setQueriesData<MessageDto[]>({ queryKey: ['messages'] }, hideBlocked)
-    queryClient.setQueriesData<MessageDto[]>({ queryKey: ['message-history'] }, hideBlocked)
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['messages'] }),
-      queryClient.invalidateQueries({ queryKey: ['message-history'] }),
-      queryClient.invalidateQueries({ queryKey: ['dms'] }),
-      queryClient.invalidateQueries({ queryKey: ['user-blocks'] }),
-    ])
-  }, [queryClient])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     leaveHistoryView()
@@ -2611,7 +2590,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
-              onBlocked={handleBlocked}
+              onBlock={blockChatUser}
               {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
               {...(onOpenMember && !moveSelection && !item.message.senderApp && item.message.messageType !== 'system' && emailByUserId.has(item.message.senderId)
                 ? { onOpenSender: onOpenMember }
