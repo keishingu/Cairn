@@ -36,6 +36,17 @@ describe('SocialAuthButtons', () => {
     vi.unstubAllEnvs()
   })
 
+  test('Desktop の認証ページを開けないとエラーを表示し再試行できる', async () => {
+    window.cairnDesktop = { startOAuth: vi.fn().mockRejectedValue(new Error('network failure')) }
+    mocks.signInWithOAuth.mockResolvedValue({ data: { url: 'https://project.supabase.co/auth/v1/authorize' }, error: null })
+    render(<SocialAuthButtons />)
+    const button = screen.getByRole('button', { name: 'Apple でサインイン' })
+    await userEvent.setup().click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent('サインインを開始できませんでした')
+    expect(button).toBeEnabled()
+    delete window.cairnDesktop
+  })
+
   test('Appleでサインインすると招待と遷移先を保ったコールバックを開始する', async () => {
     const user = userEvent.setup()
     render(<SocialAuthButtons inviteToken="invite-1" nextPath="/projects" />)

@@ -30,4 +30,4 @@ pnpm --filter @cairn/desktop generate-icons  # apps/web/public/ の PNG から .
 
 外部 HTTP(S) リンクと外部へのリダイレクトは既定ブラウザで開き、Web 以外のスキームは拒否する。同一オリジンの遷移はデスクトップ内で開く。
 
-Google・Apple のログインとログイン方法追加は、Web が Supabase SDK から得た認証 URL を desktop に明示的に渡し、認証先と設定済み Supabase のコールバックに限って同一ウィンドウで開く。PKCE の検証値とセッション Cookie を維持するため、認証後は Cairn のコールバックへ戻る。通常の外部リンクは既定ブラウザで開く。
+Google・Apple のログインとログイン方法追加は、Web が Supabase SDK から得た認証 URL と設定済み Supabase のオリジンを desktop に明示的に渡し、認証先とそのオリジンのコールバックに限って同一ウィンドウで開く。Google カレンダー連携も Cairn のカレンダー用コールバックに限って同一ウィンドウを使う。いずれも PKCE 検証値や認証状態の Cookie を維持する。通常の外部リンクと決済ページは既定ブラウザで開く。

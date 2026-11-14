@@ -28,14 +28,22 @@ function registerExternalNavigation(webContents, appUrl, openExternal) {
   const handleExternal = url => {
     void openExternal(url).catch(error => console.error('Failed to open external URL', error))
   }
+  async function loadAuth(target, attempt) {
+    auth = attempt
+    try {
+      await webContents.loadURL(target.href)
+    } catch (error) {
+      if (auth === attempt) clearAuth()
+      throw error
+    }
+  }
 
   // Web 側で SDK が生成した URL と設定済み Supabase origin を受け取り、開始先を検証する。
-  function startAuth(url, supabaseUrl, provider) {
+  async function startAuth(url, supabaseUrl, provider) {
     clearAuth()
     const target = safeUrl(url)
     const supabase = safeUrl(supabaseUrl)
     if (!target || !supabase || !providerHost[provider] ||
-        !/^[a-z0-9-]+\.supabase\.co$/.test(supabase.hostname) ||
         supabase.pathname !== '/' || supabase.search || supabase.hash) throw new Error('Invalid OAuth configuration')
     let validStart = isProvider(target, provider)
     if (target.origin === supabase.origin && target.pathname === '/auth/v1/authorize' && target.searchParams.get('provider') === provider) {
@@ -45,8 +53,19 @@ function registerExternalNavigation(webContents, appUrl, openExternal) {
       } catch { validStart = false }
     }
     if (!validStart) throw new Error('Invalid OAuth URL')
-    auth = { origin: supabase.origin, provider, expires: Date.now() + 10 * 60 * 1000 }
-    void webContents.loadURL(target.href).catch(error => { clearAuth(); console.error('Failed to start OAuth', error) })
+    await loadAuth(target, { origin: supabase.origin, provider, expires: Date.now() + 10 * 60 * 1000 })
+  }
+
+  async function startCalendarAuth(url) {
+    clearAuth()
+    const target = safeUrl(url)
+    try {
+      const callback = new URL(target?.searchParams.get('redirect_uri'))
+      if (!target || !isProvider(target, 'google') || target.pathname !== '/o/oauth2/v2/auth' ||
+          callback.username || callback.password || callback.origin !== new URL(appUrl).origin ||
+          callback.pathname !== '/api/calendar/google/callback') throw new Error('Invalid calendar OAuth URL')
+    } catch { throw new Error('Invalid calendar OAuth URL') }
+    await loadAuth(target, { origin: null, provider: 'google', expires: Date.now() + 10 * 60 * 1000 })
   }
 
   webContents.setWindowOpenHandler(({ url }) => {
@@ -68,7 +87,7 @@ function registerExternalNavigation(webContents, appUrl, openExternal) {
   }
   webContents.on('will-navigate', handleNavigation)
   webContents.on('will-redirect', handleNavigation)
-  return { startAuth }
+  return { startAuth, startCalendarAuth }
 }
 
 module.exports = { getNavigationAction, isAuthSender, registerExternalNavigation }

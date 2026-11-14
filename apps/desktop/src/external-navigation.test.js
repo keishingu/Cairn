@@ -49,6 +49,36 @@ describe('registerExternalNavigation', () => {
     assert.deepEqual(openedUrls, ['https://example.com/docs'])
   })
 
+  test('認証ページの読み込み失敗を呼び出し元に返し、許可を解除する', async () => {
+    const handlers = {}
+    const failure = new Error('network failure')
+    const navigation = registerExternalNavigation({ loadURL: async () => { throw failure }, setWindowOpenHandler: () => {}, on: (name, handler) => { handlers[name] = handler } }, APP_URL, async () => {})
+    await assert.rejects(navigation.startAuth('https://accounts.google.com/o/oauth2/auth', 'https://auth.example.com', 'google'), failure)
+    let prevented = false
+    handlers['will-redirect']({ isMainFrame: true, url: 'https://accounts.google.com/', preventDefault: () => { prevented = true } })
+    assert.equal(prevented, true)
+  })
+
+  test('Google カレンダー認証は同一アプリのコールバックだけを許可する', async () => {
+    const handlers = {}
+    const navigation = registerExternalNavigation({ loadURL: async () => {}, setWindowOpenHandler: () => {}, on: (name, handler) => { handlers[name] = handler } }, APP_URL, async () => {})
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+    url.searchParams.set('redirect_uri', `${APP_URL}/api/calendar/google/callback`)
+    await navigation.startCalendarAuth(url.href)
+    let prevented = false
+    handlers['will-redirect']({ isMainFrame: true, url: 'https://accounts.google.com/consent', preventDefault: () => { prevented = true } })
+    assert.equal(prevented, false)
+    handlers['will-redirect']({ isMainFrame: true, url: `${APP_URL}/api/calendar/google/callback?code=example`, preventDefault: () => { prevented = true } })
+    assert.equal(prevented, false)
+    handlers['will-navigate']({ isMainFrame: true, url: 'https://accounts.google.com/', preventDefault: () => { prevented = true } })
+    assert.equal(prevented, true)
+    url.searchParams.set('redirect_uri', 'https://example.com/api/calendar/google/callback')
+    await assert.rejects(navigation.startCalendarAuth(url.href))
+    url.searchParams.set('redirect_uri', `${APP_URL}/api/calendar/google/callback`)
+    url.hostname = 'example.com'
+    await assert.rejects(navigation.startCalendarAuth(url.href))
+  })
+
   test('同一ウィンドウの遷移とリダイレクトも送信先を検証する', () => {
     const handlers = {}
     const openedUrls = []
@@ -74,7 +104,7 @@ describe('registerExternalNavigation', () => {
     assert.deepEqual(openedUrls, ['https://example.com/docs', 'https://example.com/docs'])
   })
 
-  test('明示的な認証開始後だけプロバイダと同じ Supabase のコールバックを許可する', () => {
+  test('明示的な認証開始後だけプロバイダと同じ Supabase のコールバックを許可する', async () => {
     const handlers = {}
     const opened = []
     const loaded = []
@@ -88,23 +118,28 @@ describe('registerExternalNavigation', () => {
     authorize.searchParams.set('provider', 'google')
     authorize.searchParams.set('redirect_to', `${APP_URL}/api/auth/callback`)
     assert.equal(navigate('will-navigate', authorize.href), true)
-    navigation.startAuth(authorize.href, 'https://project.supabase.co', 'google')
+    await navigation.startAuth(authorize.href, 'https://project.supabase.co', 'google')
     assert.equal(navigate('will-redirect', 'https://accounts.google.com/o/oauth2/auth'), false)
     assert.equal(navigate('will-redirect', 'https://project.supabase.co/auth/v1/callback?code=example'), false)
     assert.equal(navigate('will-redirect', `${APP_URL}/api/auth/callback?code=example`), false)
     assert.equal(navigate('will-navigate', 'https://accounts.google.com/'), true)
     // linkIdentity は Supabase から直接 provider の URL を受け取る。
-    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    await navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
     assert.equal(navigate('will-redirect', 'https://other.supabase.co/auth/v1/callback'), true)
     assert.equal(navigate('will-redirect', 'https://appleid.apple.com/auth/authorize'), true)
-    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    await navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
     assert.equal(navigate('will-redirect', 'https://appleid.apple.com:444/auth/authorize'), true)
-    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    await navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
     assert.equal(navigate('will-redirect', 'https://user@appleid.apple.com/auth/authorize'), true)
-    assert.throws(() => navigation.startAuth('https://example.com/', 'https://project.supabase.co', 'google'))
-    assert.throws(() => navigation.startAuth(authorize.href, 'https://other.supabase.co', 'google'))
-    assert.throws(() => navigation.startAuth('https://user@accounts.google.com/', 'https://project.supabase.co', 'google'))
+    await assert.rejects(() => navigation.startAuth('https://example.com/', 'https://project.supabase.co', 'google'))
+    await assert.rejects(() => navigation.startAuth(authorize.href, 'https://other.supabase.co', 'google'))
+    await assert.rejects(() => navigation.startAuth('https://user@accounts.google.com/', 'https://project.supabase.co', 'google'))
     assert.equal(loaded.length, 4)
+    await navigation.startAuth('https://accounts.google.com/o/oauth2/auth', 'https://auth.example.com', 'google')
+    assert.equal(navigate('will-redirect', 'https://auth.example.com/auth/v1/callback?code=example'), false)
+    assert.equal(navigate('will-redirect', 'https://project.supabase.co/auth/v1/callback'), true)
+    await assert.rejects(() => navigation.startAuth('https://accounts.google.com/', 'https://auth.example.com:444', 'google'))
+    await assert.rejects(() => navigation.startAuth('https://accounts.google.com/', 'https://user@auth.example.com', 'google'))
   })
 
 })

@@ -68,8 +68,12 @@ export function useLinkOAuthIdentity(provider: LinkableOAuthProvider) {
       })
       if (error) throw mapLinkError(provider, error)
       if (startOAuth) {
-        if (!data.url) throw new Error('Missing OAuth URL')
-        await startOAuth(data.url, process.env['NEXT_PUBLIC_SUPABASE_URL']!, provider)
+        try {
+          if (!data.url) throw new Error('Missing OAuth URL')
+          await startOAuth(data.url, process.env['NEXT_PUBLIC_SUPABASE_URL']!, provider)
+        } catch {
+          throw mapLinkError(provider, null)
+        }
       }
       // 成功時はブラウザがプロバイダへ遷移する。戻ってこない場合だけここへ到達する。
       return 'redirecting'

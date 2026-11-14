@@ -83,6 +83,17 @@ describe('LoginMethodsSettings', () => {
     vi.unstubAllEnvs()
   })
 
+  it('Desktop の認証ページを開けないとエラーを表示し再試行できる', async () => {
+    window.cairnDesktop = { startOAuth: vi.fn().mockRejectedValue(new Error('network failure')) }
+    mocks.linkIdentity.mockResolvedValue({ data: { provider: 'apple', url: 'https://appleid.apple.com/auth/authorize' }, error: null })
+    renderLoginMethods()
+    const button = await screen.findByRole('button', { name: 'Apple を連携' })
+    await userEvent.setup().click(button)
+    expect(await screen.findByText('Apple との連携に失敗しました。しばらくしてからもう一度お試しください。')).toBeInTheDocument()
+    expect(button).toBeEnabled()
+    delete window.cairnDesktop
+  })
+
   it('未連携時にAppleとGoogleの連携ボタンを表示する', async () => {
     const user = userEvent.setup()
     renderLoginMethods()
