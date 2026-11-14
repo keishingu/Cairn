@@ -8,7 +8,7 @@ name: Release (develop → main)
 #   （適用予定の一覧は PR 本文に載る。実適用はマージ時の migrate.yml が行う）
 # - develop → main の Release PR を作成 / 更新する（マージは手動）
 # - 同じ内容で Draft Release を作成する（タグ確定・公開は PR マージ後に手動）
-# - 本文は OpenAI(gpt-4o) でコミットから生成する。OPENAI_API_KEY は必須
+# - 本文は OpenAI(gpt-5-mini) でコミットから生成する。OPENAI_API_KEY は必須
 #   （未設定・API 失敗時は誤った内容を出さないようエラーで中断し、フォールバックしない）
 on:
   workflow_dispatch:
@@ -209,8 +209,7 @@ jobs:
             'コミット一覧:')
           PROMPT=$(printf '%s\n%s\n' "$INSTRUCTIONS" "$COMMIT_LOG")
           REQ=$(jq -n --arg content "$PROMPT" '{
-            model: "gpt-4o",
-            temperature: 0.3,
+            model: "gpt-5-mini",
             messages: [
               { role: "system", content: "あなたは優れたソフトウェアのリリースノートを書く編集者です。" },
               { role: "user", content: $content }
