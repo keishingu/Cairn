@@ -1,4 +1,3 @@
-import { enforceAiChatRateLimit } from '@/lib/ai/chat-rate-limit'
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText } from 'ai'
 import { isAiSearchRecencyWeight, type AiChatModel, type AiSearchRecencyWeight } from '@cairn/shared'
 import { apiKeyEnvForChatModel, chatLanguageModel } from '@/lib/ai/client'
+import { enforceAiChatRateLimit } from '@/lib/ai/chat-rate-limit'
 import {
   chatRequestCredits,
   parseWorkspaceChatModels,
