@@ -97,6 +97,7 @@ import {
   myBlocksQueryKey,
   useMyBlocks,
   useProjectMembers,
+  useProfileAttributes,
   useProjectRoles,
   useWorkspaceChannels,
   useWorkspaceDms,
@@ -782,6 +783,8 @@ export default function ChatThreadScreen() {
   )
   const projectMembers = useProjectMembers(projectId ?? null)
   const projectRoles = useProjectRoles(!!projectId && channelType !== 'dm')
+  // 属性（`<@attr:id>`）はプロジェクトに関係なく DM 以外の全チャンネルで候補に出す（Web と同じ）
+  const profileAttributes = useProfileAttributes(channelType !== 'dm')
   const session = useSession()
   const selectedWorkspace = useSelectedWorkspaceId(session?.user.id)
   const attachmentAuth = React.useMemo<AttachmentAuth | undefined>(
@@ -988,6 +991,9 @@ export default function ChatThreadScreen() {
           .filter((role) => role.name.toLocaleLowerCase().includes(query))
           .map((role) => ({ tokenId: `role:${role.id}`, displayName: role.name, avatarUrl: null, hint: t('Project role') }))
       : []
+    const attributes: MentionCandidate[] = (profileAttributes.data ?? [])
+      .filter((attribute) => attribute.name.toLocaleLowerCase().includes(query))
+      .map((attribute) => ({ tokenId: `attr:${attribute.id}`, displayName: attribute.name, avatarUrl: null, hint: t('Attribute') }))
     return [
       ...groups,
       ...mentionableMembers
@@ -999,29 +1005,41 @@ export default function ChatThreadScreen() {
           avatarUrl: member.avatarUrl,
         })),
       ...roles,
+      ...attributes,
     ].filter((candidate) => !mentioned.has(candidate.tokenId))
-  }, [channelType, draft, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
-  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で出すため、その取得失敗も候補の欠けとして示す
+  }, [channelType, draft, me?.id, mentionRange, mentionableMembers, profileAttributes.data, projectId, projectRoles.data, t])
+  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で、属性の候補は DM 以外の全チャンネルで出すため、その取得失敗も候補の欠けとして示す
   const projectRolesError = projectId ? projectRoles.error : null
   const mentionMembersError =
     channelType === 'dm'
       ? null
       : isPrivate === '1'
-        ? (channelMembers.error ?? projectRolesError)
+        ? (channelMembers.error ?? projectRolesError ?? profileAttributes.error)
         : (workspaceMembers.error ??
           (projectId
             ? (projectMembers.error ?? projectRolesError)
-            : channelType === 'workspace' ? channelMembers.error : null))
+            : channelType === 'workspace' ? channelMembers.error : null) ??
+          profileAttributes.error)
   const isFetchingMentionMembers =
-    channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching || projectRoles.isFetching
+    channelMembers.isFetching ||
+    workspaceMembers.isFetching ||
+    projectMembers.isFetching ||
+    projectRoles.isFetching ||
+    profileAttributes.isFetching
 
   const retryMentionMembers = () => {
     if (isPrivate === '1') {
-      return projectId ? Promise.all([channelMembers.refetch(), projectRoles.refetch()]) : channelMembers.refetch()
+      return projectId
+        ? Promise.all([channelMembers.refetch(), projectRoles.refetch(), profileAttributes.refetch()])
+        : Promise.all([channelMembers.refetch(), profileAttributes.refetch()])
     }
-    if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch()])
-    if (channelType === 'workspace') return Promise.all([workspaceMembers.refetch(), channelMembers.refetch()])
-    return workspaceMembers.refetch()
+    if (projectId) {
+      return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch(), profileAttributes.refetch()])
+    }
+    if (channelType === 'workspace') {
+      return Promise.all([workspaceMembers.refetch(), channelMembers.refetch(), profileAttributes.refetch()])
+    }
+    return Promise.all([workspaceMembers.refetch(), profileAttributes.refetch()])
   }
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
