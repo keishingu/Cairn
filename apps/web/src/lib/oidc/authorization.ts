@@ -107,30 +107,22 @@ export function buildOidcRedirect(
   return url.toString()
 }
 
-/** 利用者が同じスコープ（以上）でこの外部アプリを許可済みか。許可済みなら同意画面を省く */
-export async function hasActiveOidcGrant(userId: string, clientId: string, scope: string): Promise<boolean> {
-  const { db, oidcGrants } = await import('@cairn/db')
-  const { and, eq, isNull } = await import('drizzle-orm')
-  const [grant] = await db
-    .select({ scope: oidcGrants.scope })
-    .from(oidcGrants)
-    .where(and(eq(oidcGrants.userId, userId), eq(oidcGrants.clientId, clientId), isNull(oidcGrants.revokedAt)))
-    .limit(1)
-  return grant ? oidcScopeCovers(grant.scope, scope) : false
-}
-
 /** 許可を記録し（既存の許可があればスコープを広げる）、認可コードを発行して外部アプリへ戻す URL を返す */
-export async function issueOidcAuthorizationCode(input: {
+type IssueOidcCodeInput = {
   userId: string
   authTime: Date
   authorization: ValidatedOidcAuthorization
-}): Promise<string> {
+}
+
+export async function issueOidcAuthorizationCode(input: IssueOidcCodeInput): Promise<string>
+export async function issueOidcAuthorizationCode(input: IssueOidcCodeInput, requireActiveGrant: true): Promise<string | null>
+export async function issueOidcAuthorizationCode(input: IssueOidcCodeInput, requireActiveGrant = false): Promise<string | null> {
   const { authorization } = input
   const code = createOAuthSecret(OIDC_AUTHORIZATION_CODE_PREFIX)
   const { db, oidcAuthorizationCodes, oidcGrants } = await import('@cairn/db')
   const { and, eq, isNull } = await import('drizzle-orm')
 
-  await db.transaction(async (tx) => {
+  const issued = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: oidcGrants.id, scope: oidcGrants.scope })
       .from(oidcGrants)
@@ -143,6 +135,8 @@ export async function issueOidcAuthorizationCode(input: {
       )
       .limit(1)
       .for('update')
+    // 自動認可は失効と同じ grant 行をロックして再検証する。失効後に新規 grant を作らない。
+    if (requireActiveGrant && (!existing || !oidcScopeCovers(existing.scope, authorization.scope))) return false
     if (existing) {
       const scope = mergeOidcScopes(existing.scope, authorization.scope)
       if (scope !== existing.scope) {
@@ -166,7 +160,9 @@ export async function issueOidcAuthorizationCode(input: {
       authTime: input.authTime,
       expiresAt: new Date(Date.now() + OIDC_AUTHORIZATION_CODE_TTL_SECONDS * 1000),
     })
+    return true
   })
 
+  if (!issued) return null
   return buildOidcRedirect(authorization.redirectUri, { code: code.value, state: authorization.state })
 }
