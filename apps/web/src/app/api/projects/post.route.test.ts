@@ -61,6 +61,7 @@ vi.mock('@cairn/db', () => ({
   },
   projectStatuses: {
     id: 'ps.id',
+    workspaceId: 'ps.workspaceId',
     name: 'ps.name',
     color: 'ps.color',
   },
@@ -81,8 +82,8 @@ vi.mock('@cairn/db', () => ({
 }))
 
 vi.mock('drizzle-orm', () => ({
-  eq: vi.fn(() => 'eq'),
-  and: vi.fn(() => 'and'),
+  eq: vi.fn((...args: unknown[]) => ({ op: 'eq', args })),
+  and: vi.fn((...args: unknown[]) => ({ op: 'and', args })),
   count: vi.fn(() => 'count'),
   inArray: vi.fn(() => 'inArray'),
   sql: vi.fn(() => 'sql'),
@@ -96,6 +97,37 @@ describe('POST /api/projects', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
+  })
+
+  it('別ワークスペースのステータスは保存しない', async () => {
+    const where = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) })
+    mockDb.select.mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where }) })
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://localhost/api/projects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '新規', statusId: '00000000-0000-0000-0000-000000000123' }),
+    }))
+    expect(res.status).toBe(422)
+    expect(mockDb.insert).not.toHaveBeenCalled()
+    expect(where).toHaveBeenCalledWith({ op: 'and', args: [
+      { op: 'eq', args: ['ps.id', '00000000-0000-0000-0000-000000000123'] },
+      { op: 'eq', args: ['ps.workspaceId', '00000000-0000-0000-0000-000000000010'] },
+    ] })
+  })
+
+  it('同じワークスペースのステータスを保存して返す', async () => {
+    const statusId = '00000000-0000-0000-0000-000000000123'
+    mockDb.select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ name: '進行中', color: '#123456' }] }) }) })
+    const values = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: PROJECT_ID, title: '新規' }]) })
+    mockDb.insert.mockReturnValueOnce({ values }).mockReturnValueOnce({ values: vi.fn().mockResolvedValue(undefined) })
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://localhost/api/projects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '新規', statusId }),
+    }))
+    expect(res.status).toBe(201)
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ statusId }))
+    expect(await res.json()).toMatchObject({ statusName: '進行中', statusColor: '#123456' })
   })
 
   it('作成者を project_members に自動追加しない', async () => {
