@@ -14,7 +14,7 @@
 | Web 管理 UI | 概要タブの一覧・作成・編集・完了切替・削除確認・チャット遷移、作成／編集モーダル。取得・更新は Domain Hook に集約 | [概要タブ](../apps/web/src/components/app/detail-panel/tabs/overview-tab.tsx)、[モーダル](../apps/web/src/components/app/pages/create-milestone-modal.tsx)、[use-project-milestones.ts](../apps/web/src/hooks/use-project-milestones.ts) |
 | Web チャット | サイドバーはプロジェクト（General）直下にマイルストーンを階層表示し、完了分は折りたたむ。詳細パネルのチャットタブは General と未完了マイルストーンを切り替え | [チャットタブ](../apps/web/src/components/app/detail-panel/tabs/chat-tab.tsx) |
 | カレンダー | PC・モバイル Web の全体カレンダーでプロジェクトバーと同じ行の並びにマイルストーンを「●」付きの文字で表示。月表示・タイムラインでは期間にまたがらず開始日の1日だけに開始時刻つき（「Project / title 19:30〜」）で表示し、開始日がなければ終了日に終了時刻つき（「〜21:30」）で表示する。週表示は終日の帯に開始日〜終了日の期間全体をまたいで表示する。常に表示し、「参加中／全体」トグル（`STORAGE_KEYS.projects_scope`、一覧・カンバンと共有）とフィルターで残ったプロジェクトのものだけを出す | [projects-calendar.tsx](../apps/web/src/components/app/pages/projects-calendar.tsx) |
-| Expo チャット | プロジェクトの下に未完了のマイルストーンを表示し、専用の `channelId` へ遷移 | [チャット一覧](<../apps/mobile/app/(app)/chats/index.tsx>) |
+| Expo チャット | プロジェクトの下に未完了のマイルストーンをスレッドと同じく一段字下げし、日付・時刻つきで表示して専用の `channelId` へ遷移 | [チャット一覧](<../apps/mobile/app/(app)/chats/index.tsx>) |
 
 用語: 本書の「マイルストーンチャンネル」は `channels` の行であり、`messages.parent_message_id` で表すメッセージ返信スレッドとは別概念。ワークスペースチャンネル配下のスレッド（`channels.parent_channel_id`、1階層のみ）と同じ「親子チャンネル」モデルで、未読・通知・Realtime・検索は既存のチャンネル基盤で共通処理する。
 

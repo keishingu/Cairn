@@ -81,7 +81,11 @@ function ChannelItem({ channel, milestone = false, pinned = false, onOpenActions
   const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
-      style={[styles.channelRow, { borderBottomColor: palette.divider }]}
+      style={[
+        styles.channelRow,
+        milestone && styles.threadRow,
+        { borderBottomColor: palette.divider },
+      ]}
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
@@ -124,7 +128,7 @@ function ChannelItem({ channel, milestone = false, pinned = false, onOpenActions
         <Text style={[styles.channelName, unread.unread && styles.channelNameUnread, { color: unread.unread ? palette.text : palette.text2 }]} numberOfLines={1}>
           {milestone ? channel.channelName : channel.projectTitle}
         </Text>
-        {!milestone && period && (
+        {period && (
           <Text style={[styles.projectTitle, { color: palette.text3 }]} numberOfLines={1}>
             {period}
           </Text>

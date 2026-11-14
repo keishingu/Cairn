@@ -1448,6 +1448,7 @@ interface MobileCalendarGridProps {
 
 const MOBILE_DATE_AREA = 26
 const MOBILE_EVENT_H = 13
+const MOBILE_MILESTONE_DOT = 5
 const MOBILE_EVENT_GAP = 1
 const MOBILE_MAX_EVENT_ROWS = 3
 
@@ -1623,20 +1624,23 @@ const MobileCalendarGrid = ({ year, month, weekStartsOn = 'sunday', events, mile
                     onClick={ev => { ev.stopPropagation(); if (e.project) onProjectClick(e.project) }}
                     style={{
                       position: 'absolute', left, top, width,
-                      height: MOBILE_EVENT_H, borderRadius: 2,
-                      background: e.milestone.completed ? 'var(--card-2)' : barColor + '18',
+                      height: MOBILE_EVENT_H,
+                      display: 'flex', alignItems: 'center', gap: 3,
+                      background: 'transparent',
                       color: fgColor,
                       border: 'none',
                       fontSize: 'var(--fs-2xs)', fontWeight: 600,
                       padding: '0 2px', textAlign: 'left',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      overflow: 'hidden',
                       fontFamily: 'inherit', pointerEvents: 'auto', cursor: e.project ? 'pointer' : 'default',
                       lineHeight: `${MOBILE_EVENT_H}px`,
                       opacity: e.milestone.completed ? 0.65 : 1,
                     }}
                     title={label}
                   >
-                    {label}
+                    {/* PC と同じく、プロジェクトの帯と見分けるため箱なしの「● テキスト」で描く */}
+                    <span aria-hidden style={{ width: MOBILE_MILESTONE_DOT, height: MOBILE_MILESTONE_DOT, borderRadius: '50%', background: fgColor, flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{label}</span>
                   </button>
                 )
               })}
