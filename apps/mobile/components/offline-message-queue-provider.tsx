@@ -13,6 +13,8 @@ import {
   parseStoredMessageQueue,
   messagesForWorkspace,
   pendingMessages,
+  retryQueuedMessage,
+  canRetryInWorkspace,
   persistThenStartSend,
   sendQueuedForUser,
   type QueuedMessage,
@@ -22,7 +24,7 @@ import { supabase } from '../lib/supabase'
 import { useT } from './locale-provider'
 import { useWorkspace } from '../hooks/use-account'
 import { useSelectedWorkspaceId } from '../hooks/use-selected-workspace-id'
-import { getSelectedWorkspaceId } from '../lib/workspace-selection'
+import { getSelectedWorkspaceId, subscribeSelectedWorkspace } from '../lib/workspace-selection'
 
 interface QueueContextValue {
   ready: boolean
@@ -30,7 +32,7 @@ interface QueueContextValue {
   messages: QueuedMessage[]
   retryRestore: () => void
   enqueue: (message: Omit<QueuedMessage, 'attempts' | 'status'>) => Promise<void>
-  retry: (id: string) => void
+  retry: (id: string) => Promise<void>
   cancel: (id: string) => void
 }
 
@@ -55,6 +57,10 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     ? workspace.data?.id : undefined
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
+  const selectionGenerationRef = React.useRef(0)
+  React.useEffect(() => subscribeSelectedWorkspace((changedUserId) => {
+    if (changedUserId === userId) selectionGenerationRef.current += 1
+  }), [userId])
   const currentUserRef = React.useRef(userId)
   currentUserRef.current = userId
   const mountedRef = React.useRef(false)
@@ -248,22 +254,21 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
           },
         )
       },
-      retry: (id) => {
-        void (async () => {
-          await updateMessages((current) =>
-            current.map((message) => {
-              if (message.id !== id || !workspaceId || message.workspaceId !== workspaceId) return message
-              const { lastError: _lastError, ...rest } = message
-              return { ...rest, status: 'waiting' }
-            }),
-          )
-          await flush()
-        })().catch((error) =>
-          console.warn('[offline-message-queue] 再送準備に失敗しました:', error),
-        )
+      retry: async (id) => {
+        if (!userId || !workspaceId) throw new Error('Workspace is not available')
+        const generation = selectionGenerationRef.current
+        const selected = await getSelectedWorkspaceId(userId)
+        if (!canRetryInWorkspace(workspaceId, selected, generation, selectionGenerationRef.current)) throw new Error('Workspace changed')
+        await updateMessages((current) => {
+          if (!canRetryInWorkspace(workspaceId, selected, generation, selectionGenerationRef.current)) throw new Error('Workspace changed')
+          return current.map((message) => message.id === id
+            ? retryQueuedMessage(message, workspaceId) ?? message
+            : message)
+        })
+        await flush()
       },
       cancel: (id) => {
-        void updateMessages((current) => current.filter((message) => message.id !== id || !workspaceId || message.workspaceId !== workspaceId)).catch(
+        void updateMessages((current) => current.filter((message) => message.id !== id || !workspaceId || (!!message.workspaceId && message.workspaceId !== workspaceId))).catch(
           (error) => console.warn('[offline-message-queue] 取消の保存に失敗しました:', error),
         )
       },

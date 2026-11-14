@@ -81,12 +81,24 @@ export async function sendQueuedForUser<TSession extends { user: { id: string } 
   return send(session)
 }
 
-/** 所属先不明の旧項目は保持するが、表示や再送の対象にはしない。 */
+/** 所属先不明の旧項目は元のチャンネルで復旧できるよう返す。 */
 export function messagesForWorkspace(messages: QueuedMessage[], workspaceId: string | null | undefined): QueuedMessage[] {
-  return workspaceId ? messages.filter((message) => message.workspaceId === workspaceId) : []
+  return workspaceId ? messages.filter((message) => !message.workspaceId || message.workspaceId === workspaceId) : []
 }
 
 /** ワークスペースが確定している待機項目だけを送信する。 */
 export function pendingMessages(messages: QueuedMessage[]): QueuedMessage[] {
   return messages.filter((message) => typeof message.workspaceId === 'string' && message.workspaceId.length > 0 && message.status === 'waiting')
+}
+
+/** 明示的な再送時だけ旧項目を現在のワークスペースへ紐付ける。 */
+export function retryQueuedMessage(message: QueuedMessage, workspaceId: string): QueuedMessage | null {
+  if (message.workspaceId && message.workspaceId !== workspaceId) return null
+  const { lastError: _lastError, ...rest } = message
+  return { ...rest, workspaceId, status: 'waiting' }
+}
+
+/** 選択取得中・保存待ち中の切替を検出し、古い画面での紐付けを拒否する。 */
+export function canRetryInWorkspace(workspaceId: string, selected: string | null, generation: number, currentGeneration: number): boolean {
+  return generation === currentGeneration && (!selected || selected === workspaceId)
 }

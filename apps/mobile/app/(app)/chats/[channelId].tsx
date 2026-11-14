@@ -637,7 +637,9 @@ function QueuedMessageRow({
   onCancel: () => void
 }) {
   const t = useT()
+  const legacy = !message.workspaceId
   const statusLabel =
+    legacy ? t('This unsent message needs confirmation before resending.') :
     message.status === 'sending'
       ? t('Sending…')
       : message.status === 'failed'
@@ -659,19 +661,19 @@ function QueuedMessageRow({
         />
         <View style={styles.queueStatusRow}>
           <Ionicons
-            name={message.status === 'failed' ? 'alert-circle-outline' : 'cloud-upload-outline'}
+            name={(legacy || message.status === 'failed') ? 'alert-circle-outline' : 'cloud-upload-outline'}
             size={13}
-            color={message.status === 'failed' ? palette.redText : palette.accent}
+            color={(legacy || message.status === 'failed') ? palette.redText : palette.accent}
           />
           <Text
             style={[
               styles.queueStatus,
-              { color: message.status === 'failed' ? palette.redText : palette.accentText },
+              { color: (legacy || message.status === 'failed') ? palette.redText : palette.accentText },
             ]}
           >
             {statusLabel}
           </Text>
-          {message.status === 'failed' && (
+          {(legacy || message.status === 'failed') && (
             <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={6}>
               <Text style={[styles.queueAction, { color: palette.accentText }]}>{t('Resend')}</Text>
             </Pressable>
@@ -2064,7 +2066,14 @@ export default function ChatThreadScreen() {
                     palette={palette}
                     senderName={me?.displayName ?? t('You')}
                     onLinkPress={openMarkdownLink}
-                    onRetry={() => offlineQueue.retry(item.message.id)}
+                    onRetry={() => {
+                      const retry = () => void offlineQueue.retry(item.message.id).catch(() => setSendError(t('Could not prepare the message for resending. Please try again.')))
+                      if (item.message.workspaceId) retry()
+                      else Alert.alert(t('Resend this message?'), t('The original workspace is unknown. Resend to the current channel?'), [
+                        { text: t('Cancel'), style: 'cancel' },
+                        { text: t('Resend'), onPress: retry },
+                      ])
+                    }}
                     onCancel={() => offlineQueue.cancel(item.message.id)}
                   />
                 ) : (
