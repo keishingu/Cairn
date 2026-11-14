@@ -31,6 +31,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 vi.mock('@/lib/permissions', () => ({
   getWorkspaceMemberRole: mockGetWorkspaceMemberRole,
   isWorkspaceAdmin: (role: string | null) => role === 'owner' || role === 'admin',
+  isWorkspaceOwner: (role: string | null) => role === 'owner',
 }))
 
 vi.mock('@/lib/access/lifecycle', () => ({
@@ -46,7 +47,7 @@ vi.mock('@/lib/inngest/client', () => ({
 vi.mock('@cairn/db', () => ({
   db: mockDb,
   workspaceMembers: { workspaceId: 'wm.workspaceId', userId: 'wm.userId', role: 'wm.role', membershipStatus: 'wm.membershipStatus' },
-  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', role: 'awm.role' },
+  activeWorkspaceMembers: { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' },
 }))
 
 vi.mock('drizzle-orm', () => ({

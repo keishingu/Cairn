@@ -8,6 +8,7 @@
 
 import { db, workspaceMembers, activeWorkspaceMembers, documentChunks } from '@cairn/db'
 import { and, count, eq, sql } from 'drizzle-orm'
+import { getWorkspaceRole, isWorkspaceAdmin, isWorkspaceOwner } from '@/lib/access/membership'
 
 export type LifecycleResult =
   | { ok: true }
@@ -69,8 +70,8 @@ export async function deactivateMembership(
 ): Promise<LifecycleResult> {
   return db.transaction(async (tx): Promise<LifecycleResult> => {
     await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, deactivatedBy)
-    const actor = await readMembership(tx, workspaceId, deactivatedBy)
-    if (!actor || actor.membershipStatus !== 'active' || !['owner', 'admin'].includes(actor.role)) {
+    const actorRole = await getWorkspaceRole(workspaceId, deactivatedBy, tx)
+    if (!isWorkspaceAdmin(actorRole)) {
       return { ok: false, status: 403, error: 'Forbidden' }
     }
     const target = await readMembership(tx, workspaceId, targetUserId)
@@ -80,7 +81,7 @@ export async function deactivateMembership(
     }
 
     if (target.role === 'owner') {
-      if (actor.role !== 'owner') return { ok: false, status: 403, error: 'owner の活性状態は owner のみ変更できます' }
+      if (!isWorkspaceOwner(actorRole)) return { ok: false, status: 403, error: 'owner の活性状態は owner のみ変更できます' }
       if ((await countActiveOwners(tx, workspaceId)) <= 1) {
         return { ok: false, status: 422, error: 'ワークスペースには最低1人の active な owner が必要です' }
       }
@@ -105,13 +106,13 @@ export async function reactivateMembership(
 ): Promise<LifecycleResult> {
   return db.transaction(async (tx): Promise<LifecycleResult> => {
     await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, actorUserId)
-    const actor = await readMembership(tx, workspaceId, actorUserId)
-    if (!actor || actor.membershipStatus !== 'active' || !['owner', 'admin'].includes(actor.role)) {
+    const actorRole = await getWorkspaceRole(workspaceId, actorUserId, tx)
+    if (!isWorkspaceAdmin(actorRole)) {
       return { ok: false, status: 403, error: 'Forbidden' }
     }
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
-    if (target.role === 'owner' && actor.role !== 'owner') {
+    if (target.role === 'owner' && !isWorkspaceOwner(actorRole)) {
       return { ok: false, status: 403, error: 'owner の活性状態は owner のみ変更できます' }
     }
     if (target.membershipStatus === 'active') {

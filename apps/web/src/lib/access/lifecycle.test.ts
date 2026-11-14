@@ -17,7 +17,7 @@ const { mockDb, workspaceMembers, activeWorkspaceMembers, documentChunks } = vi.
     role: 'wm.role',
     membershipStatus: 'wm.membershipStatus',
   }
-  const activeWorkspaceMembers = { workspaceId: 'awm.workspaceId', role: 'awm.role' }
+  const activeWorkspaceMembers = { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' }
   const documentChunks = {
     workspaceId: 'dc.workspaceId',
     sourceType: 'dc.sourceType',
@@ -164,7 +164,7 @@ describe('access/lifecycle', () => {
       mockDb.select.mockImplementation((selection: { n?: unknown }) => {
         if (selection.n) return selectChain([{ n: 2 }])
         return { from: () => ({ where: (condition: { args: Array<{ args?: unknown[] }> }) => {
-          const userId = condition.args.find((entry) => entry.args?.[0] === 'wm.userId')?.args?.[1]
+          const userId = condition.args.find((entry) => ['wm.userId', 'awm.userId'].includes(String(entry.args?.[0])))?.args?.[1]
           return { limit: async () => [{ role: userId === 'actor' ? 'admin' : targetRole, membershipStatus: 'active' }] }
         } }) }
       })

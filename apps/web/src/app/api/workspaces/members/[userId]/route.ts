@@ -3,7 +3,8 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+import { getWorkspaceMemberRole, isWorkspaceAdmin, isWorkspaceOwner } from '@/lib/permissions'
+import { getWorkspaceRole } from '@/lib/access/membership'
 import { deactivateMembership, reactivateMembership, lockMembershipAndActiveOwners } from '@/lib/access/lifecycle'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
@@ -54,14 +55,10 @@ export async function PATCH(
     const response = await db.transaction(async (tx) => {
       // 操作者・対象・active owner を同順でロックし、権限を変更直前に再照合する。
       await lockMembershipAndActiveOwners(tx, ctx.workspaceId, targetUserId, ctx.userId)
-      const [actor] = await tx.select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
-        .from(workspaceMembers)
-        .where(and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, ctx.userId)))
-        .limit(1)
-      if (!actor || actor.membershipStatus !== 'active' || !isWorkspaceAdmin(actor.role)) {
+      const callerRole = await getWorkspaceRole(ctx.workspaceId, ctx.userId, tx)
+      if (!isWorkspaceAdmin(callerRole)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      const callerRole = actor.role
       const [target] = await tx
         .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
         .from(workspaceMembers)
@@ -87,7 +84,7 @@ export async function PATCH(
       }
 
       // admin は owner に関わる変更を行えない
-      if (callerRole !== 'owner') {
+      if (!isWorkspaceOwner(callerRole)) {
         if (newRole === 'owner') {
           return NextResponse.json(
             { error: 'owner への昇格は owner のみ実行できます' },
