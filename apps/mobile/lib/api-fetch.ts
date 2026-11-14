@@ -19,8 +19,10 @@ export async function apiFetch(
   headers.set('Content-Type', 'application/json')
   if (session?.access_token) {
     headers.set('Authorization', `Bearer ${session.access_token}`)
-    const workspaceId = await getSelectedWorkspaceId(session.user.id)
-    if (workspaceId) headers.set('X-Cairn-Workspace-Id', workspaceId)
+    if (!headers.has('X-Cairn-Workspace-Id')) {
+      const workspaceId = await getSelectedWorkspaceId(session.user.id)
+      if (workspaceId) headers.set('X-Cairn-Workspace-Id', workspaceId)
+    }
   }
   return fetch(`${API_BASE}${path}`, { ...init, headers })
 }

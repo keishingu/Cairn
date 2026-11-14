@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createClientMessageId,
   isRetryableSendError,
+  messagesForWorkspace,
+  pendingMessages,
   parseStoredMessageQueue,
   persistThenStartSend,
   sendQueuedForUser,
@@ -36,6 +38,21 @@ describe('オフラインメッセージキュー', () => {
     )
     expect(message?.status).toBe('waiting')
     expect(message?.mentionNames).toEqual({ 'user-1': 'A *B*' })
+  })
+
+  it('選択先だけを表示し、旧項目は保持するがどのワークスペースにも割り当てない', () => {
+    const common = { channelId: 'same-channel', content: 'text', createdAt: '2026-01-01' }
+    const stored = JSON.stringify([
+      { ...common, id: 'a', workspaceId: 'workspace-a' },
+      { ...common, id: 'b', workspaceId: 'workspace-b' },
+      { ...common, id: 'legacy' },
+    ])
+    const restored = parseStoredMessageQueue(stored)
+    expect(restored).toHaveLength(3)
+    expect(messagesForWorkspace(restored, 'workspace-a').map((item) => item.id)).toEqual(['a'])
+    expect(messagesForWorkspace(restored, 'workspace-b').map((item) => item.id)).toEqual(['b'])
+    expect(messagesForWorkspace(restored, null)).toEqual([])
+    expect(pendingMessages(restored).map((item) => item.id)).toEqual(['a', 'b'])
   })
 
   it('端末保存が完了してからネットワーク送信を開始する', async () => {

@@ -3,6 +3,8 @@ export type QueuedMessageStatus = 'waiting' | 'sending' | 'failed'
 export interface QueuedMessage {
   id: string
   channelId: string
+  // 旧版の保存項目には存在しない。所属先を推測して送信しない。
+  workspaceId?: string
   content: string
   mentionNames?: Record<string, string>
   parentMessageId?: string
@@ -77,4 +79,14 @@ export async function sendQueuedForUser<TSession extends { user: { id: string } 
   const session = await getSession()
   if (!isCurrentAccount() || session?.user.id !== userId) return null
   return send(session)
+}
+
+/** 所属先不明の旧項目は保持するが、表示や再送の対象にはしない。 */
+export function messagesForWorkspace(messages: QueuedMessage[], workspaceId: string | null | undefined): QueuedMessage[] {
+  return workspaceId ? messages.filter((message) => message.workspaceId === workspaceId) : []
+}
+
+/** ワークスペースが確定している待機項目だけを送信する。 */
+export function pendingMessages(messages: QueuedMessage[]): QueuedMessage[] {
+  return messages.filter((message) => typeof message.workspaceId === 'string' && message.workspaceId.length > 0 && message.status === 'waiting')
 }
