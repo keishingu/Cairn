@@ -11,6 +11,12 @@ import { isNetworkRecovery } from '../lib/offline-cache'
 import {
   isRetryableSendError,
   parseStoredMessageQueue,
+  messagesForWorkspace,
+  pendingMessages,
+  retryQueuedMessage,
+  canRetryInWorkspace,
+  resolveQueueWorkspace,
+  queueRestoreControls,
   persistThenStartSend,
   sendQueuedForUser,
   type QueuedMessage,
@@ -18,6 +24,9 @@ import {
 import { useSession } from '../lib/session-context'
 import { supabase } from '../lib/supabase'
 import { useT } from './locale-provider'
+import { useWorkspace } from '../hooks/use-account'
+import { useSelectedWorkspaceId } from '../hooks/use-selected-workspace-id'
+import { getSelectedWorkspaceId, subscribeSelectedWorkspace } from '../lib/workspace-selection'
 
 interface QueueContextValue {
   ready: boolean
@@ -25,7 +34,7 @@ interface QueueContextValue {
   messages: QueuedMessage[]
   retryRestore: () => void
   enqueue: (message: Omit<QueuedMessage, 'attempts' | 'status'>) => Promise<void>
-  retry: (id: string) => void
+  retry: (id: string) => Promise<void>
   cancel: (id: string) => void
 }
 
@@ -44,8 +53,15 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   const networkState = useNetworkState()
   const canUseNetwork = shouldAttemptNetworkRequest(networkState)
   const userId = session?.user.id
+  const workspace = useWorkspace()
+  const selectedWorkspace = useSelectedWorkspaceId(userId)
+  const workspaceId = resolveQueueWorkspace(selectedWorkspace.ready, selectedWorkspace.workspaceId, workspace.data?.id)
   const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
   const qc = useQueryClient()
+  const selectionGenerationRef = React.useRef(0)
+  React.useEffect(() => subscribeSelectedWorkspace((changedUserId) => {
+    if (changedUserId === userId) selectionGenerationRef.current += 1
+  }), [userId])
   const currentUserRef = React.useRef(userId)
   currentUserRef.current = userId
   const mountedRef = React.useRef(false)
@@ -114,7 +130,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
     let sent = false
     let failed = false
     try {
-      const pending = messagesRef.current.filter((message) => message.status === 'waiting')
+      const pending = pendingMessages(messagesRef.current)
       for (const item of pending) {
         // pending を列挙した後にユーザーが取り消した項目は送信しない。
         if (!messagesRef.current.some((message) => message.id === item.id)) continue
@@ -129,6 +145,7 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
             async () => (await supabase.auth.getSession()).data.session,
             (sendSession) => apiFetch(`/api/channels/${item.channelId}/messages`, {
               method: 'POST',
+              headers: { 'X-Cairn-Workspace-Id': item.workspaceId! },
               body: JSON.stringify({
                 clientMessageId: item.id,
                 content: item.content,
@@ -214,48 +231,57 @@ export function OfflineMessageQueueProvider({ children }: React.PropsWithChildre
   }, [qc])
 
   const value = React.useMemo<QueueContextValue>(
-    () => ({
-      ready,
-      restoreError,
-      messages,
-      retryRestore: () => setRestoreNonce((value) => value + 1),
-      enqueue: async (message) => {
-        await persistThenStartSend(
-          () =>
-            updateMessages((current) => {
-              if (current.some((queued) => queued.id === message.id)) return current
-              return [...current, { ...message, attempts: 0, status: 'waiting' }]
-            }),
-          () => {
-            // 端末保存の完了後にだけネットワーク送信を始める。呼び出し元は保存完了時点で
-            // 下書きを安全に消せるよう、POST完了を待たずに戻す。
-            void flush().catch((error) =>
-              console.warn('[offline-message-queue] 自動送信の開始に失敗しました:', error),
-            )
-          },
-        )
-      },
-      retry: (id) => {
-        void (async () => {
-          await updateMessages((current) =>
-            current.map((message) => {
-              if (message.id !== id) return message
-              const { lastError: _lastError, ...rest } = message
-              return { ...rest, status: 'waiting' }
-            }),
+    () => {
+      const restore = queueRestoreControls(
+        restoreError, selectedWorkspace.error,
+        t('Could not load the selected workspace for unsent messages'),
+        () => setRestoreNonce((value) => value + 1), selectedWorkspace.retry,
+      )
+      return {
+        ready: ready && !!workspaceId,
+        restoreError: restore.error,
+        messages: messagesForWorkspace(messages, workspaceId),
+        retryRestore: restore.retry,
+        enqueue: async (message) => {
+          if (!userId || !workspaceId) throw new Error('Workspace is not available')
+          const selected = await getSelectedWorkspaceId(userId)
+          if (selected && selected !== workspaceId) throw new Error('Workspace changed')
+          await persistThenStartSend(
+            () =>
+              updateMessages((current) => {
+                if (current.some((queued) => queued.id === message.id)) return current
+                return [...current, { ...message, workspaceId, attempts: 0, status: 'waiting' }]
+              }),
+            () => {
+              // 端末保存の完了後にだけネットワーク送信を始める。呼び出し元は保存完了時点で
+              // 下書きを安全に消せるよう、POST完了を待たずに戻す。
+              void flush().catch((error) =>
+                console.warn('[offline-message-queue] 自動送信の開始に失敗しました:', error),
+              )
+            },
           )
+        },
+        retry: async (id) => {
+          if (!userId || !workspaceId) throw new Error('Workspace is not available')
+          const generation = selectionGenerationRef.current
+          const selected = await getSelectedWorkspaceId(userId)
+          if (!canRetryInWorkspace(workspaceId, selected, generation, selectionGenerationRef.current)) throw new Error('Workspace changed')
+          await updateMessages((current) => {
+            if (!canRetryInWorkspace(workspaceId, selected, generation, selectionGenerationRef.current)) throw new Error('Workspace changed')
+            return current.map((message) => message.id === id
+              ? retryQueuedMessage(message, workspaceId) ?? message
+              : message)
+          })
           await flush()
-        })().catch((error) =>
-          console.warn('[offline-message-queue] 再送準備に失敗しました:', error),
-        )
-      },
-      cancel: (id) => {
-        void updateMessages((current) => current.filter((message) => message.id !== id)).catch(
-          (error) => console.warn('[offline-message-queue] 取消の保存に失敗しました:', error),
-        )
-      },
-    }),
-    [flush, messages, ready, restoreError, updateMessages],
+        },
+        cancel: (id) => {
+          void updateMessages((current) => current.filter((message) => message.id !== id || !workspaceId || (!!message.workspaceId && message.workspaceId !== workspaceId))).catch(
+            (error) => console.warn('[offline-message-queue] 取消の保存に失敗しました:', error),
+          )
+        },
+      }
+    },
+    [flush, messages, ready, restoreError, selectedWorkspace.error, selectedWorkspace.retry, t, updateMessages, userId, workspaceId],
   )
 
   return (

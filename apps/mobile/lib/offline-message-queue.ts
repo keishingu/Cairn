@@ -3,6 +3,8 @@ export type QueuedMessageStatus = 'waiting' | 'sending' | 'failed'
 export interface QueuedMessage {
   id: string
   channelId: string
+  // 旧版の保存項目には存在しない。所属先を推測して送信しない。
+  workspaceId?: string
   content: string
   mentionNames?: Record<string, string>
   parentMessageId?: string
@@ -77,4 +79,46 @@ export async function sendQueuedForUser<TSession extends { user: { id: string } 
   const session = await getSession()
   if (!isCurrentAccount() || session?.user.id !== userId) return null
   return send(session)
+}
+
+/** 所属先不明の旧項目は元のチャンネルで復旧できるよう返す。 */
+export function messagesForWorkspace(messages: QueuedMessage[], workspaceId: string | null | undefined): QueuedMessage[] {
+  return workspaceId ? messages.filter((message) => !message.workspaceId || message.workspaceId === workspaceId) : []
+}
+
+/** ワークスペースが確定している待機項目だけを送信する。 */
+export function pendingMessages(messages: QueuedMessage[]): QueuedMessage[] {
+  return messages.filter((message) => typeof message.workspaceId === 'string' && message.workspaceId.length > 0 && message.status === 'waiting')
+}
+
+/** 明示的な再送時だけ旧項目を現在のワークスペースへ紐付ける。 */
+export function retryQueuedMessage(message: QueuedMessage, workspaceId: string): QueuedMessage | null {
+  if (message.workspaceId && message.workspaceId !== workspaceId) return null
+  const { lastError: _lastError, ...rest } = message
+  return { ...rest, workspaceId, status: 'waiting' }
+}
+
+/** 選択取得中・保存待ち中の切替を検出し、古い画面での紐付けを拒否する。 */
+export function canRetryInWorkspace(workspaceId: string, selected: string | null, generation: number, currentGeneration: number): boolean {
+  return generation === currentGeneration && (!selected || selected === workspaceId)
+}
+
+/** 保存済み選択を優先し、初回の未選択時だけ API が返す既定先を使う。 */
+export function resolveQueueWorkspace(ready: boolean, selectedWorkspaceId: string | null, defaultWorkspaceId: string | undefined): string | undefined {
+  if (!ready) return undefined
+  return selectedWorkspaceId || defaultWorkspaceId
+}
+
+/** 保存済みキューと選択先の両方が復元できるよう、エラーと再試行をまとめる。 */
+export function queueRestoreControls(
+  queueError: string | null,
+  selectionError: Error | null,
+  selectionErrorMessage: string,
+  retryQueue: () => void,
+  retrySelection: () => void,
+): { error: string | null; retry: () => void } {
+  return {
+    error: queueError ?? (selectionError ? selectionErrorMessage : null),
+    retry: () => { retrySelection(); retryQueue() },
+  }
 }

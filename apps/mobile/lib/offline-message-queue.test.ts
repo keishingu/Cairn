@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createClientMessageId,
   isRetryableSendError,
+  messagesForWorkspace,
+  pendingMessages,
+  retryQueuedMessage,
+  canRetryInWorkspace,
+  resolveQueueWorkspace,
+  queueRestoreControls,
   parseStoredMessageQueue,
   persistThenStartSend,
   sendQueuedForUser,
@@ -36,6 +42,69 @@ describe('オフラインメッセージキュー', () => {
     )
     expect(message?.status).toBe('waiting')
     expect(message?.mentionNames).toEqual({ 'user-1': 'A *B*' })
+  })
+
+  it('選択先だけを表示し、旧項目は保持するがどのワークスペースにも割り当てない', () => {
+    const common = { channelId: 'same-channel', content: 'text', createdAt: '2026-01-01' }
+    const stored = JSON.stringify([
+      { ...common, id: 'a', workspaceId: 'workspace-a' },
+      { ...common, id: 'b', workspaceId: 'workspace-b' },
+      { ...common, id: 'legacy' },
+    ])
+    const restored = parseStoredMessageQueue(stored)
+    expect(restored).toHaveLength(3)
+    expect(messagesForWorkspace(restored, 'workspace-a').map((item) => item.id)).toEqual(['a', 'legacy'])
+    expect(messagesForWorkspace(restored, 'workspace-b').map((item) => item.id)).toEqual(['b', 'legacy'])
+    expect(messagesForWorkspace(restored, null)).toEqual([])
+    expect(pendingMessages(restored).map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
+  it('圏外の起動でも保存済みの選択先でキューの表示・保存先を決める', () => {
+    const workspaceId = resolveQueueWorkspace(true, 'workspace-a', undefined)
+    expect(workspaceId).toBe('workspace-a')
+    const messages = parseStoredMessageQueue(JSON.stringify([
+      { id: 'a', channelId: 'ch', workspaceId: 'workspace-a', content: '本文', createdAt: '2026-01-01' },
+      { id: 'b', channelId: 'ch', workspaceId: 'workspace-b', content: '別', createdAt: '2026-01-01' },
+    ]))
+    expect(messagesForWorkspace(messages, workspaceId).map((item) => item.id)).toEqual(['a'])
+    expect(resolveQueueWorkspace(true, 'workspace-b', 'workspace-a')).toBe('workspace-b')
+    expect(messagesForWorkspace(messages, resolveQueueWorkspace(true, 'workspace-b', 'workspace-a')).map((item) => item.id)).toEqual(['b'])
+    expect(resolveQueueWorkspace(false, null, 'workspace-a')).toBeUndefined()
+    expect(resolveQueueWorkspace(true, null, undefined)).toBeUndefined()
+    expect(resolveQueueWorkspace(true, null, 'workspace-a')).toBe('workspace-a')
+  })
+
+  it('選択先の読み込み失敗を表示し、再試行でキューと選択先を復旧する', () => {
+    let selectionError: Error | null = new Error('storage error')
+    let selected: string | null = null
+    let queueReady = false
+    const controls = () => queueRestoreControls(null, selectionError, '選択先を読み込めません',
+      () => { queueReady = true }, () => { selected = 'workspace-a'; selectionError = null })
+    expect(controls().error).toBe('選択先を読み込めません')
+    expect(resolveQueueWorkspace(false, selected, undefined)).toBeUndefined()
+    controls().retry()
+    const workspaceId = resolveQueueWorkspace(selectionError === null, selected, undefined)
+    expect(controls().error).toBeNull()
+    expect(queueReady && !!workspaceId).toBe(true)
+    const restored = parseStoredMessageQueue(JSON.stringify([{ id: 'a', channelId: 'ch', workspaceId: 'workspace-a', content: '本文', createdAt: '2026-01-01' }]))
+    expect(messagesForWorkspace(restored, workspaceId).map((item) => item.id)).toEqual(['a'])
+  })
+
+  it('旧403の本文を保持し、明示再送時だけ所属先を固定する', () => {
+    const [legacy] = parseStoredMessageQueue(JSON.stringify([{ id: 'old', channelId: 'ch', content: '本文', createdAt: '2026-01-01', status: 'failed', lastError: '403' }]))
+    expect(legacy).toBeDefined()
+    expect(pendingMessages([legacy!])).toEqual([])
+    const retry = retryQueuedMessage(legacy!, 'workspace-a')!
+    expect(retry).toMatchObject({ content: '本文', workspaceId: 'workspace-a', status: 'waiting' })
+    expect(retry.lastError).toBeUndefined()
+    expect(pendingMessages([retry])).toEqual([retry])
+    expect(retryQueuedMessage(retry, 'workspace-b')).toBeNull()
+  })
+
+  it('選択取得中や保存待ち中にワークスペースが変われば紐付けない', () => {
+    expect(canRetryInWorkspace('a', 'a', 1, 1)).toBe(true)
+    expect(canRetryInWorkspace('a', 'b', 1, 1)).toBe(false)
+    expect(canRetryInWorkspace('a', 'a', 1, 2)).toBe(false)
   })
 
   it('端末保存が完了してからネットワーク送信を開始する', async () => {
