@@ -38,6 +38,7 @@ const FILES_FIXTURE: FileDto[] = [
     fileSize: 24,
     fileType: 'file',
     uploaderId: 'user-1',
+    canMutate: true,
     uploaderName: '山田 太郎',
     uploaderAvatarUrl: null,
     createdAt: '2026-06-29T09:00:00Z',
@@ -55,6 +56,7 @@ const FILES_FIXTURE: FileDto[] = [
     fileSize: 48,
     fileType: 'file',
     uploaderId: 'user-2',
+    canMutate: true,
     uploaderName: '佐藤 花子',
     uploaderAvatarUrl: null,
     createdAt: '2026-08-07T16:00:00Z',
@@ -341,6 +343,15 @@ describe('ファイル一覧ページ', () => {
 
     expect(await screen.findByText('general.pdf')).toBeInTheDocument()
     expect(screen.queryByText('notes.txt')).toBeNull()
+  })
+
+  it('変更権限のないファイルには名前変更と削除を表示しない', async () => {
+    serverFiles[0]!.canMutate = false
+    renderPageFiles()
+    await waitFor(() => expect(screen.getAllByTitle('操作')).toHaveLength(2))
+    await userEvent.click(screen.getAllByTitle('操作')[0]!)
+    expect(screen.queryByRole('button', { name: '名前を変更' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '削除' })).toBeNull()
   })
 
   it('操作メニューからファイル名をインライン変更する', async () => {

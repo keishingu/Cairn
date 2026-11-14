@@ -335,7 +335,7 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
               </div>
             </a>
 
-            <RowActionMenu
+            {(f.canMutate || (f.mimeType === 'application/pdf' && (canDownloadOriginal || !isWebView)) || (isVideoAttachmentMime(f.mimeType) && canDownloadOriginal)) && <RowActionMenu
               actions={[
                 ...(f.mimeType === 'application/pdf' && (canDownloadOriginal || !isWebView) ? [{
                   icon: 'external-link' as const,
@@ -348,12 +348,14 @@ export const FilesTab = ({ projectId, channelId }: { projectId: string; channelI
                   label: t('Download original video'),
                   onSelect: () => openFileDownload(`/api/attachments/${f.id}?original=1`, f.fileName),
                 }] : []),
-                f.isLatest
-                  ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
-                  : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
-                { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
+                ...(f.canMutate ? [
+                  f.isLatest
+                    ? { icon: 'star', label: t('Unmark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: false }) }
+                    : { icon: 'star', label: t('Mark as latest'), onSelect: () => setLatestMutation.mutate({ fileId: f.id, isLatest: true }) },
+                  { icon: 'trash', label: t('Delete'), danger: true, onSelect: () => setDeleteTarget({ id: f.id, name: f.fileName }) },
+                ] : []),
               ]}
-            />
+            />}
           </div>
         )
       })}
