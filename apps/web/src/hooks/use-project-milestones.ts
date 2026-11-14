@@ -13,6 +13,7 @@ export interface CreateMilestoneInput {
 }
 
 export interface PatchMilestoneInput {
+  expectedUpdatedAt?: string | undefined
   title?: string
   description?: string | null
   startDate?: string | null
@@ -61,6 +62,7 @@ export function usePatchProjectMilestone() {
   return useMutation({
     mutationFn: patchProjectMilestone,
     onSuccess: (updated, variables) => updateMilestoneCache(queryClient, variables.projectId, updated),
+    onError: (error, variables) => { if (error.message === 'milestone_conflict') { void queryClient.invalidateQueries({ queryKey: ['project-milestones', variables.projectId] }); void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels }) } },
   })
 }
 
@@ -109,6 +111,7 @@ export function useProjectMilestones(projectId: string) {
   const patchMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: PatchMilestoneInput }) => patchProjectMilestone({ projectId, id, input }),
     onSuccess: updated => updateMilestoneCache(queryClient, projectId, updated),
+    onError: error => { if (error.message === 'milestone_conflict') { void queryClient.invalidateQueries({ queryKey }); void queryClient.invalidateQueries({ queryKey: chatQueryKeys.projectChannels }) } },
   })
 
   const deleteMutation = useMutation({

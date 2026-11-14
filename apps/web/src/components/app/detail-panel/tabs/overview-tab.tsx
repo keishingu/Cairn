@@ -11,7 +11,8 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
+import { DATE_ORDER_ERROR } from '@/lib/date-range'
+import { isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
@@ -40,11 +41,12 @@ export function formatDateRange(start: string | null, end: string | null, startT
 // テキストは明示保存。保存は保存ボタン / Enter（複数行は Cmd/Ctrl+Enter）、取り消しはキャンセルボタン / Esc。
 // フォーカスが外れても保存も破棄もしない（入力中の内容を残したまま編集を続けられる）
 export const InlineText = ({
-  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false,
+  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false, version,
 }: {
   value: string
   /** 保存の成否を返す。reject したら編集を閉じず、入力を残してエラーを表示する */
-  onSave: (v: string) => Promise<unknown>
+  onSave: (v: string, version?: string) => Promise<unknown>
+  version?: string | undefined
   placeholder?: string
   multiline?: boolean
   large?: boolean
@@ -53,6 +55,7 @@ export const InlineText = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
+  const editVersion = React.useRef(version)
   const [draft, setDraft] = React.useState(value)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -65,6 +68,7 @@ export const InlineText = ({
   const startEdit = () => {
     if (readOnly) return
     setDraft(value)
+    editVersion.current = version
     setError(null)
     setEditing(true)
   }
@@ -88,7 +92,8 @@ export const InlineText = ({
     setSaving(true)
     setError(null)
     try {
-      await onSave(trimmed)
+      if (editVersion.current) await onSave(trimmed, editVersion.current)
+      else await onSave(trimmed)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -180,13 +185,14 @@ export const InlineText = ({
 }
 
 export const InlineDatePair = ({
-  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle,
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle, version,
 }: {
   startDate: string | null
   endDate: string | null
   startTime?: string | null
   endTime?: string | null
-  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => unknown
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null, version?: string) => unknown
+  version?: string | undefined
   readOnly?: boolean
   /** 時刻も編集する。プロジェクトは日付しか保存しないため false にし、入れても消える時刻欄を出さない */
   withTime?: boolean
@@ -196,6 +202,7 @@ export const InlineDatePair = ({
   const t = useT()
   const { isMobile } = useAppShell()
   const [sheetOpen, setSheetOpen] = React.useState(false)
+  const editVersion = React.useRef(version)
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
@@ -213,7 +220,7 @@ export const InlineDatePair = ({
 
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const reversed = isEndBeforeStart(start, end)
+  const reversed = isMilestonePeriodReversed({ startDate: start, endDate: end, startTime: startClock, endTime: endClock })
   const dateErrorId = React.useId()
 
   const unchanged =
@@ -230,6 +237,7 @@ export const InlineDatePair = ({
 
   const startEdit = () => {
     if (readOnly) return
+    editVersion.current = version
     reset()
     setEditing(true)
   }
@@ -246,7 +254,8 @@ export const InlineDatePair = ({
     setSaving(true)
     setError(null)
     try {
-      await onSave(start || null, end || null, startClock || null, endClock || null)
+      if (editVersion.current) await onSave(start || null, end || null, startClock || null, endClock || null, editVersion.current)
+      else await onSave(start || null, end || null, startClock || null, endClock || null)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -294,7 +303,7 @@ export const InlineDatePair = ({
         type="button"
         onClick={() => {
           if (readOnly) return
-          if (isMobile) { setSheetOpen(true); return }
+          if (isMobile) { editVersion.current = version; setSheetOpen(true); return }
           startEdit()
         }}
         disabled={readOnly}
@@ -319,7 +328,7 @@ export const InlineDatePair = ({
           startTime={startTime}
           endTime={endTime}
           withTime={withTime}
-          onSave={onSave}
+          onSave={(start, end, startTime, endTime) => editVersion.current ? onSave(start, end, startTime, endTime, editVersion.current) : onSave(start, end, startTime, endTime)}
           onClose={() => setSheetOpen(false)}
         />
       )}
@@ -387,7 +396,7 @@ export const InlineDatePair = ({
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
         <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date must be on or after the start date')}</InlineError>
+          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date and time must be on or after the start')}</InlineError>
         </div>
       )}
       {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
@@ -564,7 +573,7 @@ const isPastDue = (milestone: MilestoneDto) => {
 const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   milestone: MilestoneDto
   canEdit: boolean
-  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => Promise<unknown>
+  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>> & { expectedUpdatedAt?: string | undefined }) => Promise<unknown>
   onDelete: (milestone: MilestoneDto) => void
 }) => {
   const t = useT()
@@ -596,7 +605,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         disabled={!canEdit}
         onClick={e => e.stopPropagation()}
         onChange={e => {
-          onPatch(milestone.id, { completed: e.target.checked }).catch((err: unknown) => {
+          onPatch(milestone.id, { completed: e.target.checked, expectedUpdatedAt: milestone.updatedAt }).catch((err: unknown) => {
             toast.error(err instanceof Error ? err.message : t('Could not update this milestone'))
           })
         }}
@@ -606,7 +615,8 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
       <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>
         <InlineText
           value={milestone.title}
-          onSave={v => onPatch(milestone.id, { title: v })}
+          version={milestone.updatedAt}
+          onSave={(v, version) => onPatch(milestone.id, { title: v, expectedUpdatedAt: version })}
           placeholder={t('Milestone name')}
           required
           readOnly={!canEdit}
@@ -619,7 +629,8 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
               endDate={milestone.endDate}
               startTime={milestone.startTime}
               endTime={milestone.endTime}
-              onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
+              version={milestone.updatedAt}
+              onSave={(start, end, startTime, endTime, version) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime, expectedUpdatedAt: version })}
               readOnly={!canEdit}
               sheetSubtitle={milestone.title}
             />
@@ -635,7 +646,8 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         </div>
         <InlineText
           value={milestone.description ?? ''}
-          onSave={v => onPatch(milestone.id, { description: v || null })}
+          version={milestone.updatedAt}
+          onSave={(v, version) => onPatch(milestone.id, { description: v || null, expectedUpdatedAt: version })}
           placeholder={t('Enter a description…')}
           multiline
           readOnly={!canEdit}
@@ -665,14 +677,16 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
   // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
   // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
   const milestoneErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error && error.message === DATE_ORDER_ERROR
-      ? t('End date must be on or after the start date')
+    error instanceof Error && error.message === 'milestone_conflict'
+      ? t('This milestone was updated by someone else. Reload to continue.')
+      : error instanceof Error && (error.message === DATE_ORDER_ERROR || error.message === MILESTONE_PERIOD_ERROR)
+      ? t('End date and time must be on or after the start')
       : fallback
 
   // 失敗はトーストで通知したうえで reject し直し、呼び出し側（インライン編集欄）が下書きを残せるようにする
   // 失敗は翻訳済みの文言で reject する。インライン編集欄はそれを1回だけ表示し（トーストは重ねない）、
   // 編集欄を持たない完了チェックだけが呼び出し側でトーストにする
-  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) =>
+  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>> & { expectedUpdatedAt?: string | undefined }) =>
     milestones.patchMutation.mutateAsync({ id, input }).catch((error: unknown) => {
       throw new Error(milestoneErrorMessage(error, t('Could not update this milestone')))
     })

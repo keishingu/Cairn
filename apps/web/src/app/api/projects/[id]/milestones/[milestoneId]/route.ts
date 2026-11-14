@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { patchMilestoneSchema } from '@cairn/shared'
+import { patchMilestoneSchema, isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { lockProjectUpdateChannel, postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
 import { projectUpdateChange, type ProjectUpdateChange } from '@/lib/chat/project-update-message'
-import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireRole } from '@/lib/permissions'
 import type { MilestoneDto } from '../route'
@@ -26,7 +25,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   const parsed = patchMilestoneSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+    const error = parsed.error.issues.some(issue => issue.message === MILESTONE_PERIOD_ERROR) ? MILESTONE_PERIOD_ERROR : parsed.error.flatten()
+    return NextResponse.json({ error }, { status: 422 })
   }
 
   try {
@@ -52,8 +52,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       startTime?: string | null
       endTime?: string | null
       completed?: boolean
-      updatedAt: Date
-    } = { updatedAt: new Date() }
+      updatedAt?: Date
+    } = {}
 
     if (parsed.data.title !== undefined) set.title = parsed.data.title
     if ('description' in parsed.data) set.description = parsed.data.description ?? null
@@ -76,6 +76,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           startTime: milestones.startTime,
           endTime: milestones.endTime,
           completed: milestones.completed,
+          updatedAt: milestones.updatedAt,
         })
         .from(milestones)
         .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
@@ -83,12 +84,17 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         .for('no key update')
         .limit(1)
       if (!previous) return { kind: 'not_found' as const }
+      if (parsed.data.expectedUpdatedAt && previous.updatedAt.toISOString() !== parsed.data.expectedUpdatedAt) return { kind: 'conflict' as const }
+      // ミリ秒で表す世代が同一にならないよう、前の更新より必ず進める。
+      set.updatedAt = new Date(Math.max(Date.now(), previous.updatedAt.getTime() + 1))
 
       // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
-      const datesInBody = 'startDate' in parsed.data || 'endDate' in parsed.data
+      const datesInBody = ['startDate', 'endDate', 'startTime', 'endTime'].some(key => key in parsed.data)
       const nextStartDate = 'startDate' in parsed.data ? (parsed.data.startDate ?? null) : previous.startDate
       const nextEndDate = 'endDate' in parsed.data ? (parsed.data.endDate ?? null) : previous.endDate
-      if (datesInBody && isEndBeforeStart(nextStartDate, nextEndDate)) {
+      const nextStartTime = 'startTime' in parsed.data ? (parsed.data.startTime ?? null) : previous.startTime
+      const nextEndTime = 'endTime' in parsed.data ? (parsed.data.endTime ?? null) : previous.endTime
+      if (datesInBody && isMilestonePeriodReversed({ startDate: nextStartDate, endDate: nextEndDate, startTime: nextStartTime, endTime: nextEndTime })) {
         return { kind: 'date_order' as const }
       }
 
@@ -116,9 +122,10 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       return { kind: 'ok' as const, row }
     })
 
+    if (outcome.kind === 'conflict') return NextResponse.json({ error: 'milestone_conflict' }, { status: 409 })
     if (outcome.kind === 'not_found') return new NextResponse(null, { status: 404 })
     if (outcome.kind === 'date_order') {
-      return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
+      return NextResponse.json({ error: MILESTONE_PERIOD_ERROR }, { status: 422 })
     }
     const updated = outcome.row
 
@@ -140,6 +147,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       startTime: updated.startTime,
       endTime: updated.endTime,
       completed: updated.completed,
+      updatedAt: updated.updatedAt.toISOString(),
       channelId: channel.id,
     } satisfies MilestoneDto)
   } catch (err) {

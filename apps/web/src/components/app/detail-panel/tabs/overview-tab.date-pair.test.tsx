@@ -110,7 +110,7 @@ describe('日程のインライン編集（InlineDatePair）', () => {
 
     fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-06-10' } })
 
-    expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date')
+    expect(screen.getByRole('alert')).toHaveTextContent('End date and time must be on or after the start')
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
     fireEvent.pointerDown(document.body)
     fireEvent.keyDown(screen.getByLabelText('End date'), { key: 'Enter' })

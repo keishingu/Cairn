@@ -627,10 +627,10 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
   const handleSetMilestoneCompleted = (milestone: ProjectChannelDto, completed: boolean) => {
     if (!milestone.milestoneId || patchMilestone.isPending) return
     patchMilestone.mutate(
-      { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed } },
+      { projectId: milestone.projectId, id: milestone.milestoneId, input: { completed, expectedUpdatedAt: milestone.milestoneUpdatedAt ?? undefined } },
       {
         onSuccess: () => toast.success(completed ? t('Marked the milestone complete') : t('Marked the milestone incomplete')),
-        onError: error => toast.error(error.message),
+        onError: error => toast.error(error.message === 'milestone_conflict' ? t('This milestone was updated by someone else. Reload to continue.') : error.message),
       },
     )
   }

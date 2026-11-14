@@ -20,6 +20,7 @@ export interface ProjectChannelDto {
   lastMessageAt: string | null
   milestoneId: string | null
   milestoneCompleted: boolean | null
+  milestoneUpdatedAt?: string | null
 }
 
 export async function GET() {
@@ -63,6 +64,7 @@ export async function GET() {
         archived: projects.archived,
         milestoneId: channels.milestoneId,
         milestoneCompleted: milestones.completed,
+        milestoneUpdatedAt: milestones.updatedAt,
       })
       .from(channels)
       .innerJoin(projects, eq(channels.projectId, projects.id))
@@ -117,6 +119,7 @@ export async function GET() {
 
     const result: ProjectChannelDto[] = rows.map(r => ({
       ...r,
+      milestoneUpdatedAt: r.milestoneUpdatedAt?.toISOString() ?? null,
       unreadCount: unreadMap.get(r.channelId) ?? 0,
       unreadMentionCount: mentionMap.get(r.channelId) ?? 0,
       lastMessageAt: lastMessageAtMap.get(r.channelId) ?? null,
