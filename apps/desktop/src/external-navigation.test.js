@@ -65,4 +65,28 @@ describe('registerExternalNavigation', () => {
     assert.deepEqual(openedUrls, ['https://example.com/docs', 'https://example.com/docs'])
   })
 
+  test('OAuth の認可からコールバックまでは同じウィンドウを使い、他の外部遷移は許可しない', () => {
+    const handlers = {}
+    const opened = []
+    registerExternalNavigation({ setWindowOpenHandler: () => {}, on: (name, handler) => { handlers[name] = handler } }, APP_URL, async url => { opened.push(url) })
+    const navigate = (name, url) => {
+      let prevented = false
+      handlers[name]({ isMainFrame: true, url, preventDefault: () => { prevented = true } })
+      return prevented
+    }
+    for (const provider of ['google', 'apple']) {
+      const authorize = new URL('https://project.supabase.co/auth/v1/authorize')
+      authorize.searchParams.set('provider', provider)
+      authorize.searchParams.set('redirect_to', `${APP_URL}/api/auth/callback?next=%2Fchats`)
+      assert.equal(navigate('will-navigate', authorize.href), false)
+      assert.equal(navigate('will-redirect', provider === 'google' ? 'https://accounts.google.com/o/oauth2/auth' : 'https://appleid.apple.com/auth/authorize'), false)
+      assert.equal(navigate('will-redirect', 'https://project.supabase.co/auth/v1/callback?code=example'), false)
+      assert.equal(navigate('will-redirect', `${APP_URL}/api/auth/callback?code=example`), false)
+      assert.equal(navigate('will-navigate', 'https://accounts.google.com/'), true)
+    }
+    assert.equal(navigate('will-navigate', 'https://example.com/'), true)
+    assert.equal(navigate('will-navigate', `https://project.supabase.co/auth/v1/authorize?provider=google&redirect_to=https://example.com/api/auth/callback`), true)
+    assert.equal(opened.length, 4)
+  })
+
 })
