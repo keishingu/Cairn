@@ -131,7 +131,7 @@ describe('CreateMilestoneModal', () => {
     fireEvent.change(screen.getByLabelText('終了日'), { target: { value: '2026-06-10' } })
     fireEvent.click(screen.getByRole('button', { name: '作成する' }))
 
-    expect(screen.getByText('終了日は開始日以降にしてください')).toBeInTheDocument()
+    expect(screen.getByText('終了日時は開始日時以降にしてください')).toBeInTheDocument()
     expect(mockFetch).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('下見')
   })
