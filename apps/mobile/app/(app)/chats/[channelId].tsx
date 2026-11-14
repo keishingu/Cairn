@@ -507,7 +507,7 @@ function ChatMessageRow({
             )
           )}
 
-          {message.attachments.length > 0 && (
+          {!message.blocked && message.attachments.length > 0 && (
             <View
               style={[
                 styles.attachments,
