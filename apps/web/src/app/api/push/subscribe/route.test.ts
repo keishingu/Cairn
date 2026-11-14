@@ -115,6 +115,16 @@ describe('Push購読の登録', () => {
     expect(mockConflictNothing).not.toHaveBeenCalled()
   })
 
+  test('Web Pushの送信先を検証したURLに正規化して保存する', async () => {
+    const response = await subscribe({
+      deviceType: 'web', endpoint: 'https://fcm%2egoogleapis.com/subscription-1',
+      keys: { p256dh: 'public-key', auth: 'auth-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(mockValues).toHaveBeenCalledWith(expect.objectContaining({ endpoint: 'https://fcm.googleapis.com/subscription-1' }))
+  })
+
   test('許可対象外のWeb Push送信先を保存しない', async () => {
     const response = await subscribe({
       deviceType: 'web', endpoint: 'https://127.0.0.1:9443/local-test',

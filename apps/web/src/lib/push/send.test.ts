@@ -110,6 +110,16 @@ describe('sendPushToUser', () => {
     expect(mockSendNotification.mock.calls[0]![0]).toMatchObject({ endpoint: webSubscription.endpoint })
   })
 
+  test('保存済みのURLを正規化して検証したホストへ送る', async () => {
+    mockWhere.mockResolvedValue([{ ...webSubscription, endpoint: 'https://fcm%2egoogleapis.com/subscription-1' }])
+    const { sendPushToUser } = await import('./send')
+
+    await sendPushToUser('user-1', { title: 'タイトル', body: '本文' })
+
+    expect(mockSendNotification).toHaveBeenCalledOnce()
+    expect(mockSendNotification.mock.calls[0]![0]).toMatchObject({ endpoint: 'https://fcm.googleapis.com/subscription-1' })
+  })
+
   test('通常のPushは未読数でアプリアイコンバッジを更新する', async () => {
     const { sendPushToUser } = await import('./send')
 

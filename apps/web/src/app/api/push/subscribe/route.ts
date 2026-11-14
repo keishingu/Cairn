@@ -5,11 +5,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Expo } from 'expo-server-sdk'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { isAllowedWebPushEndpoint } from '@/lib/push/endpoint'
+import { normalizeWebPushEndpoint } from '@/lib/push/endpoint'
 
 const webSchema = z.object({
   deviceType: z.literal('web'),
-  endpoint: z.string().url().refine(isAllowedWebPushEndpoint, { message: 'Invalid Web Push endpoint' }),
+  endpoint: z.string().url().transform((endpoint, ctx) => {
+    const normalized = normalizeWebPushEndpoint(endpoint)
+    if (!normalized) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid Web Push endpoint' })
+      return z.NEVER
+    }
+    return normalized
+  }),
   keys: z.object({ p256dh: z.string(), auth: z.string() }),
 })
 
