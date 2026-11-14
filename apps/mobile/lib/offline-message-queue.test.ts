@@ -4,6 +4,7 @@ import {
   isRetryableSendError,
   parseStoredMessageQueue,
   persistThenStartSend,
+  sendQueuedForUser,
 } from './offline-message-queue'
 
 describe('オフラインメッセージキュー', () => {
@@ -67,4 +68,30 @@ describe('オフラインメッセージキュー', () => {
     ).rejects.toThrow('storage failed')
     expect(startSend).not.toHaveBeenCalled()
   })
+
+  it('保存中に別アカウントに切り替わった送信を中止する', async () => {
+    let current = 'A'
+    const send = vi.fn()
+    await persistThenStartSend(async () => { current = 'B' }, () => undefined)
+    const result = await sendQueuedForUser('A', () => current === 'A', async () => ({ user: { id: 'B' } }), send)
+    expect(result).toBeNull()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('セッション取得中に切り替わった場合も送信せず、元の利用者ならそのセッションで送る', async () => {
+    let current = 'A'
+    const send = vi.fn(async () => 'sent')
+    let resolveSession: ((session: { user: { id: string } }) => void) | undefined
+    const pending = sendQueuedForUser('A', () => current === 'A', () => new Promise<{ user: { id: string } }>((resolve) => { resolveSession = resolve }), send)
+    current = 'B'
+    resolveSession?.({ user: { id: 'B' } })
+    expect(await pending).toBeNull()
+    expect(send).not.toHaveBeenCalled()
+    const session = { user: { id: 'A' } }
+    expect(await sendQueuedForUser('A', () => true, async () => session, send)).toBe('sent')
+    expect(send).toHaveBeenCalledWith(session)
+    expect(await sendQueuedForUser('A', () => true, async () => ({ user: { id: 'B' } }), send)).toBeNull()
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
 })
