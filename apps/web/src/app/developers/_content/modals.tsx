@@ -186,6 +186,9 @@ export const modalsPage: DocPage = {
               <li>
                 閉じられたモーダルは <code>not_found</code> になります
               </li>
+              <li>
+                30日間更新されていないモーダルは、開いたままでも日次クリーンアップで削除されます。送信の確保中は除外されます
+              </li>
             </ul>
           ),
         },
@@ -326,6 +329,9 @@ export const modalsPage: DocPage = {
               </li>
               <li>
                 A closed modal returns <code>not_found</code>
+              </li>
+              <li>
+                A daily cleanup deletes modals that have not been updated for 30 days, even if still open. Modals with an active submission lease are excluded
               </li>
             </ul>
           ),
