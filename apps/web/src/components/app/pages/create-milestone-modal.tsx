@@ -44,6 +44,7 @@ interface MilestoneFormValues {
   endDate: string
   startTime: string
   endTime: string
+  expectedUpdatedAt?: string | undefined
 }
 
 interface MilestoneFormModalProps {
@@ -53,6 +54,8 @@ interface MilestoneFormModalProps {
   onClose: () => void
   onSubmit: (values: MilestoneFormValues, onError: (message: string) => void) => void
   defaultMonth?: string | null
+  onReload?: () => void
+  reloadError?: string
 }
 
 const modalCardStyle: React.CSSProperties = {
@@ -68,10 +71,12 @@ const modalCardStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
-function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null }: MilestoneFormModalProps) {
+function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null, onReload, reloadError }: MilestoneFormModalProps) {
   const t = useT()
   const { isMobile } = useAppShell()
   const editing = initialMilestone != null
+  const initialVersion = React.useRef(initialMilestone?.updatedAt)
+  const [conflict, setConflict] = React.useState(false)
   const [title, setTitle] = React.useState(initialMilestone?.title ?? '')
   const [description, setDescription] = React.useState(initialMilestone?.description ?? '')
   const [startDate, setStartDate] = React.useState(initialMilestone?.startDate ?? '')
@@ -114,8 +119,19 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
 
     if (invalid) return
 
-    onSubmit({ title: trimmedTitle, description: description.trim(), startDate, endDate, startTime, endTime }, setTitleError)
+    onSubmit({ title: trimmedTitle, description: description.trim(), startDate, endDate, startTime, endTime, expectedUpdatedAt: initialVersion.current }, message => {
+      if (message === 'milestone_conflict') { setConflict(true); return }
+      setTitleError(message)
+    })
   }
+
+  const conflictMessage = conflict && (
+    <div role="alert" style={{ color: 'var(--red-text)', padding: '0 20px' }}>
+      {t('This milestone was updated by someone else. Reload to continue.')}{' '}
+      <button type="button" className="btn" onClick={onReload}>{t('Reload milestone')}</button>
+      {reloadError && <div>{reloadError}</div>}
+    </div>
+  )
 
   const heading = editing ? t('Edit milestone') : t('Create milestone')
 
@@ -133,6 +149,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
         isSubmitting={pending}
         disableClose={pending}
       >
+        {conflictMessage}
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <label htmlFor="milestone-title" style={sheetFieldLabelStyle}>
@@ -205,6 +222,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
           onClose={() => { if (!pending) onClose() }}
         />
 
+        {conflictMessage}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto' }}>
           <Field label={t('Milestone name')} required error={titleError} hint={`${title.length}/100`} htmlFor="milestone-title">
             <input
@@ -338,6 +356,8 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
   const t = useT()
   const milestones = useProjectMilestones(projectId)
   const milestone = milestones.data?.find(item => item.id === milestoneId)
+  const [formVersion, setFormVersion] = React.useState(0)
+  const [reloadError, setReloadError] = React.useState('')
 
   if (!milestones.isFetchedAfterMount) {
     return (
@@ -350,7 +370,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
     )
   }
 
-  if (milestones.isError || !milestone) {
+  if (!milestone) {
     return (
       <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
@@ -366,7 +386,16 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
   return (
     <MilestoneFormModal
       projectTitle={projectTitle}
+      key={formVersion}
       initialMilestone={milestone}
+      reloadError={reloadError}
+      onReload={() => {
+        setReloadError('')
+        void milestones.refetch().then(result => {
+          if (result.isSuccess) setFormVersion(version => version + 1)
+          else setReloadError(t('Could not load the milestone'))
+        })
+      }}
       pending={milestones.patchMutation.isPending}
       onClose={onClose}
       onSubmit={(values, onError) => milestones.patchMutation.mutate(
@@ -374,6 +403,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
           id: milestoneId,
           input: {
             title: values.title,
+            ...(values.expectedUpdatedAt ? { expectedUpdatedAt: values.expectedUpdatedAt } : {}),
             description: values.description || null,
             startDate: values.startDate || null,
             endDate: values.endDate || null,

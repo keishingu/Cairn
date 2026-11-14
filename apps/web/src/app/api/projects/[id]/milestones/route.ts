@@ -20,6 +20,7 @@ export interface MilestoneDto {
   endTime: string | null
   completed: boolean
   channelId: string
+  updatedAt?: string
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -55,6 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         startTime: milestones.startTime,
         endTime: milestones.endTime,
         completed: milestones.completed,
+        updatedAt: milestones.updatedAt,
         channelId: channels.id,
       })
       .from(milestones)
@@ -62,7 +64,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(milestones.projectId, projectId))
       .orderBy(sql`${milestones.startDate} asc nulls last`, milestones.createdAt)
 
-    return NextResponse.json(rows satisfies MilestoneDto[])
+    return NextResponse.json(rows.map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() })) satisfies MilestoneDto[])
   } catch (err) {
     console.error('[/api/projects/[id]/milestones GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -155,6 +157,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       startTime: inserted.milestone.startTime,
       endTime: inserted.milestone.endTime,
       completed: inserted.milestone.completed,
+      updatedAt: inserted.milestone.updatedAt.toISOString(),
       channelId: inserted.channelId,
     }
 

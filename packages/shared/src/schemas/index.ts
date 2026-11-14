@@ -48,6 +48,7 @@ export const createMilestoneSchema = z.object({
 }).refine(data => !isMilestonePeriodReversed(data), { message: MILESTONE_PERIOD_ERROR })
 
 export const patchMilestoneSchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
   title: z.string().trim().min(1).max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
   startDate: z.string().date().nullable().optional(),
@@ -56,7 +57,7 @@ export const patchMilestoneSchema = z.object({
   endTime: timeStringSchema.nullable().optional(),
   completed: z.boolean().optional(),
 }).refine(
-  data => Object.values(data).some(value => value !== undefined),
+  data => Object.entries(data).some(([key, value]) => key !== 'expectedUpdatedAt' && value !== undefined),
   { message: 'At least one field is required' },
 ).refine(data => !isMilestonePeriodReversed(data), { message: MILESTONE_PERIOD_ERROR })
 

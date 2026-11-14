@@ -52,8 +52,8 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       startTime?: string | null
       endTime?: string | null
       completed?: boolean
-      updatedAt: Date
-    } = { updatedAt: new Date() }
+      updatedAt?: Date
+    } = {}
 
     if (parsed.data.title !== undefined) set.title = parsed.data.title
     if ('description' in parsed.data) set.description = parsed.data.description ?? null
@@ -76,6 +76,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           startTime: milestones.startTime,
           endTime: milestones.endTime,
           completed: milestones.completed,
+          updatedAt: milestones.updatedAt,
         })
         .from(milestones)
         .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)))
@@ -83,6 +84,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         .for('no key update')
         .limit(1)
       if (!previous) return { kind: 'not_found' as const }
+      if (parsed.data.expectedUpdatedAt && previous.updatedAt.toISOString() !== parsed.data.expectedUpdatedAt) return { kind: 'conflict' as const }
+      // ミリ秒で表す世代が同一にならないよう、前の更新より必ず進める。
+      set.updatedAt = new Date(Math.max(Date.now(), previous.updatedAt.getTime() + 1))
 
       // 片方だけ送られた場合も、保存済みのもう片方と合わせて判定する
       const datesInBody = ['startDate', 'endDate', 'startTime', 'endTime'].some(key => key in parsed.data)
@@ -118,6 +122,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       return { kind: 'ok' as const, row }
     })
 
+    if (outcome.kind === 'conflict') return NextResponse.json({ error: 'milestone_conflict' }, { status: 409 })
     if (outcome.kind === 'not_found') return new NextResponse(null, { status: 404 })
     if (outcome.kind === 'date_order') {
       return NextResponse.json({ error: MILESTONE_PERIOD_ERROR }, { status: 422 })
@@ -142,6 +147,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
       startTime: updated.startTime,
       endTime: updated.endTime,
       completed: updated.completed,
+      updatedAt: updated.updatedAt.toISOString(),
       channelId: channel.id,
     } satisfies MilestoneDto)
   } catch (err) {
