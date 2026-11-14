@@ -6,6 +6,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { aiChatModelProvider, type AiChatModel, type AiChatProvider } from '@cairn/shared'
 import type { LanguageModelV1 } from 'ai'
 import { withAnthropicCompat } from './anthropic-compat-middleware'
+import { createEffortFetch } from './anthropic-effort'
 import { withConversationCache } from './conversation-cache-middleware'
 
 // OpenAI 本家の API なので strict にする。compatible（既定）のままだとストリーミングで stream_options.include_usage を
@@ -15,9 +16,15 @@ export const openai = createOpenAI({
   compatibility: 'strict',
 })
 
-export const anthropic = createAnthropic({
-  apiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
-})
+// fetch を差し替えるのは Sonnet 5.5 に output_config.effort を付けるため（anthropic-effort.ts）。
+export function createChatAnthropic(fetchImpl?: typeof fetch) {
+  return createAnthropic({
+    apiKey: process.env['ANTHROPIC_API_KEY'] ?? '',
+    fetch: createEffortFetch(fetchImpl),
+  })
+}
+
+export const anthropic = createChatAnthropic()
 
 export const EMBEDDING_MODEL = 'text-embedding-3-small'
 
