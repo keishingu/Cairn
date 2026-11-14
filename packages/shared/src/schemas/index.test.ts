@@ -250,6 +250,10 @@ describe('マイルストーン期間の順序', () => {
 })
 
 describe('patchMilestoneSchema', () => {
+  it('世代情報だけでは更新対象なしとして拒否する', () => {
+    expect(patchMilestoneSchema.safeParse({ expectedUpdatedAt: '2026-08-01T00:00:00.000Z' }).success).toBe(false)
+  })
+
   it('completed だけの更新を受け入れる', () => {
     const result = patchMilestoneSchema.safeParse({ completed: true })
     expect(result.success).toBe(true)
