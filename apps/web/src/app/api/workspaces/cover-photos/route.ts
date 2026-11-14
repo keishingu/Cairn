@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 import type { WorkspaceCoverPhoto } from '@cairn/db'
 
 export type { WorkspaceCoverPhoto }
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   let formData: FormData
@@ -125,7 +125,7 @@ export async function DELETE(req: Request) {
   const { ctx, error } = await getAuthContext()
   if (error) return error
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   let body: { id: string } | null = null

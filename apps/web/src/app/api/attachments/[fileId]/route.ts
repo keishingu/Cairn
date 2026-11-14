@@ -5,8 +5,19 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { canAccessFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
+import { CHAT_VIDEOS_BUCKET, groupAttachmentPathsByBucket, isVideoMimeType } from '@/lib/attachments'
+import { resolveVideoPlaybackSource } from '@/lib/video/transcode'
+
+// 動画は <video> が再生中に Range 要求を繰り返すため、PDF より長く署名を保つ
+const VIDEO_SIGNED_URL_TTL_SECONDS = 4 * 60 * 60
 
 type RouteContext = { params: Promise<{ fileId: string }> }
+
+function extensionOf(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.')
+  return dotIndex > 0 ? fileName.slice(dotIndex).toLowerCase() : ''
+}
 
 function resolveResponseContentType(fileName: string, mimeType: string | null) {
   const normalizedMimeType = mimeType?.toLowerCase() ?? ''
@@ -22,6 +33,28 @@ function resolveResponseContentType(fileName: string, mimeType: string | null) {
   const responseMimeType = mimeType ?? 'application/octet-stream'
   const isText = normalizedMimeType.startsWith('text/') || normalizedMimeType === 'application/json'
   return isText ? `${responseMimeType}; charset=utf-8` : responseMimeType
+}
+
+// スマホのブラウザ（特に iOS のホーム画面アプリから開くアプリ内ブラウザ）は Office ファイルを
+// inline で受けると描画もダウンロードもできず真っ白になる。ブラウザが表示できる形式だけ inline にする。
+function isInlineViewable(contentType: string): boolean {
+  const mimeType = contentType.split(';')[0]!.trim().toLowerCase()
+  return (
+    mimeType.startsWith('image/') ||
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/pdf' ||
+    mimeType === 'application/json'
+  )
+}
+
+// filename="..." に非 ASCII をそのまま入れられないため、ASCII の代替名と RFC 5987 の filename* を併記する
+function buildContentDisposition(type: 'inline' | 'attachment', fileName: string): string {
+  const asciiFallback = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_')
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `${type}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`
 }
 
 export async function GET(req: Request, { params }: RouteContext) {
@@ -43,7 +76,7 @@ export async function GET(req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 404 })
     }
 
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) {
       return new NextResponse(null, { status: 403 })
     }
@@ -63,6 +96,116 @@ export async function GET(req: Request, { params }: RouteContext) {
     }
 
     const supabase = createServiceRoleClient()
+
+    if (file.mimeType === 'application/pdf' && file.storagePath.includes('/pdf-originals/')) {
+      const search = new URL(req.url).searchParams
+      const wantOriginal = search.get('original') === '1'
+      const meta = (file.metadata ?? {}) as Record<string, unknown>
+      const status = meta['pdfCompressionStatus']
+
+      if (wantThumb) {
+        const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
+        if (!thumbnailPath) return new NextResponse(null, { status: 404 })
+        const { data: thumb, error: thumbError } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(thumbnailPath, 60)
+        if (thumbError || !thumb) return new NextResponse(null, { status: 502 })
+        return NextResponse.redirect(thumb.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+      }
+
+      if (wantOriginal) {
+        const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+        if (!entitlements.rights.canDownloadOriginal) {
+          return NextResponse.json({ error: '元のPDFをダウンロードするには、本人の Solo 支援とワークスペースの残高が必要です', code: 'original-download-entitlement-required' }, { status: 403 })
+        }
+      } else if (status === 'pending' || status === 'processing') {
+        return NextResponse.json({ error: 'PDFを最適化中です。しばらくしてから再試行してください' }, { status: 409 })
+      } else if (status === 'failed') {
+        return NextResponse.json({ error: 'PDFの最適化に失敗しました。元ファイルは支援者向けダウンロードから取得できます' }, { status: 409 })
+      } else if (status !== 'ready') {
+        return NextResponse.json({ error: 'PDFの最適化状態を確認できません。再試行してください' }, { status: 409 })
+      }
+
+      const optimizedPath = file.derivedStoragePath ?? (meta['pdfCompressionUnchanged'] === true ? file.storagePath : null)
+      if (!wantOriginal && !optimizedPath) {
+        return NextResponse.json({ error: '最適化済みPDFを取得できません。再試行してください' }, { status: 409 })
+      }
+      // 最適化版は署名 URL へ転送すると、ブラウザの PDF ビューアが Storage 上の UUID 名で保存してしまう。
+      // 他の添付と同じく API から登録時のファイル名つきで返す（最適化版は原本以下のサイズで、上限も他の添付と同じ）
+      if (!wantOriginal) {
+        const { data: optimized, error: optimizedError } = await supabase.storage
+          .from('chat-attachments')
+          .download(optimizedPath!)
+        if (optimizedError || !optimized) {
+          console.error('[/api/attachments/[fileId]] Optimized PDF download failed:', optimizedError)
+          return new NextResponse(null, { status: 502 })
+        }
+        return new NextResponse(optimized, {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': buildContentDisposition('inline', file.fileName),
+            // 転送していた頃と同じく、表示のたびに認可を確かめるためブラウザに保存させない
+            'Cache-Control': 'private, no-store',
+          },
+        })
+      }
+
+      const { data: signed, error: signedError } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(file.storagePath, 60, { download: file.fileName })
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
+        return new NextResponse(null, { status: 502 })
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
+
+    // 動画は Vercel の Function 経由だと応答サイズ上限に掛かり、シークもできない。
+    // 本体を中継せず、Range 要求を受けられる Storage の短期署名 URL へ転送する。
+    // 再生・保存はチャンネル/プロジェクトのメンバー全員が可（アップロードだけが支援者の能動権）
+    if (isVideoMimeType(file.mimeType)) {
+      if (wantThumb) return new NextResponse(null, { status: 404 })
+      const search = new URL(req.url).searchParams
+      const wantOriginal = search.get('original') === '1'
+      const wantDownload = wantOriginal || search.get('download') === '1'
+
+      // 再生・通常の保存は全員が圧縮版（変換中・失敗・未変換なら原本）。
+      // 原本のダウンロードは画像・PDF と同じく Solo 支援者本人だけ（課金無効なら全員）
+      let source = resolveVideoPlaybackSource({ ...file, storagePath: file.storagePath })
+      if (wantOriginal) {
+        const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+        if (!entitlements.rights.canDownloadOriginal) {
+          return NextResponse.json(
+            {
+              error: '元の動画をダウンロードするには、本人の Solo 支援とワークスペースの残高が必要です',
+              code: 'original-download-entitlement-required',
+            },
+            { status: 403 },
+          )
+        }
+        source = { storagePath: file.storagePath, downloadName: file.fileName, variant: 'original' }
+      }
+
+      const { data: signed, error: signedError } = await supabase.storage
+        .from(CHAT_VIDEOS_BUCKET)
+        .createSignedUrl(
+          source.storagePath,
+          VIDEO_SIGNED_URL_TTL_SECONDS,
+          wantDownload ? { download: source.downloadName } : undefined,
+        )
+      if (signedError || !signed) {
+        console.error('[/api/attachments/[fileId]] Video signed URL failed:', signedError)
+        return NextResponse.json({ error: '動画の取得に失敗しました' }, { status: 502 })
+      }
+      // アプリは認証ヘッダーを付けられない OS のプレイヤーで再生するため、転送ではなく URL を受け取る
+      if (search.get('as') === 'json') {
+        return NextResponse.json(
+          { url: signed.signedUrl, expiresIn: VIDEO_SIGNED_URL_TTL_SECONDS, variant: source.variant },
+          { headers: { 'Cache-Control': 'private, no-store' } },
+        )
+      }
+      return NextResponse.redirect(signed.signedUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store' } })
+    }
 
     // サムネが要求され、かつ生成済みならそちらを返す（無ければオリジナルにフォールバック）
     const meta = (file.metadata ?? {}) as Record<string, unknown>
@@ -87,10 +230,17 @@ export async function GET(req: Request, { params }: RouteContext) {
       return new NextResponse(null, { status: 502 })
     }
 
+    const contentType = servedThumb
+      ? 'image/jpeg'
+      : resolveResponseContentType(file.fileName, file.mimeType)
+
     return new NextResponse(data, {
       headers: {
-        'Content-Type': servedThumb ? 'image/jpeg' : resolveResponseContentType(file.fileName, file.mimeType),
-        'Content-Disposition': `inline; filename="${encodeURIComponent(file.fileName)}"`,
+        'Content-Type': contentType,
+        'Content-Disposition': buildContentDisposition(
+          isInlineViewable(contentType) ? 'inline' : 'attachment',
+          file.fileName,
+        ),
         'Cache-Control': 'private, max-age=3600',
       },
     })
@@ -112,9 +262,24 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   } catch {
     return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
   }
-  const isLatest = (body as { isLatest?: unknown })?.isLatest
-  if (typeof isLatest !== 'boolean') {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 })
+  }
+  const payload = body as { isLatest?: unknown; fileName?: unknown }
+  const hasIsLatest = Object.prototype.hasOwnProperty.call(payload, 'isLatest')
+  const hasFileName = Object.prototype.hasOwnProperty.call(payload, 'fileName')
+  if (hasIsLatest === hasFileName) {
+    return NextResponse.json({ error: 'isLatest または fileName のどちらか一方を指定してください' }, { status: 400 })
+  }
+
+  const isLatest = payload.isLatest
+  if (hasIsLatest && typeof isLatest !== 'boolean') {
     return NextResponse.json({ error: 'isLatest は boolean で指定してください' }, { status: 400 })
+  }
+
+  const fileName = typeof payload.fileName === 'string' ? payload.fileName.trim() : null
+  if (hasFileName && (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName))) {
+    return NextResponse.json({ error: 'ファイル名は1〜255文字で指定してください' }, { status: 400 })
   }
 
   try {
@@ -127,22 +292,32 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         uploadedBy: files.uploadedBy,
-        metadata: files.metadata,
+        fileName: files.fileName,
+        fileType: files.fileType,
       })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
+    if (fileName) {
+      if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
+        return NextResponse.json({ error: 'ファイルの拡張子は変更できません' }, { status: 400 })
+      }
+      await db.update(files).set({ fileName }).where(eq(files.id, fileId))
+      return NextResponse.json({ success: true, fileName })
+    }
+
     // 最新版ラベルは複数ファイルに同時付与できる（排他にしない）
-    const meta = (file.metadata ?? {}) as Record<string, unknown>
     await db
       .update(files)
       .set({
-        metadata: isLatest ? { ...meta, isLatest: true } : sql`${files.metadata} - 'isLatest'`,
+        metadata: isLatest
+          ? sql`jsonb_set(coalesce(${files.metadata}, '{}'::jsonb), '{isLatest}', 'true'::jsonb, true)`
+          : sql`${files.metadata} - 'isLatest'`,
       })
       .where(eq(files.id, fileId))
 
@@ -169,6 +344,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
         workspaceId: files.workspaceId,
         projectId: files.projectId,
         storagePath: files.storagePath,
+        derivedStoragePath: files.derivedStoragePath,
+        fileSize: files.fileSize,
+        derivedFileSize: files.derivedFileSize,
         uploadedBy: files.uploadedBy,
         fileType: files.fileType,
         metadata: files.metadata,
@@ -178,7 +356,7 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file)
+    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
     if (!canAccess) return new NextResponse(null, { status: 403 })
 
     // ベクトルデータを先に削除
@@ -186,17 +364,58 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .delete(documentChunks)
       .where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-    // DB から削除（message_attachments は CASCADE で連鎖削除）
-    await db.delete(files).where(eq(files.id, fileId))
+    // DB削除と使用量カウンタの更新を同一トランザクションにする。
+    // 先に行ロックを取り、同時 DELETE の後続リクエストが二重に減算しないようにする。
+    // （プロジェクト削除のCASCADE経路は日次reconciliationで回収する。）
+    const deletedFile = await db.transaction(async (tx) => {
+      const [lockedFile] = await tx
+        .select({ id: files.id })
+        .from(files)
+        .where(eq(files.id, fileId))
+        .for('update')
+        .limit(1)
+      if (!lockedFile) return null
+
+      const [deletedFile] = await tx
+        .delete(files)
+        .where(eq(files.id, fileId))
+        .returning({
+          id: files.id,
+          workspaceId: files.workspaceId,
+          storagePath: files.storagePath,
+          derivedStoragePath: files.derivedStoragePath,
+          fileSize: files.fileSize,
+          derivedFileSize: files.derivedFileSize,
+          fileType: files.fileType,
+          metadata: files.metadata,
+        })
+      if (!deletedFile) return null
+
+      const { recordStorageUsageDelta } = await import('@/lib/billing/storage-usage')
+      await recordStorageUsageDelta(
+        deletedFile.workspaceId,
+        {
+          originalBytes: -(deletedFile.fileSize ?? 0),
+          derivedBytes: -(deletedFile.derivedFileSize ?? 0),
+        },
+        tx,
+      )
+      return deletedFile
+    })
+
+    if (!deletedFile) return new NextResponse(null, { status: 404 })
 
     // 外部リンクはストレージオブジェクトなし。サムネがあれば併せて削除する
-    if (file.fileType !== 'link' && file.storagePath) {
-      const meta = (file.metadata ?? {}) as Record<string, unknown>
+    if (deletedFile.fileType !== 'link' && deletedFile.storagePath) {
+      const meta = (deletedFile.metadata ?? {}) as Record<string, unknown>
       const thumbnailPath = typeof meta['thumbnailPath'] === 'string' ? meta['thumbnailPath'] : null
       const { inngest } = await import('@/lib/inngest/client')
       await inngest.send({
         name: 'storage/objects.delete',
-        data: { bucket: 'chat-attachments', paths: thumbnailPath ? [file.storagePath, thumbnailPath] : [file.storagePath] },
+        // 動画は専用バケット（chat-videos）に置くため、パスごとに削除先を分ける
+        data: {
+          targets: groupAttachmentPathsByBucket([deletedFile.storagePath, deletedFile.derivedStoragePath, thumbnailPath]),
+        },
       })
     }
 

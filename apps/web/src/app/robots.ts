@@ -3,12 +3,14 @@
 
 import type { MetadataRoute } from 'next'
 
+export const dynamic = 'force-static'
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/projects', '/settings', '/tasks', '/chats', '/files', '/gallery', '/ai', '/auth'],
+      disallow: ['/chats', '/projects', '/settings', '/tasks', '/files', '/gallery', '/ai', '/auth'],
     },
     sitemap: 'https://oss-cairn.com/sitemap.xml',
   }

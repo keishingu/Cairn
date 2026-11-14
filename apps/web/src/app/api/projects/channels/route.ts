@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { fetchLastMessageAt } from '@/lib/chat/last-message-at'
 
 export interface ProjectChannelDto {
   channelId: string
@@ -15,6 +16,8 @@ export interface ProjectChannelDto {
   archived: boolean
   unreadCount: number
   unreadMentionCount: number
+  /** 最終投稿時刻（ISO 8601）。投稿がなければ null。一覧の「更新順」に使う */
+  lastMessageAt: string | null
   milestoneId: string | null
   milestoneCompleted: boolean | null
 }
@@ -83,7 +86,7 @@ export async function GET() {
 
     const channelIds = rows.map(r => r.channelId)
 
-    const [unreadRows, mentionRows] = await Promise.all([
+    const [unreadRows, mentionRows, lastMessageAtMap] = await Promise.all([
       db
         .select({ channelId: messages.channelId, cnt: count() })
         .from(messages)
@@ -96,6 +99,8 @@ export async function GET() {
             inArray(messages.channelId, channelIds),
             isNull(messages.deletedAt),
             ne(messages.senderId, ctx.userId),
+            // 外部チャットから取り込んだ過去ログは未読に数えない（docs/import-design.md §6）
+            eq(messages.imported, false),
             gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`),
           ),
         )
@@ -104,6 +109,7 @@ export async function GET() {
         .select({ channelId: channelReadStates.channelId, cnt: channelReadStates.unreadMentionCount })
         .from(channelReadStates)
         .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds))),
+      fetchLastMessageAt(channelIds),
     ])
 
     const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
@@ -113,6 +119,7 @@ export async function GET() {
       ...r,
       unreadCount: unreadMap.get(r.channelId) ?? 0,
       unreadMentionCount: mentionMap.get(r.channelId) ?? 0,
+      lastMessageAt: lastMessageAtMap.get(r.channelId) ?? null,
     }))
 
     return NextResponse.json(result)

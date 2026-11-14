@@ -6,6 +6,7 @@ import { Icon } from '../primitives'
 import { TopBar } from '../sidebar'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import type { WorkspaceGalleryItemDto } from '@/app/api/gallery/route'
+import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 
 function formatDate(takenAt: string | null, createdAt: string): string {
@@ -18,6 +19,7 @@ function formatDate(takenAt: string | null, createdAt: string): string {
 }
 
 export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
+  const t = useT()
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
 
   const { data: items = [], isLoading, isError } = useQuery<WorkspaceGalleryItemDto[]>({
@@ -40,31 +42,31 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* PC ヘッダー */}
       {!isMobile && (
-        <TopBar title="ギャラリー" subtitle={items.length > 0 ? `${items.length} 枚` : null}/>
+        <TopBar title={t('Gallery')} subtitle={items.length > 0 ? t('{count} photos', { count: items.length }) : null}/>
       )}
 
       {/* コンテンツ */}
       <div style={{
         flex: 1, overflow: 'auto',
-        padding: isMobile ? `6px 10px calc(80px + env(safe-area-inset-bottom))` : '0 24px 24px',
+        padding: isMobile ? `6px 10px var(--mobile-nav-clearance)` : '0 24px 24px',
       }}>
         {isLoading && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 13 }}>
-            読み込み中...
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
+            {t('Loading…')}
           </div>
         )}
 
         {isError && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 13 }}>
-            ギャラリーの取得に失敗しました
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
+            {t('Could not load the gallery')}
           </div>
         )}
 
         {!isLoading && !isError && items.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '80px 0', color: 'var(--text-4)' }}>
             <Icon name="image" size={36}/>
-            <span style={{ fontSize: 14 }}>まだ写真がありません</span>
-            <span style={{ fontSize: 12.5, color: 'var(--text-4)' }}>プロジェクトのギャラリータブから写真を追加してください</span>
+            <span style={{ fontSize: 'var(--fs-lg)' }}>{t('No photos yet')}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('Add photos from a project gallery tab')}</span>
           </div>
         )}
 
@@ -98,10 +100,10 @@ export const PageGallery = ({ isMobile = false }: { isMobile?: boolean }) => {
                   loading="lazy"
                 />
                 <div style={{ padding: '8px 10px' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.projectTitle}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', marginTop: 2 }}>
                     {formatDate(item.takenAt, item.createdAt)}
                   </div>
                 </div>

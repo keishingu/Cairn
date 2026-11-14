@@ -15,6 +15,7 @@ vi.mock('@/lib/fetch-with-auth', () => ({
 }))
 
 vi.mock('@/lib/process-image', () => ({
+  HeicConversionError: class HeicConversionError extends Error {},
   processImageForUpload: vi.fn(),
 }))
 

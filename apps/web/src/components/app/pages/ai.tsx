@@ -2,63 +2,146 @@
 
 import React from 'react'
 import { useChat } from 'ai/react'
-import type { JSONValue, ToolInvocation } from 'ai'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { JSONValue, Message, ToolInvocation } from 'ai'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icon, TypingDots } from '../primitives'
 import { MobileHeader } from '../mobile/header'
+import { MarkdownContent } from '../markdown-content'
+import { PendingActionCards } from '../ai-pending-action-card'
+import { SkillSuggestions } from '../ai-skill-suggestions'
+import { useAiMemberMentions } from '../ai-member-mentions'
+import { PendingAttachmentChips, SentAttachments, toDisplayAttachments } from '../ai-attachments'
+import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
+import { useAiAttachments } from '@/hooks/use-ai-attachments'
+import { AiModelPicker, isConversationModelUnavailable } from '../ai-model-picker'
+import { useWorkspaceSettings } from '@/lib/use-workspace-settings'
+import type { AiChatModel } from '@cairn/shared'
+import { AI_ATTACHMENT_ACCEPT } from '@/lib/ai/attachment-types'
 import { TopBar } from '../sidebar'
+import { InlineError } from '../inline-error'
+import {
+  useAiConversationMessages,
+  useAiConversations,
+  useCreateAiConversation,
+  useSetAiConversationModel,
+} from '@/hooks/use-ai-conversations'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
+import { stripMentionsToText } from '@/lib/chat/mentions'
 import type { ConversationDto } from '@/app/api/ai/conversations/route'
 import type { MessageDto } from '@/app/api/ai/conversations/[id]/messages/route'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { useOneShotRequest } from '@/lib/one-shot-request'
+import { buildAiRequestBody } from './ai-request-body'
+import { nextAiFocusStep } from './ai-focus-step'
+import { useAiConversationSync } from '@/hooks/use-ai-conversation-sync'
 
 // ---- ソースチップ ----
 
-type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string }
+type RagSource = { sourceType: string; sourceId: string; name: string; fileType?: string; externalUrl?: string; href?: string }
+type ToolEvidence = { type: string; id: string; label: string; href: string }
+
+function isSafeHref(value: unknown): value is string {
+  return typeof value === 'string' && (
+    value.startsWith('/') || value.startsWith('https://') || value.startsWith('http://')
+  )
+}
+
+function isToolEvidence(value: unknown): value is ToolEvidence {
+  if (typeof value !== 'object' || value === null) return false
+  const item = value as Record<string, unknown>
+  return (
+    typeof item['type'] === 'string' &&
+    typeof item['id'] === 'string' &&
+    typeof item['label'] === 'string' &&
+    isSafeHref(item['href'])
+  )
+}
+
+function evidenceFromTools(toolInvocations: ToolInvocation[]): ToolEvidence[] {
+  const evidence: ToolEvidence[] = []
+  for (const invocation of toolInvocations) {
+    if (invocation.state !== 'result' || typeof invocation.result !== 'object' || invocation.result === null) continue
+    const result = invocation.result as Record<string, unknown>
+    const records = [
+      ...(Array.isArray(result['items']) ? result['items'] : []),
+      ...(Array.isArray(result['risks']) ? result['risks'] : []),
+    ]
+    for (const record of records) {
+      if (typeof record !== 'object' || record === null) continue
+      const value = (record as Record<string, unknown>)['evidence']
+      const candidates = Array.isArray(value) ? value : [value]
+      for (const candidate of candidates) if (isToolEvidence(candidate)) evidence.push(candidate)
+    }
+  }
+  return evidence
+}
 
 function MessageSources({ annotations, toolInvocations }: {
   annotations?: unknown[] | undefined
   toolInvocations?: ToolInvocation[] | undefined
 }) {
+  const t = useT()
   const ragAnnotation = annotations?.find(
     (a): a is { type: string; sources: RagSource[] } =>
       typeof a === 'object' && a !== null && (a as { type?: unknown }).type === 'rag-sources',
   )
-  const sources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const ragSources: RagSource[] = (ragAnnotation as { sources?: RagSource[] })?.sources ?? []
+  const toolSources = evidenceFromTools(toolInvocations ?? [])
+  const seen = new Set<string>()
+  const sources = [
+    ...ragSources.map(src => ({
+      type: src.sourceType,
+      id: src.sourceId,
+      label: src.name,
+      href: (isSafeHref(src.href) ? src.href : undefined) ?? (
+        src.sourceType === 'file'
+          ? (src.fileType === 'link' && isSafeHref(src.externalUrl) ? src.externalUrl : `/api/attachments/${src.sourceId}`)
+          : src.sourceType === 'project'
+            ? `/projects?open=project-${src.sourceId}`
+            : `/members/${src.sourceId}`
+      ),
+    })),
+    ...toolSources,
+  ].filter(src => {
+    const key = `${src.type}:${src.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  const visibleSources = sources.slice(0, 24)
   const searches = (toolInvocations ?? []).filter(t => t.toolName === 'webSearch' && (t.state === 'call' || t.state === 'result'))
 
   if (sources.length === 0 && searches.length === 0) return null
 
   return (
     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-      {sources.map(src => {
-        const icon = src.sourceType === 'file' ? 'file' : src.sourceType === 'project' ? 'folder' : 'users'
-        const href =
-          src.sourceType === 'file'
-            ? (src.fileType === 'link' && src.externalUrl ? src.externalUrl : `/api/attachments/${src.sourceId}`)
-            : src.sourceType === 'project'
-            ? `/projects?open=${src.sourceId}`
-            : `/members/${src.sourceId}`
-        const isExternal = src.sourceType === 'file' && src.fileType === 'link'
+      {visibleSources.map(src => {
+        const icon = src.type === 'file' ? 'file' : src.type === 'project' ? 'folder' : src.type === 'task' ? 'check' : src.type === 'message' || src.type === 'channel' ? 'chat' : 'users'
+        const isExternal = src.href.startsWith('https://') || src.href.startsWith('http://')
         return (
-          <a key={`${src.sourceType}:${src.sourceId}`} href={href}
+          <a key={`${src.type}:${src.id}`} href={src.href}
             target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
-            <Icon name={icon} size={10} strokeWidth={2}/>{src.name}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)', textDecoration: 'none', cursor: 'pointer' }}>
+            <Icon name={icon} size={10} strokeWidth={2}/>{src.label}
           </a>
         )
       })}
-      {searches.map(t => {
-        const query = String((t.args as { query?: string }).query ?? 'Web検索')
-        const firstUrl = t.state === 'result' ? ((t.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
+      {sources.length > visibleSources.length && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)' }}>
+          {t('{count} more', { count: sources.length - visibleSources.length })}
+        </span>
+      )}
+      {searches.map(invocation => {
+        const query = String((invocation.args as { query?: string }).query ?? t('Web search'))
+        const firstUrl = invocation.state === 'result' ? ((invocation.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
         return firstUrl ? (
-          <a key={t.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
+          <a key={invocation.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)', textDecoration: 'none', cursor: 'pointer' }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </a>
         ) : (
-          <span key={t.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          <span key={invocation.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)' }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </span>
         )
@@ -67,7 +150,31 @@ function MessageSources({ annotations, toolInvocations }: {
   )
 }
 
+// useChat はエラー応答の本文をそのまま message にする。API の `{ error }` は文だけを見せる
+export function chatErrorMessage(error: Error): string {
+  try {
+    const body = JSON.parse(error.message) as { error?: unknown }
+    if (typeof body.error === 'string') return body.error
+  } catch {
+    // JSON でなければそのまま出す
+  }
+  return error.message
+}
+
 // ---- 会話サイドバー (PC) ----
+
+const EMPTY_CONVERSATIONS: ConversationDto[] = []
+
+/** 取得できなかったことと理由を出し、もう一度読み込めるようにする */
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const t = useT()
+  return (
+    <InlineError variant="box">
+      {message}{' '}
+      <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 'var(--fs-sm)', marginLeft: 4 }} onClick={onRetry}>{t('Reload')}</button>
+    </InlineError>
+  )
+}
 
 function ConversationSidebar({
   conversations,
@@ -75,24 +182,28 @@ function ConversationSidebar({
   onSelect,
   onNew,
   isCreating,
+  loadError,
 }: {
   conversations: ConversationDto[]
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
   isCreating: boolean
+  /** 一覧を取得できなかったときの表示（「まだ会話がない」と見せない） */
+  loadError?: React.ReactNode
 }) {
+  const t = useT()
   const grouped: Record<string, ConversationDto[]> = {}
   const now = new Date()
 
   for (const c of conversations) {
     const d = new Date(c.createdAt)
     const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
-    const key = diffDays === 0 ? '今日' : diffDays <= 6 ? '今週' : '以前'
+    const key = diffDays === 0 ? 'Today' : diffDays <= 6 ? 'This week' : 'Earlier'
     ;(grouped[key] ??= []).push(c)
   }
 
-  const groups = ['今日', '今週', '以前'].filter(g => grouped[g]?.length)
+  const groups = ['Today', 'This week', 'Earlier'].filter(g => grouped[g]?.length)
 
   return (
     <aside style={{ width: 260, borderRight: '1px solid var(--border)', background: 'var(--card)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
@@ -103,18 +214,19 @@ function ConversationSidebar({
           disabled={isCreating}
           style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: isCreating ? 0.6 : 1 }}
         >
-          <Icon name="plus" size={13}/> 新しい会話
+          <Icon name="plus" size={13}/> {t('New conversation')}
         </button>
       </div>
       <div style={{ padding: '0 8px 12px', overflow: 'auto', flex: 1 }}>
-        {groups.length === 0 && (
-          <div style={{ padding: '16px 10px', fontSize: 12, color: 'var(--text-4)', textAlign: 'center' }}>
-            まだ会話がありません
+        {loadError}
+        {!loadError && groups.length === 0 && (
+          <div style={{ padding: '16px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)', textAlign: 'center' }}>
+            {t('No conversations yet')}
           </div>
         )}
         {groups.map(group => (
           <React.Fragment key={group}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '8px 10px', textTransform: 'uppercase' }}>{group}</div>
+            <div className="section-label" style={{ padding: '8px 10px' }}>{t(group)}</div>
             {(grouped[group] ?? []).map(c => (
               <button
                 key={c.id}
@@ -123,12 +235,12 @@ function ConversationSidebar({
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   padding: '8px 10px', borderRadius: 7, border: 'none',
                   background: c.id === activeId ? 'var(--card-hover)' : 'transparent',
-                  color: 'var(--text-2)', fontSize: 12.5, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                  color: 'var(--text-2)', fontSize: 'var(--fs-md)', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >
                 <Icon name="chat" size={13} color="var(--text-3)"/>
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.title ?? '新しい会話'}
+                  {c.title ?? t('New conversation')}
                 </span>
               </button>
             ))}
@@ -142,20 +254,21 @@ function ConversationSidebar({
 // ---- ウェルカム画面 ----
 
 function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isCreating: boolean; isMobile?: boolean }) {
+  const t = useT()
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
-      <div style={{ width: isMobile ? 48 : 52, height: isMobile ? 48 : 52, borderRadius: isMobile ? 14 : 16, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name="sparkles" size={isMobile ? 22 : 26} color="#fff"/>
+      <div style={{ width: isMobile ? 48 : 52, height: isMobile ? 48 : 52, borderRadius: isMobile ? 14 : 16, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="sparkles" size={isMobile ? 22 : 26} color="var(--on-accent)"/>
       </div>
       {isMobile ? (
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.6 }}>
-          プロジェクト・メンバー・ファイルの情報をもとに質問に答えます。
+        <p style={{ margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.6 }}>
+          {t('It answers questions using projects, members, and files.')}
         </p>
       ) : (
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>AIアシスタント</h2>
-          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.7 }}>
-            プロジェクト・メンバー・ファイルの情報をもとに<br/>質問に答えます。
+          <h2 style={{ margin: '0 0 8px', fontSize: 'var(--fs-3xl)', fontWeight: 600 }}>{t('AI assistant')}</h2>
+          <p style={{ margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.7 }}>
+            {t('Based on projects, members, and files')}<br/>{t('It answers your questions.')}
           </p>
         </div>
       )}
@@ -165,7 +278,7 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
         disabled={isCreating}
         style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: isCreating ? 0.6 : 1 }}
       >
-        <Icon name="plus" size={13}/> 新しい会話を始める
+        <Icon name="plus" size={13}/> {t('Start a new conversation')}
       </button>
     </div>
   )
@@ -173,33 +286,62 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
 
 // ---- チャットビュー ----
 
-const SUGGESTIONS = ['プロジェクトの進捗を教えて', 'メンバーのスキルを確認したい', 'ファイルの内容を要約して', '計画のリスクを洗い出して']
+/** サーバーが保存した会話を、useChat のメッセージの形にする */
+function toChatMessages(saved: MessageDto[]): Message[] {
+  return saved.map(m => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+    ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
+    ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
+    ...(m.attachments ? { experimental_attachments: toDisplayAttachments(m.attachments) } : {}),
+  }))
+}
+
+const SUGGESTIONS = [
+  'How is the project going?',
+  'I want to check member skills',
+  'Summarize the file contents',
+  'List the risks in the plan',
+]
 
 function ChatView({
   conversationId,
+  model,
   initialMessages,
   isMobile,
+  autoFocusInput = false,
 }: {
   conversationId: string
+  // この会話で使うモデル（入力欄の下で切り替えられる）
+  model: AiChatModel
   initialMessages: MessageDto[]
   isMobile?: boolean
+  autoFocusInput?: boolean
 }) {
+  const t = useT()
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const [isComposing, setIsComposing] = React.useState(false)
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
+  const attachments = useAiAttachments(conversationId)
+  const { messages, input, setInput, setMessages, handleInputChange, append, isLoading, error } = useChat({
     api: `/api/ai/conversations/${conversationId}/messages`,
     id: conversationId,
-    initialMessages: initialMessages.map(m => ({
-      id: m.id,
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-      ...(m.annotations ? { annotations: m.annotations as JSONValue[] } : {}),
-      ...(m.toolInvocations ? { toolInvocations: m.toolInvocations as ToolInvocation[] } : {}),
-    })),
+    initialMessages: toChatMessages(initialMessages),
+    experimental_prepareRequestBody: ({ messages, requestBody }) => buildAiRequestBody(messages, requestBody),
     onFinish: () => {
+      attachments.clearLastSent()
+      // 送ったメッセージを、サーバーが保存した内容（添付の期限付きリンクを含む）に置き換える
+      void conversationSync.finished()
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+    },
+    // 送信に失敗したら、送ろうとした添付を入力欄に戻す（添付し直させない）。
+    // 失敗した依頼はサーバーに保存されないため、保存待ちの記録も消す（次にサーバーの内容で置き換えたとき、画面からも消える）
+    onError: () => {
+      attachments.restoreLastSent()
+      // 失敗した依頼は保存されないため、待つのをやめる
+      conversationSync.failed()
     },
   })
 
@@ -207,51 +349,116 @@ function ChatView({
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length, isLoading])
 
+  // 送信済みのメッセージはサーバーを正とする。useChat は会話ごとにメッセージを手元に持ち続ける（initialMessages は
+  // 最初の表示にしか使わない）ため、応答の後・開き直したとき・タブに戻ったときに、サーバーの内容で置き換える。
+  // 受信中と、送った依頼がまだ保存されていない間だけは置き換えない（表示中のやり取りを消さない）。
+  // 保存されたかは、送る前にサーバーにあった件数より2件（依頼と応答）増えたかで見る。手元の件数とは比べない
+  // （送信に失敗した依頼は手元にだけ残り、手元の件数と比べるといつまでも置き換えられなくなる）
+  // 送信済みのメッセージはサーバーを正とし、保存された会話で置き換える（取り直しと置き換えの判定はフックにまとめる）
+  const conversationSync = useAiConversationSync({
+    conversationId,
+    isReceiving: isLoading,
+    onSaved: saved => {
+      setMessages(toChatMessages(saved))
+      // 送ったときのプレビューは、保存した添付のリンクに置き換わったので解放する
+      attachments.releaseSentPreviews()
+    },
+  })
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const mentions = useAiMemberMentions({ input, setInput, textareaRef })
+  React.useEffect(() => {
+    if (autoFocusInput) textareaRef.current?.focus()
+  }, [autoFocusInput])
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = React.useState(false)
+  // owner が選べるモデルから外したモデルの会話は、選び直すまで送らない（送ってもサーバーが 409 で断る）
+  const { data: workspaceSettings } = useWorkspaceSettings()
+  const modelUnavailable = isConversationModelUnavailable(model, workspaceSettings?.aiChatAllowedModels)
+  // モデルの切り替えを保存している間は送らない（保存前に送ると、切り替える前のモデルで回答・課金される）
+  const setModel = useSetAiConversationModel(conversationId)
+  // 送れるのは、応答の受信中でなく、どの添付も送れる状態のとき（アップロード中・外している途中・失敗した添付があれば送らない）
+  const ready = !isLoading && attachments.blocker === null && !modelUnavailable && !setModel.isPending
+
+  // 送信は入力欄からも候補のボタンからも、ここだけを通す（添付の扱いと送れるかの判定を一か所にする）
+  const send = (content: string) => {
+    if (!content.trim() || !ready) return
+    const { attachmentIds, displayAttachments } = attachments.takeForSend()
+    // 依頼の ID はここで決め、サーバーにも同じ ID で保存させる。保存を確かめるまでサーバーの内容で置き換えない
+    const messageId = crypto.randomUUID()
+    conversationSync.sent(messageId)
+    void append(
+      { id: messageId, role: 'user', content, ...(displayAttachments.length > 0 ? { experimental_attachments: displayAttachments } : {}) },
+      { body: { attachmentIds } },
+    )
+  }
+  const canSubmit = ready && !!input.trim()
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    // ピッカーで入れた `@表示名` を `<@userId|表示名>` にして送る（AI が ID で調べられるように）
+    const content = mentions.takeEncoded(input)
+    setInput('')
+    send(content)
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {!isMobile && (
         <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 7, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="sparkles" size={12} color="#fff"/>
+          <div style={{ width: 24, height: 24, borderRadius: 7, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="sparkles" size={12} color="var(--accent-text)"/>
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>AIアシスタント</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>{t('AI assistant')}</span>
         </div>
       )}
 
+      {conversationSync.syncError && !error && (
+        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}` }}>
+          <InlineError variant="box">
+            {t('Could not load the latest conversation. Attachment links may be out of date.')}{' '}
+            <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 'var(--fs-sm)', marginLeft: 4 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
+          </InlineError>
+        </div>
+      )}
       {error && (
-        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
-          エラー: {error.message}
+        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
+          {t('Error: {message}', { message: chatErrorMessage(error) })}
         </div>
       )}
 
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '24px 0' }}>
         <div style={{ maxWidth: isMobile ? undefined : 760, margin: '0 auto', padding: isMobile ? '0 16px' : '0 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {messages.length === 0 && (
-            <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 13, paddingTop: 40 }}>
-              質問を入力して会話を始めましょう
+            <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)', paddingTop: 40 }}>
+              {t('Type a question to start the conversation')}
             </div>
           )}
           {messages.map(m => m.role === 'user' ? (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                {m.content}
+              <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 'var(--fs-lg)', color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                {m.experimental_attachments && <SentAttachments attachments={m.experimental_attachments}/>}
+                {stripMentionsToText(m.content)}
               </div>
             </div>
           ) : (
             <div key={m.id} style={{ display: 'flex', gap: 12 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="sparkles" size={14} color="#fff"/>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="sparkles" size={14} color="var(--accent-text)"/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text)' }}>
+                  <MarkdownContent content={m.content} lineHeight={1.7}/>
+                </div>
+                <PendingActionCards toolInvocations={m.toolInvocations}/>
                 <MessageSources annotations={m.annotations as unknown[]} toolInvocations={m.toolInvocations}/>
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
                     className="btn btn-ghost"
-                    style={{ height: 26, fontSize: 11 }}
+                    style={{ height: 26, fontSize: 'var(--fs-xs)' }}
                     onClick={() => navigator.clipboard.writeText(m.content)}
                   >
-                    コピー
+                    {t('Copy')}
                   </button>
                 </div>
               </div>
@@ -259,11 +466,11 @@ function ChatView({
           ))}
           {isLoading && (
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="sparkles" size={14} color="#fff"/>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="sparkles" size={14} color="var(--accent-text)"/>
               </div>
-              <div style={{ paddingTop: 6, color: 'var(--text-3)', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <TypingDots/> 考えています…
+              <div style={{ paddingTop: 6, color: 'var(--text-3)', fontSize: 'var(--fs-md)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <TypingDots/> {t('Thinking…')}
               </div>
             </div>
           )}
@@ -283,41 +490,97 @@ function ChatView({
                 <button
                   key={i}
                   type="button"
-                  disabled={isLoading}
-                  onClick={() => void append({ role: 'user', content: s })}
+                  disabled={!ready}
+                  onClick={() => send(t(s))}
                   style={{
-                    padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 500,
+                    padding: '6px 12px', borderRadius: 999, fontSize: 'var(--fs-sm)', fontWeight: 500,
                     background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)',
-                    cursor: isLoading ? 'default' : 'pointer', fontFamily: 'inherit', opacity: isLoading ? 0.5 : 1,
+                    cursor: ready ? 'pointer' : 'default', fontFamily: 'inherit', opacity: ready ? 1 : 0.5,
                     ...(isMobile ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
                   }}
                 >
-                  {s}
+                  {t(s)}
                 </button>
               ))}
             </div>
           )}
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: '1px solid var(--border-2)', borderRadius: 14, padding: '10px 12px 10px 14px', boxShadow: 'var(--shadow-sm)' }}>
+          <SkillSuggestions input={input} onSelect={name => setInput(`$${name} `)}/>
+          {mentions.picker}
+          <PendingAttachmentChips items={attachments.pending} onRemove={localId => void attachments.remove(localId)}/>
+          {/* 添付できなかった・外せなかったファイルは、閉じるまで残す */}
+          {attachments.notice && (
+            <InlineError onDismiss={attachments.dismissNotice} style={{ marginBottom: 8 }}>{attachments.notice}</InlineError>
+          )}
+          {attachments.blocker === 'failed' && (
+            <InlineError style={{ marginBottom: 8 }}>{t('Remove the attachments that failed to upload before sending')}</InlineError>
+          )}
+          <form
+            onSubmit={submit}
+            onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => {
+              if (e.dataTransfer.files.length === 0) return
+              e.preventDefault()
+              setDragging(false)
+              void attachments.add(e.dataTransfer.files)
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: 'var(--card)', border: `1px solid ${dragging ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 14, padding: '10px 12px 10px 10px', boxShadow: 'var(--shadow-sm)' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={AI_ATTACHMENT_ACCEPT}
+                hidden
+                onChange={e => {
+                  if (e.target.files) void attachments.add(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={t('Attach files')}
+                title={t('Attach files')}
+                disabled={isLoading}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }}
+              >
+                <Icon name="paperclip" size={16}/>
+              </button>
               <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={handleInputChange}
+                onChange={e => { handleInputChange(e); mentions.onEdit(e.target.value, e.target.selectionStart) }}
+                onSelect={e => mentions.syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onBlur={mentions.close}
+                onPaste={e => {
+                  if (e.clipboardData.files.length === 0) return
+                  e.preventDefault()
+                  void attachments.add(e.clipboardData.files)
+                }}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); handleSubmit(e as unknown as React.FormEvent) } }}
-                placeholder={isMobile ? 'AIに質問する…' : '質問を入力 (Shift+Enterで改行)'}
+                onKeyDown={e => {
+                  // 日本語入力の確定の Enter や変換中の矢印キーでは、候補を選ばない
+                  if (isImeConfirmingEnter(e, isComposing)) return
+                  if (mentions.handleKeyDown(e)) return
+                  if (e.key === 'Enter' && !e.shiftKey && !isImeConfirmingEnter(e, isComposing)) { e.preventDefault(); submit(e) }
+                }}
+                placeholder={isMobile ? t('Ask AI…') : t('Type a question (Shift+Enter for a new line)')}
                 rows={1}
                 disabled={isLoading}
-                style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 13.5, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '4px 0', minHeight: 22, maxHeight: 120 }}
+                style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 'var(--fs-lg)', color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '4px 0', minHeight: 22, maxHeight: 120 }}
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={!canSubmit}
+                aria-label={attachments.blocker === 'uploading' ? t('Uploading...') : t('Send')}
                 style={{
                   width: 32, height: 32, borderRadius: 10, border: 'none',
-                  background: (input.trim() && !isLoading) ? 'var(--accent)' : 'var(--border-2)',
-                  color: (input.trim() && !isLoading) ? 'var(--on-accent)' : 'var(--text-4)',
-                  cursor: (input.trim() && !isLoading) ? 'pointer' : 'default',
+                  background: canSubmit ? 'var(--accent)' : 'var(--border-2)',
+                  color: canSubmit ? 'var(--on-accent)' : 'var(--text-4)',
+                  cursor: canSubmit ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}
@@ -326,8 +589,15 @@ function ChatView({
               </button>
             </div>
           </form>
-          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
-            AIは間違えることもあります。重要な判断はリーダーに相談してください。
+          <AiModelPicker
+            conversationId={conversationId}
+            model={model}
+            disabled={isLoading}
+            changing={setModel.isPending}
+            onChange={next => setModel.mutate(next)}
+          />
+          <div style={{ marginTop: 8, fontSize: 'var(--fs-xs)', color: 'var(--text-4)', textAlign: 'center' }}>
+            {t('AI can be wrong. Check important decisions with a lead.')}
           </div>
         </div>
       </div>
@@ -338,30 +608,101 @@ function ChatView({
 // ---- メインコンポーネント ----
 
 export function PageAI({ isMobile }: { isMobile?: boolean }) {
-  const queryClient = useQueryClient()
+  const aiChatAllowed = useAiChatAllowed()
+  // owner が /ai を使えるロールを絞っていて自分が対象外なら、会話を読み込まず理由を出す（URL を直接開いたとき）
+  if (aiChatAllowed === false) return <AiChatNotAllowed isMobile={isMobile}/>
+  return <PageAIContent isMobile={isMobile}/>
+}
+
+function AiChatNotAllowed({ isMobile }: { isMobile?: boolean | undefined }) {
+  const t = useT()
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 16 : 28 }}>
+      <div style={{ maxWidth: 420, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)', lineHeight: 1.7 }}>
+        <Icon name="sparkles" size={24} color="var(--text-4)"/>
+        <p style={{ margin: '10px 0 0' }}>
+          {t('The workspace owner has limited who can use the AI assistant in this workspace. Ask the owner if you need access.')}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
+  const t = useT()
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [mobilePane, setMobilePane] = React.useState<'welcome' | 'list' | 'chat'>('welcome')
 
-  const { data: conversations = [] } = useQuery<ConversationDto[]>({
-    queryKey: ['ai-conversations'],
-    queryFn: () => fetchWithAuth('/api/ai/conversations').then(r => r.json()),
-  })
+  const conversationsQuery = useAiConversations()
+  const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
+  const messagesQuery = useAiConversationMessages(activeId)
+  const initialMessages = messagesQuery.data
 
-  const { data: initialMessages } = useQuery<MessageDto[]>({
-    queryKey: ['ai-messages', activeId],
-    queryFn: () => fetchWithAuth(`/api/ai/conversations/${activeId}/messages`).then(r => r.json()),
-    enabled: !!activeId,
-  })
+  const [focusRequested, setFocusRequested] = React.useState(false)
+  const focusNextConversationRef = React.useRef(false)
+  const [focusConversationId, setFocusConversationId] = React.useState<string | null>(null)
 
-  const createConversation = useMutation({
-    mutationFn: () => fetchWithAuth('/api/ai/conversations', { method: 'POST' }).then(r => r.json()) as Promise<ConversationDto>,
-    onSuccess: (conv) => {
-      queryClient.setQueryData<ConversationDto[]>(['ai-conversations'], prev => [conv, ...(prev ?? [])])
-      setActiveId(conv.id)
+  const createConversation = useCreateAiConversation(conv => {
+    setActiveId(conv.id)
+    if (isMobile) setMobilePane('chat')
+    if (focusNextConversationRef.current) {
+      focusNextConversationRef.current = false
+      setFocusConversationId(conv.id)
+    }
+  })
+  const { mutate: startConversation } = createConversation
+
+  // ?focus=1 はアプリのホーム画面のクイックアクション。入力欄は会話の中にしかないので、
+  // 直近の空の会話か新しい会話を開いて入力欄へフォーカスする
+  useOneShotRequest('focus', () => setFocusRequested(true))
+  React.useEffect(() => {
+    if (!focusRequested) return
+    const step = nextAiFocusStep({ conversations: conversationsQuery.data, activeId, activeMessages: initialMessages })
+    if (step.kind === 'open') {
+      setActiveId(step.conversationId)
       if (isMobile) setMobilePane('chat')
-    },
+    } else if (step.kind === 'focus') {
+      setFocusRequested(false)
+      setFocusConversationId(step.conversationId)
+    } else if (step.kind === 'create') {
+      setFocusRequested(false)
+      focusNextConversationRef.current = true
+      startConversation()
+    }
+  }, [activeId, conversationsQuery.data, focusRequested, initialMessages, isMobile, startConversation])
 
-  })
+  // 一覧・会話を取得できなかったときは、まだ会話がない・最初の画面のように見せず、エラーと再読み込みを出す
+  const conversationsError = conversationsQuery.isError ? (
+    <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+  ) : null
+  // 会話を開いている途中・開けなかったときの本文（会話の中身が無いのに最初の画面を出さない）
+  const conversationBody = (mobile: boolean) => {
+    if (!activeId) return null
+    // 会話のモデルは一覧から引く（一覧が読めなければ、モデルを推測して送らせない）
+    const activeConversation = conversations.find(conversation => conversation.id === activeId)
+    if (initialMessages && activeConversation) {
+      return <ChatView key={activeId} conversationId={activeId} model={activeConversation.model} initialMessages={initialMessages} isMobile={mobile} autoFocusInput={activeId === focusConversationId}/>
+    }
+    if (conversationsQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={conversationsQuery.error.message} onRetry={() => void conversationsQuery.refetch()}/>
+        </div>
+      )
+    }
+    if (messagesQuery.isError) {
+      return (
+        <div style={{ flex: 1, padding: mobile ? 16 : 28 }}>
+          <LoadError message={messagesQuery.error.message} onRetry={() => void messagesQuery.refetch()}/>
+        </div>
+      )
+    }
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)', gap: 8 }}>
+        <TypingDots/> {t('Loading...')}
+      </div>
+    )
+  }
 
   const selectConversation = (id: string) => {
     setActiveId(id)
@@ -401,12 +742,12 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
       </button>
     )
 
-    if (mobilePane === 'chat' && activeId && initialMessages) {
-      const title = conversations.find(c => c.id === activeId)?.title ?? 'AIアシスタント'
+    if (mobilePane === 'chat' && activeId) {
+      const title = conversations.find(c => c.id === activeId)?.title ?? t('AI assistant')
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)', paddingBottom: 'var(--mobile-nav-h)' }}>
           <MobileHeader title={title} onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages} isMobile/>
+          {conversationBody(true)}
         </div>
       )
     }
@@ -414,8 +755,9 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     if (mobilePane === 'list') {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-          <MobileHeader title="過去の会話" onBack={() => setMobilePane('welcome')} right={newButton}/>
-          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(65px + env(safe-area-inset-bottom))' }}>
+          <MobileHeader title={t('Past conversations')} onBack={() => setMobilePane('welcome')} right={newButton}/>
+          <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-h)' }}>
+            {conversationsError && <div style={{ padding: 16 }}>{conversationsError}</div>}
             {conversations.map(c => (
               <button
                 key={c.id}
@@ -429,8 +771,8 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Icon name="chat" size={16} color="var(--text-3)"/>
                 </div>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 15 }}>
-                  {c.title ?? '新しい会話'}
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--fs-xl)' }}>
+                  {c.title ?? t('New conversation')}
                 </span>
                 <Icon name="chevRight" size={16} color="var(--text-4)"/>
               </button>
@@ -451,7 +793,8 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
     ) : undefined
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)' }}>
-        <MobileHeader title="AIアシスタント" right={historyButton}/>
+        <MobileHeader title={t('AI assistant')} right={historyButton} />
+        {conversationsError && <div style={{ padding: '12px 16px 0' }}>{conversationsError}</div>}
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending} isMobile/>
       </div>
     )
@@ -461,7 +804,7 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TopBar title="AIアシスタント"/>
+      <TopBar title={t('AI assistant')} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
       <ConversationSidebar
         conversations={conversations}
@@ -469,10 +812,9 @@ export function PageAI({ isMobile }: { isMobile?: boolean }) {
         onSelect={setActiveId}
         onNew={() => createConversation.mutate()}
         isCreating={createConversation.isPending}
+        loadError={conversationsError}
       />
-      {activeId && initialMessages ? (
-        <ChatView key={activeId} conversationId={activeId} initialMessages={initialMessages}/>
-      ) : (
+      {activeId ? conversationBody(false) : (
         <WelcomeScreen onNew={() => createConversation.mutate()} isCreating={createConversation.isPending}/>
       )}
       </div>

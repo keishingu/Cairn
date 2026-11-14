@@ -14,6 +14,7 @@ export function fileKindLabel(mimeType: string | null, fileName: string): string
   ) return 'PPT'
   if (mimeType === 'text/csv') return 'CSV'
   if (mimeType?.startsWith('image/')) return 'IMG'
+  if (mimeType?.startsWith('video/')) return 'VID'
   const ext = fileName.split('.').pop()?.toUpperCase() ?? 'FILE'
   return ext.slice(0, 4)
 }
@@ -24,7 +25,7 @@ function fileKindColor(kind: string): { bg: string; color: string } {
   if (kind === 'DOC') return { bg: 'var(--blue-soft)', color: 'var(--blue-text)' }
   if (kind === 'PPT') return { bg: 'var(--amber-soft)', color: 'var(--amber-text)' }
   if (kind === 'CSV') return { bg: 'var(--rose-soft)', color: 'var(--rose-text)' }
-  if (kind === 'IMG') return { bg: 'var(--violet-soft)', color: 'var(--violet-text)' }
+  if (kind === 'IMG' || kind === 'VID') return { bg: 'var(--violet-soft)', color: 'var(--violet-text)' }
   return { bg: 'var(--card-2)', color: 'var(--text-3)' }
 }
 
@@ -56,7 +57,7 @@ export function FileTypeIcon({
     <div style={{
       width, height, borderRadius: 4, flexShrink: 0,
       background: bg, color,
-      fontSize: Math.round(height / 4), fontWeight: 700,
+      fontSize: Math.round(height / 4), fontWeight: 600,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       {kind}
@@ -88,7 +89,7 @@ export function GoogleDocsIcon({ url, width = 32, height = 36 }: { url: string; 
     <div style={{
       width, height, borderRadius: 4, flexShrink: 0,
       background: cfg.bg, color: cfg.color,
-      fontSize: 9, fontWeight: 700,
+      fontSize: 'var(--fs-2xs)', fontWeight: 600,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       {cfg.label}

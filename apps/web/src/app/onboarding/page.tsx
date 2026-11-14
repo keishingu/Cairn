@@ -5,8 +5,10 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { useT } from '@/components/locale-provider'
 
 export default function OnboardingPage() {
+  const t = useT()
   const router = useRouter()
   const [workspaceName, setWorkspaceName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -27,7 +29,7 @@ export default function OnboardingPage() {
     const body = await res.json().catch(() => ({})) as { ok?: boolean; workspaceId?: string; error?: string }
 
     if (!res.ok) {
-      setError(body.error ?? 'ワークスペースの作成に失敗しました')
+      setError(body.error ?? t('Could not create the workspace.'))
       setLoading(false)
       return
     }
@@ -60,15 +62,14 @@ export default function OnboardingPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-4xl)', fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 8 }}>
             Cairn
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-            ワークスペースを作成
-          </div>
-          <div style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            チームや組織の名前でワークスペースを作成します。<br />
-            メンバーはあとから招待できます。
+          <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>{t('Create workspace')}</div>
+          <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.6 }}>
+            {t('Create a workspace with your team or organization name.')}
+            <br />
+            {t('You can invite members later.')}
           </div>
         </div>
 
@@ -81,31 +82,27 @@ export default function OnboardingPage() {
         }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>
-                ワークスペース名
-              </label>
+              <label style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Workspace name')}</label>
               <input
                 type="text"
                 value={workspaceName}
                 onChange={e => setWorkspaceName(e.target.value)}
                 required
                 autoFocus
-                placeholder="例: 山岳部、開発チーム、ABC株式会社"
+                placeholder={t('e.g. Alpine club, product team')}
                 maxLength={100}
                 style={{
                   padding: '9px 12px',
                   border: '1px solid var(--border-2)',
                   borderRadius: 8,
-                  fontSize: 14,
+                  fontSize: 'var(--fs-lg)',
                   color: 'var(--text)',
                   background: 'var(--bg)',
                   outline: 'none',
                   fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: 12, color: 'var(--text-4)' }}>
-                あとで変更できます
-              </div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('You can change this later')}</div>
             </div>
 
             {error && (
@@ -115,7 +112,7 @@ export default function OnboardingPage() {
                 background: 'var(--red-soft)',
                 border: '1px solid var(--red)',
                 color: 'var(--red-text)',
-                fontSize: 12.5,
+                fontSize: 'var(--fs-md)',
               }}>
                 {error}
               </div>
@@ -124,20 +121,10 @@ export default function OnboardingPage() {
             <button
               type="submit"
               disabled={loading || !workspaceName.trim()}
-              style={{
-                padding: '10px 16px',
-                borderRadius: 8,
-                border: 'none',
-                background: loading || !workspaceName.trim() ? 'var(--border-2)' : 'var(--accent)',
-                color: loading || !workspaceName.trim() ? 'var(--text-4)' : 'var(--on-accent)',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading || !workspaceName.trim() ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                marginTop: 4,
-              }}
+              className="btn btn-primary btn-lg"
+              style={{ marginTop: 4 }}
             >
-              {loading ? '作成中...' : 'ワークスペースを作成'}
+              {loading ? t('Creating...') : t('Create workspace')}
             </button>
           </form>
         </div>
@@ -159,8 +146,8 @@ function StepDot({ label, done, active }: { label: string; done?: boolean; activ
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: 12,
-      fontWeight: 700,
+      fontSize: 'var(--fs-sm)',
+      fontWeight: 600,
       flexShrink: 0,
     }}>
       {done ? '✓' : label}

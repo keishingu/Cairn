@@ -31,7 +31,7 @@ export async function POST(_req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, msg.channelId)
+    const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, msg.channelId, ctx.role)
     if (forbidden) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }

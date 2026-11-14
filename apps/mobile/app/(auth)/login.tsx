@@ -1,10 +1,23 @@
 import React from 'react'
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
-import { Link } from 'expo-router'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Keyboard } from 'react-native'
+import { Link, useLocalSearchParams } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useT } from '../../components/locale-provider'
+import { AUTH_BUTTON_BACKGROUND, AUTH_PALETTE as palette } from '../../lib/auth-palette'
+import { formatBuildInfo } from '../../lib/build-info'
 import { supabase } from '../../lib/supabase'
 import { GoogleSignInButton } from '../../components/google-sign-in-button'
+import { AppleSignInButton } from '../../components/apple-sign-in-button'
+import * as AppleAuthentication from 'expo-apple-authentication'
+import * as Application from 'expo-application'
+import Constants from 'expo-constants'
+import * as Updates from 'expo-updates'
 
 export default function LoginScreen() {
+  const t = useT()
+  const insets = useSafeAreaInsets()
+  const { accountDeleted } = useLocalSearchParams<{ accountDeleted?: string }>()
+  const [keyboardVisible, setKeyboardVisible] = React.useState(false)
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
@@ -20,18 +33,34 @@ export default function LoginScreen() {
       setError(authError.message)
       setLoading(false)
     }
-    // 成功時は _layout.tsx の onAuthStateChange が /(app)/projects へリダイレクト
+    // 成功時は _layout.tsx の onAuthStateChange が /(app)/chats へリダイレクト
   }
+
+  // Android はキーボードの分だけ画面が縮み、下端のビルド情報がフォームに重なるため、表示中は隠す
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true))
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [])
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Cairn</Text>
-      <Text style={styles.subtitle}>サインイン</Text>
+      <Text style={styles.subtitle}>{t('Sign in')}</Text>
 
       <View style={styles.form}>
+        {accountDeleted === '1' && (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>{t('Your account has been deleted.')}</Text>
+          </View>
+        )}
         <TextInput
           style={styles.input}
-          placeholder="メールアドレス"
+          placeholderTextColor={palette.text3}
+          placeholder={t('Email')}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -40,7 +69,8 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="パスワード"
+          placeholderTextColor={palette.text3}
+          placeholder={t('Password')}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -55,24 +85,38 @@ export default function LoginScreen() {
 
         <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>サインイン</Text>
-          )}
+            <ActivityIndicator color={palette.onAccent} />
+          ) : <Text style={styles.buttonText}>{t('Sign in')}</Text>}
         </TouchableOpacity>
 
         <View style={styles.divider}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>または</Text>
+          <Text style={styles.dividerText}>{t('or')}</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        <GoogleSignInButton label="Google でサインイン" onError={(m) => setError(m || null)} />
+        <GoogleSignInButton label={t('Sign in with Google')} onError={(m) => setError(m || null)} />
+        <AppleSignInButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          onError={(m) => setError(m || null)}
+        />
       </View>
 
       <Link href="/(auth)/signup" style={styles.link}>
-        アカウントをお持ちでない方はこちら
+        {t("Don't have an account? Sign up")}
       </Link>
+
+      {!keyboardVisible && (
+        <Text selectable style={[styles.buildInfo, { bottom: insets.bottom + 12 }]}>
+          {formatBuildInfo({
+            version: Application.nativeApplicationVersion,
+            buildNumber: Application.nativeBuildVersion,
+            runtimeVersion: Updates.runtimeVersion ?? Constants.expoConfig?.runtimeVersion?.toString() ?? null,
+            updateId: Updates.updateId,
+            isEmbeddedLaunch: Updates.isEmbeddedLaunch,
+          })}
+        </Text>
+      )}
     </View>
   )
 }
@@ -83,16 +127,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: palette.bg,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 8,
+    color: palette.text,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: palette.text3,
     marginBottom: 32,
   },
   form: {
@@ -101,10 +146,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: palette.border,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    color: palette.text,
+    backgroundColor: palette.card,
   },
   errorBox: {
     backgroundColor: '#fef2f2',
@@ -117,15 +164,26 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontSize: 14,
   },
+  successBox: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    padding: 12,
+  },
+  successText: {
+    color: '#047857',
+    fontSize: 14,
+  },
   button: {
-    backgroundColor: '#0070f3',
+    backgroundColor: AUTH_BUTTON_BACKGROUND,
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',
     marginTop: 4,
   },
   buttonText: {
-    color: '#fff',
+    color: palette.onAccent,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -138,15 +196,23 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: palette.border,
   },
   dividerText: {
-    color: '#999',
+    color: palette.text4,
     fontSize: 13,
   },
   link: {
     marginTop: 24,
-    color: '#0070f3',
+    color: palette.accentText,
     fontSize: 14,
+  },
+  buildInfo: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    textAlign: 'center',
+    color: palette.text3,
+    fontSize: 11,
   },
 })

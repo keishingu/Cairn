@@ -3,9 +3,10 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
-import { createServiceRoleClient, resolveEmailsByUserId } from '@/lib/supabase/service'
+import { isWorkspaceAdmin } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
+import type { ProfileAttributeDto } from '@cairn/shared'
 
 export interface WorkspaceMemberDto {
   userId: string
@@ -14,6 +15,7 @@ export interface WorkspaceMemberDto {
   avatarUrl: string | null
   role: 'owner' | 'admin' | 'member' | 'guest'
   membershipStatus: 'active' | 'inactive'
+  profileAttributes: ProfileAttributeDto[]
   joinedAt: string
   projectCount: number
 }
@@ -24,7 +26,6 @@ export async function GET(req: Request) {
 
   try {
     const statusParam = new URL(req.url).searchParams.get('status')
-    const admin = createServiceRoleClient()
     const { db } = await import('@cairn/db')
     const { profiles, workspaceMembers, projectMembers, projects } = await import('@cairn/db')
     const { eq, and, count, sql, inArray } = await import('drizzle-orm')
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     // ゲストはワークスペース全体のメンバー一覧を見られない。
     // 参加プロジェクトの共同メンバーのみに絞り、projectCount も共有プロジェクト数に限定して、
     // 参加していないプロジェクトの存在が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     const isGuest = callerRole === 'guest'
     const includeInactive = statusParam === 'all' && isWorkspaceAdmin(callerRole)
     const activeOnly = !includeInactive
@@ -102,15 +103,20 @@ export async function GET(req: Request) {
       )
       .orderBy(workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName))
 
-    const emails = await resolveEmailsByUserId(admin, rows.map(row => row.userId))
-
+    const profileAttributes = await getProfileAttributesByUserIds(
+      ctx.workspaceId,
+      rows.map(row => row.userId),
+    )
     const result: WorkspaceMemberDto[] = rows.map(r => ({
       userId: r.userId,
       displayName: r.displayName,
-      email: emails.get(r.userId) ?? null,
+      // Email is intentionally not exposed by the general member-list API.
+      // Keep the field temporarily for DTO compatibility while callers migrate away from it.
+      email: null,
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       membershipStatus: r.membershipStatus,
+      profileAttributes: profileAttributes.get(r.userId) ?? [],
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),
     }))

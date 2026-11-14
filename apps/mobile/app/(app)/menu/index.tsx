@@ -1,16 +1,34 @@
+import { useRouter } from 'expo-router'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { supabase } from '../../../lib/supabase'
+import { useT } from '../../../components/locale-provider'
+
+const MENU_ITEMS = [
+  { label: 'Files', route: '/(app)/files' },
+  { label: 'Gallery', route: '/(app)/gallery' },
+  { label: 'Members', route: '/(app)/members' },
+  { label: 'Settings', route: '/(app)/settings' },
+] as const
 
 export default function MenuScreen() {
-  async function handleSignOut() {
-    await supabase.auth.signOut()
+  const t = useT()
+  const router = useRouter()
+
+  function handleSignOut() {
+    router.push('/(app)/signout')
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>メニュー</Text>
+      <Text style={styles.heading}>{t('Menu')}</Text>
+      <View style={styles.section}>
+        {MENU_ITEMS.map((item) => (
+          <TouchableOpacity key={item.route} style={styles.menuButton} onPress={() => router.push(item.route)}>
+            <Text style={styles.menuLabel}>{t(item.label)}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>サインアウト</Text>
+        <Text style={styles.signOutText}>{t('Sign out')}</Text>
       </TouchableOpacity>
     </View>
   )
@@ -19,6 +37,16 @@ export default function MenuScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa', padding: 16 },
   heading: { fontSize: 22, fontWeight: '700', marginBottom: 24 },
+  section: { gap: 12, marginBottom: 24 },
+  menuButton: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  menuLabel: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
   signOutButton: {
     backgroundColor: '#fef2f2',
     borderWidth: 1,

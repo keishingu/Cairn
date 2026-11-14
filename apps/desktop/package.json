@@ -4,10 +4,12 @@
   "private": true,
   "main": "src/main.js",
   "config": {
-    "appUrl": "https://develop.oss-cairn.com"
+    "appUrl": "https://develop.oss-cairn.com",
+    "deploymentEnv": "development"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development DESKTOP_APP_URL=https://develop.oss-cairn.com electron .",
+    "test": "node --test src/*.test.js",
     "generate-icons": "pnpm dlx --package=icon-gen@5 node scripts/generate-icons.mjs",
     "build:prod": "pnpm dlx electron-builder@26 --config electron-builder.prod.json",
     "build:dev": "pnpm dlx electron-builder@26 --config electron-builder.dev.json"

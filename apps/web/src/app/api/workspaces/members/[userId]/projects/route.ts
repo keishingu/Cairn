@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
+import { isWorkspaceAdmin } from '@/lib/permissions'
 
 export interface MemberProjectDto {
   projectId: string
@@ -11,6 +11,8 @@ export interface MemberProjectDto {
   statusName: string | null
   statusColor: string | null
   role: 'leader' | 'subleader' | 'member' | 'reviewer' | 'observer'
+  roleName: string | null
+  roleColor: string | null
   startDate: string | null
   endDate: string | null
   memberCount: number
@@ -34,7 +36,7 @@ export async function GET(
 
   try {
     const { db } = await import('@cairn/db')
-    const { projects, projectStatuses, projectMembers, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
+    const { projects, projectStatuses, projectMembers, projectRoles, workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
     const { eq, and, count, inArray } = await import('drizzle-orm')
 
     // 対象ユーザーが当該 WS に所属していることを確認する。ここはアーカイブ（非活性）済み
@@ -52,7 +54,7 @@ export async function GET(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
     }
 
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const callerRole = ctx.role
     if (wsMember.membershipStatus === 'inactive' && !isWorkspaceAdmin(callerRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -81,6 +83,8 @@ export async function GET(
         statusName:  projectStatuses.name,
         statusColor: projectStatuses.color,
         role:        projectMembers.role,
+        roleName:    projectRoles.name,
+        roleColor:   projectRoles.color,
         startDate:   projects.startDate,
         endDate:     projects.endDate,
         archived:    projects.archived,
@@ -88,6 +92,10 @@ export async function GET(
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
       .leftJoin(projectStatuses, eq(projects.statusId, projectStatuses.id))
+      .leftJoin(projectRoles, and(
+        eq(projectMembers.roleId, projectRoles.id),
+        eq(projectRoles.workspaceId, ctx.workspaceId),
+      ))
       .where(and(
         eq(projectMembers.userId, userId),
         eq(projects.workspaceId, ctx.workspaceId),
@@ -112,6 +120,8 @@ export async function GET(
         statusName:    r.statusName ?? null,
         statusColor:   r.statusColor ?? null,
         role:          r.role,
+        roleName:      r.roleName ?? null,
+        roleColor:     r.roleColor ?? null,
         startDate:     r.startDate ?? null,
         endDate:       r.endDate ?? null,
         memberCount:   countMap.get(r.projectId) ?? 0,

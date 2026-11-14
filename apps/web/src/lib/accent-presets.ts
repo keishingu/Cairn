@@ -1,6 +1,8 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AccentId } from '@cairn/shared'
+
 export type AccentColors = {
   accent: string
   accentHover: string
@@ -13,7 +15,7 @@ export type AccentColors = {
 }
 
 export type AccentPreset = {
-  id: string
+  id: AccentId
   label: string
   swatch: string
   light: AccentColors
@@ -23,7 +25,7 @@ export type AccentPreset = {
 export const ACCENT_PRESETS: AccentPreset[] = [
   {
     id: 'emerald',
-    label: 'エメラルド',
+    label: 'Emerald',
     swatch: '#10B981',
     light: {
       accent:      '#10B981',
@@ -48,7 +50,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'blue',
-    label: 'ブルー',
+    label: 'Blue',
     swatch: '#3B82F6',
     light: {
       accent:      '#3B82F6',
@@ -73,7 +75,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'violet',
-    label: 'バイオレット',
+    label: 'Violet',
     swatch: '#8B5CF6',
     light: {
       accent:      '#8B5CF6',
@@ -98,7 +100,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'rose',
-    label: 'ローズ',
+    label: 'Rose',
     swatch: '#F43F5E',
     light: {
       accent:      '#F43F5E',
@@ -123,7 +125,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'pink',
-    label: 'ピンク',
+    label: 'Pink',
     swatch: '#EC4899',
     light: {
       accent:      '#EC4899',
@@ -148,7 +150,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'amber',
-    label: 'アンバー',
+    label: 'Amber',
     swatch: '#F59E0B',
     light: {
       accent:      '#F59E0B',
@@ -173,7 +175,7 @@ export const ACCENT_PRESETS: AccentPreset[] = [
   },
   {
     id: 'cyan',
-    label: 'シアン',
+    label: 'Cyan',
     swatch: '#06B6D4',
     light: {
       accent:      '#06B6D4',

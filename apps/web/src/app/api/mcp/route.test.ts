@@ -1,0 +1,355 @@
+// Copyright 2026 Cairn Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { describe, expect, it, vi } from 'vitest'
+
+const {
+  mockVerifyApiToken,
+  mockVerifyOAuthToken,
+  mockListProjects,
+  mockListMembers,
+  mockGetMemberHistory,
+  mockCreateMilestone,
+  mockUpdateMilestone,
+} = vi.hoisted(() => ({
+  mockVerifyApiToken: vi.fn(),
+  mockVerifyOAuthToken: vi.fn(),
+  mockListProjects: vi.fn(() => Response.json([{ id: 'project-1', name: 'Project' }])),
+  mockListMembers: vi.fn<(req: Request) => Response>(() => Response.json({ ok: true, items: [] })),
+  mockGetMemberHistory: vi.fn<(req: Request) => Response>(() =>
+    Response.json({ ok: true, items: [] }),
+  ),
+  mockCreateMilestone: vi.fn<
+    (req: Request, context: { params: Promise<{ id: string }> }) => Response
+  >(() => Response.json({ id: 'milestone-1' }, { status: 201 })),
+  mockUpdateMilestone: vi.fn<
+    (req: Request, context: { params: Promise<{ id: string; milestoneId: string }> }) => Response
+  >(() => Response.json({ id: 'milestone-1', completed: true })),
+}))
+
+vi.mock('@cairn/db', () => ({ db: {} }))
+vi.mock('@/lib/api-tokens', () => ({
+  ApiTokenError: class ApiTokenError extends Error {
+    status: number
+
+    constructor(message: string, status: number) {
+      super(message)
+      this.status = status
+    }
+  },
+  runWithApiTokenAccess: (callback: () => unknown) => callback(),
+  verifyApiToken: mockVerifyApiToken,
+}))
+vi.mock('@/lib/mcp-oauth', () => ({
+  OAUTH_ACCESS_TOKEN_PREFIX: 'cairn_oauth_at_',
+  McpOAuthError: class McpOAuthError extends Error {
+    constructor(
+      public status: number,
+      public code: string,
+      message: string,
+    ) {
+      super(message)
+    }
+  },
+  getMcpResource: (req: Request) => `${new URL(req.url).origin}/api/mcp`,
+  getProtectedResourceMetadataUrl: (req: Request) =>
+    `${new URL(req.url).origin}/.well-known/oauth-protected-resource`,
+  verifyMcpOAuthAccessToken: mockVerifyOAuthToken,
+}))
+vi.mock('@/app/api/projects/route', () => ({ GET: mockListProjects }))
+vi.mock('@/app/api/research/members/route', () => ({ GET: mockListMembers }))
+vi.mock('@/app/api/research/members/history/route', () => ({ GET: mockGetMemberHistory }))
+vi.mock('@/app/api/projects/[id]/milestones/route', () => ({
+  GET: vi.fn(() => Response.json([])),
+  POST: mockCreateMilestone,
+}))
+vi.mock('@/app/api/projects/[id]/milestones/[milestoneId]/route', () => ({
+  PATCH: mockUpdateMilestone,
+}))
+
+describe('MCP Route Handler', () => {
+  it('Bearer PATがないリクエストを401で拒否する', async () => {
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: 'Bearer token required' })
+    expect(response.headers.get('www-authenticate')).toContain(
+      'resource_metadata="http://localhost/.well-known/oauth-protected-resource"',
+    )
+  }, 15_000)
+
+  it('ファイル一覧と抽出済み本文の読み取りツールを公開する', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'read',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          authorization: 'Bearer cairn_pat_test',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const eventBody = await response.text()
+    const dataLine = eventBody.split('\n').find((line) => line.startsWith('data: '))
+    expect(dataLine).toBeDefined()
+    const result = JSON.parse(dataLine!.slice('data: '.length)) as {
+      result: { tools: Array<{ name: string }> }
+    }
+    expect(result.result.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(['list_files', 'read_file']),
+    )
+  }, 15_000)
+
+  it('OAuth access tokenでinitialize・tools/list・tools/callを実行する', async () => {
+    mockVerifyOAuthToken.mockResolvedValue({
+      kind: 'oauth',
+      id: 'access-1',
+      connectionId: 'connection-1',
+      clientId: 'client-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      role: 'member',
+      scope: 'write',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const send = (body: unknown) =>
+      POST(
+        new Request('http://localhost/api/mcp', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            authorization: 'Bearer cairn_oauth_at_test',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-06-18',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    const initialize = await send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'Claude', version: '1' },
+      },
+    })
+    expect(initialize.status).toBe(200)
+
+    const toolsList = await send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+    expect(toolsList.status).toBe(200)
+    expect(await toolsList.text()).toContain('list_projects')
+
+    const toolCall = await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'list_projects', arguments: {} },
+    })
+    expect(toolCall.status).toBe(200)
+    expect(await toolCall.text()).toContain('project-1')
+
+    const invalidTask = await send({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'create_task',
+        arguments: {
+          title: 'invalid scope',
+          projectId: '30000000-0000-0000-0000-000000000001',
+          channelId: '40000000-0000-0000-0000-000000000001',
+        },
+      },
+    })
+    expect(invalidTask.status).toBe(200)
+    expect(await invalidTask.text()).toContain('projectId and channelId cannot both be specified')
+    expect(mockVerifyOAuthToken).toHaveBeenCalledWith(
+      'cairn_oauth_at_test',
+      expect.objectContaining({ resource: 'http://localhost/api/mcp', consumeRateLimit: true }),
+    )
+  }, 15_000)
+
+  it('チャンネル・メンバー・経歴の読み取りツールを公開し、配列入力を繰り返しクエリで渡す', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'read',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const send = async (body: unknown) => {
+      const response = await POST(
+        new Request('http://localhost/api/mcp', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            authorization: 'Bearer cairn_pat_test',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-06-18',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+
+    const toolsList = await send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    for (const name of [
+      'list_channels',
+      'read_channel_messages',
+      'get_project_members',
+      'list_members',
+      'get_member_history',
+    ]) {
+      expect(toolsList).toContain(`"${name}"`)
+    }
+
+    await send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'list_members', arguments: { attributeNames: ['コーチ', '3年生'] } },
+    })
+    const membersUrl = new URL(mockListMembers.mock.calls[0]![0].url)
+    expect(membersUrl.pathname).toBe('/api/research/members')
+    expect(membersUrl.searchParams.getAll('attribute')).toEqual(['コーチ', '3年生'])
+
+    const userIds = ['10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002']
+    await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'get_member_history', arguments: { userIds, includeFiles: false } },
+    })
+    const historyUrl = new URL(mockGetMemberHistory.mock.calls[0]![0].url)
+    expect(historyUrl.searchParams.getAll('userId')).toEqual(userIds)
+    expect(historyUrl.searchParams.get('includeFiles')).toBe('false')
+  }, 15_000)
+  it('マイルストーンの一覧・作成・更新ツールを公開し、ID はパスに、残りは本文に渡す', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'write',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    const { POST } = await import('./route')
+    const send = async (body: unknown) => {
+      const response = await POST(
+        new Request('http://localhost/api/mcp', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json, text/event-stream',
+            authorization: 'Bearer cairn_pat_test',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-06-18',
+          },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(200)
+      return response.text()
+    }
+
+    const toolsList = await send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    for (const name of ['list_milestones', 'create_milestone', 'update_milestone']) {
+      expect(toolsList).toContain(`"${name}"`)
+    }
+
+    const projectId = '20000000-0000-4000-8000-000000000001'
+    const milestoneId = '30000000-0000-4000-8000-000000000001'
+    await send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'create_milestone',
+        arguments: { projectId, title: '高所順応', startDate: '2026-08-01', startTime: '09:30' },
+      },
+    })
+    const [createReq, createContext] = mockCreateMilestone.mock.calls[0]!
+    expect(new URL(createReq.url).pathname).toBe(`/api/projects/${projectId}/milestones`)
+    expect(await createReq.json()).toEqual({
+      title: '高所順応',
+      startDate: '2026-08-01',
+      startTime: '09:30',
+    })
+    expect(await createContext.params).toEqual({ id: projectId })
+
+    await send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: 'update_milestone',
+        arguments: { projectId, milestoneId, completed: true, endDate: null },
+      },
+    })
+    const [updateReq, updateContext] = mockUpdateMilestone.mock.calls[0]!
+    expect(updateReq.method).toBe('PATCH')
+    expect(await updateReq.json()).toEqual({ completed: true, endDate: null })
+    expect(await updateContext.params).toEqual({ id: projectId, milestoneId })
+  }, 15_000)
+
+  it('更新する項目がない update_milestone はルートを呼ばずにエラーにする', async () => {
+    mockVerifyApiToken.mockResolvedValue({
+      id: 'token-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'write',
+      expiresAt: new Date('2027-08-05T00:00:00.000Z'),
+    })
+    mockUpdateMilestone.mockClear()
+    const { POST } = await import('./route')
+    const response = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          authorization: 'Bearer cairn_pat_test',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'update_milestone',
+            arguments: {
+              projectId: '20000000-0000-4000-8000-000000000001',
+              milestoneId: '30000000-0000-4000-8000-000000000001',
+            },
+          },
+        }),
+      }),
+    )
+    expect(await response.text()).toContain('"isError":true')
+    expect(mockUpdateMilestone).not.toHaveBeenCalled()
+  }, 15_000)
+})

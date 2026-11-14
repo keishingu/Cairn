@@ -7,8 +7,9 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { MobileHeader } from './header'
 import { Icon, Avatar } from '../primitives'
+import { useT } from '@/components/locale-provider'
 import { useCurrentUser } from '@/hooks/use-current-user'
-import { createClient } from '@/lib/supabase/client'
+import { signOutCurrentSession } from '@/lib/supabase/sign-out'
 import type { CurrentUserDto } from '@/app/api/me/route'
 import {
   getSettingsNavGroups,
@@ -18,29 +19,40 @@ import {
 } from '../pages/settings'
 
 const ROLE_LABEL: Record<CurrentUserDto['wsRole'], string> = {
-  owner:  'オーナー',
-  admin:  '管理者',
-  member: 'メンバー',
-  guest:  'ゲスト',
+  owner:  'Owner',
+  admin:  'Admin',
+  member: 'Member',
+  guest:  'Guest',
 }
 
 // 設定一覧（メニュー）。各項目タップで /settings/[section] に遷移する。
 export function MobileSettings() {
+  const t = useT()
   const { data: me } = useCurrentUser()
   const router = useRouter()
-  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner')
+  const navGroups = getSettingsNavGroups(me?.wsRole === 'owner', { isMobile: true, isGuest: me?.wsRole === 'guest' })
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+    if (window.ReactNativeWebView) {
+      if (window.cairnDeviceSignOut) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'DEVICE_SIGN_OUT_REQUESTED' }))
+      } else {
+        window.location.assign('/auth/mobile-signout?webview=1')
+      }
+      return
+    }
+    if (!(await signOutCurrentSession())) {
+      window.alert(t('Could not sign out. Please try again.'))
+      return
+    }
+    window.location.replace('/auth/login')
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title="設定"/>
+      <MobileHeader title={t('Settings')} />
 
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         {/* プロフィールカード（アカウント設定へのショートカット） */}
         <button
           onClick={() => router.push('/settings/account')}
@@ -53,11 +65,14 @@ export function MobileSettings() {
         >
           <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={56}/>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{me?.displayName ?? ''}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{me?.email ?? ''}</div>
+            <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, color: 'var(--text)' }}>{me?.displayName ?? ''}</div>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', marginTop: 2 }}>{me?.email ?? ''}</div>
             {me?.wsRole && (
               <div style={{ marginTop: 6 }}>
-                <span style={{ fontSize: 11, background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{ROLE_LABEL[me.wsRole]}</span>
+                <span style={{ fontSize: 'var(--fs-xs)', background: 'var(--accent-soft)', color: 'var(--accent-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}
+                >
+                  {t(ROLE_LABEL[me.wsRole])}
+                </span>
               </div>
             )}
           </div>
@@ -67,7 +82,10 @@ export function MobileSettings() {
         {/* セクション一覧 */}
         {navGroups.map(group => (
           <div key={group.label} style={{ margin: '16px 16px 0' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 4 }}>{group.label}</div>
+            <div className="section-label" style={{ marginBottom: 8, paddingLeft: 4 }}
+            >
+              {t(group.label)}
+            </div>
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
               {group.items.map((item, i) => (
                 <button
@@ -83,7 +101,7 @@ export function MobileSettings() {
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Icon name={item.icon} size={16} color="var(--text-2)"/>
                   </div>
-                  <span style={{ flex: 1, fontSize: 14.5, color: 'var(--text)', fontWeight: 500 }}>{item.label}</span>
+                  <span style={{ flex: 1, fontSize: 'var(--fs-xl)', color: 'var(--text)', fontWeight: 500 }}>{t(item.label)}</span>
                   <Icon name="chevRight" size={14} color="var(--text-4)"/>
                 </button>
               ))}
@@ -93,8 +111,9 @@ export function MobileSettings() {
 
         {/* ログアウト */}
         <div style={{ margin: '24px 16px 0' }}>
-          <button onClick={handleLogout} style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-            ログアウト
+          <button onClick={handleLogout} style={{ width: '100%', padding: '15px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--rose)', fontSize: 'var(--fs-xl)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {t('Log out')}
           </button>
         </div>
       </div>
@@ -104,14 +123,16 @@ export function MobileSettings() {
 
 // 個別設定画面。PC版のメインカラム（SettingsSectionContent）をそのまま表示する。
 export function MobileSettingsDetail({ section }: { section: string }) {
+  const t = useT()
   const { data: me } = useCurrentUser()
   const router = useRouter()
   const isOwner = me?.wsRole === 'owner'
-  const resolvedSection = isSettingsSection(section, isOwner) ? section : 'account'
+  const navOptions = { isMobile: true, isGuest: me?.wsRole === 'guest' }
+  const resolvedSection = isSettingsSection(section, isOwner, navOptions) ? section : 'account'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title={settingsSectionLabel(resolvedSection, isOwner)} onBack={() => router.push('/settings')}/>
-      <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <MobileHeader title={t(settingsSectionLabel(resolvedSection, isOwner, navOptions))} onBack={() => router.push('/settings')}/>
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px', paddingBottom: 'var(--mobile-nav-clearance)' }}>
         <SettingsSectionContent section={resolvedSection}/>
       </div>
     </div>

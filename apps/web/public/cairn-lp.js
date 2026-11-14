@@ -51,19 +51,179 @@
     root.setAttribute('data-headline', t.headline);
     root.setAttribute('data-lang', t.lang);
     root.lang = t.lang;
+    /* pages other than / set their own titles on <html data-title-ja / data-title-en> */
+    document.title = root.getAttribute('data-title-' + t.lang) || (t.lang === 'en'
+      ? 'Cairn — Chat and project management, free.'
+      : 'Cairn — 無料でチャットも、プロジェクト管理も。');
     applyAccent(t.accent);
   }
 
-  var state = Object.assign({}, TWEAK_DEFAULTS);
+  function readInitialLang() {
+    try {
+      var saved = localStorage.getItem('cairn-lp-lang');
+      if (saved === 'ja' || saved === 'en') return saved;
+    } catch (e) {}
+    try {
+      var match = document.cookie.match(/(?:^|; )cairn-locale-preference=(ja|en)(?:;|$)/);
+      if (match) return match[1];
+    } catch (e) {}
+    var navLang = (navigator.language || '').toLowerCase();
+    return navLang.indexOf('en') === 0 ? 'en' : 'ja';
+  }
+
+  var state = Object.assign({}, TWEAK_DEFAULTS, { lang: readInitialLang() });
   apply(state);
 
-  /* ── persona variant (?p=team|alpineclub, default team) ────────── */
+  /* ── persona variant (?p=team|alpineclub, default team) ──────────
+     Kept for old URLs. The public LP story is no longer persona-switched. */
   var persona = 'team';
   try {
     var pParam = new URLSearchParams(location.search).get('p');
     if (pParam === 'alpineclub' || pParam === 'club') persona = 'alpineclub';
   } catch (e) {}
   root.setAttribute('data-persona', persona);
+
+  /* ── analytics (PostHog) ────────────────────────────────────────
+     route.ts injects window.__CAIRN_LP_POSTHOG__ only when the app has
+     NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN. Same project/cookie as the app, so
+     UTM on the landing URL is kept as PostHog's initial-referrer props.
+     Autocapture is off so each CTA click is one `lp_cta_clicked` event. */
+  var phConfig = window.__CAIRN_LP_POSTHOG__;
+
+  /* On /teams/migration (the ad landing page) the SDK's own properties would carry
+     ad click IDs: $current_url / $referrer / $initial_* and the gclid-style campaign
+     props it collects by default. Strip them in before_send — the browser URL is not
+     touched, so the Google Ads tag still reads gclid. */
+  var CLICK_ID_PARAMS = ['gclid', 'gclsrc', 'gad_source', 'gad_campaignid', 'gbraid', 'wbraid', 'dclid',
+    'fbclid', 'msclkid', 'twclid', 'li_fat_id', 'ttclid', 'igshid', 'yclid', 'rdt_cid', 'epik', 'qclid', 'sccid', 'irclid', '_kx'];
+  function isClickIdKey(key) {
+    var k = String(key).replace(/^\$initial_/, '');
+    return CLICK_ID_PARAMS.indexOf(k) !== -1;
+  }
+  function stripClickIds(value) {
+    if (typeof value !== 'string' || value.indexOf('?') === -1) return value;
+    try {
+      var u = new URL(value);
+      var changed = false;
+      CLICK_ID_PARAMS.forEach(function (k) {
+        if (u.searchParams.has(k)) { u.searchParams.delete(k); changed = true; }
+      });
+      return changed ? u.toString() : value;
+    } catch (e) {
+      return value;
+    }
+  }
+  function sanitizeProps(props) {
+    if (!props || typeof props !== 'object') return;
+    Object.keys(props).forEach(function (key) {
+      if (isClickIdKey(key)) delete props[key];
+      else props[key] = stripClickIds(props[key]);
+    });
+  }
+  function stripClickIdsFromEvent(event) {
+    if (!event) return event;
+    sanitizeProps(event.properties);
+    sanitizeProps(event.$set);
+    sanitizeProps(event.$set_once);
+    if (event.properties) {
+      sanitizeProps(event.properties.$set);
+      sanitizeProps(event.properties.$set_once);
+    }
+    return event;
+  }
+
+  if (phConfig && phConfig.token && !window.posthog) {
+    (function (d, token, host) {
+      var ph = window.posthog = [];
+      ph._i = [];
+      ph.__SV = 1;
+      ['capture', 'register'].forEach(function (m) {
+        ph[m] = function () { ph.push([m].concat([].slice.call(arguments))); };
+      });
+      ph._i.push([token, {
+        api_host: host,
+        defaults: '2026-05-30',
+        autocapture: false,
+        capture_pageview: true,
+        before_send: root.getAttribute('data-page') === 'teams-migration' ? stripClickIdsFromEvent : undefined
+      }, 'posthog']);
+      var s = d.createElement('script');
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.src = host.replace('.i.posthog.com', '-assets.i.posthog.com') + '/static/array.js';
+      d.head.appendChild(s);
+    })(document, phConfig.token, phConfig.host || 'https://us.i.posthog.com');
+  }
+
+  function ctaGroup(id) {
+    if (id.indexOf('teams-migration') === 0) return 'teams_migration';
+    if (id.indexOf('appstore') === 0) return 'app_store';
+    if (id.indexOf('googleplay') === 0) return 'google_play';
+    return 'other';
+  }
+  /* /teams/migration (data-page="teams-migration") sends its own events instead of
+     lp_cta_clicked. Links carry data-tm-event / data-tm-location / data-tm-destination.
+     Only the page path, CTA location, destination kind and the landing UTM go out —
+     never form input or booking details. Ad click IDs (gclid etc.) are removed from
+     the SDK's automatic URL/campaign props by before_send above. */
+  var page = root.getAttribute('data-page');
+  var TM_EVENTS = {
+    consultation: 'teams_migration_consultation_click',
+    signup: 'teams_migration_signup_click',
+    email: 'teams_migration_email_click'
+  };
+  function utmProps() {
+    var props = {};
+    try {
+      var params = new URLSearchParams(location.search);
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(function (k) {
+        var v = params.get(k);
+        if (v) props[k] = v.slice(0, 200);
+      });
+    } catch (e) {}
+    return props;
+  }
+  function tmProps(extra) {
+    return Object.assign({ source_page: location.pathname, lp_lang: state.lang }, utmProps(), extra);
+  }
+  if (page === 'teams-migration' && window.posthog && typeof window.posthog.capture === 'function') {
+    window.posthog.capture('teams_migration_lp_view', tmProps({}));
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest(page === 'teams-migration' ? 'a[data-tm-event]' : 'a[data-cta]');
+    if (!a || !window.posthog || typeof window.posthog.capture !== 'function') return;
+    if (page === 'teams-migration') {
+      var name = TM_EVENTS[a.getAttribute('data-tm-event')];
+      if (!name) return;
+      window.posthog.capture(name, tmProps({
+        cta_location: a.getAttribute('data-tm-location'),
+        destination: a.getAttribute('data-tm-destination')
+      }), { transport: 'sendBeacon' });
+    } else {
+      var id = a.getAttribute('data-cta');
+      window.posthog.capture('lp_cta_clicked', {
+        cta: id,
+        cta_group: ctaGroup(id),
+        href: a.href,
+        lp_lang: state.lang
+      }, { transport: 'sendBeacon' });
+    }
+
+    /* Before array.js loads, the event only sits in the stub queue and a
+       same-tab navigation would drop it. Hold the navigation until the SDK
+       has loaded (it replays the queue and flushes on unload), max 800ms.
+       New tabs, mailto: and modified clicks don't unload this page. */
+    if (window.posthog.__loaded || e.defaultPrevented || e.button !== 0 ||
+        e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+        a.target === '_blank' || a.protocol === 'mailto:') return;
+    e.preventDefault();
+    var href = a.href, started = Date.now();
+    (function go() {
+      if ((window.posthog && window.posthog.__loaded) || Date.now() - started > 800) location.href = href;
+      else setTimeout(go, 50);
+    })();
+  });
 
   /* ── sticky nav ────────────────────────────────────────────────── */
   var nav = document.getElementById('nav');
@@ -143,7 +303,7 @@
         ACCENTS.map(function (c) { return '<button data-v="' + c + '" style="background:' + c + '"></button>'; }).join('') +
       '</div></div>' +
     '</div>' +
-    '<div class="cl-foot"><a href="#top">Cairn — One Project. One Place.</a></div>';
+    '<div class="cl-foot"><a href="#top">Cairn — Chat and project management, free.</a></div>';
   document.body.appendChild(panel);
 
   function paint() {
@@ -171,6 +331,10 @@
     state[k] = v;
     apply(state);
     paint();
+    if (k === 'lang' && (v === 'ja' || v === 'en')) {
+      try { localStorage.setItem('cairn-lp-lang', v); } catch (e) {}
+      document.cookie = 'cairn-locale-preference=' + v + ';path=/;max-age=31536000;SameSite=Lax';
+    }
     try {
       var edits = {}; edits[k] = v;
       window.parent.postMessage({ type: '__edit_mode_set_keys', edits: edits }, '*');

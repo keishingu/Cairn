@@ -3,6 +3,7 @@
 import React from 'react'
 import { Icon, Avatar } from '../primitives'
 import { useWorkspaceMembers, useAddChannelMember, useChannelMembers } from '@/lib/chat/client'
+import { useT } from '@/components/locale-provider'
 
 interface ChannelMemberSheetProps {
   channelId: string
@@ -10,6 +11,7 @@ interface ChannelMemberSheetProps {
 }
 
 export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetProps) {
+  const t = useT()
   const { data: members = [] } = useWorkspaceMembers()
   const { data: existingMembers = [], isLoading: isLoadingMembers } = useChannelMembers(channelId)
   const mutation = useAddChannelMember(channelId)
@@ -44,15 +46,15 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.4)' }}
+        style={{ position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', background: 'var(--overlay)' }}
       />
 
       {/* Sheet */}
       <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 301,
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 'var(--z-modal-content)',
         background: 'var(--card)',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+        boxShadow: 'var(--shadow-sheet)',
         maxHeight: '80dvh',
         display: 'flex', flexDirection: 'column',
         animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)',
@@ -68,8 +70,8 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
             <Icon name="userPlus" size={16}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>メンバーを招待</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>ワークスペースのメンバーを追加できます</div>
+            <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{t('Invite members')}</div>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 1 }}>{t('You can add workspace members')}</div>
           </div>
           <button
             onClick={onClose}
@@ -82,8 +84,8 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
         {/* Member list */}
         <div style={{ flex: 1, overflow: 'auto', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {isLoadingMembers ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 32, color: 'var(--text-4)', fontSize: 13 }}>
-              読み込み中...
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32, color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
+              {t('Loading…')}
             </div>
           ) : members.map(m => {
             const added = addedIds.has(m.userId)
@@ -96,11 +98,11 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
               }}>
                 <Avatar name={m.displayName} url={m.avatarUrl} size={38}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.displayName}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
-                    {m.role === 'owner' ? 'オーナー' : m.role === 'admin' ? '管理者' : m.role === 'guest' ? 'ゲスト' : 'メンバー'}
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 1 }}>
+                    {t(m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : m.role === 'guest' ? 'Guest' : 'Member')}
                   </div>
                 </div>
                 <button
@@ -111,7 +113,7 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                     border: added ? 'none' : '1px solid var(--border)',
                     background: added ? 'var(--accent-soft)' : 'var(--card-2)',
                     color: added ? 'var(--accent-text)' : 'var(--text-2)',
-                    fontSize: 12.5, fontWeight: 600,
+                    fontSize: 'var(--fs-md)', fontWeight: 600,
                     cursor: added || loading || !!pendingId ? 'default' : 'pointer',
                     fontFamily: 'inherit',
                     display: 'flex', alignItems: 'center', gap: 4,
@@ -119,11 +121,11 @@ export function ChannelMemberSheet({ channelId, onClose }: ChannelMemberSheetPro
                   }}
                 >
                   {loading ? (
-                    <span style={{ fontSize: 12 }}>…</span>
+                    <span style={{ fontSize: 'var(--fs-sm)' }}>…</span>
                   ) : added ? (
-                    <><Icon name="check" size={12} color="var(--accent-text)"/> 追加済み</>
+                    <><Icon name="check" size={12} color="var(--accent-text)"/> {t('Added')}</>
                   ) : (
-                    <><Icon name="plus" size={12}/> 追加</>
+                    <><Icon name="plus" size={12}/> {t('Add')}</>
                   )}
                 </button>
               </div>

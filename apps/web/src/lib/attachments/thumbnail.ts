@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export const ATTACHMENTS_BUCKET = 'chat-attachments'
 
 // 一覧アイコン・チャットのサムネ表示用の縮小版サイズ。
-// 表示の度にオリジナル（最大10MB）を読み込むと帯域・描画コストが無駄なため。
+// 表示の度にオリジナル（最大50MiB）を読み込むと帯域・描画コストが無駄なため。
 const THUMBNAIL_MAX_DIMENSION = 480
 const THUMBNAIL_QUALITY = 72
 

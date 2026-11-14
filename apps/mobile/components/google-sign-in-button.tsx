@@ -1,7 +1,10 @@
 import React from 'react'
 import { Text, TouchableOpacity, StyleSheet, ActivityIndicator, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { FontAwesome } from '@expo/vector-icons'
 import { signInWithGoogle } from '../lib/oauth'
+import { completePostAuthNavigation } from '../lib/auth-navigation'
+import { useT } from './locale-provider'
 
 interface Props {
   label: string
@@ -9,17 +12,22 @@ interface Props {
 }
 
 export function GoogleSignInButton({ label, onError }: Props) {
+  const t = useT()
+  const router = useRouter()
   const [loading, setLoading] = React.useState(false)
 
   async function handlePress() {
     setLoading(true)
     onError('')
     try {
-      await signInWithGoogle()
+      const result = await signInWithGoogle(t)
+      if (result === 'needs-workspace') router.replace('/onboarding')
+      else if (result === 'success') router.replace('/(app)/chats')
       // 成功時は _layout.tsx の onAuthStateChange が遷移する
     } catch (e) {
-      onError(e instanceof Error ? e.message : 'Google ログインに失敗しました')
+      onError(e instanceof Error ? e.message : t('Google sign-in failed'))
     } finally {
+      completePostAuthNavigation()
       setLoading(false)
     }
   }

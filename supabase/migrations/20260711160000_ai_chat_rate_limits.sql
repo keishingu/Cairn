@@ -10,3 +10,6 @@ CREATE TABLE ai_chat_rate_limits (
 
 CREATE INDEX idx_ai_chat_rate_limits_updated_at
   ON ai_chat_rate_limits(updated_at);
+
+ALTER TABLE ai_chat_rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON ai_chat_rate_limits FROM anon, authenticated;

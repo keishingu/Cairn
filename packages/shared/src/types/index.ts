@@ -7,7 +7,8 @@ export type ProjectMemberRole = 'leader' | 'subleader' | 'member' | 'reviewer' |
 
 export type AttendanceStatus = 'attending' | 'tentative' | 'declined'
 
-export type MessageType = 'text' | 'html' | 'system'
+// blocks はアプリの Bot だけが投稿する。人の投稿 API（schemas の messageType）では受け付けない
+export type MessageType = 'text' | 'html' | 'system' | 'blocks'
 
 export type FileType = 'document' | 'image' | 'video' | 'audio' | 'other'
 

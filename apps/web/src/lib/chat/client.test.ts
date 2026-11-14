@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findProjectChannelById } from './client'
+import { chatQueryKeys, findProjectChannelById } from './client'
 import type { ProjectChannelDto } from '@/app/api/projects/channels/route'
 
 describe('findProjectChannelById', () => {
@@ -17,6 +17,7 @@ describe('findProjectChannelById', () => {
         archived: false,
         unreadCount: 0,
         unreadMentionCount: 0,
+        lastMessageAt: null,
         milestoneId: 'milestone-1',
         milestoneCompleted: false,
       },
@@ -32,11 +33,26 @@ describe('findProjectChannelById', () => {
         archived: false,
         unreadCount: 0,
         unreadMentionCount: 0,
+        lastMessageAt: null,
         milestoneId: null,
         milestoneCompleted: null,
       },
     ]
 
     expect(findProjectChannelById(channels, 'project-1')?.channelId).toBe('general-channel')
+  })
+})
+
+describe('chatQueryKeys', () => {
+  it('最新100件と履歴を別のキャッシュに分ける', () => {
+    expect(chatQueryKeys.messages('channel-1')).toEqual(['messages', 'channel-1'])
+    expect(chatQueryKeys.messageHistory('channel-1', 'message-1')).toEqual([
+      'message-history',
+      'channel-1',
+      'message-1',
+    ])
+    expect(chatQueryKeys.messageSearch('channel-1', 'hello')).toEqual(['message-search', 'channel-1', 'hello'])
+    expect(chatQueryKeys.globalMessageSearch('hello')).toEqual(['global-message-search', 'hello'])
+    expect(chatQueryKeys.bookmarks).toEqual(['bookmarks'])
   })
 })

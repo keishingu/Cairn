@@ -1,0 +1,70 @@
+import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { toast } from '@/lib/toast'
+import { useT } from '@/components/locale-provider'
+import { chatQueryKeys } from '@/lib/chat/client'
+import type { MessageDto } from '@/app/api/channels/[channelId]/messages/route'
+import type { FileListResponse } from '@/app/api/files/route'
+
+interface RenameFileInput {
+  fileId: string
+  fileName: string
+}
+
+interface RenameFileResponse {
+  success: true
+  fileName: string
+}
+
+interface FileNameDto {
+  id: string
+  fileName: string
+}
+
+export function useRenameFile() {
+  const queryClient = useQueryClient()
+  const t = useT()
+
+  return useMutation<RenameFileResponse, Error, RenameFileInput>({
+    mutationFn: async ({ fileId, fileName }) => {
+      const response = await fetchWithAuth(`/api/attachments/${fileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? t('Could not rename the file'))
+      }
+      return response.json() as Promise<RenameFileResponse>
+    },
+    onSuccess: ({ fileName }, { fileId }) => {
+      const updateFileList = (current: FileNameDto[] | undefined) =>
+        current?.map(file => file.id === fileId ? { ...file, fileName } : file)
+
+      // ファイル一覧はページ分割（useInfiniteQuery）なので、ページごとに書き換える
+      queryClient.setQueriesData<InfiniteData<FileListResponse>>({ queryKey: ['files', 'list'] }, current =>
+        current && {
+          ...current,
+          pages: current.pages.map(page => ({
+            ...page,
+            items: page.items.map(file => file.id === fileId ? { ...file, fileName } : file),
+          })),
+        })
+      // 一覧の検索・件数はサーバーで判定するため、新しい名前で絞り込み結果と件数を取り直す
+      void queryClient.invalidateQueries({ queryKey: ['files'] })
+      queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['project-files'] }, updateFileList)
+      queryClient.setQueriesData<FileNameDto[]>({ queryKey: ['channel-files'] }, updateFileList)
+      queryClient.setQueriesData<MessageDto[]>({ queryKey: chatQueryKeys.messagesRoot }, current =>
+        current?.map(message => ({
+          ...message,
+          attachments: message.attachments.map(attachment =>
+            attachment.fileId === fileId ? { ...attachment, fileName } : attachment),
+        })),
+      )
+
+      toast.success(t('Renamed the file'))
+    },
+    onError: error => toast.error(error.message),
+  })
+}

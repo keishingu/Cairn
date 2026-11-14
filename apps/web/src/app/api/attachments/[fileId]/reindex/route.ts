@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { canAccessFile } from '@/lib/permissions'
 
 type RouteContext = { params: Promise<{ fileId: string }> }
 
@@ -14,16 +15,25 @@ export async function POST(_req: Request, { params }: RouteContext) {
 
   try {
     const { db, files, documentChunks } = await import('@cairn/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     const [file] = await db
-      .select({ id: files.id, workspaceId: files.workspaceId, storagePath: files.storagePath, mimeType: files.mimeType, metadata: files.metadata })
+      .select({
+        id: files.id, workspaceId: files.workspaceId, projectId: files.projectId,
+        uploadedBy: files.uploadedBy, metadata: files.metadata,
+        storagePath: files.storagePath, mimeType: files.mimeType,
+      })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    if (file.workspaceId !== ctx.workspaceId) return new NextResponse(null, { status: 403 })
+    if (!(await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role))) {
+      return NextResponse.json(
+        { error: `現在のロール（${ctx.role}）では、このファイルを閲覧する権限がありません` },
+        { status: 403 },
+      )
+    }
     if (!file.storagePath || !file.mimeType) return NextResponse.json({ error: 'このファイルは再インデックスできません' }, { status: 422 })
 
     const { isIndexable } = await import('@/lib/ai/extract-text')
@@ -34,8 +44,9 @@ export async function POST(_req: Request, { params }: RouteContext) {
     // 既存のベクトルデータを削除してステータスをリセット
     await db.delete(documentChunks).where(and(eq(documentChunks.sourceType, 'file'), eq(documentChunks.sourceId, fileId)))
 
-    const meta = Object.assign({}, file.metadata as Record<string, unknown>)
-    await db.update(files).set({ metadata: { ...meta, indexingStatus: 'pending' } }).where(eq(files.id, fileId))
+    await db.update(files).set({
+      metadata: sql`jsonb_set(coalesce(${files.metadata}, '{}'::jsonb), '{indexingStatus}', '"pending"'::jsonb, true)`,
+    }).where(eq(files.id, fileId))
 
     const { inngest } = await import('@/lib/inngest/client')
     await inngest.send({

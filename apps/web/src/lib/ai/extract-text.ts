@@ -113,6 +113,241 @@ function extractParagraphsFromSlideXml(xml: string): string {
   return paragraphs.join('\n')
 }
 
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+// Excel は文字列セルの本文を xl/sharedStrings.xml にまとめて持ち、各シートのセルは t="s" のとき
+// その通し番号を持つ。シート名は xl/workbook.xml の並び順、実体のファイルは rels で解決する。
+// 書式や数式は捨て、表示に近い値（数式は計算済みの値）をタブ区切りの行にする。
+// 利用者が上げたファイルをそのまま読むため、展開後のサイズ・シート数・取り出す文字数に上限を設け、
+// XML は正規表現の後戻りではなく indexOf で前へ進むだけの走査にする（閉じタグのない XML で処理時間が膨らまないように）
+const XLSX_MAX_ENTRY_BYTES = 30 * 1024 * 1024
+const XLSX_MAX_TOTAL_BYTES = 100 * 1024 * 1024
+const XLSX_MAX_SHEETS = 50
+/** 取り出す文字数の上限。AI に渡すのは先頭5万文字までなので、それより十分に長くなったら読むのをやめる */
+const XLSX_MAX_OUTPUT_CHARS = 200_000
+
+/** Excel のセルに入る文字数の上限。共有文字列もこの長さで切る（同じ長い文字列を何度も参照させて膨らませない） */
+const XLSX_MAX_CELL_CHARS = 32_767
+
+interface ZipStreamHelper {
+  on(event: 'data', listener: (chunk: Uint8Array) => void): ZipStreamHelper
+  on(event: 'error', listener: (error: Error) => void): ZipStreamHelper
+  on(event: 'end', listener: () => void): ZipStreamHelper
+  pause(): ZipStreamHelper
+  resume(): ZipStreamHelper
+}
+
+class XlsxReader {
+  private readBytes = 0
+  constructor(private readonly zip: JSZip) {}
+
+  /**
+   * ZIP のエントリを展開しながら実際のバイト数を数え、上限を超えた時点で止める。
+   * ZIP に書かれた展開後のサイズは偽れるため信用せず、展開した量で判定する（圧縮爆弾を最後まで展開しない）
+   */
+  read(path: string): Promise<string | null> {
+    const file = this.zip.files[path]
+    if (!file || file.dir) return Promise.resolve(null)
+    return new Promise((resolve, reject) => {
+      const decoder = new TextDecoder('utf-8')
+      const chunks: string[] = []
+      let entryBytes = 0
+      let stopped = false
+      // internalStream は JSZip の実装にあるが型定義に無い（generateInternalStream と同じ StreamHelper を返す）
+      const stream = (file as unknown as { internalStream(type: 'uint8array'): ZipStreamHelper }).internalStream('uint8array')
+      stream
+        .on('data', (chunk: Uint8Array) => {
+          if (stopped) return
+          entryBytes += chunk.length
+          this.readBytes += chunk.length
+          if (entryBytes > XLSX_MAX_ENTRY_BYTES || this.readBytes > XLSX_MAX_TOTAL_BYTES) {
+            stopped = true
+            stream.pause()
+            reject(new Error('xlsx entry is too large to extract'))
+            return
+          }
+          chunks.push(decoder.decode(chunk, { stream: true }))
+        })
+        .on('error', (error: Error) => {
+          if (stopped) return
+          stopped = true
+          reject(error)
+        })
+        .on('end', () => {
+          if (stopped) return
+          chunks.push(decoder.decode())
+          resolve(chunks.join(''))
+        })
+        .resume()
+    })
+  }
+}
+
+/** xml の from 以降にある <tag ...>…</tag> を順に返す（自己終了の <tag/> は body を空にする）。見つからなければ打ち切る */
+function* scanElements(xml: string, tag: string, from = 0, to = xml.length): Generator<{ attrs: string; body: string }> {
+  const open = `<${tag}`
+  const close = `</${tag}>`
+  let index = from
+  while (index < to) {
+    const start = xml.indexOf(open, index)
+    if (start === -1 || start >= to) return
+    const next = xml[start + open.length]
+    // <c と <col のように前方一致する別の要素は飛ばす
+    if (next !== '>' && next !== '/' && next !== ' ' && next !== '\t' && next !== '\n' && next !== '\r') {
+      index = start + open.length
+      continue
+    }
+    const tagEnd = xml.indexOf('>', start)
+    if (tagEnd === -1 || tagEnd >= to) return
+    if (xml[tagEnd - 1] === '/') {
+      yield { attrs: xml.slice(start + open.length, tagEnd - 1), body: '' }
+      index = tagEnd + 1
+      continue
+    }
+    const end = xml.indexOf(close, tagEnd + 1)
+    if (end === -1 || end > to) return
+    yield { attrs: xml.slice(start + open.length, tagEnd), body: xml.slice(tagEnd + 1, end) }
+    index = end + close.length
+  }
+}
+
+/** ふりがな（<rPh>…</rPh>）を除く。日本語版 Excel は文字列に読みを持ち、そのまま連結すると「交通費コウツウヒ」になる */
+function withoutPhonetic(body: string): string {
+  if (!body.includes('<rPh')) return body
+  let result = ''
+  let index = 0
+  for (;;) {
+    const start = body.indexOf('<rPh', index)
+    if (start === -1) return result + body.slice(index)
+    result += body.slice(index, start)
+    const end = body.indexOf('</rPh>', start)
+    // 閉じタグが無ければ、そこから後ろは本文として読まない（壊れた XML で読みを本文に混ぜない）
+    if (end === -1) return result
+    index = end + '</rPh>'.length
+  }
+}
+
+function textRuns(body: string): string {
+  let text = ''
+  for (const { body: run } of scanElements(withoutPhonetic(body), 't')) text += decodeXmlEntities(run)
+  return text
+}
+
+/** 列の参照（A, B, …, Z, AA, …）を0始まりの番号にする */
+function columnIndex(letters: string | undefined): number | null {
+  if (!letters) return null
+  let index = 0
+  for (const letter of letters) index = index * 26 + (letter.charCodeAt(0) - 64)
+  return index - 1
+}
+
+/** 1行で読む列数の上限（XFD 列のような遠いセルを置いた行で、大量の空欄を作らない）。これより右の列は読まない */
+const XLSX_MAX_COLUMNS = 1000
+
+async function extractXlsxText(buffer: Buffer): Promise<string> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+  const reader = new XlsxReader(zip)
+  const sharedXml = await reader.read('xl/sharedStrings.xml')
+  const sharedStrings: string[] = []
+  if (sharedXml) for (const { body } of scanElements(sharedXml, 'si')) sharedStrings.push(textRuns(body).slice(0, XLSX_MAX_CELL_CHARS))
+
+  const parts: string[] = []
+  let length = 0
+  // 上限で読み切れなかったことは黙って捨てず、本文の先頭に書いて AI に伝える（一部だけの表を全体として扱わせない）
+  let outputCut = false
+  let columnsCut = false
+  const sheets = await resolveSheets(zip, reader)
+  for (const sheet of sheets.slice(0, XLSX_MAX_SHEETS)) {
+    if (length >= XLSX_MAX_OUTPUT_CHARS) {
+      outputCut = true
+      break
+    }
+    const xml = await reader.read(sheet.path)
+    if (!xml) continue
+    const rows: string[] = []
+    for (const { body: rowBody } of scanElements(xml, 'row')) {
+      if (length >= XLSX_MAX_OUTPUT_CHARS) {
+        outputCut = true
+        break
+      }
+      const cells: string[] = []
+      // セルごとに上限を確かめる（行を組み立ててからでは、1行に大きなセルを並べたファイルで上限を超えて膨らむ）
+      let rowLength = 0
+      for (const { attrs, body } of scanElements(rowBody, 'c')) {
+        // 空のセルは XML から省かれることがあるため、r="C2" の列で位置を合わせる（省いた分だけ空欄を入れる）
+        const column = columnIndex(attrs.match(/\br="([A-Z]{1,3})\d*"/)?.[1])
+        if ((column ?? cells.length) >= XLSX_MAX_COLUMNS || cells.length >= XLSX_MAX_COLUMNS) {
+          columnsCut = true
+          break
+        }
+        if (column !== null && column > cells.length) {
+          const gap = column - cells.length
+          for (let index = 0; index < gap; index += 1) cells.push('')
+          rowLength += gap
+        }
+        const type = attrs.match(/\bt="([^"]*)"/)?.[1]
+        let cell: string
+        if (type === 'inlineStr') {
+          cell = textRuns(body).slice(0, XLSX_MAX_CELL_CHARS)
+        } else {
+          const value = scanElements(body, 'v').next().value?.body
+          cell = value === undefined ? '' : type === 's' ? sharedStrings[Number(value)] ?? '' : decodeXmlEntities(value).slice(0, XLSX_MAX_CELL_CHARS)
+        }
+        cells.push(cell)
+        rowLength += cell.length + 1
+        if (length + rowLength >= XLSX_MAX_OUTPUT_CHARS) {
+          outputCut = true
+          break
+        }
+      }
+      // 空欄だけの行も、作ったセルの数を全体の上限に数える（空の行を大量に並べたファイルで処理を膨らませない）
+      length += rowLength
+      const row = cells.join('\t').replace(/\t+$/, '')
+      if (row.length === 0) continue
+      rows.push(row)
+    }
+    if (rows.length > 0) parts.push(`# ${sheet.name}\n${rows.join('\n')}`)
+  }
+  const notes = [
+    ...(sheets.length > XLSX_MAX_SHEETS ? [`シートが${sheets.length}枚あるため、先頭の${XLSX_MAX_SHEETS}枚だけを読みました（残りの${sheets.length - XLSX_MAX_SHEETS}枚は読んでいません）`] : []),
+    ...(columnsCut ? [`${XLSX_MAX_COLUMNS}列より右の列は読んでいません`] : []),
+    ...(outputCut ? ['表が大きいため、途中までしか読んでいません'] : []),
+  ]
+  const body = parts.join('\n\n')
+  return notes.length > 0 ? `[注記] ${notes.join('。')}。\n\n${body}` : body
+}
+
+async function resolveSheets(zip: JSZip, reader: XlsxReader): Promise<Array<{ name: string; path: string }>> {
+  const workbookXml = await reader.read('xl/workbook.xml')
+  const relsXml = await reader.read('xl/_rels/workbook.xml.rels')
+  if (workbookXml && relsXml) {
+    const targetById = new Map<string, string>()
+    for (const { attrs } of scanElements(relsXml, 'Relationship')) {
+      const id = attrs.match(/\bId="([^"]+)"/)?.[1]
+      const target = attrs.match(/\bTarget="([^"]+)"/)?.[1]
+      if (id && target) targetById.set(id, target.startsWith('/') ? target.slice(1) : `xl/${target}`)
+    }
+    // 同じシートの実体を何度も指して読ませる（同じ本文を繰り返し取り出させる）ファイルは、1回だけ読む
+    const seen = new Set<string>()
+    const sheets: Array<{ name: string; path: string }> = []
+    for (const { attrs } of scanElements(workbookXml, 'sheet')) {
+      const name = attrs.match(/\bname="([^"]*)"/)?.[1]
+      const rId = attrs.match(/\br:id="([^"]+)"/)?.[1]
+      const path = rId ? targetById.get(rId) : undefined
+      if (name === undefined || !path || seen.has(path)) continue
+      seen.add(path)
+      sheets.push({ name: decodeXmlEntities(name), path })
+    }
+    if (sheets.length > 0) return sheets
+  }
+  // 解決できない場合（壊れたファイル等）はファイル名の連番で読む
+  return Object.keys(zip.files)
+    .filter(name => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+    .sort((a, b) => Number(a.match(/sheet(\d+)/)?.[1] ?? 0) - Number(b.match(/sheet(\d+)/)?.[1] ?? 0))
+    .map((path, index) => ({ name: `Sheet${index + 1}`, path }))
+}
+
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
     // エントリ (pdf-parse) ではなく本体実装を直接読み込む。
@@ -134,6 +369,11 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
   if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
     return extractPptxText(buffer)
+  }
+
+  // Excel は AIアシスタントの添付でだけ読む（ファイル一覧のインデックス対象 isIndexable には入れていない）
+  if (mimeType === XLSX_MIME_TYPE) {
+    return extractXlsxText(buffer)
   }
 
   if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'text/csv') {

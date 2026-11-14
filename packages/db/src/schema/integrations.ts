@@ -19,7 +19,7 @@ export const connectedAccounts = pgTable('connected_accounts', {
   metadata: jsonb('metadata').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const externalIntegrations = pgTable('external_integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -31,7 +31,7 @@ export const externalIntegrations = pgTable('external_integrations', {
   config: jsonb('config').notNull().default({}),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const externalEvents = pgTable('external_events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -44,7 +44,7 @@ export const externalEvents = pgTable('external_events', {
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
   metadata: jsonb('metadata').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -57,4 +57,4 @@ export const auditLogs = pgTable('audit_logs', {
   action: text('action').notNull(),
   payload: jsonb('payload').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()

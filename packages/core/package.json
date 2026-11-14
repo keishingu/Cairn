@@ -6,10 +6,15 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./billing": {
+      "types": "./src/billing.ts",
+      "default": "./src/billing.ts"
+    },
+    "./import": {
+      "types": "./src/import/index.ts",
+      "default": "./src/import/index.ts"
     }
-  },
-  "dependencies": {
-    "@cairn/shared": "workspace:*"
   },
   "scripts": {
     "test": "vitest run",

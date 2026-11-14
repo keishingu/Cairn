@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
+import { FEATURE_FLAGS } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 
 export interface BookmarkDto {
@@ -36,7 +36,7 @@ export async function GET(_req: Request) {
 
     // ゲストは参加プロジェクトのチャンネルのみ閲覧可能（requireChannelAccess と同じ制約）。
     // プロジェクトから外れた後もブックマーク経由でメッセージが見えてしまうのを防ぐ
-    const role = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
+    const role = ctx.role
     const projectMemberSubquery = db
       .select({ one: sql<number>`1` })
       .from(projectMembers)
@@ -72,6 +72,7 @@ export async function GET(_req: Request) {
       .where(and(
         eq(messageBookmarks.userId, ctx.userId),
         eq(channels.workspaceId, ctx.workspaceId),
+        FEATURE_FLAGS.dm ? undefined : sql`${channels.type} <> 'dm'`,
         isNull(messages.deletedAt),
         or(
           nonPrivateVisible,

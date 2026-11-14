@@ -5,3 +5,6 @@
 
 # Expo
 .expo/
+
+# Firebase の設定ファイル（EAS の file 型シークレットから渡す。コミットしない）
+google-services.json

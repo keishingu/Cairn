@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchWorkspaceSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceOwner } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export interface WorkspaceDto {
   id: string
@@ -59,7 +59,7 @@ export async function PATCH(req: Request) {
   }
   const b = parsed.data
 
-  const forbidden = await requireWorkspaceOwner(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'owner')
   if (forbidden) return forbidden
 
   try {

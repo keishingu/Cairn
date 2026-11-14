@@ -10,6 +10,9 @@ interface AppShellContextValue {
   openPanel: (project?: ProjectDto) => void
   openMember: (userId: string) => void
   openNotif: () => void
+  isWebView: boolean
+  /** モバイルシェル（UA 判定）で描画中か。作成フォームをボトムシートで出すかの判定に使う */
+  isMobile: boolean
   projectsView: string
   setProjectsView: (view: string) => void
   /** ⌘⇧F（横断検索）の発火シグナル。chats 画面がこの増加を監視して検索を開く */
@@ -22,6 +25,8 @@ export const AppShellContext = createContext<AppShellContextValue>({
   openPanel: () => {},
   openMember: () => {},
   openNotif: () => {},
+  isWebView: false,
+  isMobile: false,
   projectsView: 'list',
   setProjectsView: () => {},
   crossSearchNonce: 0,

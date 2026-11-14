@@ -9,20 +9,20 @@ const PROJECT_ID = '00000000-0000-0000-0000-000000000100'
 const MILESTONE_ID = '00000000-0000-0000-0000-000000000200'
 const CHANNEL_ID = '00000000-0000-0000-0000-000000000300'
 
-const { mockGetAuthContext, mockRequireProjectAccess, mockRequireWorkspaceMember, mockDb } = vi.hoisted(() => ({
+const { mockGetAuthContext, mockRequireProjectAccess, mockRequireRole, mockDb } = vi.hoisted(() => ({
   mockGetAuthContext: vi.fn().mockResolvedValue({
-    ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: '00000000-0000-0000-0000-000000000010' },
+    ctx: { userId: '00000000-0000-0000-0000-000000000001', workspaceId: '00000000-0000-0000-0000-000000000010', role: 'member' },
     error: null,
   }),
   mockRequireProjectAccess: vi.fn().mockResolvedValue(null),
-  mockRequireWorkspaceMember: vi.fn().mockResolvedValue(null),
+  mockRequireRole: vi.fn().mockReturnValue(null),
   mockDb: { select: vi.fn(), transaction: vi.fn() },
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/permissions', () => ({
   requireProjectAccess: mockRequireProjectAccess,
-  requireWorkspaceMember: mockRequireWorkspaceMember,
+  requireRole: mockRequireRole,
 }))
 
 vi.mock('@cairn/db', () => ({
@@ -72,9 +72,9 @@ function insertChain(result: unknown[]) {
 describe('GET /api/projects/[id]/milestones', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
     mockRequireProjectAccess.mockResolvedValue(null)
-    mockRequireWorkspaceMember.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
   })
 
   it('別ワークスペースの projectId は見つからない扱いにする', async () => {
@@ -101,14 +101,14 @@ describe('GET /api/projects/[id]/milestones', () => {
 describe('POST /api/projects/[id]/milestones', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID }, error: null })
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: USER_ID, workspaceId: WS_ID, role: 'member' }, error: null })
     mockRequireProjectAccess.mockResolvedValue(null)
-    mockRequireWorkspaceMember.mockResolvedValue(null)
+    mockRequireRole.mockReturnValue(null)
   })
 
   it('member 未満なら作成できない', async () => {
     mockDb.select.mockReturnValueOnce(selectChain([{ id: PROJECT_ID }]))
-    mockRequireWorkspaceMember.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'guest' }), { status: 403 }))
+    mockRequireRole.mockReturnValueOnce(new Response(JSON.stringify({ error: 'guest' }), { status: 403 }))
 
     const { POST } = await import('./route')
     const res = await POST(

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import type { ProjectDto } from '@/app/api/projects/route'
@@ -42,8 +42,8 @@ vi.mock('../mobile/create-project-sheet', () => ({
       memberAvatarUrls: [],
       taskCount: 0,
       completedTaskCount: 0,
-      isOwner: true,
-      isMember: true,
+      isHosting: true,
+      isJoined: true,
       archived: false,
       coverPhotoIdx: 0,
       coverPhotoUrl: null,
@@ -70,14 +70,17 @@ vi.mock('../mobile/create-project-sheet', () => ({
 
 const mockUseWorkspacePermissions = vi.fn(() => ({
   wsRole: 'owner',
-  isOwner: true,
+  isHosting: true,
   isAdmin: true,
-  isMember: true,
+  isJoined: true,
   isGuest: false,
 }))
 
+const mockUseCurrentUser = vi.fn(() => ({ data: undefined as { calendarWeekStart?: string } | undefined, isError: false }))
+
 vi.mock('@/hooks/use-current-user', () => ({
   useWorkspacePermissions: () => mockUseWorkspacePermissions(),
+  useCurrentUser: () => mockUseCurrentUser(),
 }))
 
 vi.mock('@/lib/use-workspace-settings', () => ({
@@ -102,40 +105,93 @@ function makeQueryClient() {
   })
 }
 
-function renderPage() {
+function iso(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function weekdayInCurrentMonth(weekday: number): Date {
+  const today = new Date()
+  for (let day = 1; day <= 28; day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day)
+    if (d.getDay() === weekday) return d
+  }
+  throw new Error(`weekday ${weekday} not found`)
+}
+
+function makeProject(overrides: Partial<ProjectDto> = {}): ProjectDto {
+  return {
+    id: 'project-1',
+    title: '連続期間の山行',
+    description: null,
+    statusName: null,
+    statusColor: '#2563EB',
+    startDate: iso(new Date()),
+    endDate: iso(new Date()),
+    memberCount: 0,
+    memberNames: [],
+    memberAvatarUrls: [],
+    taskCount: 0,
+    completedTaskCount: 0,
+    isHosting: true,
+    isJoined: true,
+    archived: false,
+    coverPhotoIdx: 0,
+    coverPhotoUrl: null,
+    location: null,
+    placeId: null,
+    ...overrides,
+  }
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200 })
+}
+
+function mockCalendarApis(projects: ProjectDto[] = []) {
+  mockFetchWithAuth.mockImplementation(async (url: string) => {
+    if (url === '/api/projects') return jsonResponse(projects)
+    if (url === '/api/projects/statuses') return jsonResponse([])
+    if (url === '/api/calendar/google/status') return jsonResponse({ connected: false, configured: false })
+    if (url === '/api/milestones') return jsonResponse([])
+    throw new Error(`Unexpected fetch: ${url}`)
+  })
+}
+
+function renderPage(openPanel = vi.fn()) {
   const queryClient = makeQueryClient()
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <PageCalendar isMobile openPanel={vi.fn()} />
+      <PageCalendar isMobile openPanel={openPanel} />
     </QueryClientProvider>,
   )
-  return { queryClient, ...view }
+  return { queryClient, openPanel, ...view }
 }
 
 describe('PageCalendar (モバイル)', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals()
+    // PC の月表示は行数をセルの高さから決めるため ResizeObserver を使う（jsdom には無い）
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     window.localStorage.clear()
     mockFetchWithAuth.mockReset()
     mockUseWorkspacePermissions.mockReset()
     mockUseWorkspacePermissions.mockReturnValue({
       wsRole: 'owner',
-      isOwner: true,
+      isHosting: true,
       isAdmin: true,
-      isMember: true,
+      isJoined: true,
       isGuest: false,
     })
-    mockFetchWithAuth.mockImplementation(async (url: string) => {
-      if (url === '/api/projects') {
-        return new Response(JSON.stringify([]), { status: 200 })
-      }
-      if (url === '/api/projects/statuses') {
-        return new Response(JSON.stringify([]), { status: 200 })
-      }
-      if (url === '/api/calendar/google/status') {
-        return new Response(JSON.stringify({ connected: false, configured: false }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${url}`)
-    })
+    mockUseCurrentUser.mockReset()
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: false })
+    mockCalendarApis()
   })
 
   it('月表示で選択中の空き日をタップすると作成シートが開く', async () => {
@@ -160,40 +216,7 @@ describe('PageCalendar (モバイル)', () => {
     const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
     const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
-    mockFetchWithAuth.mockImplementation(async (url: string) => {
-      if (url === '/api/projects') {
-        return new Response(JSON.stringify([
-          {
-            id: 'existing-project',
-            title: '既存予定',
-            description: null,
-            statusName: null,
-            statusColor: null,
-            startDate: todayIso,
-            endDate: todayIso,
-            memberCount: 0,
-            memberNames: [],
-            memberAvatarUrls: [],
-            taskCount: 0,
-            completedTaskCount: 0,
-            isOwner: true,
-            isMember: true,
-            archived: false,
-            coverPhotoIdx: 0,
-            coverPhotoUrl: null,
-            location: null,
-            placeId: null,
-          },
-        ]), { status: 200 })
-      }
-      if (url === '/api/projects/statuses') {
-        return new Response(JSON.stringify([]), { status: 200 })
-      }
-      if (url === '/api/calendar/google/status') {
-        return new Response(JSON.stringify({ connected: false, configured: false }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${url}`)
-    })
+    mockCalendarApis([makeProject({ id: 'existing-project', title: '既存予定', statusColor: null, startDate: todayIso, endDate: todayIso })])
 
     renderPage()
 
@@ -223,40 +246,7 @@ describe('PageCalendar (モバイル)', () => {
     const today = new Date()
     const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
-    mockFetchWithAuth.mockImplementation(async (url: string) => {
-      if (url === '/api/projects') {
-        return new Response(JSON.stringify([
-          {
-            id: 'existing-project',
-            title: '既存予定',
-            description: null,
-            statusName: null,
-            statusColor: null,
-            startDate: todayIso,
-            endDate: todayIso,
-            memberCount: 0,
-            memberNames: [],
-            memberAvatarUrls: [],
-            taskCount: 0,
-            completedTaskCount: 0,
-            isOwner: true,
-            isMember: true,
-            archived: false,
-            coverPhotoIdx: 0,
-            coverPhotoUrl: null,
-            location: null,
-            placeId: null,
-          },
-        ]), { status: 200 })
-      }
-      if (url === '/api/projects/statuses') {
-        return new Response(JSON.stringify([]), { status: 200 })
-      }
-      if (url === '/api/calendar/google/status') {
-        return new Response(JSON.stringify({ connected: false, configured: false }), { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${url}`)
-    })
+    mockCalendarApis([makeProject({ id: 'existing-project', title: '既存予定', statusColor: null, startDate: todayIso, endDate: todayIso })])
 
     renderPage()
 
@@ -276,9 +266,9 @@ describe('PageCalendar (モバイル)', () => {
     const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日(${['日', '月', '火', '水', '木', '金', '土'][today.getDay()]})`
     mockUseWorkspacePermissions.mockReturnValue({
       wsRole: 'member',
-      isOwner: false,
+      isHosting: false,
       isAdmin: false,
-      isMember: true,
+      isJoined: true,
       isGuest: false,
     })
 
@@ -310,5 +300,142 @@ describe('PageCalendar (モバイル)', () => {
     expect(queryClient.getQueryData<ProjectDto[]>(['projects'])).toEqual([
       expect.objectContaining({ id: 'created-project', title: '新規予定' }),
     ])
+  })
+
+  it('上スワイプで次の月、下スワイプで前の月に移る', async () => {
+    renderPage()
+    const today = new Date()
+    const label = (offset: number) => {
+      const d = new Date(today.getFullYear(), today.getMonth() + offset, 1)
+      return `${d.getFullYear()}年${d.getMonth() + 1}月`
+    }
+    expect(await screen.findByText(label(0))).toBeInTheDocument()
+    const grid = screen.getByTestId('month-calendar')
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 220 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 80 }] })
+    expect(screen.getByText(label(1))).toBeInTheDocument()
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 80 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 220 }] })
+    expect(screen.getByText(label(0))).toBeInTheDocument()
+  })
+
+  it('短い縦移動では月を変えない', async () => {
+    renderPage()
+    const today = new Date()
+    const label = `${today.getFullYear()}年${today.getMonth() + 1}月`
+    expect(await screen.findByText(label)).toBeInTheDocument()
+    const grid = screen.getByTestId('month-calendar')
+
+    fireEvent.touchStart(grid, { changedTouches: [{ clientX: 40, clientY: 120 }] })
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 40, clientY: 100 }] })
+
+    expect(screen.getByText(label)).toBeInTheDocument()
+    const next = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    expect(screen.queryByText(`${next.getFullYear()}年${next.getMonth() + 1}月`)).not.toBeInTheDocument()
+  })
+
+  it('週の始まりの取得に失敗したらキャッシュのまま黙らずエラーを出す', () => {
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: true })
+    window.localStorage.setItem('cairn:calendar_week_start', 'monday')
+    renderPage()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('週の始まりの設定を読み込めませんでした')
+    expect(screen.getAllByTestId('weekday-label').map((node) => node.textContent)).toEqual([
+      '月', '火', '水', '木', '金', '土', '日',
+    ])
+  })
+
+  it('PCでも週の始まりの取得失敗を表示する', () => {
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isError: true })
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('週の始まりの設定を読み込めませんでした')
+  })
+
+  it('月曜始まりでは曜日見出しが月曜から並ぶ', () => {
+    window.localStorage.setItem('cairn:calendar_week_start', 'monday')
+    renderPage()
+
+    expect(screen.getAllByTestId('weekday-label').map((node) => node.textContent)).toEqual([
+      '月', '火', '水', '木', '金', '土', '日',
+    ])
+  })
+
+  it('PCの月表示ではホイールで次の月へ移る', async () => {
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    const today = new Date()
+    const current = `${today.getFullYear()}年${today.getMonth() + 1}月`
+    const nextDate = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const next = `${nextDate.getFullYear()}年${nextDate.getMonth() + 1}月`
+    expect(await screen.findByText(current)).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByTestId('month-calendar').dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(screen.getByText(next)).toBeInTheDocument()
+  })
+
+  it('週表示のホイールでは表示中の週を変えない', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const user = userEvent.setup()
+    const queryClient = makeQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PageCalendar openPanel={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    await user.click(screen.getByRole('button', { name: '週' }))
+    const label = screen.getByText(/–/)
+    const before = label.textContent
+    const event = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
+    await act(async () => {
+      label.dispatchEvent(event)
+    })
+    expect(label).toHaveTextContent(before ?? '')
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('月表示では同一週の連続日付を1本の矩形で表示する', async () => {
+    const user = userEvent.setup()
+    const monday = weekdayInCurrentMonth(1)
+    const friday = new Date(monday)
+    friday.setDate(monday.getDate() + 4)
+    mockCalendarApis([makeProject({ startDate: iso(monday), endDate: iso(friday) })])
+    const { openPanel } = renderPage()
+
+    const bar = await screen.findByRole('button', { name: '連続期間の山行' })
+    expect(screen.getAllByRole('button', { name: '連続期間の山行' })).toHaveLength(1)
+
+    await user.click(bar)
+    expect(openPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'project-1', title: '連続期間の山行' }))
+  })
+
+  it('月表示では週をまたぐ連続日付を週ごとに分割した矩形で表示する', async () => {
+    const saturday = weekdayInCurrentMonth(6)
+    const sunday = new Date(saturday)
+    sunday.setDate(saturday.getDate() + 1)
+    mockCalendarApis([makeProject({ startDate: iso(saturday), endDate: iso(sunday) })])
+    renderPage()
+
+    expect(await screen.findAllByRole('button', { name: '連続期間の山行' })).toHaveLength(2)
   })
 })

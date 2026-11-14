@@ -23,7 +23,10 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id: projectId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'read',
+  })
   if (error) return error
 
   try {
@@ -43,7 +46,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     }
 
     // ゲストは参加プロジェクトのファイルのみ閲覧可
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db

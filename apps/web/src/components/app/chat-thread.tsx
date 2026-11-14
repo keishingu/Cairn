@@ -4,27 +4,51 @@
 'use client'
 
 import React from 'react'
-import type { AttachmentDto, MessageType } from '@cairn/shared'
-import type { ReplyToDto } from '@/app/api/channels/[channelId]/messages/route'
+import { displayAppName, chatProjectRoleLabel, filterMentionCandidates, insertLineTaskMarkers, isVideoAttachmentMime, matchMentionQuery, sortMentionCandidatesByProject, type AttachmentDto, type MessageType, type ProfileAttributeDto, type ProjectMemberRole } from '@cairn/shared'
+import type { MessageDto, ReplyToDto, SenderAppDto } from '@/app/api/channels/[channelId]/messages/route'
+import { MessageCard, type CardAction } from '@/components/app/blocks/message-card'
+import { AppEntryButtons } from '@/components/app/blocks/app-entry-buttons'
+import { postCardAction } from '@/lib/apps/card-actions'
+import type { AiNudgeDto } from '@/app/api/ai/nudges/route'
 import { useQueryClient } from '@tanstack/react-query'
-import { Avatar } from './primitives'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Avatar, Modal, ModalHeader } from './primitives'
 import { ConfirmDialog } from './confirm-dialog'
+import { InlineError } from './inline-error'
+import { ReportMessageDialog, type ReportReason } from './report-message-dialog'
+import type { MoveSourceMessage } from '@/lib/chat/move-to-thread'
+import { ProfileAttributeBadges } from './profile-attribute-badges'
 import { RowActionMenu } from './row-action-menu'
-import { EmojiPicker } from './emoji-picker'
+import { MessageTaskDialog, type MessageTaskSubmitItem } from './message-task-dialog'
+import { useMessageGallery } from '@/hooks/use-message-gallery'
+import {
+  galleryImagesOf,
+  MessageGalleryDialog,
+  type MessageGalleryImage,
+} from './message-gallery-dialog'
+import type { MessageTaskCandidateDto, MessageTaskCandidatesResponse, MessageTaskCreateResponse } from '@/app/api/messages/[messageId]/task/route'
+import { decodeLinkedTasksKey, encodeLinkedTasksKey } from '@/lib/tasks/linked-tasks-key'
+import { ReactionPicker } from './reaction-picker'
+import { recordReactionHistory } from '@/hooks/use-reaction-history'
 import { Icon } from './primitives'
 import { FileTypeIcon } from './file-type-icon'
 import { CreateTextFileDialog } from './create-text-file-dialog'
 import { MarkdownContent } from './markdown-content'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import {
+  chatQueryKeys,
   formatChatMessageTime,
+  useChannelInitialMessage,
+  useChannelMessageHistory,
   useChannelMessages,
   useChannelMembers,
-  useCurrentUser,
   useDeleteMessage,
   useEditMessage,
   useEnsureMessageLoaded,
+  useLoadOlderChannelMessages,
   useMarkChannelRead,
+  useRefreshChannelMessage,
   useSendChannelMessage,
   useToggleBookmark,
   useToggleMessageReaction,
@@ -32,27 +56,43 @@ import {
   useProjectChannels,
   ChannelMessagesError,
 } from '@/lib/chat/client'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { useProjectMembers } from '@/hooks/use-project-members'
+import { useProfileAttributes } from '@/hooks/use-profile-attributes'
+import { useProjectRoles } from '@/hooks/use-project-roles'
+import { useLocale, useT } from '@/components/locale-provider'
 import { isImeConfirmingEnter } from '@/lib/chat/ime'
-import { stripMentionsToText } from '@/lib/chat/mentions'
+import { encodeInsertedMentions, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
+import { shouldSendChatOnEnter } from '@/lib/chat/send-key'
+import { useChatSendKeyMode } from '@/hooks/use-chat-send-key-mode'
+import {
+  ALL_MENTION_ID,
+  ALL_MENTION_LABEL,
+  PROJECT_MEMBERS_MENTION_ID,
+  PROJECT_MEMBERS_MENTION_LABEL,
+  attributeMentionTokenId,
+  roleMentionTokenId,
+  stripMentionsToText,
+} from '@/lib/chat/mentions'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { convertHeicToJpeg, isHeicLike } from '@/lib/process-image'
+import { useHeicAccept } from '@/hooks/use-heic-accept'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { chatDraftKey } from '@/lib/storage-keys'
 import { useCommand } from '@/lib/command-registry'
 import { toast } from '@/lib/toast'
-import { GENERIC_MIME_TYPES, resolveAttachmentMimeType } from '@/lib/attachments'
-
-const GOOGLE_DOCS_URL_RE = /https:\/\/(?:docs\.google\.com\/(?:document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*|drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+(?:\/[^\s]*)*)/g
-
-function extractGoogleDocsUrls(text: string): string[] {
-  const matches = text.match(GOOGLE_DOCS_URL_RE) ?? []
-  return [...new Set(matches.map(u => u.replace(/[.,;:!?)>]+$/, '')))]
-}
+import { AttachmentUploadError, uploadAttachment, type UploadedAttachment } from '@/lib/attachments/upload-client'
+import { VideoAttachment } from '@/components/app/video-attachment'
+import { extractGoogleDocsUrls } from '@/lib/google-docs-url'
+import { aiNudgeQueryKey, useAiNudgeFeedback, useAiNudges } from '@/hooks/use-ai-nudges'
+import { useRealtimeChannel } from '@/components/realtime/use-realtime-channel'
 
 // MIME タイプに加えて拡張子も列挙する。OS が拡張子→MIME のマッピングを持たない
 // 環境ではファイルピッカーが MIME 指定だけだと PDF 等を選択不可にしてしまうため。
 const ACCEPT_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  // 動画は Solo の支援者本人だけが送れる。選べない人を作らず、送信時にサーバーが理由つきで断る
+  'video/mp4', 'video/quicktime', 'video/webm',
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -64,13 +104,21 @@ const ACCEPT_FILE_TYPES = [
   // MIMEタイプのみのacceptだとネイティブファイル選択ダイアログで.csvが除外されてしまうため、
   // 拡張子も明示してnormalizeMimeType側の救済ロジックまで到達できるようにする
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.mp4', '.m4v', '.mov', '.webm',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx',
   '.txt', '.md', '.markdown', '.csv',
 ].join(',')
 
+const EMPTY_MESSAGES: MessageDto[] = []
+// クエリ未取得時の既定値。`data: x = []` だとレンダーごとに新しい配列になり、依存する useMemo
+// （mentionNames 等）が作り直されて React.memo(ChatMessage) が効かず全メッセージを再パースする
+const EMPTY_LIST: never[] = []
+
 function isImageMime(mimeType: string | null): boolean {
   return mimeType?.startsWith('image/') ?? false
 }
+
+export { findInsertedMention, survivingMentionTokenIds } from '@/lib/chat/mention-insertions'
 
 // 引用バーやプレビューでは Markdown を描画せず、メンション記法を素朴な @表示名 に戻した一行テキストにする。
 // 通知バーと同じ stripMentionsToText を使い、canonical な `<@userId>` も旧形式 `<@userId|名前>` も可読化する。
@@ -92,14 +140,27 @@ function isEmojiOnly(text: string): boolean {
   return stripped.length === 0
 }
 
-export async function copyMessageContent(content: string): Promise<boolean> {
+type TranslateFn = (message: string, values?: Record<string, string | number>) => string
+
+export async function copyMessageContent(content: string, t: TranslateFn): Promise<boolean> {
   if (!content.length) return false
   try {
     await navigator.clipboard.writeText(content)
-    toast.success('メッセージをコピーしました')
+    toast.success(t('Copied the message'))
     return true
   } catch {
-    toast.error('メッセージをコピーできませんでした')
+    toast.error(t('Could not copy the message'))
+    return false
+  }
+}
+
+export async function copyMessageLink(url: string, t: TranslateFn): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success(t('Copied the link'))
+    return true
+  } catch {
+    toast.error(t('Could not copy the link'))
     return false
   }
 }
@@ -112,6 +173,15 @@ interface PendingAttachment {
   previewUrl: string
 }
 
+interface FinalizeRetryAttachment {
+  id: string
+  channelId: string
+  file: File
+  error: string
+  retryFinalize: () => Promise<UploadedAttachment>
+  isRetrying?: boolean
+}
+
 interface PersistedDraft {
   text: string
   attachments: Omit<PendingAttachment, 'previewUrl'>[]
@@ -119,7 +189,55 @@ interface PersistedDraft {
 
 // ─── Message ──────────────────────────────────────────────────────
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onJumpToMessage, onCopyLink, onImageClick, mentionNames, compact, isMobile, focused }: {
+/** タスク化の候補（本文の各行）を取得する。失敗したらトーストで知らせて null を返す。 */
+export async function fetchMessageTaskCandidates(messageId: string, t: TranslateFn): Promise<MessageTaskCandidateDto[] | null> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`)
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCandidatesResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.candidates)) {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return null
+    }
+    return body.candidates
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return null
+  }
+}
+
+/** 選んだ行（line）を編集後のタスク名（title）でタスク化する。成否はトーストで知らせ、成功したら true を返す。 */
+export async function makeTasksFromMessage(messageId: string, items: MessageTaskSubmitItem[], t: TranslateFn): Promise<boolean> {
+  try {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    })
+    const body = await res.json().catch(() => null) as (Partial<MessageTaskCreateResponse> & { error?: unknown }) | null
+    if (!res.ok || !Array.isArray(body?.tasks) || body.tasks.length === 0 || typeof body.createdCount !== 'number') {
+      toast.error(typeof body?.error === 'string' ? body.error : t('Could not make a task from this message'))
+      return false
+    }
+    const message = body.createdCount === 0
+      ? t('This message is already a task')
+      : body.createdCount === 1 ? t('Added to tasks') : t('Added {count} tasks', { count: body.createdCount })
+    const only = body.tasks.length === 1 ? body.tasks[0] : undefined
+    toast.success(message, {
+      action: { label: t('Open'), href: only ? `/tasks?taskId=${encodeURIComponent(only.id)}` : '/tasks' },
+    })
+    return true
+  } catch {
+    toast.error(t('Could not make a task from this message'))
+    return false
+  }
+}
+
+const REACTION_TOOLTIP_MAX_NAMES = 10
+const REACTION_TOOLTIP_MAX_WIDTH = 320
+// 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
+const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
+
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -127,6 +245,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   senderName: string
   senderAvatarUrl?: string | null
   senderEmail?: string | null
+  senderProfileAttributes?: ProfileAttributeDto[]
+  senderProjectRole?: ProjectMemberRole | null
+  senderProjectRoleName?: string | null
+  senderProjectRoleColor?: string | null
+  senderProjectRoleLegacy?: ProjectMemberRole | null
   createdAt: string
   isEdited: boolean
   content: string
@@ -134,34 +257,103 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   attachments: AttachmentDto[]
   replyTo: ReplyToDto | null
   bookmarked: boolean
+  // memo を効かせるため、linkedTasks は配列でなく id / status / lineIndex / title を連結したキー文字列で受ける
+  linkedTasksKey?: string | undefined
+  blocked?: boolean | undefined
+  /** messageType が blocks のときのカード本体。サーバーがボタンの value を落としたもの */
+  blocks?: unknown[] | null | undefined
+  /** カードの版（サーバーが計算したもの）。押下時に送り返す */
+  blocksRevision?: string | null | undefined
+  /** カード内のメンションの表示名（非活性のメンバーも含む、サーバーで解決したもの） */
+  cardMentionNames?: Record<string, string> | undefined
+  /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
+  senderApp?: SenderAppDto | null | undefined
+  imported?: boolean | undefined
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale?: ((messageId: string) => Promise<void>) | undefined
   onReact: (messageId: string, emoji: string) => void
   onEdit: (messageId: string, content: string) => void
   onDelete: (messageId: string) => void
   onCheckboxToggle: (messageId: string, index: number, checked: boolean) => void
   onReply: (messageId: string) => void
   onBookmark: (messageId: string) => void
+  onMakeTask: (messageId: string) => void
+  /** 渡されたときだけ、画像の添付があればメニューに「ギャラリーに追加」を出す（プロジェクトのチャンネルで親が渡す） */
+  onAddToGallery?: ((messageId: string) => void) | undefined
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
+  /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
+  onMoveToThread?: (messageId: string) => void
+  /** 渡されたときだけアバターを押して送信者のメンバー詳細を開ける（ワークスペースの在籍者で、アプリ・システムの発言でないとき） */
+  onOpenSender?: (userId: string) => void
+  /** 切り出すメッセージの選択モード。渡されたときはチェックボックスを出し、行のクリックで選択を切り替える */
+  selection?: { selected: boolean; onToggle: (messageId: string) => void }
   mentionNames?: Map<string, string>
   compact?: boolean
   isMobile?: boolean
   focused?: boolean
 }) {
+  const t = useT()
+  const router = useRouter()
+  const linkedTasks = React.useMemo(() => decodeLinkedTasksKey(linkedTasksKey), [linkedTasksKey])
+  // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
+  const displaySenderName = senderApp ? displayAppName(senderApp, t) : senderName
+  // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
+  // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
+  const { locale } = useLocale()
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(messageId, blocksRevision ?? '', action, locale, onCardStale && (() => onCardStale(messageId))), [messageId, blocksRevision, locale, onCardStale])
+  const cardNames = React.useMemo(() => {
+    if (!cardMentionNames) return mentionNames
+    const merged = new Map(mentionNames)
+    for (const [id, name] of Object.entries(cardMentionNames)) merged.set(id, name)
+    return merged
+  }, [cardMentionNames, mentionNames])
   const [showPicker, setShowPicker] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const [editMode, setEditMode] = React.useState(false)
   const [editDraft, setEditDraft] = React.useState('')
   const [editComposing, setEditComposing] = React.useState(false)
   const [deleteConfirm, setDeleteConfirm] = React.useState(false)
-  const [hoveredReaction, setHoveredReaction] = React.useState<number | null>(null)
+  // メッセージ一覧のスクロール領域で切れないよう、ツールチップは fixed でボタンの上に置く
+  const [hoveredReaction, setHoveredReaction] = React.useState<{ index: number; position: React.CSSProperties } | null>(null)
+  // 「リアクションした人」の一覧で選択中の絵文字。null は閉じている
+  const [reactionPeopleEmoji, setReactionPeopleEmoji] = React.useState<string | null>(null)
+  // 既定で開く絵文字。名前を持つものを優先する（名前のない絵文字から開くと、他の絵文字には名前があるのに「表示できません」から始まる）
+  const defaultReaction = reactions.find(reaction => reaction.userNames.length > 0) ?? reactions[0]
+  // 選択中の絵文字が Realtime 更新で消えたら、残っている既定の絵文字を表示する
+  const selectedReaction = reactionPeopleEmoji === null
+    ? undefined
+    : reactions.find(reaction => reaction.emoji === reactionPeopleEmoji) ?? defaultReaction
+  const selectedEmoji = selectedReaction?.emoji ?? null
+  React.useEffect(() => {
+    // 選択状態も表示中の絵文字へ揃える。消えた絵文字を覚えたままだと、同じ絵文字が付け直された時に操作なしで表示が戻る。
+    // 全て消えたら閉じる（残すと次に誰かが付けた時に勝手に開く）
+    if (reactionPeopleEmoji !== null && reactionPeopleEmoji !== selectedEmoji) setReactionPeopleEmoji(selectedEmoji)
+  }, [reactionPeopleEmoji, selectedEmoji])
+  const openReactionPeople = () => { if (defaultReaction) setReactionPeopleEmoji(defaultReaction.emoji) }
   const addBtnRef = React.useRef<HTMLButtonElement>(null)
   const editTextareaRef = React.useRef<HTMLTextAreaElement>(null)
   const avatarSize = compact ? 30 : 36
   const px = compact ? '8px 14px' : '6px 16px'
   const emojiOnly = isEmojiOnly(content)
+  // 行末に「✓ タスク」ラベルを出せたタスク。ラベルを出せない（行に対応しない・Markdown 描画しない本文）分だけ下部のチップで示す。
+  // カード（blocks）は本文を Markdown で描かず行末ラベルを出せないため、すべてチップで示す（代替テキストの行で置けた扱いにして消さない）
+  const inlinePlaced = React.useMemo(
+    () => (blocked || emojiOnly || !content || messageType === 'blocks' ? linkedTasks.map(() => false) : insertLineTaskMarkers(content, linkedTasks).placed),
+    [blocked, emojiOnly, content, messageType, linkedTasks],
+  )
+  const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
+  // 取り込んだ過去ログは、紐づけで本人の投稿になっても編集・削除させない（API も拒否する）
+  const canModify = isOwn && !imported
   const canCopy = content.length > 0
+  const visibleProjectRole = chatProjectRoleLabel({
+    legacyRole: senderProjectRole,
+    roleName: senderProjectRoleName,
+    configuredLegacyRole: senderProjectRoleLegacy,
+  })
+  const projectRoleColor = senderProjectRoleName ? senderProjectRoleColor : null
 
   const startEdit = () => {
     setEditDraft(content)
@@ -177,9 +369,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
-    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) startEdit() }
+    const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
     const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
-    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && isOwn) setDeleteConfirm(true) }
+    const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
     window.addEventListener('cairn:delete-message', onDeleteEvt)
@@ -189,7 +381,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, isOwn, content])
+  }, [messageId, canModify, content])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -208,10 +400,29 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     }
   }
 
-  // ホバーツールバー（モバイルは常時表示、PC はホバー時）。返信・ブックマークは全メッセージ、コピーは内容がある場合、編集/削除は自分のみ
+  // ホバーツールバー（モバイルは名前行の右端に常時表示、PC はホバー時に本文へ重ねる）。
+  // モバイルで本文列の横に置くと、右上の導線のために本文まで狭くなる。
   const handleCopy = React.useCallback(() => {
-    void copyMessageContent(content)
-  }, [content])
+    void copyMessageContent(content, t)
+  }, [content, t])
+  const [reportOpen, setReportOpen] = React.useState(false)
+  const [blockConfirm, setBlockConfirm] = React.useState(false)
+  const submitReport = async (input: { reason: ReportReason; details?: string }) => {
+    const res = await fetchWithAuth(`/api/messages/${messageId}/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not report the message'))
+    }
+    toast.success(t('Reported the message'))
+  }
+  const blockUser = async () => {
+    const res = await fetchWithAuth('/api/me/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: senderId }) })
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null
+      throw new Error(data?.error ?? t('Could not block the user'))
+    }
+    toast.success(t('Blocked the user'))
+  }
 
   // MarkdownContent の React.memo を効かせるため、チェックボックストグルを安定参照で渡す
   const handleCheckboxToggle = React.useCallback(
@@ -223,31 +434,41 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   if (messageType === 'system') {
     return (
       <div data-message-id={messageId} style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px' }}>
-        <span style={{ fontSize: 11.5, color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', background: 'var(--card-2)', border: '1px solid var(--divider)', borderRadius: 999, padding: '3px 12px', textAlign: 'center', lineHeight: 1.5 }}>
           {toPlainSnippet(content, id => mentionNames?.get(id))}
         </span>
       </div>
     )
   }
 
+  const hasGalleryImage = galleryImagesOf(attachments).length > 0
   const menuActions = [
-    { icon: 'link' as const, label: 'リンクをコピー', onSelect: () => onCopyLink(messageId) },
-    ...(canCopy ? [{ icon: 'copy' as const, label: 'コピー', onSelect: handleCopy }] : []),
-    ...(isOwn ? [
-      { icon: 'edit' as const, label: '編集', onSelect: startEdit },
-      { icon: 'trash' as const, label: '削除', danger: true, onSelect: () => setDeleteConfirm(true) },
+    { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
+    ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
+    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
+    ...(onAddToGallery && hasGalleryImage ? [{ icon: 'image' as const, label: t('Add to the gallery'), onSelect: () => onAddToGallery(messageId) }] : []),
+    ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
+    ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
+    ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
+    // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
+    // 取り込んだ過去ログの送信者は、紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    ...(!isOwn && !senderApp && !imported ? [{ icon: 'user' as const, label: t('Block'), danger: true, onSelect: () => setBlockConfirm(true) }] : []),
+    // 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する）
+    ...(canModify ? [
+      { icon: 'edit' as const, label: t('Edit'), onSelect: startEdit },
+      { icon: 'trash' as const, label: t('Delete'), danger: true, onSelect: () => setDeleteConfirm(true) },
     ] : []),
   ]
   const iconBtnStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 3, borderRadius: 6, display: 'inline-flex', alignItems: 'center' }
-  const messageActions = !editMode && (isMobile || hovered) && (
+  const messageActions = !editMode && !selection && (isMobile || hovered) && (
     <div style={isMobile
-      ? { flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2, display: 'flex', alignItems: 'center', gap: 2 }
+      ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
-      <button onClick={() => onReply(messageId)} title="返信" style={iconBtnStyle}>
+      <button onClick={() => onReply(messageId)} title={t('Reply')} style={iconBtnStyle}>
         <Icon name="reply" size={14}/>
       </button>
-      <button onClick={() => onBookmark(messageId)} title={bookmarked ? 'ブックマーク解除' : 'ブックマーク'} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
+      <button onClick={() => onBookmark(messageId)} title={bookmarked ? t('Remove bookmark') : t('Bookmarks')} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
         <Icon name="bookmark" size={14}/>
       </button>
       <RowActionMenu actions={menuActions}/>
@@ -265,16 +486,65 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       }}
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => !isMobile && setHovered(false)}
+      {...(selection ? { onClick: () => selection.onToggle(messageId) } : {})}
     >
-      <div title={senderEmail ?? undefined}>
-        <Avatar name={senderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
-          <span style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: 'var(--text)' }}>{senderName}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
-          {isEdited && <span style={{ fontSize: 10, color: 'var(--text-4)', fontStyle: 'italic' }}>編集済み</span>}
+      {selection && (
+        <input
+          type="checkbox"
+          checked={selection.selected}
+          onChange={() => selection.onToggle(messageId)}
+          onClick={e => e.stopPropagation()}
+          aria-label={t('Select message')}
+          style={{ accentColor: 'var(--accent)', margin: '10px 0 0', flexShrink: 0, width: 16, height: 16 }}
+        />
+      )}
+      {onOpenSender ? (
+        <button
+          type="button"
+          onClick={() => onOpenSender(senderId)}
+          title={senderEmail ?? undefined}
+          aria-label={t('Open profile of {name}', { name: displaySenderName })}
+          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: '50%', flexShrink: 0 }}
+        >
+          <Avatar name={displaySenderName} url={senderAvatarUrl ?? null} size={avatarSize}/>
+        </button>
+      ) : (
+        <div title={senderEmail ?? undefined}>
+          <Avatar name={displaySenderName} url={senderApp ? senderApp.iconUrl : senderAvatarUrl ?? null} size={avatarSize}/>
         </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 3 }}>
+          <div title={senderEmail ?? undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: compact ? 'var(--fs-md)' : 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>{displaySenderName}</span>
+            {/* 人間と取り違えないよう、アプリの発言には必ず印を付ける */}
+            {senderApp && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-2xs)', fontWeight: 600 }}>
+                {senderApp.uninstalled ? `${t('App')} · ${t('Uninstalled')}` : t('App')}
+              </span>
+            )}
+            {/* 外部チャットから取り込んだ過去ログは、Cairn で投稿されたものと区別できるよう印を付ける */}
+            {imported && (
+              <span title={t('Imported from Teams. Past messages cannot be edited or deleted.')} style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-2xs)', fontWeight: 600 }}>
+                {t('Imported from Teams')}
+              </span>
+            )}
+            {visibleProjectRole && (
+              <span style={{ padding: '1px 6px', borderRadius: 4, background: projectRoleColor ? 'var(--card-2)' : 'var(--violet-soft)', color: projectRoleColor ?? 'var(--violet-text)', fontSize: 'var(--fs-2xs)', fontWeight: 600 }}>
+                {visibleProjectRole}
+              </span>
+            )}
+            {!isMobile && <ProfileAttributeBadges attributes={senderProfileAttributes} compact />}
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{formatChatMessageTime(createdAt)}</span>
+            {isEdited && <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-4)', fontStyle: 'italic' }}>{t('Edited')}</span>}
+          </div>
+          {isMobile && messageActions}
+        </div>
+        {isMobile && senderProfileAttributes.length > 0 && (
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            <ProfileAttributeBadges attributes={senderProfileAttributes} compact />
+          </span>
+        )}
         {replyTo && (
           <button
             onClick={() => !replyTo.isDeleted && onJumpToMessage(replyTo.id)}
@@ -286,13 +556,15 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             }}
           >
             <Icon name="reply" size={11} color="var(--text-4)"/>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {replyTo.isDeleted ? '削除されたメッセージ' : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+            <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>{replyTo.senderName}</span>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {replyTo.isDeleted ? t('Deleted message') : toPlainSnippet(replyTo.content, id => mentionNames?.get(id)) || t('(Attachment)')}
             </span>
           </button>
         )}
-        {editMode ? (
+        {blocked ? (
+          <details><summary style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Message from a blocked user')}</summary><div style={{ marginTop: 6, fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{content}</div></details>
+        ) : editMode ? (
           <div style={{ marginBottom: 4 }}>
             <textarea
               ref={editTextareaRef}
@@ -305,29 +577,30 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               style={{
                 width: '100%', border: '1px solid var(--accent)', borderRadius: 8,
                 background: 'var(--card)', padding: '6px 10px',
-                fontSize: compact ? 13 : 13.5, color: 'var(--text)', outline: 'none',
+                fontSize: compact ? 'var(--fs-md)' : 'var(--fs-lg)', color: 'var(--text)', outline: 'none',
                 fontFamily: 'inherit', lineHeight: 1.5, resize: 'none', boxSizing: 'border-box',
               }}
             />
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              <button onClick={submitEdit}
-                style={{ padding: '3px 10px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--on-accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >保存</button>
-              <button onClick={() => setEditMode(false)}
-                style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >キャンセル</button>
-              {!isMobile && <span style={{ fontSize: 11, color: 'var(--text-4)', alignSelf: 'center' }}>Enter で保存 · Esc でキャンセル</span>}
+              <button type="button" className="btn btn-primary btn-sm" onClick={submitEdit}>{t('Save')}</button>
+              <button type="button" className="btn btn-sm" onClick={() => setEditMode(false)}>{t('Cancel')}</button>
+              {!isMobile && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', alignSelf: 'center' }}>{t('Enter to save · Esc to cancel')}</span>}
             </div>
+          </div>
+        ) : messageType === 'blocks' ? (
+          <div style={{ fontSize: compact ? 'var(--fs-md)' : 'var(--fs-lg)', color: 'var(--text-2)', lineHeight: 1.6 }}>
+            <MessageCard blocks={blocks} fallbackText={content} mentionNames={cardNames} onAction={handleCardAction} revision={blocksRevision} />
           </div>
         ) : (
           content && (
-            <div style={{ fontSize: emojiOnly ? 40 : compact ? 13 : 13.5, color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
+            <div style={{ fontSize: emojiOnly ? 40 : compact ? 'var(--fs-md)' : 'var(--fs-lg)', color: 'var(--text-2)', lineHeight: emojiOnly ? 1.2 : 1.6 }}>
               {emojiOnly ? content : (
                 <MarkdownContent
                   content={content}
                   fontSize={compact ? 13 : 13.5}
                   lineHeight={1.6}
                   mentionNames={mentionNames}
+                  lineTasks={linkedTasks}
                   onCheckboxToggle={handleCheckboxToggle}
                 />
               )}
@@ -353,6 +626,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   cursor: 'pointer',
                 }}
               />
+            ) : isVideoAttachmentMime(a.mimeType) ? (
+              <VideoAttachment key={a.fileId} fileId={a.fileId} fileName={a.fileName} maxWidth={attachments.length === 1 ? 360 : 240} />
             ) : (
               <a
                 key={a.fileId}
@@ -364,7 +639,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   padding: '8px 12px', borderRadius: 8,
                   background: 'var(--card-2)', border: '1px solid var(--border)',
                   color: 'var(--text-2)', textDecoration: 'none',
-                  fontSize: 12.5, maxWidth: 240,
+                  fontSize: 'var(--fs-md)', maxWidth: 240,
                 }}
               >
                 <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
@@ -375,30 +650,88 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             ))}
           </div>
         )}
+        {chipTasks.length > 0 && (() => {
+          const doneCount = chipTasks.filter(task => task.status === 'done').length
+          const allDone = doneCount === chipTasks.length
+          const single = chipTasks.length === 1 ? chipTasks[0] : undefined
+          const chipStyle: React.CSSProperties = {
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            height: compact ? 22 : 24, padding: '0 8px', borderRadius: 12,
+            fontSize: 'var(--fs-sm)', fontWeight: 600, textDecoration: 'none',
+            background: allDone ? 'var(--card-2)' : 'var(--accent-soft)',
+            border: `1px solid ${allDone ? 'var(--border)' : 'var(--accent-border)'}`,
+            color: allDone ? 'var(--text-3)' : 'var(--accent-text)',
+            opacity: allDone ? 0.75 : 1,
+          }
+          const statusLabel = (status: 'todo' | 'in_progress' | 'done') =>
+            status === 'done' ? t('Done') : status === 'in_progress' ? t('In progress') : t('Not started')
+          return single ? (
+            <Link
+              href={`/tasks?taskId=${encodeURIComponent(single.id)}`}
+              data-testid="linked-task-chip"
+              data-task-status={single.status}
+              title={t('Open task')}
+              style={{ marginTop: 6, ...chipStyle }}
+            >
+              <Icon name="check" size={11}/> {t('Task')}
+            </Link>
+          ) : (
+            <div style={{ marginTop: 6, display: 'inline-flex' }}>
+              <RowActionMenu
+                trigger={{
+                  label: t('Show tasks'),
+                  testId: 'linked-task-chip',
+                  content: <><Icon name="check" size={11}/> {t('Task {done}/{total}', { done: doneCount, total: chipTasks.length })}</>,
+                }}
+                triggerStyle={{ ...chipStyle, cursor: 'pointer', fontFamily: 'inherit' }}
+                actions={chipTasks.map(task => ({
+                  icon: task.status === 'done' ? 'check' : 'external-link',
+                  label: task.title,
+                  verbatim: true,
+                  hint: statusLabel(task.status),
+                  onSelect: () => router.push(`/tasks?taskId=${encodeURIComponent(task.id)}`),
+                }))}
+              />
+            </div>
+          )
+        })()}
         <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
-              onMouseEnter={() => !isMobile && setHoveredReaction(i)}
+              onMouseEnter={e => {
+                if (isMobile) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                // 右端に近ければボタンの右端に揃えて左へ広げ、上に余白がなければ下に出す（幅が潰れて縦長になったり画面外へ出たりしないように）
+                const horizontal = rect.left + REACTION_TOOLTIP_MAX_WIDTH + 8 <= window.innerWidth
+                  ? { left: rect.left }
+                  : { right: Math.max(8, window.innerWidth - rect.right) }
+                const vertical = rect.top >= REACTION_TOOLTIP_MIN_SPACE_ABOVE
+                  ? { bottom: window.innerHeight - rect.top + 6 }
+                  : { top: rect.bottom + 6 }
+                setHoveredReaction({ index: i, position: { ...horizontal, ...vertical } })
+              }}
               onMouseLeave={() => !isMobile && setHoveredReaction(null)}
             >
               <button onClick={() => onReact(messageId, r.emoji)} style={{
                 height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
                 background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
                 border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
-                fontSize: 11, fontWeight: 600,
+                fontSize: 'var(--fs-xs)', fontWeight: 600,
                 color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
-              {/* PC: ホバーでリアクションしたユーザーを一覧表示（モバイルはネイティブ長押しで表示するため不要） */}
-              {hoveredReaction === i && r.userNames.length > 0 && (
+              {/* PCはホバーで抜粋、全員はPC・モバイルWebともメッセージの「…」メニューから表示 */}
+              {!isMobile && hoveredReaction?.index === i && r.userNames.length > 0 && (
                 <span style={{
-                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6,
+                  position: 'fixed', ...hoveredReaction.position,
                   background: 'var(--text)', color: 'var(--bg)', borderRadius: 6, padding: '5px 9px',
-                  fontSize: 11, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', zIndex: 100,
-                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontSize: 'var(--fs-xs)', fontWeight: 500, lineHeight: 1.4, width: 'max-content', maxWidth: `min(${REACTION_TOOLTIP_MAX_WIDTH}px, calc(100vw - 16px))`, overflowWrap: 'anywhere', zIndex: 'var(--z-popover)',
+                  boxShadow: 'var(--shadow-lg)', pointerEvents: 'none',
                 }}>
-                  {r.userNames.join('、')}
+                  {/* 多人数でも数行に収め、全員は「…」メニューの一覧で確認する */}
+                  {r.userNames.slice(0, REACTION_TOOLTIP_MAX_NAMES).join(t(', '))}
+                  {r.userNames.length > REACTION_TOOLTIP_MAX_NAMES && ` ${t('{count} more people', { count: r.userNames.length - REACTION_TOOLTIP_MAX_NAMES })}`}
                 </span>
               )}
             </span>
@@ -406,31 +739,87 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
           <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
             width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12,
             background: 'var(--card-2)', border: '1px solid var(--border)',
-            fontSize: 12, color: 'var(--text-3)',
+            fontSize: 'var(--fs-sm)', color: 'var(--text-3)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', fontFamily: 'inherit',
           }}>+</button>
           {showPicker && (
-            <EmojiPicker anchorRef={addBtnRef} onSelect={emoji => { onReact(messageId, emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>
+            <ReactionPicker anchorRef={addBtnRef} onSelect={emoji => onReact(messageId, emoji)} onClose={() => setShowPicker(false)} {...(isMobile ? { isMobile: true } : {})}/>
           )}
         </div>
       </div>
-      {messageActions}
+      {!isMobile && messageActions}
+      {selectedReaction && (
+        <Modal onClose={() => setReactionPeopleEmoji(null)} label={t('Show who reacted')}>
+          {/* モバイルWebは下からのシート、PCは中央のカード */}
+          <div style={{
+            ...(isMobile
+              ? { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, boxShadow: 'var(--shadow-sheet)', animation: 'slideUpSheet .22s cubic-bezier(.2,.7,.3,1)' }
+              : { position: 'relative', width: 400, maxWidth: '100%', borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }),
+            maxHeight: '70dvh', background: 'var(--card)',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <ModalHeader title={t('Reactions ({count})', { count: reactions.reduce((total, reaction) => total + reaction.count, 0) })} onClose={() => setReactionPeopleEmoji(null)} />
+            <div style={{ display: 'flex', gap: 6, padding: '12px 20px', overflowX: 'auto', flexShrink: 0 }}>
+              {reactions.map(reaction => {
+                const selected = reaction.emoji === selectedReaction.emoji
+                return (
+                  <button
+                    key={reaction.emoji}
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
+                    onClick={() => setReactionPeopleEmoji(reaction.emoji)}
+                    style={{
+                      height: 32, padding: '0 12px', borderRadius: 16, flexShrink: 0,
+                      background: selected ? 'var(--accent-soft)' : 'var(--card-2)',
+                      border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                      color: selected ? 'var(--accent-text)' : 'var(--text-2)',
+                      fontSize: 'var(--fs-md)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', touchAction: 'manipulation',
+                    }}
+                  >{reaction.emoji} {reaction.count}</button>
+                )
+              })}
+            </div>
+            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 20px calc(16px + env(safe-area-inset-bottom))' }}>
+              {selectedReaction.userNames.length > 0 ? selectedReaction.userNames.map((name, index) => (
+                <div key={`${name}-${index}`} style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-2)', fontSize: 'var(--fs-md)', overflowWrap: 'anywhere' }}>
+                  {name}
+                </div>
+              )) : (
+                <div style={{ padding: '10px 0', borderTop: '1px solid var(--divider)', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
+                  {t('Could not show who reacted')}
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <ConfirmDialog
         open={deleteConfirm}
-        title="メッセージを削除"
-        message="このメッセージを削除しますか？この操作は取り消せません。"
+        title={t('Delete message')}
+        message={t('Delete this message? This cannot be undone.')}
         onConfirm={() => onDelete(messageId)}
         onClose={() => setDeleteConfirm(false)}
       />
+      <ConfirmDialog
+        open={blockConfirm}
+        title={t('Block {name}', { name: senderName })}
+        message={t('You and this user will no longer be able to send each other direct messages.')}
+        confirmLabel={t('Block')}
+        busyLabel={t('Blocking...')}
+        onConfirm={blockUser}
+        onClose={() => setBlockConfirm(false)}
+      />
+      <ReportMessageDialog open={reportOpen} onSubmit={submitReport} onClose={() => setReportOpen(false)} />
     </div>
   )
 })
 
 // ─── Input ────────────────────────────────────────────────────────
 
-const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, onFilesSelect, onRemoveAttachment, isUploading, mentionMembers, mentionNames, onMentionInserted, onCreateTextFile, replyTarget, onCancelReply }: {
+const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError, setSendError, isComposing, setIsComposing, compact, isMobile, pendingAttachments, finalizeRetries, onRetryFinalize, onRemoveFinalizeRetry, onFilesSelect, onRemoveAttachment, isUploading, uploadProgress, mentionMembers, mentionMembersError, onRetryMentionMembers, isRetryingMentionMembers, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention, mentionNames, onMentionInserted, onCreateTextFile, appEntryButtons, replyTarget, onCancelReply }: {
   placeholder: React.ReactNode
   draft: string
   setDraft: (v: string) => void
@@ -443,16 +832,36 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   compact?: boolean
   isMobile?: boolean
   pendingAttachments: PendingAttachment[]
+  finalizeRetries: FinalizeRetryAttachment[]
+  onRetryFinalize: (id: string) => void
+  onRemoveFinalizeRetry: (id: string) => void
   onFilesSelect: (files: File[]) => void
   onRemoveAttachment: (fileId: string) => void
   isUploading: boolean
+  /** 再開可能アップロード（動画）の進捗（0〜100）。進捗の無い送信では null */
+  uploadProgress: number | null
   mentionMembers?: { userId: string; displayName: string }[]
+  /** 候補の絞り込みに必要なデータを取得できなかった時のメッセージ。候補の代わりに表示する */
+  mentionMembersError?: string | null
+  onRetryMentionMembers?: () => void
+  isRetryingMentionMembers?: boolean
+  mentionAttributes?: { id: string; name: string }[]
+  // プロジェクトの役割（`@レビュワー`）。プロジェクトに紐づくチャンネルでだけ渡す
+  mentionRoles?: { id: string; name: string }[]
+  /** DM ではグループメンションを展開しないため候補から外す */
+  includeAllMention?: boolean
+  /** プロジェクトチャンネルのときだけ @project_members を候補に出す */
+  includeProjectMembersMention?: boolean
   mentionNames?: Map<string, string>
-  onMentionInserted?: (userId: string, displayName: string) => void
+  onMentionInserted?: (tokenId: string, displayName: string) => void
   onCreateTextFile: () => void
+  /** アプリの起動口（投票など）。DM では渡さない */
+  appEntryButtons?: React.ReactNode
   replyTarget: ReplyToDto | null
   onCancelReply: () => void
 }) => {
+  const t = useT()
+  const { mode: activeSendKeyMode, error: sendKeyError, dismissError: dismissSendKeyError, toggle: toggleSendKeyMode } = useChatSendKeyMode()
   const [isDragOver, setIsDragOver] = React.useState(false)
   const dragCounterRef = React.useRef(0)
 
@@ -506,12 +915,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     onDrop: handleDrop,
   }
 
-  const [showPicker, setShowPicker] = React.useState(false)
+  const fileAccept = useHeicAccept(ACCEPT_FILE_TYPES)
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null)
   const [mentionAnchorPos, setMentionAnchorPos] = React.useState<number | null>(null)
   const [selectedIdx, setSelectedIdx] = React.useState(0)
-  const [insertedMentionNames, setInsertedMentionNames] = React.useState<Set<string>>(new Set())
-  const smileBtnRef = React.useRef<HTMLButtonElement>(null)
+  const [insertedMentions, setInsertedMentions] = React.useState<{ tokenId: string; displayName: string }[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
   const docInputRef = React.useRef<HTMLInputElement>(null)
@@ -536,33 +944,84 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     if (!draft) {
       setMentionQuery(null)
       setMentionAnchorPos(null)
-      setInsertedMentionNames(new Set())
+      setInsertedMentions([])
     }
   }, [draft])
 
+  // 本文に残っているメンション。同じ相手を二重に入れても通知は1回で、本文が「@小川 @小川」と読みにくくなるだけなので、
+  // 候補から外す。メンションを消せば再び候補に出る
+  // 入力中の `@名前` 自体を既存のメンションと数えないよう、その部分を除いた本文で判定する
+  const mentionedTokenIds = React.useMemo(() => {
+    const rest = mentionAnchorPos === null || mentionQuery === null
+      ? draft
+      : draft.slice(0, mentionAnchorPos) + draft.slice(mentionAnchorPos + 1 + mentionQuery.length)
+    return survivingMentionTokenIds(rest, insertedMentions)
+  }, [draft, insertedMentions, mentionAnchorPos, mentionQuery])
+
   const mentionCandidates = React.useMemo(() => {
-    if (mentionQuery === null || !mentionMembers) return []
+    // 絞り込みに失敗したまま一部の候補だけを出すと、出てこない人が「居ない」ように見える
+    if (mentionQuery === null || mentionMembersError) return []
     const q = mentionQuery.toLowerCase()
-    return mentionMembers.filter(m => m.displayName.toLowerCase().includes(q)).slice(0, 6)
-  }, [mentionQuery, mentionMembers])
+    type MentionPickerItem = { tokenId: string; displayName: string; kind: 'all' | 'project_members' | 'attr' | 'role' | 'user' }
+    // 優先度: @all → @project_members → ユーザー（プロジェクト参加者は呼び出し側で先頭）→ 属性
+    // 属性を先に出すと初見ビューポートが属性で埋まりユーザー名を選べないため末尾へ回す。
+    const specials: MentionPickerItem[] = []
+    const users: MentionPickerItem[] = []
+    const attributes: MentionPickerItem[] = []
+    const roles: MentionPickerItem[] = []
+    if (includeAllMention && ALL_MENTION_LABEL.startsWith(q)) {
+      specials.push({ tokenId: ALL_MENTION_ID, displayName: ALL_MENTION_LABEL, kind: 'all' })
+    }
+    if (includeProjectMembersMention && PROJECT_MEMBERS_MENTION_LABEL.startsWith(q)) {
+      specials.push({
+        tokenId: PROJECT_MEMBERS_MENTION_ID,
+        displayName: PROJECT_MEMBERS_MENTION_LABEL,
+        kind: 'project_members',
+      })
+    }
+    for (const member of mentionMembers ?? []) {
+      if (member.displayName.toLowerCase().includes(q)) {
+        users.push({ tokenId: member.userId, displayName: member.displayName, kind: 'user' })
+      }
+    }
+    for (const attribute of mentionAttributes ?? []) {
+      if (attribute.name.toLowerCase().includes(q)) {
+        attributes.push({
+          tokenId: attributeMentionTokenId(attribute.id),
+          displayName: attribute.name,
+          kind: 'attr',
+        })
+      }
+    }
+    for (const role of mentionRoles ?? []) {
+      if (role.name.toLowerCase().includes(q)) {
+        roles.push({ tokenId: roleMentionTokenId(role.id), displayName: role.name, kind: 'role' })
+      }
+    }
+    return [...specials, ...users, ...roles, ...attributes].filter(item => !mentionedTokenIds.has(item.tokenId))
+  }, [mentionQuery, mentionMembers, mentionMembersError, mentionAttributes, mentionRoles, includeAllMention, includeProjectMembersMention, mentionedTokenIds])
 
   // 候補が変わったら選択をリセット
-  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates.length])
+  React.useEffect(() => { setSelectedIdx(0) }, [mentionCandidates])
 
   const detectMention = (val: string, cursorPos: number) => {
-    const before = val.slice(0, cursorPos)
-    const m = /@([^\s@]*)$/.exec(before)
-    if (m) { setMentionQuery(m[1]!); setMentionAnchorPos(m.index) }
+    const m = matchMentionQuery(val.slice(0, cursorPos))
+    if (m) { setMentionQuery(m.query); setMentionAnchorPos(m.index) }
     else { setMentionQuery(null); setMentionAnchorPos(null) }
   }
 
-  const insertMention = (userId: string, displayName: string) => {
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(false)
+    detectMention(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+  }
+
+  const insertMention = (tokenId: string, displayName: string) => {
     if (mentionAnchorPos === null) return
     const cursor = (textareaRef.current ?? compactInputRef.current)?.selectionStart ?? draft.length
     const newDraft = `${draft.slice(0, mentionAnchorPos)}@${displayName} ${draft.slice(cursor)}`
     setDraft(newDraft)
-    onMentionInserted?.(userId, displayName)
-    setInsertedMentionNames(prev => { const next = new Set(prev); next.add(displayName); return next })
+    onMentionInserted?.(tokenId, displayName)
+    setInsertedMentions(prev => [...prev, { tokenId, displayName }])
     setMentionQuery(null)
     setMentionAnchorPos(null)
     const targetPos = mentionAnchorPos + displayName.length + 2
@@ -572,7 +1031,8 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     })
   }
 
-  const handleKeyDownWithMention = (e: React.KeyboardEvent, fallback: () => void) => {
+  const handleKeyDownWithMention = (e: React.KeyboardEvent<HTMLTextAreaElement>, fallback: () => void) => {
+    if (isImeConfirmingEnter(e, isComposing)) return
     if (mentionCandidates.length > 0) {
       if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => (i + 1) % mentionCandidates.length); return }
@@ -580,7 +1040,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         const m = mentionCandidates[selectedIdx] ?? mentionCandidates[0]
-        if (m) insertMention(m.userId, m.displayName)
+        if (m) insertMention(m.tokenId, m.displayName)
         return
       }
     } else if (e.key === 'Escape') {
@@ -593,32 +1053,61 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   }
 
   const MentionPicker = (() => {
-    if (mentionCandidates.length === 0) return null
+    const showError = mentionQuery !== null && !!mentionMembersError
+    if (!showError && mentionCandidates.length === 0) return null
     const el = textareaRef.current ?? compactInputRef.current
     const rect = el?.getBoundingClientRect()
     const style: React.CSSProperties = rect
-      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 200 }
-      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 200 }
+      ? { position: 'fixed', bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, zIndex: 'var(--z-popover)' }
+      : { position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 'var(--z-dropdown)' }
+    if (showError) {
+      return (
+        <div style={{ ...style, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)' }}>
+          <InlineError style={{ flex: 1 }}>{mentionMembersError}</InlineError>
+          <button
+            type="button"
+            aria-label={t('Reload mention suggestions')}
+            disabled={isRetryingMentionMembers}
+            // 押しても入力欄のフォーカスを奪わない。再読み込み自体は、キーボード操作でも発火する click で行う
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onRetryMentionMembers?.()}
+            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit', cursor: isRetryingMentionMembers ? 'default' : 'pointer', opacity: isRetryingMentionMembers ? 0.5 : 1 }}
+          >
+            {t('Retry')}
+          </button>
+        </div>
+      )
+    }
     return (
-      <div style={{ ...style, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+      <div style={{ ...style, maxHeight: 240, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {mentionCandidates.map((m, i) => (
-          <button key={m.userId}
-            onMouseDown={e => { e.preventDefault(); insertMention(m.userId, m.displayName) }}
+          <button key={m.tokenId}
+            ref={i === selectedIdx ? node => node?.scrollIntoView?.({ block: 'nearest' }) : undefined}
+            onMouseDown={e => { e.preventDefault(); insertMention(m.tokenId, m.displayName) }}
             onMouseEnter={() => setSelectedIdx(i)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: 'none', background: i === selectedIdx ? 'var(--accent-soft)' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
           >
             <Avatar name={m.displayName} size={22}/>
-            <span style={{ fontSize: 13.5, color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>{m.displayName}</span>
+            <span style={{ fontSize: 'var(--fs-lg)', color: i === selectedIdx ? 'var(--accent)' : 'var(--text-2)', fontWeight: 500 }}>
+              @{m.displayName}
+              {m.kind !== 'user' ? (
+                <span style={{ marginLeft: 6, fontSize: 'var(--fs-xs)', color: 'var(--text-4)', fontWeight: 500 }}>
+                  {m.kind === 'all' ? t('Everyone') : m.kind === 'project_members' ? t('Project members') : m.kind === 'role' ? t('Project role') : t('Attribute')}
+                </span>
+              ) : null}
+            </span>
           </button>
         ))}
       </div>
     )
   })()
 
-  // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ
+  // ピッカーで挿入されたメンションをテキストエリア上でハイライト表示するオーバーレイ。
+  // textarea とオーバーレイの両方に scrollbar-gutter: stable を付ける。長文で textarea にだけスクロールバーが出ると
+  // 内容幅が変わって折り返し位置がずれ、見えている文字とキャレットの位置が食い違うため
   const draftOverlay = React.useMemo(() => {
-    if (insertedMentionNames.size === 0 || !draft) return null
-    const sorted = [...insertedMentionNames].sort((a, b) => b.length - a.length)
+    if (insertedMentions.length === 0 || !draft) return null
+    const sorted = [...new Set(insertedMentions.map(m => m.displayName))].sort((a, b) => b.length - a.length)
     const escaped = sorted.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     const re = new RegExp(`@(${escaped.join('|')})(?=[\\s、。！？]|$)`, 'g')
     const nodes: React.ReactNode[] = []
@@ -634,7 +1123,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     if (nodes.length === 0) return null
     if (last < draft.length) nodes.push(<span key="last" style={{ color: 'var(--text)' }}>{draft.slice(last)}</span>)
     return nodes
-  }, [draft, insertedMentionNames])
+  }, [draft, insertedMentions])
 
   const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !isPending && !isUploading
 
@@ -647,25 +1136,25 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '6px 10px' : '8px 14px', borderBottom: '1px solid var(--divider)' }}>
       <Icon name="reply" size={13} color="var(--accent)"/>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-2)' }}>{replyTarget.senderName} に返信</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || '（添付ファイル）'}
+        <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Reply to {name}', { name: replyTarget.senderName })}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {toPlainSnippet(replyTarget.content, id => mentionNames?.get(id)) || t('(Attachment)')}
         </div>
       </div>
-      <button onClick={onCancelReply} title="返信をキャンセル" style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+      <button onClick={onCancelReply} title={t('Cancel reply')} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
         <Icon name="close" size={14}/>
       </button>
     </div>
   ) : null
 
-  const AttachmentPreviews = pendingAttachments.length > 0 || isUploading ? (
+  const AttachmentPreviews = pendingAttachments.length > 0 || finalizeRetries.length > 0 || isUploading ? (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: compact ? '6px 10px 0' : '6px 14px 0' }}>
       {pendingAttachments.map(a => (
         <div key={a.fileId} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
           {isImageMime(a.mimeType) && a.previewUrl ? (
             <img src={a.previewUrl} alt={a.fileName} style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', display: 'block' }} />
           ) : (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12.5, maxWidth: 240 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 'var(--fs-md)', maxWidth: 240 }}>
               <FileTypeIcon mimeType={a.mimeType} fileName={a.fileName} width={28} height={32}/>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.fileName}</span>
             </div>
@@ -676,16 +1165,23 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               position: 'absolute', top: -4, right: -4,
               width: 16, height: 16, borderRadius: '50%',
               background: 'var(--text-3)', border: 'none',
-              color: 'var(--bg)', fontSize: 9, fontWeight: 700,
+              color: 'var(--bg)', fontSize: 'var(--fs-2xs)', fontWeight: 600,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: 'inherit', lineHeight: 1,
             }}
           >✕</button>
         </div>
       ))}
+      {finalizeRetries.map(item => (
+        <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--red-soft)', color: 'var(--red-text)', fontSize: 'var(--fs-sm)', maxWidth: 340 }}>
+          <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}: {item.error}</span>
+          <button type="button" className="btn btn-xs" disabled={item.isRetrying} onClick={() => onRetryFinalize(item.id)}>{item.isRetrying ? t('Uploading...') : t('Retry')}</button>
+          <button type="button" aria-label={t('Remove {name}', { name: item.file.name })} disabled={item.isRetrying} onClick={() => onRemoveFinalizeRetry(item.id)} style={{ border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>✕</button>
+        </div>
+      ))}
       {isUploading && (
-        <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 18, flexShrink: 0 }}>
-          ⋯
+        <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-2xl)', flexShrink: 0 }}>
+          {uploadProgress !== null ? <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{uploadProgress}%</span> : '⋯'}
         </div>
       )}
     </div>
@@ -700,7 +1196,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
     <input
       ref={fileInputRef}
       type="file"
-      accept={ACCEPT_FILE_TYPES}
+      accept={fileAccept}
       multiple
       style={{ display: 'none' }}
       onChange={makeFileHandler()}
@@ -733,29 +1229,29 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--divider)', position: 'relative' }} {...dropHandlers}>
         {hiddenFileInput}
         {sendError && (
-          <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>⚠️ {sendError}</span>
-            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', padding: '0 2px' }}>✕</button>
-          </div>
+          <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6, fontSize: 'var(--fs-sm)' }}>{sendError}</InlineError>
+        )}
+        {sendKeyError && (
+          <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6, fontSize: 'var(--fs-sm)' }}>{sendKeyError}</InlineError>
         )}
         {isDragOver && (
           <div style={{ position: 'absolute', inset: 6, zIndex: 10, borderRadius: 10, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
+            <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
           </div>
         )}
-        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--card-2)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
           {ReplyPreview}
           {AttachmentPreviews}
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, padding: '7px 10px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               {MentionPicker}
               {typeof placeholder !== 'string' && !draft && (
-                <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 13 }}>
+                <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
                   {placeholder}
                 </div>
               )}
               {draftOverlay && (
-                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 240 }}>
+                <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 'var(--fs-md)', fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', scrollbarGutter: 'stable', maxHeight: 240 }}>
                   {draftOverlay}
                 </div>
               )}
@@ -764,12 +1260,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 value={draft}
                 onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
                 onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
+                onCompositionEnd={handleCompositionEnd}
                 onKeyDown={e => handleKeyDownWithMention(e, () => {
-                  if (e.key !== 'Enter' || e.shiftKey) return
-                  // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                  if (isMobile) return
+                  if (e.key !== 'Enter') return
                   if (isImeConfirmingEnter(e, isComposing)) return
+                  if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                   e.preventDefault()
                   send()
                 })}
@@ -777,7 +1272,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
                 onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
                 placeholder={typeof placeholder === 'string' ? placeholder : ''}
                 rows={1}
-                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 13, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box' }}
+                style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 'var(--fs-md)', color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 20, maxHeight: 240, boxSizing: 'border-box', scrollbarGutter: 'stable' }}
               />
             </div>
             <button onClick={() => fileInputRef.current?.click()} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
@@ -786,10 +1281,13 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
             <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
               <Icon name="file-text" size={15}/>
             </button>
-            <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}>
-              <Icon name="smile" size={15}/>
+            {appEntryButtons}
+            <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+              </span>
+              <span style={{ fontSize: 'var(--fs-xs)', whiteSpace: 'nowrap' }}>{t('Enter to send')}</span>
             </button>
-            {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
             <button onClick={send} disabled={!canSend} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
               <Icon name="send" size={13}/>
             </button>
@@ -805,31 +1303,35 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
       {hiddenImageInput}
       {hiddenDocInput}
       {sendError && (
-        <div style={{ marginBottom: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red-text)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>⚠️ {sendError}</span>
-          <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'transparent', color: 'var(--red-text)', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}>✕</button>
-        </div>
+        <InlineError variant="box" onDismiss={() => setSendError(null)} style={{ marginBottom: 6 }}>{sendError}</InlineError>
+      )}
+      {sendKeyError && (
+        <InlineError variant="box" onDismiss={dismissSendKeyError} style={{ marginBottom: 6 }}>{sendKeyError}</InlineError>
       )}
       {isDragOver && (
         <div style={{ position: 'absolute', inset: '8px 24px 18px', zIndex: 10, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--accent)' }}>ドロップしてアップロード</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
-      <div style={{ background: 'var(--card)', border: `1px solid ${sendError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--divider)' }}>
-          <button onClick={() => imageInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="image" size={13}/> 画像
+      <div style={{ background: 'var(--card)', border: `1px solid ${sendError || sendKeyError ? 'var(--red)' : 'var(--border-2)'}`, borderRadius: 12, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+        {/* スマホ幅ではラベル付きのボタンが1行に収まらないため、アイコンだけにする（折り返しは念のため残す） */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 14px 6px 10px', borderBottom: '1px solid var(--divider)' }}>
+          <button onClick={() => imageInputRef.current?.click()} aria-label={t('Image')} title={t('Image')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="image" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Image')}</>}
           </button>
-          <button onClick={() => docInputRef.current?.click()} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="paperclip" size={13}/> ファイル
+          <button onClick={() => docInputRef.current?.click()} aria-label={t('Files')} title={t('Files')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="paperclip" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Files')}</>}
           </button>
-          <button onClick={onCreateTextFile} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="file-text" size={13}/> テキストファイル
+          <button onClick={onCreateTextFile} aria-label={t('Text file')} title={t('Text file')} style={{ border: 'none', background: 'transparent', padding: isMobile ? '4px 6px' : '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+            <Icon name="file-text" size={isMobile ? 15 : 13}/>{!isMobile && <> {t('Text file')}</>}
           </button>
-          <button ref={smileBtnRef} onClick={() => setShowPicker(p => !p)} style={{ border: 'none', background: 'transparent', padding: '4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 11.5, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
-            <Icon name="smile" size={13}/> 絵文字
+          {appEntryButtons}
+          <button type="button" role="switch" aria-label={t('Enter to send')} aria-checked={activeSendKeyMode === 'enter'} onClick={toggleSendKeyMode} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', padding: '4px 0 4px 8px', borderRadius: 5, color: 'var(--text-3)', fontSize: 'var(--fs-sm)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <span aria-hidden="true" style={{ width: 25, height: 14, borderRadius: 999, padding: 2, background: activeSendKeyMode === 'enter' ? 'var(--accent)' : 'var(--border-2)', display: 'inline-flex', alignItems: 'center', justifyContent: activeSendKeyMode === 'enter' ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--card)' }}/>
+            </span>
+            {t('Enter to send')}
           </button>
-          {showPicker && <EmojiPicker anchorRef={smileBtnRef} onSelect={emoji => { setDraft(draft + emoji); setShowPicker(false) }} onClose={() => setShowPicker(false)}/>}
         </div>
         {ReplyPreview}
         {AttachmentPreviews}
@@ -837,12 +1339,12 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
           <div style={{ flex: 1, position: 'relative' }}>
             {MentionPicker}
             {typeof placeholder !== 'string' && !draft && (
-              <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 14 }}>
+              <div style={{ position: 'absolute', top: 2, left: 0, right: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-4)', fontSize: 'var(--fs-lg)' }}>
                 {placeholder}
               </div>
             )}
             {draftOverlay && (
-              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 14, fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', maxHeight: 320 }}>
+              <div ref={overlayRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '2px 0', fontSize: 'var(--fs-lg)', fontFamily: 'inherit', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', pointerEvents: 'none', overflow: 'hidden', scrollbarGutter: 'stable', maxHeight: 320 }}>
                 {draftOverlay}
               </div>
             )}
@@ -851,12 +1353,11 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               value={draft}
               onChange={e => { setDraft(e.target.value); detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length) }}
               onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
+              onCompositionEnd={handleCompositionEnd}
               onKeyDown={e => handleKeyDownWithMention(e, () => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                // スマホは Enter を改行に使い、送信はボタンのみ（誤送信防止）
-                if (isMobile) return
+                if (e.key !== 'Enter') return
                 if (isImeConfirmingEnter(e, isComposing)) return
+                if (!shouldSendChatOnEnter(e.key, activeSendKeyMode, e)) return
                 e.preventDefault()
                 send()
               })}
@@ -864,7 +1365,7 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
               onScroll={draftOverlay ? e => { if (overlayRef.current) overlayRef.current.scrollTop = (e.target as HTMLTextAreaElement).scrollTop } : undefined}
               placeholder={typeof placeholder === 'string' ? placeholder : ''}
               rows={1}
-              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 14, color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box' }}
+              style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', fontSize: 'var(--fs-lg)', color: draftOverlay ? 'transparent' : 'var(--text)', caretColor: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '2px 0', minHeight: 22, maxHeight: 320, boxSizing: 'border-box', scrollbarGutter: 'stable' }}
             />
           </div>
           <button onClick={send} disabled={!canSend} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: canSend ? 'var(--accent)' : 'var(--border-2)', color: canSend ? 'var(--on-accent)' : 'var(--text-4)', cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .12s' }}>
@@ -876,32 +1377,248 @@ const ChatInputBar = ({ placeholder, draft, setDraft, send, isPending, sendError
   )
 }
 
+// ─── Private AI nudge ─────────────────────────────────────────────
+
+const AiNudgeCard = ({
+  nudge,
+  feedbackPending,
+  completing,
+  onFeedback,
+  onComplete,
+}: {
+  nudge: AiNudgeDto
+  feedbackPending: boolean
+  completing: boolean
+  onFeedback: (feedback: 'later' | 'not_helpful') => void
+  onComplete: () => void
+}) => {
+  const t = useT()
+  return (
+  <article
+    data-nudge-id={nudge.id}
+    style={{ margin: '10px 16px', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--accent-border)', background: 'var(--accent-soft)' }}
+  >
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+      <div style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--accent)', color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon name="sparkles" size={14}/>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>AI PMO · {nudge.title}</div>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent-text)', marginTop: 1 }}>{t('Only you can see this message')}</div>
+      </div>
+      <time style={{ marginLeft: 'auto', alignSelf: 'flex-start', fontSize: 'var(--fs-xs)', color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
+        {formatChatMessageTime(nudge.createdAt)}
+      </time>
+    </div>
+    <div style={{ fontSize: 'var(--fs-md)', lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{nudge.body}</div>
+    <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+      {nudge.taskId && (
+        <a
+          href={`/tasks?taskId=${encodeURIComponent(nudge.taskId)}`}
+          className="btn btn-ghost"
+          style={{ height: 28, padding: '0 9px', fontSize: 'var(--fs-sm)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
+        >
+          <Icon name="external-link" size={11}/> {t('Open task')}
+        </a>
+      )}
+      {nudge.taskId && (
+        <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 'var(--fs-sm)' }} onClick={onComplete} disabled={completing || feedbackPending}>
+          {completing ? t('Updating…') : t('Mark complete')}
+        </button>
+      )}
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 'var(--fs-sm)' }} onClick={() => onFeedback('later')} disabled={feedbackPending || completing}>
+        {t('Later')}
+      </button>
+      <button className="btn btn-ghost" style={{ height: 28, padding: '0 9px', fontSize: 'var(--fs-sm)' }} onClick={() => onFeedback('not_helpful')} disabled={feedbackPending || completing}>
+        {t('This is fine')}
+      </button>
+    </div>
+  </article>
+  )
+}
+
+export const MESSAGE_TIMELINE_END_THRESHOLD = 80
+
+export function isNearMessageTimelineEnd({
+  scrollHeight,
+  scrollTop,
+  clientHeight,
+}: Pick<HTMLElement, 'scrollHeight' | 'scrollTop' | 'clientHeight'>) {
+  return scrollHeight - scrollTop - clientHeight <= MESSAGE_TIMELINE_END_THRESHOLD
+}
+
+/**
+ * タイムラインの内容が変わったとき末尾へ追従するか。
+ * - 初期位置決め（未読位置・リンク先）の直後は、その実測位置を尊重する
+ * - 増えた後の位置で測ると長文1件で閾値を超えて追従しなくなるため、増える前に末尾にいたかで判断する
+ * - 最新メッセージが自分の送信に変わったときは、読み返し中でも末尾へ移す（AI ナッジの増減だけでは移さない）
+ */
+export function shouldFollowLatestMessage({
+  justPositioned,
+  isNearEnd,
+  wasAtLatest,
+  latestChanged,
+  latestSenderId,
+  currentUserId,
+}: {
+  justPositioned: boolean
+  isNearEnd: boolean
+  wasAtLatest: boolean
+  latestChanged: boolean
+  latestSenderId: string | undefined
+  currentUserId: string | undefined
+}) {
+  if (justPositioned) return isNearEnd
+  if (wasAtLatest || isNearEnd) return true
+  return latestChanged && currentUserId !== undefined && latestSenderId === currentUserId
+}
+
+function useMessageTimelineScroll({
+  channelId,
+  messages,
+  latestMessageId,
+  currentUserId,
+  nudgeCount,
+  hasOlderMessages,
+  isLoadingOlder,
+  loadOlder,
+  initialPositioned,
+}: {
+  channelId: string | null
+  messages: Array<{ id: string; senderId?: string | null }>
+  latestMessageId: string | undefined
+  currentUserId: string | undefined
+  nudgeCount: number
+  hasOlderMessages: boolean
+  isLoadingOlder: boolean
+  loadOlder: () => Promise<boolean>
+  initialPositioned: boolean
+}) {
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const pendingPrependScrollRef = React.useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const [isAtLatest, setIsAtLatest] = React.useState(true)
+  // 内容が増える直前に末尾にいたか。スクロール時にだけ更新し、描画後の高さでは上書きしない
+  const wasAtLatestRef = React.useRef(true)
+
+  React.useEffect(() => {
+    wasAtLatestRef.current = true
+    setIsAtLatest(true)
+  }, [channelId])
+
+  React.useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    const el = scrollRef.current
+    if (!pending || !el) return
+    el.scrollTop = pending.scrollTop + (el.scrollHeight - pending.scrollHeight)
+    pendingPrependScrollRef.current = null
+  }, [messages])
+
+  const followedLatestMessageIdRef = React.useRef<string | undefined>(undefined)
+  const wasPositionedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!initialPositioned) wasPositionedRef.current = false
+    if (!el || !initialPositioned || pendingPrependScrollRef.current) return
+    const justPositioned = !wasPositionedRef.current
+    wasPositionedRef.current = true
+    const latestChanged = followedLatestMessageIdRef.current !== latestMessageId
+    followedLatestMessageIdRef.current = latestMessageId
+    const follow = shouldFollowLatestMessage({
+      justPositioned,
+      isNearEnd: isNearMessageTimelineEnd(el),
+      wasAtLatest: wasAtLatestRef.current,
+      latestChanged,
+      latestSenderId: messages.find(m => m.id === latestMessageId)?.senderId ?? undefined,
+      currentUserId,
+    })
+    if (follow) el.scrollTop = el.scrollHeight
+    wasAtLatestRef.current = follow
+    setIsAtLatest(follow)
+    // messages は送信者の参照のみ。過去ページの読み込みで追従させないよう依存に含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPositioned, latestMessageId, nudgeCount])
+
+  const handleMessageScroll = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const isNearEnd = isNearMessageTimelineEnd(el)
+    wasAtLatestRef.current = isNearEnd
+    setIsAtLatest(isNearEnd)
+    if (el.scrollTop > MESSAGE_TIMELINE_END_THRESHOLD || !hasOlderMessages || isLoadingOlder) return
+    pendingPrependScrollRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
+    void loadOlder().then(loaded => {
+      if (!loaded) pendingPrependScrollRef.current = null
+    })
+  }, [hasOlderMessages, isLoadingOlder, loadOlder])
+
+  const scrollToLatest = React.useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion || typeof el.scrollTo !== 'function') {
+      el.scrollTop = el.scrollHeight
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+    wasAtLatestRef.current = true
+    setIsAtLatest(true)
+  }, [])
+
+  return { scrollRef, handleMessageScroll, showScrollToLatest: !isAtLatest, scrollToLatest }
+}
+
 // ─── ChatThread ───────────────────────────────────────────────────
 
-export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobile, targetMessageId }: {
+export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, isMobile, targetMessage, initialUnreadPosition = false, onMoveToThread, moveSelection, onMessageNotInChannel, onOpenMember }: {
   channelId: string | null
   channelName?: string
   isPrivate?: boolean
+  /** DM ではグループ/属性メンションを展開しないためピッカーから外す */
+  isDm?: boolean
   compact?: boolean
   isMobile?: boolean
-  targetMessageId?: string | null
+  targetMessage?: { id: string } | null
+  initialUnreadPosition?: boolean
+  /** 渡すとメッセージのメニューに「スレッドに切り出す」を出す。親ワークスペースチャンネルの member 以上にだけ渡す */
+  onMoveToThread?: (message: MoveSourceMessage) => void
+  /** 切り出すメッセージの選択モード。渡している間はチェックボックスと確認バーを出し、入力欄は隠す */
+  moveSelection?: {
+    selectedIds: ReadonlySet<string>
+    onToggle: (message: MoveSourceMessage) => void
+    onConfirm: () => void
+    onCancel: () => void
+  }
+  /** ジャンプ先のメッセージがこのチャンネルに無かったとき（別チャンネルへ移された可能性）に呼ばれる */
+  onMessageNotInChannel?: (messageId: string) => void
+  /** 渡すとメッセージのアバターから送信者のメンバー詳細を開ける */
+  onOpenMember?: (userId: string) => void
 }) => {
+  const t = useT()
   const [draft, setDraft] = React.useState('')
   const [sendError, setSendError] = React.useState<string | null>(null)
   const [isComposing, setIsComposing] = React.useState(false)
   const [pendingAttachments, setPendingAttachments] = React.useState<PendingAttachment[]>([])
+  const [finalizeRetries, setFinalizeRetries] = React.useState<FinalizeRetryAttachment[]>([])
+  const uploadScopeRef = React.useRef({ channelId })
+  if (uploadScopeRef.current.channelId !== channelId) uploadScopeRef.current = { channelId }
   const [isUploading, setIsUploading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null)
   const [showTextFileDialog, setShowTextFileDialog] = React.useState(false)
   const [replyTarget, setReplyTarget] = React.useState<ReplyToDto | null>(null)
   // ジャンプ/ハイライト対象（パーマリンク・検索・引用バークリックで設定される）
   const [highlightId, setHighlightId] = React.useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null)
   const [focusedMsgIdx, setFocusedMsgIdx] = React.useState(-1)
+  const [completingNudgeId, setCompletingNudgeId] = React.useState<string | null>(null)
+  const [nudgeActionError, setNudgeActionError] = React.useState<string | null>(null)
+  const [jumpMessageId, setJumpMessageId] = React.useState<string | null>(null)
+  const [showLatestMessages, setShowLatestMessages] = React.useState(false)
+  const [initialPositioned, setInitialPositioned] = React.useState(false)
   const pendingDraftRef = React.useRef('')
-  const scrollRef = React.useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
-  // displayName → userId map for structured mention serialization
-  const mentionMapRef = React.useRef<Map<string, string>>(new Map())
+  // 挿入順のリスト。同名ラベルが衝突しても出現順で正しい tokenId に変換できる
+  const mentionInsertionsRef = React.useRef<{ tokenId: string; displayName: string }[]>([])
   // Ref to latest draft state for cleanup-time saves (avoids stale closure)
   const latestDraftRef = React.useRef({ draft: '', pendingAttachments: [] as PendingAttachment[] })
   latestDraftRef.current = { draft, pendingAttachments }
@@ -921,9 +1638,11 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   // channelId 切り替え時: 旧チャンネルのドラフトを保存し、新チャンネルのドラフトを復元
   React.useEffect(() => {
+    setIsUploading(false)
     if (!channelId) {
       setDraft('')
       setPendingAttachments([])
+      setFinalizeRetries([])
       return
     }
     const saved = localStorage.getItem(chatDraftKey(channelId))
@@ -941,6 +1660,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       setDraft('')
       setPendingAttachments([])
     }
+    mentionInsertionsRef.current = []
+    setFinalizeRetries([])
     return () => {
       const { draft: d, pendingAttachments: p } = latestDraftRef.current
       persistDraft(channelId, d, p)
@@ -954,41 +1675,66 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     return () => clearTimeout(timer)
   }, [channelId, draft, pendingAttachments, persistDraft])
 
-  const onMentionInserted = React.useCallback((userId: string, displayName: string) => {
-    mentionMapRef.current.set(displayName, userId)
+  const onMentionInserted = React.useCallback((tokenId: string, displayName: string) => {
+    mentionInsertionsRef.current.push({ tokenId, displayName })
   }, [])
 
-  // 保存形式は canonical な `<@userId>`。表示名は read 時に解決するため本文に焼き込まない
-  const transformContent = (text: string): string => {
-    const entries = [...mentionMapRef.current.entries()]
-    if (entries.length === 0) return text
-    // Longest name first to avoid partial replacements
-    entries.sort((a, b) => b[0].length - a[0].length)
-    let result = text
-    for (const [displayName, userId] of entries) {
-      const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      result = result.replace(
-        new RegExp(`@${escaped}(?=[\\s、。！？]|$)`, 'g'),
-        `<@${userId}>`,
-      )
-    }
-    return result
-  }
+  // 保存形式は canonical な `<@tokenId>`。表示名は read 時に解決するため本文に焼き込まない。
+  // 同名ラベルは挿入順に「先頭から1件ずつ」置換し、後勝ちの Map 衝突を避ける。
+  const transformContent = (text: string): string =>
+    encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
-  const { data: messages = [], isLoading, isError, error: messagesError } = useChannelMessages(channelId)
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
+  useRealtimeChannel(channelId)
+  const latestMessagesQuery = useChannelMessages(channelId)
+  const initialMessageQuery = useChannelInitialMessage(initialUnreadPosition ? channelId : null)
+  const latestMessages = latestMessagesQuery.data ?? EMPTY_MESSAGES
+  const initialPositionReady = !initialUnreadPosition
+    || !!targetMessage
+    || (initialMessageQuery.isFetched && !initialMessageQuery.isFetching)
+  const requestedMessageId = !initialUnreadPosition || showLatestMessages
+    ? null
+    : jumpMessageId ?? targetMessage?.id ?? initialMessageQuery.data?.messageId ?? null
+  const needsHistory = !!requestedMessageId
+    && latestMessagesQuery.isSuccess
+    && !latestMessages.some(message => message.id === requestedMessageId)
+  const historyMessageId = needsHistory ? requestedMessageId : null
+  const historyMessagesQuery = useChannelMessageHistory(channelId, historyMessageId)
+  const historyUnavailable = needsHistory
+    && historyMessagesQuery.isFetched
+    && historyMessagesQuery.data?.length === 0
+  const isHistoryView = needsHistory && !historyUnavailable
+  const historyMessages = historyMessagesQuery.data ?? EMPTY_MESSAGES
+  const messages = React.useMemo(
+    () => isHistoryView ? historyMessages : latestMessages,
+    [historyMessages, isHistoryView, latestMessages],
+  )
+  const isLoading = latestMessagesQuery.isLoading
+    || !initialPositionReady
+    || (isHistoryView && historyMessagesQuery.isLoading)
+  const isError = latestMessagesQuery.isError
+    || (initialUnreadPosition && !targetMessage && initialMessageQuery.isError)
+    || historyMessagesQuery.isError
+  const messagesError = latestMessagesQuery.error
+  const { data: nudges = EMPTY_LIST, isError: nudgesError } = useAiNudges(channelId)
+  const nudgeFeedback = useAiNudgeFeedback(channelId)
   // アクセス権のないチャンネル（参加外プロジェクトのゲスト等）は 403 を返す。
   // 生のエラーではなく「参加していない」ことを明示する案内を出す。
   const isAccessDenied = messagesError instanceof ChannelMessagesError && messagesError.status === 403
-  const { data: wsMembers = [] } = useWorkspaceMembers()
-  const { data: chMemberIds = [] } = useChannelMembers(channelId)
-  const { data: projectChannels = [] } = useProjectChannels()
+  const wsMembersQuery = useWorkspaceMembers()
+  const chMembersQuery = useChannelMembers(channelId)
+  const projectChannelsQuery = useProjectChannels()
+  const { data: wsMembers = EMPTY_LIST } = wsMembersQuery
+  const { data: chMemberIds = EMPTY_LIST } = chMembersQuery
+  const { data: projectChannels = EMPTY_LIST, isSuccess: projectChannelsResolved } = projectChannelsQuery
   // このチャンネルがプロジェクトチャンネルなら projectId を引く（メンション候補の絞り込み用）
   const projectId = React.useMemo(
     () => projectChannels.find(c => c.channelId === channelId)?.projectId ?? null,
     [projectChannels, channelId],
   )
-  const { data: projectMembers = [] } = useProjectMembers(projectId)
+  const projectMembersQuery = useProjectMembers(projectId)
+  const { data: projectMembers = EMPTY_LIST } = projectMembersQuery
   const sendMutation = useSendChannelMessage(channelId, currentUser)
   const reactMutation = useToggleMessageReaction(channelId, currentUser)
   const bookmarkMutation = useToggleBookmark(channelId)
@@ -997,21 +1743,160 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   const markChannelRead = useMarkChannelRead()
   const markChannelReadFn = markChannelRead.mutate
   const lastReadMessageIdRef = React.useRef<string | null>(null)
+  const pendingInitialReadRef = React.useRef(false)
+  const previousChannelIdRef = React.useRef(channelId)
   const ensureMessageLoaded = useEnsureMessageLoaded(channelId)
+  const { loadOlder, hasMore: hasOlderMessages, isLoadingOlder, error: loadOlderError } = useLoadOlderChannelMessages(channelId, isHistoryView ? historyMessageId : null)
+  // 最新100件の再取得では件数が変わらないことがあるため、末尾の入れ替わりも追跡する。
+  const latestMessageId = latestMessages[latestMessages.length - 1]?.id
+  const displayedLatestMessageId = messages[messages.length - 1]?.id
 
-  // 表示中チャンネルに新着が届いたら自動で既読化する。
-  // 開いて読んでいるのにバッジが増え続ける問題への対処。タブ非表示時は既読にしない
-  React.useEffect(() => {
-    if (!channelId || messages.length === 0) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastId.startsWith('optimistic-')) return
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-    if (lastReadMessageIdRef.current === lastId) return
-    lastReadMessageIdRef.current = lastId
+  const timeline = React.useMemo(() => [
+    ...messages.map((message, index) => ({ kind: 'message' as const, createdAt: message.createdAt, message, messageIndex: index })),
+    ...nudges.map(nudge => ({ kind: 'nudge' as const, createdAt: nudge.createdAt, nudge })),
+  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), [messages, nudges])
+  const { scrollRef, handleMessageScroll, showScrollToLatest, scrollToLatest } = useMessageTimelineScroll({
+    channelId,
+    messages,
+    latestMessageId: displayedLatestMessageId,
+    currentUserId: currentUser?.id,
+    nudgeCount: nudges.length,
+    hasOlderMessages,
+    isLoadingOlder,
+    loadOlder,
+    initialPositioned,
+  })
+
+  const handleScrollToLatest = React.useCallback(() => {
+    if (isHistoryView) {
+      setShowLatestMessages(true)
+      return
+    }
+    scrollToLatest()
+  }, [isHistoryView, scrollToLatest])
+
+  const leaveHistoryView = React.useCallback(() => {
+    if (isHistoryView) setShowLatestMessages(true)
+  }, [isHistoryView])
+
+  React.useLayoutEffect(() => {
+    if (showLatestMessages && initialPositioned) scrollToLatest()
+  }, [initialPositioned, scrollToLatest, showLatestMessages])
+
+  const handleNudgeFeedback = React.useCallback((id: string, feedback: 'later' | 'not_helpful') => {
+    setNudgeActionError(null)
+    nudgeFeedback.mutate({ id, feedback }, {
+      onError: error => setNudgeActionError((error as Error).message),
+  }, )
+    },
+    [nudgeFeedback],
+  )
+
+  const handleCompleteNudgeTask = React.useCallback(async (nudge: AiNudgeDto) => {
+    if (!nudge.taskId) return
+    setCompletingNudgeId(nudge.id)
+    setNudgeActionError(null)
+    try {
+      const res = await fetchWithAuth(`/api/tasks/${nudge.taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(data.error ?? t('Could not update the task'))
+      }
+      // 共通タスクAPIが紐づくactiveナッジもresolvedにし、ベル通知を削除する。
+      queryClient.setQueryData<AiNudgeDto[]>(aiNudgeQueryKey(channelId), current =>
+        current?.filter(item => item.id !== nudge.id) ?? [])
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    } catch (error) {
+      setNudgeActionError((error as Error).message)
+    } finally {
+      setCompletingNudgeId(null)
+    }
+  }, [channelId, queryClient, t])
+
+  // 初期表示対象がDOMへ反映されてから、その時点の最新メッセージまでを既読にする。
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (initialPositioned || !channelId || !el || isLoading || isError) return
+
+    if (requestedMessageId) {
+      const target = el.querySelector<HTMLElement>(`[data-message-id="${requestedMessageId}"]`)
+      if (target) {
+        target.scrollIntoView({ block: 'start' })
+      } else if (isHistoryView) {
+        return
+      } else {
+        // 対象が削除済み・取得不能なら、取得できた範囲の先頭へフォールバックする。
+        el.scrollTop = 0
+      }
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+
+    setInitialPositioned(true)
+    const latestMessageId = latestMessages[latestMessages.length - 1]?.id
+    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      pendingInitialReadRef.current = true
+      return
+    }
+    lastReadMessageIdRef.current = latestMessageId
     markChannelReadFn(channelId)
-  }, [channelId, messages, markChannelReadFn])
+  }, [
+    channelId,
+    initialPositioned,
+    isError,
+    isHistoryView,
+    isLoading,
+    latestMessages,
+    markChannelReadFn,
+    requestedMessageId,
+    scrollRef,
+  ])
+
+  React.useEffect(() => {
+    if (!channelId || typeof document === 'undefined') return
+    const markPendingInitialRead = () => {
+      if (!pendingInitialReadRef.current || document.visibilityState !== 'visible') return
+      pendingInitialReadRef.current = false
+      if (latestMessageId) lastReadMessageIdRef.current = latestMessageId
+      markChannelReadFn(channelId)
+    }
+    document.addEventListener('visibilitychange', markPendingInitialRead)
+    markPendingInitialRead()
+    return () => document.removeEventListener('visibilitychange', markPendingInitialRead)
+  }, [channelId, latestMessageId, markChannelReadFn])
+
+  // 空のチャンネルでも、最新の取得が終わって空と確定したら一度だけ既読にする。削除で空になったチャンネルに
+  // 残った未読メンション数を数え直すため。空のキャッシュを取り直している間は、未表示の新着まで既読にしないよう待つ。
+  const latestMessagesSettled = latestMessagesQuery.isSuccess && !latestMessagesQuery.isFetching
+  React.useEffect(() => {
+    if (!channelId || !initialPositioned || isHistoryView || latestMessageId || !latestMessagesSettled) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    const emptyReadKey = `empty:${channelId}`
+    if (lastReadMessageIdRef.current === emptyReadKey) return
+    lastReadMessageIdRef.current = emptyReadKey
+    markChannelReadFn(channelId)
+  }, [channelId, initialPositioned, isHistoryView, latestMessageId, latestMessagesSettled, markChannelReadFn])
+
+  // 最新表示中に新着が届いたら自動で既読化する。履歴表示中・タブ非表示時は既読にしない。
+  React.useEffect(() => {
+    if (!channelId || !initialPositioned) return
+    if (initialUnreadPosition && (isHistoryView || showScrollToLatest)) return
+    if (!latestMessageId || latestMessageId.startsWith('optimistic-')) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    if (lastReadMessageIdRef.current === latestMessageId) return
+    lastReadMessageIdRef.current = latestMessageId
+    markChannelReadFn(channelId)
+  }, [channelId, initialPositioned, initialUnreadPosition, isHistoryView, latestMessageId, markChannelReadFn, showScrollToLatest])
 
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
+    leaveHistoryView()
     try {
       const res = await fetchWithAuth(`/api/messages/${messageId}/checkbox`, {
         method: 'PATCH',
@@ -1024,7 +1909,40 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     } catch {
       // サイレントに失敗
     }
-  }, [channelId, queryClient])
+  }, [channelId, leaveHistoryView, queryClient])
+
+  // プロジェクトのチャンネルの、送信済みの通常メッセージだけ画像をギャラリーに追加できる
+  const canAddMessageToGallery = React.useCallback(
+    (message: { id: string; messageType: MessageType }) =>
+      projectId !== null && message.messageType !== 'system' && !message.id.startsWith('optimistic-'),
+    [projectId],
+  )
+
+  const { fetchStatus: fetchGalleryStatus, addImages: addImagesToGallery } = useMessageGallery()
+
+  const [galleryDialog, setGalleryDialog] = React.useState<{ messageId: string; images: MessageGalleryImage[]; addedFileIds: string[] } | null>(null)
+
+  // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶダイアログを出す（タスク化と同じ流れ）
+  // 取得待ちの間に別のメッセージで操作したら、古い取得結果で状態を上書きしない
+  const galleryRequestRef = React.useRef(0)
+  const handleAddToGallery = React.useCallback(async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return
+    const images = galleryImagesOf(message.attachments)
+    if (images.length === 0) return
+    const request = ++galleryRequestRef.current
+    const status = await fetchGalleryStatus(messageId)
+    if (!status || request !== galleryRequestRef.current) return
+    const added = new Set(status.addedFileIds)
+    const open = images.filter(image => !added.has(image.fileId))
+    if (open.length === 0) {
+      toast.success(t('Already in the gallery'))
+    } else if (images.length === 1 && open[0]) {
+      await addImagesToGallery(messageId, [open[0].fileId])
+    } else {
+      setGalleryDialog({ messageId, images, addedFileIds: status.addedFileIds })
+    }
+  }, [messages, fetchGalleryStatus, addImagesToGallery, t])
 
   // スレッド内の全画像添付をフラットに集約し、ライトボックスで前後に送れるようにする
   const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
@@ -1032,12 +1950,16 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     for (const m of messages) {
       for (const a of m.attachments) {
         if (isImageMime(a.mimeType)) {
-          imgs.push({ attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName })
+          const canAddToGallery = canAddMessageToGallery(m) && galleryImagesOf([a]).length > 0
+          imgs.push({
+            attachmentId: a.id, key: a.id, src: `/api/attachments/${a.fileId}`, alt: a.fileName, caption: a.fileName,
+            ...(canAddToGallery ? { action: { label: t('Add to the gallery'), icon: 'image' as const, onSelect: () => { void addImagesToGallery(m.id, [a.fileId]) } } } : {}),
+          })
         }
       }
     }
     return imgs
-  }, [messages])
+  }, [messages, canAddMessageToGallery, addImagesToGallery, t])
 
   const openLightbox = React.useCallback((attachmentId: string) => {
     setLightboxIndex(prev => {
@@ -1047,10 +1969,10 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   }, [lightboxImages])
 
   const mentionMembers = React.useMemo(() => {
-    // プライベートチャンネル・DM はチャンネルメンバーのみを候補にする
-    if (chMemberIds.length > 0) {
-      const idSet = new Set(chMemberIds.map(m => m.userId))
-      return wsMembers.filter(m => idSet.has(m.userId) && m.userId !== currentUser?.id)
+    const others = wsMembers.filter(m => m.userId !== currentUser?.id)
+    const channelMemberIds = new Set(chMemberIds.map(m => m.userId))
+    if (isPrivate || isDm) {
+      return filterMentionCandidates(others, { kind: 'members_only', channelMemberIds })
     }
     // プロジェクトチャンネルは、そのプロジェクトにアクセスできる人だけを候補にする。
     // member 以上は全プロジェクトチャンネルにアクセスできるため候補に残し、
@@ -1058,21 +1980,50 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     // これによりアクセスできない人へメンション通知が飛ぶのを未然に防ぐ（サーバー側でも防御）。
     if (projectId) {
       const projectMemberIds = new Set(projectMembers.map(m => m.userId))
-      return wsMembers.filter(m =>
-        m.userId !== currentUser?.id &&
-        (m.role !== 'guest' || projectMemberIds.has(m.userId)),
+      return sortMentionCandidatesByProject(
+        filterMentionCandidates(others, { kind: 'project', projectMemberIds }),
+        projectMemberIds,
       )
     }
-    return wsMembers.filter(m => m.userId !== currentUser?.id)
-  }, [chMemberIds, wsMembers, currentUser?.id, projectId, projectMembers])
+    // プロジェクトチャンネル一覧の取得前は、ここがプロジェクトチャンネルかどうか分からない。
+    // その間に公開チャンネル扱いにすると、未参加のゲストまで候補に出てしまう
+    if (!projectChannelsResolved) return filterMentionCandidates(others, { kind: 'unresolved' })
+    return filterMentionCandidates(others, { kind: 'workspace', channelMemberIds })
+  }, [chMemberIds, wsMembers, currentUser?.id, isPrivate, isDm, projectId, projectMembers, projectChannelsResolved])
 
-  // userId → 現在の表示名。メンションを描画時に最新名へ解決するため
-  // （保存本文は名前なしの `<@userId>` であり、楽観更新メッセージもこのマップで解決する）
+  // 候補の絞り込みに使うデータのうち、このチャンネルで実際に必要なものだけを見る。
+  // 取得に失敗したまま候補を出すと、条件付きで出るはずのゲストが黙って消える
+  const projectRolesQuery = useProjectRoles()
+  const projectRoles = projectRolesQuery.data ?? EMPTY_LIST
+  const mentionScopeQueries = [
+    wsMembersQuery,
+    ...(isPrivate || isDm
+      ? [chMembersQuery]
+      : [projectChannelsQuery, projectId ? projectMembersQuery : chMembersQuery]),
+    // プロジェクトチャンネルでは役割も候補に出すため、取れなければ候補が欠けていることをエラーと再試行で示す
+    ...(!isDm && projectId ? [projectRolesQuery] : []),
+  ]
+  const mentionMembersError = mentionScopeQueries.find(query => query.error)?.error?.message ?? null
+  const isRetryingMentionMembers = mentionScopeQueries.some(query => query.error && query.isFetching)
+  const retryMentionMembers = () => {
+    for (const query of mentionScopeQueries) if (query.error) void query.refetch()
+  }
+
+  const { data: profileAttributes = EMPTY_LIST } = useProfileAttributes()
+
+  // tokenId → 現在の表示名。メンションを描画時に最新名へ解決するため
+  // （保存本文は名前なしの `<@tokenId>` であり、楽観更新メッセージもこのマップで解決する）
   const mentionNames = React.useMemo(() => {
     const map = new Map<string, string>()
+    map.set(ALL_MENTION_ID, ALL_MENTION_LABEL)
+    map.set(PROJECT_MEMBERS_MENTION_ID, PROJECT_MEMBERS_MENTION_LABEL)
+    for (const attribute of profileAttributes) {
+      map.set(attributeMentionTokenId(attribute.id), attribute.name)
+    }
+    for (const role of projectRoles) map.set(roleMentionTokenId(role.id), role.name)
     for (const m of wsMembers) map.set(m.userId, m.displayName)
     return map
-  }, [wsMembers])
+  }, [wsMembers, profileAttributes, projectRoles])
   const emailByUserId = React.useMemo(() => {
     const map = new Map<string, string | null>()
     for (const m of wsMembers) map.set(m.userId, m.email ?? null)
@@ -1088,10 +2039,6 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
   React.useEffect(() => {
     if (sendMutation.isSuccess) setSendError(null)
   }, [sendMutation.isSuccess])
-
-  React.useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length])
 
   // チャンネル切替時にフォーカスをリセット
   React.useEffect(() => { setFocusedMsgIdx(-1) }, [channelId])
@@ -1131,11 +2078,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return
       const msg = messages[focusedMsgIdx]
       if (!msg) return
-      const isOwn = msg.senderId === currentUser?.id
+      // 取り込んだ過去ログは本人の投稿でも編集・削除のショートカットを効かせない
+      const canModify = msg.senderId === currentUser?.id && !msg.imported
       if (e.key === 'Escape') {
         e.preventDefault()
         setFocusedMsgIdx(-1)
-      } else if (e.key === 'e' && isOwn) {
+      } else if (e.key === 'e' && canModify) {
         // 編集モードに入る（ChatMessage 側で editMode を起動）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: msg.id }))
@@ -1143,7 +2091,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         // リアクション（絵文字ピッカーを開く）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:react-message', { detail: msg.id }))
-      } else if ((e.key === 'd' || e.key === 'Delete') && isOwn) {
+      } else if ((e.key === 'd' || e.key === 'Delete') && canModify) {
         // 削除（確認ダイアログを開く・自分のメッセージのみ）
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: msg.id }))
@@ -1155,24 +2103,43 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   // チャンネル切替時は返信対象・ハイライトをリセットする
   React.useEffect(() => {
+    if (previousChannelIdRef.current === channelId) return
+    previousChannelIdRef.current = channelId
     setReplyTarget(null)
     setHighlightId(null)
+    setJumpMessageId(null)
+    setShowLatestMessages(false)
+    setInitialPositioned(false)
+    lastReadMessageIdRef.current = null
+    pendingInitialReadRef.current = false
   }, [channelId])
 
-  // 親（PageChat）からの targetMessageId（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
-  // 直近100件の外にある古いメッセージの場合は、前後ウィンドウを取得してキャッシュへマージする
+  // 親（PageChat）からの targetMessage（パーマリンク・ブックマーク・検索）を内部のハイライト状態へ取り込む。
+  // 直近100件の外にある古いメッセージの場合は、別の履歴キャッシュから前後ウィンドウを表示する。
   React.useEffect(() => {
-    if (!targetMessageId) return
-    setHighlightId(targetMessageId)
-    void ensureMessageLoaded(targetMessageId)
-  }, [targetMessageId, ensureMessageLoaded])
+    if (!targetMessage) return
+    if (!initialUnreadPosition) {
+      setHighlightId(targetMessage.id)
+      void ensureMessageLoaded(targetMessage.id)
+      return
+    }
+    setShowLatestMessages(false)
+    setJumpMessageId(targetMessage.id)
+    setHighlightId(targetMessage.id)
+  }, [ensureMessageLoaded, initialUnreadPosition, targetMessage])
 
-  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessageId 同様、
+  // 引用バー（返信先プレビュー）クリックでのジャンプ。targetMessage 同様、
   // 直近100件の外にある古い親メッセージの場合は前後ウィンドウを取得してから表示する
   const jumpToMessage = React.useCallback((messageId: string) => {
+    if (!initialUnreadPosition) {
+      setHighlightId(messageId)
+      void ensureMessageLoaded(messageId)
+      return
+    }
+    setShowLatestMessages(false)
+    setJumpMessageId(messageId)
     setHighlightId(messageId)
-    void ensureMessageLoaded(messageId)
-  }, [ensureMessageLoaded])
+  }, [ensureMessageLoaded, initialUnreadPosition])
 
   React.useEffect(() => {
     if (!highlightId || isLoading || !scrollRef.current) return
@@ -1192,123 +2159,174 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setReplyTarget({ id: m.id, senderName: m.senderName, content: m.content, isDeleted: false })
   }, [messages])
 
+  const handleMoveToThread = React.useCallback((messageId: string) => {
+    if (!onMoveToThread || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) onMoveToThread({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, onMoveToThread])
+
+  const moveSelectionToggle = moveSelection?.onToggle
+  const handleToggleMoveSelection = React.useCallback((messageId: string) => {
+    if (!moveSelectionToggle || messageId.startsWith('optimistic-')) return
+    const m = messages.find(msg => msg.id === messageId)
+    if (m) moveSelectionToggle({ id: m.id, content: m.content, createdAt: m.createdAt })
+  }, [messages, moveSelectionToggle])
+
+  // ジャンプ先が履歴ウィンドウにも無かった場合は、別チャンネルへ移されていないか親に確かめてもらう
+  const unavailableJumpId = historyUnavailable ? requestedMessageId : null
+  const onMessageNotInChannelRef = React.useRef(onMessageNotInChannel)
+  onMessageNotInChannelRef.current = onMessageNotInChannel
+  React.useEffect(() => {
+    if (unavailableJumpId) onMessageNotInChannelRef.current?.(unavailableJumpId)
+  }, [unavailableJumpId])
+
   const handleBookmark = React.useCallback((messageId: string) => {
     if (messageId.startsWith('optimistic-')) return
+    leaveHistoryView()
     bookmarkMutation.mutate(messageId)
-  }, [bookmarkMutation])
+  }, [bookmarkMutation, leaveHistoryView])
+
+  const [taskDialog, setTaskDialog] = React.useState<{ messageId: string; candidates: MessageTaskCandidateDto[] } | null>(null)
+
+  const createTasks = React.useCallback(async (messageId: string, items: MessageTaskSubmitItem[]) => {
+    const ok = await makeTasksFromMessage(messageId, items, t)
+    if (ok) {
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      // タスク化済みの印（linkedTasks）を出すためメッセージも取り直す
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
+    }
+    return ok
+  }, [channelId, queryClient, t])
+
+  const handleMakeTask = React.useCallback(async (messageId: string) => {
+    if (messageId.startsWith('optimistic-')) return
+    const candidates = await fetchMessageTaskCandidates(messageId, t)
+    if (!candidates) return
+    const open = candidates.filter(candidate => !candidate.taskId)
+    if (candidates.length === 0) {
+      toast.error(t('This message has no text to make a task from'))
+    } else if (open.length === 0) {
+      toast.success(t('All lines of this message are already tasks'))
+    } else if (candidates.length === 1 && open[0]) {
+      await createTasks(messageId, [{ line: open[0].line, title: open[0].title }])
+    } else {
+      setTaskDialog({ messageId, candidates })
+    }
+  }, [createTasks, t])
 
   // リアクション・編集・削除のハンドラも安定参照にする。インラインの矢印関数だと毎レンダーで
   // 関数の同一性が変わり React.memo(ChatMessage) が無効化され、全メッセージが再パースされる
-  const reactMutate = reactMutation.mutate
+  const reactMutateAsync = reactMutation.mutateAsync
+  const currentUserId = currentUser?.id
+  // 「最近使ったリアクション」への記録を押した順に直列化する。mutate の呼び出しごとの onSuccess は、
+  // 前の送信中に次を押すと前の分が呼ばれないため、各リクエストの Promise を待って記録する
+  const reactionHistoryQueue = React.useRef(Promise.resolve())
+  // カードの操作が古い版として断られたら、そのメッセージだけを取り直す。Realtime の通知を取りこぼしていても、
+  // 次の押下は最新のカードで送れるようにする。一覧や未読位置を invalidate しないのは、上へ読み込んだ古いページが消えたり、
+  // 初期位置の決定待ちに戻ってタイムライン全体が読み込み表示になったりして、カードと残したいエラーが外れるため
+  const refreshChannelMessage = useRefreshChannelMessage(channelId)
+  // 取り直しの失敗はカードの下にエラーとして出す（postCardAction が card_refresh_failed にする）。押し直せば再び取り直す
+  const handleCardStale = React.useCallback((messageId: string) => refreshChannelMessage(messageId), [refreshChannelMessage])
   const handleReact = React.useCallback((messageId: string, emoji: string) => {
-    reactMutate({ messageId, emoji })
-  }, [reactMutate])
+    leaveHistoryView()
+    const request = reactMutateAsync({ messageId, emoji })
+    reactionHistoryQueue.current = reactionHistoryQueue.current.then(() => request.then(
+      ({ added }) => {
+        // 付けたときだけ記録する（外したときは記録しない）
+        if (!added || !currentUserId) return
+        try {
+          recordReactionHistory(currentUserId, emoji)
+        } catch {
+          toast.error(t('Could not save recent reactions'))
+        }
+      },
+      // 送信の失敗は useToggleMessageReaction の onError で表示を戻している
+      () => {},
+    ))
+  }, [currentUserId, leaveHistoryView, reactMutateAsync, t])
 
   const editMutate = editMutation.mutate
   const handleEdit = React.useCallback((messageId: string, content: string) => {
+    leaveHistoryView()
     editMutate({ messageId, content })
-  }, [editMutate])
+  }, [editMutate, leaveHistoryView])
 
   const deleteMutate = deleteMutation.mutate
   const handleDelete = React.useCallback((messageId: string) => {
+    leaveHistoryView()
     deleteMutate(messageId)
-  }, [deleteMutate])
+  }, [deleteMutate, leaveHistoryView])
 
   const handleCopyLink = React.useCallback((messageId: string) => {
     if (!channelId) return
     const url = `${window.location.origin}/chats/${channelId}?m=${messageId}`
-    void navigator.clipboard?.writeText(url)
-  }, [channelId])
+    void copyMessageLink(url, t)
+  }, [channelId, t])
 
-  const uploadFile = async (file: File): Promise<PendingAttachment | null> => {
+  const uploadFile = async (picked: File): Promise<PendingAttachment | null> => {
     if (!channelId) return null
+    const uploadChannelId = channelId
+    const uploadScope = uploadScopeRef.current
+    let file = picked
+    // iPhone の写真（HEIC）は Safari 以外で表示できず、添付バケットも受け付けないため JPEG にして送る
+    if (isHeicLike(picked)) {
+      try {
+        file = await convertHeicToJpeg(picked)
+      } catch (error) {
+        console.error('[ChatThread] HEIC の変換に失敗:', error)
+        if (uploadScopeRef.current !== uploadScope) return null
+        setSendError(t('Could not convert the HEIC image. Convert it to JPEG and upload again.'))
+        return null
+      }
+    }
     try {
-      let uploadMimeType = resolveAttachmentMimeType(file.name, file.type)
-      if (!uploadMimeType && GENERIC_MIME_TYPES.has(file.type)) {
-        const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
-        uploadMimeType = resolveAttachmentMimeType(file.name, file.type, head)
-      }
-      if (!uploadMimeType) {
-        const identifiable = file.name.includes('.') || !GENERIC_MIME_TYPES.has(file.type)
-        setSendError(identifiable
-          ? '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）'
-          : 'ファイル形式が不明です。拡張子をつけて再度アップロードしてください')
-        return null
-      }
-
-      // 1. 署名付きアップロードURLを発行してもらう(メタデータのみ送信)。
-      //    ファイル本体を /api/attachments/upload に直接送ると Vercel の
-      //    4.5MB リクエストボディ上限(FUNCTION_PAYLOAD_TOO_LARGE)に阻まれるため。
-      const urlRes = await fetchWithAuth('/api/attachments/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          fileName: file.name,
-          mimeType: uploadMimeType,
-          fileSize: file.size,
-        }),
+      const data = await uploadAttachment(uploadChannelId, file, {
+        onProgress: (sent, total) => {
+          if (uploadScopeRef.current === uploadScope && total > 0) setUploadProgress(Math.floor((sent / total) * 100))
+        },
       })
-      if (!urlRes.ok) {
-        const data = await urlRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? 'アップロードに失敗しました')
-        return null
-      }
-      const { token, path, storagePath, mimeType } = await urlRes.json() as {
-        token: string; path: string; storagePath: string; mimeType: string
-      }
-
-      // 2. Supabase Storage へクライアントから直接アップロード(Vercel を経由しない)。
-      //    storage-js は Blob/File を渡すと FormData 化し fileOptions.contentType を無視するため、
-      //    Storage はファイル自身の File.type を見る。upload-url が正規化した MIME
-      //    (例: .csv の application/octet-stream → text/csv) を反映させるには
-      //    File.type がバケット許可リストに含まれる正規化後の値になっている必要がある。
-      //    元の File.type が異なる場合は正規化後の type を持つ File でラップして渡す。
-      const uploadBody = file.type === mimeType ? file : new File([file], file.name, { type: mimeType })
-      const supabase = createSupabaseClient()
-      const { error: uploadError } = await supabase.storage
-        .from('chat-attachments')
-        .uploadToSignedUrl(path, token, uploadBody)
-      if (uploadError) {
-        setSendError('アップロードに失敗しました')
-        return null
-      }
-
-      // 3. files レコードを登録し検索インデックスジョブを発火する
-      const finalizeRes = await fetchWithAuth('/api/attachments/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelId,
-          storagePath,
-          fileName: file.name,
-          mimeType: mimeType,
-          fileSize: file.size,
-        }),
-      })
-      if (!finalizeRes.ok) {
-        const data = await finalizeRes.json().catch(() => ({})) as { error?: string }
-        setSendError(data.error ?? 'アップロードに失敗しました')
-        return null
-      }
-      const data = await finalizeRes.json() as { fileId: string; fileName: string; mimeType: string | null; fileSize: number | null }
       const previewUrl = URL.createObjectURL(file)
       return { ...data, previewUrl }
-    } catch {
-      setSendError('アップロードに失敗しました')
+    } catch (error) {
+      if (uploadScopeRef.current !== uploadScope) return null
+      const uploadError = error instanceof AttachmentUploadError ? error : null
+      const retryFinalize = uploadError?.retryFinalize
+      if (retryFinalize) {
+        setFinalizeRetries(current => [...current, {
+          id: `finalize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          channelId: uploadChannelId,
+          file,
+          error: uploadError?.serverMessage ?? t('Could not upload the file'),
+          retryFinalize,
+        }])
+        return null
+      }
+      const failure = error instanceof AttachmentUploadError ? error.failure : null
+      setSendError(
+        failure === 'unsupported_type'
+          ? t('Unsupported file type (image, video, PDF, Word, Excel, PowerPoint, CSV, or text)')
+          : failure === 'unknown_type'
+            ? t('Unknown file type. Add an extension and upload again.')
+            : ((error instanceof AttachmentUploadError ? error.serverMessage : undefined) ?? t('Could not upload the file')),
+      )
       return null
     }
   }
 
   const handleFilesSelect = async (files: File[]) => {
     if (!channelId || files.length === 0) return
+    const uploadScope = uploadScopeRef.current
     setIsUploading(true)
     try {
       const results = await Promise.all(files.map(uploadFile))
+      if (uploadScopeRef.current !== uploadScope) return
       const successful = results.filter((r): r is PendingAttachment => r !== null)
       if (successful.length > 0) setPendingAttachments(prev => [...prev, ...successful])
     } finally {
-      setIsUploading(false)
+      if (uploadScopeRef.current === uploadScope) {
+        setIsUploading(false)
+        setUploadProgress(null)
+      }
     }
   }
 
@@ -1350,6 +2368,37 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     })
   }
 
+  const handleRetryFinalize = async (id: string) => {
+    const pending = finalizeRetries.find(item => item.id === id)
+    const retryChannelId = channelId
+    const retryScope = uploadScopeRef.current
+    if (!pending || !retryChannelId || pending.channelId !== retryChannelId) return
+    setFinalizeRetries(current => current.map(item => item.id === id ? { ...item, isRetrying: true } : item))
+    try {
+      const data = await pending.retryFinalize()
+      if (uploadScopeRef.current !== retryScope) return
+      const previewUrl = URL.createObjectURL(pending.file)
+      setPendingAttachments(current => [...current, { ...data, previewUrl }])
+      setFinalizeRetries(current => current.filter(item => item.id !== id))
+    } catch (error) {
+      if (uploadScopeRef.current !== retryScope) return
+      const retryFinalize = error instanceof AttachmentUploadError ? error.retryFinalize : undefined
+      const errorMessage = error instanceof AttachmentUploadError
+        ? error.serverMessage ?? t('Could not upload the file')
+        : t('Could not upload the file')
+      setFinalizeRetries(current => current.map(item => item.id === id ? {
+        ...item,
+        error: errorMessage,
+        ...(retryFinalize ? { retryFinalize } : {}),
+        isRetrying: false,
+      } : item))
+    }
+  }
+
+  const handleRemoveFinalizeRetry = (id: string) => {
+    setFinalizeRetries(current => current.filter(item => item.id !== id))
+  }
+
   // Google Docs URL を検出してファイルタブ・チャンネルファイル一覧に自動登録する。
   // 完了を待たずにメッセージを送信すると、メッセージ挿入の Realtime broadcast が
   // リンクの files レコード挿入より先に飛び、他クライアントの channel-files invalidate が
@@ -1374,7 +2423,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     const rawText = draft.trim()
     if ((!rawText && pendingAttachments.length === 0) || !channelId) return
     const text = transformContent(rawText)
-    mentionMapRef.current.clear()
+    mentionInsertionsRef.current = []
 
     pendingDraftRef.current = text
     setSendError(null)
@@ -1397,6 +2446,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
     setReplyTarget(null)
 
     const postMessage = () => {
+      leaveHistoryView()
       sendMutation.mutate({
         content: text,
         attachmentFileIds: optimisticAttachments.map(a => a.fileId),
@@ -1416,10 +2466,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
 
   const placeholder: React.ReactNode = channelName ? (
     <>
-      <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2}/>
-      <span>{channelName} にメッセージ送信</span>
+      <Icon name={isPrivate ? 'lock' : 'hash'} size={isPrivate ? 12 : 13} color="var(--text-4)" strokeWidth={2} />
+      <span>{t('Message {name}', { name: channelName })}</span>
     </>
-  ) : 'メッセージを入力...'
+  ) : (
+    t('Write a message...')
+  )
 
   const handleTextFileCreated = (file: File) => {
     setShowTextFileDialog(false)
@@ -1434,6 +2486,22 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       onDragLeave={handleListDragLeave}
       onDrop={handleListDrop}
     >
+      {galleryDialog && (
+        <MessageGalleryDialog
+          key={galleryDialog.messageId}
+          images={galleryDialog.images}
+          addedFileIds={galleryDialog.addedFileIds}
+          onSubmit={fileIds => addImagesToGallery(galleryDialog.messageId, fileIds)}
+          onClose={() => setGalleryDialog(null)}
+        />
+      )}
+      {taskDialog && (
+        <MessageTaskDialog
+          candidates={taskDialog.candidates}
+          onSubmit={items => createTasks(taskDialog.messageId, items)}
+          onClose={() => setTaskDialog(null)}
+        />
+      )}
       {showTextFileDialog && (
         <CreateTextFileDialog
           onClose={() => setShowTextFileDialog(false)}
@@ -1442,60 +2510,129 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
       )}
       {isListDragOver && (
         <div style={{ position: 'absolute', inset: 8, zIndex: 50, borderRadius: 12, background: 'var(--accent-soft)', border: '2px dashed var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>ファイルをドロップしてアップロード</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--accent)' }}>{t('Drop files to upload')}</span>
         </div>
       )}
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
+      <div ref={scrollRef} onScroll={handleMessageScroll} style={{ flex: 1, overflow: 'auto', padding: compact ? '8px 0 16px' : '16px 0' }}>
         {isLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>読み込み中...</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading…')}</div>
         ) : isAccessDenied ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 24px', textAlign: 'center' }}>
             <Icon name="lock" size={24} />
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>このチャンネルは表示できません</div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
-              このプロジェクトに参加していないため、チャットを開けません。閲覧するにはワークスペースの管理者にプロジェクトへの招待を依頼してください。
+            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>{t('This channel cannot be viewed')}</div>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)', maxWidth: 320, lineHeight: 1.6 }}>
+              {t('You are not in this project, so this chat cannot be opened. Ask a workspace admin to invite you.')}
             </div>
           </div>
         ) : isError ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 13 }}>メッセージの取得に失敗しました</div>
-        ) : messages.length === 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 13 }}>まだメッセージはありません。最初のメッセージを送ってみましょう！</div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{t('Could not load messages')}</div>
+        ) : timeline.length === 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40, color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('No messages yet. Send the first one.')}</div>
         ) : (
-          messages.map((m, i) => (
+          <>
+          {isLoadingOlder && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 16px 10px', color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>{t('Loading older messages...')}</div>
+          )}
+          {loadOlderError && (
+            <div role="alert" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '4px 16px 10px', color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>
+              {t('Could not load older messages.')}
+              <button type="button" onClick={handleMessageScroll} className="btn btn-ghost" style={{ height: 26, padding: '0 8px', fontSize: 'var(--fs-sm)' }}>{t('Retry')}</button>
+            </div>
+          )}
+          {timeline.map(item => item.kind === 'nudge' ? (
+            <AiNudgeCard
+              key={`nudge:${item.nudge.id}`}
+              nudge={item.nudge}
+              feedbackPending={nudgeFeedback.isPending}
+              completing={completingNudgeId === item.nudge.id}
+              onFeedback={feedback => handleNudgeFeedback(item.nudge.id, feedback)}
+              onComplete={() => void handleCompleteNudgeTask(item.nudge)}
+            />
+          ) : (
             <ChatMessage
-              key={m.id}
-              messageId={m.id}
-              messageType={m.messageType}
-              senderId={m.senderId}
+              key={item.message.id}
+              messageId={item.message.id}
+              messageType={item.message.messageType}
+              senderId={item.message.senderId}
               currentUserId={currentUser?.id}
-              senderName={m.senderName}
-              senderAvatarUrl={m.senderAvatarUrl}
-              senderEmail={emailByUserId.get(m.senderId) ?? null}
-              createdAt={m.createdAt}
-              isEdited={m.isEdited}
-              content={m.content}
-              reactions={m.reactions}
-              attachments={m.attachments}
-              replyTo={m.replyTo}
-              bookmarked={m.bookmarked}
+              senderName={item.message.senderName}
+              senderAvatarUrl={item.message.senderAvatarUrl}
+              senderEmail={emailByUserId.get(item.message.senderId) ?? null}
+              senderProfileAttributes={item.message.senderProfileAttributes ?? []}
+              senderProjectRole={item.message.senderProjectRole ?? null}
+              senderProjectRoleName={item.message.senderProjectRoleName ?? null}
+              senderProjectRoleColor={item.message.senderProjectRoleColor ?? null}
+              senderProjectRoleLegacy={item.message.senderProjectRoleLegacy ?? null}
+              createdAt={item.message.createdAt}
+              isEdited={item.message.isEdited}
+              content={item.message.content}
+              reactions={item.message.reactions}
+              attachments={item.message.attachments}
+              replyTo={item.message.replyTo}
+              bookmarked={item.message.bookmarked}
+              linkedTasksKey={encodeLinkedTasksKey(item.message.linkedTasks)}
+              blocked={item.message.blocked}
+              blocks={item.message.blocks}
+              blocksRevision={item.message.blocksRevision}
+              cardMentionNames={item.message.mentionNames}
+              senderApp={item.message.senderApp}
+              imported={item.message.imported}
+              onCardStale={handleCardStale}
               onReact={handleReact}
               onEdit={handleEdit}
               onDelete={handleDelete}
               onCheckboxToggle={handleCheckboxToggle}
               onReply={handleReply}
               onBookmark={handleBookmark}
+              onMakeTask={handleMakeTask}
+              {...(!moveSelection && canAddMessageToGallery(item.message) ? { onAddToGallery: handleAddToGallery } : {})}
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
-              focused={i === focusedMsgIdx}
+              {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
+              {...(onOpenMember && !moveSelection && !item.message.senderApp && item.message.messageType !== 'system' && emailByUserId.has(item.message.senderId)
+                ? { onOpenSender: onOpenMember }
+                : {})}
+              {...(moveSelection && item.message.messageType !== 'system'
+                ? { selection: { selected: moveSelection.selectedIds.has(item.message.id), onToggle: handleToggleMoveSelection } }
+                : {})}
+              focused={item.messageIndex === focusedMsgIdx}
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
             />
-          ))
+          ))}
+          </>
+        )}
+        {(nudgesError || nudgeActionError) && (
+          <div role="alert" style={{ margin: '8px 16px', color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>
+            {nudgeActionError ?? t('Could not load nudges')}
+          </div>
         )}
       </div>
-      {!isAccessDenied && (
+      {(isHistoryView || showScrollToLatest) && !isAccessDenied && (
+        <div className="chat-scroll-to-latest-anchor">
+          <button
+            type="button"
+            className="chat-scroll-to-latest"
+            onClick={handleScrollToLatest}
+            aria-label={t('Go to the latest message')}
+            title={t('Go to the latest message')}
+          >
+            <Icon name="arrowDown" size={20} strokeWidth={1.8}/>
+          </button>
+        </div>
+      )}
+      {!isAccessDenied && moveSelection && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 16px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', flexShrink: 0 }}>
+          <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{t('{count} selected', { count: moveSelection.selectedIds.size })}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={moveSelection.onCancel}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-primary" disabled={moveSelection.selectedIds.size === 0} onClick={moveSelection.onConfirm}>{t('Move to thread')}</button>
+          </div>
+        </div>
+      )}
+      {!isAccessDenied && !moveSelection && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}
@@ -1507,13 +2644,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, compact, isMobil
         isComposing={isComposing}
         setIsComposing={setIsComposing}
         pendingAttachments={pendingAttachments}
+        finalizeRetries={finalizeRetries}
+        onRetryFinalize={(id) => void handleRetryFinalize(id)}
+        onRemoveFinalizeRetry={handleRemoveFinalizeRetry}
         onFilesSelect={handleFilesSelect}
         onRemoveAttachment={handleRemoveAttachment}
         isUploading={isUploading}
+        uploadProgress={uploadProgress}
         mentionMembers={mentionMembers}
+        mentionMembersError={mentionMembersError}
+        onRetryMentionMembers={retryMentionMembers}
+        isRetryingMentionMembers={isRetryingMentionMembers}
+        mentionAttributes={isDm ? [] : profileAttributes}
+        mentionRoles={!isDm && projectId ? projectRoles : []}
+        includeAllMention={!isDm}
+        includeProjectMembersMention={!isDm && !!projectId}
         mentionNames={mentionNames}
         onMentionInserted={onMentionInserted}
         onCreateTextFile={() => setShowTextFileDialog(true)}
+        {...(!isDm && channelId ? { appEntryButtons: <AppEntryButtons channelId={channelId} onError={setSendError} {...(compact ? { compact: true } : {})} {...(isMobile ? { iconOnly: true } : {})} /> } : {})}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}
         {...(compact ? { compact: true } : {})}

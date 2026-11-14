@@ -6,7 +6,7 @@
     "dev": "turbo dev --filter=!@cairn/desktop",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "node --test scripts/*.test.cjs && turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo clean",
     "desktop:dev": "pnpm --filter @cairn/desktop dev",
@@ -21,7 +21,18 @@
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=20.9.0",
+    "node": "^22.23.4 || ^24.22.1 || ^26.12.1",
     "pnpm": ">=9.0.0"
+  },
+  "enriched-markdown": {
+    "enableCodeHighlight": false,
+    "enableMath": false,
+    "enableVideo": false
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "expo-quick-actions@6.0.2": "patches/expo-quick-actions@6.0.2.patch",
+      "expo-sharing@55.0.24": "patches/expo-sharing@55.0.24.patch"
+    }
   }
 }

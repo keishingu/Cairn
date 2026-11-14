@@ -1,14 +1,18 @@
-import { View, Text, StyleSheet } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
+import { NativeWebViewScreen } from '../../../components/native-webview-screen'
+import { useT } from '../../../components/locale-provider'
+import { aiScreenPath, firstParam } from '../../../lib/quick-actions'
 
 export default function AiScreen() {
+  const t = useT()
+  // focus=1 はホーム画面のクイックアクションから来たときで、Web が新しい会話を始めて入力欄へフォーカスする
+  const { focus, open } = useLocalSearchParams<{ focus?: string | string[]; open?: string | string[] }>()
+  const focusInput = firstParam(focus) === '1'
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>AI アシスタント（Session 2 で実装）</Text>
-    </View>
+    <NativeWebViewScreen
+      path={aiScreenPath({ focus: focusInput, open: firstParam(open) })}
+      title={t('AI assistant')}
+      allowProgrammaticFocus={focusInput}
+    />
   )
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  text: { fontSize: 16, color: '#666' },
-})

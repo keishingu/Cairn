@@ -1,7 +1,10 @@
 'use client'
 
 import React from 'react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import { useT } from '@/components/locale-provider'
 import { useCommand } from '@/lib/command-registry'
+import { avatarGradient, avatarInitial } from '@cairn/shared'
 
 const PHOTO_IDS = [
   '1464822759023-fed622ff2c3b', '1483728642387-6c3bdd6c93e5', '1454391304352-2bf4678b1a7a',
@@ -48,13 +51,16 @@ const PATHS: Record<string, React.ReactNode> = {
   bell:        <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></>,
   'bell-off':  <><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M10.7 3.1a6 6 0 0 1 7.2 5c0 2.5-.5 4.2-1.1 5.5"/><path d="M6 9c0 2-.5 3.8-1 5"/><path d="M3 3l18 18"/><path d="M9 9a6 6 0 0 0-.4 2.1"/><path d="M3 9h1"/><path d="M21 12h-1"/></>,
   chevDown:    <><polyline points="6 9 12 15 18 9"/></>,
+  chevUp:      <><polyline points="6 15 12 9 18 15"/></>,
   chevRight:   <><polyline points="9 6 15 12 9 18"/></>,
   chevLeft:    <><polyline points="15 6 9 12 15 18"/></>,
   chevronsLeft:  <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>,
   chevronsRight: <><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></>,
+  maximize:    <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>,
   close:       <><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></>,
   more:        <><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></>,
   filter:      <><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5"/></>,
+  sort:        <><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></>,
   paperclip:   <><path d="M21 11l-9.5 9.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-9.5 9.5a2 2 0 0 1-3-3L15 7"/></>,
   smile:       <><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></>,
   send:        <><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
@@ -62,6 +68,7 @@ const PATHS: Record<string, React.ReactNode> = {
   pin:         <><path d="M12 17v5"/><path d="M9 11l-3 3h12l-3-3V3H9z"/></>,
   flag:        <><path d="M4 21V4h14l-3 5 3 5H4"/></>,
   arrowUp:     <><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></>,
+  arrowDown:   <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></>,
   mountain:    <><path d="M3 20l6-9 4 6 3-4 5 7z"/><circle cx="9" cy="6" r="1.5"/></>,
   folder:      <><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
   download:    <><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></>,
@@ -76,9 +83,11 @@ const PATHS: Record<string, React.ReactNode> = {
   moon:        <><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></>,
   sun:         <><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/></>,
   book:        <><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5V4.5z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/></>,
+  grid:        <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
   list:        <><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></>,
   layers:      <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
   lock:        <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></>,
+  shield:      <><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/></>,
   hash:        <><line x1="5" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="19" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></>,
   tent:        <><path d="M3 20l9-15 9 15z"/><path d="M12 5v15"/><path d="M9 20l3-4 3 4"/></>,
   mic:         <><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 12a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></>,
@@ -96,6 +105,8 @@ const PATHS: Record<string, React.ReactNode> = {
   alertTriangle: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
   reply:       <><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></>,
   bookmark:    <><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></>,
+  'external-link': <><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></>,
+  loader:      <><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></>,
   info:        <><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
 }
 
@@ -110,22 +121,6 @@ export const Icon = ({ name, size = 18, color = 'currentColor', strokeWidth = 1.
 )
 
 // ─── Avatar ───────────────────────────────────────────────────────
-const AV_GRADS = [
-  ['#34D399', '#10B981'],
-  ['#60A5FA', '#3B82F6'],
-  ['#F59E0B', '#F97316'],
-  ['#F472B6', '#EC4899'],
-  ['#A78BFA', '#7C3AED'],
-  ['#FB7185', '#E11D48'],
-  ['#22D3EE', '#0891B2'],
-  ['#FBBF24', '#D97706'],
-]
-function hashName(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-  return Math.abs(h)
-}
-
 interface AvatarProps {
   name?: string
   url?: string | null
@@ -135,8 +130,8 @@ interface AvatarProps {
 }
 
 export const Avatar = ({ name = '', url, size = 28, ring = false, style }: AvatarProps) => {
-  const initials = name ? name.replace(/\s/g, '').slice(0, 1).toUpperCase() : '?'
-  const g = AV_GRADS[hashName(name) % AV_GRADS.length]!
+  const initials = avatarInitial(name)
+  const g = avatarGradient(name)
   const base: React.CSSProperties = {
     width: size, height: size, borderRadius: '50%',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -220,16 +215,19 @@ interface ArchivedBadgeProps {
   onDark?: boolean
 }
 
-export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => (
+export const ArchivedBadge = ({ size = 10, onDark = false }: ArchivedBadgeProps) => {
+  const t = useT()
+  return (
   <span
     className="chip"
     style={onDark
       ? { background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: size, backdropFilter: 'blur(4px)' }
       : { background: 'var(--text-4)', color: 'var(--bg)', fontSize: size }}
   >
-    アーカイブ
+    {t('Archive')}
   </span>
-)
+  )
+}
 
 // ─── Unread badge ─────────────────────────────────────────────────
 // 未読件数バッジ。ヘッダーのベル・サイドバー・チャンネル一覧・通知パネルで
@@ -253,7 +251,7 @@ export const UnreadBadge = ({ count, max = 99, size = 'md', style }: UnreadBadge
       height: sm ? 16 : 18, minWidth: sm ? 16 : 18, padding: '0 5px',
       borderRadius: 999, boxSizing: 'border-box', lineHeight: 1,
       background: 'var(--accent)', color: 'var(--on-accent)',
-      fontSize: sm ? 10 : 11, fontWeight: 700,
+      fontSize: sm ? 'var(--fs-2xs)' : 'var(--fs-xs)', fontWeight: 600,
       ...style,
     }}>
       {count > max ? `${max}+` : count}
@@ -303,15 +301,16 @@ export const Switch = ({ checked, onChange, disabled = false, size = 'md', title
 // ─── Mountain photo ───────────────────────────────────────────────
 interface MountainPhotoProps {
   idx?: number
-  height?: number
+  height?: number | string
+  imageWidth?: number
   flat?: boolean
   radius?: number | string
 }
 
-export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: MountainPhotoProps) => (
+export const MountainPhoto = ({ idx = 0, height = 200, imageWidth = 800, flat = false, radius }: MountainPhotoProps) => (
   <div style={{
     width: '100%', height,
-    backgroundImage: `url("${photoUrl(idx, 800, Math.round(height * 1.6))}")`,
+    backgroundImage: `url("${photoUrl(idx, imageWidth, typeof height === 'number' ? Math.round(height * 1.6) : imageWidth)}")`,
     backgroundSize: 'cover', backgroundPosition: 'center',
     borderRadius: radius != null ? radius : (flat ? 0 : '10px 10px 0 0'),
     backgroundColor: '#1f2937',
@@ -319,11 +318,13 @@ export const MountainPhoto = ({ idx = 0, height = 200, flat = false, radius }: M
 )
 
 // ─── TopBar search box ────────────────────────────────────────────
-export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
+export const TopBarSearch = ({ value, onChange, placeholder }: {
   value: string
   onChange: (v: string) => void
   placeholder?: string
 }) => {
+  const t = useT()
+  const resolvedPlaceholder = placeholder ?? t('Search…')
   const inputRef = React.useRef<HTMLInputElement>(null)
   // ⌥S: 検索フォーカス
   useCommand('ctx.searchFocus', () => inputRef.current?.focus())
@@ -334,8 +335,8 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
         ref={inputRef}
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{ flex: 1, fontSize: 12.5, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
+        placeholder={resolvedPlaceholder}
+        style={{ flex: 1, fontSize: 'var(--fs-md)', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', caretColor: 'var(--accent)' }}
         onKeyDown={e => {
           if (e.key !== 'Escape') return
           // 1回目: 入力をクリア / 2回目（空の時）: 入力欄から離脱（ブラー）
@@ -352,57 +353,104 @@ export const TopBarSearch = ({ value, onChange, placeholder = '検索…' }: {
 }
 
 // ─── Placeholder page ─────────────────────────────────────────────
-export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => (
+export const PlaceholderPage = ({ name, icon }: { name: string; icon: string }) => {
+  const t = useT()
+  return (
   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
     <div style={{ maxWidth: 360, textAlign: 'center' }}>
       <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <Icon name={icon} size={26}/>
       </div>
-      <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700 }}>{name}</h2>
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>
-        このセクションはサイドバーから他のページへ移動できることを示すプレースホルダーです。実装時にはここに専用のビューが表示されます。
+      <h2 style={{ margin: '0 0 6px', fontSize: 'var(--fs-2xl)', fontWeight: 600 }}>{name}</h2>
+      <p style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--text-3)', lineHeight: 1.6 }}>
+        {t('This section is a placeholder showing you can move to other pages from the sidebar. A dedicated view will appear here when it is implemented.')}
       </p>
     </div>
   </div>
-)
+  )
+}
 
 // ─── Modal ────────────────────────────────────────────────────────
-export const Modal = ({ onClose, children }: { onClose: () => void; children: React.ReactNode }) => {
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+// フォーカスの閉じ込め・背後の非表示（aria-hidden）・スクロール固定・重なったときの Escape は
+// Radix Dialog に任せる。自前で持つと portal・入れ子・無効ボタンなどの端のケースを追い切れないため。
+const visuallyHidden: React.CSSProperties = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0,
+}
+
+export const Modal = ({ onClose, label, role = 'dialog', placement = 'center', children }: {
+  onClose: () => void
+  /** スクリーンリーダーが読み上げるダイアログ名（通常は見出しと同じ文言） */
+  label: string
+  role?: 'dialog' | 'alertdialog'
+  /** bottom はモバイルのボトムシート。画面下端に余白なしで寄せる */
+  placement?: 'center' | 'bottom'
+  children: React.ReactNode
+}) => {
+  // 中身の autoFocus は Radix がフォーカス元を記録するより先に走るため、開いた元の要素は初回描画の時点で控える
+  const [opener] = React.useState(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  )
 
   return (
-    <div data-cairn-modal style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--overlay)' }} onClick={onClose}/>
-      {children}
-    </div>
+    <DialogPrimitive.Root open onOpenChange={open => { if (!open) onClose() }}>
+      {/* portal にすると .app / .app-root のテーマ変数・ボタン用クラスが効かなくなるため、その場に描画する */}
+      <DialogPrimitive.Content
+        data-cairn-modal
+        role={role}
+        aria-describedby={undefined}
+        // 背景幕のクリックは下の div で扱う。トーストなど中身の外にある要素への操作では閉じない
+        onInteractOutside={e => e.preventDefault()}
+        onCloseAutoFocus={e => {
+          e.preventDefault()
+          if (opener && document.contains(opener)) opener.focus()
+        }}
+        style={{
+          outline: 'none', position: 'fixed', inset: 0, zIndex: 'var(--z-modal)', display: 'flex',
+          ...(placement === 'bottom'
+            ? { flexDirection: 'column', justifyContent: 'flex-end', padding: 0 }
+            : { alignItems: 'center', justifyContent: 'center', padding: 24 }),
+        }}
+      >
+        {/* 名前付けにだけ使う。見出し要素にすると画面上の見出しと二重に読まれるため span にする */}
+        <DialogPrimitive.Title asChild><span style={visuallyHidden}>{label}</span></DialogPrimitive.Title>
+        {/* 背景幕は中身の後ろに置く。中身が position を持たないと、absolute の背景幕が手前に描かれて暗く、押せなくなる */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: -1, background: 'var(--overlay)' }} onClick={onClose}/>
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Root>
   )
+}
+
+/**
+ * createPortal の出し先。モーダルの中ならモーダル内に出して、フォーカスの閉じ込めや背後の非表示の
+ * 対象に含める（外に出すとフォーカスできない・読み上げられない）。それ以外はテーマ変数の効く .app-root。
+ */
+export function portalHostFor(el: Element | null | undefined): HTMLElement | null {
+  return el?.closest<HTMLElement>('[data-cairn-modal]') ?? el?.closest<HTMLElement>('.app-root') ?? null
 }
 
 export const ModalHeader = ({ icon, title, subtitle, onClose }: {
   icon?: string; title: string; subtitle?: string; onClose: () => void
-}) => (
-  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}>
+}) => {
+  const t = useT()
+  return (
+  <header style={{ padding: '16px 20px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
     {icon && (
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={16}/>
       </div>
     )}
     <div style={{ flex: 1, minWidth: 0 }}>
-      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
-      {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
+      <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
+      {subtitle && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 1 }}>{subtitle}</div>}
     </div>
-    <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--card-2)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-    >
+    <button type="button" aria-label={t('Close')} onClick={onClose} className="icon-btn" style={{ width: 30, height: 30, borderRadius: 8 }}>
       <Icon name="close" size={16}/>
     </button>
   </header>
-)
+  )
+}
 
 // ─── Form field ───────────────────────────────────────────────────
 interface FieldProps {
@@ -413,16 +461,16 @@ interface FieldProps {
 export const Field = ({ label, hint, required, error, children, htmlFor }: FieldProps) => (
   <label htmlFor={htmlFor} style={{ display: 'block' }}>
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
+      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', letterSpacing: '0.01em' }}>
         {label}
         {required && <span style={{ color: 'var(--red)', marginLeft: 4 }}>*</span>}
       </span>
-      {hint && <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{hint}</span>}
     </div>
     {children}
     {error && (
-      <div style={{ marginTop: 5, fontSize: 11.5, color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
+      <div style={{ marginTop: 5, fontSize: 'var(--fs-sm)', color: 'var(--red-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 13, height: 13, borderRadius: '50%', background: 'var(--red)', color: '#fff', fontSize: 'var(--fs-2xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>!</span>
         {error}
       </div>
     )}
@@ -434,10 +482,41 @@ export function fieldInputStyle(invalid: boolean): React.CSSProperties {
     width: '100%', height: 36, padding: '0 12px',
     border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: 8, background: 'var(--card)', color: 'var(--text)',
-    fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    fontSize: 'var(--fs-md)', fontFamily: 'inherit',
     transition: 'border-color .12s, box-shadow .12s',
     boxSizing: 'border-box',
   }
+}
+
+// モバイルのボトムシート（プロジェクト作成シートが基準）の入力欄。PC の fieldInputStyle より大きく、タップしやすくする
+export function sheetFieldInputStyle(invalid: boolean): React.CSSProperties {
+  return {
+    width: '100%', height: 44, padding: '0 12px',
+    border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`,
+    borderRadius: 10, background: 'var(--card-2)', color: 'var(--text)',
+    fontSize: 'var(--fs-xl)', fontFamily: 'inherit', outline: 'none',
+    boxSizing: 'border-box',
+  }
+}
+
+export const sheetFieldLabelStyle: React.CSSProperties = {
+  fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6,
+}
+
+/**
+ * フォーム部品をどの見た目で描くか。ボトムシートの中身（TaskFormFields など）は
+ * PC のモーダルと共有しているため、外枠が sheet を配って入力欄・ラベルをシートの寸法に揃える
+ */
+export const FormVariantContext = React.createContext<'dialog' | 'sheet'>('dialog')
+
+export function useFieldInputStyle(): (invalid: boolean) => React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet' ? sheetFieldInputStyle : fieldInputStyle
+}
+
+export function useFieldLabelStyle(): React.CSSProperties {
+  return React.useContext(FormVariantContext) === 'sheet'
+    ? sheetFieldLabelStyle
+    : { fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 }
 
 export function fieldTextareaStyle(invalid: boolean): React.CSSProperties {
@@ -456,6 +535,8 @@ export function onBlurRing(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaEl
 
 // ─── FAB（モバイルの新規作成ボタン）──────────────────────────────
 // ボトムナビの上・右下固定。モバイルのページ主要作成アクションはこれに統一する
+// FAB を置く一覧の下端余白。アプリの WebView ではナビ余白が 0 になるため、FAB の高さ（下端16px + 52px + 間16px）を下回らないようにする
+export const MOBILE_FAB_LIST_PADDING = 'max(var(--mobile-nav-clearance), 84px)'
 export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) => (
   <button
     onClick={onClick}
@@ -463,13 +544,13 @@ export const Fab = ({ onClick, label }: { onClick: () => void; label: string }) 
     style={{
       position: 'fixed',
       right: 16,
-      bottom: 'calc(80px + env(safe-area-inset-bottom) + 16px)',
+      bottom: 'calc(var(--mobile-nav-clearance) + 16px)',
       width: 52, height: 52, borderRadius: '50%',
       background: 'var(--accent)', color: 'var(--on-accent)',
       border: 'none', cursor: 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-      zIndex: 50,
+      boxShadow: 'var(--shadow-fab)',
+      zIndex: 'var(--z-nav)',
     }}
   >
     <Icon name="plus" size={22}/>

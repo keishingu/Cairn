@@ -4,7 +4,7 @@
 'use client'
 
 import React from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { MobileNav } from '@/components/app/mobile/nav'
 import { PageAI } from '@/components/app/pages/ai'
 import { ProjectListView } from '@/components/app/pages/project-list'
@@ -26,6 +26,7 @@ import { PageFiles } from '@/components/app/pages/files'
 import { PageGallery } from '@/components/app/pages/gallery'
 import { useDetailPanel } from '@/hooks/use-detail-panel'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
+import { useT } from '@/components/locale-provider'
 
 const MOBILE_STORAGE_KEY = STORAGE_KEYS.projects_view_mob
 type ProjectsView = 'list' | 'calendar' | 'kanban'
@@ -38,6 +39,21 @@ function loadStoredView(): ProjectsView {
   if (typeof window === 'undefined') return 'list'
   const saved = localStorage.getItem(MOBILE_STORAGE_KEY)
   return isValidView(saved) ? saved : 'list'
+}
+
+function loadWebViewMode(): boolean {
+  if (typeof window === 'undefined') return false
+  if (new URLSearchParams(window.location.search).get('webview') === '1') {
+    sessionStorage.setItem(STORAGE_KEYS.webview_mode, '1')
+    return true
+  }
+  return sessionStorage.getItem(STORAGE_KEYS.webview_mode) === '1'
+}
+
+declare global {
+  interface Window {
+    ReactNativeWebView?: { postMessage: (message: string) => void }
+  }
 }
 
 function pageFromPathname(pathname: string): string {
@@ -53,10 +69,27 @@ function pageFromPathname(pathname: string): string {
 }
 
 const MENU_PAGE_LABELS: Record<string, string> = {
-  members: 'メンバー',
+  members: 'Members',
+}
+
+export function shouldRenderMobileNav(hideNav: boolean) {
+  return !hideNav
+}
+
+/**
+ * 各ページが下部ナビに隠れないよう下端に空ける余白。--mobile-nav-h はナビの高さ、
+ * --mobile-nav-clearance はナビに少し間を足した高さ。アプリの WebView では Web のナビを描かず、
+ * ネイティブのタブバーが下端の安全領域まで受け持つため 0 にする（残すと中身のない帯が見える）
+ */
+export function mobileNavSpaceStyle(navVisible: boolean): React.CSSProperties {
+  return {
+    '--mobile-nav-h': navVisible ? 'calc(65px + env(safe-area-inset-bottom))' : '0px',
+    '--mobile-nav-clearance': navVisible ? 'calc(80px + env(safe-area-inset-bottom))' : '0px',
+  } as React.CSSProperties
 }
 
 function MobilePlaceholder({ title }: { title: string }) {
+  const t = useT()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
       <MobileHeader title={title} />
@@ -64,8 +97,8 @@ function MobilePlaceholder({ title }: { title: string }) {
         <div style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="gear" size={24} color="var(--text-4)" />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)' }}>準備中</div>
-        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>このページはモバイル版を準備中です</div>
+        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Coming soon')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('The mobile version of this page is not ready yet')}</div>
       </div>
     </div>
   )
@@ -73,6 +106,7 @@ function MobilePlaceholder({ title }: { title: string }) {
 
 // AppShellContext.Provider の内側でレンダリングされるため useAppShell() が使える
 function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { page: string; projectsView: ProjectsView; initialMemberId?: string | undefined; settingsSection?: string | undefined }) {
+  const t = useT()
   const { openPanel } = useAppShell()
   if (page === 'projects') {
     if (projectsView === 'calendar') return <PageCalendar openPanel={openPanel} isMobile />
@@ -86,26 +120,34 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   if (page === 'chats') return <PageChat isMobile />
   if (page === 'tasks') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title="マイタスク" />
-      <PageTasks isMobile />
+      <MobileHeader title={t('My tasks')} />
+      <React.Suspense fallback={null}>
+        <PageTasks isMobile />
+      </React.Suspense>
     </div>
   )
-  if (page === 'ai') return <PageAI isMobile />
+  if (page === 'ai') {
+    return (
+      <React.Suspense fallback={null}>
+        <PageAI isMobile />
+      </React.Suspense>
+    )
+  }
   if (page === 'settings') return settingsSection ? <MobileSettingsDetail section={settingsSection} /> : <MobileSettings />
   if (page === 'members') return <PageMembers isMobile {...(initialMemberId ? { initialUserId: initialMemberId } : {})} />
   if (page === 'files') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title="ファイル" />
+      <MobileHeader title={t('Files')} />
       <PageFiles isMobile />
     </div>
   )
   if (page === 'gallery') return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: 'var(--bg)' }}>
-      <MobileHeader title="ギャラリー" />
+      <MobileHeader title={t('Gallery')} />
       <PageGallery isMobile />
     </div>
   )
-  if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={MENU_PAGE_LABELS[page]!} />
+  if (page in MENU_PAGE_LABELS) return <MobilePlaceholder title={t(MENU_PAGE_LABELS[page]!)} />
   return (
     <React.Suspense fallback={null}>
       <ProjectListView isMobile openPanel={openPanel} />
@@ -113,16 +155,76 @@ function MobilePage({ page, projectsView, initialMemberId, settingsSection }: { 
   )
 }
 
-function MobileShellInner() {
+/**
+ * チャット補助画面（`nativeAux=1`。アプリの検索・ブックマーク・チャット情報など）の中で、
+ * パネルを離れてチャンネル・メッセージを開いたときにアプリへ渡す行き先。パネル表示中は null
+ */
+export function nativeAuxChatHandoffPath(pathname: string, search: string): string | null {
+  if (pathname !== '/chats' && !pathname.startsWith('/chats/')) return null
+  const params = new URLSearchParams(search)
+  if (params.has('panel')) return null
+  params.delete('nativeAux')
+  params.delete('nativeChatLinks')
+  const query = params.toString()
+  return `${pathname}${query ? `?${query}` : ''}`
+}
+
+function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; webView: boolean; overlay?: React.ReactNode }) {
   const pathname = usePathname()
+  const search = useSearchParams().toString()
   const router = useRouter()
   const page = pageFromPathname(pathname)
   const initialMemberId = pathname.startsWith('/members/') ? pathname.split('/')[2] : undefined
   const settingsSection = pathname.startsWith('/settings/') ? pathname.split('/')[2] : undefined
   const [projectsView, setProjectsViewState] = React.useState<ProjectsView>(loadStoredView)
+  const [isWebView] = React.useState(() => webView || loadWebViewMode())
+  const [isNativeChatAux] = React.useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nativeAux') === '1',
+  )
+  // 補助画面の中の行き先をアプリへ渡せるのは、受け取れるアプリが付ける印があるときだけ（古いアプリは一覧を開いてしまう）
+  const [nativeChatLinks] = React.useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('nativeChatLinks') === '1',
+  )
   const [notifOpen, setNotifOpen] = React.useState(false)
 
-  const { panelState, panelProject, panelMember, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
+  React.useEffect(() => {
+    const handleProjectsViewChange = () => setProjectsViewState(loadStoredView())
+    window.addEventListener('cairn:projects-view-changed', handleProjectsViewChange)
+    return () => window.removeEventListener('cairn:projects-view-changed', handleProjectsViewChange)
+  }, [])
+
+  React.useEffect(() => {
+    if (!isWebView || page !== 'chats' || isNativeChatAux) return
+    // 画面内遷移はアプリの onShouldStartLoadWithRequest を通らないため、チャンネル・メッセージを開けるよう行き先を渡す
+    window.ReactNativeWebView?.postMessage(JSON.stringify({
+      type: 'open-chats',
+      path: `${window.location.pathname}${window.location.search}`,
+    }))
+    router.back()
+  }, [isNativeChatAux, isWebView, page, router])
+
+  // チャット補助画面の中の遷移（検索結果・ブックマークからのジャンプ、パネルを閉じる等）も、Web のチャットではなくアプリのチャットで開く。
+  // 渡した後は直前のパネルへ戻す。アプリは同じ補助画面を開き直しても WebView を読み直さないため、Web のチャットを残さない
+  const lastAuxPanelHrefRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!isWebView || !isNativeChatAux || !nativeChatLinks || page !== 'chats') return
+    const handoffPath = nativeAuxChatHandoffPath(pathname, search)
+    if (!handoffPath) {
+      lastAuxPanelHrefRef.current = `${pathname}${search ? `?${search}` : ''}`
+      return
+    }
+    const panelHref = lastAuxPanelHrefRef.current
+    // パネルを経ずに開いた補助画面は戻り先が無いため、そのまま表示する
+    if (!panelHref) return
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'open-chats', path: handoffPath }))
+    router.replace(panelHref, { scroll: false })
+  }, [isNativeChatAux, isWebView, nativeChatLinks, page, pathname, router, search])
+
+  const { panelState, panelProject, panelMember, panelTab, setPanelTab, openPanel, openProjectById, openMember, backPanel } = useDetailPanel()
 
   const setProjectsView = React.useCallback((view: string) => {
     if (!isValidView(view)) return
@@ -135,21 +237,23 @@ function MobileShellInner() {
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
-      <div className="app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, isMobile: true, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
+      {/* .app の部品スタイル（.btn 等）は子孫セレクタで当たる。全画面パネルや .app-root への portal が
+          外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
+      <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', ...mobileNavSpaceStyle(shouldRenderMobileNav(hideNav)) }}>
         <NavigationProgress />
+        {overlay}
         {notifOpen && <PageNotifications onClose={() => setNotifOpen(false)} isMobile/>}
         {/* パネルは position:fixed でフルスクリーン表示。ブラウザ履歴でスタック管理する */}
-        {/* タブ状態は ProjectPanel の内部 state に閉じる（URL の ?tab を使わない）。
-            router.replace 経由のタブ切替はシェル全体＝裏の一覧まで再レンダーさせるため。
-            key でプロジェクトごとに初期タブ(chat)へリセットする */}
+        {/* タブ状態も URL で管理し、プロジェクト切替・リロード後に同じタブを維持する */}
         {panelState?.type === 'project' && panelProject && (
           <ProjectPanel
-            key={panelProject.id}
             project={panelProject}
             onClose={backPanel}
             onMemberClick={openMember}
             isMobile
+            tab={panelTab}
+            onTabChange={setPanelTab}
           />
         )}
         {panelState?.type === 'member' && panelMember && (
@@ -160,17 +264,20 @@ function MobileShellInner() {
             isMobile
           />
         )}
-        <div className="app" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <MobilePage page={page} projectsView={projectsView} initialMemberId={initialMemberId} settingsSection={settingsSection} />
           </div>
-          <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          {shouldRenderMobileNav(hideNav) && (
+            <MobileNav page={page} projectsView={projectsView} onNavigate={(path) => router.push(path)} onChangeView={setProjectsView} />
+          )}
         </div>
       </div>
     </AppShellContext.Provider>
   )
 }
 
-export function MobileShell() {
-  return <MobileShellInner />
+/** overlay は .app-root の中に出す全画面の要素（アプリのモーダルなど）。外に出すとテーマ変数と .app の部品スタイルが当たらない */
+export function MobileShell({ hideNav = false, webView = false, overlay }: { hideNav?: boolean; webView?: boolean; overlay?: React.ReactNode }) {
+  return <MobileShellInner hideNav={hideNav} webView={webView} overlay={overlay} />
 }

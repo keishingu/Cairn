@@ -5,15 +5,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 
 // --- vi.hoisted: vi.mock ファクトリから参照できるよう先に定義 ---
-const { mockGetAuthContext, mockGetUserById, mockGenerateLink } = vi.hoisted(() => {
+const { mockGetAuthContext, mockGetAuthUser, mockGetUserById, mockGenerateLink } = vi.hoisted(() => {
   const mockGetAuthContext = vi.fn()
+  const mockGetAuthUser = vi.fn()
   const mockGetUserById = vi.fn()
   const mockGenerateLink = vi.fn()
-  return { mockGetAuthContext, mockGetUserById, mockGenerateLink }
+  return { mockGetAuthContext, mockGetAuthUser, mockGetUserById, mockGenerateLink }
 })
 
 vi.mock('@/lib/get-auth-context', () => ({
   getAuthContext: mockGetAuthContext,
+  getAuthUser: mockGetAuthUser,
 }))
 
 vi.mock('@/lib/supabase/service', () => ({
@@ -53,7 +55,7 @@ describe('POST /api/auth/webview-handoff', () => {
     expect(mockGenerateLink).not.toHaveBeenCalled()
   })
 
-  it('認証済みユーザーの email で magiclink を発行し tokenHash を返す', async () => {
+  it('認証済みユーザーの email で magiclink を発行し tokenHash と workspaceId を返す', async () => {
     authed()
     mockGetUserById.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'me@example.com' } },
@@ -68,15 +70,44 @@ describe('POST /api/auth/webview-handoff', () => {
     const res = await POST()
 
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
+    await expect(res.json()).resolves.toEqual({
+      tokenHash: 'hashed-abc',
+      workspaceId: 'ws-1',
+    })
     // email はリクエストではなく認証済みユーザーから解決すること
     expect(mockGetUserById).toHaveBeenCalledWith('user-1')
     expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'me@example.com' })
   })
 
+  it('active workspaceがなくても認証済みなら退会用WebViewのmagiclinkを発行する', async () => {
+    mockGetAuthContext.mockResolvedValue({
+      ctx: null,
+      error: NextResponse.json({ error: 'No workspace found' }, { status: 403 }),
+    })
+    mockGetAuthUser.mockResolvedValue({ userId: 'user-1', error: null })
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'me@example.com' } },
+      error: null,
+    })
+    mockGenerateLink.mockResolvedValue({
+      data: { properties: { hashed_token: 'hashed-abc' } },
+      error: null,
+    })
+
+    const { POST } = await import('./route')
+    const res = await POST()
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ tokenHash: 'hashed-abc' })
+    expect(mockGetAuthUser).toHaveBeenCalledOnce()
+  })
+
   it('ユーザーの email が取得できない場合は 500 を返し、リンク発行を行わない', async () => {
     authed()
-    mockGetUserById.mockResolvedValue({ data: { user: { id: 'user-1', email: null } }, error: null })
+    mockGetUserById.mockResolvedValue({
+      data: { user: { id: 'user-1', email: null } },
+      error: null,
+    })
 
     const { POST } = await import('./route')
     const res = await POST()

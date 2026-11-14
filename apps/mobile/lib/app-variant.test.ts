@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest'
+import appConfig, { resolveAppAssets, resolveAppVariant } from '../app.config'
+
+describe('モバイルアプリの配布環境別設定', () => {
+  it('未指定時は本番アプリを上書きしない開発版になる', () => {
+    expect(resolveAppVariant(undefined)).toEqual({
+      name: 'Cairn Dev',
+      scheme: 'cairn-dev',
+      iosBundleIdentifier: 'com.oss-cairn.dev',
+      androidPackage: 'com.oss_cairn.dev',
+    })
+  })
+
+  it('Internal Distributionは独立したプレビュー版になる', () => {
+    expect(resolveAppVariant('preview')).toEqual({
+      name: 'Cairn Preview',
+      scheme: 'cairn-preview',
+      iosBundleIdentifier: 'com.oss-cairn.preview',
+      androidPackage: 'com.oss_cairn.preview',
+    })
+  })
+
+  it('productionだけが本番識別子を利用する', () => {
+    expect(resolveAppVariant('production')).toEqual({
+      name: 'Cairn',
+      scheme: 'cairn',
+      iosBundleIdentifier: 'com.oss-cairn',
+      androidPackage: 'com.oss_cairn',
+    })
+  })
+
+  it('開発系は白＋青、本番は紺＋緑のアイコンとスプラッシュで見分けられる', () => {
+    expect(resolveAppAssets('development')).toEqual({
+      icon: './assets/app-icons/blue-light-ios.png',
+      adaptiveIcon: { foregroundImage: './assets/app-icons/blue-light-android.png', backgroundColor: '#FFFFFF' },
+      splash: { image: './assets/app-icons/splash-blue.png', backgroundColor: '#FFFFFF' },
+    })
+    expect(resolveAppAssets('production')).toEqual({
+      icon: './assets/app-icons/emerald-dark-ios.png',
+      adaptiveIcon: { foregroundImage: './assets/app-icons/emerald-dark-android.png', backgroundColor: '#0B1622' },
+      splash: { image: './assets/app-icons/splash-emerald.png', backgroundColor: '#0B1622' },
+    })
+  })
+
+  it('別アイコンの alias でも受けられるよう、共有の Intent を android.intentFilters に宣言する', () => {
+    const config = appConfig({ config: {} } as Parameters<typeof appConfig>[0])
+
+    expect(config.android?.intentFilters).toEqual(
+      expect.arrayContaining([
+        { action: 'SEND', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
+        { action: 'SEND_MULTIPLE', category: ['DEFAULT'], data: [{ mimeType: '*/*' }] },
+      ]),
+    )
+  })
+
+  it('iOS の共有拡張を生成しない', () => {
+    const config = appConfig({ config: {} } as Parameters<typeof appConfig>[0])
+
+    expect(config.plugins).toContainEqual([
+      'expo-sharing',
+      {
+        ios: { enabled: false },
+        android: { enabled: true, singleShareMimeTypes: [], multipleShareMimeTypes: [] },
+      },
+    ])
+  })
+})

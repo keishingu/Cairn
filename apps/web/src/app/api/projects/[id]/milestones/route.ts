@@ -3,8 +3,11 @@
 
 import { NextResponse } from 'next/server'
 import { createMilestoneSchema } from '@cairn/shared'
+import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
+import { projectUpdateChange } from '@/lib/chat/project-update-message'
+import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireProjectAccess, requireWorkspaceMember } from '@/lib/permissions'
+import { requireProjectAccess, requireRole } from '@/lib/permissions'
 
 export interface MilestoneDto {
   id: string
@@ -23,7 +26,7 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id: projectId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'read' })
   if (error) return error
 
   try {
@@ -38,7 +41,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId)
+    const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
     if (forbidden) return forbidden
 
     const rows = await db
@@ -68,7 +71,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
 export async function POST(req: Request, { params }: RouteContext) {
   const { id: projectId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowApiToken: true, requiredApiTokenScope: 'write' })
   if (error) return error
 
   let body: unknown
@@ -81,6 +84,9 @@ export async function POST(req: Request, { params }: RouteContext) {
   const parsed = createMilestoneSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+  }
+  if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
+    return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
   }
 
   try {
@@ -95,7 +101,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     if (!project) return new NextResponse(null, { status: 404 })
 
-    const forbidden = await requireWorkspaceMember(ctx.workspaceId, ctx.userId)
+    const forbidden = requireRole(ctx.role, 'member')
     if (forbidden) return forbidden
 
     const inserted = await db.transaction(async (tx) => {
@@ -130,6 +136,12 @@ export async function POST(req: Request, { params }: RouteContext) {
       if (!channel) throw new Error('channels insert returned no rows')
 
       return { milestone, channelId: channel.id }
+    })
+
+    await postProjectUpdateMessage({
+      projectId,
+      actorId: ctx.userId,
+      changes: [projectUpdateChange.milestoneAdded(inserted.milestone)],
     })
 
     const result: MilestoneDto = {

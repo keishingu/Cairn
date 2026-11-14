@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api-fetch'
+import { ApiRequestError } from '../lib/fetch-api-json'
+import { fetchWithOfflineCache } from '../lib/offline-cache-store'
 
 export interface NotificationDto {
   id: string
@@ -14,12 +16,28 @@ export interface NotificationDto {
 export function useNotifications() {
   return useQuery<NotificationDto[]>({
     queryKey: ['notifications'],
+    queryFn: () =>
+      fetchWithOfflineCache(
+        { type: 'notifications' },
+        async () => {
+          const res = await apiFetch('/api/notifications')
+          if (!res.ok) throw new ApiRequestError(`通知の取得に失敗しました (${res.status})`, res.status)
+          return res.json() as Promise<NotificationDto[]>
+        },
+        (notifications) => notifications,
+      ),
+  })
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery<number>({
+    queryKey: ['notifications', 'unread-count'],
     queryFn: async () => {
-      const res = await apiFetch('/api/notifications')
-      if (!res.ok) throw new Error(`通知の取得に失敗しました (${res.status})`)
-      return res.json() as Promise<NotificationDto[]>
+      const res = await apiFetch('/api/notifications?filter=unread&count=1')
+      if (!res.ok) throw new Error(`未読通知数の取得に失敗しました (${res.status})`)
+      const data = (await res.json()) as { count: number }
+      return data.count
     },
-    refetchInterval: 30_000,
   })
 }
 

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { sql } from 'drizzle-orm'
-import { boolean, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
-import { channelTypeEnum, messageTypeEnum } from './enums'
+import { boolean, check, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import { channelTypeEnum, contentReportReasonEnum, contentReportStatusEnum, messageTypeEnum } from './enums'
 import { profiles, workspaces } from './workspaces'
 import { projects } from './projects'
 import { milestones } from './milestones'
@@ -16,17 +17,24 @@ export const channels = pgTable(
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'cascade' }),
+    parentChannelId: uuid('parent_channel_id').references((): AnyPgColumn => channels.id, { onDelete: 'cascade' }),
     type: channelTypeEnum('type').notNull().default('project'),
     name: text('name'),
     isPrivate: boolean('is_private').notNull().default(false),
+    // スレッドのアーカイブ日時。null は未アーカイブ。親チャンネルは API でアーカイブさせない。
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('idx_channels_workspace_type').on(t.workspaceId, t.type),
     index('idx_channels_project').on(t.projectId),
+    // app_channel_memberships の複合 FK の参照先。インストールと別ワークスペースのチャンネルへ Bot を紐づけさせない
+    uniqueIndex('channels_id_workspace_idx').on(t.id, t.workspaceId),
+    index('idx_channels_parent').on(t.parentChannelId),
     uniqueIndex('idx_channels_milestone_unique').on(t.milestoneId),
+    check('channels_parent_not_self', sql`${t.parentChannelId} is null or ${t.parentChannelId} <> ${t.id}`),
   ],
-)
+).enableRLS()
 
 export const channelMembers = pgTable(
   'channel_members',
@@ -41,7 +49,7 @@ export const channelMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.channelId, t.userId)],
-)
+).enableRLS()
 
 export const messages = pgTable(
   'messages',
@@ -59,12 +67,33 @@ export const messages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    // 外部チャットから取り込んだ過去ログ（docs/import-design.md）。未読・AI の巡回の対象にせず、編集・削除もさせない。
+    // 既定値があるので、マイグレーションより先に動いた旧コードの INSERT は失敗しない
+    imported: boolean('imported').notNull().default(false),
   },
   (t) => [
     index('idx_messages_channel').on(t.channelId, t.createdAt),
     index('idx_messages_content_trgm').using('gin', t.content.op('gin_trgm_ops')).where(sql`${t.deletedAt} is null`),
   ],
 )
+
+// プロジェクト更新を知らせる system メッセージが「どの項目の通知か」を持つ。
+// 通知の本文は表示用の文で、名前や表示名に任意の文字列が入るため、本文から項目を読み戻さない。
+// messages にカラムを足さず別テーブルにしているのは、マイグレーションより先に新コードが動いた時間に
+// チャットの投稿（messages への INSERT）まで失敗させないため。
+export const messageProjectUpdates = pgTable(
+  'message_project_updates',
+  {
+    messageId: uuid('message_id')
+      .primaryKey()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    // status / dates / description / title / location / archived / gallery /
+    // milestone_added / milestone_dates / milestone_completed
+    kind: text('kind').notNull(),
+    // マイルストーンの通知だけ持つ。同名のマイルストーンを区別して集約するためのキー
+    milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'set null' }),
+  },
+).enableRLS()
 
 export const messageReactions = pgTable(
   'message_reactions',
@@ -96,7 +125,7 @@ export const messageAttachments = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('idx_message_attachments_message').on(t.messageId)],
-)
+).enableRLS()
 
 // メッセージの個人ブックマーク（チーム共通のピン留めではなく、各ユーザーが「後で見返す」ための保存）
 export const messageBookmarks = pgTable(
@@ -114,5 +143,46 @@ export const messageBookmarks = pgTable(
   (t) => [
     unique().on(t.messageId, t.userId),
     index('idx_message_bookmarks_user').on(t.userId, t.createdAt),
+  ],
+).enableRLS()
+
+export const userBlocks = pgTable(
+  'user_blocks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    blockerId: uuid('blocker_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    blockedId: uuid('blocked_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.blockerId, t.blockedId),
+    check('user_blocks_not_self', sql`${t.blockerId} <> ${t.blockedId}`),
+    index('idx_user_blocks_blocked').on(t.blockedId),
+  ],
+)
+
+export const contentReports = pgTable(
+  'content_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    channelId: uuid('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').notNull().references(() => messages.id),
+    reporterId: uuid('reporter_id').notNull().references(() => profiles.id),
+    reportedUserId: uuid('reported_user_id').notNull().references(() => profiles.id),
+    reason: contentReportReasonEnum('reason').notNull(),
+    details: text('details'),
+    contentSnapshot: text('content_snapshot').notNull(),
+    status: contentReportStatusEnum('status').notNull().default('open'),
+    resolutionNote: text('resolution_note'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: uuid('resolved_by').references(() => profiles.id),
+    messageDeletedAt: timestamp('message_deleted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.messageId, t.reporterId),
+    index('idx_content_reports_status_created').on(t.status, t.createdAt),
+    index('idx_content_reports_workspace').on(t.workspaceId),
   ],
 )

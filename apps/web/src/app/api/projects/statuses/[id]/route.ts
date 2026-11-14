@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { patchProjectStatusSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export async function PATCH(
   req: Request,
@@ -27,7 +27,7 @@ export async function PATCH(
   }
   const b = parsed.data
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
@@ -70,7 +70,7 @@ export async function DELETE(
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

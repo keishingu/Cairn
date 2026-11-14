@@ -3,18 +3,24 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
+import { visibleWorkspaceChannels } from '@/lib/chat/workspace-channel-visibility'
+import { fetchLastMessageAt } from '@/lib/chat/last-message-at'
 
 export interface WorkspaceChannelDto {
   id: string
   name: string | null
+  parentChannelId: string | null
   isPrivate: boolean
+  archived: boolean
   memberCount: number
   memberNames: string[]
   memberAvatarUrls: (string | null)[]
   unreadCount: number
   unreadMentionCount: number
+  /** 最終投稿時刻（ISO 8601）。投稿がなければ null。一覧の「更新順」に使う */
+  lastMessageAt: string | null
 }
 
 export async function GET() {
@@ -24,30 +30,35 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { channels, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
-    const { and, eq, inArray } = await import('drizzle-orm')
+    const { and, eq, inArray, sql } = await import('drizzle-orm')
+    // デプロイがmigrationより先でも既存チャンネル一覧を壊さない。
+    const parentChannelId = sql<string | null>`to_jsonb(${channels})->>'parent_channel_id'`
+    const archived = sql<boolean>`coalesce(to_jsonb(${channels})->>'archived_at', '') <> ''`
 
     const allChannelRows = await db
-      .select({ id: channels.id, name: channels.name, isPrivate: channels.isPrivate })
+      .select({ id: channels.id, name: channels.name, parentChannelId, isPrivate: channels.isPrivate, archived })
       .from(channels)
       .where(and(eq(channels.workspaceId, ctx.workspaceId), eq(channels.type, 'workspace')))
       .orderBy(channels.createdAt)
 
-    // ワークスペースチャンネルはWS全体向け。ゲストには自分が参加しているチャンネルのみに絞り、
-    // 参加していないチャンネルの存在やメンバー構成が漏れないようにする。
-    const callerRole = await getWorkspaceMemberRole(ctx.workspaceId, ctx.userId)
-    let channelRows = allChannelRows
-    if (callerRole === 'guest') {
-      if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
-      const joined = await db
-        .select({ channelId: channelMembers.channelId })
-        .from(channelMembers)
-        .where(and(
-          eq(channelMembers.userId, ctx.userId),
-          inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
-        ))
-      const joinedIds = new Set(joined.map(r => r.channelId))
-      channelRows = allChannelRows.filter(c => joinedIds.has(c.id))
-    }
+    // ゲストは参加チャンネルのみ。member 以上でも非公開は channel_members の自分の行があるものだけ。
+    // 未参加の非公開チャンネルを返すと Realtime が Unauthorized JOIN を繰り返し、ダッシュボードが赤くなる。
+    if (allChannelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
+    const needsMembership = ctx.role === 'guest' || allChannelRows.some(channel => channel.isPrivate)
+    const joined = needsMembership
+      ? await db
+          .select({ channelId: channelMembers.channelId })
+          .from(channelMembers)
+          .where(and(
+            eq(channelMembers.userId, ctx.userId),
+            inArray(channelMembers.channelId, allChannelRows.map(c => c.id)),
+          ))
+      : []
+    const channelRows = visibleWorkspaceChannels(
+      allChannelRows,
+      new Set(joined.map(row => row.channelId)),
+      ctx.role,
+    )
 
     if (channelRows.length === 0) return NextResponse.json([] satisfies WorkspaceChannelDto[])
 
@@ -77,15 +88,15 @@ export async function GET() {
 
     const channelIds = channelRows.map(c => c.id)
     const { channelReadStates, messages } = await import('@cairn/db')
-    const { isNull, gt, count, sql, ne } = await import('drizzle-orm')
+    const { isNull, gt, count, ne } = await import('drizzle-orm')
 
-    const [unreadRows, mentionRows] = await Promise.all([
+    const [unreadRows, mentionRows, lastMessageAtMap] = await Promise.all([
       channelIds.length > 0
         ? db
             .select({ channelId: messages.channelId, cnt: count() })
             .from(messages)
             .leftJoin(channelReadStates, and(eq(channelReadStates.channelId, messages.channelId), eq(channelReadStates.userId, ctx.userId)))
-            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
+            .where(and(inArray(messages.channelId, channelIds), isNull(messages.deletedAt), ne(messages.senderId, ctx.userId), eq(messages.imported, false), gt(messages.createdAt, sql`coalesce(${channelReadStates.lastReadAt}, '-infinity'::timestamptz)`)))
             .groupBy(messages.channelId)
         : Promise.resolve([]),
       channelIds.length > 0
@@ -94,6 +105,7 @@ export async function GET() {
             .from(channelReadStates)
             .where(and(eq(channelReadStates.userId, ctx.userId), inArray(channelReadStates.channelId, channelIds)))
         : Promise.resolve([]),
+      fetchLastMessageAt(channelIds),
     ])
 
     const unreadMap = new Map(unreadRows.map(r => [r.channelId, r.cnt]))
@@ -103,12 +115,13 @@ export async function GET() {
       const members = membersByChannel.get(c.id) ?? []
       const top4 = members.slice(0, 4)
       return {
-        id: c.id, name: c.name, isPrivate: c.isPrivate,
+        id: c.id, name: c.name, parentChannelId: c.parentChannelId, isPrivate: c.isPrivate, archived: c.archived,
         memberCount: members.length,
         memberNames: top4.map(m => m.name),
         memberAvatarUrls: top4.map(m => m.avatarUrl),
         unreadCount: unreadMap.get(c.id) ?? 0,
         unreadMentionCount: mentionMap.get(c.id) ?? 0,
+        lastMessageAt: lastMessageAtMap.get(c.id) ?? null,
       }
     })
 
@@ -143,7 +156,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '60文字以内で入力してください' }, { status: 400 })
   }
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {
@@ -169,7 +182,7 @@ export async function POST(req: Request) {
     }
 
     const memberCount = isPrivate ? 1 : 0
-    const result: WorkspaceChannelDto = { ...inserted, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0 }
+    const result: WorkspaceChannelDto = { ...inserted, parentChannelId: null, archived: false, memberCount, memberNames: [], memberAvatarUrls: [], unreadCount: 0, unreadMentionCount: 0, lastMessageAt: null }
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[/api/workspaces/channels POST] DB error:', err)

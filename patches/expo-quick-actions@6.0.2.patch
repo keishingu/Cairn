@@ -1,0 +1,19 @@
+diff --git a/android/src/main/java/expo/modules.quickactions/ExpoQuickActionsModule.kt b/android/src/main/java/expo/modules.quickactions/ExpoQuickActionsModule.kt
+index 66dc4a06c7fe4b91bfefb7a300449e463af5f745..583da117b6b0b3024fff00885f83dadbc8355891 100644
+--- a/android/src/main/java/expo/modules.quickactions/ExpoQuickActionsModule.kt
++++ b/android/src/main/java/expo/modules.quickactions/ExpoQuickActionsModule.kt
+@@ -228,8 +228,13 @@ class ExpoQuickActionsModule : Module() {
+     private fun setShortcuts(items: List<ActionObject>) {
+         val shortcutManager = context.getSystemService(Context.SHORTCUT_SERVICE) as ShortcutManager
+ 
++        // activity-alias で別アイコンにしていると MainActivity は無効なので、クラス名では起動できない。
++        // いま有効なランチャーの入口（alias を含む）を宛先にする。
++        val launchComponent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.component
++            ?: currentActivity!!.componentName
++
+         val shortcuts = items.mapNotNull {
+-            val intent = Intent(context, currentActivity!!::class.java)
++            val intent = Intent().setComponent(launchComponent)
+             intent.action = UNIQ_ACTION_ID
+             intent.putExtra("shortcut_data", it.toBundle());
+             val builder = ShortcutInfo.Builder(context, it.id)

@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createProjectStatusSchema } from '@cairn/shared'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { requireWorkspaceAdmin } from '@/lib/permissions'
+import { requireRole } from '@/lib/permissions'
 
 export interface ProjectStatusDto {
   id: string
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   }
   const { name, color = '#6B7280' } = parsed.data
 
-  const forbidden = await requireWorkspaceAdmin(ctx.workspaceId, ctx.userId)
+  const forbidden = requireRole(ctx.role, 'admin')
   if (forbidden) return forbidden
 
   try {

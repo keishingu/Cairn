@@ -58,6 +58,15 @@ describe('access/membership', () => {
       await expect(getWorkspaceRole('ws-1', 'user-1')).resolves.toBeNull()
     })
 
+    it('指定されたトランザクションから active view を読み取る', async () => {
+      const chain = selectChain([{ role: 'admin' }])
+      const tx = { select: vi.fn().mockReturnValue(chain) }
+      const { getWorkspaceRole } = await import('./membership')
+      await expect(getWorkspaceRole('ws-1', 'user-1', tx as never)).resolves.toBe('admin')
+      expect(chain.from).toHaveBeenCalledWith(activeWorkspaceMembers)
+      expect(mockDb.select).not.toHaveBeenCalled()
+    })
+
     it('active_workspace_members ビューを参照する（membership_status 述語は書かない）', async () => {
       const chain = selectChain([])
       mockDb.select.mockReturnValueOnce(chain)

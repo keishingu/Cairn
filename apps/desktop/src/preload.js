@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 // ネイティブメニュー（⌘+数字）やキー横取り（Ctrl+Tab）からの操作を Web 側へ橋渡しする。
 // Web は window.cairnDesktop?.on* を購読して navigate()/順送り を行う（use-app-shortcuts.ts）。
 contextBridge.exposeInMainWorld('cairnDesktop', {
+  startOAuth: (url, supabaseUrl, provider) => ipcRenderer.invoke('cairn:start-oauth', url, supabaseUrl, provider),
+  startCalendarOAuth: url => ipcRenderer.invoke('cairn:start-calendar-oauth', url),
+  openExternal: url => ipcRenderer.invoke('cairn:open-external', url),
   onNavigate: (cb) => {
     const handler = (_event, action) => cb(action)
     ipcRenderer.on('cairn:navigate', handler)
@@ -18,4 +21,10 @@ contextBridge.exposeInMainWorld('cairnDesktop', {
     ipcRenderer.on('cairn:toggle-sidebar', handler)
     return () => ipcRenderer.removeListener('cairn:toggle-sidebar', handler)
   },
+  // 未読バッジ数を main へ通知する。Windows タスクバーのオーバーレイ表示に使う。
+  // macOS Dock / Linux ランチャーは Web の navigator.setAppBadge が Electron 経由で
+  // 直接数字を出すため、この橋渡しは Windows のためだけに存在する。
+  setBadgeCount: (count) => ipcRenderer.send('cairn:set-badge', count),
+  // 外観設定を main へ通知し、Dock / タスクバーのアイコンを合わせる。
+  setAppIcon: (appearance) => ipcRenderer.send('cairn:set-app-icon', appearance),
 })

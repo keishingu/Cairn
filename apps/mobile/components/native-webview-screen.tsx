@@ -1,0 +1,123 @@
+import React from 'react'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppWebView, type AppWebViewHandle, type AppWebViewProps } from './app-webview'
+import { NativeAppHeader } from './native-app-header'
+import type { NativeHeaderDescriptor } from '../lib/native-header-bridge'
+import { useAppAppearance } from './appearance-provider'
+import { useWorkspace } from '../hooks/use-account'
+import { resolveNativeWebViewWorkspaceState } from '../lib/native-webview-workspace-state'
+import { useT } from './locale-provider'
+
+interface NativeWebViewScreenProps extends Omit<
+  AppWebViewProps,
+  'includeSafeAreaTop' | 'onNativeHeaderChange'
+> {
+  title: string
+  subtitle?: string | undefined
+  onBack?: (() => void) | undefined
+  requiresWorkspace?: boolean
+  showNotifications?: boolean
+}
+
+export const NativeWebViewScreen = React.forwardRef<AppWebViewHandle, NativeWebViewScreenProps>(
+  function NativeWebViewScreen(
+    { title, subtitle, onBack, requiresWorkspace = true, showNotifications = true, ...webViewProps },
+    forwardedRef,
+  ) {
+    const t = useT()
+    const innerRef = React.useRef<AppWebViewHandle>(null)
+    const { palette } = useAppAppearance()
+    const workspaceQuery = useWorkspace()
+    const workspaceState = resolveNativeWebViewWorkspaceState({
+      workspaceId: workspaceQuery.data?.id,
+      isPending: workspaceQuery.isPending,
+      error: workspaceQuery.error,
+      requiresWorkspace,
+      fallbackMessage: t('Could not load workspace info'),
+    })
+    const [header, setHeader] = React.useState<NativeHeaderDescriptor>({
+      title,
+      canGoBack: false,
+      ...(subtitle ? { subtitle } : {}),
+    })
+
+    React.useImperativeHandle(
+      forwardedRef,
+      () => ({
+        injectJavaScript: (script) => innerRef.current?.injectJavaScript(script),
+        triggerNativeHeaderBack: () => innerRef.current?.triggerNativeHeaderBack(),
+      }),
+      [],
+    )
+
+    React.useEffect(() => {
+      setHeader({ title, canGoBack: false, ...(subtitle ? { subtitle } : {}) })
+    }, [subtitle, title, webViewProps.path])
+
+    const handleBack =
+      onBack ?? (header.canGoBack ? () => innerRef.current?.triggerNativeHeaderBack() : undefined)
+
+    return (
+      <View style={[styles.container, { backgroundColor: palette.bg }]}>
+        <NativeAppHeader
+          title={header.title || title}
+          subtitle={header.subtitle ?? subtitle}
+          showNotifications={showNotifications}
+          {...(handleBack ? { onBack: handleBack } : {})}
+        />
+        {workspaceState.status === 'loading' ? (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator
+              accessibilityLabel={t('Loading workspace info')}
+              size="small"
+              color={palette.accent}
+            />
+          </View>
+        ) : workspaceState.status === 'error' ? (
+          <View style={styles.stateContainer}>
+            <Text accessibilityRole="alert" style={[styles.errorTitle, { color: palette.text }]}>{t('Could not load the workspace')}</Text>
+            <Text style={[styles.errorBody, { color: palette.text3 }]}>
+              {workspaceState.message}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('Reload workspace info')}
+              onPress={() => void workspaceQuery.refetch()}
+              style={({ pressed }) => [
+                styles.retryButton,
+                { backgroundColor: palette.accent },
+                pressed && styles.retryButtonPressed,
+              ]}
+            >
+              <Text style={[styles.retryLabel, { color: palette.onAccent }]}>{t('Reload')}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <AppWebView
+            key={workspaceState.workspaceId}
+            ref={innerRef}
+            {...webViewProps}
+            includeSafeAreaTop={false}
+            onNativeHeaderChange={setHeader}
+          />
+        )}
+      </View>
+    )
+  },
+)
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  stateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  errorTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  errorBody: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retryButton: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  retryButtonPressed: { opacity: 0.9 },
+  retryLabel: { fontSize: 14, fontWeight: '700' },
+})

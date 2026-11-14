@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { getMessages } from './get-messages'
 import { postMessage } from './post-message'
-export type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+export type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto, SenderAppDto } from './dto'
 
 type RouteContext = { params: Promise<{ channelId: string }> }
 
@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: RouteContext) {
   const { ctx, error: authError } = await getAuthContext()
   if (authError) return authError
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   return getMessages({
@@ -29,10 +29,13 @@ export async function GET(req: Request, { params }: RouteContext) {
 
 export async function POST(req: Request, { params }: RouteContext) {
   const { channelId } = await params
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({
+    allowApiToken: true,
+    requiredApiTokenScope: 'write',
+  })
   if (authError) return authError
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
   let body: unknown
@@ -52,5 +55,6 @@ export async function POST(req: Request, { params }: RouteContext) {
     payload: parsed.data,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
+    role: ctx.role,
   })
 }

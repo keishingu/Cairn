@@ -1,9 +1,19 @@
 // Copyright 2026 Cairn Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { boolean, date, index, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
 import { attendanceStatusEnum, projectMemberRoleEnum } from './enums'
-import { profiles, projectStatuses, tags, workspaces } from './workspaces'
+import { profiles, projectRoles, projectStatuses, tags, workspaces } from './workspaces'
 
 export const projects = pgTable(
   'projects',
@@ -32,7 +42,7 @@ export const projects = pgTable(
     index('idx_projects_status').on(t.statusId),
     index('idx_projects_date').on(t.startDate, t.endDate),
   ],
-)
+).enableRLS()
 
 export const projectMembers = pgTable(
   'project_members',
@@ -45,12 +55,14 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
     role: projectMemberRoleEnum('role').notNull().default('member'),
+    // 旧 role enum はローリングデプロイ互換のため残し、新コードは roleId を共有元にする。
+    roleId: uuid('role_id').references(() => projectRoles.id),
     attendance: attendanceStatusEnum('attendance').notNull().default('attending'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique().on(t.projectId, t.userId)],
-)
+  (t) => [unique().on(t.projectId, t.userId), index('idx_project_members_role').on(t.roleId)],
+).enableRLS()
 
 export const memberExperiences = pgTable('member_experiences', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -62,7 +74,7 @@ export const memberExperiences = pgTable('member_experiences', {
   level: text('level'),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}).enableRLS()
 
 export const projectTags = pgTable(
   'project_tags',
@@ -75,7 +87,7 @@ export const projectTags = pgTable(
       .references(() => tags.id, { onDelete: 'cascade' }),
   },
   (t) => [unique().on(t.projectId, t.tagId)],
-)
+).enableRLS()
 
 export const pinnedProjects = pgTable(
   'pinned_projects',
@@ -97,4 +109,4 @@ export const pinnedProjects = pgTable(
     unique().on(t.userId, t.projectId),
     index('idx_pinned_projects_user').on(t.userId, t.workspaceId),
   ],
-)
+).enableRLS()

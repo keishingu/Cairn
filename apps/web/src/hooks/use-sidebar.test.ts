@@ -49,8 +49,8 @@ const STUB_PROJECTS: ProjectDto[] = [
     memberAvatarUrls: [null],
     taskCount: 2,
     completedTaskCount: 1,
-    isOwner: true,
-    isMember: true,
+    isHosting: true,
+    isJoined: true,
     coverPhotoIdx: 1,
     coverPhotoUrl: null,
     location: null,
@@ -67,6 +67,11 @@ const STUB_ME: CurrentUserDto = {
   status: 'online',
   statusMessage: null,
   wsRole: 'owner',
+  aiNudgesEnabled: true,
+  theme: 'system',
+  accentId: 'emerald',
+  locale: 'system',
+  calendarWeekStart: 'sunday',
 }
 
 describe('useSidebar data hooks', () => {

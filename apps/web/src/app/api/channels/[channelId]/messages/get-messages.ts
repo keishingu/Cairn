@@ -2,10 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import type { MessageType } from '@cairn/shared'
+import type { MessageType, ProjectMemberRole } from '@cairn/shared'
+import { linkedTaskLineIndexes } from '@/lib/tasks/task-candidates'
 import { extractMentionIds, hydrateMentions } from '@/lib/chat/mentions'
+import { buildMentionNameMap } from '@/lib/chat/mention-name-map'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
-import type { MessageDto, ReactionDto, ReplyToDto } from './dto'
+import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
+import { canAccessChannel } from '@/lib/permissions'
+import { loadChannelFamilyIds } from '@/lib/chat/channel-family'
+import { blocksForClient, cardRevision } from '@/lib/apps/blocks-for-client'
+import { isFirstPartyApp } from '@/lib/apps/first-party'
+import type { LinkedTaskDto, MessageDto, ReactionDto, ReplyToDto } from './dto'
 
 type GetMessagesInput = {
   channelId: string
@@ -13,6 +20,8 @@ type GetMessagesInput = {
   userId: string
   workspaceId: string
 }
+
+const PAGE_SIZE = 100
 
 export async function getMessages({
   channelId,
@@ -23,7 +32,10 @@ export async function getMessages({
   // ブックマーク・パーマリンクから開いた古いメッセージが直近100件の外にある場合、
   // その前後を中心としたウィンドウを取得する（無いと該当メッセージが読み込まれず、
   // ジャンプ先がスクロール表示されないまま静かに失敗する）
-  const aroundMessageId = new URL(requestUrl).searchParams.get('around')
+  const searchParams = new URL(requestUrl).searchParams
+  const aroundMessageId = searchParams.get('around')
+  // 最古の表示済みメッセージIDをカーソルとして、さらに古いページを取得する。
+  const beforeMessageId = aroundMessageId ? null : searchParams.get('before')
 
   try {
     const { db } = await import('@cairn/db')
@@ -33,10 +45,17 @@ export async function getMessages({
       messageReactions,
       messageAttachments,
       messageBookmarks,
+      tasks,
       files,
       workspaceMembers,
+      channels,
+      projectMembers,
+      projectRoles,
+      messageBlocks,
+      appInstallations,
+      apps,
     } = await import('@cairn/db')
-    const { eq, isNull, inArray, and, lte, gt, desc, asc } = await import('drizzle-orm')
+    const { eq, isNull, inArray, and, lte, lt, gt, or, desc, asc, sql } = await import('drizzle-orm')
 
     const selectFields = {
       id: messages.id,
@@ -46,9 +65,60 @@ export async function getMessages({
       senderId: messages.senderId,
       senderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
       senderAvatarUrl: workspaceMembers.avatarUrl,
+      senderProjectRole: projectMembers.role,
+      senderProjectRoleName: projectRoles.name,
+      senderProjectRoleColor: projectRoles.color,
+      senderProjectRoleLegacy: projectRoles.legacyRole,
       createdAt: messages.createdAt,
       updatedAt: messages.updatedAt,
+      imported: messages.imported,
+      blocks: messageBlocks.blocks,
+      blocksUpdatedAt: sql<string | null>`${messageBlocks.updatedAt}::text`,
+      appName: apps.name,
+      appSlug: apps.slug,
+      appOwnerWorkspaceId: apps.ownerWorkspaceId,
+      appIconUrl: apps.iconUrl,
+      appRevokedAt: appInstallations.revokedAt,
     }
+
+    // 送信者の表示（ワークスペースでの表示名・プロジェクトロール）と、アプリのカード・送信者情報を付けた共通の土台。
+    // Bot は workspace_members にいないため LEFT JOIN で落とさず、表示名は profiles.display_name に戻る
+    const selectMessages = () =>
+      db
+        .select(selectFields)
+        .from(messages)
+        .innerJoin(profiles, eq(messages.senderId, profiles.id))
+        .innerJoin(channels, eq(messages.channelId, channels.id))
+        .leftJoin(
+          workspaceMembers,
+          and(
+            eq(workspaceMembers.userId, messages.senderId),
+            eq(workspaceMembers.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(
+          projectMembers,
+          and(
+            eq(projectMembers.userId, messages.senderId),
+            eq(projectMembers.projectId, channels.projectId),
+          ),
+        )
+        .leftJoin(
+          projectRoles,
+          and(
+            eq(projectMembers.roleId, projectRoles.id),
+            eq(projectRoles.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(messageBlocks, eq(messageBlocks.messageId, messages.id))
+        .leftJoin(
+          appInstallations,
+          and(
+            eq(appInstallations.botProfileId, messages.senderId),
+            eq(appInstallations.workspaceId, workspaceId),
+          ),
+        )
+        .leftJoin(apps, eq(apps.id, appInstallations.appId))
 
     let rows: Array<{
       id: string
@@ -58,13 +128,27 @@ export async function getMessages({
       senderId: string
       senderName: string
       senderAvatarUrl: string | null
+      senderProjectRole: ProjectMemberRole | null
+      senderProjectRoleName: string | null
+      senderProjectRoleColor: string | null
+      senderProjectRoleLegacy: ProjectMemberRole | null
       createdAt: Date
       updatedAt: Date
+      imported: boolean
+      blocks: unknown
+      blocksUpdatedAt: string | null
+      appName: string | null
+      appIconUrl: string | null
+      appRevokedAt: Date | null
+      appSlug: string | null
+      appOwnerWorkspaceId: string | null
     }>
+
+    let hasMore = false
 
     if (aroundMessageId) {
       const [anchor] = await db
-        .select({ createdAt: messages.createdAt })
+        .select({ id: messages.id, createdAt: messages.createdAt })
         .from(messages)
         .where(
           and(
@@ -80,66 +164,68 @@ export async function getMessages({
       }
 
       const [beforeAndAnchor, after] = await Promise.all([
-        db
-          .select(selectFields)
-          .from(messages)
-          .innerJoin(profiles, eq(messages.senderId, profiles.id))
-          .leftJoin(
-            workspaceMembers,
-            and(
-              eq(workspaceMembers.userId, messages.senderId),
-              eq(workspaceMembers.workspaceId, workspaceId),
-            ),
-          )
+        selectMessages()
           .where(
             and(
               eq(messages.channelId, channelId),
               isNull(messages.deletedAt),
-              lte(messages.createdAt, anchor.createdAt),
+              or(
+                lt(messages.createdAt, anchor.createdAt),
+                and(eq(messages.createdAt, anchor.createdAt), lte(messages.id, anchor.id)),
+              ),
             ),
           )
-          .orderBy(desc(messages.createdAt))
+          .orderBy(desc(messages.createdAt), desc(messages.id))
           .limit(50),
-        db
-          .select(selectFields)
-          .from(messages)
-          .innerJoin(profiles, eq(messages.senderId, profiles.id))
-          .leftJoin(
-            workspaceMembers,
-            and(
-              eq(workspaceMembers.userId, messages.senderId),
-              eq(workspaceMembers.workspaceId, workspaceId),
-            ),
-          )
+        selectMessages()
           .where(
             and(
               eq(messages.channelId, channelId),
               isNull(messages.deletedAt),
-              gt(messages.createdAt, anchor.createdAt),
+              or(
+                gt(messages.createdAt, anchor.createdAt),
+                and(eq(messages.createdAt, anchor.createdAt), gt(messages.id, anchor.id)),
+              ),
             ),
           )
-          .orderBy(asc(messages.createdAt))
+          .orderBy(asc(messages.createdAt), asc(messages.id))
           .limit(50),
       ])
 
       beforeAndAnchor.reverse()
       rows = [...beforeAndAnchor, ...after]
     } else {
-      rows = await db
-        .select(selectFields)
-        .from(messages)
-        .innerJoin(profiles, eq(messages.senderId, profiles.id))
-        .leftJoin(
-          workspaceMembers,
-          and(
-            eq(workspaceMembers.userId, messages.senderId),
-            eq(workspaceMembers.workspaceId, workspaceId),
-          ),
-        )
-        .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-        .orderBy(desc(messages.createdAt))
-        .limit(100)
+      let cursor: { id: string; createdAt: Date } | null = null
+      if (beforeMessageId) {
+        const [found] = await db
+          .select({ id: messages.id, createdAt: messages.createdAt })
+          .from(messages)
+          .where(and(
+            eq(messages.id, beforeMessageId),
+            eq(messages.channelId, channelId),
+            isNull(messages.deletedAt),
+          ))
+          .limit(1)
+        if (!found) return NextResponse.json([] satisfies MessageDto[], { headers: { 'X-Cairn-Has-More': 'false' } })
+        cursor = found
+      }
 
+      const pageRows = await selectMessages()
+        .where(and(
+          eq(messages.channelId, channelId),
+          isNull(messages.deletedAt),
+          ...(cursor
+            ? [or(
+                lt(messages.createdAt, cursor.createdAt),
+                and(eq(messages.createdAt, cursor.createdAt), lt(messages.id, cursor.id)),
+              )]
+            : []),
+        ))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(PAGE_SIZE + 1)
+
+      hasMore = pageRows.length > PAGE_SIZE
+      rows = pageRows.slice(0, PAGE_SIZE)
       rows.reverse()
     }
 
@@ -149,7 +235,10 @@ export async function getMessages({
       ...new Set(rows.map((r) => r.parentMessageId).filter((id): id is string => !!id)),
     ]
 
-    const [reactionRows, attachmentRows, bookmarkRows, parentRows] = await Promise.all([
+    // 引用の参照先は同じチャンネルに加え、親チャンネルとそのスレッド（スレッドへ切り出された元の会話）まで探す
+    const quoteChannelIds = parentIds.length > 0 ? await loadChannelFamilyIds(channelId) : [channelId]
+
+    const [reactionRows, attachmentRows, bookmarkRows, taskRows, rawParentRows] = await Promise.all([
       messageIds.length > 0
         ? db
             .select({
@@ -199,6 +288,26 @@ export async function getMessages({
               ),
             )
         : Promise.resolve([]),
+      // タスク化済みの印用。タスクの可視範囲はチャンネル閲覧権限と同じなので追加の認可は不要
+      messageIds.length > 0
+        ? db
+            .select({
+              id: tasks.id,
+              title: tasks.title,
+              status: tasks.status,
+              sourceMessageId: tasks.sourceMessageId,
+              sourceLine: tasks.sourceLine,
+              sourceCheckboxIndex: tasks.sourceCheckboxIndex,
+            })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.workspaceId, workspaceId),
+                inArray(tasks.sourceMessageId, messageIds),
+              ),
+            )
+            .orderBy(asc(tasks.createdAt), asc(tasks.id))
+        : Promise.resolve([]),
       parentIds.length > 0
         ? db
             .select({
@@ -209,6 +318,7 @@ export async function getMessages({
                 profiles.displayName,
               ),
               deletedAt: messages.deletedAt,
+              channelId: messages.channelId,
             })
             .from(messages)
             .innerJoin(profiles, eq(messages.senderId, profiles.id))
@@ -219,10 +329,19 @@ export async function getMessages({
                 eq(workspaceMembers.workspaceId, workspaceId),
               ),
             )
-            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親は同一チャンネルに限定する
-            .where(and(inArray(messages.id, parentIds), eq(messages.channelId, channelId)))
+            // 引用バーに他チャンネル/他ワークスペースの内容が漏れないよう、親はこのチャンネルの親子（スレッド）に限定する。
+            // 別チャンネルにある親は、下で閲覧権限を確認してから使う
+            .where(and(inArray(messages.id, parentIds), inArray(messages.channelId, quoteChannelIds)))
         : Promise.resolve([]),
     ])
+
+    // 切り出し先・元のチャンネルが非公開の場合に内容が漏れないよう、別チャンネルの親は閲覧できるものだけ残す
+    const foreignChannelIds = [...new Set(rawParentRows.map(parent => parent.channelId).filter(id => id !== channelId))]
+    const accessibleForeign = new Set<string>()
+    await Promise.all(foreignChannelIds.map(async (foreignId) => {
+      if (await canAccessChannel(workspaceId, userId, foreignId)) accessibleForeign.add(foreignId)
+    }))
+    const parentRows = rawParentRows.filter(parent => parent.channelId === channelId || accessibleForeign.has(parent.channelId))
 
     const reactionMap = new Map<string, ReactionDto[]>()
     for (const reaction of reactionRows) {
@@ -257,40 +376,47 @@ export async function getMessages({
       })
     }
 
-    const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
-
-    // メンションは canonical な `<@userId>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
-    // これにより名前変更が全メッセージへ即座に反映される（Mobile の単純な置換クライアントも最新名で表示できる）。
-    // 引用返信バーもメンションを `@表示名` で描画するため、親メッセージの userId も解決対象に含める。
-    const mentionIds = [
-      ...new Set([
-        ...rows.flatMap((row) => extractMentionIds(row.content)),
-        ...parentRows.flatMap((parent) =>
-          parent.deletedAt ? [] : extractMentionIds(parent.content),
-        ),
-      ]),
-    ]
-    const nameMap = new Map<string, string>()
-    if (mentionIds.length > 0) {
-      const profileRows = await db
-        .select({
-          id: profiles.id,
-          displayName: workspaceMemberDisplayName(
-            workspaceMembers.displayName,
-            profiles.displayName,
-          ),
-        })
-        .from(profiles)
-        .leftJoin(
-          workspaceMembers,
-          and(
-            eq(workspaceMembers.userId, profiles.id),
-            eq(workspaceMembers.workspaceId, workspaceId),
-          ),
-        )
-        .where(inArray(profiles.id, mentionIds))
-      for (const profile of profileRows) nameMap.set(profile.id, profile.displayName)
+    // タスクは createdAt 昇順で返るので、メッセージごとに作成順のまま積む
+    const tasksByMessage = new Map<string, typeof taskRows>()
+    for (const task of taskRows) {
+      if (!task.sourceMessageId) continue
+      const list = tasksByMessage.get(task.sourceMessageId) ?? []
+      list.push(task)
+      tasksByMessage.set(task.sourceMessageId, list)
     }
+    // 行末の「✓ タスク」ラベルの位置。タスクがあるメッセージだけ、DB の本文（canonical）から候補の行番号を求める
+    const contentById = new Map(rows.map(row => [row.id, row.content]))
+    const linkedTaskMap = new Map<string, LinkedTaskDto[]>()
+    for (const [messageId, messageTasks] of tasksByMessage) {
+      const lineIndexes = linkedTaskLineIndexes(contentById.get(messageId) ?? '', messageTasks)
+      linkedTaskMap.set(messageId, messageTasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        lineIndex: lineIndexes.get(task.id) ?? null,
+      })))
+    }
+
+    const bookmarkedIds = new Set(bookmarkRows.map((bookmark) => bookmark.messageId))
+    const profileAttributes = await getProfileAttributesByUserIds(
+      workspaceId,
+      [...new Set(rows.map(row => row.senderId))],
+    )
+    const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
+    const senderIds = [...new Set(rows.map(row => row.senderId).filter(id => id !== userId))]
+    const visibleSenderIds = new Set(await filterUnblockedRecipients(userId, senderIds))
+
+    // メンションは canonical な `<@id>` で保存されているため、現在の表示名を read 時に解決して埋め込む。
+    // ユーザー・@all・@project_members・属性をまとめて解決する。
+    // カードの mrkdwn のメンションも、非活性になったメンバーを含めて同じ時点の名前で解決する
+    const blocksJsonById = new Map(
+      rows.filter((row) => row.messageType === 'blocks').map((row) => [row.id, JSON.stringify(row.blocks ?? null)]),
+    )
+    const nameMap = await buildMentionNameMap(workspaceId, [
+      ...rows.map((row) => row.content),
+      ...blocksJsonById.values(),
+      ...parentRows.flatMap((parent) => (parent.deletedAt ? [] : [parent.content])),
+    ])
 
     const parentMap = new Map<string, ReplyToDto>()
     for (const parent of parentRows) {
@@ -309,6 +435,11 @@ export async function getMessages({
       senderId: row.senderId,
       senderName: row.senderName,
       senderAvatarUrl: row.senderAvatarUrl ?? null,
+      senderProfileAttributes: profileAttributes.get(row.senderId) ?? [],
+      senderProjectRole: row.senderProjectRole ?? null,
+      senderProjectRoleName: row.senderProjectRoleName ?? null,
+      senderProjectRoleColor: row.senderProjectRoleColor ?? null,
+      senderProjectRoleLegacy: row.senderProjectRoleLegacy ?? null,
       createdAt: row.createdAt.toISOString(),
       isEdited: row.updatedAt.getTime() > row.createdAt.getTime(),
       reactions: reactionMap.get(row.id) ?? [],
@@ -316,11 +447,39 @@ export async function getMessages({
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
+      linkedTasks: linkedTaskMap.get(row.id) ?? [],
+      blocked: row.senderId !== userId && !visibleSenderIds.has(row.senderId),
+      ...(row.imported ? { imported: true } : {}),
+      blocks: row.messageType === 'blocks' ? blocksForClient(row.blocks) : null,
+      blocksRevision: row.messageType === 'blocks' ? cardRevision(row.blocksUpdatedAt) : null,
+      ...(blocksJsonById.has(row.id) ? { mentionNames: cardMentionNames(blocksJsonById.get(row.id)!, nameMap) } : {}),
+      // apps.name は空文字を DB で拒否しているので、有無だけでアプリの発言かを決められる
+      senderApp: row.appName
+        ? {
+            name: row.appName,
+            firstParty: isFirstPartyApp({ slug: row.appSlug, ownerWorkspaceId: row.appOwnerWorkspaceId }),
+            iconUrl: row.appIconUrl ?? null,
+            uninstalled: row.appRevokedAt != null,
+          }
+        : null,
     }))
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      headers: { 'X-Cairn-Has-More': String(hasMore) },
+    })
   } catch (err) {
     console.error('[/api/channels/[channelId]/messages GET] DB query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+// カード内のメンション（`<@id>`、名前なし）の表示名。クライアントのメンバー一覧は active だけなので、
+// 非活性になったメンバーへのメンションを「不明なメンバー」にしないよう、サーバーで解決した名前を添える
+function cardMentionNames(blocksJson: string, nameMap: Map<string, string>): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const id of extractMentionIds(blocksJson)) {
+    const name = nameMap.get(id)
+    if (name) names[id] = name
+  }
+  return names
 }

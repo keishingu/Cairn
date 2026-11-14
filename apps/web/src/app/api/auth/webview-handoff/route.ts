@@ -9,21 +9,34 @@
 // hashed_token だけを返す。WebView 側は verifyOtp で独立したセッションを確立する。
 
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthContext, getAuthUser } from '@/lib/get-auth-context'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export async function POST() {
-  const { ctx, error } = await getAuthContext()
-  if (error) return error // 未認証なら 401
+  const context = await getAuthContext()
+  let userId: string
+  let workspaceId: string | undefined
+
+  // 全membershipがinactiveでも、認証済みなら設定画面から退会できるようにする。
+  // active workspaceがある通常経路では従来どおり選択中workspaceを引き継ぐ。
+  if (context.ctx) {
+    userId = context.ctx.userId
+    workspaceId = context.ctx.workspaceId
+  } else {
+    if (context.error.status !== 403) return context.error
+    const auth = await getAuthUser()
+    if (auth.error) return auth.error
+    userId = auth.userId
+  }
 
   const admin = createServiceRoleClient()
 
   // email はリクエストから受け取らず、認証済みユーザー自身のものをサーバー側で取得する。
   // 任意 email を指定する入力経路を作ると他人のリンクを発行できてしまうため。
-  const { data: userData, error: userError } = await admin.auth.admin.getUserById(ctx.userId)
+  const { data: userData, error: userError } = await admin.auth.admin.getUserById(userId)
   const email = userData?.user?.email
   if (userError || !email) {
-    console.error('[webview-handoff] ユーザーの email 取得に失敗:', userError)
+    console.error('[webview-handoff] ユーザーの email 取得に失敗')
     return NextResponse.json({ error: 'Failed to resolve user' }, { status: 500 })
   }
 
@@ -34,9 +47,12 @@ export async function POST() {
   })
   const tokenHash = linkData?.properties?.hashed_token
   if (linkError || !tokenHash) {
-    console.error('[webview-handoff] magiclink の発行に失敗:', linkError)
+    console.error('[webview-handoff] magiclink の発行に失敗')
     return NextResponse.json({ error: 'Failed to generate handoff token' }, { status: 500 })
   }
 
-  return NextResponse.json({ tokenHash })
+  return NextResponse.json(
+    { tokenHash, ...(workspaceId ? { workspaceId } : {}) },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }

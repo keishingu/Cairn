@@ -1,67 +1,217 @@
-# LP コンテンツ再構築（利用者ファースト化）
+# LP コンテンツ再構築（無料のチャット＋プロジェクト管理）
 
 - **ステータス**: 実装済み
 - **作成**: 2026-07-03
+- **更新**: 2026-11-05（Teams 移行キャンペーン・Android 公開・`/teams/migration`、タスク化・AI・アプリ基盤の実装追従と Solo の説明の見直しを反映）
 - **対象**: `apps/web/public/index.html` / `apps/web/public/cairn-lp.css` / `apps/web/public/cairn-lp.js`（静的 LP）
 
-> 実装と矛盾する場合はコードと [`CLAUDE.md`](../CLAUDE.md) を正とする。
+> 実装と矛盾する場合はコードと [`AGENTS.md`](../AGENTS.md) を正とする。
 > ルーティング（`/` への公開化）は [`landing-page-routing-design.md`](./landing-page-routing-design.md) を参照。
 
 
 ## 1. 背景
 
-旧 LP の訴求軸は「100% Open Source / Self-Hosted / Bring Your Own AI / Extensible」と技術者向けに偏っており、導入を決める一般利用者（部活・サークル・小さなチーム）に刺さらなかった。また `docker compose up` や Bring Your Own AI など**実装と乖離した記述**があり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) と [PR #282](https://github.com/keishingu/Cairn/pull/282)（マーケ自己改善ループ設計）が指摘する「嘘広告リスク」の解消が集客の前提だった。
+2026-08 の「三人称順」版（Hero「コメントが、チャットになる。」→ まとめ役 → アーリーアダプター）は、仕組みの説明が中心で困りごとに接続せず、競合名を避けた結果「何と比べて良いのか」も伝わらなかった。
 
-マージ済み PR の機能群から「利用者に刺さる体験」を選び、LP を利用者ファーストに再構築した。
-
-
-## 2. ターゲット（二段構え）
-
-- **主役**: 汎用の小さなチーム（イベント運営・制作進行）
-- **サブ**: 現場のあるチーム（山岳部・サークル・地域団体）。Cairn の出自（山岳部の山行計画）を必要に応じて見せる
-
-### ペルソナ切替パラメータ
-
-言語切替（`data-lang` / `data-i`）と同じ CSS 方式で、**`?p=team|alpineclub`** による文言切替を実装した。
-
-- ルート要素に `data-persona` 属性（デフォルト `team`）、可変文言に `data-p="team|alpineclub"` を付与
-- 切替箇所: ヒーローのリード文・ヒーロー内の製品サンプル・Problem 導入文・Gallery カード・Everywhere / Guests セクションの説明文
-- PR #282 の LP コピー PDCA で、ペルソナ別 CVR を比較する A/B の受け皿になる。山岳部向けは `?p=alpineclub` で表示する（旧 `?p=club` も後方互換として受け付ける）
+小規模チーム・団体は、Slack / 国産チャット / Backlog などの **無料プランを組み合わせて** 使っていることが多く、判断軸は主に料金である。そこで 2026-09 に主物語を **「無料でチャットも、プロジェクト管理も。」** に置き換えた。
 
 
-## 3. 機能訴求の根拠（マージ済み PR → LP コピー）
+## 2. ターゲット
 
-| LP の訴求 | 根拠 PR |
+| 優先 | 読み手 | 入口のプラン |
+|---|---|---|
+| 1 | 学生団体・コミュニティ | Free → 必要な人だけ Solo |
+| 2 | 個人事業主の延長のような小規模チーム | Free / Solo → Team（準備中） |
+| 3 | 企業内の小規模チーム（試験導入） | Free → Expedition（導入支援つき） |
+
+企業向けは Expedition で FDE 的な導入支援（業務整理・運用設計・既存ツール連携）へつなぐ。団体固有の機能（装備の貸出管理など）は Cairn 本体を改造せず、「Cairn でログイン」と Bot 投稿で Cairn の外に専用アプリとして作る。これも Expedition の範囲として LP に書く（固有名は出さず用途で書く。§4）。
+
+Solo の説明は「容量」ではなく「AI と原本」を軸にする。無料枠を 100GB に広げた 2026-11 以降、容量を動機に Solo へ入る人はほぼいないため。
+
+
+## 3. 構成
+
+| 順 | セクション | 伝えること |
+|---|---|---|
+| 0 | キャンペーン `#teams-migration`（期間限定） | ナビ直下・ヒーローの上。「Teamsコミュニティからの移行をサポート！」と問い合わせ CTA。詳細は §7 |
+| 1 | Hero `#stay` | 「無料でチャットも、プロジェクト管理も。」メッセージ数・履歴・メンバー数無制限。有料は AI を使いたい人だけ月 ¥300、ほかは無料のまま。CTA「無料で始める」＋「料金を見る」、App Store / Google Play へのリンク |
+| 2 | 無料の範囲 `#free` | 無制限（メッセージ・履歴 / メンバー・ゲスト / プロジェクト・タスク・カレンダー）、ファイル 100GB（1ファイル 50MB） |
+| 3 | ツールを分けなくていい `#connect` | 発言がそのままタスクになる（「タスク化する」・行選択で複数・元の発言へ戻れる）/ プロジェクトごとにまとまる（スレッドへの切り出し）/ カレンダー・カンバンとマイルストーンチャット |
+| 4 | 無料プランの比較 `#compare` | Cairn / 海外製チャット / 国産チャット / 国産プロジェクト管理 の比較表（製品名は伏せる）。日付の注記つき |
+| 5 | 細かいところ `#details` | 圏外でも読める・送れる、閲覧中は Push を鳴らさない、下書き保存、ゲスト、アーカイブ、最新版ラベル、iPhone・Android アプリとブラウザ（App Store / Google Play リンク。PDF のアプリ内表示、iPhone は Office も）、キーボード、電気通信事業届出、投票、DM と非公開チャンネル、返信通知。12 枚（3 列 × 4 行） |
+| 6 | 料金 `#pricing` | Free ¥0 / Solo ¥300（1人・月。AI・動画のアップロード・原本の保存と DL・100GB 超・追加購入）/ Team ¥3,000（ワークスペース・月、準備中・目安）/ Expedition 要相談（導入支援と団体向け専用アプリの開発）。注記はクレジットの消費（質問ごとに AI の利用料に応じて。目安 約30 / 約45）・有効期限なし・貢献の記録 |
+| 7 | AI `#ai` | 4 カード（2×2）: 構造があるから答えが当たる（権限準拠・根拠リンク、Solo）/ システムプロンプト・モデル選択・使える人の制限 / Skill（提案→承認→実行、定義は全員に公開）/ MCP（Claude・Cursor・Codex、チャンネル・メンバー・経歴の読み取り） |
+| 8 | オープンソース `#open-source` | Apache-2.0。中身を確認できる / サービスに縛られない（セルフホストは課金無効・手順は整備中）/ 開発者に直接要望を出せる / 団体に合わせたアプリを載せられる（Slack 互換のアプリ基盤はプレビュー、Cairn でログイン）。4 カード（`prob-grid--two` で 2×2）。GitHub と要望受付ワークスペースへの導線 |
+| 9 | FAQ `#faq` | 無料の範囲、無料で提供できる理由、無料プランの組み合わせからの移行、Solo の要否、AI が読む範囲、ゲスト、会社・団体に合わせた導入・開発、Teams コミュニティからの移行、スマホアプリ |
+| 10 | 最終 CTA `#demo` | Hero と同じ見出し。クレジットカード不要。App Store / Google Play ボタン |
+
+
+## 4. コピーの規則
+
+### トーン
+
+- 事実を短く書く。**AI っぽい甘い口調を使わない**（呼びかけ・「〜しませんか」・詩的な改行・「もう〜しない」・情緒的な言い換えを避ける）
+- 見出しは機能か数字で言い切る。本文は常体（FAQ の回答のみ敬体）
+
+### 競合名
+
+- **Chatwork は名前を出さず「国産チャット」とぼかす**（title・meta・本文・FAQ すべて）
+- **比較表では製品名を出さない**。列見出しは「海外製チャット」（Slack）/「国産チャット」（Chatwork）/「国産プロジェクト管理」（Backlog）とする
+- Slack / Backlog の名前は FAQ・meta（検索対策）に限って出してよい。Hero・比較表には出さない
+- 比較表の競合情報は **各社が公開している無料プランの条件** に限り、表の下に「2026年◯月時点」の注記を必ず付ける。条件が変わったら表と注記を更新する
+- 競合の料金の具体額は載せない（「人数課金」「プラン別の月額」の形で書く）
+
+### 書いてよい（コードで確認済み）
+
+| コピー | 根拠 |
 |---|---|
-| Chat: 返信・ブックマーク・下書き自動保存 | #225, #106, #76 |
-| Tasks: チャットの ☑ がタスクに同期 | #112 |
-| Calendar: Google カレンダー読込・タイムライン・ドラッグ作成 | #121, #146 |
-| Files & Search: 最新版フラグ・全チャンネル横断検索 | #155, #89, #237 |
-| Gallery: プロジェクトごとのアルバム | 既存 + #92 |
-| AI: ファイル・Google Docs を読み出典つきで回答 | #59, #263 |
-| Everywhere: Web / iOS / Android / Desktop・閲覧中は鳴らない Push | Expo, #115, #130 |
-| Guests & Roles: 招待リンク・ゲスト制限・ロール権限・リンク無効化 | #120, #140, #93, #102 |
+| メッセージ・履歴・メンバー・ゲスト無制限、無料 | [`pricing-plan-design.md`](./pricing-plan-design.md) の設計原則 4・5 |
+| ファイル 100GB・1ファイル 50MB（無料） | `BILLING_CONFIG.freeStorageBytes` / `MAX_FILE_SIZE`。引き上げは [keishingu/Cairn#769](https://github.com/keishingu/Cairn/pull/769)。**#769 より先に LP を本番に出さない** |
+| Solo ¥300/月、100GB を超える保存、月 300 クレジット、質問ごとに AI の利用料に応じて消費（目安は GPT-5・Claude Sonnet 約30 / Claude Opus 約45）、追加 ¥500 で 400 クレジット、有効期限なし | `BILLING_CONFIG`（`aiChatRequestCreditsByModel` が目安、`aiCostCreditMultiplier` / `creditPackCredits`）。失効処理は無い（`credit_ledger`） |
+| 誰がいつ積んだかの記録が残る | `/api/billing/contributions`（[`billing-implementation-design.md`](./billing-implementation-design.md) §4） |
+| AI は Solo（アクティブな支援者）のみ | `api/ai/conversations/[id]/messages` の支援者判定 |
+| 動画のアップロード（500MB/ファイル）は Solo | `MAX_VIDEO_ATTACHMENT_BYTES`、`resolveUploadRights`（[keishingu/Cairn#778](https://github.com/keishingu/Cairn/pull/778)） |
+| 写真・動画・PDF の原本の保存・ダウンロードは Solo | `resolveUploadRights`（オリジナル保存は支援者本人）、原本 DL の判定（支援者本人かつ残高あり。[`pricing-plan-design.md`](./pricing-plan-design.md) 設計原則 3） |
+| 発言がタスクになる・行選択で複数・元の発言へ戻れる・発言側にタスクの印 | `lib/tasks/task-candidates.ts`、`packages/shared/src/line-task-markers.ts`、タスク詳細の「元のメッセージ」 |
+| 脱線した会話をスレッドへ切り出す | `packages/shared/src/move-to-thread.ts` |
+| 圏外で読める（直近のチャット・通知）・送れる | Expo の端末キャッシュ（2026-11-01）と送信オフラインキュー |
+| PDF のアプリ内表示（Android は pdf.js）、iPhone は Office もアプリ内 | Expo の添付ビューア |
+| 投票（選択肢の追加） | ファーストパーティ投票アプリ（全ワークスペースに自動インストール） |
+| DM・プライベートチャンネル、DM からのタスク化 | `FEATURE_FLAGS.dm`、product-help「DM のメッセージもタスク化でき」 |
+| 返信元への通知 | 2026-11-04「返信元へ通知」 |
+| AI は構造（プロジェクト・タスク・マイルストーン・ファイル・メンバー）ごと読み、権限準拠、根拠は元の発言・ファイルへのリンク。DM の発言は読まないが、本人が参加する DM で共有したファイルの本文は検索対象（「DM は読まない」と言い切らない） | `lib/ai/research-tools.ts`、`system-prompt.ts`（evidence.href 以外のリンクを禁止）、`requireAiChatAccess`、`lib/ai/search-chunks.ts`（`channelAccess` の `type = 'dm'` 条件） |
+| システムプロンプト・モデル選択（GPT-5 / Claude）・使える人の制限 | `workspaces.ai_chat_system_prompt` / `ai_chat_allowed_models` / `ai_chat_access` |
+| Skill（`$名前`）: AI が提案し人が承認して実行、定義と作成者は member 全員に公開 | `lib/ai/automations.ts`、`skill-run.ts`、承認カード（`pending-actions.ts`） |
+| MCP からチャンネル・メンバー・経歴を読める | `research-tools.ts` を MCP にも公開（2026-10-28） |
+| 外部アプリがカードを投稿しボタン操作を受け取れる（Slack 互換・プレビュー） | `/developers`（公開仕様）、[`app-platform-design.md`](./app-platform-design.md) |
+| 「Cairn でログイン」 | 自前の OIDC プロバイダー（2026-11-03。[`oidc-design.md`](./oidc-design.md)） |
+| 閲覧中は Push を鳴らさない | 猶予付き既読再確認 |
+| 退会者のアーカイブと発言の保持 | [`user-deactivation-design.md`](./user-deactivation-design.md) |
+| セルフホストでは課金が無効（容量・AI の制限なし、AI は自前の OpenAI キー） | `isBillingEnabled()`（`STRIPE_SECRET_KEY` の有無） |
+| iPhone アプリ（App Store 公開済み） | https://apps.apple.com/jp/app/cairn/id6800673777 |
+| Android アプリ（Google Play 公開済み、2026-10-28・日本のみ） | https://play.google.com/store/apps/details?id=com.oss_cairn （[`play-store-submission.md`](./play-store-submission.md)） |
+| 電気通信事業届出（A-08-24291） | [`telecom-business-filing-research.md`](./telecom-business-filing-research.md) |
+
+### 書いてはいけない
+
+- **未公開のアプリ**: デスクトップ（Electron、一般配布なし）を「使える」と書かない。一般公開されたら追加する
+- **Teams からのデータ取り込み**: 会話履歴・写真・ファイルの引き継ぎは**運営側が個別サポートで行う**。利用者が自分で使う取り込み機能は提供しない方針なので、あるようには書かない。「完全に」「すべて」移せるとは書かない（§7・§8）
+- **未出荷の約束**: 自律エージェント、予定の自動変更、BYO AI、動く `docker compose up`、SSO・監査ログ
+- **AI PMO**: ワークスペース単位の段階公開中のため LP の機能として書かない。正式公開したら `#ai` に「期限と停滞を本人にだけ知らせる。管理者にも見えない。Solo が 1 人いればワークスペース全員に届く」のカードを足し、料金のリードに「全員の AI 通知の原資になる」を戻す（根拠: [`ai-pmo-design.md`](./ai-pmo-design.md) §2.3、課金設計原則 3）
+- **石・ケルン・風化の用語**: LP では「クレジット」で説明する
+- **Team の確定価格**: 「目安」「準備中」と必ず併記する
+- **Solo の AI 回数**: 回数で書かない（「月 30 回」は不可）。質問ごとに AI の利用料で消費が変わり、保存と AI の自動通知も同じクレジットを消費するため、「300 クレジット、質問ごとに利用料に応じて消費（目安 約30〜45）」の形で書く
+- **チェックボックス記法**: 「☑ がタスクになる」「完了のチェックが同期する」は廃止した旧仕様。本文のチェックボックスはタスクにならない
+- **外部リポジトリ・個別開発アプリの固有名**: 用途（装備の貸出管理など）で書く。本リポジトリは公開のため
+- **非公開の顧客名**
 
 
-## 4. 誠実化（Soul ゲート対応）
+## 5. CTA とパラメータ規約
 
-PR #282 の原則「実装と乖離した約束の禁止」に基づく修正:
+- 主要 CTA: 「**無料で始める / Start for free**」→ `/auth/login?utm_source=lp&utm_content=<cta-id>`
+- `data-cta`: `nav` / `hero` / `pricing` / `final` / `footer-product` / `oss-community` / `appstore-{hero,details,final,footer}` / `googleplay-{hero,details,final,footer}` / `teams-migration-banner` / `teams-migration-mail` / `teams-migration-detail`（ストアは外部リンクのため UTM なし）（フッターアイコン・コミュニティは要望受付ワークスペース招待）
+- Expedition の問い合わせは既存の相談窓口（`https://moru.tech/#consultation`）へ。Teams 移行は無料相談の予約ページ（TimeRex）とメール（`info@orikata.co.jp`）
+- Android 版は日本でのみ配信しているため、英語のストア導線と FAQ には「Japan only」/「日本でのみ配信」を添える。配信国を広げたら外す
+- ヒーローと最終 CTA は公式のストアバッジ（`public/badges/`。App Store は Apple の Marketing Tools、Google Play は Partner Marketing Hub から取得）。言語ごとにバッジを出し分け、改変せず同じ高さ（44px）で並べ、周囲に高さの 1/4 以上の余白をとる。差し替えるときは配布元の最新版を使う。「スマホと PC」のカードとフッターはテキストリンク。フッターに Apple・App Store・Google Play・Microsoft Teams の商標表記と、Microsoft と提携していない旨を置いている
 
-- **Bring Your Own AI を LP から削除**（実装は OpenAI のみ）。ただし **BYO AI は引き続きロードマップ目標**であり、[`09_product_strategy_notes.md`](./09_product_strategy_notes.md) §3 の展開課題 2（AI のプロバイダ非依存化）として維持する。実装され次第 LP に復帰させる
-- **Self-Hosted は事実ベースに軟化して存続**（FDE 戦略・カスタマイズ訴求として重要なため削除しない）: `docker compose up` の偽ターミナルを実際に動く `git clone` + `supabase start && pnpm dev` に差し替え、Docker / On-Premise は `roadmap` 表記に変更
-- フッターの Documentation / Release Notes / Issues は実在する GitHub リンクへ接続（旧: ページ内アンカーの空リンク）
-- GitHub リンク（`href="#"` だった箇所含む）を実リポジトリ URL に接続
+### 計測（PostHog）
 
-## 5. CTA とパラメータ規約（#282 の PDCA 下地）
-
-- 主要 CTA ラベルは「クラウド版を試す」→「**無料で始める / Start for free**」に変更（[`landing-page-routing-design.md`](./landing-page-routing-design.md) §3.4 の決定を上書き。Free プランの存在を訴求する方が非技術者に刺さるため）
-- `/auth/login` CTA に `data-cta` 属性と `?utm_source=lp&utm_content=<cta-id>` を付与: `nav` / `hero` / `final` / `footer-product`
-- フッターの Cairn アイコンと Community の `Cairn Cloud` は、要望受付ワークスペースの招待リンクへ接続する
-- 計測（PostHog 集約イベント）は**後回し**と決定。導入時はこの `data-cta` / UTM をそのままイベントプロパティに使う
+- `apps/web/src/app/route.ts` が、アプリと同じ `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` / `NEXT_PUBLIC_POSTHOG_HOST` を `window.__CAIRN_LP_POSTHOG__` として `<head>` に埋め込む。トークンが無い環境では何も埋め込まず、計測もしない
+- `cairn-lp.js` が PostHog（`array.js`）を読み込み、`a[data-cta]` のクリックを `lp_cta_clicked`（`cta` / `cta_group` = `teams_migration` / `app_store` / `google_play` / `other` / `href` / `lp_lang`）として 1 回だけ送る。二重送信を避けるため autocapture は切っている
+- 流入元の UTM は PostHog が `$pageview` と各イベントの URL から拾う。アプリと同じプロジェクト・Cookie なので、ログイン後の利用者にもつながる
 
 
 ## 6. 今後
 
-- LP コピーの PDCA 運用（実験カード issue・`marketing.policy.yaml`）は PR #282 のスコープ
-- OGP 画像・canonical・robots・sitemap は整備済み。ペルソナ別 OGP が必要になった場合は、静的 HTML ではなくリクエストパラメータに応じて `<head>` を出し分ける構成を検討する
-- BYO AI・Docker セルフホストが実装されたら LP の該当記述を復帰・昇格させる
+- OGP 画像（`og-image.png` / `.svg`）は旧コピー「One Project. One Place.」のまま。作り直すまで `og:image:alt` は画像の実際の内容に合わせる
+- Team の提供開始時に価格と内容を確定し、「準備中」を外す
+- 比較表の競合条件は四半期ごとに見直す
+
+
+## 7. Teams コミュニティ移行キャンペーン（期間限定、2026-11-05〜）
+
+Microsoft が個人向け Microsoft Teams のコミュニティ機能を 2026年12月以降に終了すると発表したため、移行先を探す団体・コミュニティの運営者に向けて告知している。
+
+- **ボタン**: 告知の CTA は `.btn-primary` だがグロー（`box-shadow`）を外している。ヒーローの CTA と光り方で競わせないため
+- **配置**: ナビ直下・ヒーローの上の `section.campaign#teams-migration`。PC は本文と CTA の横並び、820px 以下は縦並びで CTA を全幅にする。後続のヒーローは上余白を詰める（`.campaign + .hero`）
+- **意味**: 「移行支援」は問い合わせ・ヒアリング・移行方法の個別案内のこと。データの完全移行、履歴の完全復元、全ファイルの取り込みは約束しない
+- **引き継ぎ**: 見出しで「会話履歴・メディアを引き継いで移行できます」と伝える（移行の一番の価値のため、2026-11-05 にユーザー判断で変更）。引き継ぎは問い合わせ後に運営側が行う個別サポートで、利用者が自分で使う取り込み機能は提供しない方針。「完全に」「すべて」は書かない。専用ページ `/teams/migration`（§8）では、後から期待との食い違いにならないよう、エクスポートで残らない情報（匿名化される投稿者・返信関係・OneDrive リンクのみの添付）も示す
+- **表現の制約**: 終わるのは「個人向け Teams のコミュニティ機能」。企業・学校向けの Teams 全体が終わるように書かない。Microsoft と提携しているように書かない
+- **問い合わせ**: 「まずはお問い合わせください」は無料相談の予約ページ（TimeRex、`https://timerex.net/s/dongmin.park_471b/579387d1/`）へ直接リンクする（UTM なし）。並べて `info@orikata.co.jp` 宛ての `mailto:`（件名「Teams コミュニティからの移行の相談」）のホローボタンを置く。予約にもメールにも種別がないため、注記で「Teams 移行」と書いてもらう
+- **SEO**: トップページは `meta description` に一文と FAQ（JSON-LD 含む）に 1 問だけ。検索広告と「Teams コミュニティ 廃止 / 終了 / 代替 / 移行」の受け皿は専用ページ `/teams/migration`（§8）が担う
+- **専用ページへの導線**: 告知の本文の下に `/teams/migration` へのテキストリンク（`data-cta="teams-migration-detail"`）を置く。問い合わせボタンとメールはそのまま残す
+- **撤去手順**: `index.html` の `#teams-migration` セクション（専用ページへのリンクを含む）、FAQ の Teams の 1 問（HTML と JSON-LD の両方）、`meta description` の Teams の一文、`cairn-lp.css` の「campaign」ブロックを消し、`apps/web/src/app/page.test.tsx` の該当テストと本節を更新する
+
+
+## 8. Teams 移行の専用ページ `/teams/migration`（2026-11-05〜）
+
+Google 検索広告「Cairn | Teams移行支援 | 検索 | 2026-11」の遷移先。広告の最終ページ URL の変更は広告アカウント側で行う。
+
+### 配信
+
+- `apps/web/src/app/teams/migration/route.ts` が `public/teams-migration.html` を読み、`<!-- @teams-... -->` の目印を `src/lib/lp/teams-migration-content.ts` の内容に差し替え、`injectPublicPageHeadScripts()`（PostHog・Google 広告タグ）を通して返す。トップページと同じ `cairn-lp.css` / `cairn-lp.js` を使い、デザイン・日英切り替え・テーマはトップページと共通（ページ固有のスタイルは `cairn-lp.css` の `tm-` ブロック）
+- 未ログインでも、ログイン済みでもそのまま表示する（middleware の公開ルート。`/` と違い `/chats` へは飛ばさない）。sitemap に載せる
+- タイトルは `<html data-title-ja / data-title-en>` から言語ごとに切り替える
+
+### 状況で変わる文言の更新
+
+`teams-migration-content.ts` だけを書き換える。画面の FAQ と JSON-LD は同じ配列から作るので二重に書かない。
+
+| 変わったこと | 直す場所 |
+|---|---|
+| 引き継ぎの進め方が変わった | `TEAMS_MIGRATION_SUPPORT`、FAQ「過去のメッセージは移せますか？」「画像や PDF も移行できますか？」、HTML の「過去データを引き継ぐ」の導入文と「移行までの流れ」4、§4 の「書いてはいけない」 |
+| エクスポートの解析結果が変わった | `TEAMS_EXPORT_FINDINGS` と `TEAMS_EXPORT_FINDINGS_CHECKED_AT` |
+| Microsoft の告知（時期・範囲）が変わった | HTML の「Teams コミュニティの終了について」と確認日、FAQ「いつまでに移行すべきですか？」、meta description |
+
+### 事実の根拠（2026-11-05 確認）
+
+| 記載 | 根拠 |
+|---|---|
+| 2026年12月以降、個人使用の Teams のコミュニティが使えなくなる。職場・学校の Teams には影響しない。新しいコミュニティは順次作れなくなる。メンバー・メッセージは自動で移らない | Microsoft「個人使用のための Microsoft Teams のコミュニティは廃止されます」（`support.microsoft.com/{ja-jp,en-us}/teams/free/communities/communities-deprecation`）。終了日は明記されていない |
+| 退出・削除されるとエクスポートできない。エクスポートはコミュニティに参加している Microsoft アカウントで行う | 同上と「Microsoft Teams 無料版でデータをエクスポートまたは削除する」（`.../teams/free/settings/export-or-delete-your-data-in-microsoft-teams-free`） |
+| 本文・投稿日時は取得可、画像・動画は含まれる、一部の投稿者は匿名化、返信の親子関係は失われる、PDF などは OneDrive リンクのみの場合がある | 実際のコミュニティのエクスポートを解析した結果（2026-11） |
+| 無料プランの範囲（100GB・1ファイル 50MB、Solo ¥300） | §4 の表と同じ |
+| 招待はリンク、アカウントは Google / Apple / メール。Teams のメンバー一覧の自動取り込みはない | `/api/workspaces/invites`、ログイン画面 |
+| 相談は 60 分・無料・Google Meet | Moru の相談ページ（`moruit.com/#consultation`）の「エンジニア1時間無料相談」「60分 / 無料」「Google Meet 自動生成」。初回に限らず相談料はかからない表記 |
+
+### 相談の導線
+
+- 第一の CTA は TimeRex の予約ページへ直接（`https://timerex.net/s/dongmin.park_471b/579387d1/`、`utm_*` 付き）。Moru の相談ページの「予約カレンダーを開く」と同じ予約ページで、内容は「エンジニア1時間無料相談」（汎用。Teams 移行専用の枠ではない）。担当は Moru のエンジニアで、Teams 移行の相談にも対応できるため、フォームを 1 段飛ばせる直接予約を選んだ。専用の枠を作ったら URL を差し替える
+- 予約フォームに相談種別を事前入力できないため、本文で「Teams からの移行の相談であることをお知らせください」と書く
+- 相談ページ（`moruit.com/?…&utm_content=teams-page#consultation`）へのテキストリンクとメール（`info@orikata.co.jp`）を残す。トップページの告知・Expedition の導線は変えていない
+
+### 計測（PostHog）
+
+`data-page="teams-migration"` のページでは `lp_cta_clicked` の代わりに次を送る（`cairn-lp.js`）。
+
+| イベント | いつ | 主なプロパティ |
+|---|---|---|
+| `teams_migration_lp_view` | 表示時 | `source_page` `lp_lang` `utm_source` `utm_medium` `utm_campaign` `utm_content` |
+| `teams_migration_consultation_click` | 相談 CTA（TimeRex / 相談ページ） | 上記 + `cta_location`（`hero` / `consult` / `consult-alt`）+ `destination`（`timerex` / `moru`） |
+| `teams_migration_signup_click` | 「Cairn を無料で試す」 | 上記 + `cta_location` + `destination=signup` |
+| `teams_migration_email_click` | メール | 上記 + `cta_location` + `destination=email` |
+
+- 送るのはページのパス・CTA の位置・遷移先の種類・流入時の UTM だけ。予約内容・フォーム入力は送らない
+- PostHog の SDK が自動で付ける `$current_url` `$referrer` `$initial_*` や流入パラメータには広告のクリック ID（`gclid` `gad_source` `gbraid` `fbclid` など）が入るため、このページでは SDK の `before_send` で取り除く（`$pageview` を含む全イベント）。UTM は残す。ページの URL は書き換えないので、Google 広告タグは `gclid` をそのまま読める
+- **予約完了は計測していない**。TimeRex は予約完了ページの Google Analytics 連携・Google 広告のコンバージョンタグ設置に対応しているが、どちらもプレミアムプラン限定で、GTM と予約後のリダイレクトには対応していない（TimeRex ヘルプ「広告コンバージョンタグ設置」「Google Analytics連携」）。それまでは `teams_migration_consultation_click`（`destination=timerex`）を**暫定のコンバージョン候補**として扱い、予約完了数とは別物として報告する。予約完了を計測するなら、TimeRex のプレミアムプランで広告のコンバージョンタグ（コンバージョン ID とラベル）を設定する
+
+### 広告ポリシーと表現
+
+- Cairn が Microsoft の公式移行先・提携先・認定サービスだと読める表現を使わない。ヒーロー直下の注記・フッターの商標表記に「Microsoft と提携しておらず、公式移行先・認定サービスではない」と書く
+- 「Teams」は終了する機能の説明（記述的な使用）に限る。Microsoft のロゴ・配色・画面は使わない
+- 引き継ぎは「お問い合わせのうえで私たち（運営側）が行う」と書き、利用者が自分で操作して移せるように読める表現を使わない。エクスポートで残らない情報（匿名化される投稿者・返信関係・OneDrive リンクのみの添付）は、誤認とトラブルを避けるため必ず併記する
+
+### 本番反映後の確認
+
+1. 未ログインのブラウザで `https://oss-cairn.com/teams/migration` が表示される（ログイン画面へ飛ばない）。ログイン済みでも表示される
+2. ページのソースに canonical・OGP・JSON-LD があり、`https://oss-cairn.com/sitemap.xml` に載っている
+3. `?utm_source=google&utm_medium=cpc&gclid=test` を付けて開き、PostHog の Live events に `teams_migration_lp_view`（UTM 付き・gclid なし）が届く。相談・無料登録・メールの各ボタンで対応するイベントが 1 回ずつ届く
+4. Google 広告タグ（`LP_GOOGLE_ADS_TAG_ID`）が `<head>` に入っている。Tag Assistant でコンバージョンリンカーが `gclid` を保存している
+5. TimeRex・相談ページ・メール・`/auth/login` へ遷移できる
+6. トップページの告知から専用ページへ移れ、告知の問い合わせボタン・メールも従来どおり動く
+7. 日英切り替え・スマートフォン表示
+8. 広告の最終ページ URL を `https://oss-cairn.com/teams/migration` に変え、広告のポリシー審査が通る
+
+### 撤去手順
+
+`apps/web/src/app/teams/migration/`、`public/teams-migration.html`、`src/lib/lp/teams-migration-content.ts`(+test)、`cairn-lp.css` の `tm-` ブロック、`cairn-lp.js` の `teams-migration` 分岐、middleware の `isCampaignRoute`、sitemap の行、トップページ告知のリンク（§7）を消す。URL を残す場合はトップページへリダイレクトする。

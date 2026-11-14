@@ -20,4 +20,7 @@ config.watchFolders = [
 // watch 範囲内でもビルドキャッシュ類は解決・監視の対象から外す
 config.resolver.blockList = [/node_modules\/\.cache\/.*/, /\.next\/.*/, /\.turbo\/.*/]
 
+// Android の PDF ビューアが WebView で使う pdf.js を、文字列としてバンドルへ同梱する
+config.transformer.babelTransformerPath = require.resolve('./metro-pdfjs-transformer')
+
 module.exports = config

@@ -2,10 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE, normalizeMimeType, resolveStorageExtension } from '@/lib/attachments'
+import {
+  ALLOWED_MIME_TYPES,
+  UNSUPPORTED_ATTACHMENT_TYPE_ERROR,
+  VIDEO_UPLOAD_ENTITLEMENT_ERROR,
+  attachmentBucketForPath,
+  attachmentFileSizeError,
+  isVideoMimeType,
+  maxAttachmentFileSize,
+  normalizeMimeType,
+  resolveStorageExtension,
+} from '@/lib/attachments'
+import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { requireChannelAccess } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import {
+  UPLOAD_REQUEST_EXPIRY_MS,
+  UPLOAD_REQUEST_EXPIRY_SAFETY_MS,
+  UPLOAD_REQUEST_FALLBACK_EXPIRY_MS,
+} from '@/lib/gallery-upload'
+import { hasAttachmentUploadRequestSchema } from '@/lib/uploads/schema-readiness'
 
 // ファイル本体を Vercel の Function 経由で受け取ると 4.5MB のリクエストボディ上限
 // (FUNCTION_PAYLOAD_TOO_LARGE) に阻まれる。そこでメタデータだけを受け取り、
@@ -30,39 +47,95 @@ export async function POST(req: Request) {
     typeof mimeType !== 'string' ||
     typeof fileSize !== 'number'
   ) {
-    return NextResponse.json({ error: 'channelId・fileName・mimeType・fileSize は必須です' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'channelId・fileName・mimeType・fileSize は必須です' },
+      { status: 400 },
+    )
   }
 
   const normalizedMime = normalizeMimeType(fileName, mimeType)
 
   if (!ALLOWED_MIME_TYPES.has(normalizedMime)) {
-    return NextResponse.json({ error: '対応していないファイル形式です（画像・PDF・Word・Excel・PowerPoint・CSV・テキスト）' }, { status: 400 })
+    return NextResponse.json({ error: UNSUPPORTED_ATTACHMENT_TYPE_ERROR }, { status: 400 })
   }
 
-  if (fileSize > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'ファイルサイズは 10MB 以下にしてください' }, { status: 400 })
+  if (fileSize > maxAttachmentFileSize(normalizedMime)) {
+    return NextResponse.json({ error: attachmentFileSizeError(normalizedMime) }, { status: 400 })
   }
 
-  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId)
+  const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
   if (forbidden) return forbidden
 
+  const isPdf = normalizedMime === 'application/pdf'
+  const isVideo = isVideoMimeType(normalizedMime)
+
+  // 動画は Solo の支援者本人の能動権。finalize でも同じ判定をやり直す
+  if (isVideo) {
+    const entitlements = await resolveUploadEntitlements(ctx.workspaceId, ctx.userId)
+    if (!entitlements.rights.canUploadVideo) {
+      return NextResponse.json(
+        { error: VIDEO_UPLOAD_ENTITLEMENT_ERROR, code: 'video-upload-entitlement-required' },
+        { status: 403 },
+      )
+    }
+  }
+
   const ext = resolveStorageExtension(fileName, normalizedMime)
-  const storagePath = `${ctx.workspaceId}/${channelId}/${crypto.randomUUID()}.${ext}`
+  // 未finalizeのオブジェクトも退会時に本人単位で列挙できるよう、userIdで名前空間化する。
+  const storagePath = `${ctx.workspaceId}/${channelId}/${ctx.userId}/${isPdf ? 'pdf-originals/' : isVideo ? 'videos/' : ''}${crypto.randomUUID()}.${ext}`
+
+  const bucket = attachmentBucketForPath(storagePath)
+
+  const { db, uploadRequests } = await import('@cairn/db')
+  if (!(await hasAttachmentUploadRequestSchema(db))) {
+    return NextResponse.json(
+      { error: 'アップロード機能を更新中です。少し待ってから再試行してください' },
+      { status: 503 },
+    )
+  }
+  const [uploadRequest] = await db
+    .insert(uploadRequests)
+    .values({
+      workspaceId: ctx.workspaceId,
+      projectId: null,
+      requestedBy: ctx.userId,
+      fileName,
+      derivedMimeType: normalizedMime,
+      derivedStoragePath: storagePath,
+      storageBucket: bucket,
+      // token発行後の期限更新に失敗しても、intentがtokenより先に消えないfallback。
+      expiresAt: new Date(Date.now() + UPLOAD_REQUEST_FALLBACK_EXPIRY_MS),
+    })
+    .returning({ id: uploadRequests.id })
+  if (!uploadRequest) throw new Error('upload request insert returned no rows')
 
   const supabase = createServiceRoleClient()
   const { data, error: signError } = await supabase.storage
-    .from('chat-attachments')
+    .from(bucket)
     .createSignedUploadUrl(storagePath)
 
   if (signError || !data) {
+    const { eq } = await import('drizzle-orm')
+    await db.delete(uploadRequests).where(eq(uploadRequests.id, uploadRequest.id))
     console.error('[/api/attachments/upload-url] createSignedUploadUrl failed:', signError)
     return NextResponse.json({ error: 'アップロードURLの発行に失敗しました' }, { status: 500 })
   }
+
+  const { eq } = await import('drizzle-orm')
+  await db
+    .update(uploadRequests)
+    .set({
+      expiresAt: new Date(Date.now() + UPLOAD_REQUEST_EXPIRY_MS + UPLOAD_REQUEST_EXPIRY_SAFETY_MS),
+    })
+    .where(eq(uploadRequests.id, uploadRequest.id))
 
   return NextResponse.json({
     token: data.token,
     path: data.path,
     storagePath,
     mimeType: normalizedMime,
+    bucket,
+    // 50MiB を超え得る動画は、署名トークンを x-signature に載せた TUS で送る
+    resumable: isVideo,
   })
 }

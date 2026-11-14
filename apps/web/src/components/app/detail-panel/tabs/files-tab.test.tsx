@@ -2,14 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { translate } from '@cairn/shared'
 import { FilesTab } from './files-tab'
-import { fetchWithAuth } from '@/lib/fetch-with-auth'
+import { AttachmentUploadError, uploadAttachment } from '@/lib/attachments/upload-client'
+import { useProjectFiles } from '@/hooks/use-project-files'
+import { AppShellContext } from '../../app-shell-context'
 
-vi.mock('@/lib/fetch-with-auth')
+// 送信の手順（URL 発行 → Storage → 登録）は upload-client.test.ts で確かめる。ここでは画面の振る舞いだけを見る
+vi.mock('@/lib/attachments/upload-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/attachments/upload-client')>()),
+  uploadAttachment: vi.fn(),
+}))
+const heic2anyMock = vi.hoisted(() => vi.fn())
+vi.mock('heic2any', () => ({ default: heic2anyMock }))
+const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock('@/lib/toast', () => ({ toast: toastMocks }))
 vi.mock('@/hooks/use-project-files', () => ({
   useProjectFiles: vi.fn(() => ({
     data: [],
@@ -20,9 +31,20 @@ vi.mock('@/hooks/use-project-files', () => ({
   })),
 }))
 
-const mockFetch = vi.mocked(fetchWithAuth)
+const uploadRightsState = vi.hoisted(() => ({
+  value: { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() } as {
+    data: { canUploadVideo: boolean; canDownloadOriginal: boolean } | undefined
+    isError: boolean
+    isFetching: boolean
+    refetch: () => Promise<unknown>
+  },
+}))
+vi.mock('@/hooks/use-upload-rights', () => ({ useUploadRights: () => uploadRightsState.value }))
 
-function renderFilesTab(channelId: string | null = 'channel-1') {
+const mockUpload = vi.mocked(uploadAttachment)
+const uploaded = { fileId: 'f1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8 }
+
+function renderFilesTab(channelId: string | null = 'channel-1', options: { isWebView?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -34,7 +56,26 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <FilesTab projectId="project-1" channelId={channelId} />
+        {options.isWebView ? (
+          // アプリの WebView として描画する。既定（Provider なし）は Web と同じ isWebView: false
+          <AppShellContext.Provider
+            value={{
+              openPanel: () => {},
+              openMember: () => {},
+              openNotif: () => {},
+              isWebView: true,
+              isMobile: true,
+              projectsView: 'list',
+              setProjectsView: () => {},
+              crossSearchNonce: 0,
+              consumeCrossSearch: () => {},
+            }}
+          >
+            <FilesTab projectId="project-1" channelId={channelId} />
+          </AppShellContext.Provider>
+        ) : (
+          <FilesTab projectId="project-1" channelId={channelId} />
+        )}
       </QueryClientProvider>,
     ),
   }
@@ -42,7 +83,41 @@ function renderFilesTab(channelId: string | null = 'channel-1') {
 
 describe('ファイルタブ', () => {
   beforeEach(() => {
-    mockFetch.mockReset()
+    mockUpload.mockReset()
+    toastMocks.success.mockReset()
+  })
+
+  it('複数選択で一部だけ失敗したら、成功件数をトーストし失敗をすべて残す', async () => {
+    mockUpload
+      .mockResolvedValueOnce(uploaded)
+      .mockRejectedValueOnce(new AttachmentUploadError('prepare', 'a.zip は対応していない形式です'))
+      .mockRejectedValueOnce(new AttachmentUploadError('prepare', 'b.zip は対応していない形式です'))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [
+      new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }),
+      new File(['x'], 'a.pdf', { type: 'application/pdf' }),
+      new File(['y'], 'b.pdf', { type: 'application/pdf' }),
+    ])
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('a.pdf: a.zip は対応していない形式です')
+    expect(alert).toHaveTextContent('b.pdf: b.zip は対応していない形式です')
+    expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
+  })
+
+  it('HEIC の変換に失敗したら、ライブラリの内部メッセージではなく JPEG への変換を案内する', async () => {
+    heic2anyMock.mockRejectedValueOnce(new Error('ERR_LIBHEIF format not supported'))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['heic'], 'IMG_0001.heic', { type: 'image/heic' })] } })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('IMG_0001.heic: HEIC 画像を変換できませんでした。JPEG に変換してからアップロードしてください')
+    expect(alert).not.toHaveTextContent('ERR_LIBHEIF')
+    expect(mockUpload).not.toHaveBeenCalled()
   })
 
   it('detail panel の file picker が CSV と pptx を許可する', () => {
@@ -56,8 +131,99 @@ describe('ファイルタブ', () => {
     expect(input?.accept).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation')
   })
 
+  it('PDF のアクションメニューから原本ダウンロード URL を開く', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderFilesTab()
+
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+    await userEvent.click(screen.getByRole('button', { name: translate('ja', 'Download original PDF (new PDFs are supporter only)') }))
+
+    expect(open).toHaveBeenCalledWith('/api/attachments/pdf-1?original=1', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+    vi.mocked(useProjectFiles).mockImplementation(() => ({
+      data: [], isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>))
+  })
+
+  it('アプリ（WebView）では支援者向けの原本ダウンロードをメニューに出さない', async () => {
+    vi.mocked(useProjectFiles).mockReturnValue({
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>)
+    renderFilesTab('channel-1', { isWebView: true })
+
+    await userEvent.click(screen.getByRole('button', { name: '操作' }))
+
+    expect(screen.queryByRole('button', { name: translate('ja', 'Download original PDF (new PDFs are supporter only)') })).toBeNull()
+    vi.mocked(useProjectFiles).mockImplementation(() => ({
+      data: [], isLoading: false, isError: false,
+      deleteMutation: { mutateAsync: vi.fn() }, setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>))
+  })
+
+  it('スコープ切替後は未完了アップロードを待たずに次のファイルを選べる', async () => {
+    let finishOldUpload: ((value: typeof uploaded) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise(resolve => { finishOldUpload = resolve }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+    expect(screen.getByRole('button', { name: 'アップロード中...' })).toBeDisabled()
+
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-2" channelId="channel-2" />
+      </QueryClientProvider>,
+    )
+    view.rerender(
+      <QueryClientProvider client={view.queryClient}>
+        <FilesTab projectId="project-1" channelId="channel-1" />
+      </QueryClientProvider>,
+    )
+    const nextInput = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(screen.getByRole('button', { name: 'ファイルを追加' })).toBeEnabled()
+    mockUpload.mockResolvedValueOnce(uploaded)
+    fireEvent.change(nextInput, { target: { files: [new File(['new'], 'new.pdf', { type: 'application/pdf' })] } })
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      finishOldUpload?.(uploaded)
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+    expect(toastMocks.success).toHaveBeenCalledWith('ファイルを 1 件追加しました')
+    expect(toastMocks.success).toHaveBeenCalledTimes(1)
+  })
+
+  it('A→B→A の間に発生した旧 finalize 失敗を新しい A に表示しない', async () => {
+    let failOldUpload: ((error: Error) => void) | undefined
+    mockUpload.mockImplementationOnce(() => new Promise((_, reject) => { failOldUpload = reject }))
+    const view = renderFilesTab()
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['old'], 'old.pdf', { type: 'application/pdf' })] } })
+
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-2" channelId="channel-2" /></QueryClientProvider>)
+    view.rerender(<QueryClientProvider client={view.queryClient}><FilesTab projectId="project-1" channelId="channel-1" /></QueryClientProvider>)
+    await act(async () => {
+      failOldUpload?.(new AttachmentUploadError('finalize', '旧チャンネルの finalize 失敗', vi.fn()))
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: '再試行' })).toBeNull()
+  })
+
   it('detail panel から PDF をアップロードできる', async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({ fileId: 'f1' }), { status: 201 }))
+    mockUpload.mockResolvedValue(uploaded)
     const { queryClient } = renderFilesTab()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -67,23 +233,14 @@ describe('ファイルタブ', () => {
     const file = new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' })
     await userEvent.upload(input!, file)
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
-      '/api/attachments/upload',
-      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
-    ))
-
-    const [, requestInit] = mockFetch.mock.calls[0]!
-    const formData = requestInit?.body as FormData
-    expect(formData.get('channelId')).toBe('channel-1')
-    expect(formData.get('file')).toBe(file)
-
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledWith('channel-1', file))
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
   })
 
   it('一部失敗しても成功したアップロードぶんは一覧を再取得する', async () => {
-    mockFetch
-      .mockResolvedValueOnce(new Response(JSON.stringify({ fileId: 'f1' }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'big.zip は大きすぎます' }), { status: 400 }))
+    mockUpload
+      .mockResolvedValueOnce(uploaded)
+      .mockRejectedValueOnce(new AttachmentUploadError('finalize', 'big.zip は大きすぎます'))
 
     const { queryClient } = renderFilesTab()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
@@ -98,8 +255,108 @@ describe('ファイルタブ', () => {
       ],
     )
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['project-files', 'project-1'] }))
-    expect(screen.getByText('big.zip は大きすぎます')).toBeInTheDocument()
+    expect(screen.getByText('big.md: big.zip は大きすぎます')).toBeInTheDocument()
+  })
+
+  it('選択直後に input が空になっても、失敗したファイル名を示す', async () => {
+    mockUpload.mockRejectedValue(new AttachmentUploadError('storage'))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [new File(['x'], 'report.pdf', { type: 'application/pdf' })])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf: アップロードに失敗しました')
+  })
+
+  it('finalize 失敗の再試行は同じ保存済みファイルを使い、アップロードを呼び直さない', async () => {
+    const retryFinalize = vi.fn().mockResolvedValue(uploaded)
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(
+      'finalize', 'PDF最適化の開始に失敗しました。再試行してください', retryFinalize,
+    ))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['%PDF-1.4'], 'guide.pdf', { type: 'application/pdf' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/guide\.pdf: PDF最適化の開始に失敗しました/)
+    expect(screen.queryByRole('alert')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '再試行' }))
+
+    expect(retryFinalize).toHaveBeenCalledTimes(1)
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+  })
+
+  it('対応していない形式は、形式の案内を表示する', async () => {
+    mockUpload.mockRejectedValue(new AttachmentUploadError('unsupported_type'))
+    renderFilesTab()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['x'], 'archive.zip', { type: 'application/zip' })] } })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('archive.zip: 対応していないファイル形式です')
+  })
+
+  describe('原本ダウンロードの権利', () => {
+    const pdfFiles = {
+      data: [{ id: 'pdf-1', fileName: 'guide.pdf', mimeType: 'application/pdf', fileSize: 8, fileType: 'file', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      isLoading: false,
+      isError: false,
+      deleteMutation: { mutateAsync: vi.fn() },
+      setLatestMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useProjectFiles>
+
+    it('支援状態を取得できないときは原本の項目を黙って隠さず、失敗と再試行を表示する', async () => {
+      const refetch = vi.fn(() => Promise.resolve())
+      uploadRightsState.value = { data: undefined, isError: true, isFetching: false, refetch }
+      vi.mocked(useProjectFiles).mockReturnValue(pdfFiles)
+      renderFilesTab('channel-1', { isWebView: true })
+
+      expect(screen.getByText(translate('ja', 'Could not check whether you can download original files.'))).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: translate('ja', 'Retry') }))
+      expect(refetch).toHaveBeenCalled()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
+
+    it('アプリでも原本を取得できる本人には支援者向けの注記なしで項目を出す', async () => {
+      uploadRightsState.value = {
+        data: { canUploadVideo: true, canDownloadOriginal: true },
+        isError: false,
+        isFetching: false,
+        refetch: () => Promise.resolve(),
+      }
+      vi.mocked(useProjectFiles).mockReturnValue(pdfFiles)
+      renderFilesTab('channel-1', { isWebView: true })
+
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.getByRole('button', { name: translate('ja', 'Download original PDF') })).toBeInTheDocument()
+      expect(screen.queryByText(translate('ja', 'Download original PDF (new PDFs are supporter only)'))).toBeNull()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
+
+    it('動画の原本は取得できる本人にだけ項目を出し、それ以外には課金の案内も出さない', async () => {
+      const videoFiles = {
+        ...pdfFiles,
+        data: [{ id: 'video-1', fileName: 'clip.mov', mimeType: 'video/quicktime', fileSize: 8, fileType: 'video', uploaderName: 'Alice', createdAt: '2026-01-01T00:00:00Z', isLatest: false }],
+      } as unknown as ReturnType<typeof useProjectFiles>
+      vi.mocked(useProjectFiles).mockReturnValue(videoFiles)
+      const { unmount } = renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.queryByRole('button', { name: translate('ja', 'Download original video') })).toBeNull()
+      unmount()
+
+      uploadRightsState.value = {
+        data: { canUploadVideo: true, canDownloadOriginal: true },
+        isError: false,
+        isFetching: false,
+        refetch: () => Promise.resolve(),
+      }
+      renderFilesTab()
+      await userEvent.click(screen.getByRole('button', { name: '操作' }))
+      expect(screen.getByRole('button', { name: translate('ja', 'Download original video') })).toBeInTheDocument()
+      uploadRightsState.value = { data: undefined, isError: false, isFetching: false, refetch: () => Promise.resolve() }
+    })
   })
 })

@@ -3,20 +3,39 @@
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { Expo } from 'expo-server-sdk'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { normalizeWebPushEndpoint } from '@/lib/push/endpoint'
 
 const webSchema = z.object({
   deviceType: z.literal('web'),
-  endpoint: z.string().url(),
+  endpoint: z.string().url().transform((endpoint, ctx) => {
+    const normalized = normalizeWebPushEndpoint(endpoint)
+    if (!normalized) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid Web Push endpoint' })
+      return z.NEVER
+    }
+    return normalized
+  }),
   keys: z.object({ p256dh: z.string(), auth: z.string() }),
 })
 
 const expoSchema = z.object({
   deviceType: z.literal('expo'),
-  expoToken: z.string().startsWith('ExponentPushToken['),
+  // SDK は角括弧内が空でも受理するため、空白だけの本体も登録前に拒否する。
+  expoToken: z.string().refine(
+    (token) => Expo.isExpoPushToken(token) && !/^Expo(nent)?PushToken\[\s*\]$/.test(token),
+    { message: 'Invalid Expo push token' },
+  ),
 })
 
 const subscribeSchema = z.discriminatedUnion('deviceType', [webSchema, expoSchema])
+
+// Web は従来どおり endpoint だけを送る。アプリはこの端末のトークンで、アプリでオフにした分だけ外す
+const unsubscribeSchema = z.union([
+  z.object({ deviceType: z.literal('expo'), expoToken: z.string().min(1) }),
+  z.object({ endpoint: z.string() }),
+])
 
 export async function POST(req: Request) {
   const { ctx, error } = await getAuthContext()
@@ -49,6 +68,15 @@ export async function POST(req: Request) {
           set: { keys: parsed.data.keys },
         })
     } else {
+      const { and, eq, ne } = await import('drizzle-orm')
+      // 一意制約は (user_id, expo_token) なので、別のユーザーがログインした端末には前のユーザーの行が残り、
+      // その人宛ての通知と未読数が届き続ける。端末を使っているのは今登録したユーザーだけとする
+      await db
+        .delete(pushSubscriptions)
+        .where(and(
+          eq(pushSubscriptions.expoToken, parsed.data.expoToken),
+          ne(pushSubscriptions.userId, ctx.userId),
+        ))
       await db
         .insert(pushSubscriptions)
         .values({
@@ -75,18 +103,21 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const parsed = z.object({ endpoint: z.string() }).safeParse(body)
+  const parsed = unsubscribeSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'endpoint required' }, { status: 422 })
+    return NextResponse.json({ error: 'endpoint or expoToken required' }, { status: 422 })
   }
 
   try {
     const { db, pushSubscriptions } = await import('@cairn/db')
     const { and, eq } = await import('drizzle-orm')
 
+    const target = 'expoToken' in parsed.data
+      ? eq(pushSubscriptions.expoToken, parsed.data.expoToken)
+      : eq(pushSubscriptions.endpoint, parsed.data.endpoint)
     await db
       .delete(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.userId, ctx.userId), eq(pushSubscriptions.endpoint, parsed.data.endpoint)))
+      .where(and(eq(pushSubscriptions.userId, ctx.userId), target))
 
     return NextResponse.json({ ok: true })
   } catch (err) {

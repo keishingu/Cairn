@@ -33,8 +33,9 @@ export function isWorkspaceMember(role: string | null): boolean {
 export async function getWorkspaceRole(
   workspaceId: string,
   userId: string,
+  client: Pick<typeof db, 'select'> = db,
 ): Promise<WorkspaceRole | null> {
-  const [member] = await db
+  const [member] = await client
     .select({ role: activeWorkspaceMembers.role })
     .from(activeWorkspaceMembers)
     .where(and(
@@ -57,17 +58,23 @@ const ROLE_ERROR: Record<WorkspaceRole, string> = {
   guest: 'このワークスペースにアクセスする権限がありません',
 }
 
+// 既知の role が指定 role 以上かを判定し、満たさなければ 403 を返す（DB 往復なし）。
+// getAuthContext が membership 再照合時に取得済みの role（ctx.role）を使う経路向け。
+// role の出所は必ず active_workspace_members（getWorkspaceRole / getAuthContext）に限る。
+export function requireRole(role: WorkspaceRole | null, min: WorkspaceRole): NextResponse | null {
+  if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
+    return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
+  }
+  return null
+}
+
 // active membership かつ指定 role 以上を要求する。満たさなければ 403 を返す。
 export async function requireActiveMember(
   workspaceId: string,
   userId: string,
   min: WorkspaceRole,
 ): Promise<NextResponse | null> {
-  const role = await getWorkspaceRole(workspaceId, userId)
-  if (role === null || ROLE_RANK[role] < ROLE_RANK[min]) {
-    return NextResponse.json({ error: ROLE_ERROR[min] }, { status: 403 })
-  }
-  return null
+  return requireRole(await getWorkspaceRole(workspaceId, userId), min)
 }
 
 // workspace の owner のみ許可（WS名・ロゴ等の設定変更）
@@ -112,4 +119,18 @@ export async function filterActiveMemberIds(
       inArray(activeWorkspaceMembers.userId, userIds),
     ))
   return new Set(rows.map((r) => r.userId))
+}
+
+// 署名付きでアプリへ届ける利用者の身元（表示名）。active なメンバーだけを返す（非活性・非所属は null）。
+// アプリへの配送（カードの操作・モーダルの送信・コマンド）はこれで本人を確かめてから届ける。
+export async function getActiveMemberIdentity(workspaceId: string, userId: string): Promise<{ name: string } | null> {
+  const { profiles } = await import('@cairn/db')
+  const { workspaceMemberDisplayName } = await import('@/lib/workspace-member-display-name')
+  const [row] = await db
+    .select({ name: workspaceMemberDisplayName(activeWorkspaceMembers.displayName, profiles.displayName) })
+    .from(activeWorkspaceMembers)
+    .innerJoin(profiles, eq(profiles.id, activeWorkspaceMembers.userId))
+    .where(and(eq(activeWorkspaceMembers.workspaceId, workspaceId), eq(activeWorkspaceMembers.userId, userId)))
+    .limit(1)
+  return row ? { name: row.name } : null
 }
