@@ -56,6 +56,7 @@ interface MilestoneFormModalProps {
   defaultMonth?: string | null
   onReload?: () => void
   reloadError?: string
+  backgroundError?: string
 }
 
 const modalCardStyle: React.CSSProperties = {
@@ -71,7 +72,7 @@ const modalCardStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
-function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null, onReload, reloadError }: MilestoneFormModalProps) {
+function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, onSubmit, defaultMonth = null, onReload, reloadError, backgroundError }: MilestoneFormModalProps) {
   const t = useT()
   const { isMobile } = useAppShell()
   const editing = initialMilestone != null
@@ -133,6 +134,8 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
     </div>
   )
 
+  const backgroundErrorMessage = backgroundError && <div role="alert" style={{ color: 'var(--red-text)', padding: '0 20px' }}>{backgroundError}</div>
+
   const heading = editing ? t('Edit milestone') : t('Create milestone')
 
   // モバイルはプロジェクト作成・タスク作成と同じボトムシートで、日程はカレンダーから選ぶ
@@ -150,6 +153,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
         disableClose={pending}
       >
         {conflictMessage}
+        {backgroundErrorMessage}
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <label htmlFor="milestone-title" style={sheetFieldLabelStyle}>
@@ -223,6 +227,7 @@ function MilestoneFormModal({ projectTitle, initialMilestone, pending, onClose, 
         />
 
         {conflictMessage}
+        {backgroundErrorMessage}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto' }}>
           <Field label={t('Milestone name')} required error={titleError} hint={`${title.length}/100`} htmlFor="milestone-title">
             <input
@@ -358,8 +363,13 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
   const milestone = milestones.data?.find(item => item.id === milestoneId)
   const [formVersion, setFormVersion] = React.useState(0)
   const [reloadError, setReloadError] = React.useState('')
+  // キャッシュがあっても、この画面を開いてからの取得成功を待つ。以後の背景取得失敗は入力中のフォームを破棄しない。
+  const [initialFetchSucceeded, setInitialFetchSucceeded] = React.useState(false)
+  React.useEffect(() => {
+    if (milestones.isFetchedAfterMount && !milestones.isError && milestone) setInitialFetchSucceeded(true)
+  }, [milestones.isFetchedAfterMount, milestones.isError, milestone])
 
-  if (!milestones.isFetchedAfterMount) {
+  if (!initialFetchSucceeded && (!milestones.isFetchedAfterMount || (!milestones.isError && milestone))) {
     return (
       <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
@@ -370,7 +380,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
     )
   }
 
-  if (!milestone) {
+  if (!initialFetchSucceeded || !milestone) {
     return (
       <Modal onClose={onClose} label={t('Edit milestone')}>
         <div style={modalCardStyle}>
@@ -389,6 +399,7 @@ export function EditMilestoneModal({ projectId, projectTitle, milestoneId, onClo
       key={formVersion}
       initialMilestone={milestone}
       reloadError={reloadError}
+      backgroundError={milestones.isError ? t('Could not load the milestone') : ''}
       onReload={() => {
         setReloadError('')
         void milestones.refetch().then(result => {

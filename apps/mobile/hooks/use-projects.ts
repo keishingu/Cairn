@@ -38,6 +38,8 @@ export interface ProjectChannelDto {
   lastMessageAt?: string | null
   milestoneId: string | null
   milestoneCompleted: boolean | null
+  /** マイルストーンが表示された時点の更新世代 */
+  milestoneUpdatedAt?: string | null
 }
 
 export function useProjects() {

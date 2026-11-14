@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATURE_FLAGS } from '@cairn/shared'
 import type { ProfileAttributeDto } from '@cairn/shared'
 import { apiFetch } from '../lib/api-fetch'
+import { patchMilestoneCompletion } from '../lib/milestone-completion'
 import {
   fetchWorkspaceChannels,
   fetchWorkspaceDms,
@@ -257,23 +258,11 @@ export function usePatchProjectMilestone() {
   const t = useT()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({
-      projectId,
-      milestoneId,
-      completed,
-    }: {
-      projectId: string
-      milestoneId: string
-      completed: boolean
-    }) => {
-      const res = await apiFetch(`/api/projects/${projectId}/milestones/${milestoneId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed }),
-      })
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error ?? t('Could not update the milestone status'))
-      }
+    mutationFn: async (input: { projectId: string; milestoneId: string; completed: boolean; expectedUpdatedAt: string }) => {
+      await patchMilestoneCompletion(input, apiFetch, t('Could not update the milestone status'))
+    },
+    onError: error => {
+      if (error.message === 'milestone_conflict') void qc.invalidateQueries({ queryKey: projectChannelsQueryKey })
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: projectChannelsQueryKey })
