@@ -42,6 +42,10 @@ export async function PATCH(
     )
   }
 
+  if (targetUserId === ctx.userId) {
+    return NextResponse.json({ error: '自分自身のロールは変更できません' }, { status: 422 })
+  }
+
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')

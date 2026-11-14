@@ -127,6 +127,15 @@ describe('PATCH /api/workspaces/members/[userId]', () => {
     expect(res.status).toBe(403)
   })
 
+  it.each(['admin', 'owner'])('%s は自分自身のロールを変更できない', async (role) => {
+    mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role }, error: null })
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(DEV_USER_ID, 'member'), { params: Promise.resolve({ userId: DEV_USER_ID }) })
+    expect(res.status).toBe(422)
+    expect(await res.json()).toEqual({ error: '自分自身のロールは変更できません' })
+    expect(mockDb.transaction).not.toHaveBeenCalled()
+  })
+
   it('ロック後に管理者権限を失った操作者には理由を返す', async () => {
     mockGetAuthContext.mockResolvedValue({ ctx: { userId: DEV_USER_ID, workspaceId: DEV_WORKSPACE_ID, role: 'admin' }, error: null })
     mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member' }]))

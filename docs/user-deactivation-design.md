@@ -39,7 +39,7 @@ GDPR 第17条の消去権はデータ主体の請求を契機とする義務で�
 
 | 操作 | 権限 / 実装 | 備考 |
 |---|---|---|
-| 非活性化・再活性化 | admin 以上。`PATCH /api/workspaces/members/[userId]` に `status` を渡す | 最後の active owner は非活性化不可。owner の状態・ロールは owner のみ変更可 |
+| 非活性化・再活性化 | admin 以上。`PATCH /api/workspaces/members/[userId]` に `status` を渡す | 最後の active owner は非活性化不可。owner の状態・ロールは owner のみ変更可。自分自身のロール変更・非活性化は不可 |
 | 非活性化（`deactivateMembership`） | `membership_status` を倒すだけで `project_members` / `channel_members` / `pinned_projects` は残す | 単純な再活性化で所属・履歴がそのまま戻るようにするため。操作するメンバー・対象行と active owner 集合は `user_id` 昇順の1クエリでロック（別々にロックするとデッドロックし得る） |
 | 単純な再活性化（`reactivateMembership`） | `membership_status = 'active'` のみ | ロール・派生行は不変 |
 | 再招待での復帰（`reactivateViaInvite`） | 同一メンバーシップを `active` に戻し、ロールを招待値で上書き。旧 `project_members` / `channel_members` の掃除は [`invite/[token]/accept/route.ts`](../apps/web/src/app/api/invite/[token]/accept/route.ts) が同一トランザクション内で行う | 低権限で再招待したのに旧 private channel・DM・旧ロールが復活する事故を防ぐ。既存ロールが owner の場合は招待から復帰できず、別の active owner に再活性化を依頼する |
