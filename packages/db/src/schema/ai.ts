@@ -381,3 +381,23 @@ export const aiChatUsage = pgTable(
     check('ai_chat_usage_status_known', sql`${t.status} in ('success', 'failed')`),
   ],
 ).enableRLS()
+
+export const aiChatRateLimits = pgTable(
+  'ai_chat_rate_limits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    requestCount: integer('request_count').notNull().default(0),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.workspaceId, t.userId),
+    index('idx_ai_chat_rate_limits_updated_at').on(t.updatedAt),
+  ],
+).enableRLS()
