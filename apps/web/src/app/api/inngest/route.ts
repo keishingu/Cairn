@@ -23,6 +23,10 @@ import {
   scanAiNudgesPhaseTwo,
 } from '@/lib/inngest/functions'
 import { transcodeUploadedVideo } from '@/lib/inngest/video-transcode-job'
+import {
+  reportWorkspaceConversionToOpenAi,
+  reportWorkspaceConversionToPostHog,
+} from '@/lib/inngest/workspace-conversion-job'
 import { pollsCardClose, pollsCardRender } from '@/first-party-apps/polls'
 
 // デプロイ環境ごとに URL が変わる場合（Vercel preview など）に対応。
@@ -49,6 +53,8 @@ const fns = [
   pollsCardRender,
   reconcileAiNudgesHeartbeat,
   reconcileWorkspaceStorageUsageDaily,
+  reportWorkspaceConversionToOpenAi,
+  reportWorkspaceConversionToPostHog,
   requeueStorageDeletionJobs,
   runHourlyMaintenance,
   runStorageDeletionJob,

@@ -5,6 +5,13 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { fetchWithRetryableAuthRefresh, resolveLocale, translate } from '@cairn/shared'
 import { checkAccessToken } from '@/lib/auth-jwt'
+import {
+  isOpenAiAdsConfigured,
+  normalizeOppref,
+  OPPREF_COOKIE,
+  OPPREF_COOKIE_MAX_AGE_SECONDS,
+  OPPREF_PARAM,
+} from '@/lib/analytics/ad-click'
 
 function detectMobile(ua: string): boolean {
   return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
@@ -85,6 +92,17 @@ export async function middleware(request: NextRequest) {
       response.cookies.set(name, value, options)
     }
     if (authCookies.size) response.headers.set('Cache-Control', 'private, no-store')
+    // ChatGPT 広告から着地したら、クリック ID をワークスペース作成時まで持ち越す
+    const oppref = normalizeOppref(request.nextUrl.searchParams.get(OPPREF_PARAM))
+    if (oppref && isOpenAiAdsConfigured()) {
+      response.cookies.set(OPPREF_COOKIE, oppref, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+        path: '/',
+        maxAge: OPPREF_COOKIE_MAX_AGE_SECONDS,
+      })
+    }
     if (isWebView) {
       response.cookies.set('cairn-webview', '1', {
         sameSite: 'lax',
