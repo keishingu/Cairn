@@ -19,6 +19,19 @@
   --z-lightbox: 1500;          /* 画像ビューア（モーダル内から開いても前面） */
   --z-toast: 2000;             /* トースト・接続状態などの一過性表示 */
   --z-system: 3000;            /* ナビゲーション進捗・ショートカットヒント */
+
+  /* ── 文字サイズの段階 ──
+     画面の文字サイズは px を直書きせずこの変数を使う（portal でも効くよう :root に置く）。
+     計算で決まるサイズ（Markdown の見出し倍率・アバターの頭文字など）だけは数値でよい */
+  --fs-2xs: 10px;              /* バッジ・ファイル種別・並び替えの矢印 */
+  --fs-xs: 11px;               /* 日時・件数などのメタ情報 */
+  --fs-sm: 12px;               /* 区切りラベル・補足説明・小ボタン */
+  --fs-md: 13px;               /* 操作テキスト・一覧の行（既定） */
+  --fs-lg: 14px;               /* 本文・入力欄 */
+  --fs-xl: 15px;               /* モーダル・カードの見出し */
+  --fs-2xl: 18px;              /* パネル・モバイル画面の見出し */
+  --fs-3xl: 22px;              /* ページ見出し */
+  --fs-4xl: 28px;              /* 認証画面のロゴ */
 }
 
 /* ── Design tokens (山岳部SaaS) ─────────────────────────────────── */
@@ -179,7 +192,11 @@
 .app *::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; border: 2px solid transparent; }
 .app *::-webkit-scrollbar-track { background: transparent; }
 
-.app .btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; font-family: inherit; }
+/* 文字の階層は太さではなくサイズと色で付ける。画面ごとの余白や配置はインライン style で上書きする */
+.app .page-title { margin: 0 0 4px; font-size: var(--fs-3xl); font-weight: 600; line-height: 1.3; color: var(--text); }
+.app .section-label { font-size: var(--fs-sm); font-weight: 500; color: var(--text-3); }
+
+.app .btn { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:8px; font-size:var(--fs-md); font-weight:500; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; transition: background .12s, border-color .12s, box-shadow .12s; font-family: inherit; }
 .app .btn { justify-content:center; white-space:nowrap; }
 .app .btn:disabled { opacity:.5; cursor:not-allowed; }
 .app .btn:not(:disabled):hover { background: var(--card-hover); border-color: var(--border-2); }
@@ -191,8 +208,8 @@
 .app .btn-danger { background: var(--red); border-color: var(--red); color:#fff; font-weight:600; }
 .app .btn-danger:not(:disabled):hover { background: #DC2626; border-color: #DC2626; }
 /* サイズ: 既定 34px。行内の小さな操作は sm、フォームの主操作は lg */
-.app .btn-sm { height:28px; padding:0 10px; font-size:12px; border-radius:7px; gap:5px; }
-.app .btn-lg { height:40px; padding:0 16px; font-size:14px; }
+.app .btn-sm { height:28px; padding:0 10px; font-size:var(--fs-sm); border-radius:7px; gap:5px; }
+.app .btn-lg { height:40px; padding:0 16px; font-size:var(--fs-lg); }
 .app .btn-block { display:flex; width:100%; }
 /* カードで押したボタン。書き換えを待つ間はカード全体を押せなくするが、押したボタンだけは薄くせず回転する印を出す */
 .app .btn.btn-pending:disabled { opacity:1; cursor:progress; }
@@ -216,16 +233,22 @@
 .app .hover-bg-danger:not(:disabled):hover { background: var(--red-soft) !important; }
 .app .hover-text:not(:disabled):hover { color: var(--text-2) !important; }
 .app :is(.hover-bg, .hover-bg-card, .hover-bg-danger):focus-visible { outline: none; box-shadow: var(--ring); }
-.app .form-control { height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--card-2); color:var(--text); font-size:13px; font-family:inherit; outline:none; transition:background .12s, border-color .12s, box-shadow .12s; }
+.app .form-control { height:34px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--card-2); color:var(--text); font-size:var(--fs-md); font-family:inherit; outline:none; transition:background .12s, border-color .12s, box-shadow .12s; }
 .app .form-control:hover { border-color:var(--border-2); }
 .app .form-control:focus-visible { border-color:var(--accent); box-shadow:var(--ring); outline:2px solid var(--accent); outline-offset:2px; }
 .app .form-control:disabled { color:var(--text-4); cursor:not-allowed; opacity:.65; }
 .app .form-control::placeholder { color:var(--text-3); }
+/* iOS Safari は日付・時刻の input に中身ぶんの最小幅を持たせ、width:100% を無視して親からはみ出す（モバイルで横スクロールが出る）。
+   ネイティブの外観を外して最小幅を 0 にし、親の幅に収める。値は左寄せにして他の入力欄と揃える */
+input:is([type="date"], [type="time"], [type="datetime-local"], [type="month"], [type="week"]) {
+  -webkit-appearance:none; appearance:none; min-width:0; max-width:100%;
+}
+input:is([type="date"], [type="time"], [type="datetime-local"], [type="month"], [type="week"])::-webkit-date-and-time-value { text-align:left; }
 /* 高さ固定は1行の input 向け。textarea は rows に従って複数行を見せる */
 .app textarea.form-control { height:auto; min-height:72px; padding:8px 10px; line-height:1.5; resize:vertical; }
-.app .chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600; letter-spacing:0.01em; }
+.app .chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:var(--fs-xs); font-weight:600; letter-spacing:0.01em; }
 .app .card { background: var(--card); border:1px solid var(--border); border-radius:12px; }
-.app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:10.5px; font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
+.app .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:4px; font-size:var(--fs-2xs); font-weight:600; background:var(--bg-elev); color:var(--text-3); border:1px solid var(--border); font-family:'SF Mono', ui-monospace, monospace; }
 
 .app .chat-sidebar-item-action { opacity:0; pointer-events:none; transition:opacity .12s ease-out; }
 .app .chat-sidebar-item:hover > .chat-sidebar-item-action,

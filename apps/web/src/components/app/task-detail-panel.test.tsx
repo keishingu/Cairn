@@ -4,15 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TaskDetailDto } from '@/app/api/tasks/[id]/route'
 import { TaskDetailPanel } from './task-detail-panel'
 
-const { mockUseTaskDetail, mockPatchMutate, mockPatchState } = vi.hoisted(() => ({
+const { mockUseTaskDetail, mockPatchMutate, mockPatchMutateAsync, mockPatchState } = vi.hoisted(() => ({
   mockUseTaskDetail: vi.fn(),
   mockPatchMutate: vi.fn(),
+  mockPatchMutateAsync: vi.fn(),
   mockPatchState: { isError: false, isPending: false, error: null as Error | null },
 }))
 
 vi.mock('@/hooks/use-tasks', () => ({
   useTaskDetail: mockUseTaskDetail,
-  usePatchTask: () => ({ mutate: mockPatchMutate, reset: vi.fn(), ...mockPatchState }),
+  usePatchTask: () => ({ mutate: mockPatchMutate, mutateAsync: mockPatchMutateAsync, reset: () => { mockPatchState.isError = false; mockPatchState.error = null }, ...mockPatchState }),
   useDeleteTask: () => ({ mutateAsync: vi.fn() }),
 }))
 vi.mock('./task-assignee-field', () => ({
@@ -65,6 +66,7 @@ describe('TaskDetailPanel', () => {
   beforeEach(() => {
     mockUseTaskDetail.mockReset()
     mockPatchMutate.mockReset()
+    mockPatchMutateAsync.mockReset()
     mockPatchState.isError = false
     mockPatchState.isPending = false
     mockPatchState.error = null
@@ -104,7 +106,7 @@ describe('TaskDetailPanel', () => {
     expect(refetch).toHaveBeenCalled()
   })
 
-  it('タイトルをクリックして編集し、Enter で保存する', async () => {
+  it('タイトルをクリックして編集し、Enter で保存して編集を閉じる', async () => {
     setTask()
     renderPanel()
 
@@ -113,34 +115,105 @@ describe('TaskDetailPanel', () => {
     await userEvent.clear(input)
     await userEvent.type(input, '新しいタイトル{Enter}')
 
-    expect(mockPatchMutate).toHaveBeenCalledTimes(1)
-    expect(mockPatchMutate).toHaveBeenCalledWith({ id: 'task-1', patch: { title: '新しいタイトル' } })
+    expect(mockPatchMutateAsync).toHaveBeenCalledTimes(1)
+    expect(mockPatchMutateAsync).toHaveBeenCalledWith({ id: 'task-1', patch: { title: '新しいタイトル' } })
+    expect(await screen.findByRole('button', { name: 'タイトルを編集' })).toBeInTheDocument()
   })
 
-  it('タイトルが変わっていない・空のときは保存しない', async () => {
+  it('タイトルは保存ボタンでも保存できる', async () => {
     setTask()
     renderPanel()
 
     await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), '{Enter}')
-    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
-    const input = screen.getByRole('textbox', { name: 'タイトル' })
-    await userEvent.clear(input)
-    await userEvent.tab()
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(mockPatchMutate).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'タイトルを編集' })).toHaveTextContent('レビュー対応')
+    expect(mockPatchMutateAsync).toHaveBeenCalledWith({ id: 'task-1', patch: { title: 'レビュー対応 追記' } })
   })
 
-  it('タイトルは blur でも保存する', async () => {
+  it('タイトルが変わっていない・空のときは保存ボタンが無効で、Enter でも保存しない', async () => {
+    setTask()
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), '{Enter}')
+    const input = screen.getByRole('textbox', { name: 'タイトル' })
+    await userEvent.clear(input)
+    await userEvent.type(input, '{Enter}')
+
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    expect(mockPatchMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('タイトルは blur では保存も破棄もせず、下書きを残す', async () => {
     setTask()
     renderPanel()
 
     await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
     await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
     await userEvent.tab()
+    await userEvent.tab()
 
-    expect(mockPatchMutate).toHaveBeenCalledWith({ id: 'task-1', patch: { title: 'レビュー対応 追記' } })
+    expect(mockPatchMutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応 追記')
+  })
+
+  it('タイトルはキャンセルボタンと Esc で破棄し、パネルは閉じない', async () => {
+    setTask()
+    const { onClose } = renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(screen.getByRole('button', { name: 'タイトルを編集' })).toHaveTextContent('レビュー対応')
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.getByRole('button', { name: 'タイトルを編集' })).toHaveTextContent('レビュー対応')
+    expect(mockPatchMutateAsync).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('タイトルの保存に失敗したら編集を閉じず、下書きとエラーを残す', async () => {
+    setTask()
+    mockPatchMutateAsync.mockRejectedValueOnce(new Error('保存に失敗しました'))
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記{Enter}')
+
+    expect(await screen.findByText('保存に失敗しました')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'タイトル' })).toHaveValue('レビュー対応 追記')
+  })
+
+  it('説明は Ctrl+Enter で保存できる', async () => {
+    setTask()
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '説明を追加' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '説明' }), '内容{Control>}{Enter}{/Control}')
+
+    expect(mockPatchMutate).toHaveBeenCalledWith(
+      { id: 'task-1', patch: { description: '内容' } },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('未保存の下書きがあっても、閉じる操作は確認なしで閉じる', async () => {
+    setTask()
+    const { onClose } = renderPanel()
+    const confirm = vi.spyOn(window, 'confirm')
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    await userEvent.click(screen.getByRole('button', { name: '閉じる' }))
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
   })
 
   it('ステータス・優先度・期日の変更は即保存する', async () => {
@@ -204,6 +277,25 @@ describe('TaskDetailPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('指定された担当者はこのタスクに割り当てできません')
   })
 
+  it('説明の保存に失敗してもキャンセルして開き直せば、前回のエラーは出ない', async () => {
+    setTask()
+    const view = render(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: '説明を追加' }))
+    // 保存に失敗した状態を再現する（親を再描画してエラーを表示する）
+    mockPatchState.isError = true
+    mockPatchState.error = new Error('説明を保存できませんでした')
+    view.rerender(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    expect(screen.getAllByText('説明を保存できませんでした').length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    // キャンセルでミューテーションが reset され（モックでは状態が消え）、親が再描画される
+    expect(mockPatchState.isError).toBe(false)
+    view.rerender(<TaskDetailPanel taskId="task-1" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: '説明を追加' }))
+
+    expect(screen.queryByText('説明を保存できませんでした')).toBeNull()
+  })
+
   it('元のメッセージを引用ブロックで表示し、チャットで開くリンクを出す', async () => {
     setTask({
       sourceMessageId: 'message-1',
@@ -229,6 +321,29 @@ describe('TaskDetailPanel', () => {
     link.addEventListener('click', e => e.preventDefault())
     await userEvent.click(link)
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('未保存のタイトルがあっても、チャットで開くリンクは確認せず閉じて遷移する', async () => {
+    setTask({
+      sourceMessageId: 'message-1',
+      isLinkedToMessage: true,
+      sourceMessage: {
+        id: 'message-1', channelId: 'channel-1', content: '本文', senderName: '佐藤 花子',
+        senderAvatarUrl: null, createdAt: '2026-08-31T09:00:00.000Z',
+      },
+    })
+    const { onClose } = renderPanel()
+    const confirm = vi.spyOn(window, 'confirm')
+
+    await userEvent.click(screen.getByRole('button', { name: 'タイトルを編集' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), ' 追記')
+    const link = screen.getByRole('link', { name: 'チャットで開く' })
+    link.addEventListener('click', e => e.preventDefault())
+    await userEvent.click(link)
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
   })
 
   it('元のメッセージが無いタスクには元のメッセージ欄を出さない', () => {

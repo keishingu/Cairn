@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
-const { registerExternalNavigation } = require('./external-navigation')
+const { getNavigationAction, isAuthSender, registerExternalNavigation } = require('./external-navigation')
 const { isSameOrigin, registerPermissionPolicy } = require('./permission-policy')
 const { resolveAppIconFile } = require('./app-icon')
 const { setupAutoUpdate } = require('./auto-update')
@@ -149,7 +149,26 @@ function createWindow() {
     },
   })
 
-  registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
+  const navigation = registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
+  ipcMain.handle('cairn:start-oauth', (event, url, supabaseUrl, provider) => {
+    if (!isAuthSender(event, win.webContents, APP_URL)) throw new Error('Invalid OAuth sender')
+    return navigation.startAuth(url, supabaseUrl, provider)
+  })
+  ipcMain.handle('cairn:start-calendar-oauth', (event, url) => {
+    if (!isAuthSender(event, win.webContents, APP_URL)) throw new Error('Invalid OAuth sender')
+    return navigation.startCalendarAuth(url)
+  })
+  ipcMain.handle('cairn:open-external', (event, url) => {
+    if (!isAuthSender(event, win.webContents, APP_URL) || getNavigationAction(url, APP_URL) !== 'external') {
+      throw new Error('Invalid external URL or sender')
+    }
+    return shell.openExternal(url)
+  })
+  win.on('closed', () => {
+    ipcMain.removeHandler('cairn:start-oauth')
+    ipcMain.removeHandler('cairn:start-calendar-oauth')
+    ipcMain.removeHandler('cairn:open-external')
+  })
   win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、

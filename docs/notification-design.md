@@ -38,14 +38,30 @@
 - 個別メンションは **チャンネルメンバーに限定しない**。チャンネルにアクセスできるワークスペースメンバーなら通知対象（チャンネル未参加の member 以上も可）。guest は上記のとおり到達可能な場合のみ
 - DM は `check-dm` ステップで早期リターンするが、Push に加えてアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
 - Push の遷移先 URL は実ルート `/chats/{channelId}` に統一する（DM・メンション共通）
+- Web Push の送信先は HTTPS の既知の Google・Mozilla・Apple・Windows Push サービスに限定し、登録時と送信時の両方で検証する（`apps/web/src/lib/push/endpoint.ts`）。対応サービスの追加や変更時は許可先を更新する。既存の対象外の購読には送信しない。 根拠: [Google](https://firebase.google.com/docs/cloud-messaging/network-configuration)、[Mozilla](https://mozilla-services.github.io/autopush-rs/http.html)、[Apple](https://webkit.org/blog/13878/)、[Windows](https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/wns-overview)。
 - チャンネルを既読にすると、そのチャンネルに紐づく `mention` / `dm` 通知（`data->>'channelId'` で判定）も既読化する。既読状態をチャンネルとベルで分裂させないため
 - メッセージ作成と既読スナップショットはチャンネル行、メンション通知作成とチャンネル既読化は同じ `channel_read_states` 行をロックして、それぞれトランザクションを直列化する。メッセージの `created_at` はチャンネルロック取得後の時刻にし、既読位置とメンションの既読判定は DB のマイクロ秒精度を保ったまま比較する。既読時刻は既存値と取得した最新メッセージの新しい方を採用して単調増加させ、message ID は実際に開いた最新スナップショットを記録する。その時刻以前と削除済みメッセージ由来の通知だけを既読化した後、残った未読メンション通知行から `unread_mention_count` を再計算する。空チャンネルと未参加者の初期 read state は epoch を起点にし、ジョブの実行順にかかわらず未閲覧のメンションを未読として残す
+- **メッセージを削除したら、その `mention` / `dm` 通知を既読にし、宛先の `unread_mention_count` を数え直す**（DB トリガー `settle_notifications_on_message_delete`。本人の削除・通報対応・アプリ API など削除経路が複数あるため）。通知ジョブはメッセージ行を `FOR SHARE` でロックして削除と直列にし、既に削除済みなら通知を既読で作る。チャンネル削除のカスケードによる物理削除でも、残る通知を既読にする（`settle_notifications_on_message_remove`）。アカウント削除は本人の投稿を論理削除してから通知を消し、受信者の数え直しをトリガーに任せる。削除でチャンネルが空になっても、Web・アプリは最新の取得が終わって空と確定した時点で既読 API を呼んで数え直す
 - 未読カウントは自分の発言を除外する（`messages.sender_id != userId`）。チャンネル参加時には `channel_read_states` 行を作成し、参加時点を既読起点にする
 - メンション配信が参加前のユーザーに作成した epoch 起点の合成 read state は、後からチャンネルへ参加した時点まで進める。実際の既読履歴がある state は保持する
 - 実装: `apps/web/src/lib/inngest/functions.ts` の `onMessageCreated`、既読化は `apps/web/src/app/api/channels/[channelId]/read/route.ts`
 
 - 閲覧中 Push の判定（`classifyPushRecipients`）も同じファイル。10 秒猶予（`PUSH_GRACE_PERIOD`、Inngest `step.sleep`）後に既読を `last_read_at >= created_at` または `last_read_message_id` 一致で判定し、猶予中に削除されたメッセージの Push も送らない。タスク割り当て Push は対象外
 - 未実装: チャンネル別通知レベル・ミュート・DND、時間ベースのリマインダー、ファイル添付通知の廃止（バッジのみ化）。構想は [`archive/notification-ux-redesign.md`](./archive/notification-ux-redesign.md)
+
+## チャット一覧の未読表示
+
+- **件数バッジは自分宛てだけ**: チャンネル・スレッド・プロジェクトは未読メンション数（`unread_mention_count`）、DM は未読数をバッジにする。メンションのない新着は名前の太字（800）と一段明るい文字色だけで示す（通常は標準の太さ）。全新着に件数を出すと、急ぎでない会話まで開いて消したくなるため
+- Web のサイドバーと Expo のチャットタブの合計バッジも同じ基準で数える。判定は `packages/shared/src/chat-unread-display.ts` の `chatUnreadDisplay` に集約し、Web と Expo で揃える
+
+## チャット一覧の並び順とピン留め
+
+- 並び順はセクションごとに選ぶ。各見出しの「＋」の左（Expo は見出しの右端）の並び替えボタンから、プロジェクトは「作成順（既定）・更新順・実施日順・名前順」、チャンネルは「作成順（既定）・更新順・名前順」、DM は「名前順（既定）・更新順」。マイルストーン・スレッドは親の下のまま、アーカイブ欄は並べ替えない。選べる項目と判定は `packages/shared/src/chat-list-sort.ts`（`CHAT_LIST_SECTION_SORTS` / `sortChatList`）に集約し、Web と Expo で揃える
+  - 更新順: 最終投稿時刻（API の `lastMessageAt`。配下のマイルストーン・スレッドの投稿も親に含める）の新しい順。投稿のないものは末尾
+  - 実施日順: プロジェクトの開始日の古い順。日付のないプロジェクトは末尾
+- 並び順はセクション別・端末ごとの保存（Web は localStorage、Expo は AsyncStorage）で、Web とアプリでは同期しない
+- `lastMessageAt` はチャンネルごとに `idx_messages_channel` を末尾から1件引いて求める（`apps/web/src/lib/chat/last-message-at.ts`）。全件の max 集計にしない
+- ピン留めはプロジェクトだけで、サイドバーのピン留め（`pinned_projects`）と同じデータ。チャット一覧の「…」（Expo は長押し）から切り替え、ピン留めしたプロジェクトは並び順に関係なくプロジェクト欄の先頭に置く
 
 ## アプリアイコンのバッジ
 
@@ -61,11 +77,51 @@
 
 | トピック | 配信元テーブル | 用途 |
 |---|---|---|
-| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`tasks` | チャット本文・リアクション・タスクの更新シグナル |
-| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members` | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱 |
+| `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`message_blocks`、`tasks` | 表示中のチャットの本文・リアクション・カード・タスクの印の更新シグナル |
+| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク |
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
 - トリガーは `supabase/migrations/0034_realtime_broadcast.sql` ほか後続マイグレーションで追加
+- Web のタブ復帰時の再取得（`refetchOnWindowFocus`、`apps/web/src/lib/realtime-focus.ts`）は、Realtime 切断中は毎回、接続中は最後にサーバーから取得してから 5 分以上たったクエリだけ（`setQueryData` の手動書き込みは数えない）。Broadcast されない変更は、接続中は 5 分以上たった後のタブ復帰まで画面に出ない（5 分の時点で自動では取り直さない）。クエリごとに「Broadcast で追えるか」の対応表を作って再取得を止める方式は、書き込み経路の抜けを塞ぎ続けることになるため採らない
+
+### user トピックへのチャンネル活動の配信
+
+常時購読を `user:{me}` + 表示中のチャットに絞るため（#173。チャンネルごとに購読すると購読数がチャンネル総数に比例し、Realtime の1接続あたりのチャンネル数上限に当たる）、画面外のチャンネルの変化は user トピックで知らせる（`20261105120000_realtime_user_topic_channel_activity.sql`）。
+
+- 対象は `messages` の INSERT と、`channel_id`（スレッドへの移動）・`deleted_at` が変わった UPDATE、`tasks` の INSERT / UPDATE / DELETE。移動は移動元・移動先の両方の閲覧者へ送る。編集・リアクションは表示中のチャットにしか影響しないので channel トピックだけ
+- ペイロードは `{ table, operation, channel_ids }` だけで本文・行データを載せない（`realtime.send`、private）。受信側は REST で再取得する
+- 宛先は `channel_realtime_recipients()` で送信時点の権限から決める。`can_access_channel()` を全ユーザーについて展開した同じ条件で、**どちらかを変えたら両方を揃える**。`channel_ids` も宛先ごとに見られるものだけに絞る（非公開スレッドへの移動で、移動先に参加していない人へ移動先の ID を出さない）
+- 行ごとではなく文ごと（遷移テーブル）に配信する。一括移動・並べ替えでも1文につき宛先1人1件
+- 新しい関数は anon / authenticated から実行できない（`REVOKE ALL FROM PUBLIC` とロックダウンの既定権限）。クライアントは他人の `user:` トピックへ join も送信もできない
+- 負荷: DB への書き込み（`realtime.messages`）は「文 × 宛先人数」件。代わりに join・再接続はチャンネル数ではなく「1 + 表示中のチャット数」になる
+- 既存の `channel:{id}` 配信はそのまま残す（全チャンネルを購読している旧クライアントの互換）。**適用順序はサーバー（migration）が先、クライアントが後**。逆だと画面外の未読が更新されない
+
+#### 宛先判定の同等性の確かめ方
+
+`can_access_channel()` か `channel_realtime_recipients()` を変えたら、全チャンネル × 全ユーザーで両者が一致することを確かめる。データを変えないよう、トランザクション内で変更後の migration を当てて実行し ROLLBACK する（共有 DB で `migration up` しない）。
+
+```sql
+begin;
+\i supabase/migrations/<変更した migration>.sql
+do $$
+declare c record; u record; n int := 0;
+begin
+  for c in select id from channels loop
+    for u in select id from profiles loop
+      perform set_config('request.jwt.claims', json_build_object('sub', u.id, 'role', 'authenticated')::text, true);
+      if public.can_access_channel(c.id) is distinct from
+         exists (select 1 from public.channel_realtime_recipients(c.id) r where r = u.id) then
+        n := n + 1;
+        raise warning 'mismatch channel=% user=%', c.id, u.id;
+      end if;
+    end loop;
+  end loop;
+  if n > 0 then raise exception '% mismatches', n; end if;
+end $$;
+rollback;
+```
+
+既存データに owner / member / guest・非活性メンバー・公開 / 非公開 / DM / 参加外プロジェクトが揃っていなければ、同じトランザクション内で fixture を作ってから実行する。配信内容は、同じトランザクション内でメッセージやタスクを書き込み、`realtime.messages` の `topic like 'user:%'` の行（宛先・`channel_ids`・本文が載っていないこと）を確かめる。
 
 ### 認可
 
@@ -80,19 +136,23 @@ private channel の join は `realtime.messages` の RLS（Realtime Authorizatio
 
 ペイロード（`record`）から直接描画しない。表示に必要な JOIN（送信者名・アバター・リアクション集計・添付）を再現できず DTO 組み立てが API と二重化するため。ペイロードは `table` の判別だけに使い、**受信 → 該当 TanStack Query を invalidate → REST で再取得**する。楽観的更新はそのまま。
 
-Web は `apps/web/src/components/realtime/realtime-provider.tsx` を `app/(app)/layout.tsx` に 1 つ置き、1 WebSocket で `user:{me}` + 所属チャンネル分の `channel:{id}` を購読する（チャンネル一覧の結果に追従して join / leave）。
+Web は `apps/web/src/components/realtime/realtime-provider.tsx` を `app/(app)/layout.tsx` に 1 つ置き、1 WebSocket で `user:{me}` + 表示中のチャットの `channel:{id}` だけを購読する。チャットを表示するコンポーネント（`ChatThread`）が `useRealtimeChannel(channelId)` で登録し、表示をやめてから 5 秒後に leave する（行き来での join / leave の繰り返しを避ける）。leave したチャンネルのメッセージは古い扱い（`refetchType: 'none'`）にし、次に開いたときに取り直す。登録の数え方と通知の振り分けは `packages/shared/src/realtime-channel-activity.ts` で Web と Expo が共有する。
 
 | 受信 | 動作 |
 |---|---|
-| `channel:{id}` の `messages` | messages・channel-files を invalidate + チャンネル一覧（デバウンス 0.8s） |
-| `channel:{id}` の `message_reactions` / `tasks` | messages / tasks を invalidate |
+| `channel:{id}` の `messages` | messages・channel-files を invalidate |
+| `channel:{id}` の `message_reactions` / `message_blocks` / `tasks` | messages を invalidate |
+| `channel:{id}` の SUBSCRIBED | messages・channel-files を invalidate（表示開始から JOIN までの取りこぼし） |
+| `user:{me}` の `messages`（`channel_ids`） | チャンネル一覧（デバウンス 0.8s）+ JOIN 済みでないチャンネルの messages・channel-files |
+| `user:{me}` の `tasks`（`channel_ids`） | tasks（デバウンス）+ JOIN 済みでないチャンネルの messages（タスク化の印） |
 | `user:{me}` の `notifications` | notifications + チャンネル一覧（未参加チャンネル・新規 DM の活動を回収） |
 | `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications（他デバイス既読の即時同期） |
 | `user:{me}` の `channel_members` / `ai_nudges` | チャンネル一覧 / ai-nudges |
 
 - 購読前に `supabase.realtime.setAuth(accessToken)` を **await** する（未完了で join すると認可エラー）。トークン更新時も再設定。`channel:{id}` の join は `user:{me}` の SUBSCRIBED 後
 - `user:{me}` の（再）SUBSCRIBED 時に対象クエリを一括 invalidate して切断中の取りこぼしを回収する
-- Expo のネイティブチャットも同じトピックと方式（`apps/mobile/components/realtime-provider.tsx`）。WebView 画面は Web の実装がそのまま効く
+- Expo のネイティブチャットも同じトピックと方式（`apps/mobile/components/realtime-provider.tsx`。チャット画面が `useRealtimeChannel` で登録）。前面復帰時に一覧・通知・タスク・表示中のチャットを取り直す。WebView 画面は Web の実装がそのまま効く
+- 権限取消後: 宛先は送信時点で決まるため user トピックは即座に止まる。表示中のチャットの `channel:{id}` は join 時の認可なので、Realtime が JWT 更新で再評価するまで（最大で JWT の有効期間）届き得る
 
 ### ポーリングは置かない
 

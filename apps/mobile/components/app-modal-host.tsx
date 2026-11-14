@@ -11,6 +11,7 @@ import type { ThemePalette } from '../lib/theme'
 import { useAppAppearance } from './appearance-provider'
 import { useAppLocale, useT } from './locale-provider'
 import { CardBlock, type CardContext } from './message-card'
+import { useHoldOtaReload } from '../hooks/use-ota-foreground-update'
 
 type AppViewDto = { id: string; hash: string; view: unknown; appName: string; firstParty?: boolean; appIconUrl: string | null; mentionNames?: Record<string, string> }
 type FieldError = { code?: string; message?: string }
@@ -82,6 +83,8 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, FieldError>>({})
   const [formError, setFormError] = React.useState<string | null>(initialFormError)
   const [submitting, setSubmitting] = React.useState(false)
+  // 入力中の値はメモリにしか無い。開いている間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(true)
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: APP_VIEWS_QUERY_KEY })
   const removeFromCache = () => queryClient.setQueryData<AppViewDto[]>(APP_VIEWS_QUERY_KEY, (views) => views?.filter((view) => view.id !== dto.id))

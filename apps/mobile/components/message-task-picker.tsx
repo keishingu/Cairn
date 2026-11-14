@@ -1,4 +1,5 @@
 import React from 'react'
+import { useHoldOtaReload } from '../hooks/use-ota-foreground-update'
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -36,6 +37,8 @@ export function MessageTaskPickerModal({
   const insets = useSafeAreaInsets()
   const [rows, setRows] = React.useState<MessageTaskRow[]>([])
   const [submitting, setSubmitting] = React.useState(false)
+  // 選んだ行・編集したタスク名はメモリにしか無い。開いている間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(candidates !== null)
 
   React.useEffect(() => {
     if (candidates) setRows(initialMessageTaskRows(candidates))

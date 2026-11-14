@@ -4,6 +4,8 @@
 import type { MetadataRoute } from 'next'
 import { DOC_PAGES, DOCS_LOCALES, docPath } from './developers/_content/pages'
 
+export const dynamic = 'force-static'
+
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
@@ -11,6 +13,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date('2026-11-05'),
       changeFrequency: 'weekly',
       priority: 1,
+    },
+    {
+      url: 'https://oss-cairn.com/teams/migration',
+      lastModified: new Date('2026-11-05'),
+      changeFrequency: 'weekly',
+      priority: 0.8,
     },
     {
       url: 'https://oss-cairn.com/privacy',

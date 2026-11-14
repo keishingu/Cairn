@@ -19,6 +19,7 @@ import { useAppAppearance } from '../../../components/appearance-provider'
 import { useT } from '../../../components/locale-provider'
 import { useOfflineMessageQueue } from '../../../components/offline-message-queue-provider'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { useWorkspaceChannels, useWorkspaceDms } from '../../../hooks/use-chat-channels'
 import { useProjectChannels } from '../../../hooks/use-projects'
 import {
@@ -239,6 +240,9 @@ function Composer({
   const [sendError, setSendError] = React.useState<string | null>(null)
   // 再送で成功済みのファイルを二重にアップロードしないよう、ファイルごとの結果を残す
   const uploadedRef = React.useRef(new Map<string, string>())
+  // 編集したコメント・アップロード中や成功済みの結果はメモリにしか無い（受け取り箱に残るのは共有元の内容だけ）。
+  // その間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(content !== share.text || sending || upload.uploads.length > 0 || uploadedRef.current.size > 0)
 
   const canSend =
     !sending && offlineQueue.ready && (content.trim().length > 0 || share.files.length > 0)

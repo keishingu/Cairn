@@ -1,23 +1,30 @@
 const CACHE_NAME = 'cairn-v2';
 const SHELL_URLS = ['/chats', '/', '/auth/login'];
+// 開発時は登録側（service-worker-registrar.tsx）が ?dev=1 を付ける。dev サーバーのチャンクは
+// 内容が変わってもファイル名が変わらず、キャッシュから返すと編集が反映されないため、
+// 開発時はキャッシュを一切使わず、以前に溜めたキャッシュも消す（push 通知だけ動かす）
+const IS_DEV = new URL(self.location.href).searchParams.get('dev') === '1';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS))
-  );
+  if (!IS_DEV) {
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS))
+    );
+  }
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => IS_DEV || k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
+  if (IS_DEV) return;
   const { request } = event;
   const url = new URL(request.url);
 

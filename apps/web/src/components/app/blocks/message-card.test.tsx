@@ -217,6 +217,58 @@ describe('カード型メッセージの描画', () => {
     expect(screen.getAllByRole('button', { name: '投票' })[1]).not.toBeDisabled()
   })
 
+  it('古い版として断られたエラーは、取り直した最新のカードが届いても残す', async () => {
+    const onAction = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'card_changed' })))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('このカードは更新されました。内容を確認して、もう一度操作してください。')
+    expect(screen.getAllByRole('button', { name: '投票' })[0]).not.toBeDisabled()
+  })
+
+  it('古い版として断られる前に最新のカードが届いても、操作が届かなかったことを知らせる', async () => {
+    let reject: (err: unknown) => void = () => {}
+    const onAction = vi.fn(() => new Promise<void>((_, rej) => { reject = rej }))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!)
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    await act(async () => reject(Object.assign(new Error('x'), { code: 'card_changed' })))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
+  it('古い版のエラーの後に押し直したら、エラーを消してカードの書き換えでも戻さない', async () => {
+    const onAction = vi.fn()
+      .mockImplementationOnce(() => Promise.reject(Object.assign(new Error('x'), { code: 'card_changed' })))
+      .mockImplementationOnce(() => Promise.reject(Object.assign(new Error('x'), { code: 'app_timeout' })))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('最新のカードを取り直せなかったときは、その旨をカードの書き換え後も表示する', async () => {
+    const onAction = vi.fn(() => Promise.reject(Object.assign(new Error('x'), { code: 'card_refresh_failed' })))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!) })
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('このカードは更新されましたが、最新の内容を読み込めませんでした。もう一度お試しください。')
+  })
+
+  it('古い版として断られる前に押し直していたら、後の操作の送信中を解かずエラーも出さない', async () => {
+    let rejectFirst: (err: unknown) => void = () => {}
+    const onAction = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((_, rej) => { rejectFirst = rej }))
+      .mockImplementationOnce(() => new Promise<void>(() => {}))
+    const { rerender } = render(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r1" />)
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[0]!)
+    rerender(<MessageCard blocks={pollCardFixture} fallbackText="" onAction={onAction} revision="r2" />)
+    fireEvent.click(screen.getAllByRole('button', { name: '投票' })[1]!)
+    await act(async () => rejectFirst(Object.assign(new Error('x'), { code: 'card_changed' })))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '投票' })[1]).toHaveAttribute('aria-busy', 'true')
+  })
+
   it('届かなかった選択は元の選択に戻す', async () => {
     const blocks = [{
       type: 'actions',

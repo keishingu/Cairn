@@ -130,10 +130,29 @@ export async function GET(req: Request, { params }: RouteContext) {
       if (!wantOriginal && !optimizedPath) {
         return NextResponse.json({ error: '最適化済みPDFを取得できません。再試行してください' }, { status: 409 })
       }
-      const storagePath = wantOriginal ? file.storagePath : optimizedPath!
+      // 最適化版は署名 URL へ転送すると、ブラウザの PDF ビューアが Storage 上の UUID 名で保存してしまう。
+      // 他の添付と同じく API から登録時のファイル名つきで返す（最適化版は原本以下のサイズで、上限も他の添付と同じ）
+      if (!wantOriginal) {
+        const { data: optimized, error: optimizedError } = await supabase.storage
+          .from('chat-attachments')
+          .download(optimizedPath!)
+        if (optimizedError || !optimized) {
+          console.error('[/api/attachments/[fileId]] Optimized PDF download failed:', optimizedError)
+          return new NextResponse(null, { status: 502 })
+        }
+        return new NextResponse(optimized, {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': buildContentDisposition('inline', file.fileName),
+            // 転送していた頃と同じく、表示のたびに認可を確かめるためブラウザに保存させない
+            'Cache-Control': 'private, no-store',
+          },
+        })
+      }
+
       const { data: signed, error: signedError } = await supabase.storage
         .from('chat-attachments')
-        .createSignedUrl(storagePath, 60, wantOriginal ? { download: file.fileName } : undefined)
+        .createSignedUrl(file.storagePath, 60, { download: file.fileName })
       if (signedError || !signed) {
         console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
         return new NextResponse(null, { status: 502 })

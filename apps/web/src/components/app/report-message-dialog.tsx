@@ -73,7 +73,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
       >
         <ModalHeader icon="flag" title={t('Report message')} onClose={close} />
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
+          <p style={{ margin: 0, fontSize: 'var(--fs-md)', color: 'var(--text-2)', lineHeight: 1.7 }}>
             {t('Choose why you are reporting this message. The moderators will review it.')}
           </p>
           <div role="radiogroup" aria-label={t('Report reason')} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -82,7 +82,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
                 key={option.value}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                  padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 'var(--fs-md)',
                   color: 'var(--text)',
                   background: reason === option.value ? 'var(--accent-soft)' : 'transparent',
                   border: `1px solid ${reason === option.value ? 'var(--accent)' : 'var(--border)'}`,
@@ -101,7 +101,7 @@ export const ReportMessageDialog = ({ open, onSubmit, onClose }: ReportMessageDi
             ))}
           </div>
           {reason === 'other' && (
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--text-2)' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-2)' }}>
               {t('Details')}
               <textarea
                 className="form-control"

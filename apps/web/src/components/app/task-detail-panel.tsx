@@ -8,6 +8,7 @@ import { MarkdownContent } from './markdown-content'
 import { TaskDeleteDialog } from './task-delete-dialog'
 import { TaskFormFields } from './task-form-fields'
 import { usePatchTask, useTaskDetail } from '@/hooks/use-tasks'
+import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useLocale, useT } from '@/components/locale-provider'
@@ -23,71 +24,76 @@ interface TaskDetailPanelProps {
 }
 
 const sectionLabelStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 'var(--fs-sm)',
   fontWeight: 600,
   color: 'var(--text-2)',
 }
 
-/**
- * 入力中の Esc は編集の取り消しだけにして、パネルごと閉じない。
- * Modal（Radix）は document の capture で Esc を受けるため、より手前の window の capture で止める。
- */
-function useCancelEditOnEscape(active: boolean, onCancel: () => void) {
-  const onCancelRef = React.useRef(onCancel)
-  onCancelRef.current = onCancel
-  React.useEffect(() => {
-    if (!active) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      onCancelRef.current()
-    }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [active])
-}
-
 // ─── タイトル（クリックでその場編集） ─────────────────────────────
+// 明示保存: 保存ボタン / Enter で保存、キャンセルボタン / Esc で破棄。blur では何もしない
 
-const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string) => void }) => {
+const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string) => Promise<unknown> }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(title)
-  // Enter で確定したあとに blur が続いても二重に保存しない
-  const settledRef = React.useRef(false)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
-  useCancelEditOnEscape(editing, () => { settledRef.current = true; setEditing(false) })
+  const next = draft.trim()
+  const canSave = !saving && next !== '' && next !== title
+
+  const cancel = () => { setEditing(false); setError(null) }
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
+
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
 
   const startEdit = () => {
-    settledRef.current = false
     setDraft(title)
+    setError(null)
     setEditing(true)
   }
 
-  const commit = () => {
-    if (settledRef.current) return
-    settledRef.current = true
-    setEditing(false)
-    const next = draft.trim()
-    // 空のまま確定したら元の値へ戻す。変更がなければ保存しない
-    if (next === '' || next === title) return
-    onSave(next)
+  const save = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(next)
+      setEditing(false)
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t('Could not update the task'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (editing) {
     return (
-      <input
-        aria-label={t('Title')}
-        className="form-control"
-        value={draft}
-        maxLength={200}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); commit() } }}
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
-        style={{ ...fieldInputStyle(false), fontSize: 15, fontWeight: 700 }}
-      />
+      <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <input
+          aria-label={t('Title')}
+          className="form-control"
+          value={draft}
+          maxLength={200}
+          disabled={saving}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save() } }}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
+          style={{ ...fieldInputStyle(false), fontSize: 'var(--fs-xl)', fontWeight: 600 }}
+        />
+        {error && <InlineError>{error}</InlineError>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={!canSave}>
+            {saving ? t('Saving…') : t('Save')}
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -101,7 +107,7 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
       style={{
         width: '100%', textAlign: 'left', padding: '6px 8px', margin: '-6px -8px',
         border: 'none', borderRadius: 8, background: 'transparent', cursor: 'text',
-        fontFamily: 'inherit', fontSize: 16, fontWeight: 700, lineHeight: 1.45,
+        fontFamily: 'inherit', fontSize: 'var(--fs-xl)', fontWeight: 600, lineHeight: 1.45,
         color: 'var(--text)', overflowWrap: 'anywhere',
       }}
     >
@@ -112,20 +118,34 @@ const TitleEditor = ({ title, onSave }: { title: string; onSave: (title: string)
 
 // ─── 説明（Markdown 表示 / 編集） ─────────────────────────────────
 
-const DescriptionSection = ({ description, saving, error, onSave }: {
+const DescriptionSection = ({ description, saving, error, onSave, onDiscardError }: {
   description: string | null
   saving: boolean
   error: string | null
   onSave: (value: string | null, onSuccess: () => void) => void
+  /** 前回の保存失敗を消す（開き直し・キャンセルで古いエラーを出さない） */
+  onDiscardError: () => void
 }) => {
   const t = useT()
   const id = React.useId()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState('')
 
-  useCancelEditOnEscape(editing && !saving, () => setEditing(false))
+  const cancel = () => {
+    onDiscardError()
+    setEditing(false)
+  }
+
+  const wrapRef = React.useRef<HTMLDivElement>(null)
+  useCancelEditOnEscape(wrapRef, editing && !saving, cancel)
+
+  // 保存に失敗して入力欄が再び有効になったとき、フォーカスを戻す（無効化で外れるため。Esc で取り消せるように）
+  React.useEffect(() => {
+    if (!saving) wrapRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
+  }, [saving])
 
   const startEdit = () => {
+    onDiscardError()
     setDraft(description ?? '')
     setEditing(true)
   }
@@ -134,7 +154,7 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
     const next = draft.trim() === '' ? null : draft
     // 変更がなければ保存せず閉じる
     if (next === (description ?? null)) {
-      setEditing(false)
+      cancel()
       return
     }
     onSave(next, () => setEditing(false))
@@ -153,13 +173,21 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
       </div>
 
       {editing ? (
-        <>
+        <div ref={wrapRef}>
           <textarea
             id={`${id}-description`}
             className="form-control"
             value={draft}
             maxLength={DESCRIPTION_MAX_LENGTH}
+            disabled={saving}
             onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                if (!saving) handleSave()
+              }
+            }}
             placeholder={t('Write a description (Markdown supported)')}
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
@@ -167,14 +195,14 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
           />
           {error && <InlineError style={{ marginTop: 8 }}>{error}</InlineError>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <button type="button" className="btn btn-sm" onClick={() => setEditing(false)} disabled={saving}>{t('Cancel')}</button>
+            <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
             <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
               {saving ? t('Saving…') : t('Save')}
             </button>
           </div>
-        </>
+        </div>
       ) : description ? (
-        <div style={{ fontSize: 13.5, color: 'var(--text)', overflowWrap: 'anywhere' }}>
+        <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text)', overflowWrap: 'anywhere' }}>
           <MarkdownContent content={description} />
         </div>
       ) : (
@@ -184,7 +212,7 @@ const DescriptionSection = ({ description, saving, error, onSave }: {
           className="hover-bg"
           style={{
             width: '100%', padding: '12px', borderRadius: 8, border: '1px dashed var(--border-2)',
-            background: 'transparent', color: 'var(--text-3)', fontSize: 13, fontFamily: 'inherit',
+            background: 'transparent', color: 'var(--text-3)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
             cursor: 'pointer', textAlign: 'left',
           }}
         >
@@ -208,7 +236,7 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
     return (
       <section>
         <div style={{ ...sectionLabelStyle, marginBottom: 6 }}>{t('Original message')}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('The original message is no longer available')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{t('The original message is no longer available')}</div>
       </section>
     )
   }
@@ -234,12 +262,12 @@ const SourceMessageSection = ({ task, onNavigate }: { task: TaskDetailDto; onNav
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <Avatar name={message.senderName} url={message.senderAvatarUrl} size={22} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{message.senderName}</span>
-          <time dateTime={message.createdAt} style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+          <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>{message.senderName}</span>
+          <time dateTime={message.createdAt} style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
             {new Date(message.createdAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
           </time>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
           <MarkdownContent content={message.content} fontSize={13} />
         </div>
       </blockquote>
@@ -254,7 +282,15 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
   const { locale } = useLocale()
   const { data: task, isLoading, isError, error, refetch } = useTaskDetail(taskId)
   const patchFields = usePatchTask()
+  // タイトルの明示保存用。失敗はタイトル編集欄が表示するので、即保存項目のエラー欄（patchFields）とは分ける
+  const patchTitle = usePatchTask()
   const patchDescription = usePatchTask()
+  // 別のタスクへ切り替えたとき、前のタスクの説明の保存失敗を持ち越さない
+  const resetDescriptionRef = React.useRef(patchDescription.reset)
+  resetDescriptionRef.current = patchDescription.reset
+  React.useEffect(() => {
+    resetDescriptionRef.current()
+  }, [taskId])
   const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   const savePatch = (patch: Parameters<typeof patchFields.mutate>[0]['patch']) => {
@@ -295,7 +331,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
           }}
         >
           {isLoading ? (
-            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{t('Loading...')}</div>
           ) : isError || !task ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
               <InlineError variant="box" style={{ alignSelf: 'stretch' }}>
@@ -305,7 +341,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
             </div>
           ) : (
             <>
-              <TitleEditor title={task.title} onSave={title => savePatch({ title })} />
+              <TitleEditor key={`title:${task.id}`} title={task.title} onSave={title => patchTitle.mutateAsync({ id: taskId, patch: { title } })} />
 
               {patchFields.isError && (
                 <InlineError variant="box" onDismiss={() => patchFields.reset()}>
@@ -335,12 +371,14 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
               </div>
 
               <DescriptionSection
+                key={`description:${task.id}`}
                 description={task.description}
                 saving={patchDescription.isPending}
                 error={patchDescription.isError
                   ? (patchDescription.error instanceof Error ? patchDescription.error.message : t('Could not update the task'))
                   : null}
                 onSave={handleSaveDescription}
+                onDiscardError={() => patchDescription.reset()}
               />
 
               <SourceMessageSection task={task} onNavigate={onClose} />
@@ -351,7 +389,7 @@ export const TaskDetailPanel = ({ taskId, onClose, isMobile = false }: TaskDetai
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 }}
               >
-                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                   {t('Created by {name} on {date}', {
                     name: task.createdByName ?? t('Unknown member'),
                     date: new Date(task.createdAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }),

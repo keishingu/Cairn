@@ -15,6 +15,8 @@ describe('RootRoute', () => {
     const { response, html } = await fetchLp()
 
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(response.headers.get('cache-control')).toBe('public, s-maxage=3600, stale-while-revalidate=86400')
+    expect(html).toContain("location.replace('/chats')")
     expect(html).toContain('<title>Cairn')
     expect(html).toContain('property="og:image"')
   })
@@ -30,17 +32,40 @@ describe('RootRoute', () => {
     }
   })
 
-  it('Teams 移行の告知はヒーローより前にあり、取り込みを利用可能と書かない', async () => {
+  it('ストアの公式バッジを日英それぞれの言語で表示する', async () => {
+    const { html } = await fetchLp()
+
+    for (const src of ['app-store-ja.svg', 'app-store-en.svg', 'google-play-ja.png', 'google-play-en.png']) {
+      expect(html).toContain(`src="/badges/${src}"`)
+    }
+  })
+
+  it('Teams 移行の告知はヒーローより前にあり、会話履歴とメディアを引き継げると伝える', async () => {
     const { html } = await fetchLp()
 
     const campaign = html.indexOf('id="teams-migration"')
     expect(campaign).toBeGreaterThan(-1)
     expect(campaign).toBeLessThan(html.indexOf('id="stay"'))
     expect(html).toContain('data-cta="teams-migration-banner"')
-    expect(html).toContain('href="https://moruit.com/?utm_source=oss-cairn&amp;utm_medium=lp&amp;utm_campaign=teams-migration&amp;utm_content=banner#consultation"')
+    expect(html).toContain('data-cta="teams-migration-banner" href="https://timerex.net/s/dongmin.park_471b/579387d1/"')
     expect(html).toContain('data-cta="teams-migration-mail" href="mailto:info@orikata.co.jp?subject=')
-    expect(html).toContain('お問い合わせ内容に「Teams 移行」とお書きください。')
-    expect(html).not.toMatch(/インポートできます|取り込めます|完全に移行/)
+    expect(html).toContain('ご予約・メールの際は「Teams 移行」とお書きください。')
+    expect(html).toContain('data-cta="teams-migration-detail" href="/teams/migration"')
+    expect(html).toContain('会話履歴・メディアを引き継いで移行できます')
+    expect(html).not.toMatch(/完全に移行|すべて移行/)
+  })
+
+  it('チャットからのタスク作成は「タスク化する」で説明し、廃止したチェックボックス記法と回数表記を残さない', async () => {
+    const { html } = await fetchLp()
+
+    expect(html).toContain('タスク化する')
+    expect(html).not.toMatch(/☑ がタスクになる|完了のチェックはチャットとタスク一覧で同期|最大 月 30 回/)
+  })
+
+  it('AI PMO と外部リポジトリの固有名を LP に書かない', async () => {
+    const { html } = await fetchLp()
+
+    expect(html).not.toMatch(/AI PMO|ナッジ|Rack/)
   })
 
   it('PostHog のトークンが無ければ計測設定を埋め込まない', async () => {

@@ -43,6 +43,8 @@ export interface MessageDto {
   /** アプリ（Bot）の発言なら、そのアプリ。人間の発言なら null */
   /** firstParty はファーストパーティのアプリ（名前を表示言語に翻訳して出す） */
   senderApp?: { name: string; firstParty?: boolean; iconUrl: string | null; uninstalled: boolean } | null
+  /** 外部チャットから取り込んだ過去ログ。編集・削除できない（docs/import-design.md） */
+  imported?: boolean
 }
 
 // サーバーが read 時に `<@id|表示名>` へ解決済みのため最新名を表示できる。

@@ -21,6 +21,7 @@ const { mockGetAuthContext, mockDb } = vi.hoisted(() => {
 })
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
+vi.mock('@/lib/chat/last-message-at', () => ({ fetchLastMessageAt: vi.fn(async () => new Map()) }))
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,

@@ -123,7 +123,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                 }}
               >
                 <Icon name={v.icon} size={16} color={active ? 'var(--accent-text)' : 'var(--text-3)'} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: active ? 700 : 500 }}>{t(v.label)}</span>
+                <span style={{ flex: 1, fontSize: 'var(--fs-lg)', fontWeight: active ? 600 : 500 }}>{t(v.label)}</span>
                 {active && <Icon name="check" size={14} color="var(--accent-text)" strokeWidth={2.5} />}
               </button>
             )
@@ -151,23 +151,23 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                background: workspace?.logoUrl ? 'var(--border)' : 'linear-gradient(135deg, #10B981, #0891B2)',
+                background: workspace?.logoUrl ? 'var(--border)' : 'var(--accent)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', overflow: 'hidden',
+                color: 'var(--on-accent)', overflow: 'hidden',
               }}>
                 {workspace?.logoUrl
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={workspace.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : workspace?.name
-                    ? <span style={{ fontSize: 15, fontWeight: 700 }}>{workspace.name.slice(0, 1)}</span>
+                    ? <span style={{ fontSize: 'var(--fs-xl)', fontWeight: 600 }}>{workspace.name.slice(0, 1)}</span>
                     : <Icon name="mountain" size={16} strokeWidth={2.2} />
                 }
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {workspace?.name ?? '…'}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.4 }}>{t('Workspace')}</div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.4 }}>{t('Workspace')}</div>
               </div>
             </div>
 
@@ -178,11 +178,11 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
             }}>
               <Avatar name={me?.displayName ?? ''} url={me?.avatarUrl ?? null} size={32} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {me?.displayName ?? '…'}
                 </div>
                 {me?.email && (
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {me.email}
                   </div>
                 )}
@@ -212,7 +212,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
               }}>
                 <Icon name={item.icon} size={18} color="var(--text-2)" />
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{t(item.label)}</span>
+              <span style={{ fontSize: 'var(--fs-xl)', fontWeight: 500 }}>{t(item.label)}</span>
               <Icon name="chevRight" size={14} color="var(--text-4)" style={{ marginLeft: 'auto' }} />
             </button>
           ))}
@@ -272,7 +272,7 @@ export function MobileNav({ page, projectsView, onNavigate, onChangeView }: Mobi
                   </span>
                 )}
               </div>
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, fontFamily: 'inherit' }}>{tab.label}</span>
+              <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: active ? 600 : 500, fontFamily: 'inherit' }}>{tab.label}</span>
             </button>
           )
         })}

@@ -57,16 +57,14 @@ async function fetchBadgeCount(): Promise<number> {
  * Service Worker が付けた既存バッジを誤って消さないため）。
  *
  * マウント直後にキャッシュだけで値を返さない（`isFetchedAfterMount` で判定）。
- * app 全体の 60s staleTime を継承すると、公開ルート（/invite 等）滞在中に
- * push で SW がバッジを更新→1分以内に復帰した際、古いキャッシュの 0 を返して
- * フレッシュ取得前にバッジを消してしまう。`staleTime: 0` でマウント毎に必ず
- * 再取得し、完了までは `null`（不明）を返す。
+ * 60 秒以内の再マウントでは再取得しない。そのあいだは `null`（不明）のままにし、
+ * Service Worker が付けたバッジを古い 0 で消さない。Realtime の invalidate は staleTime を待たない。
  */
 export function useAppBadgeCount(): number | null {
   const { data, isFetchedAfterMount } = useQuery({
     queryKey: ['notifications', 'badge-count'],
     queryFn: fetchBadgeCount,
-    staleTime: 0,
+    staleTime: 60_000,
   })
   if (!isFetchedAfterMount) return null
   return data ?? null

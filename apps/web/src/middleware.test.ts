@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { shouldRunMiddleware } from './middleware'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getClaims = vi.fn()
@@ -21,6 +22,35 @@ function unauthed() {
 function makeRequest(pathname: string): NextRequest {
   return new NextRequest(new URL(pathname, 'http://localhost:3000'))
 }
+
+describe('middleware matcher', () => {
+  it('公開ページと静的アセットでは Middleware を走らせない', () => {
+    for (const path of [
+      '/',
+      '/privacy',
+      '/terms',
+      '/developers',
+      '/developers/blocks',
+      '/developers/en/web-api',
+      '/teams/migration',
+      '/robots.txt',
+      '/sitemap.xml',
+      '/cairn-lp.js',
+      '/badges/app-store-ja.svg',
+      '/.well-known/oauth-authorization-server',
+      '/oidc/jwks.json',
+      '/api/me',
+    ]) {
+      expect(shouldRunMiddleware(path)).toBe(false)
+    }
+  })
+
+  it('認証が要る画面と、公開プレフィックスに見えないパスでは Middleware を走らせる', () => {
+    for (const path of ['/projects', '/chats', '/auth/login', '/invite/abc', '/developers-private', '/oidc/authorize', '/lp']) {
+      expect(shouldRunMiddleware(path)).toBe(true)
+    }
+  })
+})
 
 describe('middleware', () => {
   beforeEach(() => {
@@ -109,6 +139,15 @@ describe('middleware', () => {
     // 前方一致で別のパスまで公開しない
     const res = await middleware(makeRequest('/developers-private'))
     expect(res.headers.get('location')).toContain('/auth/login')
+  })
+
+  it('Teams 移行の案内ページは未認証でも認証済みでもそのまま表示する', async () => {
+    const { middleware } = await import('./middleware')
+    for (const state of [unauthed(), authed()]) {
+      getClaims.mockResolvedValue(state)
+      const res = await middleware(makeRequest('/teams/migration?utm_source=google&gclid=abc'))
+      expect(res.headers.get('location')).toBeNull()
+    }
   })
 
   it('未認証で保護ルートにアクセスすると /auth/login にリダイレクトされる', async () => {

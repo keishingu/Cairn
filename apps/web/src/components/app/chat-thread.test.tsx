@@ -44,6 +44,8 @@ const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead
     initialMessageId: null as string | null,
     historyMessages: undefined as Array<Record<string, unknown>> | undefined,
     historyIsError: false,
+    emptyChannel: false,
+    latestMessagesFetching: false,
     workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' | 'guest' }>,
     projectChannels: [] as Array<{ channelId: string; projectId: string }>,
     projectChannelsResolved: true,
@@ -68,7 +70,7 @@ vi.mock('@/lib/chat/client', () => ({
   useChannelMessageHistory: () => ({ data: chatThreadState.historyMessages, isFetched: true, isLoading: false, isError: chatThreadState.historyIsError }),
   useChannelMembers: () => ({ data: [] }),
   useChannelMessages: () => ({
-    data: [{
+    data: chatThreadState.emptyChannel ? [] : [{
       id: 'message-1', content: 'hello', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-23T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
       replyTo: null, bookmarked: false, linkedTasks: [], blocked: false,
@@ -76,6 +78,7 @@ vi.mock('@/lib/chat/client', () => ({
     isLoading: false,
     isError: false,
     isSuccess: true,
+    isFetching: chatThreadState.latestMessagesFetching,
     error: null,
   }),
   useDeleteMessage: () => ({ mutate: vi.fn() }),
@@ -83,6 +86,7 @@ vi.mock('@/lib/chat/client', () => ({
   useEnsureMessageLoaded: () => vi.fn(),
   useLoadOlderChannelMessages: () => ({ loadOlder: vi.fn(), hasMore: false, isLoadingOlder: false, error: null }),
   useMarkChannelRead: () => ({ mutate: markChannelRead }),
+  useRefreshChannelMessage: () => vi.fn(() => Promise.resolve()),
   useProjectChannels: () => ({
     data: chatThreadState.projectChannels,
     isSuccess: chatThreadState.projectChannelsResolved,
@@ -698,6 +702,50 @@ describe('ChatMessageの「スレッドに切り出す」メニュー', () => {
   })
 })
 
+describe('取り込んだ過去ログの編集・削除', () => {
+  const ownProps = {
+    messageId: 'message-1',
+    messageType: 'text' as const,
+    senderId: 'user-1',
+    currentUserId: 'user-1',
+    senderName: 'Alice',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    isEdited: false,
+    content: '過去の投稿',
+    reactions: [],
+    attachments: [],
+    replyTo: null,
+    bookmarked: false,
+    onReact: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onCheckboxToggle: vi.fn(),
+    onReply: vi.fn(),
+    onBookmark: vi.fn(),
+    onMakeTask: vi.fn(),
+    onJumpToMessage: vi.fn(),
+    onCopyLink: vi.fn(),
+    onImageClick: vi.fn(),
+    isMobile: true,
+  }
+
+  it('自分の投稿ならキーボードの削除で確認ダイアログを出す', () => {
+    render(<ChatMessage {...ownProps} />)
+    act(() => { window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: 'message-1' })) })
+    expect(screen.getByText('このメッセージを削除しますか？この操作は取り消せません。')).toBeInTheDocument()
+  })
+
+  it('紐づけで自分の投稿になった取り込みの過去ログは、キーボードの編集・削除でも開かない', () => {
+    render(<ChatMessage {...ownProps} imported />)
+    act(() => {
+      window.dispatchEvent(new CustomEvent('cairn:delete-message', { detail: 'message-1' }))
+      window.dispatchEvent(new CustomEvent('cairn:edit-message', { detail: 'message-1' }))
+    })
+    expect(screen.queryByText('このメッセージを削除しますか？この操作は取り消せません。')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})
+
 describe('ChatMessageのアバターからメンバー詳細を開く', () => {
   const baseProps = {
     messageId: 'message-1',
@@ -975,6 +1023,8 @@ describe('ChatThreadの初期既読', () => {
     chatThreadState.initialMessageId = null
     chatThreadState.historyMessages = undefined
     chatThreadState.historyIsError = false
+    chatThreadState.emptyChannel = false
+    chatThreadState.latestMessagesFetching = false
     localStorage.clear()
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
@@ -997,6 +1047,44 @@ describe('ChatThreadの初期既読', () => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     act(() => document.dispatchEvent(new Event('visibilitychange')))
 
+    expect(markChannelRead).toHaveBeenCalledWith('channel-1')
+  })
+
+  it('メッセージが削除されて空になったチャンネルでも、開いたら既読にする', () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    chatThreadState.emptyChannel = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(markChannelRead).toHaveBeenCalledTimes(1)
+    expect(markChannelRead).toHaveBeenCalledWith('channel-1')
+  })
+
+  it('空のキャッシュを取り直している間は既読にせず、取得が終わって空と確定してから既読にする', () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    chatThreadState.emptyChannel = true
+    chatThreadState.latestMessagesFetching = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(markChannelRead).not.toHaveBeenCalled()
+
+    chatThreadState.latestMessagesFetching = false
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatThread channelId="channel-1" initialUnreadPosition isMobile />
+      </QueryClientProvider>,
+    )
+
+    expect(markChannelRead).toHaveBeenCalledTimes(1)
     expect(markChannelRead).toHaveBeenCalledWith('channel-1')
   })
 

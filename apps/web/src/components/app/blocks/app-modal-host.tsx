@@ -41,7 +41,7 @@ export function AppModalHost() {
   if (query.isError && !current) {
     // 開いたはずのモーダルを黙って出さないままにしない
     return (
-      <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>
+      <div role="alert" style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>
         {t('Could not load the app form.')}
         {/* 一時的な通信・サーバーの失敗でも全画面に出続けないよう、その場で取り直せるようにする */}
         <button type="button" className="btn btn-sm" onClick={() => void query.refetch()} disabled={query.isFetching}>{t('Retry')}</button>
@@ -150,12 +150,12 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
     <Modal onClose={() => void close()} label={title}>
       <div className="card" style={{ width: 480, maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{appName}</div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{title}</h2>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-3)' }}>{appName}</div>
+          <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
         </div>
         <div style={{ padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!modal ? (
-            <div role="alert" style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('This form cannot be shown in this version. Reload the page to see it.')}</div>
+            <div role="alert" style={{ fontSize: 'var(--fs-md)', color: 'var(--red-text)' }}>{t('This form cannot be shown in this version. Reload the page to see it.')}</div>
           ) : (
             <>
               {modal.blocks.map((block) => (
@@ -172,13 +172,13 @@ function AppModal({ dto, initialFormError, onViewChanged, onSubmitStart }: { dto
                 />
               ))}
               {modal.hasUnsupported && (
-                <div role="note" style={{ fontSize: 12, color: 'var(--text-3)', border: '1px dashed var(--border-2)', borderRadius: 6, padding: '6px 8px' }}>
+                <div role="note" style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', border: '1px dashed var(--border-2)', borderRadius: 6, padding: '6px 8px' }}>
                   {t('Part of this form cannot be shown in this version, so it cannot be submitted. Reload the page to see it.')}
                 </div>
               )}
             </>
           )}
-          {formError && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{formError}</div>}
+          {formError && <div role="alert" style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{formError}</div>}
         </div>
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--divider)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" className="btn" onClick={() => void close()} disabled={submitting}>{modal?.close ?? t('Cancel')}</button>
@@ -200,13 +200,13 @@ function ModalBlock({ block, value, error, mentionNames, onChange }: { block: Re
   const id = `app-modal-${block.blockId}`
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label htmlFor={id} style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+      <label htmlFor={id} style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>
         {block.label}
-        {block.optional && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: 'var(--text-3)' }}>{t('Optional')}</span>}
+        {block.optional && <span style={{ marginLeft: 6, fontSize: 'var(--fs-xs)', fontWeight: 400, color: 'var(--text-3)' }}>{t('Optional')}</span>}
       </label>
       <InputElement id={id} element={block.element} value={value} invalid={!!error} onChange={onChange} />
-      {block.hint && <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{block.hint}</div>}
-      {error && <div role="alert" style={{ fontSize: 12, color: 'var(--red-text)' }}>{viewFieldErrorMessage(error, t)}</div>}
+      {block.hint && <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{block.hint}</div>}
+      {error && <div role="alert" style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{viewFieldErrorMessage(error, t)}</div>}
     </div>
   )
 }
@@ -215,7 +215,7 @@ function InputElement({ id, element, value, invalid, onChange }: { id: string; e
   const t = useT()
   const style: React.CSSProperties = {
     width: '100%', boxSizing: 'border-box', border: `1px solid ${invalid ? 'var(--red)' : 'var(--border)'}`, borderRadius: 8,
-    background: 'var(--card)', color: 'var(--text)', fontSize: 13, padding: '7px 10px', fontFamily: 'inherit',
+    background: 'var(--card)', color: 'var(--text)', fontSize: 'var(--fs-md)', padding: '7px 10px', fontFamily: 'inherit',
   }
   if (element.type === 'static_select') {
     return (

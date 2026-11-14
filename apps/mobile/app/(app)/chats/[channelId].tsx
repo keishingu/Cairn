@@ -39,6 +39,8 @@ import type { ThemePalette } from '../../../lib/theme'
 import { useAppAppearance } from '../../../components/appearance-provider'
 import { ChatImageViewer } from '../../../components/chat-image-viewer'
 import { ChatInfoDrawer } from '../../../components/chat-info-drawer'
+import { useRealtimeChannel } from '../../../components/realtime-provider'
+import { useHoldOtaReload } from '../../../hooks/use-ota-foreground-update'
 import { resolveViewerImages } from '../../../lib/image-viewer-navigation'
 import { ChatMarkdownViewer } from '../../../components/chat-markdown-viewer'
 import { ChatOfficeViewer } from '../../../components/chat-office-viewer'
@@ -48,6 +50,8 @@ import { MessageCard, type CardAction } from '../../../components/message-card'
 import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
+import { MessageGalleryPickerModal, type MessageGalleryPickerState } from '../../../components/message-gallery-picker'
+import { galleryImagesOf } from '../../../lib/message-gallery'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import type { ChatInfoFileDto } from '../../../hooks/use-chat-info'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -298,6 +302,7 @@ function ChatMessageRow({
   onOpenTask,
   onShowTasks,
   onJumpToMessage,
+  onCardStale,
 }: {
   message: MessageDto
   palette: Palette
@@ -315,6 +320,8 @@ function ChatMessageRow({
   onShowTasks: (tasks: MessageDto['linkedTasks']) => void
   /** 返信の引用をタップしたときに、返信元のメッセージへ移動する */
   onJumpToMessage: (messageId: string) => void
+  /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
+  onCardStale: () => Promise<void>
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -322,7 +329,7 @@ function ChatMessageRow({
   // カードのメンションは、サーバーが解決した名前（非活性のメンバーを含む）を優先し、無ければ現在のメンバー一覧で引く
   // カードの操作はアプリへ届ける。結果のカードはアプリの chat.update が Realtime で届いて置き換わる
   const { locale } = useAppLocale()
-  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale), [message.id, message.blocksRevision, locale])
+  const handleCardAction = React.useCallback((action: CardAction) => postCardAction(message.id, message.blocksRevision ?? '', action, locale, onCardStale), [message.id, message.blocksRevision, locale, onCardStale])
   const cardMentionNames = React.useMemo(() => {
     if (!message.mentionNames) return mentionNames
     const merged = new Map(mentionNames)
@@ -726,6 +733,12 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets()
   const { palette } = useAppAppearance()
   const messagesQuery = useMessages(channelId ?? null)
+  // カードの操作が古い版として断られたら、このチャンネルのメッセージ（履歴表示の分も含む）を取り直す。
+  // Realtime の通知を取りこぼしていても、次の押下は最新のカードで送れるようにする
+  // 読み込み済みのページはすべて取り直される（useInfiniteQuery）。取り直しの失敗はカードの下にエラーとして出すため throwOnError にする
+  const handleCardStale = React.useCallback(async () => {
+    if (channelId) await queryClient.invalidateQueries({ queryKey: ['messages', channelId] }, { throwOnError: true })
+  }, [channelId, queryClient])
   const messagesRead = useOfflineRead(
     { type: 'messages', channelId: channelId ?? '' },
     messagesQuery,
@@ -811,6 +824,8 @@ export default function ChatThreadScreen() {
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
   const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
+  const [galleryPicker, setGalleryPicker] = React.useState<(MessageGalleryPickerState & { messageId: string }) | null>(null)
+  const [galleryPickerError, setGalleryPickerError] = React.useState<string | null>(null)
   const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
@@ -1013,10 +1028,15 @@ export default function ChatThreadScreen() {
   channelIdRef.current = channelId
   const draftRef = React.useRef(draft)
   draftRef.current = draft
+  // 下書きは端末に保存していないため、未送信の入力や添付がある間は前面復帰時の更新の適用（再読み込み）を止める
+  useHoldOtaReload(draft.trim().length > 0 || upload.uploads.length > 0)
 
   // チャットのスタックは他のタブへ切り替えてもアンマウントされない。
   // Realtimeによるキャッシュ更新があっても、フォーカスが外れている間は既読化を止める。
   const [isFocused, setIsFocused] = React.useState(true)
+  // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）。
+  // 他のタブへ移ってもアンマウントされないため、フォーカスが外れたら登録を外して猶予後に購読をやめる
+  useRealtimeChannel(isFocused ? channelId ?? null : null)
   const goBackToList = React.useCallback(() => {
     router.dismissTo('/(app)/chats')
   }, [router])
@@ -1111,6 +1131,8 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setReactionPeople(null)
+    setGalleryPicker(null)
+    setGalleryPickerError(null)
     setAttachmentPreview(null)
     setProfileTarget(null)
     setProfilePending(null)
@@ -1143,14 +1165,15 @@ export default function ChatThreadScreen() {
       messagesQuery.isError ||
       messagesRead.stale ||
       // 過去のメッセージを見ている間は、まだ見ていない最新の発言まで既読にしない（Web と同じ）
-      isHistoryView ||
-      messages.length === 0
+      isHistoryView
     )
       return
     if (confirmedFetchedChannelIdRef.current !== channelId) return
     if (markReadRef.current.isPending) return
-    const lastId = messages[messages.length - 1]?.id
-    if (!lastId || lastReadMessageIdRef.current === lastId) return
+    // 空のチャンネルでも一度は既読にする。削除で空になったチャンネルに残った未読メンション数を、
+    // 開いた時点でサーバーに数え直させるため
+    const lastId = messages[messages.length - 1]?.id ?? `empty:${channelId}`
+    if (lastReadMessageIdRef.current === lastId) return
     // 成功した場合のみ ref を進める。失敗時は次のポーリングで同じメッセージに対して再試行する
     markReadRef.current.mutate(undefined, {
       onSuccess: () => {
@@ -1353,6 +1376,84 @@ export default function ChatThreadScreen() {
     }
   }
 
+  const openProjectGallery = (id: string) => {
+    router.push({ pathname: '/(app)/projects/[id]', params: { id, tab: 'gallery' } })
+  }
+
+  // 選んだ画像をプロジェクトのギャラリーへ追加する。成功したら true。失敗は sendError（シートからはシート内）に出す。
+  const addImagesToGallery = async (messageId: string, fileIds: string[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setGalleryPickerError : setSendError
+    setSendError(null)
+    setGalleryPickerError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${messageId}/gallery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds }),
+      })
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        projectId?: string
+        addedCount?: number
+      }
+      const addedProjectId = data.projectId
+      if (!response.ok || typeof addedProjectId !== 'string' || typeof data.addedCount !== 'number') {
+        reportError(data.error ?? t('Could not add to the gallery'))
+        return false
+      }
+      const title =
+        data.addedCount === 0
+          ? t('Already in the gallery')
+          : data.addedCount === 1
+            ? t('Added to the gallery')
+            : t('Added {count} photos to the gallery', { count: data.addedCount })
+      Alert.alert(title, undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => openProjectGallery(addedProjectId) },
+      ])
+      return true
+    } catch {
+      reportError(t('Could not add to the gallery'))
+      return false
+    }
+  }
+
+  // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶシートを出す（Web・タスク化と同じ流れ）
+  const addToGallery = async (message: MessageDto) => {
+    const menuDismissed = waitActionMenuDismissed()
+    setActionTarget(null)
+    setSendError(null)
+    const images = galleryImagesOf(message.attachments)
+    if (images.length === 0) return
+    // 取得中にチャンネルを切り替えたら、前のチャンネルの結果でシートを開かない
+    const startedChannelId = channelId
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/gallery`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string; addedFileIds?: unknown }
+      if (previousChannelIdRef.current !== startedChannelId) return
+      if (!response.ok || !Array.isArray(data.addedFileIds)) {
+        setSendError(data.error ?? t('Could not add to the gallery'))
+        return
+      }
+      const addedFileIds = data.addedFileIds.filter((id): id is string => typeof id === 'string')
+      const added = new Set(addedFileIds)
+      const open = images.filter((image) => !added.has(image.fileId))
+      if (open.length === 0) {
+        Alert.alert(t('Already in the gallery'))
+      } else if (images.length === 1 && open[0]) {
+        await addImagesToGallery(message.id, [open[0].fileId])
+      } else {
+        // iOS は操作メニューが閉じ終わる前に別の Modal を出すと表示が捨てられる
+        await menuDismissed
+        if (previousChannelIdRef.current !== startedChannelId) return
+        setGalleryPickerError(null)
+        setGalleryPicker({ messageId: message.id, images, addedFileIds })
+      }
+    } catch {
+      setSendError(t('Could not add to the gallery'))
+    }
+  }
+
   const report = async (
     message: MessageDto,
     reason: 'harassment' | 'discriminatory' | 'sexual' | 'violence' | 'spam' | 'other',
@@ -1372,7 +1473,8 @@ export default function ChatThreadScreen() {
     }
     // 他人のメッセージ長押しメニューにブロックを置かないため、報告後にブロックの導線を出す（App Store 1.2）
     // アプリ（Bot）はユーザーではないのでブロックの対象にしない
-    if (message.senderId === me?.id || message.blocked || message.senderApp) {
+    // 取り込んだ過去ログの送信者は紐づけた本人か取り込み用のプロフィールなので、ブロックの対象にしない
+    if (message.senderId === me?.id || message.blocked || message.senderApp || message.imported) {
       Alert.alert(t('Reported'), t('The moderators will review it.'))
       return
     }
@@ -1793,6 +1895,14 @@ export default function ChatThreadScreen() {
 
   // iOS は閉じかけの操作メニューの上に別の Modal を出すと表示が捨てられるため、メニューが閉じ終えてから（onDismiss で）開く
   const pendingSelectTextRef = React.useRef<string | null>(null)
+  const actionMenuDismissedRef = React.useRef<(() => void) | null>(null)
+  // 操作メニューが閉じ終わるのを待つ。onDismiss は iOS でしか呼ばれないので、Android はすぐ解決する
+  const waitActionMenuDismissed = (): Promise<void> => {
+    if (Platform.OS !== 'ios') return Promise.resolve()
+    return new Promise((resolve) => {
+      actionMenuDismissedRef.current = resolve
+    })
+  }
   const beginSelectText = (message: MessageDto) => {
     setActionTarget(null)
     const text = parseMentions(message.content, t)
@@ -1984,6 +2094,7 @@ export default function ChatThreadScreen() {
                         onOpenTask={openTask}
                         onShowTasks={setLinkedTasksSheet}
                         onJumpToMessage={jumpToMessage}
+                        onCardStale={handleCardStale}
                         {...(attachmentAuth ? { attachmentAuth } : {})}
                       />
                     </SwipeToReply>
@@ -2395,6 +2506,8 @@ export default function ChatThreadScreen() {
           animationType="fade"
           onRequestClose={() => setActionTarget(null)}
           onDismiss={() => {
+            actionMenuDismissedRef.current?.()
+            actionMenuDismissedRef.current = null
             const pending = pendingSelectTextRef.current
             pendingSelectTextRef.current = null
             if (pending !== null) setSelectableText(pending)
@@ -2433,7 +2546,8 @@ export default function ChatThreadScreen() {
                   }}
                 />
               )}
-              {actionTarget?.senderId === me?.id && (
+              {/* 取り込んだ過去ログは本人でも編集・削除できない（API も拒否する） */}
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported && (
                 <ActionButton
                   icon="create-outline"
                   label={t('Edit')}
@@ -2463,6 +2577,15 @@ export default function ChatThreadScreen() {
                 palette={palette}
                 onPress={() => actionTarget && void makeTask(actionTarget)}
               />
+              {/* プロジェクトのチャンネルで画像の添付があるときだけ（追加先はそのプロジェクト） */}
+              {projectId && actionTarget && actionTarget.messageType !== 'system' && galleryImagesOf(actionTarget.attachments).length > 0 && (
+                <ActionButton
+                  icon="images-outline"
+                  label={t('Add to the gallery')}
+                  palette={palette}
+                  onPress={() => void addToGallery(actionTarget)}
+                />
+              )}
               <ActionButton
                 icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
                 label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
@@ -2502,7 +2625,7 @@ export default function ChatThreadScreen() {
                     }}
                   />
                 )}
-              {actionTarget?.senderId === me?.id ? (
+              {actionTarget?.senderId === me?.id && !actionTarget?.imported ? (
                 <ActionButton
                   icon="trash-outline"
                   label={t('Delete')}
@@ -2647,6 +2770,17 @@ export default function ChatThreadScreen() {
           onClose={() => {
             setTaskPicker(null)
             setTaskPickerError(null)
+          }}
+        />
+        <MessageGalleryPickerModal
+          picker={galleryPicker}
+          auth={attachmentAuth}
+          palette={palette}
+          onSubmit={(fileIds) => (galleryPicker ? addImagesToGallery(galleryPicker.messageId, fileIds, true) : Promise.resolve(false))}
+          error={galleryPickerError}
+          onClose={() => {
+            setGalleryPicker(null)
+            setGalleryPickerError(null)
           }}
         />
         <LinkedTasksModal

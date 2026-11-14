@@ -53,15 +53,15 @@ const KanbanCard = ({ project, barColor, onClick, onDragStart, onDragEnd, draggi
         ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: 4 }}>
+      <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)', lineHeight: 1.3, marginBottom: 4 }}>
         {project.title}
       </div>
       {dateStr && (
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 10 }}>{dateStr}</div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <AvatarStack names={project.memberNames} size={20} max={4} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-xs)', color: 'var(--text-3)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
             <Icon name="users" size={11.5} />
             {project.memberCount}
@@ -119,10 +119,10 @@ const KanbanColumn = ({
       }}
     >
       <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: text, letterSpacing: '0.01em' }}>
+        <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: text, letterSpacing: '0.01em' }}>
           {status.name}
         </span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: text, opacity: 0.7 }}>
+        <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: text, opacity: 0.7 }}>
           {isLoading ? '…' : items.length}
         </span>
       </div>

@@ -97,8 +97,8 @@ function MobilePlaceholder({ title }: { title: string }) {
         <div style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="gear" size={24} color="var(--text-4)" />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)' }}>{t('Coming soon')}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('The mobile version of this page is not ready yet')}</div>
+        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Coming soon')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('The mobile version of this page is not ready yet')}</div>
       </div>
     </div>
   )
@@ -237,7 +237,7 @@ function MobileShellInner({ hideNav, webView, overlay }: { hideNav: boolean; web
   }, [openProjectById])
 
   return (
-    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
+    <AppShellContext.Provider value={{ openPanel, openMember, openNotif: () => setNotifOpen(true), isWebView, isMobile: true, projectsView, setProjectsView, crossSearchNonce: 0, consumeCrossSearch: () => {} }}>
       {/* .app の部品スタイル（.btn 等）は子孫セレクタで当たる。全画面パネルや .app-root への portal が
           外れないよう、ルート自体を .app にする（内側だけに付けるとモバイルのプロジェクト詳細でスタイルが外れる） */}
       <div className="app app-root" style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative', ...mobileNavSpaceStyle(shouldRenderMobileNav(hideNav)) }}>

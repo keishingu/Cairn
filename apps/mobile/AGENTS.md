@@ -6,6 +6,7 @@ Expo アプリ。チャット（`app/(app)/chats/`）はネイティブ実装で
 - **本文・返信の送信は必ずオフラインキューを経由する**（POST より前に AsyncStorage へ保存、クライアント生成 UUID で冪等化）
 - ネイティブチャットも Web と同じ private Realtime Broadcast で更新し、ポーリングは使わない
 - 共通ヘッダーと通知スライドインは React Native が所有する。WebView モードでは Web の `MobileHeader` を描画しない
+- **EAS Update は前面復帰時に `reloadAsync()` で適用する**。再読み込みで失われる入力・アップロード中の状態を持つ画面は `useHoldOtaReload` で保留する（ネイティブチャットの下書きは端末に保存していない）
 - EAS の build profile は同名の EAS Environment に対応づける。ローカル `.env.local` をクラウドビルドや EAS Update に使わない
 - チャットを変えるときは Web の `/chats` にも同じ変更が要るか確認する
 - 表示言語は Web と同じ `profiles.locale` と i18next のカタログ。タブ、ログイン、ネイティブチャットは `useT()`。設定 WebView の変更は `locale-changed` で追従する。未ログイン時は `['me']` を言語に使わない

@@ -147,7 +147,7 @@ function MemberMentionPicker({ candidates, activeIndex, isLoading, error, onSele
   onSelect: (member: MemberCandidate) => void
 }) {
   const t = useT()
-  const message = (text: string) => <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{text}</div>
+  const message = (text: string) => <div style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{text}</div>
   return (
     <div role="listbox" aria-label={t('Members')} style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
       {error
@@ -166,7 +166,7 @@ function MemberMentionPicker({ candidates, activeIndex, isLoading, error, onSele
                 onMouseDown={event => event.preventDefault()}
                 onClick={() => onSelect(member)}
                 className="hover-bg"
-                style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', background: index === activeIndex ? 'var(--card-hover)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 13, color: 'var(--text)' }}
+                style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', background: index === activeIndex ? 'var(--card-hover)' : 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 'var(--fs-md)', color: 'var(--text)' }}
               >
                 @{member.name}
               </button>

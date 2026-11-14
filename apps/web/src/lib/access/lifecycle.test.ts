@@ -17,7 +17,7 @@ const { mockDb, workspaceMembers, activeWorkspaceMembers, documentChunks } = vi.
     role: 'wm.role',
     membershipStatus: 'wm.membershipStatus',
   }
-  const activeWorkspaceMembers = { workspaceId: 'awm.workspaceId', role: 'awm.role' }
+  const activeWorkspaceMembers = { workspaceId: 'awm.workspaceId', userId: 'awm.userId', role: 'awm.role' }
   const documentChunks = {
     workspaceId: 'dc.workspaceId',
     sourceType: 'dc.sourceType',
@@ -75,6 +75,7 @@ describe('access/lifecycle', () => {
 
   describe('deactivateMembership', () => {
     it('存在しないメンバーは 404', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select.mockReturnValueOnce(selectChain([]))
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
@@ -83,6 +84,7 @@ describe('access/lifecycle', () => {
     })
 
     it('既に非活性なら 422', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
       const { deactivateMembership } = await import('./lifecycle')
       const res = await deactivateMembership('ws', 'u', 'actor')
@@ -91,6 +93,7 @@ describe('access/lifecycle', () => {
     })
 
     it('最後の active owner は非活性化できない（422）', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select
         .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // target
         .mockReturnValueOnce(selectChain([{ n: 1 }])) // active owner count
@@ -103,6 +106,7 @@ describe('access/lifecycle', () => {
     })
 
     it('owner でも他に active owner がいれば active owner 行をロックしてから非活性化できる', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select
         .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }]))
         .mockReturnValueOnce(selectChain([{ n: 2 }]))
@@ -116,6 +120,7 @@ describe('access/lifecycle', () => {
     })
 
     it('通常メンバーは owner カウントを見ずに非活性化でき、検索チャンクを削除して deactivatedBy を記録する', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
       const spies = updateSpy()
       const deleteSpies = deleteSpy()
@@ -133,20 +138,56 @@ describe('access/lifecycle', () => {
 
   describe('reactivateMembership', () => {
     it('既に活性なら 422', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
       const { reactivateMembership } = await import('./lifecycle')
-      const res = await reactivateMembership('ws', 'u')
+      const res = await reactivateMembership('ws', 'u', 'actor')
       expect((res as { status: number }).status).toBe(422)
     })
 
     it('非活性メンバーを活性化し、deactivatedAt/By を消す', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'active' }])) // actor
       mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'inactive' }]))
       const spies = updateSpy()
       const { reactivateMembership } = await import('./lifecycle')
-      const res = await reactivateMembership('ws', 'u')
+      const res = await reactivateMembership('ws', 'u', 'actor')
       expect(res).toEqual({ ok: true })
       const setArg = spies.set.mock.calls[0]![0] as { membershipStatus: string; deactivatedAt: null; deactivatedBy: null }
       expect(setArg).toMatchObject({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
+    })
+  })
+
+  describe('並行する権限変更', () => {
+    it('admin が対象の昇格後にロックを得たら owner を非活性化しない', async () => {
+      let targetRole = 'member'
+      mockDb.execute.mockImplementationOnce(async () => { targetRole = 'owner' })
+      mockDb.select.mockImplementation((selection: { n?: unknown }) => {
+        if (selection.n) return selectChain([{ n: 2 }])
+        return { from: () => ({ where: (condition: { args: Array<{ args?: unknown[] }> }) => {
+          const userId = condition.args.find((entry) => ['wm.userId', 'awm.userId'].includes(String(entry.args?.[0])))?.args?.[1]
+          return { limit: async () => [{ role: userId === 'actor' ? 'admin' : targetRole, membershipStatus: 'active' }] }
+        } }) }
+      })
+      const { deactivateMembership } = await import('./lifecycle')
+      const result = await deactivateMembership('ws', 'target', 'actor')
+      expect(result).toMatchObject({ ok: false, status: 403 })
+      expect(mockDb.update).not.toHaveBeenCalled()
+    })
+
+    it('降格された操作者は再活性化できない', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([{ role: 'member', membershipStatus: 'active' }]))
+      const { reactivateMembership } = await import('./lifecycle')
+      const result = await reactivateMembership('ws', 'target', 'actor')
+      expect(result).toEqual({ ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' })
+      expect(mockDb.update).not.toHaveBeenCalled()
+    })
+
+    it('非活性化された操作者は非活性化できない', async () => {
+      mockDb.select.mockReturnValueOnce(selectChain([]))
+      const { deactivateMembership } = await import('./lifecycle')
+      const result = await deactivateMembership('ws', 'target', 'actor')
+      expect(result).toEqual({ ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' })
+      expect(mockDb.update).not.toHaveBeenCalled()
     })
   })
 

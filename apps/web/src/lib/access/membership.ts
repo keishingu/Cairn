@@ -33,8 +33,9 @@ export function isWorkspaceMember(role: string | null): boolean {
 export async function getWorkspaceRole(
   workspaceId: string,
   userId: string,
+  client: Pick<typeof db, 'select'> = db,
 ): Promise<WorkspaceRole | null> {
-  const [member] = await db
+  const [member] = await client
     .select({ role: activeWorkspaceMembers.role })
     .from(activeWorkspaceMembers)
     .where(and(

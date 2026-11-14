@@ -62,7 +62,7 @@ function PendingActionCard({ id }: { id: string }) {
     onSuccess: (updated) => queryClient.setQueryData(queryKey(id), updated),
   })
 
-  const cardStyle: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }
+  const cardStyle: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 10, background: 'var(--card)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 'var(--fs-md)' }
   if (isLoading) return <div style={cardStyle}><span style={{ color: 'var(--text-3)' }}>{t('Loading…')}</span></div>
   if (loadError || !action) {
     return <div style={cardStyle} role="alert"><span style={{ color: 'var(--red)' }}>{t('Could not load the proposed action')}: {loadError instanceof Error ? loadError.message : ''}</span></div>
@@ -78,14 +78,14 @@ function PendingActionCard({ id }: { id: string }) {
         <StatusBadge status={action.status}/>
       </div>
       <ActionDetails action={action}/>
-      {action.reason && <div style={{ color: 'var(--text-3)', fontSize: 12 }}>{t('Reason')}: {action.reason}</div>}
+      {action.reason && <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>{t('Reason')}: {action.reason}</div>}
       {action.actionType === 'post_message' && !editing && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', background: 'var(--bg)' }}>
           <MarkdownContent content={field('text')} mentionNames={new Map(Object.entries(action.display.mentionNames ?? {}))}/>
         </div>
       )}
       {pending && (editing || action.actionType !== 'post_message') && action.editableFields.map(key => (
-        <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-3)' }}>
+        <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
           {fieldLabel(key, t)}
           {key === 'title' ? (
             <input className="form-control" value={field(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}/>
@@ -95,13 +95,13 @@ function PendingActionCard({ id }: { id: string }) {
         </label>
       ))}
       {pending && editing && action.actionType === 'post_message' && (
-        <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{t('Mentions are written as <@member ID>. Keep them as they are to notify the member.')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('Mentions are written as <@member ID>. Keep them as they are to notify the member.')}</div>
       )}
-      {action.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 12 }}>{action.error}</div>}
-      {decide.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 12 }}>{decide.error instanceof Error ? decide.error.message : String(decide.error)}</div>}
+      {action.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 'var(--fs-sm)' }}>{action.error}</div>}
+      {decide.error && <div role="alert" style={{ color: 'var(--red)', fontSize: 'var(--fs-sm)' }}>{decide.error instanceof Error ? decide.error.message : String(decide.error)}</div>}
       {pending && (
         <>
-          <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
             {action.actionType === 'post_message'
               ? t('Cairn AI will post this with your name as the approver. Only you can see this card.')
               : t('This runs with your permissions when you approve it. Only you can see this card.')}
@@ -164,7 +164,7 @@ function StatusBadge({ status }: { status: PendingActionDto['status'] }) {
     expired: t('Expired'),
   }
   const color = status === 'executed' ? 'var(--green)' : status === 'failed' ? 'var(--red)' : 'var(--text-3)'
-  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color }}>{labels[status]}</span>
+  return <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', fontWeight: 600, color }}>{labels[status]}</span>
 }
 
 function ActionDetails({ action }: { action: PendingActionDto }) {
@@ -184,7 +184,7 @@ function ActionDetails({ action }: { action: PendingActionDto }) {
   if (action.actionType === 'invite_project_member' && !('role' in display)) rows.push([t('Project role'), t('Member')])
   if (rows.length === 0) return null
   return (
-    <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 12px', fontSize: 12.5 }}>
+    <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 12px', fontSize: 'var(--fs-md)' }}>
       {rows.map(([label, value]) => (
         <React.Fragment key={label}>
           <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

@@ -42,12 +42,12 @@ export function AiModelPicker({
   const label = (m: AiChatModel) => {
     const name = AI_CHAT_MODEL_LABELS[m]
     if (allowed && !allowed.includes(m)) return t('{model} (unavailable)', { model: name })
-    return credits ? t('{model} · {credits} credits', { model: name, credits: credits[m] }) : name
+    return credits ? t('{model} · about {credits} credits', { model: name, credits: credits[m] }) : name
   }
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
         <label htmlFor={`ai-model-${conversationId}`}>{t('Model')}</label>
         <select
           id={`ai-model-${conversationId}`}
@@ -55,7 +55,7 @@ export function AiModelPicker({
           disabled={disabled || changing || !allowed}
           onChange={e => onChange(e.target.value as AiChatModel)}
           className="form-control"
-          style={{ height: 26, padding: '0 6px', fontSize: 11.5, width: 'auto' }}
+          style={{ height: 26, padding: '0 6px', fontSize: 'var(--fs-sm)', width: 'auto' }}
         >
           {options.map(m => (
             <option key={m} value={m} disabled={allowed !== undefined && !allowed.includes(m)}>
@@ -73,7 +73,7 @@ export function AiModelPicker({
             className="btn"
             onClick={() => void refetch()}
             disabled={isFetching}
-            style={{ height: 24, padding: '0 8px', fontSize: 11.5, marginLeft: 4 }}
+            style={{ height: 24, padding: '0 8px', fontSize: 'var(--fs-sm)', marginLeft: 4 }}
           >
             {t('Retry')}
           </button>

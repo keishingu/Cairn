@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 // ネイティブメニュー（⌘+数字）やキー横取り（Ctrl+Tab）からの操作を Web 側へ橋渡しする。
 // Web は window.cairnDesktop?.on* を購読して navigate()/順送り を行う（use-app-shortcuts.ts）。
 contextBridge.exposeInMainWorld('cairnDesktop', {
+  startOAuth: (url, supabaseUrl, provider) => ipcRenderer.invoke('cairn:start-oauth', url, supabaseUrl, provider),
+  startCalendarOAuth: url => ipcRenderer.invoke('cairn:start-calendar-oauth', url),
+  openExternal: url => ipcRenderer.invoke('cairn:open-external', url),
   onNavigate: (cb) => {
     const handler = (_event, action) => cb(action)
     ipcRenderer.on('cairn:navigate', handler)

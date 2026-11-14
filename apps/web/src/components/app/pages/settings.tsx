@@ -42,6 +42,8 @@ import {
   DEFAULT_CALENDAR_WEEK_START,
   FEATURE_FLAGS,
   formatAppDate,
+  formatAppMonthDayTime,
+  isAiChatModel,
   isCalendarWeekStart,
   type AccentId,
   type AiChatAccessLevel,
@@ -56,6 +58,8 @@ import { LoginMethodsSettings } from '../login-methods-settings'
 import { ProfileAttributesSettings } from '../profile-attributes-settings'
 import { AutomationsSettings } from '../automations-settings'
 import { SettingsProjectRoles } from '../settings-project-roles'
+import { SettingsImport } from '../settings-import'
+import { useImportAccess } from '@/hooks/use-imports'
 
 const CreditPlacementBoard = dynamic(
   () =>
@@ -129,10 +133,10 @@ const SettingsSafety = () => {
     if (!res.ok) throw new Error(t('Could not unblock the user'))
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user-blocks'] }) })
   return <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700 }}>{t('Safety and support')}</h1>
-    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Manage blocked users and legal or contact links.')}</p>
-    <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 14 }}>{t('Blocked users')}</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>{t('Loading...')}</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 13 }}>{t('You have not blocked anyone.')}</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>{t('Unblock')}</button></div>)}</div></section>
-    <section><h2 style={{ fontSize: 14 }}>{t('Legal and support')}</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{t(link.label)}</a>)}</div></section>
+    <h1 className="page-title">{t('Safety and support')}</h1>
+    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Manage blocked users and legal or contact links.')}</p>
+    <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('Blocked users')}</h2><div className="card" style={{ padding: 0 }}>{isLoading ? <div style={{ padding: 16 }}>{t('Loading...')}</div> : data.length === 0 ? <div style={{ padding: 16, color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('You have not blocked anyone.')}</div> : data.map(user => <div key={user.userId} style={{ padding: '12px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', alignItems: 'center', gap: 12 }}><span style={{ flex: 1 }}>{user.displayName}</span><button className="btn" onClick={() => unblock.mutate(user.userId)}>{t('Unblock')}</button></div>)}</div></section>
+    <section><h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('Legal and support')}</h2><div className="card" style={{ padding: 0 }}>{LEGAL_SUPPORT_LINKS.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer" style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--divider)', color: 'var(--accent)' }}>{t(link.label)}</a>)}</div></section>
   </div>
 }
 
@@ -166,7 +170,7 @@ const AvatarCircle = ({
       alignItems: 'center',
       justifyContent: 'center',
       fontSize: size * 0.35,
-      fontWeight: 700,
+      fontWeight: 600,
       color: url ? undefined : 'var(--on-accent)',
     }}
   >
@@ -394,32 +398,32 @@ const SettingsAccount = () => {
     borderRadius: 7,
     background: 'var(--card-2)',
     color: 'var(--text)',
-    fontSize: 13,
+    fontSize: 'var(--fs-md)',
     fontFamily: 'inherit',
     outline: 'none',
     flex: 1,
   }
 
   if (isLoading)
-    return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+    return <div style={{ padding: 40, color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
   if (isError)
     return (
-      <div style={{ padding: 40, color: 'var(--red-text)', fontSize: 13 }}>
+      <div style={{ padding: 40, color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
         {CURRENT_USER_FETCH_ERROR_MESSAGE}
       </div>
     )
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 className="page-title">
         {t('Account')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {t('Personal settings such as your profile and notifications.')}
       </p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Profile')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Profile')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {/* アバター */}
           <div
@@ -433,11 +437,11 @@ const SettingsAccount = () => {
           >
             <AvatarCircle url={user?.avatarUrl ?? null} name={user?.displayName ?? ''} size={56} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{user?.displayName}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{user?.displayName}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {t('Profile photo')}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 2 }}>
                 {t('Large photos are resized automatically before upload')}
               </div>
             </div>
@@ -452,7 +456,7 @@ const SettingsAccount = () => {
               className="btn btn-ghost"
               style={{
                 height: 30,
-                fontSize: 12,
+                fontSize: 'var(--fs-sm)',
                 padding: '0 12px',
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -477,8 +481,8 @@ const SettingsAccount = () => {
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Display name')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 2 }}>{t('Display name')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                 {t('The name shown to your team')}
               </div>
             </div>
@@ -486,7 +490,7 @@ const SettingsAccount = () => {
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && displayName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && displayName.trim() && nameMutation.mutate()}
                 style={{ ...inputStyle, width: 180 }}
               />
               <button
@@ -495,7 +499,7 @@ const SettingsAccount = () => {
                   nameMutation.isPending || !displayName.trim() || displayName === user?.displayName
                 }
                 className="btn btn-primary"
-                style={{ height: 32, padding: '0 14px', fontSize: 12.5, flexShrink: 0 }}
+                style={{ height: 32, padding: '0 14px', fontSize: 'var(--fs-md)', flexShrink: 0 }}
               >
                 {nameSaved ? t('Saved') : nameMutation.isPending ? t('Saving...') : t('Save')}
               </button>
@@ -511,12 +515,12 @@ const SettingsAccount = () => {
           {/* メール（読み取り専用） */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Email')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Email')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {t('The address used to sign in')}
               </div>
             </div>
-            <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
+            <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{user?.email ?? '—'}</span>
           </div>
         </div>
       </section>
@@ -525,13 +529,13 @@ const SettingsAccount = () => {
 
       {FEATURE_FLAGS.aiPmo && (
         <section style={{ marginBottom: 24 }}>
-          <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Notifications')}</h2>
+          <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Notifications')}</h2>
           <div className="card" style={{ padding: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('AI PMO nudges')}</div>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('AI PMO nudges')}</div>
                 <div
-                  style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
+                  style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
                   {t('Shows reminders only you can see in chat about due dates and stalled work')}
                 </div>
@@ -556,7 +560,7 @@ const SettingsAccount = () => {
       )}
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Dangerous actions')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Dangerous actions')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div
             style={{
@@ -568,11 +572,11 @@ const SettingsAccount = () => {
             }}
           >
             <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-text)' }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--red-text)' }}>
                 {t('Delete account')}
               </div>
               <div
-                style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.6 }}
+                style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 3, lineHeight: 1.6 }}
               >
                 {t('Deletes your sign-in details and personal data, and removes you from every workspace.')}
               </div>
@@ -613,7 +617,7 @@ const SettingsAccount = () => {
             </p>
             <label
               htmlFor="delete-account-confirmation"
-              style={{ display: 'block', fontWeight: 700 }}
+              style={{ display: 'block', fontWeight: 600 }}
             >
               {t('Type "{word}" to confirm', { word: DELETE_ACCOUNT_CONFIRMATION_WORD })}
             </label>
@@ -637,7 +641,7 @@ const SettingsAccount = () => {
       />
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Legal and support')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Legal and support')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {LEGAL_SUPPORT_LINKS.map((item, index, items) => (
             <a
@@ -653,7 +657,7 @@ const SettingsAccount = () => {
                 justifyContent: 'space-between',
                 borderBottom: index < items.length - 1 ? '1px solid var(--divider)' : undefined,
                 color: 'var(--text)',
-                fontSize: 13,
+                fontSize: 'var(--fs-md)',
                 fontWeight: 600,
                 textDecoration: 'none',
               }}
@@ -782,11 +786,11 @@ const SettingsAppearance = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Appearance')}</h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
+      <h1 className="page-title">{t('Appearance')}</h1>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Personal display settings such as language, theme, color, and calendar.')}</p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Theme and color')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Theme and color')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div
             style={{
@@ -798,8 +802,8 @@ const SettingsAppearance = () => {
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Language')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Choose the language used in the app.')}</div>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Language')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{t('Choose the language used in the app.')}</div>
             </div>
             {mounted && (
               <div
@@ -827,7 +831,7 @@ const SettingsAppearance = () => {
                       background: preference === opt.value ? 'var(--card)' : 'transparent',
                       color: preference === opt.value ? 'var(--text)' : 'var(--text-3)',
                       fontWeight: preference === opt.value ? 600 : 500,
-                      fontSize: 12.5,
+                      fontSize: 'var(--fs-md)',
                       fontFamily: 'inherit',
                       cursor: 'pointer',
                       boxShadow: preference === opt.value ? 'var(--shadow-sm)' : 'none',
@@ -849,8 +853,8 @@ const SettingsAppearance = () => {
             }}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Theme')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Light, dark, or match the system')}</div>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Theme')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{t('Light, dark, or match the system')}</div>
             </div>
             {mounted && (
               <div
@@ -877,11 +881,11 @@ const SettingsAppearance = () => {
                       background: theme === opt.value ? 'var(--card)' : 'transparent',
                       color: theme === opt.value ? 'var(--text)' : 'var(--text-3)',
                       fontWeight: theme === opt.value ? 600 : 500,
-                      fontSize: 12.5,
+                      fontSize: 'var(--fs-md)',
                       fontFamily: 'inherit',
                       cursor: 'pointer',
                       boxShadow: theme === opt.value ? 'var(--shadow-sm)' : 'none',
-                      transition: 'all .12s',
+                      transition: 'background-color .12s, color .12s, box-shadow .12s',
                     }}
                   >
                     <Icon name={opt.icon} size={13} /> {t(opt.label)}
@@ -893,8 +897,8 @@ const SettingsAppearance = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Highlight color')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{t('Accent color for buttons and active states')}</div>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Highlight color')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>{t('Accent color for buttons and active states')}</div>
             </div>
             {mounted && (
               <div style={{ display: 'flex', gap: 8 }}>
@@ -930,7 +934,7 @@ const SettingsAppearance = () => {
                 padding: '8px 16px',
                 borderTop: '1px solid var(--divider)',
                 color: 'var(--red-text)',
-                fontSize: 12,
+                fontSize: 'var(--fs-sm)',
               }}
             >
               {t(appearanceMutation.error instanceof Error ? appearanceMutation.error.message : 'Could not save appearance. Check your connection and try again.')}
@@ -940,12 +944,12 @@ const SettingsAppearance = () => {
       </section>
 
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Calendar')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Calendar')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Week start')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Week start')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {t('Start month and week views on Sunday or Monday.')}
               </div>
             </div>
@@ -973,11 +977,11 @@ const SettingsAppearance = () => {
                       background: weekStart === opt.value ? 'var(--card)' : 'transparent',
                       color: weekStart === opt.value ? 'var(--text)' : 'var(--text-3)',
                       fontWeight: weekStart === opt.value ? 600 : 500,
-                      fontSize: 12.5,
+                      fontSize: 'var(--fs-md)',
                       fontFamily: 'inherit',
                       cursor: 'pointer',
                       boxShadow: weekStart === opt.value ? 'var(--shadow-sm)' : 'none',
-                      transition: 'all .12s',
+                      transition: 'background-color .12s, color .12s, box-shadow .12s',
                     }}
                   >
                     {t(opt.label)}
@@ -1063,7 +1067,7 @@ const StatusRow = ({
             flexShrink: 0,
           }}
         />
-        <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{status.name}</span>
+        <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, flex: 1 }}>{status.name}</span>
         <RowActionMenu
           actions={[
             { icon: 'edit', label: t('Edit'), onSelect: () => setEditing(true) },
@@ -1103,7 +1107,7 @@ const StatusRow = ({
             borderRadius: 7,
             background: 'var(--card)',
             color: 'var(--text)',
-            fontSize: 12.5,
+            fontSize: 'var(--fs-md)',
             fontFamily: 'inherit',
             outline: 'none',
           }}
@@ -1129,12 +1133,12 @@ const StatusRow = ({
         ))}
       </div>
       {saveMutation.isError && (
-        <InlineError style={{ fontSize: 11.5 }}>{t('Could not update')}</InlineError>
+        <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('Could not update')}</InlineError>
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
           className="btn btn-ghost"
-          style={{ height: 28, fontSize: 12, padding: '0 10px' }}
+          style={{ height: 28, fontSize: 'var(--fs-sm)', padding: '0 10px' }}
           onClick={() => setEditing(false)}
         >
           {t('Cancel')}
@@ -1145,7 +1149,7 @@ const StatusRow = ({
           className="btn btn-primary"
           style={{
             height: 28,
-            fontSize: 12,
+            fontSize: 'var(--fs-sm)',
             padding: '0 12px',
             opacity: saveMutation.isPending || !name.trim() ? 0.6 : 1,
           }}
@@ -1189,18 +1193,18 @@ const SettingsWorkflow = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 className="page-title">
         {t('Workflow')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {t('Manage project statuses.')}
       </p>
 
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Status list')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Status list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {isLoading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>
               {t('Loading...')}
             </div>
           ) : (
@@ -1242,7 +1246,7 @@ const SettingsWorkflow = () => {
                   borderRadius: 7,
                   background: 'var(--card)',
                   color: 'var(--text)',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   fontFamily: 'inherit',
                   outline: 'none',
                 }}
@@ -1267,12 +1271,12 @@ const SettingsWorkflow = () => {
                 ))}
               </div>
               {addMutation.isError && (
-                <InlineError style={{ fontSize: 11.5 }}>{t('Could not add')}</InlineError>
+                <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('Could not add')}</InlineError>
               )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   className="btn btn-ghost"
-                  style={{ height: 28, fontSize: 12, padding: '0 10px' }}
+                  style={{ height: 28, fontSize: 'var(--fs-sm)', padding: '0 10px' }}
                   onClick={() => {
                     setShowAdd(false)
                     setNewName('')
@@ -1286,7 +1290,7 @@ const SettingsWorkflow = () => {
                   className="btn btn-primary"
                   style={{
                     height: 28,
-                    fontSize: 12,
+                    fontSize: 'var(--fs-sm)',
                     padding: '0 12px',
                     opacity: addMutation.isPending || !newName.trim() ? 0.6 : 1,
                   }}
@@ -1312,7 +1316,7 @@ const SettingsWorkflow = () => {
                   background: 'transparent',
                   color: 'var(--text-3)',
                   fontFamily: 'inherit',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
@@ -1348,10 +1352,10 @@ const SettingsAI = () => {
   const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
   <div style={{ maxWidth: 780 }}>
-    <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+    <h1 className="page-title">
       {t('AI agent')}
     </h1>
-    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+    <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
       {t('Configure the AI assistant that stays with each project.')}
     </p>
 
@@ -1364,7 +1368,7 @@ const SettingsAI = () => {
           className="btn"
           onClick={() => void refetch()}
           disabled={isFetching}
-          style={{ height: 26, padding: '0 10px', fontSize: 12, marginLeft: 4 }}
+          style={{ height: 26, padding: '0 10px', fontSize: 'var(--fs-sm)', marginLeft: 4 }}
         >
           {t('Retry')}
         </button>
@@ -1372,8 +1376,8 @@ const SettingsAI = () => {
     )}
 
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Default model for new conversations')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Default model for new conversations')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
         {t('New conversations start with this model. Members can switch models in each conversation, among the models allowed below. Claude models require ANTHROPIC_API_KEY to be set on the server.')}
       </p>
       <div
@@ -1415,13 +1419,13 @@ const SettingsAI = () => {
                   size={14}
                   color={on ? 'var(--accent-text)' : 'var(--text-3)'}
                 />
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
+                <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
                 {on && (
                   <span
                     style={{
                       marginLeft: 'auto',
-                      fontSize: 10.5,
-                      fontWeight: 700,
+                      fontSize: 'var(--fs-xs)',
+                      fontWeight: 600,
                       color: 'var(--accent-text)',
                     }}
                   >
@@ -1429,7 +1433,7 @@ const SettingsAI = () => {
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>
                 {t(AI_CHAT_MODEL_DESCRIPTIONS[model])}
               </div>
             </button>
@@ -1464,10 +1468,10 @@ const AiAllowedModelsSection = () => {
   const credits = wsSettings?.aiChatRequestCredits ?? null
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Models members can choose')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Models members can choose')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
         {credits
-          ? t('Members can switch to these models in each conversation. Each request uses credits depending on the model.')
+          ? t('Members can switch to these models in each conversation. Each request uses credits based on its actual AI cost; the amounts shown are estimates.')
           : t('Members can switch to these models in each conversation.')}
       </p>
       <div className="card" role="group" aria-label={t('Models members can choose')} style={{ padding: 14, display: 'grid', gap: 10 }}>
@@ -1479,7 +1483,7 @@ const AiAllowedModelsSection = () => {
             <label
               key={model}
               title={readOnly ? t('Changing workspace settings requires the owner role') : isDefault ? t('The default model cannot be removed') : undefined}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: readOnly || locked ? 'not-allowed' : 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-md)', cursor: readOnly || locked ? 'not-allowed' : 'pointer' }}
             >
               <input
                 type="checkbox"
@@ -1493,12 +1497,12 @@ const AiAllowedModelsSection = () => {
               />
               <span style={{ fontWeight: 600 }}>{AI_CHAT_MODEL_LABELS[model]}</span>
               {credits && (
-                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                  {t('{credits} credits per request', { credits: credits[model] })}
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
+                  {t('About {credits} credits per request', { credits: credits[model] })}
                 </span>
               )}
               {isDefault && (
-                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {t('Default')}</span>
+                <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>· {t('Default')}</span>
               )}
             </label>
           )
@@ -1538,8 +1542,8 @@ const AiSearchRecencySection = () => {
   const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Prefer recent documents')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Prefer recent documents')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
         {t('How much the AI assistant favors recently updated projects and recently added files when it searches workspace documents. Documents that match the question are ranked by relevance weighted by recency, so a newer document can rank above a slightly more relevant older one. Documents that do not match the question are never picked just for being new. Archived projects are treated like any other.')}
       </p>
       <div
@@ -1574,14 +1578,14 @@ const AiSearchRecencySection = () => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_SEARCH_RECENCY_LABELS[weight])}</span>
+                <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t(AI_SEARCH_RECENCY_LABELS[weight])}</span>
                 {on && (
-                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--accent-text)' }}>
                     {t('Selected')}
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>
                 {t(AI_SEARCH_RECENCY_DESCRIPTIONS[weight])}
               </div>
             </button>
@@ -1620,8 +1624,8 @@ const AiChatAccessSection = () => {
   const disabled = updateSettings.isPending || readOnly || wsSettings === undefined
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Who can use the AI assistant')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Who can use the AI assistant')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
         {t('Limit the AI assistant to experienced roles if you want newer members to work things out themselves. Members who cannot use it do not see the AI assistant. AI PMO notifications and external AI connected through MCP are not affected.')}
       </p>
       <div
@@ -1656,14 +1660,14 @@ const AiChatAccessSection = () => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{t(AI_CHAT_ACCESS_LABELS[level])}</span>
+                <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t(AI_CHAT_ACCESS_LABELS[level])}</span>
                 {on && (
-                  <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--accent-text)' }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--accent-text)' }}>
                     {t('Selected')}
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>
                 {t(AI_CHAT_ACCESS_DESCRIPTIONS[level])}
               </div>
             </button>
@@ -1724,8 +1728,8 @@ const AiChatSystemPromptSection = () => {
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('System prompt')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('System prompt')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.5 }}>
         {t('Instructions the AI assistant always follows in this workspace, like an AGENTS.md: terminology, tone, answer format, and team conventions. They cannot override permissions or safety rules. Leave empty to use the default behavior.')}
       </p>
       <div className="card" style={{ padding: 14 }}>
@@ -1736,6 +1740,13 @@ const AiChatSystemPromptSection = () => {
             setDraft(e.target.value)
             // 保存後に編集した内容は未保存なので、「保存済み」の表示を消す
             setJustSaved(false)
+          }}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl+Enter で保存（IME 変換中は除く）
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              if (!updateSettings.isPending && !unchanged && !readOnly && loaded) void handleSave()
+            }
           }}
           readOnly={readOnly}
           disabled={wsSettings === undefined}
@@ -1756,11 +1767,11 @@ const AiChatSystemPromptSection = () => {
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
             {t('{count} / {max} characters', { count: draft.length, max: AI_CHAT_SYSTEM_PROMPT_MAX_LENGTH })}
           </span>
           {readOnly && (
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
               · {t('Only the workspace owner can edit this.')}
             </span>
           )}
@@ -1774,7 +1785,7 @@ const AiChatSystemPromptSection = () => {
               marginLeft: 'auto',
               height: 32,
               padding: '0 14px',
-              fontSize: 12.5,
+              fontSize: 'var(--fs-md)',
               ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
             }}
           >
@@ -1900,17 +1911,17 @@ const SettingsWorkspaceGeneral = () => {
     borderRadius: 7,
     background: 'var(--card-2)',
     color: 'var(--text)',
-    fontSize: 13,
+    fontSize: 'var(--fs-md)',
     fontFamily: 'inherit',
     outline: 'none',
   }
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 className="page-title">
         {t('Workspace settings')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {t('Settings for how the whole workspace looks and behaves.')}
       </p>
 
@@ -1926,7 +1937,7 @@ const SettingsWorkspaceGeneral = () => {
             background: 'var(--amber-soft, var(--card-2))',
             border: '1px solid var(--border)',
             color: 'var(--text-2)',
-            fontSize: 12.5,
+            fontSize: 'var(--fs-md)',
           }}
         >
           <Icon name="alertTriangle" size={14} />
@@ -1936,7 +1947,7 @@ const SettingsWorkspaceGeneral = () => {
 
       {/* ワークスペース情報 */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Workspace info')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Workspace info')}</h2>
         <div className="card" style={{ padding: 0 }}>
           {/* ロゴ */}
           <div
@@ -1959,8 +1970,8 @@ const SettingsWorkspaceGeneral = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 22,
-                fontWeight: 700,
+                fontSize: 'var(--fs-3xl)',
+                fontWeight: 600,
                 color: ws?.logoUrl ? undefined : 'var(--on-accent)',
               }}
             >
@@ -1977,8 +1988,8 @@ const SettingsWorkspaceGeneral = () => {
               )}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{ws?.name ?? '—'}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{ws?.name ?? '—'}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {t('Workspace icon')}
               </div>
             </div>
@@ -1993,7 +2004,7 @@ const SettingsWorkspaceGeneral = () => {
               className="btn btn-ghost"
               style={{
                 height: 30,
-                fontSize: 12,
+                fontSize: 'var(--fs-sm)',
                 padding: '0 12px',
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -2015,8 +2026,8 @@ const SettingsWorkspaceGeneral = () => {
           {/* ワークスペース名 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Workspace name')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 2 }}>{t('Workspace name')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                 {t('The name shown in navigation')}
               </div>
             </div>
@@ -2024,7 +2035,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsName}
                 onChange={(e) => setWsName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && wsName.trim() && nameMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && wsName.trim() && nameMutation.mutate()}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
               />
@@ -2038,7 +2049,7 @@ const SettingsWorkspaceGeneral = () => {
                 style={{
                   height: 32,
                   padding: '0 14px',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   flexShrink: 0,
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
@@ -2062,8 +2073,8 @@ const SettingsWorkspaceGeneral = () => {
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Description')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 2 }}>{t('Description')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                 {t('Organization or affiliation. Shown under the workspace name in navigation.')}
               </div>
             </div>
@@ -2071,7 +2082,7 @@ const SettingsWorkspaceGeneral = () => {
               <input
                 value={wsDesc}
                 onChange={(e) => setWsDesc(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && descMutation.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && descMutation.mutate()}
                 placeholder={t('e.g. Example University')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 180 }}
@@ -2084,7 +2095,7 @@ const SettingsWorkspaceGeneral = () => {
                 style={{
                   height: 32,
                   padding: '0 14px',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   flexShrink: 0,
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
@@ -2101,12 +2112,12 @@ const SettingsWorkspaceGeneral = () => {
 
       {/* 用語のカスタマイズ */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Customize terminology')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Customize terminology')}</h2>
         <div className="card" style={{ padding: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Name for projects')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Name for projects')}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                 {t('The name shown in navigation and page titles. If empty, "Projects" is used.')}
               </div>
             </div>
@@ -2118,7 +2129,7 @@ const SettingsWorkspaceGeneral = () => {
                 placeholder={t('Projects')}
                 readOnly={readOnly}
                 style={{ ...inputStyle, width: 160 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleLabelSave()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleLabelSave()}
               />
               <button
                 onClick={handleLabelSave}
@@ -2128,7 +2139,7 @@ const SettingsWorkspaceGeneral = () => {
                 style={{
                   height: 32,
                   padding: '0 14px',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   ...(readOnly ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
                 }}
               >
@@ -2144,8 +2155,8 @@ const SettingsWorkspaceGeneral = () => {
           <h2
             style={{
               margin: '0 0 10px',
-              fontSize: 14,
-              fontWeight: 700,
+              fontSize: 'var(--fs-lg)',
+              fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -2157,8 +2168,8 @@ const SettingsWorkspaceGeneral = () => {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 3,
-                fontSize: 10.5,
-                fontWeight: 700,
+                fontSize: 'var(--fs-xs)',
+                fontWeight: 600,
                 color: 'var(--accent-text)',
                 background: 'var(--accent-soft)',
                 border: '1px solid var(--accent)',
@@ -2180,9 +2191,9 @@ const SettingsWorkspaceGeneral = () => {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Phase 1: Task reminders')}</div>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Phase 1: Task reminders')}</div>
                 <div
-                  style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
+                  style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
                   {t('A rules-based reminder that checks due dates and stalled work every morning. It does not use generative AI and spends no tokens.')}
                 </div>
@@ -2208,9 +2219,9 @@ const SettingsWorkspaceGeneral = () => {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Phase 2: AI review of chat')}</div>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Phase 2: AI review of chat')}</div>
                 <div
-                  style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
+                  style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}
                 >
                   {t('AI analyzes unanswered requests and risks in chat. This spends model tokens, so it is off by default.')}
                 </div>
@@ -2218,7 +2229,7 @@ const SettingsWorkspaceGeneral = () => {
                   <div
                     style={{
                       marginTop: 8,
-                      fontSize: 11.5,
+                      fontSize: 'var(--fs-sm)',
                       color: 'var(--text-2)',
                       lineHeight: 1.6,
                     }}
@@ -2320,8 +2331,8 @@ const ApiTokenSettings = () => {
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('MCP / API tokens')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('MCP / API tokens')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
         {t('Use ChatGPT or Claude to operate this workspace in Cairn as yourself.')}
       </p>
 
@@ -2330,10 +2341,10 @@ const ApiTokenSettings = () => {
           className="card"
           style={{ padding: 16, marginBottom: 12, borderColor: 'var(--accent)' }}
         >
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 4 }}>
             {t('Save this token now')}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 10 }}>
             {t('This value cannot be shown again after you close it.')}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -2345,7 +2356,7 @@ const ApiTokenSettings = () => {
                 overflow: 'auto',
                 borderRadius: 7,
                 background: 'var(--card-2)',
-                fontSize: 11.5,
+                fontSize: 'var(--fs-sm)',
               }}
             >
               {issuedToken}
@@ -2360,7 +2371,7 @@ const ApiTokenSettings = () => {
 
       <div className="card" style={{ padding: 16 }}>
         {isGuest ? (
-          <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
             {t('Guests cannot issue API tokens.')}
           </div>
         ) : (
@@ -2407,19 +2418,19 @@ const ApiTokenSettings = () => {
         )}
 
         {issue.isError && (
-          <div style={{ color: 'var(--red-text)', fontSize: 12, marginBottom: 10 }}>
+          <div style={{ color: 'var(--red-text)', fontSize: 'var(--fs-sm)', marginBottom: 10 }}>
             {(issue.error as Error).message}
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 10 }}>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 10 }}>
           {t('Read and write includes read. The default is 90 days, the maximum is 1 year, and each token allows 120 requests per minute.')}
         </div>
         {isLoading ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : tokensError ? (
           <InlineError>{(tokensError as Error).message}</InlineError>
         ) : visibleTokens.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No tokens have been issued.')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('No tokens have been issued.')}</div>
         ) : (
           visibleTokens.map((token) => {
             const inactive = new Date(token.expiresAt) <= new Date()
@@ -2435,8 +2446,8 @@ const ApiTokenSettings = () => {
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{token.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                  <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{token.name}</div>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                     <code>{token.prefix}…</code>
                     {t(' · {scope} · Expires {date}', {
                       scope: token.scope === 'write' ? t('Read and write') : t('Read'),
@@ -2513,20 +2524,20 @@ const McpOAuthConnectionSettings = () => {
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('MCP OAuth connections')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('MCP OAuth connections')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
         {t('Register only this URL in Claude Web/Desktop, then allow the connection in Cairn.')}
       </p>
       <div className="card" style={{ padding: 16 }}>
-        <code style={{ display: 'block', overflow: 'auto', fontSize: 11.5, marginBottom: 14 }}>
+        <code style={{ display: 'block', overflow: 'auto', fontSize: 'var(--fs-sm)', marginBottom: 14 }}>
           {mcpUrl}
         </code>
         {isLoading ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
           <InlineError>{(error as Error).message}</InlineError>
         ) : connections.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('There are no active OAuth connections.')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('There are no active OAuth connections.')}</div>
         ) : (
           connections.map((connection) => (
             <div
@@ -2540,8 +2551,8 @@ const McpOAuthConnectionSettings = () => {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{connection.clientName}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{connection.clientName}</div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                   {t('{scope} · Connected {date}', {
                     scope: connection.scope === 'write' ? t('Read and write access') : t('Read'),
                     date: formatAppDate(locale, connection.createdAt),
@@ -2593,17 +2604,17 @@ const CairnLoginGrantSettings = () => {
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{t('Apps using Sign in with Cairn')}</h2>
-      <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Apps using Sign in with Cairn')}</h2>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
         {t('These apps receive only the information you allowed, such as your account ID. They cannot read or change your projects, conversations, or files.')}
       </p>
       <div className="card" style={{ padding: 16 }}>
         {isLoading ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('Loading...')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('Loading...')}</div>
         ) : error ? (
           <InlineError>{t((error as Error).message)}</InlineError>
         ) : grants.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('No apps use Sign in with Cairn.')}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{t('No apps use Sign in with Cairn.')}</div>
         ) : (
           grants.map((grant) => (
             <div
@@ -2617,8 +2628,8 @@ const CairnLoginGrantSettings = () => {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{grant.clientName}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{grant.clientName}</div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                   {t('Allowed {date}', { date: formatAppDate(locale, grant.grantedAt) })}
                 </div>
               </div>
@@ -2731,9 +2742,15 @@ const SettingsIntegrations = () => {
   })
 
   const connectGcal = async () => {
-    const res = await fetchWithAuth('/api/calendar/google/connect')
-    const { url } = (await res.json()) as { url?: string; error?: string }
-    if (url) window.location.href = url
+    try {
+      const res = await fetchWithAuth('/api/calendar/google/connect')
+      const { url } = (await res.json()) as { url?: string; error?: string }
+      if (!res.ok || !url) throw new Error('Could not start calendar OAuth')
+      if (window.cairnDesktop?.startCalendarOAuth) await window.cairnDesktop.startCalendarOAuth(url)
+      else window.location.href = url
+    } catch {
+      toast.error(t('Could not connect. Try again.'))
+    }
   }
 
   const disconnectGcal = useMutation({
@@ -2773,10 +2790,10 @@ const SettingsIntegrations = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 className="page-title">
         {t('Integrations')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {t('Configure connections to external services.')}
       </p>
 
@@ -2786,10 +2803,10 @@ const SettingsIntegrations = () => {
 
       {/* ── iCal 出力セクション ───────────────────────────────────── */}
       <section style={{ marginBottom: 32 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
           {t('Cairn → Google Calendar (iCal export)')}
         </h2>
-        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
           {t('Copy the URL and paste it into Google Calendar under “Add other calendars” → “From URL”.')}
         </p>
         <div className="card" style={{ padding: 0 }}>
@@ -2803,8 +2820,8 @@ const SettingsIntegrations = () => {
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 8 }}>
+                  <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginBottom: 8 }}>
                     {f.desc}
                   </div>
                   <div
@@ -2823,7 +2840,7 @@ const SettingsIntegrations = () => {
                       style={{
                         flex: 1,
                         minWidth: 0,
-                        fontSize: 11.5,
+                        fontSize: 'var(--fs-sm)',
                         color: 'var(--text-3)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -2853,7 +2870,7 @@ const SettingsIntegrations = () => {
               justifyContent: 'space-between',
             }}
           >
-            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+            <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
               {t('Anyone with the URL can view the calendar. If it leaks, regenerate it.')}
             </span>
             <button
@@ -2862,7 +2879,7 @@ const SettingsIntegrations = () => {
               className="btn btn-ghost"
               style={{
                 height: 28,
-                fontSize: 12,
+                fontSize: 'var(--fs-sm)',
                 padding: '0 10px',
                 flexShrink: 0,
                 display: 'inline-flex',
@@ -2881,8 +2898,8 @@ const SettingsIntegrations = () => {
         <h2
           style={{
             margin: '0 0 4px',
-            fontSize: 14,
-            fontWeight: 700,
+            fontSize: 'var(--fs-lg)',
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
@@ -2894,8 +2911,8 @@ const SettingsIntegrations = () => {
               display: 'inline-flex',
               alignItems: 'center',
               gap: 3,
-              fontSize: 10.5,
-              fontWeight: 700,
+              fontSize: 'var(--fs-xs)',
+              fontWeight: 600,
               color: 'var(--accent-text)',
               background: 'var(--accent-soft)',
               border: '1px solid var(--accent)',
@@ -2906,17 +2923,17 @@ const SettingsIntegrations = () => {
             <Icon name="flask" size={11} /> Lab
           </span>
         </h2>
-        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--text-3)' }}>
+        <p style={{ margin: '0 0 10px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
           {t('Overlays Google Calendar events on the calendar view. This is experimental and may change.')}
         </p>
 
         <div className="card" style={{ padding: 0 }}>
           {gcalLoading ? (
-            <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 13 }}>
+            <div style={{ padding: '20px 16px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
               {t('Loading...')}
             </div>
           ) : !gcalStatus?.configured ? (
-            <div style={{ padding: '16px', fontSize: 12.5, color: 'var(--text-3)' }}>
+            <div style={{ padding: '16px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
               <Icon name="alertTriangle" size={13} style={{ marginRight: 6 }} />
               {t('Environment variables')}{' '}
               <code
@@ -2952,8 +2969,8 @@ const SettingsIntegrations = () => {
               }}
             >
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{t('Not connected')}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, marginBottom: 2 }}>{t('Not connected')}</div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
                   {t('Connect a Google account to load calendars.')}
                 </div>
               </div>
@@ -2965,7 +2982,7 @@ const SettingsIntegrations = () => {
                   gap: 6,
                   height: 32,
                   padding: '0 14px',
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   flexShrink: 0,
                 }}
                 onClick={() => void connectGcal()}
@@ -3000,13 +3017,13 @@ const SettingsIntegrations = () => {
                     <Icon name="check" size={15} color="var(--emerald-text)" />
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{t('Connected')}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{gcalStatus.email}</div>
+                    <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Connected')}</div>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>{gcalStatus.email}</div>
                   </div>
                 </div>
                 <button
                   className="btn btn-ghost"
-                  style={{ fontSize: 12, color: 'var(--red-text)', height: 28, padding: '0 10px' }}
+                  style={{ fontSize: 'var(--fs-sm)', color: 'var(--red-text)', height: 28, padding: '0 10px' }}
                   onClick={() => disconnectGcal.mutate()}
                   disabled={disconnectGcal.isPending}
                 >
@@ -3018,7 +3035,7 @@ const SettingsIntegrations = () => {
               <div style={{ padding: '12px 16px' }}>
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: 'var(--fs-sm)',
                     fontWeight: 600,
                     color: 'var(--text-3)',
                     marginBottom: 10,
@@ -3027,7 +3044,7 @@ const SettingsIntegrations = () => {
                   {t('Calendars to show')}
                 </div>
                 {gcalCalendarsLoading ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading...')}</div>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('Loading...')}</div>
                 ) : gcalCalendarsError ? (
                   <div
                     style={{
@@ -3037,7 +3054,7 @@ const SettingsIntegrations = () => {
                       gap: 12,
                     }}
                   >
-                    <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                    <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>
                       {gcalCalendarsError.message}
                     </div>
                     {(gcalCalendarsError as GcalCalendarsError).code ===
@@ -3050,7 +3067,7 @@ const SettingsIntegrations = () => {
                           gap: 6,
                           height: 30,
                           padding: '0 12px',
-                          fontSize: 12.5,
+                          fontSize: 'var(--fs-md)',
                           flexShrink: 0,
                         }}
                         onClick={() => void connectGcal()}
@@ -3060,7 +3077,7 @@ const SettingsIntegrations = () => {
                     )}
                   </div>
                 ) : !gcalCalendars ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>
                     {t('Could not get the Google Calendar list.')}
                   </div>
                 ) : (
@@ -3101,13 +3118,13 @@ const SettingsIntegrations = () => {
                             flexShrink: 0,
                           }}
                         />
-                        <span style={{ fontSize: 13, flex: 1 }}>
+                        <span style={{ fontSize: 'var(--fs-md)', flex: 1 }}>
                           {cal.name}
                           {cal.primary && (
                             <span
                               style={{
                                 marginLeft: 6,
-                                fontSize: 10.5,
+                                fontSize: 'var(--fs-xs)',
                                 color: 'var(--text-4)',
                                 background: 'var(--card-2)',
                                 borderRadius: 4,
@@ -3135,7 +3152,7 @@ const SettingsIntegrations = () => {
                 >
                   <button
                     className="btn btn-primary"
-                    style={{ height: 30, fontSize: 12.5, padding: '0 14px' }}
+                    style={{ height: 30, fontSize: 'var(--fs-md)', padding: '0 14px' }}
                     onClick={() => void saveCalendarSelection()}
                     disabled={savingCalendars}
                   >
@@ -3157,6 +3174,7 @@ const SettingsIntegrations = () => {
 
 import type { WorkspaceStorageUsageDto } from '@/app/api/workspaces/storage-usage/route'
 import type { BillingSummaryDto } from '@/app/api/billing/summary/route'
+import { useBillingAiUsage } from '@/hooks/use-billing-ai-usage'
 import { BILLING_CONFIG } from '@cairn/core/billing'
 
 const FREE_TIER_REFERENCE_GB = 10
@@ -3172,6 +3190,101 @@ export function resolveCreditPackFulfillmentPolling(input: {
   if (!input.isCreditPackReturn || input.sessionId === null) return 'idle'
   if (input.fulfilled === true) return 'fulfilled'
   return input.now - input.startedAt < CREDIT_PACK_FULFILLMENT_TIMEOUT_MS ? 'polling' : 'timed_out'
+}
+
+// 今月の /ai の消費。本人には自分の明細、owner / admin にはワークスペース全体のモデル別の合計も出す（API で絞る）
+export const SettingsBillingAiUsage = () => {
+  const t = useT()
+  const { locale } = useLocale()
+  const usageQuery = useBillingAiUsage()
+  const modelLabel = (model: string) => (isAiChatModel(model) ? AI_CHAT_MODEL_LABELS[model] : model)
+  const cellStyle: React.CSSProperties = { padding: '6px 8px', fontSize: 'var(--fs-md)', borderTop: '1px solid var(--border)' }
+  const numberCell: React.CSSProperties = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
+
+  return (
+    <section className="card" style={{ padding: 20, marginBottom: 16 }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('AI usage this month')}</h2>
+      <p style={{ margin: '0 0 12px', fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
+        {t('Each AI assistant request uses stones based on its actual AI cost. Longer investigations that read many files use more.')}
+      </p>
+      {usageQuery.isLoading ? (
+        <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
+      ) : usageQuery.isError || !usageQuery.data ? (
+        <InlineError style={{ fontSize: 'var(--fs-md)' }}>{t('Could not load AI usage')}</InlineError>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12, fontSize: 'var(--fs-md)' }}>
+            <div>
+              <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>{t('Your usage')}</div>
+              <div style={{ fontWeight: 600 }}>
+                {t('{requests} requests · {count} stones', { requests: usageQuery.data.mine.requests, count: usageQuery.data.mine.credits })}
+              </div>
+            </div>
+            {usageQuery.data.workspace && (
+              <div>
+                <div style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)' }}>{t('Whole workspace')}</div>
+                <div style={{ fontWeight: 600 }}>
+                  {t('{requests} requests · {count} stones', { requests: usageQuery.data.workspace.requests, count: usageQuery.data.workspace.credits })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {usageQuery.data.workspace && usageQuery.data.workspace.byModel.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+              <thead>
+                <tr style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)', textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Model')}</th>
+                  <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Requests')}</th>
+                  <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Stones')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usageQuery.data.workspace.byModel.map((row) => (
+                  <tr key={row.model}>
+                    <td style={cellStyle}>{modelLabel(row.model)}</td>
+                    <td style={numberCell}>{row.requests}</td>
+                    <td style={numberCell}>{row.credits}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <h3 style={{ margin: '0 0 6px', fontSize: 'var(--fs-md)', fontWeight: 600 }}>{t('Your requests')}</h3>
+          {usageQuery.data.mine.items.length === 0 ? (
+            <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('No AI requests this month.')}</div>
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-3)', fontSize: 'var(--fs-sm)', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Date and time')}</th>
+                    <th style={{ padding: '4px 8px', fontWeight: 600 }}>{t('Model')}</th>
+                    <th style={{ padding: '4px 8px', fontWeight: 600, textAlign: 'right' }}>{t('Stones')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageQuery.data.mine.items.map((item, index) => (
+                    <tr key={`${item.createdAt}-${index}`}>
+                      <td style={cellStyle}>{formatAppMonthDayTime(locale, item.createdAt)}</td>
+                      <td style={cellStyle}>{modelLabel(item.model)}</td>
+                      <td style={numberCell}>{item.credits}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {usageQuery.data.mine.requests > usageQuery.data.mine.items.length && (
+            <div style={{ marginTop: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
+              {t('Showing the latest {count} requests.', { count: usageQuery.data.mine.items.length })}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
 }
 
 const SettingsBilling = () => {
@@ -3232,7 +3345,10 @@ const SettingsBilling = () => {
       })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
@@ -3246,7 +3362,10 @@ const SettingsBilling = () => {
       const res = await fetchWithAuth('/api/billing/portal', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open the billing portal'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open the billing portal'))
@@ -3260,7 +3379,10 @@ const SettingsBilling = () => {
       const res = await fetchWithAuth('/api/billing/credit-packs/checkout', { method: 'POST' })
       const result = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !result.url) throw new Error(result.error ?? t('Could not open checkout'))
-      window.location.assign(result.url)
+      if (window.cairnDesktop?.openExternal) {
+        await window.cairnDesktop.openExternal(result.url)
+        setBillingAction(null)
+      } else window.location.assign(result.url)
     } catch (err) {
       setBillingAction(null)
       setBillingActionError(err instanceof Error ? err.message : t('Could not open checkout'))
@@ -3272,17 +3394,17 @@ const SettingsBilling = () => {
 
   return (
     <div style={{ maxWidth: 780 }}>
-      <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+      <h1 className="page-title">
         {t('Billing')}
       </h1>
-      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 13 }}>
+      <p style={{ margin: '0 0 24px', color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
         {billingQuery.data?.billingEnabled
           ? t('Manage original-file storage and storage rent with workspace credits.')
           : t('Storage usage is only being measured, and no limit is set.')}
       </p>
 
       {billingQuery.isError ? (
-        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not load billing')}</InlineError>
+        <InlineError style={{ marginBottom: 16, fontSize: 'var(--fs-md)' }}>{t('Could not load billing')}</InlineError>
       ) : billingQuery.data?.billingEnabled ? (
         <section className="card" style={{ padding: 20, marginBottom: 16 }}>
           <div
@@ -3295,16 +3417,16 @@ const SettingsBilling = () => {
             }}
           >
             <div>
-              <h2 style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700 }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
                 {t('Workspace Cairn')}
               </h2>
-              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>
+              <div style={{ fontSize: 'var(--fs-3xl)', fontWeight: 600 }}>
                 {t('{count} stones', { count: billingQuery.data.creditBalance })}
               </div>
               <div
                 style={{
                   marginTop: 4,
-                  fontSize: 12.5,
+                  fontSize: 'var(--fs-md)',
                   color:
                     billingQuery.data.workspaceState === 'weathered'
                       ? 'var(--amber-text)'
@@ -3321,7 +3443,7 @@ const SettingsBilling = () => {
                 {billingQuery.data.canPurchaseCreditPack && (
                   <button
                     className="btn btn-primary"
-                    style={{ height: 32, fontSize: 12.5 }}
+                    style={{ height: 32, fontSize: 'var(--fs-md)' }}
                     onClick={() => void beginCreditPackCheckout()}
                     disabled={billingAction !== null}
                   >
@@ -3332,7 +3454,7 @@ const SettingsBilling = () => {
                 )}
                 <button
                   className="btn"
-                  style={{ height: 32, fontSize: 12.5 }}
+                  style={{ height: 32, fontSize: 'var(--fs-md)' }}
                   onClick={() => void openPortal()}
                   disabled={billingAction !== null}
                 >
@@ -3342,7 +3464,7 @@ const SettingsBilling = () => {
             ) : (
               <button
                 className="btn btn-primary"
-                style={{ height: 32, fontSize: 12.5 }}
+                style={{ height: 32, fontSize: 'var(--fs-md)' }}
                 onClick={() => void beginCheckout()}
                 disabled={billingAction !== null}
               >
@@ -3357,27 +3479,29 @@ const SettingsBilling = () => {
         <CreditPlacementBoard workspaceState={billingQuery.data.workspaceState} />
       )}
 
+      {billingQuery.data?.billingEnabled && <SettingsBillingAiUsage />}
+
       {billingActionError && (
-        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{billingActionError}</InlineError>
+        <InlineError style={{ marginBottom: 16, fontSize: 'var(--fs-md)' }}>{billingActionError}</InlineError>
       )}
 
       {creditPackFulfillmentState === 'polling' && (
-        <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-3)' }}>
+        <div style={{ marginBottom: 16, fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
           {t('Confirming the payment. The credit balance updates automatically.')}
         </div>
       )}
 
       {creditPackFulfillmentState === 'timed_out' && (
-        <InlineError style={{ marginBottom: 16, fontSize: 13 }}>{t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}</InlineError>
+        <InlineError style={{ marginBottom: 16, fontSize: 'var(--fs-md)' }}>{t('Could not confirm that the payment was applied. Reload in a few minutes, and contact support if it is still missing.')}</InlineError>
       )}
 
       <section className="card" style={{ padding: 20 }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>{t('Storage usage')}</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Storage usage')}</h2>
         {isLoading ? (
-          <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+          <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
         ) : isError ? (
           // 取得失敗を 0GB として偽装しない（バックエンド/マイグレーション不備を隠さないため）
-          <InlineError style={{ fontSize: 13 }}>{t('Could not load storage usage')}</InlineError>
+          <InlineError style={{ fontSize: 'var(--fs-md)' }}>{t('Could not load storage usage')}</InlineError>
         ) : (
           <>
             <div
@@ -3398,7 +3522,7 @@ const SettingsBilling = () => {
                 }}
               />
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>
               {t('{amount} GB in use (reference line: {reference} GB)', { amount: totalGb.toFixed(2), reference: FREE_TIER_REFERENCE_GB })}
             </div>
           </>
@@ -3420,11 +3544,11 @@ const SettingsContributions = () => {
   })
 
   if (billingQuery.isLoading) {
-    return <div style={{ color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+    return <div style={{ color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
   }
   if (billingQuery.isError) {
     return (
-      <InlineError style={{ fontSize: 13 }}>{t('Could not load Cairn')}</InlineError>
+      <InlineError style={{ fontSize: 'var(--fs-md)' }}>{t('Could not load Cairn')}</InlineError>
     )
   }
   if (!billingQuery.data?.billingEnabled) return null
@@ -3529,10 +3653,10 @@ const SettingsDeveloper = () => {
   if (!isOwner) {
     return (
       <div>
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>
+        <h1 className="page-title" style={{ margin: '0 0 6px' }}>
           {t('Developer info')}
         </h1>
-        <p style={{ color: 'var(--text-3)', fontSize: 13 }}>
+        <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>
           {t('Only the workspace owner can use this section.')}
         </p>
       </div>
@@ -3542,16 +3666,14 @@ const SettingsDeveloper = () => {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-        <h1
-          style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', flex: 1 }}
-        >
+        <h1 className="page-title" style={{ margin: 0, flex: 1 }}>
           {t('Developer info')}
         </h1>
         <button
           className="btn"
           onClick={() => void diagnose.mutateAsync()}
           disabled={diagnose.isPending}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-md)' }}
         >
           <Icon
             name="refresh"
@@ -3561,16 +3683,16 @@ const SettingsDeveloper = () => {
           {t('Manual diagnostics')}
         </button>
       </div>
-      <p style={{ color: 'var(--text-3)', fontSize: 13, marginBottom: 10 }}>
+      <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)', marginBottom: 10 }}>
         {t('The initial view shows configuration only. Live checks of external services run only during manual diagnostics.')}
       </p>
       {diagnose.error && (
-        <p style={{ color: 'var(--red-text)', fontSize: 12.5, margin: '0 0 18px' }}>
+        <p style={{ color: 'var(--red-text)', fontSize: 'var(--fs-md)', margin: '0 0 18px' }}>
           {diagnose.error instanceof Error ? diagnose.error.message : t('Could not run diagnostics')}
         </p>
       )}
       {!diagnose.data && (
-        <p style={{ color: 'var(--text-4)', fontSize: 12, margin: '0 0 28px' }}>
+        <p style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', margin: '0 0 28px' }}>
           {t('Live checks such as OpenAI and Anthropic run only from "Manual diagnostics".')}
         </p>
       )}
@@ -3578,11 +3700,9 @@ const SettingsDeveloper = () => {
       <section style={{ marginBottom: 24 }}>
         <div
           style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: 'var(--text-4)',
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
+            fontSize: 'var(--fs-sm)',
+            fontWeight: 500,
+            color: 'var(--text-3)',
             marginBottom: 10,
           }}
         >
@@ -3628,26 +3748,26 @@ const SettingsDeveloper = () => {
                   <Icon name={icon} size={15} color="var(--text-3)" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+                  <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>
                     {label}
                   </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 1 }}>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', marginTop: 1 }}>
                     {t(purpose)}
                   </div>
                   {s?.detail && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
                       {s.detail}
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   {s?.latencyMs != null && s.status === 'ok' && (
-                    <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{s.latencyMs}ms</span>
                   )}
                   {isLoading ? (
                     <span
                       style={{
-                        fontSize: 11.5,
+                        fontSize: 'var(--fs-sm)',
                         color: 'var(--text-4)',
                         padding: '3px 10px',
                         borderRadius: 999,
@@ -3659,7 +3779,7 @@ const SettingsDeveloper = () => {
                   ) : cfg && s ? (
                     <span
                       style={{
-                        fontSize: 11.5,
+                        fontSize: 'var(--fs-sm)',
                         fontWeight: 600,
                         color: cfg.color,
                         padding: '3px 10px',
@@ -3672,7 +3792,7 @@ const SettingsDeveloper = () => {
                   ) : (
                     <span
                       style={{
-                        fontSize: 11.5,
+                        fontSize: 'var(--fs-sm)',
                         color: 'var(--text-4)',
                         padding: '3px 10px',
                         borderRadius: 999,
@@ -3693,11 +3813,9 @@ const SettingsDeveloper = () => {
         <section>
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: 'var(--text-4)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
+              fontSize: 'var(--fs-sm)',
+              fontWeight: 500,
+              color: 'var(--text-3)',
               marginBottom: 10,
             }}
           >
@@ -3721,7 +3839,7 @@ const SettingsDeveloper = () => {
               >
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: 'var(--fs-sm)',
                     fontFamily: 'monospace',
                     color: 'var(--text-3)',
                     width: 140,
@@ -3730,7 +3848,7 @@ const SettingsDeveloper = () => {
                 >
                   {label}
                 </span>
-                <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{value}</span>
+                <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)' }}>{value}</span>
               </div>
             ))}
           </div>
@@ -3742,7 +3860,7 @@ const SettingsDeveloper = () => {
 
 export function getSettingsNavGroups(
   isOwner: boolean,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): { label: string; items: SettingsSectionMeta[] }[] {
   const workspaceItems: SettingsSectionMeta[] = [
     { id: 'general', label: 'Workspace settings', icon: 'settings' },
@@ -3756,6 +3874,11 @@ export function getSettingsNavGroups(
       : []),
     { id: 'members', label: 'Members', icon: 'users' },
     { id: 'integrations', label: 'Integrations', icon: 'layers' },
+    // 取り込みは移行支援として運営側が行う。運営者（IMPORT_OPERATOR_USER_IDS）の owner / admin にだけ、
+    // フォルダの選択が要るので PC だけ出す（API も同じ条件で 403）
+    ...(options.isAdmin && options.isImportOperator && !options.isMobile
+      ? [{ id: 'import', label: 'Import from Teams', icon: 'download' } satisfies SettingsSectionMeta]
+      : []),
     ...(options.isMobile
       ? [{ id: 'contributions', label: 'Cairn', icon: 'layers' } satisfies SettingsSectionMeta]
       : []),
@@ -3809,6 +3932,7 @@ const SETTINGS_SECTION_COMPONENTS: Record<string, React.ComponentType> = {
   billing: SettingsBilling,
   contributions: SettingsContributions,
   developer: SettingsDeveloper,
+  import: SettingsImport,
 }
 
 const DEFAULT_SECTION = 'account'
@@ -3816,7 +3940,7 @@ const DEFAULT_SECTION = 'account'
 export function isSettingsSection(
   id: string | null | undefined,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): id is string {
   return (
     id != null &&
@@ -3827,7 +3951,7 @@ export function isSettingsSection(
 export function settingsSectionLabel(
   id: string,
   isOwner = true,
-  options: { isMobile?: boolean; isGuest?: boolean } = {},
+  options: { isMobile?: boolean; isGuest?: boolean; isAdmin?: boolean; isImportOperator?: boolean } = {},
 ): string {
   for (const g of getSettingsNavGroups(isOwner, options)) {
     const item = g.items.find((i) => i.id === id)
@@ -3843,8 +3967,8 @@ export function SettingsSectionContent({ section }: { section: string }) {
   if (Comp) return <Comp />
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t(settingsSectionLabel(section))}</h1>
-      <p style={{ color: 'var(--text-3)', fontSize: 13 }}>{t('Settings for this section are not ready yet.')}</p>
+      <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t(settingsSectionLabel(section))}</h1>
+      <p style={{ color: 'var(--text-3)', fontSize: 'var(--fs-md)' }}>{t('Settings for this section are not ready yet.')}</p>
     </div>
   )
 }
@@ -3853,10 +3977,15 @@ export const PageSettings = () => {
   const t = useT()
   const pathname = usePathname()
   const router = useRouter()
-  const { isOwner, isGuest } = useWorkspacePermissions()
-  const navGroups = getSettingsNavGroups(isOwner, { isGuest })
+  const { isOwner, isGuest, isAdmin } = useWorkspacePermissions()
+  const importAccess = useImportAccess(isAdmin)
+  // 取り込み（運営者）か、取り込んだ投稿者の紐づけ（owner / admin）ができるときに「Teams から取り込む」を出す
+  const navOptions = { isGuest, isAdmin, isImportOperator: importAccess.data?.allowed === true || importAccess.data?.canLink === true }
+  const navGroups = getSettingsNavGroups(isOwner, navOptions)
   const seg = pathname.split('/')[2]
-  const section = isSettingsSection(seg, isOwner, { isGuest }) ? seg : DEFAULT_SECTION
+  // 取り込み画面は運営者かの確認が終わるまで判定できない。確認中・確認に失敗したときに /settings/import を開いても
+  // 既定の画面へ戻さず、取り込み画面の側で読み込み中・エラー（再試行できる）を出す
+  const section = isSettingsSection(seg, isOwner, navOptions) || (seg === 'import' && isAdmin && (importAccess.isPending || importAccess.isError)) ? seg : DEFAULT_SECTION
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <TopBar title={t('Settings')} />
@@ -3873,11 +4002,9 @@ export const PageSettings = () => {
             <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? 16 : 0 }}>
               <div
                 style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  color: 'var(--text-4)',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
+                  fontSize: 'var(--fs-sm)',
+                  fontWeight: 500,
+                  color: 'var(--text-3)',
                   padding: '0 10px',
                   marginBottom: 4,
                 }}
@@ -3899,7 +4026,7 @@ export const PageSettings = () => {
                     background: section === s.id ? 'var(--card-hover)' : 'transparent',
                     color: section === s.id ? 'var(--text)' : 'var(--text-2)',
                     fontWeight: section === s.id ? 600 : 500,
-                    fontSize: 13,
+                    fontSize: 'var(--fs-md)',
                     fontFamily: 'inherit',
                     cursor: 'pointer',
                     textAlign: 'left',
