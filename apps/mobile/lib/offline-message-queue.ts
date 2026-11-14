@@ -108,3 +108,17 @@ export function resolveQueueWorkspace(ready: boolean, selectedWorkspaceId: strin
   if (!ready) return undefined
   return selectedWorkspaceId || defaultWorkspaceId
 }
+
+/** 保存済みキューと選択先の両方が復元できるよう、エラーと再試行をまとめる。 */
+export function queueRestoreControls(
+  queueError: string | null,
+  selectionError: Error | null,
+  selectionErrorMessage: string,
+  retryQueue: () => void,
+  retrySelection: () => void,
+): { error: string | null; retry: () => void } {
+  return {
+    error: queueError ?? (selectionError ? selectionErrorMessage : null),
+    retry: () => { retrySelection(); retryQueue() },
+  }
+}

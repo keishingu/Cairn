@@ -378,6 +378,7 @@ export const KO_MESSAGES: Record<string, string> = {
   'Could not load the stone stack': '쌓은 돌을 불러오지 못했습니다',
   'Could not load the text preview.': '텍스트 미리보기를 불러오지 못했습니다.',
   'Could not load the week start. Reload and try again.': '주 시작 설정을 불러오지 못했습니다. 잠시 후 다시 로드해 주세요.',
+  'Could not load the selected workspace for unsent messages': '미전송 메시지의 선택된 워크스페이스를 불러오지 못했습니다',
   'Could not load the workspace': '워크스페이스를 불러오지 못했습니다',
   'Could not load the workspace list ({status})': '워크스페이스 목록을 불러오지 못했습니다 ({status})',
   'Could not sign out. Please try again.': '로그아웃하지 못했습니다. 다시 시도해 주세요.',

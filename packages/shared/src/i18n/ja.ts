@@ -378,6 +378,7 @@ export const JA_MESSAGES: Record<string, string> = {
   'Could not load the stone stack': '積み石の取得に失敗しました',
   'Could not load the text preview.': 'テキストプレビューを読み込めませんでした。',
   'Could not load the week start. Reload and try again.': '週の始まりの設定を読み込めませんでした。時間をおいて再読み込みしてください。',
+  'Could not load the selected workspace for unsent messages': '未送信メッセージのワークスペース選択を読み込めませんでした',
   'Could not load the workspace': 'ワークスペースを読み込めませんでした',
   'Could not load the workspace list ({status})': 'ワークスペース一覧の取得に失敗しました ({status})',
   'Could not sign out. Please try again.': 'ログアウトできませんでした。もう一度お試しください。',

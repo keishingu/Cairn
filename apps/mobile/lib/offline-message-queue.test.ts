@@ -7,6 +7,7 @@ import {
   retryQueuedMessage,
   canRetryInWorkspace,
   resolveQueueWorkspace,
+  queueRestoreControls,
   parseStoredMessageQueue,
   persistThenStartSend,
   sendQueuedForUser,
@@ -71,6 +72,22 @@ describe('オフラインメッセージキュー', () => {
     expect(resolveQueueWorkspace(false, null, 'workspace-a')).toBeUndefined()
     expect(resolveQueueWorkspace(true, null, undefined)).toBeUndefined()
     expect(resolveQueueWorkspace(true, null, 'workspace-a')).toBe('workspace-a')
+  })
+
+  it('選択先の読み込み失敗を表示し、再試行でキューと選択先を復旧する', () => {
+    let selectionError: Error | null = new Error('storage error')
+    let selected: string | null = null
+    let queueReady = false
+    const controls = () => queueRestoreControls(null, selectionError, '選択先を読み込めません',
+      () => { queueReady = true }, () => { selected = 'workspace-a'; selectionError = null })
+    expect(controls().error).toBe('選択先を読み込めません')
+    expect(resolveQueueWorkspace(false, selected, undefined)).toBeUndefined()
+    controls().retry()
+    const workspaceId = resolveQueueWorkspace(selectionError === null, selected, undefined)
+    expect(controls().error).toBeNull()
+    expect(queueReady && !!workspaceId).toBe(true)
+    const restored = parseStoredMessageQueue(JSON.stringify([{ id: 'a', channelId: 'ch', workspaceId: 'workspace-a', content: '本文', createdAt: '2026-01-01' }]))
+    expect(messagesForWorkspace(restored, workspaceId).map((item) => item.id)).toEqual(['a'])
   })
 
   it('旧403の本文を保持し、明示再送時だけ所属先を固定する', () => {
