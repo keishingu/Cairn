@@ -26,12 +26,19 @@ export function SocialAuthButtons({ inviteToken, nextPath }: Props) {
     if (nextPath) callbackUrl.searchParams.set('next', nextPath)
 
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const startOAuth = window.cairnDesktop?.startOAuth
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: callbackUrl.toString() },
+        options: { redirectTo: callbackUrl.toString(), ...(startOAuth ? { skipBrowserRedirect: true } : {}) },
       })
 
-      if (!oauthError) return
+      if (!oauthError) {
+        if (startOAuth) {
+          if (!data.url) throw new Error('Missing OAuth URL')
+          await startOAuth(data.url, process.env['NEXT_PUBLIC_SUPABASE_URL']!, provider)
+        }
+        return
+      }
     } catch {
       // SDKまたはネットワークエラーは同じ復帰導線へ進む
     }

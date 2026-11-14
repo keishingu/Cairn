@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const { describe, test } = require('node:test')
-const { getNavigationAction, registerExternalNavigation } = require('./external-navigation')
+const { getNavigationAction, isAuthSender, registerExternalNavigation } = require('./external-navigation')
 
 const APP_URL = 'https://develop.oss-cairn.com'
 
@@ -21,6 +21,15 @@ describe('getNavigationAction', () => {
 })
 
 describe('registerExternalNavigation', () => {
+  test('認証開始は Cairn のメインフレームからのみ受け付ける', () => {
+    const frame = { url: `${APP_URL}/auth/login` }
+    const webContents = { mainFrame: frame }
+    assert.equal(isAuthSender({ sender: webContents, senderFrame: frame }, webContents, APP_URL), true)
+    assert.equal(isAuthSender({ sender: {}, senderFrame: frame }, webContents, APP_URL), false)
+    assert.equal(isAuthSender({ sender: webContents, senderFrame: { url: frame.url } }, webContents, APP_URL), false)
+    frame.url = 'https://example.com/'
+    assert.equal(isAuthSender({ sender: webContents, senderFrame: frame }, webContents, APP_URL), false)
+  })
   test('外部リンクを既定ブラウザへ渡し、Electron の新規ウィンドウは開かない', () => {
     let handler
     const openedUrls = []
@@ -65,28 +74,37 @@ describe('registerExternalNavigation', () => {
     assert.deepEqual(openedUrls, ['https://example.com/docs', 'https://example.com/docs'])
   })
 
-  test('OAuth の認可からコールバックまでは同じウィンドウを使い、他の外部遷移は許可しない', () => {
+  test('明示的な認証開始後だけプロバイダと同じ Supabase のコールバックを許可する', () => {
     const handlers = {}
     const opened = []
-    registerExternalNavigation({ setWindowOpenHandler: () => {}, on: (name, handler) => { handlers[name] = handler } }, APP_URL, async url => { opened.push(url) })
+    const loaded = []
+    const navigation = registerExternalNavigation({ loadURL: async url => { loaded.push(url) }, setWindowOpenHandler: () => {}, on: (name, handler) => { handlers[name] = handler } }, APP_URL, async url => { opened.push(url) })
     const navigate = (name, url) => {
       let prevented = false
       handlers[name]({ isMainFrame: true, url, preventDefault: () => { prevented = true } })
       return prevented
     }
-    for (const provider of ['google', 'apple']) {
-      const authorize = new URL('https://project.supabase.co/auth/v1/authorize')
-      authorize.searchParams.set('provider', provider)
-      authorize.searchParams.set('redirect_to', `${APP_URL}/api/auth/callback?next=%2Fchats`)
-      assert.equal(navigate('will-navigate', authorize.href), false)
-      assert.equal(navigate('will-redirect', provider === 'google' ? 'https://accounts.google.com/o/oauth2/auth' : 'https://appleid.apple.com/auth/authorize'), false)
-      assert.equal(navigate('will-redirect', 'https://project.supabase.co/auth/v1/callback?code=example'), false)
-      assert.equal(navigate('will-redirect', `${APP_URL}/api/auth/callback?code=example`), false)
-      assert.equal(navigate('will-navigate', 'https://accounts.google.com/'), true)
-    }
-    assert.equal(navigate('will-navigate', 'https://example.com/'), true)
-    assert.equal(navigate('will-navigate', `https://project.supabase.co/auth/v1/authorize?provider=google&redirect_to=https://example.com/api/auth/callback`), true)
-    assert.equal(opened.length, 4)
+    const authorize = new URL('https://project.supabase.co/auth/v1/authorize')
+    authorize.searchParams.set('provider', 'google')
+    authorize.searchParams.set('redirect_to', `${APP_URL}/api/auth/callback`)
+    assert.equal(navigate('will-navigate', authorize.href), true)
+    navigation.startAuth(authorize.href, 'https://project.supabase.co', 'google')
+    assert.equal(navigate('will-redirect', 'https://accounts.google.com/o/oauth2/auth'), false)
+    assert.equal(navigate('will-redirect', 'https://project.supabase.co/auth/v1/callback?code=example'), false)
+    assert.equal(navigate('will-redirect', `${APP_URL}/api/auth/callback?code=example`), false)
+    assert.equal(navigate('will-navigate', 'https://accounts.google.com/'), true)
+    // linkIdentity は Supabase から直接 provider の URL を受け取る。
+    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    assert.equal(navigate('will-redirect', 'https://other.supabase.co/auth/v1/callback'), true)
+    assert.equal(navigate('will-redirect', 'https://appleid.apple.com/auth/authorize'), true)
+    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    assert.equal(navigate('will-redirect', 'https://appleid.apple.com:444/auth/authorize'), true)
+    navigation.startAuth('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple')
+    assert.equal(navigate('will-redirect', 'https://user@appleid.apple.com/auth/authorize'), true)
+    assert.throws(() => navigation.startAuth('https://example.com/', 'https://project.supabase.co', 'google'))
+    assert.throws(() => navigation.startAuth(authorize.href, 'https://other.supabase.co', 'google'))
+    assert.throws(() => navigation.startAuth('https://user@accounts.google.com/', 'https://project.supabase.co', 'google'))
+    assert.equal(loaded.length, 4)
   })
 
 })

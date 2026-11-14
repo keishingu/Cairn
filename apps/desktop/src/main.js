@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Menu, session, ipcMain, nativeImage, shell } = require('electron')
 const path = require('path')
 const pkg = require('../package.json')
-const { registerExternalNavigation } = require('./external-navigation')
+const { isAuthSender, registerExternalNavigation } = require('./external-navigation')
 const { isSameOrigin, registerPermissionPolicy } = require('./permission-policy')
 const { resolveAppIconFile } = require('./app-icon')
 
@@ -125,7 +125,12 @@ function createWindow() {
     },
   })
 
-  registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
+  const navigation = registerExternalNavigation(win.webContents, APP_URL, url => shell.openExternal(url))
+  ipcMain.handle('cairn:start-oauth', (event, url, supabaseUrl, provider) => {
+    if (!isAuthSender(event, win.webContents, APP_URL)) throw new Error('Invalid OAuth sender')
+    navigation.startAuth(url, supabaseUrl, provider)
+  })
+  win.on('closed', () => ipcMain.removeHandler('cairn:start-oauth'))
   win.loadURL(APP_URL)
 
   // Desktop 特権: ブラウザがタブ切替に使う Ctrl+Tab / Ctrl+Shift+Tab を横取りし、

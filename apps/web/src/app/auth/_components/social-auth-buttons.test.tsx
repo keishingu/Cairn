@@ -18,8 +18,22 @@ vi.mock('@/lib/supabase/client', () => ({
 
 describe('SocialAuthButtons', () => {
   beforeEach(() => {
+    delete window.cairnDesktop
     mocks.signInWithOAuth.mockReset()
     mocks.signInWithOAuth.mockResolvedValue({ error: null })
+  })
+
+  test('Desktop では SDK の認証 URL を同一ウィンドウの認証経路へ渡す', async () => {
+    const startOAuth = vi.fn().mockResolvedValue(undefined)
+    window.cairnDesktop = { startOAuth }
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
+    mocks.signInWithOAuth.mockResolvedValue({ data: { url: 'https://project.supabase.co/auth/v1/authorize' }, error: null })
+    render(<SocialAuthButtons />)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Google でサインイン' }))
+    await waitFor(() => expect(startOAuth).toHaveBeenCalledWith('https://project.supabase.co/auth/v1/authorize', 'https://project.supabase.co', 'google'))
+    expect(mocks.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ skipBrowserRedirect: true }) }))
+    delete window.cairnDesktop
+    vi.unstubAllEnvs()
   })
 
   test('Appleでサインインすると招待と遷移先を保ったコールバックを開始する', async () => {

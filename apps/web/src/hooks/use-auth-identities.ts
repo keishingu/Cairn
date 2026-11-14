@@ -61,11 +61,16 @@ export function useLinkOAuthIdentity(provider: LinkableOAuthProvider) {
       const callbackUrl = new URL('/api/auth/callback', window.location.origin)
       callbackUrl.searchParams.set('next', `/settings/account?loginLinked=${provider}`)
 
-      const { error } = await supabase.auth.linkIdentity({
+      const startOAuth = window.cairnDesktop?.startOAuth
+      const { data, error } = await supabase.auth.linkIdentity({
         provider,
-        options: { redirectTo: callbackUrl.toString() },
+        options: { redirectTo: callbackUrl.toString(), ...(startOAuth ? { skipBrowserRedirect: true } : {}) },
       })
       if (error) throw mapLinkError(provider, error)
+      if (startOAuth) {
+        if (!data.url) throw new Error('Missing OAuth URL')
+        await startOAuth(data.url, process.env['NEXT_PUBLIC_SUPABASE_URL']!, provider)
+      }
       // 成功時はブラウザがプロバイダへ遷移する。戻ってこない場合だけここへ到達する。
       return 'redirecting'
     },

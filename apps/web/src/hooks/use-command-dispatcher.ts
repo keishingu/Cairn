@@ -12,6 +12,7 @@ declare global {
   interface Window {
     /** Electron preload が公開するブリッジ（Web 単体では undefined） */
     cairnDesktop?: {
+      startOAuth?: (url: string, supabaseUrl: string, provider: 'google' | 'apple') => Promise<void>
       onNavigate?: (cb: (action: string) => void) => (() => void) | void
       onSeq?: (cb: (dir: 'prev' | 'next') => void) => (() => void) | void
       onToggleSidebar?: (cb: () => void) => (() => void) | void

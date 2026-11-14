@@ -45,6 +45,7 @@ function renderLoginMethods() {
 
 describe('LoginMethodsSettings', () => {
   beforeEach(() => {
+    delete window.cairnDesktop
     __resetToastsForTest()
     mocks.getUserIdentities.mockReset()
     mocks.linkIdentity.mockReset()
@@ -67,6 +68,19 @@ describe('LoginMethodsSettings', () => {
       error: null,
     })
     mocks.linkIdentity.mockResolvedValue({ data: { provider: 'apple', url: null }, error: null })
+  })
+
+  it('Desktop のログイン方法追加は SDK が返す provider URL を認証経路へ渡す', async () => {
+    const startOAuth = vi.fn().mockResolvedValue(undefined)
+    window.cairnDesktop = { startOAuth }
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
+    mocks.linkIdentity.mockResolvedValue({ data: { provider: 'apple', url: 'https://appleid.apple.com/auth/authorize' }, error: null })
+    renderLoginMethods()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Apple を連携' }))
+    await waitFor(() => expect(startOAuth).toHaveBeenCalledWith('https://appleid.apple.com/auth/authorize', 'https://project.supabase.co', 'apple'))
+    expect(mocks.linkIdentity).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ skipBrowserRedirect: true }) }))
+    delete window.cairnDesktop
+    vi.unstubAllEnvs()
   })
 
   it('未連携時にAppleとGoogleの連携ボタンを表示する', async () => {

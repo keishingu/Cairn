@@ -29,3 +29,5 @@ pnpm --filter @cairn/desktop generate-icons  # apps/web/public/ の PNG から .
 3. 通知パネル（ベルアイコン）の ON/OFF で、通知許可ダイアログが出ることを確認する
 
 外部 HTTP(S) リンクと外部へのリダイレクトは既定ブラウザで開き、Web 以外のスキームは拒否する。同一オリジンの遷移はデスクトップ内で開く。
+
+Google・Apple のログインとログイン方法追加は、Web が Supabase SDK から得た認証 URL を desktop に明示的に渡し、認証先と設定済み Supabase のコールバックに限って同一ウィンドウで開く。PKCE の検証値とセッション Cookie を維持するため、認証後は Cairn のコールバックへ戻る。通常の外部リンクは既定ブラウザで開く。
