@@ -7,11 +7,7 @@ import { Icon, Avatar, StatusChip, ArchivedBadge, ARCHIVED_OPACITY } from '../pr
 import type { WorkspaceMemberDto } from '@/app/api/workspaces/members/route'
 import type { MemberProjectDto } from '@/app/api/workspaces/members/[userId]/projects/route'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
-import {
-  CURRENT_USER_QUERY_KEY,
-  patchCurrentUserCache,
-  useCurrentUser,
-} from '@/hooks/use-current-user'
+import { useCurrentUser } from '@/hooks/use-current-user'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import { ProfileAttributeBadges } from '../profile-attribute-badges'
@@ -194,6 +190,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     member.membershipStatus === 'active' && (viewerRole === 'owner' || viewerRole === 'admin')
   // ゲスト↔通常ロールは API が拒否するため UI からも除外する（PC / モバイル共通）
   const canChangeRole =
+    Boolean(me?.id) && member.userId !== me?.id &&
     currentRole !== 'guest' &&
     (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
@@ -220,12 +217,8 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
         }
         return r.json() as Promise<{ userId: string; role: WorkspaceMemberDto['role'] }>
       }),
-    onSuccess: (result) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace-members'] })
-      if (result.userId === me?.id) {
-        patchCurrentUserCache(queryClient, { wsRole: result.role })
-        void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY })
-      }
     },
   })
 
