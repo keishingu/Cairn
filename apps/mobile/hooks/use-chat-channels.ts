@@ -139,6 +139,16 @@ export function useProjectRoles(enabled: boolean) {
   })
 }
 
+/** ワークスペースのプロフィール属性（`@コーチ` のメンション候補）。DM 以外のチャンネルで取る */
+export function useProfileAttributes(enabled: boolean) {
+  const t = useT()
+  return useQuery<ProfileAttributeDto[]>({
+    queryKey: ['profile-attributes'],
+    queryFn: fetchJson('/api/workspaces/profile-attributes', t('Could not load attributes ({status})')),
+    enabled,
+  })
+}
+
 export function useCreateWorkspaceChannel() {
   const t = useT()
   const qc = useQueryClient()
