@@ -237,7 +237,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onBlocked, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -283,6 +283,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   onJumpToMessage: (messageId: string) => void
   onCopyLink: (messageId: string) => void
   onImageClick: (attachmentId: string) => void
+  onBlocked?: ((userId: string) => Promise<void>) | undefined
   /** 渡されたときだけメニューに「スレッドに切り出す」を出す（親ワークスペースチャンネルかつ member 以上のときに親が渡す） */
   onMoveToThread?: (messageId: string) => void
   /** 渡されたときだけアバターを押して送信者のメンバー詳細を開ける（ワークスペースの在籍者で、アプリ・システムの発言でないとき） */
@@ -421,6 +422,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       const data = await res.json().catch(() => null) as { error?: string } | null
       throw new Error(data?.error ?? t('Could not block the user'))
     }
+    await onBlocked?.(senderId)
     toast.success(t('Blocked the user'))
   }
 
@@ -607,7 +609,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </div>
           )
         )}
-        {attachments.length > 0 && (
+        {!blocked && attachments.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: content ? 8 : 4 }}>
             {attachments.map(a => isImageMime(a.mimeType) ? (
               <img
@@ -1895,6 +1897,25 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     markChannelReadFn(channelId)
   }, [channelId, initialPositioned, initialUnreadPosition, isHistoryView, latestMessageId, markChannelReadFn, showScrollToLatest])
 
+  const handleBlocked = React.useCallback(async (userId: string) => {
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: ['messages'] }),
+      queryClient.cancelQueries({ queryKey: ['message-history'] }),
+    ])
+    // 再取得が遅延・失敗しても、ブロックした相手の添付を画面に残さない。
+    const hideBlocked = (current: MessageDto[] | undefined) => current?.map(message =>
+      message.senderId === userId ? { ...message, blocked: true, attachments: [] } : message,
+    )
+    queryClient.setQueriesData<MessageDto[]>({ queryKey: ['messages'] }, hideBlocked)
+    queryClient.setQueriesData<MessageDto[]>({ queryKey: ['message-history'] }, hideBlocked)
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['messages'] }),
+      queryClient.invalidateQueries({ queryKey: ['message-history'] }),
+      queryClient.invalidateQueries({ queryKey: ['dms'] }),
+      queryClient.invalidateQueries({ queryKey: ['user-blocks'] }),
+    ])
+  }, [queryClient])
+
   const handleCheckboxToggle = React.useCallback(async (messageId: string, index: number, checked: boolean) => {
     leaveHistoryView()
     try {
@@ -1904,7 +1925,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
         body: JSON.stringify({ index, checked }),
       })
       if (res.ok) {
-        await queryClient.invalidateQueries({ queryKey: ['channel-messages', channelId] })
+        await queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(channelId) })
       }
     } catch {
       // サイレントに失敗
@@ -1948,6 +1969,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
   const lightboxImages = React.useMemo<(LightboxImage & { attachmentId: string })[]>(() => {
     const imgs: (LightboxImage & { attachmentId: string })[] = []
     for (const m of messages) {
+      if (m.blocked) continue
       for (const a of m.attachments) {
         if (isImageMime(a.mimeType)) {
           const canAddToGallery = canAddMessageToGallery(m) && galleryImagesOf([a]).length > 0
@@ -2589,6 +2611,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               onJumpToMessage={jumpToMessage}
               onCopyLink={handleCopyLink}
               onImageClick={openLightbox}
+              onBlocked={handleBlocked}
               {...(onMoveToThread && item.message.messageType !== 'system' ? { onMoveToThread: handleMoveToThread } : {})}
               {...(onOpenMember && !moveSelection && !item.message.senderApp && item.message.messageType !== 'system' && emailByUserId.has(item.message.senderId)
                 ? { onOpenSender: onOpenMember }

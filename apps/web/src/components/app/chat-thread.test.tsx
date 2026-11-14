@@ -46,6 +46,7 @@ const { routerPush, fetchWithAuthMock, toastSuccess, toastError, markChannelRead
     historyIsError: false,
     emptyChannel: false,
     latestMessagesFetching: false,
+    messageContent: 'hello',
     workspaceMembers: [] as Array<{ userId: string; displayName: string; role: 'member' | 'guest' }>,
     projectChannels: [] as Array<{ channelId: string; projectId: string }>,
     projectChannelsResolved: true,
@@ -71,7 +72,7 @@ vi.mock('@/lib/chat/client', () => ({
   useChannelMembers: () => ({ data: [] }),
   useChannelMessages: () => ({
     data: chatThreadState.emptyChannel ? [] : [{
-      id: 'message-1', content: 'hello', messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
+      id: 'message-1', content: chatThreadState.messageContent, messageType: 'text', senderId: 'user-2', senderName: 'Alice', senderAvatarUrl: null,
       createdAt: '2026-08-23T12:00:00.000Z', isEdited: false, reactions: [], attachments: [], parentMessageId: null,
       replyTo: null, bookmarked: false, linkedTasks: [], blocked: false,
     }],
@@ -125,6 +126,63 @@ vi.mock('@/lib/toast', () => ({
     error: toastError,
   },
 }))
+
+describe('ブロックとチェックボックスの更新', () => {
+  afterEach(() => {
+    chatThreadState.messageContent = 'hello'
+    fetchWithAuthMock.mockReset()
+  })
+
+  it('ブロック済み投稿では画像もファイル名も表示せず取得しない', () => {
+    const props = {
+      messageId: 'message-1', messageType: 'text' as const, senderId: 'user-2', currentUserId: 'user-1', senderName: 'Alice',
+      createdAt: '2026-06-25T12:00:00.000Z', isEdited: false, content: 'hidden', reactions: [],
+      attachments: [
+        { id: 'a', fileId: 'image', fileName: 'hidden.png', mimeType: 'image/png', fileSize: 1, displayOrder: 0 },
+        { id: 'b', fileId: 'document', fileName: 'hidden.pdf', mimeType: 'application/pdf', fileSize: 1, displayOrder: 1 },
+      ],
+      replyTo: null, bookmarked: false, onReact: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(), onCheckboxToggle: vi.fn(),
+      onReply: vi.fn(), onBookmark: vi.fn(), onMakeTask: vi.fn(), onJumpToMessage: vi.fn(), onCopyLink: vi.fn(), onImageClick: vi.fn(),
+    }
+    const { rerender } = render(<ChatMessage {...props} blocked />)
+    expect(screen.queryByAltText('hidden.png')).toBeNull()
+    expect(screen.queryByText('hidden.pdf')).toBeNull()
+    rerender(<ChatMessage {...props} blocked={false} />)
+    expect(screen.getByAltText('hidden.png')).toBeInTheDocument()
+    expect(screen.getByText('hidden.pdf')).toBeInTheDocument()
+  })
+
+  it('チェックボックスの保存後は実際の messages キーを無効化する', async () => {
+    chatThreadState.messageContent = '- [ ] task'
+    fetchWithAuthMock.mockResolvedValue({ ok: true })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    render(<QueryClientProvider client={queryClient}><ChatThread channelId="channel-1" isMobile /></QueryClientProvider>)
+    await userEvent.setup().click(screen.getByRole('checkbox'))
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages', 'channel-1'] }))
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/api/messages/message-1/checkbox', expect.objectContaining({ method: 'PATCH' }))
+  })
+
+  it('ブロック成功直後に表示中のメッセージと関連一覧を無効化する', async () => {
+    fetchWithAuthMock.mockResolvedValue({ ok: true })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const cached = [{ id: 'message-1', senderId: 'user-2', blocked: false, attachments: [{ id: 'image' }] }]
+    queryClient.setQueryData(['messages', 'channel-1'], cached)
+    queryClient.setQueryData(['message-history', 'channel-1', 'message-1'], cached)
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    render(<QueryClientProvider client={queryClient}><ChatThread channelId="channel-1" isMobile /></QueryClientProvider>)
+    const user = userEvent.setup()
+    await user.click(screen.getByTitle('操作'))
+    await user.click(screen.getByRole('button', { name: 'ブロック' }))
+    await user.click(screen.getByRole('button', { name: 'ブロック' }))
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['messages'] }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['message-history'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['user-blocks'] })
+    expect(queryClient.getQueryData(['messages', 'channel-1'])).toEqual([expect.objectContaining({ blocked: true, attachments: [] })])
+    expect(queryClient.getQueryData(['message-history', 'channel-1', 'message-1'])).toEqual([expect.objectContaining({ blocked: true, attachments: [] })])
+  })
+})
 
 describe('ChatMessage copy action', () => {
   beforeEach(() => {

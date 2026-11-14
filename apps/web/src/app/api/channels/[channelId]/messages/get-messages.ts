@@ -443,7 +443,9 @@ export async function getMessages({
       createdAt: row.createdAt.toISOString(),
       isEdited: row.updatedAt.getTime() > row.createdAt.getTime(),
       reactions: reactionMap.get(row.id) ?? [],
-      attachments: attachmentMap.get(row.id) ?? [],
+      attachments: row.senderId !== userId && !visibleSenderIds.has(row.senderId)
+        ? []
+        : attachmentMap.get(row.id) ?? [],
       parentMessageId: row.parentMessageId,
       replyTo: row.parentMessageId ? (parentMap.get(row.parentMessageId) ?? null) : null,
       bookmarked: bookmarkedIds.has(row.id),
