@@ -58,6 +58,12 @@ export async function POST(
         return { ok: true as const, workspaceId: invite.workspaceId, shouldIndexMember: false }
       }
 
+      // owner の再活性化は別の active owner による明示操作に限る。
+      // 一般招待の所持だけで元の owner 権限を取り戻させない。
+      if (existingMembership?.membershipStatus === 'inactive' && existingMembership.role === 'owner') {
+        return { ok: false as const, status: 403, error: '非活性の owner は他の owner に再活性化を依頼してください' }
+      }
+
       // max_uses チェックとインクリメントをアトミックに実行し、
       // 上限未満の場合のみ行が返る → 競合状態を防ぐ
       const [claimed] = await tx
@@ -85,10 +91,7 @@ export async function POST(
       }
 
       if (existingMembership?.membershipStatus === 'inactive') {
-        // owner の活性状態・ロールは owner のみが変更できる不変条件（PATCH /members/[userId] と同じ）。
-        // admin が発行した member/guest 招待で inactive owner が復帰すると、この招待リンクの
-        // ロールに降格されてしまうため、既存ロールが owner の場合は上書きしない。
-        const nextRole = existingMembership.role === 'owner' ? 'owner' : claimed.role
+        const nextRole = claimed.role
         await tx
           .update(workspaceMembers)
           .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null, role: nextRole })
