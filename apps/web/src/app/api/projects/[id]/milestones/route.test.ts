@@ -132,6 +132,7 @@ describe('POST /api/projects/[id]/milestones', () => {
       startTime: '09:30:00',
       endTime: null,
       completed: false,
+      updatedAt: new Date('2026-08-01T00:00:00.000Z'),
     }
     const tx = {
       insert: vi.fn()

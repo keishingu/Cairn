@@ -27,12 +27,18 @@ vi.mock('./client', () => ({
 }))
 
 vi.mock('@/lib/push/send', () => ({ sendPushToUser: vi.fn() }))
+vi.mock('@/lib/tasks/assignment-delivery', () => ({ canDeliverTaskAssignment: vi.fn() }))
+vi.mock('@/lib/access/membership', () => ({ getWorkspaceRole: vi.fn().mockResolvedValue('member') }))
+vi.mock('@/lib/permissions', () => ({ canAccessChannel: vi.fn().mockResolvedValue(true) }))
 vi.mock('@/lib/uploads/cleanup', () => ({ cleanupExpiredUploadRequests: vi.fn() }))
 vi.mock('@/lib/ai/attachments', () => ({ cleanupUnsentAiAttachments: vi.fn() }))
 vi.mock('@/first-party-apps/polls', () => ({ sweepStalePolls: vi.fn() }))
 
 import './functions'
 import { sendPushToUser } from '@/lib/push/send'
+import { getWorkspaceRole } from '@/lib/access/membership'
+import { canAccessChannel } from '@/lib/permissions'
+import { canDeliverTaskAssignment } from '@/lib/tasks/assignment-delivery'
 import { cleanupExpiredUploadRequests } from '@/lib/uploads/cleanup'
 import { cleanupUnsentAiAttachments } from '@/lib/ai/attachments'
 import { sweepStalePolls } from '@/first-party-apps/polls'
@@ -299,6 +305,64 @@ describe('onMessageCreated', () => {
     )
   })
 
+  it('現在も権限のあるDM受信者へPushを送る', async () => {
+    vi.mocked(sendPushToUser).mockClear()
+    const member = { userId: 'recipient', displayName: '受信者' }
+    const run = vi.fn(async (name: string, callback: () => unknown) => {
+      switch (name) {
+        case 'resolve-current-channel': return 'channel-id'
+        case 'fetch-members':
+        case 'filter-blocked-members': return [member]
+        case 'check-dm': return true
+        case 'create-dm-notifications': return undefined
+        case 'filter-dm-push-targets': return { readRecipients: [], unreadRecipients: [member] }
+        case 'send-dm-push': return callback()
+        default: throw new Error(`Unexpected step: ${name}`)
+      }
+    })
+    await handlers.get('on-message-created')!({
+      event: { data: { messageId: 'message-id', channelId: 'channel-id', workspaceId: 'workspace-id', senderId: 'sender', senderName: '送信者', content: '本文', attachmentFileIds: [] } },
+      step: { run, sleep: vi.fn() },
+    })
+    expect(sendPushToUser).toHaveBeenCalledWith('recipient', expect.objectContaining({ body: '本文' }))
+  })
+
+  it.each([
+    ['非活性化', null, true],
+    ['チャンネル権限の削除', 'member', false],
+  ] as const)('猶予中に%sされた受信者へメンション本文をPushしない', async (_change, role, accessible) => {
+    vi.mocked(sendPushToUser).mockClear()
+    vi.mocked(getWorkspaceRole).mockResolvedValue(role)
+    vi.mocked(canAccessChannel).mockResolvedValue(accessible)
+    const recipient = { userId: 'mentioned-user', displayName: 'メンバー' }
+    const run = vi.fn(async (name: string, callback: () => unknown) => {
+      switch (name) {
+        case 'resolve-current-channel':
+        case 'resolve-push-channel': return 'channel-id'
+        case 'fetch-members':
+        case 'filter-blocked-members':
+        case 'fetch-reply-target': return []
+        case 'check-dm': return false
+        case 'fetch-mentioned-members':
+        case 'filter-mention-access':
+        case 'filter-blocked-mentions': return [recipient]
+        case 'resolve-mention-preview-names': return {}
+        case 'resolve-recipient-locales': return { 'mentioned-user': 'ja' }
+        case 'create-mention-notifications': return undefined
+        case 'filter-mention-push-targets': return { readRecipients: [], unreadRecipients: [recipient] }
+        case 'send-mention-push': return callback()
+        default: throw new Error(`Unexpected step: ${name}`)
+      }
+    })
+    await handlers.get('on-message-created')!({
+      event: { data: { messageId: 'message-id', channelId: 'channel-id', workspaceId: 'workspace-id', senderId: 'sender-id', senderName: '送信者', content: '<@mentioned-user> 秘密', attachmentFileIds: [] } },
+      step: { run, sleep: vi.fn() },
+    })
+    expect(sendPushToUser).not.toHaveBeenCalled()
+    vi.mocked(getWorkspaceRole).mockResolvedValue('member')
+    vi.mocked(canAccessChannel).mockResolvedValue(true)
+  })
+
   describe('返信の通知', () => {
     function runReply(content: string, options: {
       replyTargets: { userId: string; displayName: string }[]
@@ -442,5 +506,19 @@ describe('runHourlyMaintenance', () => {
     await expect(runMaintenance()).rejects.toThrow('hourly maintenance failed: expiredUploadRequests')
     expect(sweepStalePolls).toHaveBeenCalledTimes(1)
     consoleError.mockRestore()
+  })
+})
+
+describe('onTaskAssigned', () => {
+  it.each([[false], [true]])('現在の担当権限 %s に従いPushする', async (allowed) => {
+    vi.mocked(sendPushToUser).mockClear()
+    vi.mocked(canDeliverTaskAssignment).mockResolvedValue(allowed)
+    const run = vi.fn(async (name: string, callback: () => unknown) => name === 'send-task-push' ? callback() : undefined)
+    await handlers.get('on-task-assigned')!({
+      event: { data: { taskId: 'task', taskTitle: '題名', assigneeId: 'user', projectTitle: 'project', workspaceId: 'workspace', assignerName: 'sender' } as unknown as MessageCreatedEvent['data'] },
+      step: { run, sleep: vi.fn() },
+    })
+    expect(canDeliverTaskAssignment).toHaveBeenCalledWith('workspace', 'task', 'user')
+    expect(sendPushToUser).toHaveBeenCalledTimes(allowed ? 1 : 0)
   })
 })

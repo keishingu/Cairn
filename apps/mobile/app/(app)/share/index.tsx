@@ -327,7 +327,11 @@ function Composer({
         ))}
         {sendError && <Text style={[styles.error, { color: palette.redText }]}>{sendError}</Text>}
         {offlineQueue.restoreError && (
-          <Text style={[styles.error, { color: palette.redText }]}>{offlineQueue.restoreError}</Text>
+          <Pressable accessibilityRole="button" onPress={offlineQueue.retryRestore}>
+            <Text accessibilityRole="alert" style={[styles.error, { color: palette.redText }]}>
+              {offlineQueue.restoreError} {t('Retry')}
+            </Text>
+          </Pressable>
         )}
         <Pressable
           accessibilityRole="button"

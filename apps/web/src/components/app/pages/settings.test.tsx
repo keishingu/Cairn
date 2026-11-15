@@ -37,6 +37,7 @@ const {
 vi.mock('next/navigation', () => ({
   usePathname: () => '/settings/account',
   useRouter: () => ({ push: vi.fn(), replace: routerReplace }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('next-themes', () => ({
@@ -58,6 +59,8 @@ vi.mock('@/lib/supabase/client', () => ({
 vi.mock('../login-methods-settings', () => ({
   LoginMethodsSettings: () => null,
 }))
+vi.mock('../settings-import', () => ({ SettingsImport: () => null }))
+vi.mock('@/components/billing/credit-placement-board', () => ({ CreditPlacementBoard: () => null }))
 
 vi.mock('@/lib/toast', () => ({
   toast: {
@@ -104,6 +107,7 @@ function mockIntegrationsFetch(options?: {
   revokeError?: boolean
   oauthConnections?: unknown[]
   oauthRevokeError?: boolean
+  gcalConfigured?: boolean
 }) {
   fetchWithAuth.mockImplementation(async (input: string, init?: RequestInit) => {
     if (input === '/api/me' && !init) {
@@ -137,7 +141,7 @@ function mockIntegrationsFetch(options?: {
       return new Response(JSON.stringify({ token: 'calendar-token' }))
     }
     if (input === '/api/calendar/google/status' && !init) {
-      return new Response(JSON.stringify({ configured: false, connected: false }))
+      return new Response(JSON.stringify({ configured: options?.gcalConfigured ?? false, connected: false }))
     }
     throw new Error(`unexpected fetch: ${input}`)
   })
@@ -1261,5 +1265,57 @@ describe('AIエージェントのシステムプロンプト', () => {
     fireEvent.click(save)
 
     expect(await screen.findByText('Failed to update workspace settings')).toBeInTheDocument()
+  })
+})
+
+describe('Desktop の外部サービス連携', () => {
+  beforeEach(() => {
+    fetchWithAuth.mockReset()
+    toastError.mockReset()
+    delete window.cairnDesktop
+  })
+
+  it('Google カレンダーの認証 URL を同一セッションの認証経路へ渡す', async () => {
+    mockIntegrationsFetch({ gcalConfigured: true })
+    const original = fetchWithAuth.getMockImplementation()!
+    const url = 'https://accounts.google.com/o/oauth2/v2/auth?example=1'
+    fetchWithAuth.mockImplementation((input: string, init?: RequestInit) => input === '/api/calendar/google/connect'
+      ? Promise.resolve(new Response(JSON.stringify({ url }))) : original(input, init))
+    const startCalendarOAuth = vi.fn().mockRejectedValueOnce(new Error('network failure')).mockResolvedValue(undefined)
+    window.cairnDesktop = { startCalendarOAuth }
+    renderIntegrationsSection()
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Google で接続/ }))
+    await waitFor(() => expect(startCalendarOAuth).toHaveBeenCalledWith(url))
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    await userEvent.setup().click(screen.getByRole('button', { name: /Google で接続/ }))
+    await waitFor(() => expect(startCalendarOAuth).toHaveBeenCalledTimes(2))
+    delete window.cairnDesktop
+  })
+
+  it.each([
+    ['checkout', false, /石を積む/, '/api/billing/checkout'],
+    ['credit-pack', true, /石を追加/, '/api/billing/credit-packs/checkout'],
+    ['portal', true, /購読を管理/, '/api/billing/portal'],
+  ])('%s のブラウザ起動後に操作を再び有効にする', async (_name, subscribed, label, endpoint) => {
+    fetchWithAuth.mockImplementation(async (input: string) => {
+      if (input === '/api/billing/summary') return new Response(JSON.stringify({ billingEnabled: true, hasManageableSubscription: subscribed, canPurchaseCreditPack: true, creditBalance: 10, workspaceState: 'active' }))
+      if (input === endpoint) return new Response(JSON.stringify({ url: 'https://billing.example.com/session' }))
+      if (input === '/api/workspaces/storage-usage') return new Response(JSON.stringify({ originalBytes: 0 }))
+      if (input === '/api/billing/ai-usage') return new Response(JSON.stringify({ billingEnabled: true, periodStart: '2026-11-01', mine: { requests: 0, credits: 0, items: [] }, workspace: null }))
+      return new Response(JSON.stringify({}))
+    })
+    const openExternal = vi.fn().mockRejectedValueOnce(new Error('network failure')).mockResolvedValue(undefined)
+    window.cairnDesktop = { openExternal }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><SettingsSectionContent section="billing" /></QueryClientProvider>)
+    const button = await screen.findByRole('button', { name: label })
+    await userEvent.setup().click(button)
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith('https://billing.example.com/session'))
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(await screen.findByText('network failure')).toBeInTheDocument()
+    await userEvent.setup().click(button)
+    await waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(button).toBeEnabled())
+    delete window.cairnDesktop
   })
 })

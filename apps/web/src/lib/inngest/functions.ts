@@ -80,6 +80,14 @@ async function classifyPushRecipients<T extends { userId: string }>(
   }
 }
 
+// Inngest のステップ結果は再利用されるため、Push の送信処理内で権限を読み直す。
+async function canReceiveChannelPush(workspaceId: string, userId: string, channelId: string) {
+  const { getWorkspaceRole } = await import('@/lib/access/membership')
+  const { canAccessChannel } = await import('@/lib/permissions')
+  const role = await getWorkspaceRole(workspaceId, userId)
+  return role !== null && await canAccessChannel(workspaceId, userId, channelId, role)
+}
+
 type NotificationTx = Parameters<Parameters<typeof import('@cairn/db').db.transaction>[0]>[0]
 
 // 通知を書き込むトランザクションの中で、メッセージの今のチャンネルを行ロック付きで読む。
@@ -198,14 +206,15 @@ export const onMessageCreated = inngest.createFunction(
 
         await step.run('send-dm-push', async () => {
           await Promise.allSettled(
-            unreadRecipients.map((m) =>
-              sendPushToUser(m.userId, {
+            unreadRecipients.map(async (m) => {
+              if (!(await canReceiveChannelPush(workspaceId, m.userId, channelId))) return
+              return sendPushToUser(m.userId, {
                 title: senderName,
                 body: dmBody.slice(0, 100),
                 url: `/chats/${channelId}`,
                 workspaceId,
-              }),
-            ),
+              })
+            }),
           )
         })
       }
@@ -587,8 +596,9 @@ export const onMessageCreated = inngest.createFunction(
           [
             ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
             ...readRecipients.map((m) => ({ recipient: m, updateAppBadge: false })),
-          ].map(({ recipient, updateAppBadge }) =>
-            sendPushToUser(
+          ].map(async ({ recipient, updateAppBadge }) => {
+            if (!(await canReceiveChannelPush(workspaceId, recipient.userId, pushChannelId))) return
+            return sendPushToUser(
               recipient.userId,
               {
                 title: notificationTitle(recipient.userId, localeOf(recipient.userId)),
@@ -598,8 +608,8 @@ export const onMessageCreated = inngest.createFunction(
                 workspaceId,
               },
               { updateAppBadge },
-            ),
-          ),
+            )
+          }),
         )
       })
     }
@@ -612,10 +622,12 @@ export const onTaskAssigned = inngest.createFunction(
   { id: 'on-task-assigned' },
   { event: 'task/assigned' satisfies TaskAssignedEvent['name'] },
   async ({ event, step }) => {
-    const { taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
+    const { taskId, taskTitle, assigneeId, projectTitle, workspaceId, assignerName } =
       event.data as TaskAssignedEvent['data']
 
     await step.run('create-task-notification', async () => {
+      const { canDeliverTaskAssignment } = await import('@/lib/tasks/assignment-delivery')
+      if (!(await canDeliverTaskAssignment(workspaceId, taskId, assigneeId))) return
       const { db, notifications } = await import('@cairn/db')
       await db.insert(notifications).values({
         userId: assigneeId,
@@ -628,6 +640,8 @@ export const onTaskAssigned = inngest.createFunction(
     })
 
     await step.run('send-task-push', async () => {
+      const { canDeliverTaskAssignment } = await import('@/lib/tasks/assignment-delivery')
+      if (!(await canDeliverTaskAssignment(workspaceId, taskId, assigneeId))) return
       await sendPushToUser(assigneeId, {
         title: `${assignerName} があなたにタスクを割り当てました`,
         body: `「${taskTitle}」- ${projectTitle}`,

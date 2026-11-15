@@ -45,7 +45,7 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
   return (
     <div style={{ padding: '10px 14px 12px', borderBottom: '1px solid var(--divider)', background: 'var(--card-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-2)' }}>{t('Change cover photo')}</span>
+        <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Change cover photo')}</span>
         <button onClick={onClose} style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
           <Icon name="close" size={12}/>
         </button>
@@ -53,9 +53,9 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
 
       {placeId && (
         <>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Place photos')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Place photos')}</div>
           {photosLoading ? (
-            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Icon name="loader" size={12}/> {t('Fetching...')}
             </div>
           ) : placePhotos.length > 0 ? (
@@ -74,12 +74,12 @@ const CoverPickerPanel = ({ projectId, currentCoverUrl, defaultIdx, placeId, onC
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 11.5, color: 'var(--text-4)', padding: '4px 0 8px' }}>{t('No photos found')}</div>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0 8px' }}>{t('No photos found')}</div>
           )}
         </>
       )}
 
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-4)', marginBottom: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{t('Default')}</div>
+      <div className="section-label" style={{ marginBottom: 4 }}>{t('Default')}</div>
       <div>
         <button
           type="button"
@@ -225,7 +225,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             </button>
           ) : (
             <>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 'var(--fs-lg)', fontWeight: 600, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.5)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 {project.title}
                 {project.archived && <ArchivedBadge onDark/>}
               </span>
@@ -243,7 +243,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                         setMoreOpen(false)
                         isPinned ? unpinProject.mutate(project.id) : pinProject.mutate(project.id)
                       }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--fs-md)', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
                       className="hover-bg"
                     >
                       <Icon name="pin" size={13}/>
@@ -251,7 +251,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
                     </button>
                     <button
                       onClick={() => { setMoreOpen(false); setEditingCover(true) }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--fs-md)', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 6, textAlign: 'left' }}
                       className="hover-bg"
                     >
                       <Icon name="image" size={13}/> {t('Change cover photo')}
@@ -270,10 +270,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
         <div style={{ position: 'absolute', left: 16, right: 16, bottom: 12, color: '#fff' }}>
           {isMobile ? (
             <>
-              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 5, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+              <div style={{ fontSize: 'var(--fs-2xl)', fontWeight: 600, marginBottom: 5, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
                 {project.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, opacity: 0.95 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-sm)', opacity: 0.95 }}>
                 <StatusChip name={project.statusName ?? ''} color={project.statusColor ?? '#9CA3AF'}/>
                 {project.archived && <ArchivedBadge onDark/>}
                 <span>{formatDateRange(project.startDate, project.endDate)}</span>
@@ -284,10 +284,10 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             </>
           ) : (
             <>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+              <div style={{ fontSize: 'var(--fs-3xl)', fontWeight: 600, marginBottom: 4, lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
                 {formatDateRange(project.startDate, project.endDate)}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, opacity: 0.95 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--fs-md)', opacity: 0.95 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Icon name="users" size={12}/> {t('{count} joined', { count: project.memberCount })}
                 </span>
@@ -316,7 +316,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
           <AvatarStack names={project.memberNames} size={22} max={5}/>
           <button
             className="btn btn-ghost"
-            style={{ marginLeft: 'auto', height: 28, fontSize: 11.5, padding: '0 8px' }}
+            style={{ marginLeft: 'auto', height: 28, fontSize: 'var(--fs-sm)', padding: '0 8px' }}
             disabled={!projectChannelId}
             onClick={() => projectChannelId && router.push(`/chats/${projectChannelId}`)}
           >
@@ -333,7 +333,7 @@ export const ProjectPanel = ({ project, onClose, onMemberClick, isMobile, tab: t
             borderRadius: 6, border: 'none',
             background: tab === item.id ? 'var(--card-hover)' : 'transparent',
             color: tab === item.id ? 'var(--text)' : 'var(--text-3)',
-            fontSize: isMobile ? 13 : 12,
+            fontSize: isMobile ? 'var(--fs-md)' : 'var(--fs-sm)',
             fontWeight: tab === item.id ? 600 : 500,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 5,

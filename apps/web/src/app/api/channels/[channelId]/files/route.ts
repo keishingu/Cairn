@@ -7,6 +7,8 @@ import { requireChannelAccess } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { extractGoogleDocsUrls, normalizeGoogleDocsUrl } from '@/lib/google-docs-url'
 
+import { canManageAccessibleFile } from '@/lib/files/mutation-permission'
+
 export interface ChannelFileDto {
   id: string
   sourceMessageId: string | null
@@ -15,6 +17,7 @@ export interface ChannelFileDto {
   fileSize: number | null
   fileType: string
   uploaderName: string
+  canMutate: boolean
   createdAt: string
   externalUrl?: string
   indexingStatus?: string
@@ -55,6 +58,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         mimeType: files.mimeType,
         fileSize: files.fileSize,
         fileType: files.fileType,
+        uploaderId: files.uploadedBy,
         uploaderName: workspaceMemberDisplayName(workspaceMembers.displayName, profiles.displayName),
         createdAt: files.createdAt,
         metadata: files.metadata,
@@ -159,6 +163,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
           fileSize: r.fileSize,
           fileType: r.fileType,
           uploaderName: r.uploaderName,
+          canMutate: canManageAccessibleFile(ctx.userId, r.uploaderId, ctx.role),
           createdAt: r.createdAt.toISOString(),
           ...(typeof externalUrl === 'string' ? { externalUrl: normalizeGoogleDocsUrl(externalUrl) } : {}),
           ...(indexingStatus !== undefined ? { indexingStatus } : {}),

@@ -189,19 +189,19 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, fo
           <p style={{ margin: '0 0 4px', lineHeight }}>{processChildren(children, t, mentionNames, lineTasks, external)}</p>
         ),
         h1: ({ children }) => (
-          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 700, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h1>
+          <h1 style={{ fontSize: fontSize * 1.4, fontWeight: 600, margin: '8px 0 4px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h1>
         ),
         h2: ({ children }) => (
-          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 700, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h2>
+          <h2 style={{ fontSize: fontSize * 1.2, fontWeight: 600, margin: '6px 0 3px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h2>
         ),
         h3: ({ children }) => (
-          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h3>
+          <h3 style={{ fontSize: fontSize * 1.05, fontWeight: 600, margin: '4px 0 2px', lineHeight: 1.3 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</h3>
         ),
         h4: ({ children }) => <h4>{processChildren(children, t, mentionNames, lineTasks, external)}</h4>,
         h5: ({ children }) => <h5>{processChildren(children, t, mentionNames, lineTasks, external)}</h5>,
         h6: ({ children }) => <h6>{processChildren(children, t, mentionNames, lineTasks, external)}</h6>,
         strong: ({ children }) => (
-          <strong style={{ fontWeight: 700 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</strong>
+          <strong style={{ fontWeight: 600 }}>{processChildren(children, t, mentionNames, lineTasks, external)}</strong>
         ),
         em: ({ children }) => (
           <em style={{ fontStyle: 'italic' }}>{processChildren(children, t, mentionNames, lineTasks, external)}</em>

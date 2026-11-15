@@ -234,15 +234,11 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockDb.insert).toHaveBeenCalledTimes(1)
   })
 
-  it('非活性な owner が member/guest 招待で復帰しても role は owner のまま維持される', async () => {
-    const invite = { id: 'inv-admin', workspaceId: WORKSPACE_ID, role: 'member', projectId: null, expiresAt: null, maxUses: null, useCount: 0 }
-
+  it.each(['member', 'guest'])('非活性 owner は %s 招待で自分を再活性化できず使用回数も消費しない', async (role) => {
+    const invite = { id: 'inv-admin', workspaceId: WORKSPACE_ID, role, projectId: null, expiresAt: null, maxUses: null, useCount: 0 }
     mockDb.select
       .mockReturnValueOnce(selectChain([invite]))
       .mockReturnValueOnce(selectChain([{ role: 'owner', membershipStatus: 'inactive' }]))
-    mockDb.update.mockReturnValueOnce(updateChain([{ id: 'inv-admin', workspaceId: WORKSPACE_ID, role: 'member', projectId: null }]))
-    const memberUpdateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) })
-    mockDb.update.mockReturnValueOnce({ set: memberUpdateSet })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -250,9 +246,9 @@ describe('POST /api/invite/[token]/accept', () => {
       { params: Promise.resolve({ token: VALID_TOKEN }) },
     )
 
-    expect(res.status).toBe(200)
-    // admin が発行した member 招待でも、既存 owner のロールは降格されない
-    expect(memberUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ role: 'owner' }))
+    expect(res.status).toBe(403)
+    expect(mockDb.update).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('非活性メンバーでも max_uses に達していれば再活性化しない', async () => {

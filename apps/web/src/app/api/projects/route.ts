@@ -250,6 +250,19 @@ export async function POST(req: Request) {
     const { eq, and, inArray } = await import('drizzle-orm')
     const selectedMemberIds = [...new Set(parsed.data.memberUserIds ?? [])]
 
+    let statusName: string | null = null
+    let statusColor: string | null = null
+    if (parsed.data.statusId) {
+      const [status] = await db
+        .select({ name: projectStatuses.name, color: projectStatuses.color })
+        .from(projectStatuses)
+        .where(and(eq(projectStatuses.id, parsed.data.statusId), eq(projectStatuses.workspaceId, ctx.workspaceId)))
+        .limit(1)
+      if (!status) return NextResponse.json({ error: 'ステータスが見つかりません' }, { status: 422 })
+      statusName = status.name
+      statusColor = status.color
+    }
+
     if (selectedMemberIds.length > 0) {
       // 新規プロジェクトに追加できるのは active メンバーのみ
       const wsRows = await db
@@ -286,18 +299,6 @@ export async function POST(req: Request) {
       .returning({ id: projects.id, title: projects.title, description: projects.description, startDate: projects.startDate, endDate: projects.endDate, coverPhotoUrl: projects.coverPhotoUrl, location: projects.location })
 
     if (!inserted) throw new Error('Insert returned no rows')
-
-    let statusName: string | null = null
-    let statusColor: string | null = null
-    if (parsed.data.statusId) {
-      const [st] = await db
-        .select({ name: projectStatuses.name, color: projectStatuses.color })
-        .from(projectStatuses)
-        .where(eq(projectStatuses.id, parsed.data.statusId))
-        .limit(1)
-      statusName = st?.name ?? null
-      statusColor = st?.color ?? null
-    }
 
     await db.insert(channels).values({
       workspaceId: ctx.workspaceId,

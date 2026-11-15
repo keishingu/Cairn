@@ -4,12 +4,14 @@ import { useT } from '../../../components/locale-provider'
 
 export default function ProjectDetailScreen() {
   const t = useT()
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, tab } = useLocalSearchParams<{ id: string; tab?: string }>()
   const router = useRouter()
+  // チャットから「ギャラリーに追加」した後など、開くタブを指定できる（Web の ?tab= に渡す）
+  const tabQuery = tab === 'gallery' ? '&tab=gallery' : ''
 
   return (
     <NativeWebViewScreen
-      path={`/projects?open=project-${id}`}
+      path={`/projects?open=project-${id}${tabQuery}`}
       title={t('Projects')}
       onBack={() => router.replace('/(app)/projects')}
     />

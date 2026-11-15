@@ -215,7 +215,9 @@ function textNodes(text: string, autolink: boolean): MrkdwnInline[] {
     const index = match.index
     if (index > last) nodes.push({ type: 'text', text: text.slice(last, index) })
     // 文末の句読点や閉じ括弧は URL に含めない
-    const url = match[0].replace(/[.,!?)\]}。、）」』]+$/u, '')
+    let end = match[0].length
+    while (end > 0 && /[.,!?)\]}。、）」』]/u.test(match[0][end - 1]!)) end--
+    const url = match[0].slice(0, end)
     nodes.push({ type: 'link', url, text: url })
     last = index + url.length
   }

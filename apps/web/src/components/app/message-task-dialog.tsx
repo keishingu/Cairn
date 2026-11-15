@@ -108,14 +108,14 @@ export const MessageTaskDialog = ({ candidates, onSubmit, onClose }: {
                 disabled={submitting}
                 onChange={event => update(index, { title: event.target.value })}
                 style={{
-                  flex: 1, minWidth: 0, padding: '6px 9px', borderRadius: 7, fontSize: 13.5, fontFamily: 'inherit', outline: 'none',
+                  flex: 1, minWidth: 0, padding: '6px 9px', borderRadius: 7, fontSize: 'var(--fs-lg)', fontFamily: 'inherit', outline: 'none',
                   border: `1px solid ${invalid ? 'var(--red-text)' : 'var(--border-2)'}`,
                   background: done ? 'var(--card-2)' : 'var(--input)',
                   color: done ? 'var(--text-3)' : 'var(--text)',
                 }}
               />
               {done && (
-                <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)' }}>{t('Already a task')}</span>
+                <span style={{ flexShrink: 0, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-3)' }}>{t('Already a task')}</span>
               )}
             </li>
           )

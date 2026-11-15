@@ -10,6 +10,7 @@ const FILE_ID = '30000000-0000-0000-0000-000000000001'
 const {
   mockGetAuthContext,
   mockCanAccessFile,
+  mockCanMutateFile,
   mockDownload,
   mockCreateSignedUrl,
   mockResolveUploadEntitlements,
@@ -27,6 +28,7 @@ const {
   mockStorageFrom: vi.fn(),
   mockGetAuthContext: vi.fn(),
   mockCanAccessFile: vi.fn(),
+  mockCanMutateFile: vi.fn(),
   mockDownload: vi.fn(),
   mockCreateSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: 'https://storage.test/signed' }, error: null }),
   mockResolveUploadEntitlements: vi.fn(),
@@ -54,7 +56,7 @@ const {
 }))
 
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
-vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile }))
+vi.mock('@/lib/permissions', () => ({ canAccessFile: mockCanAccessFile, canMutateFile: mockCanMutateFile }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceRoleClient: () => ({
     storage: {
@@ -124,6 +126,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       error: null,
     })
     mockCanAccessFile.mockResolvedValue(true)
+    mockCanMutateFile.mockResolvedValue(true)
     mockResolveUploadEntitlements.mockResolvedValue({ rights: { canDownloadOriginal: false } })
     mockDownload.mockResolvedValue({
       data: 'file body',
@@ -144,6 +147,19 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
       }),
     }))
     mockTransactionSelectLimit.mockResolvedValue([{ id: FILE_ID }])
+  })
+
+  it.each(['PATCH', 'DELETE'])('%s では閲覧できても変更権限がなければ拒否する', async (method) => {
+    mockCanMutateFile.mockResolvedValue(false)
+    const route = await import('./route')
+    const request = new Request('http://localhost/', {
+      method, ...(method === 'PATCH' ? { body: JSON.stringify({ fileName: 'new.pdf' }) } : {}),
+    })
+    const res = await route[method as 'PATCH' | 'DELETE'](request, routeParams())
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' })
+    expect(mockUpdateSet).not.toHaveBeenCalled()
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
   })
 
   afterEach(() => {
@@ -291,14 +307,21 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
     expect(mockCreateSignedUrl).not.toHaveBeenCalled()
   })
 
-  it('最適化済みPDFは派生物を短期署名URLで返す', async () => {
+  it('最適化済みPDFは派生物を登録時のファイル名つきで返す', async () => {
     fileRow.storagePath = 'ws/ch/user/pdf-originals/file.pdf'
     fileRow.derivedStoragePath = 'ws/ch/user/pdf-derivatives/file.pdf'
+    fileRow.fileName = '見積書.pdf'
     fileRow.metadata = { pdfCompressionStatus: 'ready' }
     const { GET } = await import('./route')
     const res = await GET(new Request('http://localhost/'), routeParams())
-    expect(res.status).toBe(302)
-    expect(mockCreateSignedUrl).toHaveBeenCalledWith(fileRow.derivedStoragePath, 60, undefined)
+    expect(res.status).toBe(200)
+    expect(mockDownload).toHaveBeenCalledWith(fileRow.derivedStoragePath)
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled()
+    expect(res.headers.get('Content-Type')).toBe('application/pdf')
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store')
+    expect(res.headers.get('Content-Disposition')).toBe(
+      `inline; filename="___.pdf"; filename*=UTF-8''%E8%A6%8B%E7%A9%8D%E6%9B%B8.pdf`,
+    )
   })
 
   it('thumb取得時に新しいPDFの原本へフォールバックしない', async () => {
@@ -312,7 +335,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
   })
 
   it('閲覧権限が無いファイルは PATCH が 403 を返す', async () => {
-    mockCanAccessFile.mockResolvedValue(false)
+    mockCanMutateFile.mockResolvedValue(false)
     const { PATCH } = await import('./route')
     const req = new Request('http://localhost/', {
       method: 'PATCH',
@@ -368,7 +391,7 @@ describe('/api/attachments/[fileId] のアクセス制御', () => {
   })
 
   it('閲覧権限が無いファイルは DELETE が 403 を返す', async () => {
-    mockCanAccessFile.mockResolvedValue(false)
+    mockCanMutateFile.mockResolvedValue(false)
     const { DELETE } = await import('./route')
     const res = await DELETE(new Request('http://localhost/', { method: 'DELETE' }), routeParams())
     expect(res.status).toBe(403)

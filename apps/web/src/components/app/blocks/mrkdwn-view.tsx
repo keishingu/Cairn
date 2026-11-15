@@ -54,7 +54,7 @@ function InlineNodes({ nodes, mentionNames }: { nodes: MrkdwnInline[]; mentionNa
           case 'text':
             return <React.Fragment key={index}>{node.text}</React.Fragment>
           case 'bold':
-            return <strong key={index} style={{ fontWeight: 700 }}><InlineNodes nodes={node.children} mentionNames={mentionNames} /></strong>
+            return <strong key={index} style={{ fontWeight: 600 }}><InlineNodes nodes={node.children} mentionNames={mentionNames} /></strong>
           case 'italic':
             return <em key={index}><InlineNodes nodes={node.children} mentionNames={mentionNames} /></em>
           case 'strike':

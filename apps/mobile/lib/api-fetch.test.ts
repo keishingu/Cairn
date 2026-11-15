@@ -52,6 +52,19 @@ describe('apiFetch', () => {
     expect((init.headers as Headers).get('Authorization')).toBe('Bearer token')
   })
 
+  it('選択先が変わっていても明示された送信元ワークスペースを使う', async () => {
+    mockGetSelectedWorkspace.mockResolvedValue('workspace-b')
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { apiFetch } = await import('./api-fetch')
+    await apiFetch('/api/channels/a/messages', {
+      method: 'POST', headers: { 'X-Cairn-Workspace-Id': 'workspace-a' },
+    }, { access_token: 'token', user: { id: 'user-1' } } as Session)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect((init.headers as Headers).get('X-Cairn-Workspace-Id')).toBe('workspace-a')
+    expect(mockGetSelectedWorkspace).not.toHaveBeenCalled()
+  })
+
   it('認証直後に渡されたセッションのBearerトークンを使う', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}'))
     vi.stubGlobal('fetch', fetchMock)

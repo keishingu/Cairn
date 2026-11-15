@@ -131,6 +131,7 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
           id: 'file-1',
           sourceMessageId: 'message-1',
           fileName: 'guide.pdf',
+          canMutate: true,
           mimeType: 'application/pdf',
           fileSize: 1024,
           fileType: 'document',
@@ -141,6 +142,17 @@ describe('チャット詳細サイドバーのファイル一覧', () => {
       isLoading: false,
       isError: false,
     } as ReturnType<typeof useChannelFiles>)
+  })
+
+  it('変更権限のないファイルには名前変更を表示しない', async () => {
+    mockUseChannelFiles.mockReturnValue({
+      data: [{ id: 'other', sourceMessageId: 'message-1', fileName: 'other.pdf', mimeType: 'application/pdf', fileSize: 1, fileType: 'document', uploaderName: '他の人', createdAt: '2026-08-07T03:45:00.000Z', canMutate: false }],
+      isLoading: false, isError: false,
+    } as ReturnType<typeof useChannelFiles>)
+    renderSidebar()
+    await userEvent.click(screen.getByTitle('操作'))
+    expect(screen.queryByRole('button', { name: '名前を変更' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'ファイルを開く' })).toBeInTheDocument()
   })
 
   it('ファイルを開かず、共有されたメッセージへジャンプする', async () => {

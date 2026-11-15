@@ -11,7 +11,8 @@ import { usePatchProject, useDeleteProject } from '@/hooks/use-patch-project'
 import { useProjectMilestones } from '@/hooks/use-project-milestones'
 import { useProjectStatuses } from '@/hooks/use-project-statuses'
 import { useWorkspacePermissions } from '@/hooks/use-current-user'
-import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
+import { DATE_ORDER_ERROR } from '@/lib/date-range'
+import { isMilestonePeriodReversed, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { toast } from '@/lib/toast'
 import { useT } from '@/components/locale-provider'
 import { useCancelEditOnEscape } from '@/hooks/use-cancel-edit-on-escape'
@@ -36,20 +37,16 @@ export function formatDateRange(start: string | null, end: string | null, startT
   return `${startLabel} ~ ${fmt(end)}${et ? ` ${et}` : ''}`
 }
 
-const cardLabelStyle: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)',
-  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4,
-}
-
 // ─── インライン編集フィールド ─────────────────────────────────────
 // テキストは明示保存。保存は保存ボタン / Enter（複数行は Cmd/Ctrl+Enter）、取り消しはキャンセルボタン / Esc。
 // フォーカスが外れても保存も破棄もしない（入力中の内容を残したまま編集を続けられる）
 export const InlineText = ({
-  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false,
+  value, onSave, placeholder, multiline = false, large = false, required = false, readOnly = false, version,
 }: {
   value: string
   /** 保存の成否を返す。reject したら編集を閉じず、入力を残してエラーを表示する */
-  onSave: (v: string) => Promise<unknown>
+  onSave: (v: string, version?: string) => Promise<unknown>
+  version?: string | undefined
   placeholder?: string
   multiline?: boolean
   large?: boolean
@@ -58,6 +55,7 @@ export const InlineText = ({
 }) => {
   const t = useT()
   const [editing, setEditing] = React.useState(false)
+  const editVersion = React.useRef(version)
   const [draft, setDraft] = React.useState(value)
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -70,6 +68,7 @@ export const InlineText = ({
   const startEdit = () => {
     if (readOnly) return
     setDraft(value)
+    editVersion.current = version
     setError(null)
     setEditing(true)
   }
@@ -93,7 +92,8 @@ export const InlineText = ({
     setSaving(true)
     setError(null)
     try {
-      await onSave(trimmed)
+      if (editVersion.current) await onSave(trimmed, editVersion.current)
+      else await onSave(trimmed)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -103,7 +103,7 @@ export const InlineText = ({
   }
 
   const fontSize = large ? 15 : 13
-  const fontWeight = large ? 700 : 400
+  const fontWeight = large ? 600 : 400
 
   if (!editing) {
     const empty = value === ''
@@ -173,7 +173,7 @@ export const InlineText = ({
           }}
         />
       )}
-      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button type="button" className="btn btn-sm" onClick={cancel} disabled={saving}>{t('Cancel')}</button>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={!canSave}>
@@ -185,13 +185,14 @@ export const InlineText = ({
 }
 
 export const InlineDatePair = ({
-  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle,
+  startDate, endDate, startTime = null, endTime = null, onSave, readOnly = false, withTime = true, sheetSubtitle, version,
 }: {
   startDate: string | null
   endDate: string | null
   startTime?: string | null
   endTime?: string | null
-  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null) => unknown
+  onSave: (start: string | null, end: string | null, startTime: string | null, endTime: string | null, version?: string) => unknown
+  version?: string | undefined
   readOnly?: boolean
   /** 時刻も編集する。プロジェクトは日付しか保存しないため false にし、入れても消える時刻欄を出さない */
   withTime?: boolean
@@ -201,6 +202,7 @@ export const InlineDatePair = ({
   const t = useT()
   const { isMobile } = useAppShell()
   const [sheetOpen, setSheetOpen] = React.useState(false)
+  const editVersion = React.useRef(version)
   const [editing, setEditing] = React.useState(false)
   const [start, setStart] = React.useState(startDate ?? '')
   const [end, setEnd]     = React.useState(endDate ?? '')
@@ -218,7 +220,7 @@ export const InlineDatePair = ({
 
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const reversed = isEndBeforeStart(start, end)
+  const reversed = isMilestonePeriodReversed({ startDate: start, endDate: end, startTime: startClock, endTime: endClock })
   const dateErrorId = React.useId()
 
   const unchanged =
@@ -235,6 +237,7 @@ export const InlineDatePair = ({
 
   const startEdit = () => {
     if (readOnly) return
+    editVersion.current = version
     reset()
     setEditing(true)
   }
@@ -251,7 +254,8 @@ export const InlineDatePair = ({
     setSaving(true)
     setError(null)
     try {
-      await onSave(start || null, end || null, startClock || null, endClock || null)
+      if (editVersion.current) await onSave(start || null, end || null, startClock || null, endClock || null, editVersion.current)
+      else await onSave(start || null, end || null, startClock || null, endClock || null)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('Could not save the changes'))
@@ -283,7 +287,7 @@ export const InlineDatePair = ({
   const inputStyle: React.CSSProperties = {
     height: coarse ? 40 : 30, padding: coarse ? '0 6px' : '0 8px', borderRadius: 6, minWidth: 0, boxSizing: 'border-box',
     border: '1px solid var(--border)', background: 'var(--card)',
-    color: 'var(--text)', fontSize: coarse ? 16 : 12.5, fontFamily: 'inherit', outline: 'none',
+    color: 'var(--text)', fontSize: coarse ? 'var(--fs-xl)' : 'var(--fs-md)', fontFamily: 'inherit', outline: 'none',
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -299,7 +303,7 @@ export const InlineDatePair = ({
         type="button"
         onClick={() => {
           if (readOnly) return
-          if (isMobile) { setSheetOpen(true); return }
+          if (isMobile) { editVersion.current = version; setSheetOpen(true); return }
           startEdit()
         }}
         disabled={readOnly}
@@ -310,7 +314,7 @@ export const InlineDatePair = ({
         }}
         title={readOnly ? undefined : t('Click to edit')}
       >
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+        <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>
           {formatDateRange(startDate, endDate, startTime, endTime)}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
@@ -324,7 +328,7 @@ export const InlineDatePair = ({
           startTime={startTime}
           endTime={endTime}
           withTime={withTime}
-          onSave={onSave}
+          onSave={(start, end, startTime, endTime) => editVersion.current ? onSave(start, end, startTime, endTime, editVersion.current) : onSave(start, end, startTime, endTime)}
           onClose={() => setSheetOpen(false)}
         />
       )}
@@ -364,7 +368,7 @@ export const InlineDatePair = ({
           style={timeStyle}
         />}
       </div>
-      <span style={{ color: 'var(--text-4)', fontSize: 12, lineHeight: 1 }}>{t('to')}</span>
+      <span style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', lineHeight: 1 }}>{t('to')}</span>
       <div style={rowStyle}>
         <input
           type="date"
@@ -392,10 +396,10 @@ export const InlineDatePair = ({
       {reversed && (
         // 終了日の入力欄から参照できるよう id を持つ要素で包む
         <div id={dateErrorId}>
-          <InlineError style={{ fontSize: 11.5 }}>{t('End date must be on or after the start date')}</InlineError>
+          <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{t('End date and time must be on or after the start')}</InlineError>
         </div>
       )}
-      {error && <InlineError style={{ fontSize: 11.5 }}>{error}</InlineError>}
+      {error && <InlineError style={{ fontSize: 'var(--fs-sm)' }}>{error}</InlineError>}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
         {/* 逆転している間は確定できないため、キーボードの無い端末でも編集をやめられるようにする */}
         <button
@@ -406,7 +410,7 @@ export const InlineDatePair = ({
             // スマホの概要カード（幅 140px ほど）で「キャンセル」と「完了」が1行に収まる余白にする
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6,
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)',
-            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+            fontSize: coarse ? 'var(--fs-lg)' : 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
           }}
         >
           {t('Cancel')}
@@ -418,7 +422,7 @@ export const InlineDatePair = ({
           style={{
             height: coarse ? 36 : 26, padding: '0 8px', borderRadius: 6, border: 'none',
             background: 'var(--accent)', color: 'var(--on-accent)',
-            fontSize: coarse ? 14 : 12, fontWeight: 600, fontFamily: 'inherit',
+            fontSize: coarse ? 'var(--fs-lg)' : 'var(--fs-sm)', fontWeight: 600, fontFamily: 'inherit',
             cursor: reversed || saving ? 'default' : 'pointer', opacity: reversed || saving ? 0.5 : 1,
           }}
         >
@@ -479,7 +483,7 @@ const InlineStatus = ({
               style={{
                 display: 'flex', alignItems: 'center', gap: 7, width: '100%',
                 padding: '7px 10px', border: 'none', background: 'transparent',
-                color: 'var(--text)', fontSize: 12.5, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 'var(--fs-md)', fontFamily: 'inherit',
                 cursor: 'pointer', borderRadius: 6,
                 fontWeight: s.name === statusName ? 600 : 400,
               }}
@@ -511,7 +515,7 @@ const InlineLocation = ({
     width: '100%', height: 34, padding: '0 12px',
     border: '1px solid var(--accent)', borderRadius: 7,
     background: 'var(--card)', color: 'var(--text)',
-    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    fontSize: 'var(--fs-md)', fontFamily: 'inherit', outline: 'none',
     boxSizing: 'border-box',
   }
 
@@ -529,7 +533,7 @@ const InlineLocation = ({
         title={readOnly ? undefined : t('Click to edit')}
       >
         <Icon name="map-pin" size={12} color={location ? 'var(--accent-text)' : 'var(--text-4)'}/>
-        <span style={{ fontSize: 13, color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-md)', color: location ? 'var(--text)' : 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {location ?? (readOnly ? t('Not set') : t('Set a location…'))}
         </span>
         {!readOnly && <Icon name="edit" size={10} color="var(--text-4)"/>}
@@ -549,7 +553,7 @@ const InlineLocation = ({
       <button
         onClick={() => setEditing(false)}
         className="btn btn-ghost"
-        style={{ alignSelf: 'flex-start', height: 26, fontSize: 11.5, padding: '0 8px' }}
+        style={{ alignSelf: 'flex-start', height: 26, fontSize: 'var(--fs-sm)', padding: '0 8px' }}
       >
         {t('Cancel')}
       </button>
@@ -569,7 +573,7 @@ const isPastDue = (milestone: MilestoneDto) => {
 const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
   milestone: MilestoneDto
   canEdit: boolean
-  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) => Promise<unknown>
+  onPatch: (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>> & { expectedUpdatedAt?: string | undefined }) => Promise<unknown>
   onDelete: (milestone: MilestoneDto) => void
 }) => {
   const t = useT()
@@ -601,7 +605,7 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
         disabled={!canEdit}
         onClick={e => e.stopPropagation()}
         onChange={e => {
-          onPatch(milestone.id, { completed: e.target.checked }).catch((err: unknown) => {
+          onPatch(milestone.id, { completed: e.target.checked, expectedUpdatedAt: milestone.updatedAt }).catch((err: unknown) => {
             toast.error(err instanceof Error ? err.message : t('Could not update this milestone'))
           })
         }}
@@ -611,20 +615,22 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
       <div style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>
         <InlineText
           value={milestone.title}
-          onSave={v => onPatch(milestone.id, { title: v })}
+          version={milestone.updatedAt}
+          onSave={(v, version) => onPatch(milestone.id, { title: v, expectedUpdatedAt: version })}
           placeholder={t('Milestone name')}
           required
           readOnly={!canEdit}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 11.5, fontWeight: overdue ? 700 : 500 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: overdue ? 'var(--red-text)' : 'var(--text-3)', fontSize: 'var(--fs-sm)', fontWeight: overdue ? 600 : 500 }}>
             <Icon name="calendar" size={11}/>
             <InlineDatePair
               startDate={milestone.startDate}
               endDate={milestone.endDate}
               startTime={milestone.startTime}
               endTime={milestone.endTime}
-              onSave={(start, end, startTime, endTime) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime })}
+              version={milestone.updatedAt}
+              onSave={(start, end, startTime, endTime, version) => onPatch(milestone.id, { startDate: start, endDate: end, startTime, endTime, expectedUpdatedAt: version })}
               readOnly={!canEdit}
               sheetSubtitle={milestone.title}
             />
@@ -633,14 +639,15 @@ const MilestoneRow = ({ milestone, canEdit, onPatch, onDelete }: {
             type="button"
             onClick={goToThread}
             className="btn btn-ghost"
-            style={{ height: 24, fontSize: 11.5, padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            style={{ height: 24, fontSize: 'var(--fs-sm)', padding: '0 7px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <Icon name="chat" size={11}/> {t('Thread')}
           </button>
         </div>
         <InlineText
           value={milestone.description ?? ''}
-          onSave={v => onPatch(milestone.id, { description: v || null })}
+          version={milestone.updatedAt}
+          onSave={(v, version) => onPatch(milestone.id, { description: v || null, expectedUpdatedAt: version })}
           placeholder={t('Enter a description…')}
           multiline
           readOnly={!canEdit}
@@ -670,14 +677,16 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
   // 見分けられる理由（期間の逆転）だけを翻訳済みの文言に置き換え、それ以外は画面側の汎用文言にする。
   // 入力欄でも止めているので、ここに来るのは他の人の更新と重なって保存済みの値が変わった時だけ
   const milestoneErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error && error.message === DATE_ORDER_ERROR
-      ? t('End date must be on or after the start date')
+    error instanceof Error && error.message === 'milestone_conflict'
+      ? t('This milestone was updated by someone else. Reload to continue.')
+      : error instanceof Error && (error.message === DATE_ORDER_ERROR || error.message === MILESTONE_PERIOD_ERROR)
+      ? t('End date and time must be on or after the start')
       : fallback
 
   // 失敗はトーストで通知したうえで reject し直し、呼び出し側（インライン編集欄）が下書きを残せるようにする
   // 失敗は翻訳済みの文言で reject する。インライン編集欄はそれを1回だけ表示し（トーストは重ねない）、
   // 編集欄を持たない完了チェックだけが呼び出し側でトーストにする
-  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>>) =>
+  const handlePatch = (id: string, input: Partial<Pick<MilestoneDto, 'title' | 'description' | 'startDate' | 'endDate' | 'startTime' | 'endTime' | 'completed'>> & { expectedUpdatedAt?: string | undefined }) =>
     milestones.patchMutation.mutateAsync({ id, input }).catch((error: unknown) => {
       throw new Error(milestoneErrorMessage(error, t('Could not update this milestone')))
     })
@@ -685,14 +694,14 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <div style={{ ...cardLabelStyle, marginBottom: 0 }}>{t('Milestones')}</div>
+        <div className="section-label">{t('Milestones')}</div>
         {/* チャットからの作成と同じフォーム（PC はモーダル、モバイルはボトムシート）を開く */}
         <button
           type="button"
           onClick={() => setCreating(true)}
           disabled={!canEdit}
           className="btn btn-ghost"
-          style={{ marginLeft: 'auto', height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+          style={{ marginLeft: 'auto', height: 30, fontSize: 'var(--fs-sm)', display: 'inline-flex', alignItems: 'center', gap: 5, ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
         >
           <Icon name="plus" size={12}/> {t('Add')}
         </button>
@@ -707,9 +716,9 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
         />
       )}
       {milestones.isLoading ? (
-        <div style={{ fontSize: 12.5, color: 'var(--text-4)' }}>{t('Loading…')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('Loading…')}</div>
       ) : milestones.isError ? (
-        <div style={{ fontSize: 12.5, color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--red-text)' }}>{t('Could not load milestones')}</div>
       ) : milestones.data && milestones.data.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {milestones.data.map(m => (
@@ -723,7 +732,7 @@ export const MilestoneSection = ({ projectId, projectTitle, canEdit, projectStar
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12.5, color: 'var(--text-4)', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)', lineHeight: 1.6 }}>
           {t('No milestones yet.')}
         </div>
       )}
@@ -776,13 +785,13 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
       />
 
       {patch.isError && (
-        <InlineError style={{ fontSize: 11.5, marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
+        <InlineError style={{ fontSize: 'var(--fs-sm)', marginTop: -10 }}>{(patch.error as Error).message}</InlineError>
       )}
 
       {/* 日程 + ステータス */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>{t('Dates')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Dates')}</div>
           <InlineDatePair
             startDate={project.startDate}
             endDate={project.endDate}
@@ -791,10 +800,10 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
             withTime={false}
             sheetSubtitle={project.title}
           />
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 4 }}>{t('{count} joined', { count: project.memberCount })}</div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-          <div style={cardLabelStyle}>{t('Status')}</div>
+          <div className="section-label" style={{ marginBottom: 4 }}>{t('Status')}</div>
           <InlineStatus
             statusName={project.statusName}
             onSave={name => patch.mutate({ statusName: name })}
@@ -805,7 +814,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 場所 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Location')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Location')}</div>
         <InlineLocation
           location={project.location}
           onSave={(desc, pid) => patch.mutate({ location: desc, placeId: pid })}
@@ -816,7 +825,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* サマリー */}
       <div style={{ padding: 14, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Summary')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Summary')}</div>
         <InlineText
           value={project.description ?? ''}
           onSave={v => editPatch.mutateAsync({ description: v || null })}
@@ -830,8 +839,8 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* アーカイブ */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Archive')}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Archive')}</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 8 }}>
           {project.archived
             ? t('This project is archived. Unarchiving shows it in the project list again.')
             : t('Archiving moves it to the Archive tab. Data is kept.')}
@@ -847,7 +856,7 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
           disabled={archivePatch.isPending || !canEdit}
           title={canEdit ? undefined : t('Changing the archive requires member access or higher')}
           className="btn btn-ghost"
-          style={{ height: 30, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
+          style={{ height: 30, fontSize: 'var(--fs-sm)', display: 'inline-flex', alignItems: 'center', gap: 5, ...(canEdit ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
         >
           <Icon name={project.archived ? 'refresh' : 'archive'} size={13}/>
           {archivePatch.isPending ? t('Working...') : project.archived ? t('Unarchive') : t('Archive project')}
@@ -856,12 +865,12 @@ export const OverviewTab = ({ project, onDeleted }: OverviewTabProps) => {
 
       {/* 削除 */}
       <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-2)', border: '1px solid var(--border)' }}>
-        <div style={cardLabelStyle}>{t('Delete')}</div>
+        <div className="section-label" style={{ marginBottom: 4 }}>{t('Delete')}</div>
         <button
           onClick={() => setConfirmDelete(true)}
           disabled={!canDelete}
           title={canDelete ? undefined : t('Deleting a project requires admin access or higher')}
-          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 12.5, fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
+          style={{ width: '100%', padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red)', background: 'transparent', color: 'var(--red-text)', fontSize: 'var(--fs-md)', fontWeight: 600, cursor: canDelete ? 'pointer' : 'not-allowed', opacity: canDelete ? 1 : 0.5, fontFamily: 'inherit' }}
         >
           {t('Delete this project')}
         </button>

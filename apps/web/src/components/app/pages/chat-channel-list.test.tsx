@@ -232,7 +232,7 @@ describe('ChannelList', () => {
     )
 
     expect(screen.getByRole('button', { name: /既読チャンネル/ })).toHaveStyle({ fontWeight: 400 })
-    expect(screen.getByRole('button', { name: /未読チャンネル/ })).toHaveStyle({ fontWeight: 800, color: 'var(--text)' })
+    expect(screen.getByRole('button', { name: /未読チャンネル/ })).toHaveStyle({ fontWeight: 600, color: 'var(--text)' })
   })
 
   it('件数バッジはメンションとDMだけに付け、メンションのない新着は太字だけにする', () => {
@@ -253,7 +253,7 @@ describe('ChannelList', () => {
     )
 
     const plain = screen.getByRole('button', { name: /新着だけ/ })
-    expect(plain).toHaveStyle({ fontWeight: 800 })
+    expect(plain).toHaveStyle({ fontWeight: 600 })
     expect(plain).not.toHaveTextContent('4')
     expect(screen.getByRole('button', { name: /メンションあり/ })).toHaveTextContent('2')
     expect(screen.getByRole('button', { name: /メンションあり/ })).not.toHaveTextContent('6')

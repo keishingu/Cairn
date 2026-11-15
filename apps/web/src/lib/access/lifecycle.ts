@@ -8,6 +8,7 @@
 
 import { db, workspaceMembers, activeWorkspaceMembers, documentChunks } from '@cairn/db'
 import { and, count, eq, sql } from 'drizzle-orm'
+import { getWorkspaceRole, isWorkspaceAdmin, isWorkspaceOwner } from '@/lib/access/membership'
 
 export type LifecycleResult =
   | { ok: true }
@@ -32,17 +33,17 @@ async function countActiveOwners(client: DbClient, workspaceId: string): Promise
   return Number(rows[0]?.n ?? 0)
 }
 
-// 対象メンバー行 + 当該 WS の active owner 全行を、1クエリ・user_id 昇順の決定的な順序で
+// 操作者・対象メンバー行 + 当該 WS の active owner 全行を、1クエリ・user_id 昇順の決定的な順序で
 // まとめてロックする。2 クエリ（対象行 → owner 集合）に分けると、同時に別々の owner を
 // archive する 2 トランザクションがお互いの行を逆順で要求し合ってデッドロックし得るため、
 // 常に同じ順序で lock を獲得する 1 クエリに統合している。
-async function lockMembershipAndActiveOwners(client: DbClient, workspaceId: string, userId: string): Promise<void> {
+export async function lockMembershipAndActiveOwners(client: DbClient, workspaceId: string, userId: string, actorUserId: string): Promise<void> {
   await client.execute(sql`
     select 1
     from workspace_members
     where workspace_id = ${workspaceId}
       and (
-        user_id = ${userId}
+        (user_id = ${userId} or user_id = ${actorUserId})
         or (role = 'owner' and membership_status = 'active')
       )
     order by user_id
@@ -68,7 +69,11 @@ export async function deactivateMembership(
   deactivatedBy: string,
 ): Promise<LifecycleResult> {
   return db.transaction(async (tx): Promise<LifecycleResult> => {
-    await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId)
+    await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, deactivatedBy)
+    const actorRole = await getWorkspaceRole(workspaceId, deactivatedBy, tx)
+    if (!isWorkspaceAdmin(actorRole)) {
+      return { ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' }
+    }
     const target = await readMembership(tx, workspaceId, targetUserId)
     if (!target) return { ok: false, status: 404, error: 'Member not found' }
     if (target.membershipStatus === 'inactive') {
@@ -76,6 +81,7 @@ export async function deactivateMembership(
     }
 
     if (target.role === 'owner') {
+      if (!isWorkspaceOwner(actorRole)) return { ok: false, status: 403, error: 'owner の活性状態は owner のみ変更できます' }
       if ((await countActiveOwners(tx, workspaceId)) <= 1) {
         return { ok: false, status: 422, error: 'ワークスペースには最低1人の active な owner が必要です' }
       }
@@ -96,19 +102,27 @@ export async function deactivateMembership(
 export async function reactivateMembership(
   workspaceId: string,
   targetUserId: string,
+  actorUserId: string,
 ): Promise<LifecycleResult> {
-  const target = await readMembership(db, workspaceId, targetUserId)
-  if (!target) return { ok: false, status: 404, error: 'Member not found' }
-  if (target.membershipStatus === 'active') {
-    return { ok: false, status: 422, error: 'このメンバーは既に活性です' }
-  }
-
-  await db
-    .update(workspaceMembers)
-    .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
-
-  return { ok: true }
+  return db.transaction(async (tx): Promise<LifecycleResult> => {
+    await lockMembershipAndActiveOwners(tx, workspaceId, targetUserId, actorUserId)
+    const actorRole = await getWorkspaceRole(workspaceId, actorUserId, tx)
+    if (!isWorkspaceAdmin(actorRole)) {
+      return { ok: false, status: 403, error: 'この操作には管理者以上の権限が必要です' }
+    }
+    const target = await readMembership(tx, workspaceId, targetUserId)
+    if (!target) return { ok: false, status: 404, error: 'Member not found' }
+    if (target.role === 'owner' && !isWorkspaceOwner(actorRole)) {
+      return { ok: false, status: 403, error: 'owner の活性状態は owner のみ変更できます' }
+    }
+    if (target.membershipStatus === 'active') {
+      return { ok: false, status: 422, error: 'このメンバーは既に活性です' }
+    }
+    await tx.update(workspaceMembers)
+      .set({ membershipStatus: 'active', deactivatedAt: null, deactivatedBy: null })
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, targetUserId)))
+    return { ok: true }
+  })
 }
 
 // 招待受け入れ時に既存の非活性メンバーシップがあれば再活性化して同一性を保つ。

@@ -6,7 +6,10 @@ import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message
 import { projectUpdateChange } from '@/lib/chat/project-update-message'
 import { getAuthContext } from '@/lib/get-auth-context'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
-import { isBillingEnabled } from '@/lib/billing/is-billing-enabled'
+import {
+  assertOriginalStorageAllowed,
+  ORIGINAL_UPLOAD_ENTITLEMENT_ERROR,
+} from '@/lib/billing/original-storage'
 import { requireProjectAccess } from '@/lib/permissions'
 import { recordStorageUsageDelta } from '@/lib/billing/storage-usage'
 import { GALLERY_BUCKET, GALLERY_ORIGINALS_BUCKET } from '@/lib/gallery-upload'
@@ -24,8 +27,6 @@ interface FinalizeBody {
 interface StorageObject {
   size: number
 }
-
-const ORIGINAL_UPLOAD_ENTITLEMENT_ERROR = 'original-upload-entitlement-required'
 
 async function readStorageObject(
   bucket: string,
@@ -62,9 +63,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const uploadId = body.uploadId
 
   try {
-    const { creditLedger, db, files, galleryItems, projects, subscriptions, uploadRequests } =
-      await import('@cairn/db')
-    const { and, eq, gt, sql } = await import('drizzle-orm')
+    const { db, files, galleryItems, projects, uploadRequests } = await import('@cairn/db')
+    const { and, eq } = await import('drizzle-orm')
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -227,33 +227,9 @@ export async function POST(req: Request, { params }: RouteContext) {
             throw new Error('upload request expired before finalization')
           }
 
-          if (originalStoragePath && isBillingEnabled()) {
-            // 原本を登録する直前に、usage 行をロックして未請求家賃を精算した後の
-            // 残高・支援状態を確認する。外側の事前判定だけには依存しない。
-            const { settleWorkspaceStorageRent } = await import('@/lib/billing/storage-rent')
-            await settleWorkspaceStorageRent(tx, ctx.workspaceId)
-            const [[balance], [subscription]] = await Promise.all([
-              tx
-                .select({ balance: sql<string>`COALESCE(SUM(${creditLedger.delta}), 0)` })
-                .from(creditLedger)
-                .where(eq(creditLedger.workspaceId, ctx.workspaceId)),
-              tx
-                .select({ id: subscriptions.id })
-                .from(subscriptions)
-                .where(
-                  and(
-                    eq(subscriptions.workspaceId, ctx.workspaceId),
-                    eq(subscriptions.supporterUserId, ctx.userId),
-                    eq(subscriptions.plan, 'individual'),
-                    eq(subscriptions.status, 'active'),
-                    gt(subscriptions.currentPeriodEnd, new Date()),
-                  ),
-                )
-                .limit(1),
-            ])
-            if (!subscription || Number(balance?.balance ?? 0) <= 0) {
-              throw new Error(ORIGINAL_UPLOAD_ENTITLEMENT_ERROR)
-            }
+          if (originalStoragePath) {
+            // 原本を登録する直前に、精算後の残高・支援状態を同じトランザクションで再確認する
+            await assertOriginalStorageAllowed(tx, ctx.workspaceId, ctx.userId)
           }
 
           const [file] = await tx

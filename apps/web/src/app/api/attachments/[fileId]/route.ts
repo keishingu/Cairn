@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { canAccessFile } from '@/lib/permissions'
+import { canAccessFile, canMutateFile } from '@/lib/permissions'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { resolveUploadEntitlements } from '@/lib/billing/entitlements'
 import { CHAT_VIDEOS_BUCKET, groupAttachmentPathsByBucket, isVideoMimeType } from '@/lib/attachments'
@@ -130,10 +130,29 @@ export async function GET(req: Request, { params }: RouteContext) {
       if (!wantOriginal && !optimizedPath) {
         return NextResponse.json({ error: '最適化済みPDFを取得できません。再試行してください' }, { status: 409 })
       }
-      const storagePath = wantOriginal ? file.storagePath : optimizedPath!
+      // 最適化版は署名 URL へ転送すると、ブラウザの PDF ビューアが Storage 上の UUID 名で保存してしまう。
+      // 他の添付と同じく API から登録時のファイル名つきで返す（最適化版は原本以下のサイズで、上限も他の添付と同じ）
+      if (!wantOriginal) {
+        const { data: optimized, error: optimizedError } = await supabase.storage
+          .from('chat-attachments')
+          .download(optimizedPath!)
+        if (optimizedError || !optimized) {
+          console.error('[/api/attachments/[fileId]] Optimized PDF download failed:', optimizedError)
+          return new NextResponse(null, { status: 502 })
+        }
+        return new NextResponse(optimized, {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': buildContentDisposition('inline', file.fileName),
+            // 転送していた頃と同じく、表示のたびに認可を確かめるためブラウザに保存させない
+            'Cache-Control': 'private, no-store',
+          },
+        })
+      }
+
       const { data: signed, error: signedError } = await supabase.storage
         .from('chat-attachments')
-        .createSignedUrl(storagePath, 60, wantOriginal ? { download: file.fileName } : undefined)
+        .createSignedUrl(file.storagePath, 60, { download: file.fileName })
       if (signedError || !signed) {
         console.error('[/api/attachments/[fileId]] PDF signed URL failed:', signedError)
         return new NextResponse(null, { status: 502 })
@@ -275,14 +294,15 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         uploadedBy: files.uploadedBy,
         fileName: files.fileName,
         fileType: files.fileType,
+        metadata: files.metadata,
       })
       .from(files)
       .where(eq(files.id, fileId))
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
-    if (!canAccess) return new NextResponse(null, { status: 403 })
+    const canAccess = await canMutateFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return NextResponse.json({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' }, { status: 403 })
 
     if (fileName) {
       if (file.fileType !== 'link' && extensionOf(fileName) !== extensionOf(file.fileName)) {
@@ -337,8 +357,8 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
       .limit(1)
 
     if (!file) return new NextResponse(null, { status: 404 })
-    const canAccess = await canAccessFile(ctx.workspaceId, ctx.userId, file, ctx.role)
-    if (!canAccess) return new NextResponse(null, { status: 403 })
+    const canAccess = await canMutateFile(ctx.workspaceId, ctx.userId, file)
+    if (!canAccess) return NextResponse.json({ error: 'ファイルの更新・削除にはアップロード者本人または管理者以上の権限が必要です' }, { status: 403 })
 
     // ベクトルデータを先に削除
     await db

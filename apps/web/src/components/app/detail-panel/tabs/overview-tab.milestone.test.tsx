@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MilestoneSection } from './overview-tab'
+import { InlineText, MilestoneSection } from './overview-tab'
 
 const { mockPatchAsync, mockToastError } = vi.hoisted(() => ({ mockPatchAsync: vi.fn(), mockToastError: vi.fn() }))
 
@@ -23,6 +23,16 @@ vi.mock('@/hooks/use-project-milestones', () => ({
 }))
 
 describe('マイルストーンのインライン編集の失敗表示', () => {
+  it('編集中に別の更新が来ても編集開始時の世代で保存する', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    const { rerender } = render(<InlineText value="元の値" version="version-a" onSave={onSave} />)
+    fireEvent.click(screen.getByText('元の値'))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '入力中' } })
+    rerender(<InlineText value="他の人の値" version="version-b" onSave={onSave} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('入力中', 'version-a'))
+  })
+
   beforeEach(() => {
     mockPatchAsync.mockReset()
     mockToastError.mockReset()

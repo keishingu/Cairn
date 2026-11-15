@@ -8,18 +8,8 @@ export const UPLOAD_REQUEST_EXPIRY_MS = 2 * 60 * 60 * 1000
 export const UPLOAD_REQUEST_EXPIRY_SAFETY_MS = 5 * 60 * 1000
 export const UPLOAD_REQUEST_FALLBACK_EXPIRY_MS = 24 * 60 * 60 * 1000
 
-export const GALLERY_IMAGE_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-])
-
-export function isGalleryImageMimeType(mimeType: string): boolean {
-  return GALLERY_IMAGE_MIME_TYPES.has(mimeType)
-}
+// 形式の定義はチャットからの追加（Web・アプリ）と共有する
+export { GALLERY_IMAGE_MIME_TYPES, isGalleryImageMimeType } from '@cairn/shared'
 
 const GALLERY_EXTENSION_TO_MIME: Record<string, string> = {
   jpg: 'image/jpeg',

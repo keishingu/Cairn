@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
+import { getGuestVisibleProjectIds, requireProjectAccess } from '@/lib/permissions'
 
 export interface PinnedProjectDto {
   id: string
@@ -20,7 +21,12 @@ export async function GET() {
   try {
     const { db } = await import('@cairn/db')
     const { pinnedProjects, projects, projectStatuses } = await import('@cairn/db')
-    const { eq, and, asc } = await import('drizzle-orm')
+    const { eq, and, asc, inArray } = await import('drizzle-orm')
+
+    const visibleProjectIds = ctx.role === 'guest'
+      ? await getGuestVisibleProjectIds(ctx.workspaceId, ctx.userId)
+      : null
+    if (visibleProjectIds?.length === 0) return NextResponse.json([])
 
     const rows = await db
       .select({
@@ -41,6 +47,7 @@ export async function GET() {
         and(
           eq(pinnedProjects.userId, ctx.userId),
           eq(pinnedProjects.workspaceId, ctx.workspaceId),
+          visibleProjectIds ? inArray(projects.id, visibleProjectIds) : undefined,
         ),
       )
       .orderBy(asc(pinnedProjects.sortOrder), asc(pinnedProjects.pinnedAt))
@@ -74,6 +81,9 @@ export async function POST(req: Request) {
   if (!projectId) {
     return NextResponse.json({ error: 'projectId required' }, { status: 400 })
   }
+
+  const forbidden = await requireProjectAccess(ctx.workspaceId, ctx.userId, projectId, ctx.role)
+  if (forbidden) return forbidden
 
   try {
     const { db } = await import('@cairn/db')

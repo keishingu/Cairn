@@ -123,7 +123,7 @@ export default function AppLayout() {
 
   return (
     <RealtimeProvider>
-      <OfflineMessageQueueProvider>
+      <OfflineMessageQueueProvider key={userId ?? 'signed-out'}>
         <AppearanceProvider>
           <NotificationPanelProvider>
             <ProjectsViewProvider>

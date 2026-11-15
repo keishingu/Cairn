@@ -122,13 +122,13 @@ function MessageSources({ annotations, toolInvocations }: {
         return (
           <a key={`${src.type}:${src.id}`} href={src.href}
             target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)', textDecoration: 'none', cursor: 'pointer' }}>
             <Icon name={icon} size={10} strokeWidth={2}/>{src.label}
           </a>
         )
       })}
       {sources.length > visibleSources.length && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)' }}>
           {t('{count} more', { count: sources.length - visibleSources.length })}
         </span>
       )}
@@ -137,11 +137,11 @@ function MessageSources({ annotations, toolInvocations }: {
         const firstUrl = invocation.state === 'result' ? ((invocation.result as { results?: Array<{ url: string }> })?.results?.[0]?.url) : undefined
         return firstUrl ? (
           <a key={invocation.toolCallId} href={firstUrl} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11, textDecoration: 'none', cursor: 'pointer' }}>
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)', textDecoration: 'none', cursor: 'pointer' }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </a>
         ) : (
-          <span key={invocation.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 11 }}>
+          <span key={invocation.toolCallId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 'var(--fs-xs)' }}>
             <Icon name="search" size={10} strokeWidth={2}/>{query}
           </span>
         )
@@ -171,7 +171,7 @@ function LoadError({ message, onRetry }: { message: string; onRetry: () => void 
   return (
     <InlineError variant="box">
       {message}{' '}
-      <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={onRetry}>{t('Reload')}</button>
+      <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 'var(--fs-sm)', marginLeft: 4 }} onClick={onRetry}>{t('Reload')}</button>
     </InlineError>
   )
 }
@@ -220,13 +220,13 @@ function ConversationSidebar({
       <div style={{ padding: '0 8px 12px', overflow: 'auto', flex: 1 }}>
         {loadError}
         {!loadError && groups.length === 0 && (
-          <div style={{ padding: '16px 10px', fontSize: 12, color: 'var(--text-4)', textAlign: 'center' }}>
+          <div style={{ padding: '16px 10px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)', textAlign: 'center' }}>
             {t('No conversations yet')}
           </div>
         )}
         {groups.map(group => (
           <React.Fragment key={group}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-4)', letterSpacing: '0.08em', padding: '8px 10px', textTransform: 'uppercase' }}>{t(group)}</div>
+            <div className="section-label" style={{ padding: '8px 10px' }}>{t(group)}</div>
             {(grouped[group] ?? []).map(c => (
               <button
                 key={c.id}
@@ -235,7 +235,7 @@ function ConversationSidebar({
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   padding: '8px 10px', borderRadius: 7, border: 'none',
                   background: c.id === activeId ? 'var(--card-hover)' : 'transparent',
-                  color: 'var(--text-2)', fontSize: 12.5, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                  color: 'var(--text-2)', fontSize: 'var(--fs-md)', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >
                 <Icon name="chat" size={13} color="var(--text-3)"/>
@@ -257,17 +257,17 @@ function WelcomeScreen({ onNew, isCreating, isMobile }: { onNew: () => void; isC
   const t = useT()
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
-      <div style={{ width: isMobile ? 48 : 52, height: isMobile ? 48 : 52, borderRadius: isMobile ? 14 : 16, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name="sparkles" size={isMobile ? 22 : 26} color="#fff"/>
+      <div style={{ width: isMobile ? 48 : 52, height: isMobile ? 48 : 52, borderRadius: isMobile ? 14 : 16, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="sparkles" size={isMobile ? 22 : 26} color="var(--on-accent)"/>
       </div>
       {isMobile ? (
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-3)', textAlign: 'center', lineHeight: 1.6 }}>
           {t('It answers questions using projects, members, and files.')}
         </p>
       ) : (
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>{t('AI assistant')}</h2>
-          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.7 }}>
+          <h2 style={{ margin: '0 0 8px', fontSize: 'var(--fs-3xl)', fontWeight: 600 }}>{t('AI assistant')}</h2>
+          <p style={{ margin: 0, fontSize: 'var(--fs-lg)', color: 'var(--text-3)', lineHeight: 1.7 }}>
             {t('Based on projects, members, and files')}<br/>{t('It answers your questions.')}
           </p>
         </div>
@@ -406,10 +406,10 @@ function ChatView({
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {!isMobile && (
         <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--border)', background: 'var(--card)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 7, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="sparkles" size={12} color="#fff"/>
+          <div style={{ width: 24, height: 24, borderRadius: 7, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="sparkles" size={12} color="var(--accent-text)"/>
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{t('AI assistant')}</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>{t('AI assistant')}</span>
         </div>
       )}
 
@@ -417,12 +417,12 @@ function ChatView({
         <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}` }}>
           <InlineError variant="box">
             {t('Could not load the latest conversation. Attachment links may be out of date.')}{' '}
-            <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 11.5, marginLeft: 4 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
+            <button type="button" className="btn btn-ghost" style={{ height: 22, fontSize: 'var(--fs-sm)', marginLeft: 4 }} onClick={() => void conversationSync.reload()}>{t('Reload')}</button>
           </InlineError>
         </div>
       )}
       {error && (
-        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 12.5 }}>
+        <div style={{ padding: `10px ${isMobile ? '16px' : '28px'}`, background: 'var(--red-soft)', borderBottom: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>
           {t('Error: {message}', { message: chatErrorMessage(error) })}
         </div>
       )}
@@ -430,24 +430,24 @@ function ChatView({
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '24px 0' }}>
         <div style={{ maxWidth: isMobile ? undefined : 760, margin: '0 auto', padding: isMobile ? '0 16px' : '0 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {messages.length === 0 && (
-            <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 13, paddingTop: 40 }}>
+            <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)', paddingTop: 40 }}>
               {t('Type a question to start the conversation')}
             </div>
           )}
           {messages.map(m => m.role === 'user' ? (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              <div style={{ maxWidth: '78%', background: 'var(--card-hover)', border: '1px solid var(--border)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 'var(--fs-lg)', color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
                 {m.experimental_attachments && <SentAttachments attachments={m.experimental_attachments}/>}
                 {stripMentionsToText(m.content)}
               </div>
             </div>
           ) : (
             <div key={m.id} style={{ display: 'flex', gap: 12 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="sparkles" size={14} color="#fff"/>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="sparkles" size={14} color="var(--accent-text)"/>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
+                <div style={{ fontSize: 'var(--fs-lg)', color: 'var(--text)' }}>
                   <MarkdownContent content={m.content} lineHeight={1.7}/>
                 </div>
                 <PendingActionCards toolInvocations={m.toolInvocations}/>
@@ -455,7 +455,7 @@ function ChatView({
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button
                     className="btn btn-ghost"
-                    style={{ height: 26, fontSize: 11 }}
+                    style={{ height: 26, fontSize: 'var(--fs-xs)' }}
                     onClick={() => navigator.clipboard.writeText(m.content)}
                   >
                     {t('Copy')}
@@ -466,10 +466,10 @@ function ChatView({
           ))}
           {isLoading && (
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name="sparkles" size={14} color="#fff"/>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="sparkles" size={14} color="var(--accent-text)"/>
               </div>
-              <div style={{ paddingTop: 6, color: 'var(--text-3)', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ paddingTop: 6, color: 'var(--text-3)', fontSize: 'var(--fs-md)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <TypingDots/> {t('Thinking…')}
               </div>
             </div>
@@ -493,7 +493,7 @@ function ChatView({
                   disabled={!ready}
                   onClick={() => send(t(s))}
                   style={{
-                    padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 500,
+                    padding: '6px 12px', borderRadius: 999, fontSize: 'var(--fs-sm)', fontWeight: 500,
                     background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-2)',
                     cursor: ready ? 'pointer' : 'default', fontFamily: 'inherit', opacity: ready ? 1 : 0.5,
                     ...(isMobile ? { whiteSpace: 'nowrap', flexShrink: 0 } : {}),
@@ -570,7 +570,7 @@ function ChatView({
                 placeholder={isMobile ? t('Ask AI…') : t('Type a question (Shift+Enter for a new line)')}
                 rows={1}
                 disabled={isLoading}
-                style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 13.5, color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '4px 0', minHeight: 22, maxHeight: 120 }}
+                style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', fontSize: 'var(--fs-lg)', color: 'var(--text)', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, padding: '4px 0', minHeight: 22, maxHeight: 120 }}
               />
               <button
                 type="submit"
@@ -596,7 +596,7 @@ function ChatView({
             changing={setModel.isPending}
             onChange={next => setModel.mutate(next)}
           />
-          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-4)', textAlign: 'center' }}>
+          <div style={{ marginTop: 8, fontSize: 'var(--fs-xs)', color: 'var(--text-4)', textAlign: 'center' }}>
             {t('AI can be wrong. Check important decisions with a lead.')}
           </div>
         </div>
@@ -618,7 +618,7 @@ function AiChatNotAllowed({ isMobile }: { isMobile?: boolean | undefined }) {
   const t = useT()
   return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 16 : 28 }}>
-      <div style={{ maxWidth: 420, textAlign: 'center', color: 'var(--text-3)', fontSize: 13, lineHeight: 1.7 }}>
+      <div style={{ maxWidth: 420, textAlign: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)', lineHeight: 1.7 }}>
         <Icon name="sparkles" size={24} color="var(--text-4)"/>
         <p style={{ margin: '10px 0 0' }}>
           {t('The workspace owner has limited who can use the AI assistant in this workspace. Ask the owner if you need access.')}
@@ -698,7 +698,7 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
       )
     }
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13, gap: 8 }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 'var(--fs-md)', gap: 8 }}>
         <TypingDots/> {t('Loading...')}
       </div>
     )
@@ -771,7 +771,7 @@ function PageAIContent({ isMobile }: { isMobile?: boolean | undefined }) {
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Icon name="chat" size={16} color="var(--text-3)"/>
                 </div>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 15 }}>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--fs-xl)' }}>
                   {c.title ?? t('New conversation')}
                 </span>
                 <Icon name="chevRight" size={16} color="var(--text-4)"/>

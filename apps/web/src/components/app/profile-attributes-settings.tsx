@@ -106,7 +106,7 @@ function AttributeRow({
   if (editing) {
     return (
       <div style={{ padding: 16, background: 'var(--card-2)' }}>
-        <label htmlFor={`profile-attribute-${attribute.id}`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
+        <label htmlFor={`profile-attribute-${attribute.id}`} style={{ display: 'block', marginBottom: 6, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>
           {t('Attribute name')}
         </label>
         <input
@@ -125,7 +125,7 @@ function AttributeRow({
           style={{ width: '100%', marginBottom: 8 }}
         />
         <ColorPicker value={color} onChange={setColor} />
-        {update.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{update.error.message}</p>}
+        {update.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{update.error.message}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
           <button type="button" className="btn" onClick={handleCancelEditing}>
             {t('Cancel')}
@@ -189,8 +189,8 @@ export function ProfileAttributesSettings() {
     <div style={{ maxWidth: 780 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Profile attributes')}</h1>
-          <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 13, lineHeight: 1.6 }}>
+          <h1 className="page-title">{t('Profile attributes')}</h1>
+          <p style={{ margin: 0, color: 'var(--text-3)', fontSize: 'var(--fs-md)', lineHeight: 1.6 }}>
             {t('Manage shared labels and colors for members. Attributes are shared across every project in the workspace.')}
           </p>
         </div>
@@ -202,11 +202,11 @@ export function ProfileAttributesSettings() {
       </div>
 
       <section>
-        <h2 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700 }}>{t('Attribute list')}</h2>
+        <h2 style={{ margin: '0 0 10px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('Attribute list')}</h2>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {adding && (
             <div style={{ padding: 16, background: 'var(--card-2)', borderBottom: attributes.length > 0 ? '1px solid var(--divider)' : 'none' }}>
-              <label htmlFor="new-profile-attribute" style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>{t('Attribute name')}</label>
+              <label htmlFor="new-profile-attribute" style={{ display: 'block', marginBottom: 6, fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{t('Attribute name')}</label>
               <input
                 id="new-profile-attribute"
                 name="newProfileAttributeName"
@@ -224,7 +224,7 @@ export function ProfileAttributesSettings() {
                 style={{ width: '100%', marginBottom: 8 }}
               />
               <ColorPicker value={color} onChange={setColor} />
-              {create.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 12 }}>{create.error.message}</p>}
+              {create.error && <p role="alert" style={{ margin: '6px 0 0', color: 'var(--red-text)', fontSize: 'var(--fs-sm)' }}>{create.error.message}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
                 <button type="button" className="btn" onClick={cancelAdding}>{t('Cancel')}</button>
                 <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={handleCreate}>
@@ -234,18 +234,18 @@ export function ProfileAttributesSettings() {
             </div>
           )}
           {isLoading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('Loading...')}</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('Loading...')}</div>
           ) : error ? (
-            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 13 }}>{error.message}</div>
+            <div role="alert" style={{ padding: 20, color: 'var(--red-text)', fontSize: 'var(--fs-md)' }}>{error.message}</div>
           ) : attributes.length === 0 && !adding ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 13 }}>{t('No attributes yet.')}</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-4)', fontSize: 'var(--fs-md)' }}>{t('No attributes yet.')}</div>
           ) : attributes.map((attribute, index) => (
             <div key={attribute.id} style={{ borderBottom: index < attributes.length - 1 ? '1px solid var(--divider)' : 'none' }}>
               <AttributeRow attribute={attribute} canManage={isAdmin} />
             </div>
           ))}
         </div>
-        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 12 }}>{t('Only admins can add, edit, or delete attributes.')}</p>}
+        {!isAdmin && <p style={{ margin: '10px 0 0', color: 'var(--text-4)', fontSize: 'var(--fs-sm)' }}>{t('Only admins can add, edit, or delete attributes.')}</p>}
       </section>
     </div>
   )

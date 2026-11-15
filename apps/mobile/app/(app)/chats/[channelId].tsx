@@ -50,6 +50,8 @@ import { MessageCard, type CardAction } from '../../../components/message-card'
 import { AppEntryActions } from '../../../components/app-entry-actions'
 import { postCardAction } from '../../../lib/card-actions'
 import { LinkedTasksModal, MessageTaskPickerModal } from '../../../components/message-task-picker'
+import { MessageGalleryPickerModal, type MessageGalleryPickerState } from '../../../components/message-gallery-picker'
+import { galleryImagesOf } from '../../../lib/message-gallery'
 import { messageTaskErrorMessage, type MessageTaskCandidate, type MessageTaskSubmitItem } from '../../../lib/message-task'
 import type { ChatInfoFileDto } from '../../../hooks/use-chat-info'
 import { useAttachmentUpload } from '../../../hooks/use-attachment-upload'
@@ -95,6 +97,7 @@ import {
   myBlocksQueryKey,
   useMyBlocks,
   useProjectMembers,
+  useProfileAttributes,
   useProjectRoles,
   useWorkspaceChannels,
   useWorkspaceDms,
@@ -504,7 +507,7 @@ function ChatMessageRow({
             )
           )}
 
-          {message.attachments.length > 0 && (
+          {!message.blocked && message.attachments.length > 0 && (
             <View
               style={[
                 styles.attachments,
@@ -635,7 +638,9 @@ function QueuedMessageRow({
   onCancel: () => void
 }) {
   const t = useT()
+  const legacy = !message.workspaceId
   const statusLabel =
+    legacy ? t('This unsent message needs confirmation before resending.') :
     message.status === 'sending'
       ? t('Sending…')
       : message.status === 'failed'
@@ -657,19 +662,19 @@ function QueuedMessageRow({
         />
         <View style={styles.queueStatusRow}>
           <Ionicons
-            name={message.status === 'failed' ? 'alert-circle-outline' : 'cloud-upload-outline'}
+            name={(legacy || message.status === 'failed') ? 'alert-circle-outline' : 'cloud-upload-outline'}
             size={13}
-            color={message.status === 'failed' ? palette.redText : palette.accent}
+            color={(legacy || message.status === 'failed') ? palette.redText : palette.accent}
           />
           <Text
             style={[
               styles.queueStatus,
-              { color: message.status === 'failed' ? palette.redText : palette.accentText },
+              { color: (legacy || message.status === 'failed') ? palette.redText : palette.accentText },
             ]}
           >
             {statusLabel}
           </Text>
-          {message.status === 'failed' && (
+          {(legacy || message.status === 'failed') && (
             <Pressable accessibilityRole="button" onPress={onRetry} hitSlop={6}>
               <Text style={[styles.queueAction, { color: palette.accentText }]}>{t('Resend')}</Text>
             </Pressable>
@@ -780,6 +785,8 @@ export default function ChatThreadScreen() {
   )
   const projectMembers = useProjectMembers(projectId ?? null)
   const projectRoles = useProjectRoles(!!projectId && channelType !== 'dm')
+  // 属性（`<@attr:id>`）はプロジェクトに関係なく DM 以外の全チャンネルで候補に出す（Web と同じ）
+  const profileAttributes = useProfileAttributes(channelType !== 'dm')
   const session = useSession()
   const selectedWorkspace = useSelectedWorkspaceId(session?.user.id)
   const attachmentAuth = React.useMemo<AttachmentAuth | undefined>(
@@ -822,6 +829,8 @@ export default function ChatThreadScreen() {
   const [taskPicker, setTaskPicker] = React.useState<{ messageId: string; candidates: MessageTaskCandidate[] } | null>(null)
   // ピッカー（Modal）が開いている間の失敗は sendError だと隠れるため、シート内に出す
   const [taskPickerError, setTaskPickerError] = React.useState<string | null>(null)
+  const [galleryPicker, setGalleryPicker] = React.useState<(MessageGalleryPickerState & { messageId: string }) | null>(null)
+  const [galleryPickerError, setGalleryPickerError] = React.useState<string | null>(null)
   const [linkedTasksSheet, setLinkedTasksSheet] = React.useState<MessageDto['linkedTasks'] | null>(null)
   const [reactionPeople, setReactionPeople] = React.useState<{
     selectedEmoji: string
@@ -984,6 +993,9 @@ export default function ChatThreadScreen() {
           .filter((role) => role.name.toLocaleLowerCase().includes(query))
           .map((role) => ({ tokenId: `role:${role.id}`, displayName: role.name, avatarUrl: null, hint: t('Project role') }))
       : []
+    const attributes: MentionCandidate[] = (profileAttributes.data ?? [])
+      .filter((attribute) => attribute.name.toLocaleLowerCase().includes(query))
+      .map((attribute) => ({ tokenId: `attr:${attribute.id}`, displayName: attribute.name, avatarUrl: null, hint: t('Attribute') }))
     return [
       ...groups,
       ...mentionableMembers
@@ -995,29 +1007,41 @@ export default function ChatThreadScreen() {
           avatarUrl: member.avatarUrl,
         })),
       ...roles,
+      ...attributes,
     ].filter((candidate) => !mentioned.has(candidate.tokenId))
-  }, [channelType, draft, me?.id, mentionRange, mentionableMembers, projectId, projectRoles.data, t])
-  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で出すため、その取得失敗も候補の欠けとして示す
+  }, [channelType, draft, me?.id, mentionRange, mentionableMembers, profileAttributes.data, projectId, projectRoles.data, t])
+  // 役割の候補はプロジェクトのチャンネル（非公開を含む）で、属性の候補は DM 以外の全チャンネルで出すため、その取得失敗も候補の欠けとして示す
   const projectRolesError = projectId ? projectRoles.error : null
   const mentionMembersError =
     channelType === 'dm'
       ? null
       : isPrivate === '1'
-        ? (channelMembers.error ?? projectRolesError)
+        ? (channelMembers.error ?? projectRolesError ?? profileAttributes.error)
         : (workspaceMembers.error ??
           (projectId
             ? (projectMembers.error ?? projectRolesError)
-            : channelType === 'workspace' ? channelMembers.error : null))
+            : channelType === 'workspace' ? channelMembers.error : null) ??
+          profileAttributes.error)
   const isFetchingMentionMembers =
-    channelMembers.isFetching || workspaceMembers.isFetching || projectMembers.isFetching || projectRoles.isFetching
+    channelMembers.isFetching ||
+    workspaceMembers.isFetching ||
+    projectMembers.isFetching ||
+    projectRoles.isFetching ||
+    profileAttributes.isFetching
 
   const retryMentionMembers = () => {
     if (isPrivate === '1') {
-      return projectId ? Promise.all([channelMembers.refetch(), projectRoles.refetch()]) : channelMembers.refetch()
+      return projectId
+        ? Promise.all([channelMembers.refetch(), projectRoles.refetch(), profileAttributes.refetch()])
+        : Promise.all([channelMembers.refetch(), profileAttributes.refetch()])
     }
-    if (projectId) return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch()])
-    if (channelType === 'workspace') return Promise.all([workspaceMembers.refetch(), channelMembers.refetch()])
-    return workspaceMembers.refetch()
+    if (projectId) {
+      return Promise.all([workspaceMembers.refetch(), projectMembers.refetch(), projectRoles.refetch(), profileAttributes.refetch()])
+    }
+    if (channelType === 'workspace') {
+      return Promise.all([workspaceMembers.refetch(), channelMembers.refetch(), profileAttributes.refetch()])
+    }
+    return Promise.all([workspaceMembers.refetch(), profileAttributes.refetch()])
   }
   // 送信失敗時の catch は非同期に発火するため、常に最新の channelId を参照できるようにする
   const channelIdRef = React.useRef(channelId)
@@ -1127,6 +1151,8 @@ export default function ChatThreadScreen() {
     setActionTarget(null)
     setReactionTarget(null)
     setReactionPeople(null)
+    setGalleryPicker(null)
+    setGalleryPickerError(null)
     setAttachmentPreview(null)
     setProfileTarget(null)
     setProfilePending(null)
@@ -1367,6 +1393,84 @@ export default function ChatThreadScreen() {
       }
     } catch {
       setSendError(t('Could not make a task from this message'))
+    }
+  }
+
+  const openProjectGallery = (id: string) => {
+    router.push({ pathname: '/(app)/projects/[id]', params: { id, tab: 'gallery' } })
+  }
+
+  // 選んだ画像をプロジェクトのギャラリーへ追加する。成功したら true。失敗は sendError（シートからはシート内）に出す。
+  const addImagesToGallery = async (messageId: string, fileIds: string[], fromPicker = false): Promise<boolean> => {
+    const reportError = fromPicker ? setGalleryPickerError : setSendError
+    setSendError(null)
+    setGalleryPickerError(null)
+    try {
+      const response = await apiFetch(`/api/messages/${messageId}/gallery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds }),
+      })
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        projectId?: string
+        addedCount?: number
+      }
+      const addedProjectId = data.projectId
+      if (!response.ok || typeof addedProjectId !== 'string' || typeof data.addedCount !== 'number') {
+        reportError(data.error ?? t('Could not add to the gallery'))
+        return false
+      }
+      const title =
+        data.addedCount === 0
+          ? t('Already in the gallery')
+          : data.addedCount === 1
+            ? t('Added to the gallery')
+            : t('Added {count} photos to the gallery', { count: data.addedCount })
+      Alert.alert(title, undefined, [
+        { text: t('Close'), style: 'cancel' },
+        { text: t('Open'), onPress: () => openProjectGallery(addedProjectId) },
+      ])
+      return true
+    } catch {
+      reportError(t('Could not add to the gallery'))
+      return false
+    }
+  }
+
+  // 1枚だけ未追加ならそのまま追加し、複数あれば選ぶシートを出す（Web・タスク化と同じ流れ）
+  const addToGallery = async (message: MessageDto) => {
+    const menuDismissed = waitActionMenuDismissed()
+    setActionTarget(null)
+    setSendError(null)
+    const images = galleryImagesOf(message.attachments)
+    if (images.length === 0) return
+    // 取得中にチャンネルを切り替えたら、前のチャンネルの結果でシートを開かない
+    const startedChannelId = channelId
+    try {
+      const response = await apiFetch(`/api/messages/${message.id}/gallery`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string; addedFileIds?: unknown }
+      if (previousChannelIdRef.current !== startedChannelId) return
+      if (!response.ok || !Array.isArray(data.addedFileIds)) {
+        setSendError(data.error ?? t('Could not add to the gallery'))
+        return
+      }
+      const addedFileIds = data.addedFileIds.filter((id): id is string => typeof id === 'string')
+      const added = new Set(addedFileIds)
+      const open = images.filter((image) => !added.has(image.fileId))
+      if (open.length === 0) {
+        Alert.alert(t('Already in the gallery'))
+      } else if (images.length === 1 && open[0]) {
+        await addImagesToGallery(message.id, [open[0].fileId])
+      } else {
+        // iOS は操作メニューが閉じ終わる前に別の Modal を出すと表示が捨てられる
+        await menuDismissed
+        if (previousChannelIdRef.current !== startedChannelId) return
+        setGalleryPickerError(null)
+        setGalleryPicker({ messageId: message.id, images, addedFileIds })
+      }
+    } catch {
+      setSendError(t('Could not add to the gallery'))
     }
   }
 
@@ -1811,6 +1915,14 @@ export default function ChatThreadScreen() {
 
   // iOS は閉じかけの操作メニューの上に別の Modal を出すと表示が捨てられるため、メニューが閉じ終えてから（onDismiss で）開く
   const pendingSelectTextRef = React.useRef<string | null>(null)
+  const actionMenuDismissedRef = React.useRef<(() => void) | null>(null)
+  // 操作メニューが閉じ終わるのを待つ。onDismiss は iOS でしか呼ばれないので、Android はすぐ解決する
+  const waitActionMenuDismissed = (): Promise<void> => {
+    if (Platform.OS !== 'ios') return Promise.resolve()
+    return new Promise((resolve) => {
+      actionMenuDismissedRef.current = resolve
+    })
+  }
   const beginSelectText = (message: MessageDto) => {
     setActionTarget(null)
     const text = parseMentions(message.content, t)
@@ -1972,7 +2084,14 @@ export default function ChatThreadScreen() {
                     palette={palette}
                     senderName={me?.displayName ?? t('You')}
                     onLinkPress={openMarkdownLink}
-                    onRetry={() => offlineQueue.retry(item.message.id)}
+                    onRetry={() => {
+                      const retry = () => void offlineQueue.retry(item.message.id).catch(() => setSendError(t('Could not prepare the message for resending. Please try again.')))
+                      if (item.message.workspaceId) retry()
+                      else Alert.alert(t('Resend this message?'), t('The original workspace is unknown. Resend to the current channel?'), [
+                        { text: t('Cancel'), style: 'cancel' },
+                        { text: t('Resend'), onPress: retry },
+                      ])
+                    }}
                     onCancel={() => offlineQueue.cancel(item.message.id)}
                   />
                 ) : (
@@ -2414,6 +2533,8 @@ export default function ChatThreadScreen() {
           animationType="fade"
           onRequestClose={() => setActionTarget(null)}
           onDismiss={() => {
+            actionMenuDismissedRef.current?.()
+            actionMenuDismissedRef.current = null
             const pending = pendingSelectTextRef.current
             pendingSelectTextRef.current = null
             if (pending !== null) setSelectableText(pending)
@@ -2483,6 +2604,15 @@ export default function ChatThreadScreen() {
                 palette={palette}
                 onPress={() => actionTarget && void makeTask(actionTarget)}
               />
+              {/* プロジェクトのチャンネルで画像の添付があるときだけ（追加先はそのプロジェクト） */}
+              {projectId && actionTarget && actionTarget.messageType !== 'system' && galleryImagesOf(actionTarget.attachments).length > 0 && (
+                <ActionButton
+                  icon="images-outline"
+                  label={t('Add to the gallery')}
+                  palette={palette}
+                  onPress={() => void addToGallery(actionTarget)}
+                />
+              )}
               <ActionButton
                 icon={actionTarget?.bookmarked ? 'bookmark' : 'bookmark-outline'}
                 label={actionTarget?.bookmarked ? t('Clear bookmark') : t('Bookmarks')}
@@ -2667,6 +2797,17 @@ export default function ChatThreadScreen() {
           onClose={() => {
             setTaskPicker(null)
             setTaskPickerError(null)
+          }}
+        />
+        <MessageGalleryPickerModal
+          picker={galleryPicker}
+          auth={attachmentAuth}
+          palette={palette}
+          onSubmit={(fileIds) => (galleryPicker ? addImagesToGallery(galleryPicker.messageId, fileIds, true) : Promise.resolve(false))}
+          error={galleryPickerError}
+          onClose={() => {
+            setGalleryPicker(null)
+            setGalleryPickerError(null)
           }}
         />
         <LinkedTasksModal

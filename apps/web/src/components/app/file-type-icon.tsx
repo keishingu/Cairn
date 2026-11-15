@@ -57,7 +57,7 @@ export function FileTypeIcon({
     <div style={{
       width, height, borderRadius: 4, flexShrink: 0,
       background: bg, color,
-      fontSize: Math.round(height / 4), fontWeight: 700,
+      fontSize: Math.round(height / 4), fontWeight: 600,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       {kind}
@@ -89,7 +89,7 @@ export function GoogleDocsIcon({ url, width = 32, height = 36 }: { url: string; 
     <div style={{
       width, height, borderRadius: 4, flexShrink: 0,
       background: cfg.bg, color: cfg.color,
-      fontSize: 9, fontWeight: 700,
+      fontSize: 'var(--fs-2xs)', fontWeight: 600,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       {cfg.label}

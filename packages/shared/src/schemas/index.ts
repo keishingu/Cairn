@@ -31,6 +31,13 @@ export const updateProjectStatusSchema = z.object({
   statusId: z.string().uuid(),
 })
 
+export function isMilestonePeriodReversed(period: { startDate?: string | null | undefined; endDate?: string | null | undefined; startTime?: string | null | undefined; endTime?: string | null | undefined }): boolean {
+  const { startDate, endDate, startTime, endTime } = period
+  return !!startDate && !!endDate && (endDate < startDate || (startDate === endDate && !!startTime && !!endTime && endTime.slice(0, 5) < startTime.slice(0, 5)))
+}
+
+export const MILESTONE_PERIOD_ERROR = '終了日時は開始日時以降にしてください'
+
 export const createMilestoneSchema = z.object({
   title: z.string().trim().min(1).max(100),
   description: z.string().max(1000).optional(),
@@ -38,9 +45,10 @@ export const createMilestoneSchema = z.object({
   endDate: z.string().date().optional(),
   startTime: timeStringSchema.optional(),
   endTime: timeStringSchema.optional(),
-})
+}).refine(data => !isMilestonePeriodReversed(data), { message: MILESTONE_PERIOD_ERROR })
 
 export const patchMilestoneSchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
   title: z.string().trim().min(1).max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
   startDate: z.string().date().nullable().optional(),
@@ -49,9 +57,9 @@ export const patchMilestoneSchema = z.object({
   endTime: timeStringSchema.nullable().optional(),
   completed: z.boolean().optional(),
 }).refine(
-  data => Object.values(data).some(value => value !== undefined),
+  data => Object.entries(data).some(([key, value]) => key !== 'expectedUpdatedAt' && value !== undefined),
   { message: 'At least one field is required' },
-)
+).refine(data => !isMilestonePeriodReversed(data), { message: MILESTONE_PERIOD_ERROR })
 
 /** 1 件のメッセージに添付できるファイル数の上限（Web / モバイル / API で共通） */
 export const MAX_MESSAGE_ATTACHMENTS = 10

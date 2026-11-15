@@ -7,6 +7,8 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { encodeFileListCursor, parseFileListParams } from '@/lib/files/file-list-query'
 import { buildFileFilterConditions, buildVisibleFilesConditions } from '@/lib/files/visible-files'
 
+import { canManageAccessibleFile } from '@/lib/files/mutation-permission'
+
 export interface FileDto {
   id: string
   sourceChannelId: string | null
@@ -20,6 +22,7 @@ export interface FileDto {
   fileType: string
   uploaderId: string
   uploaderName: string
+  canMutate: boolean
   uploaderAvatarUrl: string | null
   createdAt: string
   externalUrl?: string
@@ -157,6 +160,7 @@ export async function GET(request: Request) {
         fileType: r.fileType,
         uploaderId: r.uploaderId,
         uploaderName: r.uploaderName,
+        canMutate: canManageAccessibleFile(ctx.userId, r.uploaderId, ctx.role),
         uploaderAvatarUrl: r.uploaderAvatarUrl ?? null,
         createdAt: r.createdAt.toISOString(),
         ...(typeof externalUrl === 'string' ? { externalUrl } : {}),

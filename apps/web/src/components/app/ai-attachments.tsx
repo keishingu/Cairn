@@ -41,7 +41,7 @@ export function PendingAttachmentChips({ items, onRemove }: { items: PendingAiAt
             title={item.fileName}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 240, padding: '4px 6px 4px 8px', borderRadius: 8,
-              border: `1px solid ${'error' in item.state ? 'var(--red-text)' : 'var(--border)'}`, background: 'var(--card)', fontSize: 12,
+              border: `1px solid ${'error' in item.state ? 'var(--red-text)' : 'var(--border)'}`, background: 'var(--card)', fontSize: 'var(--fs-sm)',
             }}
           >
             {item.previewUrl
@@ -86,7 +86,7 @@ export function SentAttachments({ attachments }: { attachments: ReadonlyArray<At
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={attachment.url} alt={attachment.name ?? ''} style={{ display: 'block', maxWidth: 160, maxHeight: 120, borderRadius: 8, border: '1px solid var(--border)' }}/>
             : (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, color: 'var(--text-2)', maxWidth: 220 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 'var(--fs-sm)', color: 'var(--text-2)', maxWidth: 220 }}>
                 <Icon name="file" size={14}/>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attachment.name}</span>
               </span>

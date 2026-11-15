@@ -47,7 +47,7 @@ export function InstructionPreview({ text }: { text: string }) {
     last = index + match[0].length
   }
   if (last < text.length) parts.push(text.slice(last))
-  return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 13 }}>{parts}</div>
+  return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 'var(--fs-md)' }}>{parts}</div>
 }
 
 export function InstructionEditor({ id, value, onChange, placeholder }: { id: string; value: string; onChange: (value: string) => void; placeholder: string }) {
@@ -118,11 +118,11 @@ export function InstructionEditor({ id, value, onChange, placeholder }: { id: st
       {trigger && (
         <div ref={pickerRef} role="listbox" aria-label={t('References')} onBlur={closeUnlessInPicker} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
           {data.error ? (
-            <div role="alert" style={{ padding: '8px 12px', fontSize: 12, color: 'var(--red-text)' }}>{t('Could not load suggestions. Try again later.')}</div>
+            <div role="alert" style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--red-text)' }}>{t('Could not load suggestions. Try again later.')}</div>
           ) : data.isLoading ? (
-            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('Loading...')}</div>
+            <div style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('Loading...')}</div>
           ) : candidates.length === 0 ? (
-            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-4)' }}>{t('No matches')}</div>
+            <div style={{ padding: '8px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>{t('No matches')}</div>
           ) : candidates.map(candidate => (
             <button
               key={candidate.token}
@@ -133,15 +133,15 @@ export function InstructionEditor({ id, value, onChange, placeholder }: { id: st
               // マウスでは入力欄のフォーカスを保ったまま選び、キーボード・支援技術ではボタンとして押せるようにする
               onMouseDown={event => event.preventDefault()}
               onClick={() => insert(candidate)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 13 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 'var(--fs-md)' }}
             >
               <span style={{ fontWeight: 600, color: 'var(--text)' }}>{candidate.kind === 'channel' ? '#' : '@'}{candidate.label}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{kindLabel(candidate.kind)}</span>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)' }}>{kindLabel(candidate.kind)}</span>
             </button>
           ))}
         </div>
       )}
-      <span style={{ fontSize: 11.5, color: 'var(--text-4)' }}>
+      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)' }}>
         {t('Type @ for members, attributes, and project roles, or # for channels. Picked items are saved by ID, so renames and duplicate names do not change their meaning.')}
       </span>
       {/<[@#]/.test(value) && (

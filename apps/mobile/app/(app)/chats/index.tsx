@@ -81,7 +81,11 @@ function ChannelItem({ channel, milestone = false, pinned = false, onOpenActions
   const unread = chatUnreadDisplay(channel)
   return (
     <TouchableOpacity
-      style={[styles.channelRow, { borderBottomColor: palette.divider }]}
+      style={[
+        styles.channelRow,
+        milestone && styles.threadRow,
+        { borderBottomColor: palette.divider },
+      ]}
       onPress={() =>
         router.push({
           pathname: '/chats/[channelId]',
@@ -124,7 +128,7 @@ function ChannelItem({ channel, milestone = false, pinned = false, onOpenActions
         <Text style={[styles.channelName, unread.unread && styles.channelNameUnread, { color: unread.unread ? palette.text : palette.text2 }]} numberOfLines={1}>
           {milestone ? channel.channelName : channel.projectTitle}
         </Text>
-        {!milestone && period && (
+        {period && (
           <Text style={[styles.projectTitle, { color: palette.text3 }]} numberOfLines={1}>
             {period}
           </Text>
@@ -506,14 +510,22 @@ export default function ChatsScreen() {
 
   const setMilestoneCompleted = (channel: ProjectChannelDto, completed: boolean) => {
     if (!channel.milestoneId || patchMilestone.isPending) return
+    if (!channel.milestoneUpdatedAt) {
+      void refetchProjectChannels()
+      setRowActionTarget(null)
+      Alert.alert(t('Could not update the milestone'), t('This milestone was updated by someone else. Reload to continue.'))
+      return
+    }
     setRowActionTarget(null)
     patchMilestone.mutate(
-      { projectId: channel.projectId, milestoneId: channel.milestoneId, completed },
+      { projectId: channel.projectId, milestoneId: channel.milestoneId, completed, expectedUpdatedAt: channel.milestoneUpdatedAt },
       {
         onError: (mutationError) =>
           Alert.alert(
             t('Could not update the milestone'),
-            mutationError instanceof Error ? mutationError.message : t('Please try again.'),
+            mutationError instanceof Error && mutationError.message === 'milestone_conflict'
+              ? t('This milestone was updated by someone else. Reload to continue.')
+              : mutationError instanceof Error ? mutationError.message : t('Please try again.'),
           ),
       },
     )

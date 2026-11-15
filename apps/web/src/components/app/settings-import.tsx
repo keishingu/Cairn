@@ -49,8 +49,8 @@ function formatPeriod(conversation: ImportConversation): string {
 }
 
 const sectionStyle: React.CSSProperties = { marginBottom: 24 }
-const noteStyle: React.CSSProperties = { fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.6 }
-const cellStyle: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--divider)', fontSize: 13, textAlign: 'left', verticalAlign: 'top' }
+const noteStyle: React.CSSProperties = { fontSize: 'var(--fs-md)', color: 'var(--text-3)', lineHeight: 1.6 }
+const cellStyle: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--divider)', fontSize: 'var(--fs-md)', textAlign: 'left', verticalAlign: 'top' }
 
 export function SettingsImport() {
   const t = useT()
@@ -96,7 +96,7 @@ export function SettingsImport() {
   if (!isAdmin) {
     return (
       <div>
-        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700 }}>{t('Import from Teams')}</h1>
+        <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t('Import from Teams')}</h1>
         {isWorkspaceAdmin && importAccess.isError ? (
           <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
             <InlineError variant="box">
@@ -222,7 +222,7 @@ export function SettingsImport() {
 
   return (
     <div>
-      <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em' }}>{t('Import from Teams')}</h1>
+      <h1 className="page-title" style={{ margin: '0 0 6px' }}>{t('Import from Teams')}</h1>
       <p style={{ ...noteStyle, marginBottom: 20 }}>
         {t('Import past group conversations from a Microsoft Teams (personal) export into Cairn channels. The export is read in your browser, and nothing is saved until you press Import.')}
       </p>
@@ -237,7 +237,7 @@ export function SettingsImport() {
 
       {step === 'select' && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>{t('1. Choose the export')}</h2>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('1. Choose the export')}</h2>
           <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
             <p style={noteStyle}>{t('Choose the folder you got from teams.live.com/dataexport (chat history and media). Only messages.json and the images in media are read. Other files such as endpoints.json and invites.json are not read.')}</p>
             <button
@@ -269,7 +269,7 @@ export function SettingsImport() {
 
       {step === 'conversations' && bundle && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>{t('2. Choose conversations')}</h2>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('2. Choose conversations')}</h2>
           <p style={noteStyle}>{t('Only group conversations can be imported. 1:1 chats and meeting chats are private conversations with the other people and cannot be selected.')}</p>
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -323,7 +323,7 @@ export function SettingsImport() {
 
       {step === 'mapping' && bundle && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>{t('3. Match posters to members')}</h2>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('3. Match posters to members')}</h2>
           <p style={noteStyle}>{t('Posters are not matched automatically, even when the names are the same. Choose a member only when you have confirmed it is the same person. Unknown posters stay as “Unknown poster” and cannot be matched. You can change this later.')}</p>
           <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -379,14 +379,14 @@ export function SettingsImport() {
 
       {step === 'destination' && bundle && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>{t('4. Choose destination channels')}</h2>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('4. Choose destination channels')}</h2>
           <p style={noteStyle}>{t('New channels are created as private channels that only you can see. After checking the result, you can add members or make the channel public. If you import the same conversation again, choose the channel you imported into before; messages that were already imported are skipped.')}</p>
           <div className="card" style={{ padding: 16, display: 'grid', gap: 14 }}>
             {bundle.conversations.filter(c => selected.has(c.externalId)).map(conversation => {
               const destination = destinationFor(conversation)
               return (
                 <div key={conversation.externalId} style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{conversation.name ?? t('Untitled conversation')}</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--fs-md)' }}>{conversation.name ?? t('Untitled conversation')}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <select
                       aria-label={t('Destination for {name}', { name: conversation.name ?? '' })}
@@ -419,7 +419,7 @@ export function SettingsImport() {
                         ? t('Who can read: members of this private channel')
                         : t('Who can read: all workspace members except guests')}
                   </div>
-                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-md)' }}>
                     <span>{t('Messages from unknown posters')}</span>
                     <select
                       aria-label={t('Messages from unknown posters in {name}', { name: conversation.name ?? '' })}
@@ -459,7 +459,7 @@ export function SettingsImport() {
         ]
         return (
           <section style={sectionStyle}>
-            <h2 style={{ fontSize: 14 }}>{t('5. Review before importing')}</h2>
+            <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('5. Review before importing')}</h2>
             <div className="card" style={{ padding: 0 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
@@ -470,14 +470,14 @@ export function SettingsImport() {
               </table>
             </div>
             <div className="card" style={{ padding: 14, marginTop: 12, display: 'grid', gap: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{t('Before you import')}</div>
+              <div style={{ fontWeight: 600, fontSize: 'var(--fs-md)' }}>{t('Before you import')}</div>
               <ul style={{ ...noteStyle, margin: 0, paddingLeft: 18 }}>
                 <li>{t('These are conversations of the original community members. Tell the members that their past messages will be moved to Cairn, and check that nobody objects.')}</li>
                 <li>{t('Messages keep their original date and text. Reply threads are not restored, because the export does not contain them.')}</li>
                 <li>{t('Notifications are not sent for imported messages.')}</li>
                 <li>{t('Images are counted toward the workspace storage.')}</li>
               </ul>
-              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 'var(--fs-md)' }}>
                 <input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />
                 <span>{t('I have informed the members and checked who can read the imported messages.')}</span>
               </label>
@@ -492,8 +492,8 @@ export function SettingsImport() {
 
       {step === 'running' && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>{t('Importing...')}</h2>
-          <div className="card" style={{ padding: 16, display: 'grid', gap: 8, fontSize: 13 }}>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>{t('Importing...')}</h2>
+          <div className="card" style={{ padding: 16, display: 'grid', gap: 8, fontSize: 'var(--fs-md)' }}>
             <div>{t('Images: {done} / {total}', { done: progress?.mediaDone ?? 0, total: progress?.mediaTotal ?? 0 })}</div>
             <div>{t('Messages: {done} / {total}', { done: progress?.messagesDone ?? 0, total: progress?.messagesTotal ?? 0 })}</div>
             {progress?.phase === 'publishing' && <div>{t('Publishing to channels...')}</div>}
@@ -505,7 +505,7 @@ export function SettingsImport() {
 
       {step === 'done' && result && (
         <section style={sectionStyle}>
-          <h2 style={{ fontSize: 14 }}>
+          <h2 style={{ fontSize: 'var(--fs-lg)' }}>
             {result.status === 'completed' ? t('Import finished') : result.status === 'cancelled' ? t('Import stopped') : t('Import failed')}
           </h2>
           <div className="card" style={{ padding: 0 }}>

@@ -139,7 +139,7 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
                 onClick={() => { setMenuOpen(false); onArchiveToggle?.() }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 6, border: 'none',
-                  background: 'transparent', color: 'var(--text-2)', fontSize: 12.5, cursor: 'pointer',
+                  background: 'transparent', color: 'var(--text-2)', fontSize: 'var(--fs-md)', cursor: 'pointer',
                   fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8,
                 }}
                 className="hover-bg"
@@ -156,11 +156,11 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
         <div title={member.email ?? undefined} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
           <Avatar name={member.displayName} url={member.avatarUrl} size={44} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
+            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{member.displayName}</div>
             {member.email && (
               <div
                 style={{
-                  fontSize: 11.5,
+                  fontSize: 'var(--fs-sm)',
                   color: 'var(--text-4)',
                   marginBottom: 6,
                   overflow: 'hidden',
@@ -172,7 +172,7 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
+              <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: role.c, background: role.bg, padding: '2px 8px', borderRadius: 4 }}>
                 {t(ROLE_LABEL[member.role])}
               </span>
               <ProfileAttributeBadges attributes={member.profileAttributes} compact />
@@ -180,7 +180,7 @@ const MemberCard = ({ member, projectCount, selected, onClick, canManage, onArch
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 16, fontSize: 11.5, color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
+        <div style={{ display: 'flex', gap: 16, fontSize: 'var(--fs-sm)', color: 'var(--text-3)', borderTop: '1px solid var(--divider)', paddingTop: 10 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Icon name="folder" size={11} /> {t('{count} projects', { count: projectCount })}
           </span>
@@ -391,7 +391,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               style={{
                 width: '100%', height: 36, padding: '0 12px 0 32px',
                 border: '1px solid var(--border)', borderRadius: 8,
-                background: 'var(--card)', color: 'var(--text)', fontSize: 14,
+                background: 'var(--card)', color: 'var(--text)', fontSize: 'var(--fs-lg)',
                 fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
               }}
             />
@@ -408,7 +408,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 padding: '5px 12px', borderRadius: 999, border: 'none', whiteSpace: 'nowrap',
                 background: roleFilter === f.id ? 'var(--accent)' : 'var(--card-2)',
                 color: roleFilter === f.id ? 'var(--on-accent)' : 'var(--text-3)',
-                fontSize: 12.5, fontWeight: roleFilter === f.id ? 700 : 500,
+                fontSize: 'var(--fs-md)', fontWeight: roleFilter === f.id ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >{f.label}</button>
@@ -421,7 +421,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                 border: showArchived ? 'none' : '1px solid var(--border-2)',
                 background: showArchived ? 'var(--text-3)' : 'transparent',
                 color: showArchived ? 'var(--on-accent)' : 'var(--text-4)',
-                fontSize: 12.5, fontWeight: showArchived ? 700 : 500,
+                fontSize: 'var(--fs-md)', fontWeight: showArchived ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >{t('Archived ({count})', { count: archivedCount })}</button>
@@ -437,7 +437,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
           ) : filtered.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '48px 16px', color: 'var(--text-4)' }}>
               <Icon name="users" size={32} />
-              <span style={{ fontSize: 14 }}>{t('No members found')}</span>
+              <span style={{ fontSize: 'var(--fs-lg)' }}>{t('No members found')}</span>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
@@ -477,7 +477,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   padding: '6px 12px', borderRadius: 6, border: 'none',
                   background: roleFilter === f.id ? 'var(--card-hover)' : 'transparent',
                   color: roleFilter === f.id ? 'var(--text)' : 'var(--text-3)',
-                  fontSize: 12.5, fontWeight: roleFilter === f.id ? 600 : 500,
+                  fontSize: 'var(--fs-md)', fontWeight: roleFilter === f.id ? 600 : 500,
                   cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >{f.label}</button>
@@ -491,7 +491,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   background: showArchived ? 'var(--card-hover)' : 'transparent',
                   color: showArchived ? 'var(--text)' : 'var(--text-4)',
-                  fontSize: 12.5, fontWeight: showArchived ? 600 : 500,
+                  fontSize: 'var(--fs-md)', fontWeight: showArchived ? 600 : 500,
                   cursor: 'pointer', fontFamily: 'inherit',
                 }}
               ><Icon name="archive" size={12} /> {t('Archived ({count})', { count: archivedCount })}</button>
@@ -520,7 +520,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
               <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)' }}>
                 <Icon name="users" size={22} />
               </div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{t('No members found')}</div>
+              <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>{t('No members found')}</div>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
@@ -622,16 +622,16 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
         boxShadow: 'var(--shadow-lg, 0 20px 60px rgba(0,0,0,0.2))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{t('Invite members')}</div>
+          <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>{t('Invite members')}</div>
           <button
             onClick={onClose}
-            style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 18 }}
+            style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-3)', fontSize: 'var(--fs-2xl)' }}
           >×</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {EXPIRES_OPTIONS.map(opt => (
                 <button
@@ -645,11 +645,11 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     border: `1.5px solid ${expiresIn === opt.value ? 'var(--accent)' : 'var(--border-2)'}`,
                     background: expiresIn === opt.value ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg)',
                     color: expiresIn === opt.value ? 'var(--accent)' : 'var(--text-3)',
-                    fontSize: 13,
-                    fontWeight: expiresIn === opt.value ? 700 : 400,
+                    fontSize: 'var(--fs-md)',
+                    fontWeight: expiresIn === opt.value ? 600 : 400,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
-                    transition: 'all 0.15s',
+                    transition: 'background-color .15s, color .15s',
                   }}
                 >
                   {t(opt.label)}
@@ -661,7 +661,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
           {!inviteUrl ? (
             <>
               {generateError && (
-                <InlineError variant="box" style={{ fontSize: 12.5 }}>{generateError}</InlineError>
+                <InlineError variant="box" style={{ fontSize: 'var(--fs-md)' }}>{generateError}</InlineError>
               )}
               <button
                 type="button"
@@ -678,7 +678,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 display: 'flex', gap: 8, padding: '8px 10px',
                 background: 'var(--bg)', border: '1px solid var(--border-2)', borderRadius: 8, alignItems: 'center',
               }}>
-                <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ flex: 1, fontSize: 'var(--fs-md)', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {inviteUrl}
                 </div>
                 <CopyButton text={inviteUrl} className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} />
@@ -686,7 +686,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
 
               {isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('Share with a QR code too')}</div>
+                  <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{t('Share with a QR code too')}</div>
                   <div style={{ padding: 10, background: '#fff', borderRadius: 10, border: '1px solid var(--border)' }}>
                     <QRCodeSVG value={inviteUrl} size={140} />
                   </div>
@@ -705,7 +705,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
 
           {existingInvites.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>{t('Active links')}</div>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Active links')}</div>
               {existingInvites.map((inv: WorkspaceInviteDto) => {
                 const expiresLabel = inv.expiresAt
                   ? t('Until {date}', { date: formatAppDate(locale, inv.expiresAt) })
@@ -721,10 +721,10 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {inv.url}
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>
+                      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-4)', marginTop: 2 }}>
                         {roleLabel} · {expiresLabel}{inv.maxUses != null ? ` · ${t('{count}/{max} uses', { count: inv.useCount, max: inv.maxUses })}` : ''}
                       </div>
                     </div>
@@ -736,7 +736,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                         flexShrink: 0, padding: '4px 10px', borderRadius: 6,
                         border: '1px solid var(--red)', background: 'transparent',
                         color: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'var(--text-4)' : 'var(--red-text)',
-                        fontSize: 11.5, fontWeight: 600, cursor: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'default' : 'pointer',
+                        fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: revokeInviteMutation.isPending && revokeInviteMutation.variables === inv.token ? 'default' : 'pointer',
                         fontFamily: 'inherit', whiteSpace: 'nowrap',
                       }}
                     >

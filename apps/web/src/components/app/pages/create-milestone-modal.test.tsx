@@ -21,10 +21,73 @@ const milestone: MilestoneDto = {
   endTime: '18:00',
   completed: false,
   channelId: 'channel-1',
+  updatedAt: '2026-08-01T00:00:00.000Z',
 }
 
 describe('EditMilestoneModal', () => {
   beforeEach(() => mockFetch.mockReset())
+
+  it('競合時は入力を残し、明示的に最新値を読み直せる', async () => {
+    let fetchCount = 0
+    mockFetch.mockImplementation(async (_url, init) => {
+      if (init?.method === 'PATCH') return new Response(JSON.stringify({ error: 'milestone_conflict' }), { status: 409 })
+      fetchCount += 1
+      return new Response(JSON.stringify([{ ...milestone, title: fetchCount === 1 ? '元の値' : '他の人の値', updatedAt: fetchCount === 1 ? milestone.updatedAt : '2026-08-01T00:00:01.000Z' }]), { status: 200 })
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><EditMilestoneModal projectId="project-1" projectTitle="プロジェクトA" milestoneId="milestone-1" onClose={vi.fn()} /></QueryClientProvider>)
+    const title = await screen.findByLabelText(/マイルストーン名/)
+    fireEvent.change(title, { target: { value: '編集中の値' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('別のメンバーが更新しました')
+    expect(title).toHaveValue('編集中の値')
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を読み込む' }))
+    await waitFor(() => expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('他の人の値'))
+  })
+
+  it('競合後の再取得中は入力と保存を停止し、失敗時には入力を保持して再開する', async () => {
+    mockFetch.mockImplementation(async (_url, init) => init?.method === 'PATCH'
+      ? new Response(JSON.stringify({ error: 'milestone_conflict' }), { status: 409 })
+      : new Response(JSON.stringify([milestone]), { status: 200 }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><EditMilestoneModal projectId="project-1" projectTitle="P" milestoneId="milestone-1" onClose={vi.fn()} /></QueryClientProvider>)
+    const title = await screen.findByLabelText(/マイルストーン名/)
+    fireEvent.change(title, { target: { value: '編集中の値' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }))
+    await screen.findByRole('alert')
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    let finish: (value: Response) => void = () => { throw new Error('not initialized') }
+    mockFetch.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve }))
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を読み込む' }))
+    expect(title).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: '読み込み中…' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '読み込み中…' }).every(button => button.hasAttribute('disabled'))).toBe(true)
+    finish(new Response('{}', { status: 500 }))
+    await screen.findByText('マイルストーンを読み込めませんでした')
+    await waitFor(() => expect(title).toBeEnabled())
+    expect(title).toHaveValue('編集中の値')
+    expect(screen.getByRole('button', { name: '最新の内容を読み込む' })).toBeEnabled()
+  })
+
+  it('初回の再取得が失敗したらキャッシュで編集させずエラーを表示する', async () => {
+    mockFetch.mockResolvedValue(new Response('{}', { status: 500 }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    queryClient.setQueryData(['project-milestones', 'project-1'], [milestone])
+    render(<QueryClientProvider client={queryClient}><EditMilestoneModal projectId="project-1" projectTitle="P" milestoneId="milestone-1" onClose={vi.fn()} /></QueryClientProvider>)
+    expect(await screen.findByText('マイルストーンを読み込めませんでした')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/マイルストーン名/)).not.toBeInTheDocument()
+  })
+
+  it('編集開始後の背景再取得失敗では入力を保持する', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify([milestone]), { status: 200 })).mockResolvedValue(new Response('{}', { status: 500 }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><EditMilestoneModal projectId="project-1" projectTitle="P" milestoneId="milestone-1" onClose={vi.fn()} /></QueryClientProvider>)
+    const title = await screen.findByLabelText(/マイルストーン名/)
+    fireEvent.change(title, { target: { value: '編集中の値' } })
+    await queryClient.refetchQueries({ queryKey: ['project-milestones', 'project-1'] })
+    expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('編集中の値')
+    expect(await screen.findByText('マイルストーンを読み込めませんでした')).toBeInTheDocument()
+  })
 
   it('キャッシュより新しい取得結果を編集フォームの初期値にする', async () => {
     const freshMilestone = { ...milestone, title: '最新リリース' }
@@ -88,6 +151,7 @@ describe('EditMilestoneModal', () => {
         method: 'PATCH',
         body: JSON.stringify({
           title: '正式リリース',
+          expectedUpdatedAt: '2026-08-01T00:00:00.000Z',
           description: null,
           startDate: '2026-08-01',
           endDate: '2026-08-08',
@@ -131,7 +195,7 @@ describe('CreateMilestoneModal', () => {
     fireEvent.change(screen.getByLabelText('終了日'), { target: { value: '2026-06-10' } })
     fireEvent.click(screen.getByRole('button', { name: '作成する' }))
 
-    expect(screen.getByText('終了日は開始日以降にしてください')).toBeInTheDocument()
+    expect(screen.getByText('終了日時は開始日時以降にしてください')).toBeInTheDocument()
     expect(mockFetch).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/マイルストーン名/)).toHaveValue('下見')
   })

@@ -93,6 +93,14 @@ describe('mrkdwn の URL の自動リンク', () => {
     ])
   })
 
+  it('長い句読点列の後の文字はリンクに残し末尾だけ除く', () => {
+    const url = `https://example.com/${'.'.repeat(2900)}a`
+    expect(parseMrkdwnInline(`${url}。)`)).toEqual([
+      { type: 'link', url, text: url },
+      { type: 'text', text: '。)' },
+    ])
+  })
+
   it('verbatim なら自動リンクしない', () => {
     expect(parseMrkdwn('https://example.com', { verbatim: true })).toEqual([
       { type: 'paragraph', children: [{ type: 'text', text: 'https://example.com' }] },

@@ -19,8 +19,8 @@ function makeWrapper() {
 }
 
 const STUB_FILES: ProjectFileDto[] = [
-  { id: 'f1', fileName: 'doc.pdf', mimeType: 'application/pdf', fileSize: 1024, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-01T00:00:00Z', isLatest: false },
-  { id: 'f2', fileName: 'sheet.xlsx', mimeType: 'application/vnd.openxmlformats', fileSize: 2048, fileType: 'file', uploaderName: 'ユーザー', createdAt: '2026-01-02T00:00:00Z', isLatest: false },
+  { id: 'f1', fileName: 'doc.pdf', mimeType: 'application/pdf', fileSize: 1024, fileType: 'file', canMutate: true, uploaderName: 'ユーザー', createdAt: '2026-01-01T00:00:00Z', isLatest: false },
+  { id: 'f2', fileName: 'sheet.xlsx', mimeType: 'application/vnd.openxmlformats', fileSize: 2048, fileType: 'file', canMutate: true, uploaderName: 'ユーザー', createdAt: '2026-01-02T00:00:00Z', isLatest: false },
 ]
 
 describe('useProjectFiles', () => {

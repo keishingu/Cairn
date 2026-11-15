@@ -114,7 +114,7 @@ export function MoveToThreadDialog({
 
   const radioRow = (checked: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
-    fontSize: 13, color: 'var(--text)',
+    fontSize: 'var(--fs-md)', color: 'var(--text)',
     background: checked ? 'var(--accent-soft)' : 'transparent',
     border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
   })
@@ -132,9 +132,9 @@ export function MoveToThreadDialog({
         <ModalHeader icon="arrowRight" title={t('Move to thread')} subtitle={`# ${parentChannelName}`} onClose={close}/>
         <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', minHeight: 0 }}>
           <div role="radiogroup" aria-label={t('Messages to move')} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>{t('Messages to move')}</span>
+            <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>{t('Messages to move')}</span>
             {selected ? (
-              <span style={{ fontSize: 13, color: 'var(--text)' }}>{t('{count} selected', { count: selected.length })}</span>
+              <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text)' }}>{t('{count} selected', { count: selected.length })}</span>
             ) : SCOPES.map(option => (
               <label key={option.value} style={radioRow(scope === option.value)}>
                 <input
@@ -153,7 +153,7 @@ export function MoveToThreadDialog({
           {!choosingMessages && (
             <>
               <div role="radiogroup" aria-label={t('Destination')} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>{t('Destination')}</span>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>{t('Destination')}</span>
                 <label style={radioRow(destination === 'new')}>
                   <input type="radio" name="move-to-thread-destination" checked={destination === 'new'} onChange={() => { setDestination('new'); setError('') }} style={{ accentColor: 'var(--accent)', margin: 0 }}/>
                   {t('New thread')}
@@ -179,7 +179,7 @@ export function MoveToThreadDialog({
                   />
                 </Field>
               ) : threads.length === 0 ? (
-                <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{t('No threads to move to yet')}</span>
+                <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>{t('No threads to move to yet')}</span>
               ) : (
                 <Field label={t('Existing thread')} required htmlFor="move-to-thread-existing">
                   <select

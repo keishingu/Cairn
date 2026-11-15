@@ -28,7 +28,7 @@ export const InlineError = ({ children, variant = 'text', onDismiss, style }: In
       role="alert"
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 6,
-        fontSize: 12, lineHeight: 1.5, color: 'var(--red-text)',
+        fontSize: 'var(--fs-sm)', lineHeight: 1.5, color: 'var(--red-text)',
         overflowWrap: 'anywhere',
         ...(box ? {
           padding: '6px 8px 6px 10px', borderRadius: 8,

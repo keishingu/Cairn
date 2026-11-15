@@ -3,8 +3,9 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
-import { getWorkspaceMemberRole, isWorkspaceAdmin } from '@/lib/permissions'
-import { deactivateMembership, reactivateMembership } from '@/lib/access/lifecycle'
+import { getWorkspaceMemberRole, isWorkspaceAdmin, isWorkspaceOwner } from '@/lib/permissions'
+import { getWorkspaceRole } from '@/lib/access/membership'
+import { deactivateMembership, reactivateMembership, lockMembershipAndActiveOwners } from '@/lib/access/lifecycle'
 
 const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
 type WorkspaceRole = (typeof VALID_ROLES)[number]
@@ -41,17 +42,27 @@ export async function PATCH(
     )
   }
 
+  if (targetUserId === ctx.userId) {
+    return NextResponse.json({ error: '自分自身のロールは変更できません' }, { status: 422 })
+  }
+
   try {
     const { db } = await import('@cairn/db')
     const { workspaceMembers, activeWorkspaceMembers } = await import('@cairn/db')
-    const { eq, and, count, sql } = await import('drizzle-orm')
+    const { eq, and, count } = await import('drizzle-orm')
 
     const callerRole = ctx.role
     if (!isWorkspaceAdmin(callerRole)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
     }
 
     const response = await db.transaction(async (tx) => {
+      // 操作者・対象・active owner を同順でロックし、権限を変更直前に再照合する。
+      await lockMembershipAndActiveOwners(tx, ctx.workspaceId, targetUserId, ctx.userId)
+      const callerRole = await getWorkspaceRole(ctx.workspaceId, ctx.userId, tx)
+      if (!isWorkspaceAdmin(callerRole)) {
+        return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
+      }
       const [target] = await tx
         .select({ role: workspaceMembers.role, membershipStatus: workspaceMembers.membershipStatus })
         .from(workspaceMembers)
@@ -77,7 +88,7 @@ export async function PATCH(
       }
 
       // admin は owner に関わる変更を行えない
-      if (callerRole !== 'owner') {
+      if (!isWorkspaceOwner(callerRole)) {
         if (newRole === 'owner') {
           return NextResponse.json(
             { error: 'owner への昇格は owner のみ実行できます' },
@@ -92,17 +103,8 @@ export async function PATCH(
         }
       }
 
-      // owner を降格する場合、archive と同じ owner 行ロックに参加して active owner 不在を防ぐ。
+      // 既に active owner 行をロック済みなので、最後の owner を数える。
       if (currentRole === 'owner' && target.membershipStatus === 'active' && newRole !== 'owner') {
-        await tx.execute(sql`
-          select 1
-          from workspace_members
-          where workspace_id = ${ctx.workspaceId}
-            and role = 'owner'
-            and membership_status = 'active'
-          for update
-        `)
-
         const ownerCountRows = await tx
           .select({ ownerCount: count() })
           .from(activeWorkspaceMembers)
@@ -154,7 +156,7 @@ async function handleStatusChange(
 
     const callerRole = await getWorkspaceMemberRole(workspaceId, callerUserId)
     if (!isWorkspaceAdmin(callerRole)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'この操作には管理者以上の権限が必要です' }, { status: 403 })
     }
 
     const [target] = await db
@@ -184,7 +186,7 @@ async function handleStatusChange(
       return NextResponse.json({ userId: targetUserId, status: 'inactive' })
     }
 
-    const result = await reactivateMembership(workspaceId, targetUserId)
+    const result = await reactivateMembership(workspaceId, targetUserId, callerUserId)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     try {
       const { inngest } = await import('@/lib/inngest/client')

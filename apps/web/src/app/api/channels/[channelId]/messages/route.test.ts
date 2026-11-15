@@ -197,6 +197,31 @@ describe('/api/channels/[channelId]/messages のアクセス制御', () => {
     vi.resetModules()
   })
 
+  it('ブロック済み送信者の添付は Web とネイティブの一覧に返さない', async () => {
+    mockRequireChannelAccess.mockResolvedValue(null)
+    vi.doMock('@/lib/safety/blocks', () => ({ filterUnblockedRecipients: async () => ['user-3'] }))
+    mockSelectResults(
+      [
+        { id: 'msg-blocked', content: 'hidden', senderId: 'user-2', senderName: 'Sender', createdAt: new Date('2026-06-24T01:00:00Z'), updatedAt: new Date('2026-06-24T01:00:00Z') },
+        { id: 'msg-visible', content: 'visible', senderId: 'user-3', senderName: 'Sender', createdAt: new Date('2026-06-24T01:00:01Z'), updatedAt: new Date('2026-06-24T01:00:01Z') },
+      ],
+      [],
+      [
+        { id: 'attachment-1', messageId: 'msg-blocked', fileId: 'file-1', fileName: 'private.png', mimeType: 'image/png', fileSize: 42, displayOrder: 0 },
+        { id: 'attachment-2', messageId: 'msg-visible', fileId: 'file-2', fileName: 'visible.pdf', mimeType: 'application/pdf', fileSize: 42, displayOrder: 0 },
+      ],
+      [], [],
+    )
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/'), ctxRouteParams())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'msg-blocked', blocked: true, attachments: [] }),
+      expect.objectContaining({ id: 'msg-visible', blocked: false, attachments: [expect.objectContaining({ fileName: 'visible.pdf' })] }),
+    ]))
+    vi.doUnmock('@/lib/safety/blocks')
+  })
+
   it('アクセス権の無いチャンネルでは GET が 403 を返し、メッセージを読めない', async () => {
     mockRequireChannelAccess.mockResolvedValue(
       new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }),

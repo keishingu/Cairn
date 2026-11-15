@@ -97,8 +97,8 @@ function MobilePlaceholder({ title }: { title: string }) {
         <div style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--card-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="gear" size={24} color="var(--text-4)" />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-2)' }}>{t('Coming soon')}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-4)' }}>{t('The mobile version of this page is not ready yet')}</div>
+        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Coming soon')}</div>
+        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-4)' }}>{t('The mobile version of this page is not ready yet')}</div>
       </div>
     </div>
   )

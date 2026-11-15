@@ -208,6 +208,20 @@ describe('permissions', () => {
     await expect(requireChannelAccess('ws-1', 'guest-1', 'channel-1', 'guest')).resolves.toBeNull()
   })
 
+  it('ファイル変更は有効な所属と閲覧権限の両方を要求する', async () => {
+    const { canMutateFile } = await import('./permissions')
+    const file = { id: 'f', workspaceId: 'ws-1', projectId: 'p', uploadedBy: 'other' }
+    pushResults([{ role: 'admin' }])
+    await expect(canMutateFile('ws-1', 'actor', file)).resolves.toBe(true)
+    pushResults([{ role: 'member' }])
+    await expect(canMutateFile('ws-1', 'actor', file)).resolves.toBe(false)
+    pushResults([])
+    await expect(canMutateFile('ws-1', 'other', file)).resolves.toBe(false)
+    await expect(canMutateFile('ws-2', 'actor', file)).resolves.toBe(false)
+    pushResults([{ role: 'admin' }], [])
+    await expect(canMutateFile('ws-1', 'actor', { ...file, projectId: null })).resolves.toBe(false)
+  })
+
   it('canAccessFile は別ワークスペースのファイルを拒否する', async () => {
     const { canAccessFile } = await import('./permissions')
 

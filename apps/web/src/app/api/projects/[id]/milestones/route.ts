@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NextResponse } from 'next/server'
-import { createMilestoneSchema } from '@cairn/shared'
+import { createMilestoneSchema, MILESTONE_PERIOD_ERROR } from '@cairn/shared'
 import { postProjectUpdateMessage } from '@/lib/chat/post-project-update-message'
 import { projectUpdateChange } from '@/lib/chat/project-update-message'
 import { DATE_ORDER_ERROR, isEndBeforeStart } from '@/lib/date-range'
@@ -20,6 +20,7 @@ export interface MilestoneDto {
   endTime: string | null
   completed: boolean
   channelId: string
+  updatedAt?: string
 }
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -55,6 +56,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         startTime: milestones.startTime,
         endTime: milestones.endTime,
         completed: milestones.completed,
+        updatedAt: milestones.updatedAt,
         channelId: channels.id,
       })
       .from(milestones)
@@ -62,7 +64,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .where(eq(milestones.projectId, projectId))
       .orderBy(sql`${milestones.startDate} asc nulls last`, milestones.createdAt)
 
-    return NextResponse.json(rows satisfies MilestoneDto[])
+    return NextResponse.json(rows.map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() })) satisfies MilestoneDto[])
   } catch (err) {
     console.error('[/api/projects/[id]/milestones GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -83,7 +85,8 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   const parsed = createMilestoneSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
+    const error = parsed.error.issues.some(issue => issue.message === MILESTONE_PERIOD_ERROR) ? MILESTONE_PERIOD_ERROR : parsed.error.flatten()
+    return NextResponse.json({ error }, { status: 422 })
   }
   if (isEndBeforeStart(parsed.data.startDate, parsed.data.endDate)) {
     return NextResponse.json({ error: DATE_ORDER_ERROR }, { status: 422 })
@@ -154,6 +157,7 @@ export async function POST(req: Request, { params }: RouteContext) {
       startTime: inserted.milestone.startTime,
       endTime: inserted.milestone.endTime,
       completed: inserted.milestone.completed,
+      updatedAt: inserted.milestone.updatedAt.toISOString(),
       channelId: inserted.channelId,
     }
 
