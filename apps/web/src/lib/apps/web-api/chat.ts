@@ -8,6 +8,7 @@ import { canonicalizeMentions } from '@/lib/chat/mentions'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
 import type { BotContext } from '../bot-tokens'
 import { resolveBotChannel } from './channel-access'
+import { needsMessageCreatedJob } from '@/lib/inngest/message-created-gate'
 import { fail, isUuid, stringArg, type WebApiArgs, type WebApiResult } from './types'
 
 // Slack の chat.postMessage と同じ上限
@@ -199,8 +200,9 @@ export async function chatPostMessage(bot: BotContext, args: WebApiArgs): Promis
   const message = inserted.message
 
   const [app] = await db.select({ name: apps.name }).from(apps).where(eq(apps.id, bot.appId)).limit(1)
-  // メンション通知・Push・AI インデックスは人の投稿と同じく on-message-created に任せる
-  inngest
+  // メンション通知・Push は人の投稿と同じく on-message-created に任せる。通知の対象にならない投稿では起動しない
+  const shouldNotify = needsMessageCreatedJob({ channelType: access.channel.type, content, attachmentFileIds: [], parentMessageId: null })
+  if (shouldNotify) inngest
     .send({
       name: 'message/created',
       data: {

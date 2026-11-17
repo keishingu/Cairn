@@ -2,83 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { inngest } from './client'
-import { FEATURE_FLAGS, parseLocalePreference, resolveLocale, translate, type AppLocale } from '@cairn/shared'
+import { FEATURE_FLAGS, translate, type AppLocale } from '@cairn/shared'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isIndexable } from '@/lib/ai/extract-text'
 import type { MessageCreatedEvent, TaskAssignedEvent } from './events'
 import { sendPushToUser } from '@/lib/push/send'
-import {
-  extractAttributeMentionIds,
-  extractRoleMentionIds,
-  extractMentionIds,
-  hasAllMention,
-  hasGroupMention,
-  hasProjectMembersMention,
-  stripMentionsToText,
-} from '@/lib/chat/mentions'
 import type { PhaseTwoScanResult } from '@/lib/ai-nudges/llm-nudge-delivery'
 import type { PhaseTwoNudgeCandidate } from '@/lib/ai-nudges/llm-nudge-scan'
 
 // Push 送信前の猶予。閲覧中のユーザーはこの間に自動既読が立つため、
 // DM は Push を抑制し、メンションはバッジ更新なしの Push に切り替えられる。
 const PUSH_GRACE_PERIOD = '10s'
-
-// メンバー一覧から userId → 表示名のリゾルバを作る（通知本文のメンション解決用）
-function nameResolver(
-  members: { userId: string; displayName: string }[],
-): (id: string) => string | undefined {
-  const map = new Map(members.map((m) => [m.userId, m.displayName]))
-  return (id) => map.get(id)
-}
-
-// 猶予期間中に対象メッセージを既読にした受信者と未読の受信者を分ける。
-// 猶予中にメッセージが削除された場合は、どちらにも含めない。
-async function classifyPushRecipients<T extends { userId: string }>(
-  messageId: string,
-  channelId: string,
-  recipients: T[],
-): Promise<{ readRecipients: T[]; unreadRecipients: T[] }> {
-  if (recipients.length === 0) return { readRecipients: [], unreadRecipients: [] }
-
-  const { db, messages, channelReadStates } = await import('@cairn/db')
-  const { eq, and, inArray, or, sql } = await import('drizzle-orm')
-
-  const [msg] = await db
-    .select({ deletedAt: messages.deletedAt })
-    .from(messages)
-    .where(eq(messages.id, messageId))
-    .limit(1)
-
-  // 猶予中に削除されたメッセージの Push は送らない
-  if (!msg || msg.deletedAt) return { readRecipients: [], unreadRecipients: [] }
-
-  const readStates = await db
-    .select({ userId: channelReadStates.userId })
-    .from(channelReadStates)
-    .where(
-      and(
-        eq(channelReadStates.channelId, channelId),
-        inArray(
-          channelReadStates.userId,
-          recipients.map((r) => r.userId),
-        ),
-        or(
-          eq(channelReadStates.lastReadMessageId, messageId),
-          sql`${channelReadStates.lastReadAt} >= (
-            select ${messages.createdAt}
-            from ${messages}
-            where ${messages.id} = ${messageId}
-          )`,
-        ),
-      ),
-    )
-
-  const readUserIds = new Set(readStates.map((state) => state.userId))
-  return {
-    readRecipients: recipients.filter((recipient) => readUserIds.has(recipient.userId)),
-    unreadRecipients: recipients.filter((recipient) => !readUserIds.has(recipient.userId)),
-  }
-}
 
 // Inngest のステップ結果は再利用されるため、Push の送信処理内で権限を読み直す。
 async function canReceiveChannelPush(workspaceId: string, userId: string, channelId: string) {
@@ -110,67 +44,23 @@ export const onMessageCreated = inngest.createFunction(
   { id: 'on-message-created' },
   { event: 'message/created' satisfies MessageCreatedEvent['name'] },
   async ({ event, step }) => {
-    const { messageId, channelId: postedChannelId, workspaceId, senderId, senderName, content, attachmentFileIds } =
-      event.data as MessageCreatedEvent['data']
+    const data = event.data as MessageCreatedEvent['data']
+    const { messageId, channelId: postedChannelId, workspaceId, senderName, attachmentFileIds } = data
 
-    // スレッドへの切り出しで、このジョブが走る前にメッセージが移動していることがある。
-    // 投稿時のチャンネルのまま通知を作ると遷移先とメンション未読数が親に残るため、今のチャンネルを読み直す。
-    const readCurrentChannel = async () => {
-      const { db, messages } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
-      const [row] = await db
-        .select({ channelId: messages.channelId })
-        .from(messages)
-        .where(eq(messages.id, messageId))
-        .limit(1)
-      return row?.channelId ?? postedChannelId
-    }
-    const channelId = await step.run('resolve-current-channel', readCurrentChannel)
-
-    // チャンネルメンバー（送信者を除く）を取得。非活性メンバーは DM・ファイル通知の宛先に
-    // しないよう active_workspace_members に inner join して active のみに絞る
-    // （deactivation は履歴のため channel_members 行を残すため、ここで除外しないと通知が飛ぶ）
-    const rawMembers = await step.run('fetch-members', async () => {
-      const { db, channelMembers, profiles, activeWorkspaceMembers } = await import('@cairn/db')
-      const { eq, and } = await import('drizzle-orm')
-      return db
-        .select({ userId: channelMembers.userId, displayName: profiles.displayName })
-        .from(channelMembers)
-        .innerJoin(profiles, eq(channelMembers.userId, profiles.id))
-        .innerJoin(
-          activeWorkspaceMembers,
-          and(
-            eq(activeWorkspaceMembers.userId, channelMembers.userId),
-            eq(activeWorkspaceMembers.workspaceId, workspaceId),
-          ),
-        )
-        .where(eq(channelMembers.channelId, channelId))
-        .then((rows) => rows.filter((r) => r.userId !== senderId))
+    // 宛先と本文の決定は読み取りだけなので1つの step にまとめる（Inngest は step ごとに実行数を数える）。
+    // 書き込みは再試行で二重にならないよう、トランザクションごとに step を分けたままにする。
+    const plan = await step.run('plan-notifications', async () => {
+      const { planMessageNotifications } = await import('./message-notification-plan')
+      return planMessageNotifications(data)
     })
-    const members = await step.run('filter-blocked-members', async () => {
-      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
-      const ids = await filterUnblockedRecipients(senderId, rawMembers.map(member => member.userId))
-      return rawMembers.filter(member => ids.includes(member.userId))
-    })
+    const { channelId, members } = plan
 
-    // DM チャンネルの場合は相手に Push を送って終了
-    const isDm = await step.run('check-dm', async () => {
-      const { db, channels } = await import('@cairn/db')
-      const { eq } = await import('drizzle-orm')
-      const [ch] = await db
-        .select({ type: channels.type })
-        .from(channels)
-        .where(eq(channels.id, channelId))
-        .limit(1)
-      return ch?.type === 'dm'
-    })
+    if (plan.kind === 'dm') {
+      if (members.length === 0) return { mentionNotifications: 0, fileNotifications: 0, dm: true }
+      const dmBody = plan.body
 
-    const dmBody = stripMentionsToText(content, nameResolver(members))
-
-    if (isDm) {
       // DM はアプリ内通知（ベル）にも記録する。Push を逃しても後から回収できるようにするため
       await step.run('create-dm-notifications', async () => {
-        if (members.length === 0) return
         const { db, notifications, messages } = await import('@cairn/db')
         const { eq } = await import('drizzle-orm')
         await db.transaction(async (tx) => {
@@ -197,135 +87,29 @@ export const onMessageCreated = inngest.createFunction(
         })
       })
 
-      if (members.length > 0) {
-        // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
-        await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-        const { unreadRecipients } = await step.run('filter-dm-push-targets', () =>
-          classifyPushRecipients(messageId, channelId, members),
+      // 閲覧中の相手に Push を出さないため、猶予後に既読を再確認してから送る
+      await step.sleep('push-grace', PUSH_GRACE_PERIOD)
+      await step.run('send-dm-push', async () => {
+        const { classifyPushRecipients } = await import('./message-notification-plan')
+        const { unreadRecipients } = await classifyPushRecipients(messageId, channelId, members)
+        await Promise.allSettled(
+          unreadRecipients.map(async (m) => {
+            if (!(await canReceiveChannelPush(workspaceId, m.userId, channelId))) return
+            return sendPushToUser(m.userId, {
+              title: senderName,
+              body: dmBody.slice(0, 100),
+              url: `/chats/${channelId}`,
+              workspaceId,
+            })
+          }),
         )
-
-        await step.run('send-dm-push', async () => {
-          await Promise.allSettled(
-            unreadRecipients.map(async (m) => {
-              if (!(await canReceiveChannelPush(workspaceId, m.userId, channelId))) return
-              return sendPushToUser(m.userId, {
-                title: senderName,
-                body: dmBody.slice(0, 100),
-                url: `/chats/${channelId}`,
-                workspaceId,
-              })
-            }),
-          )
-        })
-      }
+      })
       return { mentionNotifications: 0, fileNotifications: 0, dm: true }
     }
 
-    // @メンション通知（個別・@all・@project_members・属性）。チャンネル未参加でも到達可能な人へ通知。
-    const mentionedIds = extractMentionIds(content)
-    const attributeMentionIds = extractAttributeMentionIds(content)
-    const roleMentionIds = extractRoleMentionIds(content)
-    const wantsAll = hasAllMention(content)
-    const wantsProjectMembers = hasProjectMembersMention(content)
-    const hasAnyMentionTarget =
-      mentionedIds.length > 0 || hasGroupMention(content)
-
-    // 返信は、メンションがなくても返信元の投稿者に届ける（Slack のスレッド返信と同じ期待に合わせる）。
-    // 宛先の絞り込み（チャンネルへのアクセス・ブロック）はメンションと同じ経路に乗せる。
-    const replyTargets = await step.run('fetch-reply-target', async () => {
-      const { db, messages, profiles } = await import('@cairn/db')
-      const { eq, and, ne, isNull } = await import('drizzle-orm')
-      const { alias } = await import('drizzle-orm/pg-core')
-      const { filterActiveMemberIds } = await import('@/lib/access/membership')
-      const parent = alias(messages, 'parent_message')
-      const authors = await db
-        .select({ userId: parent.senderId, displayName: profiles.displayName })
-        .from(messages)
-        .innerJoin(parent, and(eq(parent.id, messages.parentMessageId), isNull(parent.deletedAt)))
-        .innerJoin(profiles, eq(profiles.id, parent.senderId))
-        .where(and(eq(messages.id, messageId), ne(parent.senderId, senderId)))
-        .limit(1)
-      // 非活性メンバーは未所属と同等に扱うため、宛先の判定は共有の membership 経由で行う
-      const activeIds = await filterActiveMemberIds(workspaceId, authors.map((a) => a.userId))
-      return authors.filter((a) => activeIds.has(a.userId))
-    })
-
-    if (members.length === 0 && !hasAnyMentionTarget && replyTargets.length === 0)
-      return { mentionNotifications: 0, fileNotifications: 0 }
-
-    const mentionedMembers =
-      mentionedIds.length > 0
-        ? await step.run('fetch-mentioned-members', async () => {
-            const { db, activeWorkspaceMembers, profiles } = await import('@cairn/db')
-            const { eq, inArray, and, ne } = await import('drizzle-orm')
-            // 非活性メンバーにはメンション通知を送らない（active membership のみ宛先にする）
-            return db
-              .select({ userId: activeWorkspaceMembers.userId, displayName: profiles.displayName })
-              .from(activeWorkspaceMembers)
-              .innerJoin(profiles, eq(activeWorkspaceMembers.userId, profiles.id))
-              .where(
-                and(
-                  eq(activeWorkspaceMembers.workspaceId, workspaceId),
-                  inArray(activeWorkspaceMembers.userId, mentionedIds),
-                  ne(activeWorkspaceMembers.userId, senderId),
-                ),
-              )
-          })
-        : []
-
-    const allMentionMembers = wantsAll
-      ? await step.run('expand-all-mention', async () => {
-          const { listActiveWorkspaceMembersExcept } = await import('@/lib/chat/mention-expand')
-          return listActiveWorkspaceMembersExcept(workspaceId, senderId)
-        })
-      : []
-
-    const projectMentionMembers = wantsProjectMembers
-      ? await step.run('expand-project-members-mention', async () => {
-          const { db, channels } = await import('@cairn/db')
-          const { eq } = await import('drizzle-orm')
-          const { listActiveProjectMembersExcept } = await import('@/lib/chat/mention-expand')
-          const [ch] = await db
-            .select({ projectId: channels.projectId })
-            .from(channels)
-            .where(eq(channels.id, channelId))
-            .limit(1)
-          return listActiveProjectMembersExcept(workspaceId, ch?.projectId, senderId)
-        })
-      : []
-
-    const attributeMentionMembers = attributeMentionIds.length > 0
-      ? await step.run('expand-attr-mentions', async () => {
-          const { listActiveMembersByAttributeIds } = await import('@/lib/chat/mention-expand')
-          return listActiveMembersByAttributeIds(workspaceId, attributeMentionIds, senderId)
-        })
-      : []
-
-    const roleMentionMembers = roleMentionIds.length > 0
-      ? await step.run('expand-role-mentions', async () => {
-          const { db, channels } = await import('@cairn/db')
-          const { eq } = await import('drizzle-orm')
-          const { listActiveProjectMembersByRoleIds } = await import('@/lib/chat/mention-expand')
-          const [ch] = await db
-            .select({ projectId: channels.projectId })
-            .from(channels)
-            .where(eq(channels.id, channelId))
-            .limit(1)
-          return listActiveProjectMembersByRoleIds(workspaceId, ch?.projectId, roleMentionIds, senderId)
-        })
-      : []
-
-    const { mergeMentionMembers } = await import('@/lib/chat/mention-expand')
-    const explicitlyMentioned = mergeMentionMembers(
-      mentionedMembers,
-      allMentionMembers,
-      projectMentionMembers,
-      attributeMentionMembers,
-      roleMentionMembers,
-    )
-    const candidateMentioned = mergeMentionMembers(replyTargets, explicitlyMentioned)
+    const { mentionRecipients: unblockedMentioned, mentionBody, recipientLocales } = plan
     // メンションもされている返信元にはメンションの文言を優先し、返信だけの人には返信と分かる文言にする
-    const explicitlyMentionedIds = new Set(explicitlyMentioned.map((m) => m.userId))
+    const explicitlyMentionedIds = new Set(plan.explicitlyMentionedIds)
     // タイトルは受信者ごとの表示言語で保存・送信する（通知一覧はタイトルをそのまま表示するため）
     const notificationTitle = (userId: string, locale: AppLocale) =>
       translate(
@@ -333,120 +117,6 @@ export const onMessageCreated = inngest.createFunction(
         explicitlyMentionedIds.has(userId) ? '{name} mentioned you' : '{name} replied to your message',
         { name: senderName },
       )
-
-    // 本文プレビューのメンションは送信時点の最新名で解決する
-    const mentionNameMap = await step.run('resolve-mention-preview-names', async () => {
-      const { buildMentionNameMap } = await import('@/lib/chat/mention-name-map')
-      const map = await buildMentionNameMap(workspaceId, [content])
-      for (const member of [...members, ...candidateMentioned]) {
-        if (!map.has(member.userId)) map.set(member.userId, member.displayName)
-      }
-      return Object.fromEntries(map)
-    })
-    const mentionBody = stripMentionsToText(content, (id) => mentionNameMap[id])
-
-    // アクセスできないチャンネルへメンション通知が飛ぶのを防ぐ。
-    // requireChannelAccess と同じスコープ感で対象を絞る（guest / private 含む）。
-    const notifyMentioned =
-      candidateMentioned.length > 0
-        ? await step.run('filter-mention-access', async () => {
-            const { db, channels, channelMembers, projectMembers, activeWorkspaceMembers } =
-              await import('@cairn/db')
-            const { eq, and, inArray } = await import('drizzle-orm')
-            const { filterMentionRecipients } = await import('@/lib/chat/mention-access')
-            const ids = candidateMentioned.map((m) => m.userId)
-
-            const [ch] = await db
-              .select({
-                type: channels.type,
-                projectId: channels.projectId,
-                isPrivate: channels.isPrivate,
-              })
-              .from(channels)
-              .where(eq(channels.id, channelId))
-              .limit(1)
-            if (!ch) return []
-
-            const needsChannelMembers =
-              ch.isPrivate || ch.type === 'dm' || ch.type === 'workspace'
-            const channelMemberIds = needsChannelMembers
-              ? new Set(
-                  (
-                    await db
-                      .select({ userId: channelMembers.userId })
-                      .from(channelMembers)
-                      .where(
-                        and(
-                          eq(channelMembers.channelId, channelId),
-                          inArray(channelMembers.userId, ids),
-                        ),
-                      )
-                  ).map((r) => r.userId),
-                )
-              : new Set<string>()
-
-            const guestIds = new Set(
-              (
-                await db
-                  .select({ userId: activeWorkspaceMembers.userId })
-                  .from(activeWorkspaceMembers)
-                  .where(
-                    and(
-                      eq(activeWorkspaceMembers.workspaceId, workspaceId),
-                      inArray(activeWorkspaceMembers.userId, ids),
-                      eq(activeWorkspaceMembers.role, 'guest'),
-                    ),
-                  )
-              ).map((r) => r.userId),
-            )
-
-            const projectMemberIds =
-              guestIds.size > 0 && ch.type === 'project' && ch.projectId
-                ? new Set(
-                    (
-                      await db
-                        .select({ userId: projectMembers.userId })
-                        .from(projectMembers)
-                        .where(
-                          and(
-                            eq(projectMembers.projectId, ch.projectId),
-                            inArray(projectMembers.userId, [...guestIds]),
-                          ),
-                        )
-                    ).map((r) => r.userId),
-                  )
-                : new Set<string>()
-
-            return filterMentionRecipients({
-              channel: ch,
-              recipients: candidateMentioned,
-              channelMemberIds,
-              guestIds,
-              projectMemberIds,
-            })
-          })
-        : []
-
-    const unblockedMentioned = await step.run('filter-blocked-mentions', async () => {
-      const { filterUnblockedRecipients } = await import('@/lib/safety/blocks')
-      const ids = await filterUnblockedRecipients(senderId, notifyMentioned.map(member => member.userId))
-      return notifyMentioned.filter(member => ids.includes(member.userId))
-    })
-
-    // 'system' の受信者はジョブに Accept-Language が無いため、Web と同じ既定言語で解決する
-    const recipientLocales: Record<string, AppLocale> = unblockedMentioned.length > 0
-      ? await step.run('resolve-recipient-locales', async () => {
-          const { db, profiles } = await import('@cairn/db')
-          const { inArray } = await import('drizzle-orm')
-          const rows = await db
-            .select({ id: profiles.id, locale: profiles.locale })
-            .from(profiles)
-            .where(inArray(profiles.id, unblockedMentioned.map((m) => m.userId)))
-          return Object.fromEntries(
-            rows.map((row) => [row.id, resolveLocale(parseLocalePreference(row.locale), null)]),
-          )
-        })
-      : {}
     const localeOf = (userId: string): AppLocale => {
       const locale = recipientLocales[userId]
       if (!locale) throw new Error(`Recipient profile not found: ${userId}`)
@@ -584,14 +254,11 @@ export const onMessageCreated = inngest.createFunction(
     // 表示中チャットのメンションでアプリアイコンバッジを更新しないようにする。
     if (unblockedMentioned.length > 0) {
       await step.sleep('push-grace', PUSH_GRACE_PERIOD)
-      // 猶予中にスレッドへ切り出されることがあるため、既読判定と遷移先は送る直前のチャンネルで決める。
-      const pushChannelId = await step.run('resolve-push-channel', readCurrentChannel)
-      const { readRecipients, unreadRecipients } = await step.run(
-        'filter-mention-push-targets',
-        () => classifyPushRecipients(messageId, pushChannelId, unblockedMentioned),
-      )
-
       await step.run('send-mention-push', async () => {
+        // 猶予中にスレッドへ切り出されることがあるため、既読判定と遷移先は送る直前のチャンネルで決める。
+        const { readMessageChannel, classifyPushRecipients } = await import('./message-notification-plan')
+        const pushChannelId = await readMessageChannel(messageId, postedChannelId)
+        const { readRecipients, unreadRecipients } = await classifyPushRecipients(messageId, pushChannelId, unblockedMentioned)
         await Promise.allSettled(
           [
             ...unreadRecipients.map((m) => ({ recipient: m, updateAppBadge: true })),
