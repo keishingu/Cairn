@@ -239,4 +239,57 @@ describe('POST /api/auth/setup', () => {
     // profiles も含めて insert が6回（profiles / workspaces / channels / projectStatuses / projectRoles / workspaceMembers）
     expect(mockDb.insert).toHaveBeenCalledTimes(6)
   })
+  it('ワークスペースを作ったら、ChatGPT 広告のクリック ID 付きでコンバージョンのイベントを送る', async () => {
+    mockDb.select.mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+    mockDb.insert
+      .mockReturnValueOnce(insertChainReturning([{ id: 'ws-conv-1' }]))
+      .mockReturnValueOnce(insertChainPlain())
+      .mockReturnValueOnce(insertChainPlain())
+      .mockReturnValueOnce(insertChainPlain())
+      .mockReturnValueOnce(insertChainPlain())
+
+    const { POST } = await import('./route')
+    const { inngest } = await import('@/lib/inngest/client')
+    const res = await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `sb=1; cairn_oppref=${encodeURIComponent('op+ref')}`,
+          referer: 'http://localhost/onboarding?x=1',
+        },
+        body: JSON.stringify({ workspaceName: '広告経由' }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(inngest.send).toHaveBeenCalledWith({
+      name: 'workspace/created',
+      data: expect.objectContaining({
+        workspaceId: 'ws-conv-1',
+        userId: mockUser.id,
+        client: 'web',
+        oppref: 'op+ref',
+        sourceUrl: 'http://localhost/onboarding',
+      }),
+    })
+  })
+
+  it('ワークスペースを作らない呼び出しではコンバージョンを送らない', async () => {
+    mockDb.select
+      .mockReturnValueOnce(selectChain([{ id: mockUser.id }]))
+      .mockReturnValueOnce(selectChain([]))
+
+    const { POST } = await import('./route')
+    const { inngest } = await import('@/lib/inngest/client')
+    await POST(
+      new Request('http://localhost/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    )
+
+    expect(inngest.send).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'workspace/created' }))
+  })
 })

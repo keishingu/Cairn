@@ -5,6 +5,23 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/get-auth-context'
 import { explicitLocaleFromCookie } from '@/lib/i18n/initial-locale'
+import { readOpprefFromCookieHeader } from '@/lib/analytics/ad-click'
+import { WORKSPACE_CREATED_EVENT, type WorkspaceCreatedEventData } from '@/lib/analytics/workspace-conversion'
+
+/** 作成した画面の URL。同じオリジンの Referer があればそれを、なければオリジンを使う */
+function conversionSourceUrl(req: Request): string {
+  const origin = new URL(req.url).origin
+  const referer = req.headers.get('referer')
+  if (referer) {
+    try {
+      const url = new URL(referer)
+      if (url.origin === origin) return `${url.origin}${url.pathname}`
+    } catch {
+      // 不正な Referer はオリジンにする
+    }
+  }
+  return origin
+}
 
 const setupSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -122,6 +139,24 @@ export async function POST(req: Request) {
       })
     } catch (e) {
       console.warn('[/api/auth/setup] Inngest event send failed (indexing skipped):', e)
+    }
+
+    // コンバージョン計測（PostHog・ChatGPT 広告）。送れなくてもワークスペースは作れているので止めない
+    try {
+      const { inngest } = await import('@/lib/inngest/client')
+      await inngest.send({
+        name: WORKSPACE_CREATED_EVENT,
+        data: {
+          workspaceId: ws.id,
+          userId,
+          createdAtMs: Date.now(),
+          client: req.headers.get('Authorization')?.startsWith('Bearer ') ? 'mobile' : 'web',
+          oppref: readOpprefFromCookieHeader(req.headers.get('cookie')),
+          sourceUrl: conversionSourceUrl(req),
+        } satisfies WorkspaceCreatedEventData,
+      })
+    } catch (e) {
+      console.error('[/api/auth/setup] conversion event send failed:', e)
     }
 
     return NextResponse.json({ ok: true, needsWorkspace: false, workspaceId: ws.id })

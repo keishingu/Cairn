@@ -186,4 +186,37 @@ describe('middleware', () => {
     const res = await middleware(makeRequest('/auth/mobile-signout?webview=1'))
     expect(res.headers.get('location')).toBeNull()
   })
+  describe('ChatGPT 広告のクリック ID', () => {
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('計測が有効なら oppref を 30 日の HttpOnly Cookie に保存する', async () => {
+      vi.stubEnv('OPENAI_ADS_PIXEL_ID', 'px')
+      vi.stubEnv('OPENAI_ADS_CONVERSIONS_API_KEY', 'key')
+      getClaims.mockResolvedValue(unauthed())
+      const { middleware } = await import('./middleware')
+      const res = await middleware(makeRequest('/?utm_source=chatgpt&oppref=abc%2B1'))
+      const cookie = res.cookies.get('cairn_oppref')
+      expect(cookie?.value).toBe('abc+1')
+      expect(cookie?.httpOnly).toBe(true)
+      expect(cookie?.maxAge).toBe(30 * 24 * 60 * 60)
+    })
+
+    it('ログイン済みで LP から /chats へ転送するときも保存する', async () => {
+      vi.stubEnv('OPENAI_ADS_PIXEL_ID', 'px')
+      vi.stubEnv('OPENAI_ADS_CONVERSIONS_API_KEY', 'key')
+      getClaims.mockResolvedValue(authed())
+      const { middleware } = await import('./middleware')
+      const res = await middleware(makeRequest('/?oppref=abc'))
+      expect(res.headers.get('location')).toContain('/chats')
+      expect(res.cookies.get('cairn_oppref')?.value).toBe('abc')
+    })
+
+    it('計測が無効な環境では保存しない', async () => {
+      vi.stubEnv('OPENAI_ADS_PIXEL_ID', '')
+      getClaims.mockResolvedValue(unauthed())
+      const { middleware } = await import('./middleware')
+      const res = await middleware(makeRequest('/?oppref=abc'))
+      expect(res.cookies.get('cairn_oppref')).toBeUndefined()
+    })
+  })
 })
