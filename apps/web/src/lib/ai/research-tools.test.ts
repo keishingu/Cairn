@@ -3,7 +3,9 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-const { mockListResearchProjects, mockListResearchMembers } = vi.hoisted(() => ({
+const { mockListResearchProjects, mockListResearchMembers, mockGetResearchMemberHistory, mockReadResearchChannelMessages } = vi.hoisted(() => ({
+  mockGetResearchMemberHistory: vi.fn(),
+  mockReadResearchChannelMessages: vi.fn(),
   mockListResearchProjects: vi.fn(),
   mockListResearchMembers: vi.fn(),
 }))
@@ -25,10 +27,10 @@ vi.mock('./workspace-research', () => ({
 vi.mock('./workspace-research-directory', () => ({
   listResearchChannels: vi.fn(),
   listResearchProjectRoles: vi.fn(),
-  readResearchChannelMessages: vi.fn(),
+  readResearchChannelMessages: mockReadResearchChannelMessages,
   getResearchProjectMembers: vi.fn(),
   listResearchMembers: mockListResearchMembers,
-  getResearchMemberHistory: vi.fn(),
+  getResearchMemberHistory: mockGetResearchMemberHistory,
   readResearchFile: vi.fn(),
 }))
 
@@ -118,6 +120,50 @@ describe('AI横断調査toolの信頼境界', () => {
       query: undefined,
       attributeNames: ['コーチ'],
       includeInactive: undefined,
+      limit: undefined,
+    })
+  })
+
+  test('get_member_historyは属性・役割だけでも呼べ、userIdsはnullを許す', async () => {
+    mockGetResearchMemberHistory.mockResolvedValue({ ok: true, items: [] })
+    const { createResearchTools } = await import('./research-tools')
+    const tools = createResearchTools(CTX)
+    const parsed = tools.get_member_history.parameters.parse({
+      userIds: null,
+      attributeNames: ['コーチ'],
+      projectRoleNames: ['リーダー'],
+      includeFiles: null,
+    })
+    await tools.get_member_history.execute?.(parsed, { toolCallId: 'tool-4', messages: [] })
+    expect(mockGetResearchMemberHistory).toHaveBeenCalledWith(CTX, {
+      userIds: undefined,
+      attributeNames: ['コーチ'],
+      projectRoleNames: ['リーダー'],
+      includeFiles: undefined,
+    })
+    // strict schema 用に、省略ではなくnullで明示する
+    expect(() => tools.get_member_history.parameters.parse({ userIds: null })).toThrow()
+  })
+
+  test('read_channel_messagesはチャンネル名だけでも呼べ、channelIdはnullを許す', async () => {
+    mockReadResearchChannelMessages.mockResolvedValue({ ok: true, items: [] })
+    const { createResearchTools } = await import('./research-tools')
+    const tools = createResearchTools(CTX)
+    const parsed = tools.read_channel_messages.parameters.parse({
+      channelId: null,
+      channelName: '#審議',
+      since: null,
+      until: null,
+      cursor: null,
+      limit: null,
+    })
+    await tools.read_channel_messages.execute?.(parsed, { toolCallId: 'tool-5', messages: [] })
+    expect(mockReadResearchChannelMessages).toHaveBeenCalledWith(CTX, {
+      channelId: undefined,
+      channelName: '#審議',
+      since: undefined,
+      until: undefined,
+      cursor: undefined,
       limit: undefined,
     })
   })
