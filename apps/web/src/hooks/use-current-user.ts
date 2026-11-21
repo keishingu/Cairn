@@ -67,7 +67,11 @@ export function useWorkspacePermissions() {
     wsRole: role,
     isOwner: role === 'owner',
     isAdmin: role === 'owner' || role === 'admin',
+    // member 以上の操作（編集・管理）ができるか。閲覧範囲が member と同じ viewer は含めない
     isMember: role === 'owner' || role === 'admin' || role === 'member',
     isGuest: role === 'guest',
+    // 閲覧のみ。投稿・リアクション・作成・編集の入口を出さない（API も拒否する）
+    isViewer: role === 'viewer',
+    canWrite: role === 'owner' || role === 'admin' || role === 'member' || role === 'guest',
   }
 }

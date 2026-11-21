@@ -17,7 +17,7 @@ import { useOneShotRequest } from '@/lib/one-shot-request'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
-import { useCurrentUser } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { InlineError } from '../inline-error'
 import { useT } from '@/components/locale-provider'
@@ -268,6 +268,8 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
+  // 閲覧のみ（viewer）にはタスク作成の入口を出さない（API も拒否する）
+  const { canWrite } = useWorkspacePermissions()
   // ⌥N: 新規タスク
   useCommand('ctx.create', () => setShowAddModal(true))
 
@@ -294,6 +296,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [searchParams])
 
   // アプリのホーム画面のクイックアクションから、作成モーダルを開いた状態で来る
+  // ロールの取得前に呼ばれても要求を失わないよう、開くかどうかは描画時に canWrite で決める
   useOneShotRequest('new', () => setShowAddModal(true))
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
@@ -426,7 +429,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               value={scope}
               onChange={setScope}
             />
-            {!isMobile && (
+            {!isMobile && canWrite && (
               <button
                 className="btn btn-primary"
                 onClick={() => setShowAddModal(true)}
@@ -482,8 +485,8 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
       </div>
 
-      {isMobile && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
-      {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      {isMobile && canWrite && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
+      {showAddModal && canWrite && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
       {detailTaskId && <TaskDetailPanel taskId={detailTaskId} isMobile={isMobile} onClose={() => setDetailTaskId(null)} />}
       <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingTask(null)} />
     </div>

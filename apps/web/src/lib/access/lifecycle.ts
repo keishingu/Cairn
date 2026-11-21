@@ -131,7 +131,7 @@ export async function reactivateMembership(
 export async function reactivateViaInvite(
   workspaceId: string,
   userId: string,
-  role?: 'owner' | 'admin' | 'member' | 'guest',
+  role?: 'owner' | 'admin' | 'member' | 'viewer' | 'guest',
 ): Promise<'reactivated' | 'already-active' | 'none'> {
   const existing = await readMembership(db, workspaceId, userId)
   if (!existing) return 'none'

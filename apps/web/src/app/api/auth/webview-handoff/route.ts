@@ -13,7 +13,8 @@ import { getAuthContext, getAuthUser } from '@/lib/get-auth-context'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export async function POST() {
-  const context = await getAuthContext()
+  // 認証と選択中 workspace の引き継ぎだけで書き込みではないため、閲覧のみ（viewer）も通す
+  const context = await getAuthContext({ allowViewer: true })
   let userId: string
   let workspaceId: string | undefined
 

@@ -20,7 +20,7 @@ export interface AppEntryPointDto {
 
 // 入力欄の「＋」に並べる、このチャンネルで起動できるアプリ（docs/app-platform-design.md §6.1）。DM では出さない
 export async function GET(_req: Request, { params }: { params: Promise<{ channelId: string }> }) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { channelId } = await params
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)

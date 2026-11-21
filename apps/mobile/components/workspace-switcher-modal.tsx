@@ -29,6 +29,7 @@ const ROLE_LABELS: Record<WorkspaceListItemDto['role'], string> = {
   owner: 'Owner',
   admin: 'Admin',
   member: 'Member',
+  viewer: 'Viewer',
   guest: 'Guest',
 }
 

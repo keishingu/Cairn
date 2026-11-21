@@ -671,7 +671,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           : undefined
 
   const { data: currentUser } = useCurrentUser()
-  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
+  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest' && currentUser.wsRole !== 'viewer'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 

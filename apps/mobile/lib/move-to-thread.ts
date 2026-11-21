@@ -12,7 +12,7 @@ export function canMoveMessageToThread(input: {
   channelType: 'project' | 'workspace' | 'dm' | undefined
   /** チャンネル一覧から引いた現在のチャンネル。一覧未取得・該当なしは undefined */
   workspaceChannel: { parentChannelId?: string | null; archived?: boolean } | undefined
-  role: 'owner' | 'admin' | 'member' | 'guest' | undefined
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest' | undefined
   messageType: MessageType
 }): boolean {
   if (input.channelType !== 'workspace') return false

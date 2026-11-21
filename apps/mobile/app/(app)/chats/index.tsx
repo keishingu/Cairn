@@ -322,8 +322,9 @@ export default function ChatsScreen() {
   const togglePinProject = useTogglePinProject()
   const [showArchivedChannels, setShowArchivedChannels] = React.useState(false)
   const canCreateAdminResources = me?.wsRole === 'owner' || me?.wsRole === 'admin'
-  const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest'
-  const canCreateAnyChat = canCreateAdminResources || FEATURE_FLAGS.dm
+  const canManageChildChats = me?.wsRole != null && me.wsRole !== 'guest' && me.wsRole !== 'viewer'
+  // 閲覧のみ（viewer）は DM も作れない（API が拒否する）
+  const canCreateAnyChat = canCreateAdminResources || (FEATURE_FLAGS.dm && me?.wsRole !== 'viewer')
 
   // ホーム画面のクイックアクション「DM を送る」。開いたら params を消し、戻ってきたときに開き直さない
   const { dm: dmRequest, open: dmRequestKey } = useLocalSearchParams<{

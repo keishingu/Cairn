@@ -13,7 +13,7 @@ export interface GcalStatusDto {
 }
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const configured = !!(process.env['GOOGLE_CALENDAR_CLIENT_ID'] && process.env['GOOGLE_CALENDAR_REDIRECT_URI'])

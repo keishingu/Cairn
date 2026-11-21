@@ -31,7 +31,7 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {

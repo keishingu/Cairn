@@ -7,7 +7,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 type RouteContext = { params: Promise<{ filterId: string }> }
 
 export async function DELETE(_req: Request, { params }: RouteContext) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { filterId } = await params
 

@@ -8,7 +8,8 @@ import { findOpenAppView } from '@/lib/apps/app-views'
 
 // 利用者がモーダルを閉じた。第1段階は view_closed をアプリへ送らない（notify_on_close は未対応）
 export async function POST(_req: Request, { params }: { params: Promise<{ viewId: string }> }) {
-  const { ctx, error } = await getAuthContext()
+  // 本人の行だけを閉じる・片付ける操作なので、閲覧のみ（viewer）に変わった後も行えるようにする
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { viewId } = await params
   if (!isUuid(viewId)) return NextResponse.json({ error: 'view_not_found' }, { status: 404 })

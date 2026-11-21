@@ -22,6 +22,7 @@ const ROLE_LABEL: Record<CurrentUserDto['wsRole'], string> = {
   owner:  'Owner',
   admin:  'Admin',
   member: 'Member',
+  viewer: 'Viewer',
   guest:  'Guest',
 }
 

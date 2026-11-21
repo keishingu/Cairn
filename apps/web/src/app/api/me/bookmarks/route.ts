@@ -19,7 +19,7 @@ export interface BookmarkDto {
 
 // ログインユーザーがブックマークしたメッセージ一覧（新しい順）
 export async function GET(_req: Request) {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true })
   if (authError) return authError
 
   try {

@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 
 type RouteContext = { params: Promise<{ userId: string }> }
 export async function DELETE(_req: Request, { params }: RouteContext) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { userId } = await params
   const { db, userBlocks } = await import('@cairn/db')

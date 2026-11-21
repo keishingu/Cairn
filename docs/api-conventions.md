@@ -23,6 +23,15 @@ export async function POST(req: Request) {
 
 `getAuthContext()` は `Authorization: Bearer <token>` ヘッダーを優先し、なければ Cookie にフォールバックする。
 
+#### 閲覧のみ（viewer）の扱い
+
+`getAuthContext()` は既定で viewer を 403（「閲覧専用メンバーはこの操作を実行できません」）にする。viewer にも通すのは次の2種類だけで、これらは `getAuthContext({ allowViewer: true })` を付ける。
+
+- GET（読み取り）。ただし AI チャット・実行案・調査 API・メッセージからのタスク化/ギャラリー追加の候補取得など、viewer が使わない機能の GET には付けない
+- 本人にしか影響しない書き込み: WebView のセッション引き継ぎ（`auth/webview-handoff`）、既読（`channels/[id]/read`）、`me` 配下（プロフィール・アバター・ブロック）、通知の既読、Push 購読、ピン留め、保存済みファイルフィルター、ブックマーク、通報、カレンダー連携、MCP 接続・API トークンの解除、自分宛ての AI PMO 通知へのフィードバック、開いているアプリのモーダルを閉じる操作（member から viewer に変わった人が、残った自分の状態を片付けられるようにするため）
+
+既定を拒否にしているのは、書き込みルートを足したときに付け忘れても viewer が書き込めないようにするため（fail-closed）。閲覧範囲は member と同じなので、`requireProjectAccess` / `requireChannelAccess` / `isWorkspaceMember` / `requireRole(role, 'member')` は viewer を通す。SQL 側（`can_access_channel()` などの `role <> 'guest'`）も変更していない。
+
 ### 例外: アプリの Bot が使う `/api/app-api/<method>`
 
 アプリ（プラグイン）の Bot だけが使う Web API は `getAuthContext()` を使わず、Bot トークン（`cairn_bot_...`）を `verifyBotToken()` で検証する。人間のセッション・PAT・MCP の資格情報では通さない。権限はワークスペースロールではなく、インストールのスコープと Bot が参加しているチャンネル（`app_channel_memberships`）だけで決める。応答は Slack の Web API に合わせ、HTTP ステータスは常に 200（呼び出し回数の超過だけ 429）で `{ ok, error }` を返す。詳細は [`app-platform-design.md`](./app-platform-design.md) §3.3・§6。

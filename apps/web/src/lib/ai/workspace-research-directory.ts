@@ -413,7 +413,7 @@ async function guestVisibleUserIds(ctx: AuthContext, scope: ResearchScope): Prom
 export interface ResearchMember {
   userId: string
   name: string
-  workspaceRole: 'owner' | 'admin' | 'member' | 'guest'
+  workspaceRole: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   membershipStatus: 'active' | 'inactive'
   profileAttributes: ResearchProfileAttribute[]
   joinedAt: string

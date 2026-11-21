@@ -22,7 +22,7 @@ export interface AppViewDto {
 
 // 自分に開かれているモーダル（新しい順）。アプリが views.open すると Realtime で本人のトピックへ知らされ、クライアントがこれを取り直す
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   try {
     const { db, appViews, appInstallations, apps } = await import('@cairn/db')

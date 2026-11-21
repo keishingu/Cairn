@@ -26,7 +26,7 @@ export interface ProjectChannelDto {
 export async function GET() {
   try {
     const { getAuthContext } = await import('@/lib/get-auth-context')
-    const { ctx, error } = await getAuthContext()
+    const { ctx, error } = await getAuthContext({ allowViewer: true })
     if (error) return error
 
     const { db } = await import('@cairn/db')

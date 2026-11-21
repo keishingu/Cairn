@@ -41,7 +41,7 @@ export async function GET(
     const { eq, and, isNull, sql } = await import('drizzle-orm')
     const { getAuthContext } = await import('@/lib/get-auth-context')
 
-    const { ctx, error } = await getAuthContext({
+    const { ctx, error } = await getAuthContext({ allowViewer: true,
       allowApiToken: true,
       requiredApiTokenScope: 'read',
     })

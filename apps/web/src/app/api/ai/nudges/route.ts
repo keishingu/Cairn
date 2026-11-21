@@ -20,7 +20,7 @@ export interface AiNudgeDto {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   if (!FEATURE_FLAGS.aiPmo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

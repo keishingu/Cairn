@@ -17,6 +17,8 @@ export {
   isWorkspaceOwner,
   isWorkspaceAdmin,
   isWorkspaceMember,
+  canWriteWorkspace,
+  canUseApiAccess,
   requireRole,
   requireWorkspaceOwner,
   requireWorkspaceAdmin,

@@ -30,5 +30,8 @@ export async function requireAiChatAccess(ctx: Pick<AuthContext, 'workspaceId' |
   }
   const level = workspace.aiChatAccess
   if (canUseAiChat(ctx.role, level)) return null
+  if (ctx.role === 'viewer') {
+    return NextResponse.json({ error: '閲覧専用メンバーは AI アシスタントを利用できません。' }, { status: 403 })
+  }
   return NextResponse.json({ error: DENIED_MESSAGE[level as Exclude<AiChatAccessLevel, 'member'>] }, { status: 403 })
 }

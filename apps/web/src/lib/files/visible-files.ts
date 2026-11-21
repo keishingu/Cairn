@@ -11,7 +11,7 @@ import { DOC_MIME_TYPES, escapeLikePattern, type FileListFilters } from './file-
 export interface VisibleFilesContext {
   userId: string
   workspaceId: string
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 }
 
 export async function buildVisibleFilesConditions(ctx: VisibleFilesContext) {

@@ -53,6 +53,7 @@ export async function notifyTaskAssigned(params: {
 //   チャンネルタスクなら当該チャンネルのメンバーの場合のみ可
 //   （guest の閲覧は参加プロジェクトに限定され、参加外は requireProjectAccess で編集も弾かれるため）。
 //   プロジェクト未所属タスクは guest には見えないため不可
+// - viewer（閲覧のみ）: 不可。タスクを完了・更新できないため（担当が残っていても割当通知は送らない）
 // - 非active・非メンバー: 不可
 export async function isAssignableTaskMember(
   workspaceId: string,
@@ -62,7 +63,7 @@ export async function isAssignableTaskMember(
 ): Promise<boolean> {
   const { getWorkspaceRole, isWorkspaceMember } = await import('@/lib/access/membership')
   const role = await getWorkspaceRole(workspaceId, userId)
-  if (!role) return false
+  if (!role || role === 'viewer') return false
 
   if (channelId) {
     const { canAccessChannel } = await import('@/lib/permissions')

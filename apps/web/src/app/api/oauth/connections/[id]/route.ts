@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/get-auth-context'
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { id } = await params
 

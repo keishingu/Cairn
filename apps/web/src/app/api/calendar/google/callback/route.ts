@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${settingsUrl}?gcal=error`)
   }
 
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return NextResponse.redirect(`${origin}/auth/login`)
 
   try {

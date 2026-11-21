@@ -2278,7 +2278,9 @@ const ApiTokenSettings = () => {
   const t = useT()
   const { locale } = useLocale()
   const queryClient = useQueryClient()
-  const { isGuest } = useWorkspacePermissions()
+  const { isGuest: isGuestRole, isViewer } = useWorkspacePermissions()
+  // API トークンは guest と viewer には発行できない（API も拒否する）
+  const isGuest = isGuestRole || isViewer
   const [name, setName] = React.useState('MCP client')
   const [scope, setScope] = React.useState<'read' | 'write'>('read')
   const [expiresInDays, setExpiresInDays] = React.useState(90)
@@ -2372,7 +2374,7 @@ const ApiTokenSettings = () => {
       <div className="card" style={{ padding: 16 }}>
         {isGuest ? (
           <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-3)' }}>
-            {t('Guests cannot issue API tokens.')}
+            {t('Guests and viewers cannot issue API tokens.')}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>

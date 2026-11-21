@@ -10,7 +10,7 @@ type RouteContext = { params: Promise<{ messageId: string }> }
 // メッセージの個人ブックマークをトグルする
 export async function POST(_req: Request, { params }: RouteContext) {
   const { messageId } = await params
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true })
   if (authError) return authError
 
   try {
