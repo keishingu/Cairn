@@ -76,7 +76,7 @@ type StoredMessageRow = StoredConversationMessage & {
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { id: conversationId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   // /ai を使えるロールは owner が決める（設定の「AIエージェント」）
   const aiAccessDenied = await requireAiChatAccess(ctx)

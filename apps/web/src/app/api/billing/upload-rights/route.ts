@@ -14,7 +14,7 @@ export interface UploadRightsDto {
 // 判定の正は各アップロード・取得ルートで、ここはメニューを出すかどうかの補助にだけ使う。
 // ゲストも添付・ギャラリーを使うため、ロールでは絞らない
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {

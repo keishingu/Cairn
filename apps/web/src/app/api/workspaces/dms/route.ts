@@ -29,7 +29,7 @@ function dmDisabledResponse() {
 export async function GET() {
   if (!FEATURE_FLAGS.dm) return dmDisabledResponse()
 
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {

@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { buildOAuthUrl } from '@/lib/google-calendar-api'
 
 export async function GET() {
-  const { error } = await getAuthContext()
+  const { error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   if (!process.env['GOOGLE_CALENDAR_CLIENT_ID'] || !process.env['GOOGLE_CALENDAR_REDIRECT_URI']) {

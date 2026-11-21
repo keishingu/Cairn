@@ -45,7 +45,7 @@ export interface WorkspaceMemberDto {
   displayName: string
   email: string | null
   avatarUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   /** `GET /api/workspaces/members` が返す（YYYY-MM-DD） */
   joinedAt: string
   profileAttributes: ProfileAttributeDto[]

@@ -114,6 +114,50 @@ describe('get-auth-context', () => {
     })
   })
 
+  it('viewer は allowViewer を付けないルートでは 403 になる', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'viewer' }]))
+
+    const { getAuthContext, VIEWER_WRITE_FORBIDDEN_MESSAGE } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result.ctx).toBeNull()
+    expect(result.error?.status).toBe(403)
+    await expect(result.error?.json()).resolves.toEqual({ error: VIEWER_WRITE_FORBIDDEN_MESSAGE })
+  })
+
+  it('viewer も allowViewer を付けたルートでは通る', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'viewer' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext({ allowViewer: true })
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', role: 'viewer' },
+      error: null,
+    })
+  })
+
+  it('viewer 以外は allowViewer が無くても通る', async () => {
+    mockHeaders.mockResolvedValue(new Headers())
+    mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })
+    mockSupabase.auth.getClaims.mockResolvedValue(okClaims)
+    mockDb.select.mockReturnValueOnce(selectChain([{ workspaceId: 'ws-1', role: 'guest' }]))
+
+    const { getAuthContext } = await import('./get-auth-context')
+    const result = await getAuthContext()
+
+    expect(result).toEqual({
+      ctx: { userId: 'user-1', workspaceId: 'ws-1', role: 'guest' },
+      error: null,
+    })
+  })
+
   it('検証に失敗したら 401 を返す', async () => {
     mockHeaders.mockResolvedValue(new Headers({ Authorization: 'Bearer bad' }))
     mockCookies.mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) })

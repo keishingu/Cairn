@@ -18,6 +18,7 @@ import { useRenameFile } from '@/hooks/use-rename-file'
 import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ChannelFileDto } from '@/app/api/channels/[channelId]/files/route'
@@ -196,6 +197,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
   const [detailTaskId, setDetailTaskId] = React.useState<string | null>(null)
   const [deletingTask, setDeletingTask] = React.useState<TaskDto | null>(null)
   const [showCreateDialog, setShowCreateDialog] = React.useState(false)
+  const { canWrite } = useWorkspacePermissions()
 
   const toggle = (id: string, status: TaskDto['status']) =>
     toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
@@ -232,7 +234,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', fontWeight: 600 }}>
             {completed} / {total}
           </span>
-          {channel && (
+          {channel && canWrite && (
             <button
               type="button"
               onClick={() => setShowCreateDialog(true)}

@@ -58,7 +58,7 @@ function buildContentDisposition(type: 'inline' | 'attachment', fileName: string
 }
 
 export async function GET(req: Request, { params }: RouteContext) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const { fileId } = await params

@@ -89,10 +89,28 @@ export async function getAuthUser(authorization?: string | null): Promise<UserRe
   return { userId: user.id, user, error: null }
 }
 
-export async function getAuthContext(options?: {
+export const VIEWER_WRITE_FORBIDDEN_MESSAGE = '閲覧専用メンバーはこの操作を実行できません'
+
+export interface AuthContextOptions {
   allowApiToken?: boolean
   requiredApiTokenScope?: ApiTokenScope
-}): Promise<AuthResult> {
+  // 閲覧専用（viewer）にも通す。GET と、既読・個人設定など本人にしか影響しない操作だけが付ける。
+  // 既定は拒否なので、書き込みルートを足したときに付け忘れても viewer は書き込めない。
+  allowViewer?: boolean
+}
+
+export async function getAuthContext(options?: AuthContextOptions): Promise<AuthResult> {
+  const result = await resolveAuthContext(options)
+  if (result.ctx?.role === 'viewer' && !options?.allowViewer) {
+    return {
+      ctx: null,
+      error: NextResponse.json({ error: VIEWER_WRITE_FORBIDDEN_MESSAGE }, { status: 403 }),
+    }
+  }
+  return result
+}
+
+async function resolveAuthContext(options?: AuthContextOptions): Promise<AuthResult> {
   const supabase = await createClient()
   const headersList = await headers()
   const authorization = headersList.get('Authorization')
@@ -174,7 +192,7 @@ export async function getAuthContext(options?: {
   const now = Date.now()
   const cached = workspaceCache.get(cacheKey)
   // owner / admin は管理操作の判定に ctx.role が使われるため、降格をすぐ効かせるよう毎回再照合する。
-  // 省略するのは member / guest だけ（昇格の反映が遅れるのは権限が狭い側なので許容する）。
+  // 省略するのは member / viewer / guest だけ（昇格の反映が遅れるのは権限が狭い側なので許容する）。
   if (cached && cached.freshUntil > now && !isElevatedRole(cached.role)) {
     return {
       ctx: { userId, workspaceId: cached.workspaceId, role: cached.role },

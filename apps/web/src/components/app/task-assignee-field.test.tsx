@@ -9,7 +9,7 @@ const { channelMembers, projectMembers } = vi.hoisted(() => ({
     channelId: string
     displayName: string
     avatarUrl: string | null
-    role: 'owner' | 'admin' | 'member' | 'guest'
+    role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   }>,
   projectMembers: [] as Array<{ userId: string }>,
 }))

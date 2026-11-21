@@ -195,7 +195,7 @@ describe('workspace invite hooks', () => {
 
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/workspaces/invites',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ expiresIn: '30d', role: 'member' }) }),
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspace-invites'] })
   })

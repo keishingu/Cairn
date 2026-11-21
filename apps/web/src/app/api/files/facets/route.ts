@@ -29,7 +29,7 @@ export interface FileFacetsResponse {
  */
 export async function GET(request: Request) {
   try {
-    const { ctx, error } = await getAuthContext({
+    const { ctx, error } = await getAuthContext({ allowViewer: true,
       allowApiToken: true,
       requiredApiTokenScope: 'read',
     })

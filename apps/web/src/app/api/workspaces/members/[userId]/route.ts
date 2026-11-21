@@ -7,7 +7,7 @@ import { getWorkspaceMemberRole, isWorkspaceAdmin, isWorkspaceOwner } from '@/li
 import { getWorkspaceRole } from '@/lib/access/membership'
 import { deactivateMembership, reactivateMembership, lockMembershipAndActiveOwners } from '@/lib/access/lifecycle'
 
-const VALID_ROLES = ['owner', 'admin', 'member', 'guest'] as const
+const VALID_ROLES = ['owner', 'admin', 'member', 'viewer', 'guest'] as const
 type WorkspaceRole = (typeof VALID_ROLES)[number]
 
 const VALID_STATUSES = ['active', 'inactive'] as const
@@ -37,7 +37,7 @@ export async function PATCH(
 
   if (!newRole || !VALID_ROLES.includes(newRole as WorkspaceRole)) {
     return NextResponse.json(
-      { error: 'role は owner/admin/member/guest のいずれかが必要です' },
+      { error: 'role は owner/admin/member/viewer/guest のいずれかが必要です' },
       { status: 422 },
     )
   }
@@ -79,6 +79,7 @@ export async function PATCH(
       // ゲストのアクセス範囲は project_members で表現されるが、通常ロールはWS全体を参照するため、
       // 相互変換すると project_members が実態と乖離した無効データ（ゾンビ）として残り、整合性が壊れる。
       // ゲストを通常メンバーにしたい場合は招待し直す運用とする。
+      // viewer は閲覧範囲が member と同じ通常ロールなので、member 以上との行き来はできる。
       const isGuestTransition = (currentRole === 'guest') !== (newRole === 'guest')
       if (isGuestTransition) {
         return NextResponse.json(

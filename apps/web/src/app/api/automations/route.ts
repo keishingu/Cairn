@@ -8,7 +8,7 @@ import { AutomationError, createAutomation, createAutomationSchema, listAutomati
 
 // 一覧は member 以上が見られる（指示文・作成者を公開して、誰が何をさせているかを隠さない。ai-automation-design.md §2.5）
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const forbidden = requireRole(ctx.role, 'member')
   if (forbidden) return forbidden

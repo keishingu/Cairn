@@ -20,6 +20,7 @@ const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'Owner',
   admin:  'Admin',
   member: 'Member',
+  viewer: 'Viewer',
   guest:  'Guest',
 }
 
@@ -27,6 +28,7 @@ const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string 
   owner:  { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
   admin:  { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
   member: { c: 'var(--text-3)',       bg: 'var(--card-2)' },
+  viewer: { c: 'var(--text-4)',       bg: 'var(--card-2)' },
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
@@ -194,7 +196,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     currentRole !== 'guest' &&
     (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
-    viewerRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
+    viewerRole === 'owner' ? ['owner', 'admin', 'member', 'viewer'] : ['admin', 'member', 'viewer']
   // 唯一の active owner を降格すると API が 422 になるため、選択肢から外す
   const activeOwnerCount = allMembers.filter(
     m => m.role === 'owner' && m.membershipStatus === 'active',

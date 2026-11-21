@@ -11,14 +11,14 @@ export interface ChannelMemberDto {
   channelId: string
   displayName: string
   avatarUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 }
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ channelId: string }> },
 ) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const { channelId } = await params

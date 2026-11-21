@@ -32,6 +32,7 @@ const ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'Owner',
   admin:  'Admin',
   member: 'Member',
+  viewer: 'Viewer',
   guest:  'Guest',
 }
 
@@ -39,6 +40,7 @@ const ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string }> 
   owner:  { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
   admin:  { c: 'var(--violet-text)',  bg: 'var(--violet-soft)' },
   member: { c: 'var(--text-3)',       bg: 'var(--card-2)' },
+  viewer: { c: 'var(--text-4)',       bg: 'var(--card-2)' },
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
@@ -322,6 +324,7 @@ export const PageMembers = ({ initialUserId, isMobile, externalSearch }: PageMem
     { id: 'owner',  label: t('Owner') },
     { id: 'admin',  label: t('Admin') },
     { id: 'member', label: t('Members ({count})', { count: counts.get('member') ?? 0 }) },
+    { id: 'viewer', label: t('Viewer') },
     { id: 'guest',  label: t('Guest') },
   ]
 
@@ -573,10 +576,17 @@ const EXPIRES_OPTIONS: { value: ExpiresIn; label: string }[] = [
   { value: 'never', label: 'No expiry' },
 ]
 
+type InviteRole = 'member' | 'viewer'
+const INVITE_ROLE_OPTIONS: { value: InviteRole; label: string }[] = [
+  { value: 'member', label: 'Member' },
+  { value: 'viewer', label: 'Viewer' },
+]
+
 function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
   const t = useT()
   const { locale } = useLocale()
   const [expiresIn, setExpiresIn] = React.useState<ExpiresIn>('1h')
+  const [inviteRole, setInviteRole] = React.useState<InviteRole>('member')
   const [inviteUrl, setInviteUrl] = React.useState<string | null>(null)
   const [generateError, setGenerateError] = React.useState<string | null>(null)
   const { data: existingInvites = [] } = useWorkspaceInvites()
@@ -586,7 +596,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
   async function generateLink() {
     setGenerateError(null)
     try {
-      const data = await createInviteMutation.mutateAsync({ expiresIn })
+      const data = await createInviteMutation.mutateAsync({ expiresIn, role: inviteRole })
       setInviteUrl(data.url)
     } catch (error) {
       setGenerateError(error instanceof Error ? error.message : t('Could not generate the invite link'))
@@ -630,6 +640,41 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Role')}</div>
+            <div style={{ display: 'flex', gap: 8 }} role="radiogroup" aria-label={t('Role')}>
+              {INVITE_ROLE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={inviteRole === opt.value}
+                  onClick={() => { setInviteRole(opt.value); setInviteUrl(null) }}
+                  style={{
+                    flex: 1,
+                    padding: '7px 0',
+                    borderRadius: 8,
+                    border: `1.5px solid ${inviteRole === opt.value ? 'var(--accent)' : 'var(--border-2)'}`,
+                    background: inviteRole === opt.value ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg)',
+                    color: inviteRole === opt.value ? 'var(--accent)' : 'var(--text-3)',
+                    fontSize: 'var(--fs-md)',
+                    fontWeight: inviteRole === opt.value ? 600 : 400,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'background-color .15s, color .15s',
+                  }}
+                >
+                  {t(opt.label)}
+                </button>
+              ))}
+            </div>
+            {inviteRole === 'viewer' && (
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)' }}>
+                {t('Viewers can read the same channels and projects as members, but cannot post, react, or edit.')}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-2)' }}>{t('Link expiry')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -710,7 +755,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                 const expiresLabel = inv.expiresAt
                   ? t('Until {date}', { date: formatAppDate(locale, inv.expiresAt) })
                   : t('No expiry')
-                const roleLabel = t(inv.role === 'guest' ? 'Guest' : 'Member')
+                const roleLabel = t(inv.role === 'guest' ? 'Guest' : inv.role === 'viewer' ? 'Viewer' : 'Member')
                 return (
                   <div
                     key={inv.token}

@@ -17,7 +17,7 @@ import { useOneShotRequest } from '@/lib/one-shot-request'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
 import { taskScopeLabel } from '@/lib/tasks/scope-label'
 import { useTasks, useToggleTaskStatus } from '@/hooks/use-tasks'
-import { useCurrentUser } from '@/hooks/use-current-user'
+import { useCurrentUser, useWorkspacePermissions } from '@/hooks/use-current-user'
 import { STORAGE_KEYS } from '@/lib/storage-keys'
 import { InlineError } from '../inline-error'
 import { useT } from '@/components/locale-provider'
@@ -268,8 +268,10 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // セクション（プロジェクト別）の開閉。明示トグルが無ければ先頭3つを開く
   const [sectionOverride, setSectionOverride] = React.useState<Record<string, boolean>>({})
 
+  // 閲覧のみ（viewer）にはタスク作成の入口を出さない（API も拒否する）
+  const { canWrite } = useWorkspacePermissions()
   // ⌥N: 新規タスク
-  useCommand('ctx.create', () => setShowAddModal(true))
+  useCommand('ctx.create', () => { if (canWrite) setShowAddModal(true) })
 
   const { data: allTasks = [], isLoading: tasksLoading } = useTasks()
   const currentUser = useCurrentUser()
@@ -294,7 +296,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [searchParams])
 
   // アプリのホーム画面のクイックアクションから、作成モーダルを開いた状態で来る
-  useOneShotRequest('new', () => setShowAddModal(true))
+  useOneShotRequest('new', () => { if (canWrite) setShowAddModal(true) })
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
@@ -426,7 +428,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
               value={scope}
               onChange={setScope}
             />
-            {!isMobile && (
+            {!isMobile && canWrite && (
               <button
                 className="btn btn-primary"
                 onClick={() => setShowAddModal(true)}
@@ -482,7 +484,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
         )}
       </div>
 
-      {isMobile && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
+      {isMobile && canWrite && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
       {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
       {detailTaskId && <TaskDetailPanel taskId={detailTaskId} isMobile={isMobile} onClose={() => setDetailTaskId(null)} />}
       <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingTask(null)} />

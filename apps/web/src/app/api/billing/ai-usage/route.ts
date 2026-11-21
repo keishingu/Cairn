@@ -15,7 +15,7 @@ import {
 // 請求画面の「AIの利用」。今月の /ai の消費クレジットを返す（集計の仕様は lib/billing/ai-usage.ts）。
 // ゲストも /ai を使えるので、自分の明細はゲストにも返す
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const forbidden = requireRole(ctx.role, 'guest')
   if (forbidden) return forbidden

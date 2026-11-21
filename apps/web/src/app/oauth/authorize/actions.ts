@@ -14,7 +14,7 @@ import {
 } from '@/lib/mcp-oauth'
 import { validateOAuthAuthorizationRequest } from '@/lib/mcp-oauth-authorization'
 import { translate } from '@cairn/shared'
-import { getWorkspaceRole } from '@/lib/access/membership'
+import { canUseApiAccess, getWorkspaceRole } from '@/lib/access/membership'
 import { readRequestLocale } from '@/lib/i18n/request-locale'
 
 const authorizationKeys = [
@@ -84,7 +84,7 @@ export async function finishOAuthAuthorization(formData: FormData) {
   const role = await getWorkspaceRole(workspaceId, userId)
   const { locale } = await readRequestLocale()
   if (!role) throw new Error(translate(locale, 'You are not an active member of the selected workspace'))
-  if (role === 'guest') throw new Error(translate(locale, 'Guests cannot authorize an MCP OAuth connection'))
+  if (!canUseApiAccess(role)) throw new Error(translate(locale, 'Guests and viewers cannot authorize an MCP OAuth connection'))
 
   const code = createOAuthSecret(OAUTH_AUTHORIZATION_CODE_PREFIX)
   const { db, mcpOAuthAuthorizationCodes, mcpOAuthConnections } = await import('@cairn/db')

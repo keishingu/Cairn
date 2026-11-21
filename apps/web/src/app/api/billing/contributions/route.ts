@@ -63,7 +63,7 @@ function placementDto(row: {
 }
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const forbidden = requireRole(ctx.role, 'member')
   if (forbidden) return forbidden

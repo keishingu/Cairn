@@ -105,6 +105,7 @@ describe('GET /api/files/[id]/content', () => {
 
     expect(response.status).toBe(409)
     expect(mockGetAuthContext).toHaveBeenCalledWith({
+      allowViewer: true,
       allowApiToken: true,
       requiredApiTokenScope: 'read',
     })

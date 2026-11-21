@@ -17,7 +17,7 @@ vi.mock('@/lib/ai/automations', async (importOriginal) => ({
   listAutomations: mockList,
 }))
 
-function ctx(role: 'owner' | 'admin' | 'member' | 'guest') {
+function ctx(role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest') {
   return { ctx: { workspaceId: 'workspace-1', userId: 'user-1', role }, error: null }
 }
 

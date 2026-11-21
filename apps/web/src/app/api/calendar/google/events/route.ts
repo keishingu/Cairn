@@ -43,7 +43,7 @@ const SYNC_TTL_MS = 15 * 60 * 1000
  * query: year, month (0始まり)
  */
 export async function GET(req: NextRequest) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const { searchParams } = req.nextUrl

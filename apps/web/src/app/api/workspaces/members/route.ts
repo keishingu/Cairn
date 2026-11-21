@@ -13,7 +13,7 @@ export interface WorkspaceMemberDto {
   displayName: string
   email: string | null
   avatarUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   membershipStatus: 'active' | 'inactive'
   profileAttributes: ProfileAttributeDto[]
   joinedAt: string
@@ -21,7 +21,7 @@ export interface WorkspaceMemberDto {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {

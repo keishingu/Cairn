@@ -13,7 +13,7 @@ type RouteContext = { params: Promise<{ messageId: string }> }
 // 閲覧できないチャンネルのメッセージは、存在の有無も分からないよう 404 にそろえる。
 export async function GET(_req: Request, { params }: RouteContext) {
   const { messageId } = await params
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true })
   if (authError) return authError
   // パーマリンクの ?m= から来る値なので、UUID でなければ DB に渡さず見つからない扱いにする
   if (!z.string().uuid().safeParse(messageId).success) {

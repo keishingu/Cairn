@@ -16,7 +16,7 @@ export interface NotificationDto {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const { searchParams } = new URL(req.url)
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let body: unknown

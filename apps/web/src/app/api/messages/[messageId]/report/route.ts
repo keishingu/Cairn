@@ -16,7 +16,7 @@ const schema = z.object({
 type RouteContext = { params: Promise<{ messageId: string }> }
 
 export async function POST(req: Request, { params }: RouteContext) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { messageId } = await params
   const parsed = schema.safeParse(await req.json().catch(() => null))

@@ -14,7 +14,7 @@ type RouteContext = { params: Promise<{ id: string; itemId: string }> }
 // （課金無効なら全員）にダウンロード名つきの短期署名 URL で渡す。パスは直接公開しない。
 export async function GET(req: Request, { params }: RouteContext) {
   const { id: projectId, itemId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const wantOriginal = new URL(req.url).searchParams.get('original') === '1'

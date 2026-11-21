@@ -17,7 +17,7 @@ export interface MeDto {
   accentId: AccentId
   locale: LocalePreference
   calendarWeekStart: CalendarWeekStart
-  wsRole: 'owner' | 'admin' | 'member' | 'guest'
+  wsRole: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 }
 
 export interface WorkspaceDto {

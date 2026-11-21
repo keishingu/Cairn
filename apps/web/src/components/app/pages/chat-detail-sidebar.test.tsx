@@ -25,7 +25,7 @@ vi.mock('@/lib/fetch-with-auth', () => ({
   fetchWithAuth: fetchWithAuthMock,
 }))
 vi.mock('@/hooks/use-current-user', () => ({
-  useWorkspacePermissions: () => ({ isGuest: false }),
+  useWorkspacePermissions: () => ({ isGuest: false, canWrite: true }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({
   useWorkspaceMembers: () => ({ data: [] }),

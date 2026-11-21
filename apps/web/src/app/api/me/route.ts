@@ -16,7 +16,7 @@ export interface CurrentUserDto {
   bio: string | null
   status: UserStatus
   statusMessage: string | null
-  wsRole: 'owner' | 'admin' | 'member' | 'guest'
+  wsRole: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   aiNudgesEnabled: boolean
   theme: AppearanceTheme
   accentId: AccentId
@@ -25,7 +25,7 @@ export interface CurrentUserDto {
 }
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {
@@ -88,7 +88,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let body: unknown

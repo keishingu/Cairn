@@ -8,7 +8,7 @@ import {
   buildApiTokenRateLimitUpdate,
   MCP_RATE_LIMIT_PER_MINUTE,
 } from './api-tokens'
-import type { WorkspaceRole } from './access/membership'
+import { canUseApiAccess, type WorkspaceRole } from './access/membership'
 import type { ApiTokenScope } from './api-tokens'
 
 export const OAUTH_CLIENT_ID_PREFIX = 'cairn_oauth_client_'
@@ -159,8 +159,8 @@ export async function verifyMcpOAuthAccessToken(
     .limit(1)
 
   if (!row) throw new McpOAuthError(401, 'invalid_token', 'Invalid or expired OAuth access token')
-  if (row.role === 'guest') {
-    throw new McpOAuthError(403, 'insufficient_scope', 'Guests cannot use MCP OAuth')
+  if (!canUseApiAccess(row.role)) {
+    throw new McpOAuthError(403, 'insufficient_scope', 'Guests and viewers cannot use MCP OAuth')
   }
   if (!apiTokenAllows(row.scope, options.requiredScope)) {
     throw new McpOAuthError(403, 'insufficient_scope', 'OAuth token lacks the required scope')

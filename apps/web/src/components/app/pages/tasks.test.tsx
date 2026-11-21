@@ -20,7 +20,7 @@ vi.mock('@/hooks/use-tasks', () => ({
   useTasks: mockUseTasks,
   useToggleTaskStatus: () => ({ mutate: mockToggleMutate, isPending: false }),
 }))
-vi.mock('@/hooks/use-current-user', () => ({ useCurrentUser: mockUseCurrentUser }))
+vi.mock('@/hooks/use-current-user', () => ({ useCurrentUser: mockUseCurrentUser, useWorkspacePermissions: () => ({ canWrite: true }) }))
 vi.mock('../task-detail-panel', () => ({
   TaskDetailPanel: ({ taskId, isMobile, onClose }: { taskId: string; isMobile?: boolean; onClose: () => void }) => (
     <div data-testid="task-detail-panel" data-task-id={taskId} data-mobile={String(!!isMobile)}>

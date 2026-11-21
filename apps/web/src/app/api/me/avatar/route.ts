@@ -9,7 +9,7 @@ const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
 const BUCKET = 'avatars'
 
 export async function POST(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let formData: FormData

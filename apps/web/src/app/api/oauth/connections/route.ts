@@ -13,7 +13,7 @@ export interface McpOAuthConnectionDto {
 }
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {
