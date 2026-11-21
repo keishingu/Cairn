@@ -649,6 +649,8 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                   type="button"
                   role="radio"
                   aria-checked={inviteRole === opt.value}
+                  // 生成中に切り替えると、前のロールのリンクが選択と食い違ったまま表示されるため止める
+                  disabled={createInviteMutation.isPending}
                   onClick={() => { setInviteRole(opt.value); setInviteUrl(null) }}
                   style={{
                     flex: 1,
@@ -659,7 +661,7 @@ function InviteModal({ onClose, isMobile }: { onClose: () => void; isMobile: boo
                     color: inviteRole === opt.value ? 'var(--accent)' : 'var(--text-3)',
                     fontSize: 'var(--fs-md)',
                     fontWeight: inviteRole === opt.value ? 600 : 400,
-                    cursor: 'pointer',
+                    cursor: createInviteMutation.isPending ? 'default' : 'pointer',
                     fontFamily: 'inherit',
                     transition: 'background-color .15s, color .15s',
                   }}
