@@ -30,4 +30,12 @@ describe('isAssignableTaskMember', () => {
   it('参加済みゲストはチャンネルタスクの担当者にできる', async () => {
     await expect(isAssignableTaskMember('workspace', 'guest', null, 'channel')).resolves.toBe(true)
   })
+
+  it('閲覧のみ（viewer）はチャンネル・プロジェクト・未所属のどのタスクの担当者にもできない', async () => {
+    mockGetWorkspaceRole.mockResolvedValue('viewer')
+    await expect(isAssignableTaskMember('workspace', 'viewer', null, 'channel')).resolves.toBe(false)
+    await expect(isAssignableTaskMember('workspace', 'viewer', 'project', null)).resolves.toBe(false)
+    await expect(isAssignableTaskMember('workspace', 'viewer', null, null)).resolves.toBe(false)
+    expect(mockCanAccessChannel).not.toHaveBeenCalled()
+  })
 })
