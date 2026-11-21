@@ -570,8 +570,8 @@ function ChatMessageRow({
                 accessibilityRole="button"
                 accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
                 accessibilityHint={t('Long-press to see who reacted')}
-                disabled={readOnly}
-                onPress={() => onToggleReaction(message.id, reaction.emoji)}
+                // 閲覧のみでも長押しで「リアクションした人」は見られるよう、Pressable は無効にせず押下だけ止める
+                onPress={() => { if (!readOnly) onToggleReaction(message.id, reaction.emoji) }}
                 onLongPress={() => onShowReactors(reaction.emoji, message.id)}
                 delayLongPress={350}
                 style={({ pressed }) => [
