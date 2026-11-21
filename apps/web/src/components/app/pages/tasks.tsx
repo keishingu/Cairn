@@ -271,7 +271,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   // 閲覧のみ（viewer）にはタスク作成の入口を出さない（API も拒否する）
   const { canWrite } = useWorkspacePermissions()
   // ⌥N: 新規タスク
-  useCommand('ctx.create', () => { if (canWrite) setShowAddModal(true) })
+  useCommand('ctx.create', () => setShowAddModal(true))
 
   const { data: allTasks = [], isLoading: tasksLoading } = useTasks()
   const currentUser = useCurrentUser()
@@ -296,7 +296,8 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
   }, [searchParams])
 
   // アプリのホーム画面のクイックアクションから、作成モーダルを開いた状態で来る
-  useOneShotRequest('new', () => { if (canWrite) setShowAddModal(true) })
+  // ロールの取得前に呼ばれても要求を失わないよう、開くかどうかは描画時に canWrite で決める
+  useOneShotRequest('new', () => setShowAddModal(true))
 
   const handleToggle = (id: string, current: TaskDto['status']) => {
     const newStatus: TaskDto['status'] = current === 'done' ? 'todo' : 'done'
@@ -485,7 +486,7 @@ export const PageTasks = ({ isMobile = false }: { isMobile?: boolean }) => {
       </div>
 
       {isMobile && canWrite && <Fab onClick={() => setShowAddModal(true)} label={t('Add a task')}/>}
-      {showAddModal && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
+      {showAddModal && canWrite && <CreateTaskModal onClose={() => setShowAddModal(false)} />}
       {detailTaskId && <TaskDetailPanel taskId={detailTaskId} isMobile={isMobile} onClose={() => setDetailTaskId(null)} />}
       <TaskDeleteDialog task={deletingTask} onClose={() => setDeletingTask(null)} />
     </div>

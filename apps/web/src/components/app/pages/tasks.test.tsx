@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TaskDto } from '@/app/api/tasks/route'
 import { PageTasks } from './tasks'
 
-const { mockUseTasks, mockToggleMutate, mockSearchParamsGet, mockSearchParamsToString, mockUseCurrentUser } = vi.hoisted(() => ({
+const { mockUseTasks, mockToggleMutate, mockSearchParamsGet, mockSearchParamsToString, mockUseCurrentUser, mockUseWorkspacePermissions } = vi.hoisted(() => ({
   mockUseTasks: vi.fn(),
+  mockUseWorkspacePermissions: vi.fn(() => ({ canWrite: true })),
   mockUseCurrentUser: vi.fn(),
   mockToggleMutate: vi.fn(),
   mockSearchParamsGet: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock('@/hooks/use-tasks', () => ({
   useTasks: mockUseTasks,
   useToggleTaskStatus: () => ({ mutate: mockToggleMutate, isPending: false }),
 }))
-vi.mock('@/hooks/use-current-user', () => ({ useCurrentUser: mockUseCurrentUser, useWorkspacePermissions: () => ({ canWrite: true }) }))
+vi.mock('@/hooks/use-current-user', () => ({ useCurrentUser: mockUseCurrentUser, useWorkspacePermissions: mockUseWorkspacePermissions }))
 vi.mock('../task-detail-panel', () => ({
   TaskDetailPanel: ({ taskId, isMobile, onClose }: { taskId: string; isMobile?: boolean; onClose: () => void }) => (
     <div data-testid="task-detail-panel" data-task-id={taskId} data-mobile={String(!!isMobile)}>
@@ -78,6 +79,7 @@ describe('PageTasks のタスク詳細パネル導線', () => {
   beforeEach(() => {
     // このブロックは担当者を問わない導線のテストなので「全員」表示にする
     localStorage.clear()
+    mockUseWorkspacePermissions.mockReturnValue({ canWrite: true })
     localStorage.setItem('cairn:tasks_scope', 'all')
     mockUseCurrentUser.mockReturnValue({ data: { id: ME }, isLoading: false, isError: false, error: null })
     // jsdom は scrollIntoView を実装していない（キーボード選択行のスクロール追従で呼ばれる）
@@ -197,6 +199,18 @@ describe('PageTasks のタスク詳細パネル導線', () => {
 
       requestCreate('b')
       view.rerender(page())
+      expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
+    })
+
+    it('ロールの取得前に要求が来ても、取得後に作成モーダルを開く', () => {
+      requestCreate('a')
+      mockUseWorkspacePermissions.mockReturnValue({ canWrite: false })
+      const view = renderPage()
+      expect(screen.queryByTestId('create-task-modal')).not.toBeInTheDocument()
+
+      mockUseWorkspacePermissions.mockReturnValue({ canWrite: true })
+      view.rerender(page())
+
       expect(screen.getByTestId('create-task-modal')).toBeInTheDocument()
     })
 

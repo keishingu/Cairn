@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 `getAuthContext()` は既定で viewer を 403（「閲覧専用メンバーはこの操作を実行できません」）にする。viewer にも通すのは次の2種類だけで、これらは `getAuthContext({ allowViewer: true })` を付ける。
 
 - GET（読み取り）。ただし AI チャット・実行案・調査 API・メッセージからのタスク化/ギャラリー追加の候補取得など、viewer が使わない機能の GET には付けない
-- 本人にしか影響しない書き込み: 既読（`channels/[id]/read`）、`me` 配下（プロフィール・アバター・ブロック）、通知の既読、Push 購読、ピン留め、保存済みファイルフィルター、ブックマーク、通報、カレンダー連携、MCP 接続の解除
+- 本人にしか影響しない書き込み: WebView のセッション引き継ぎ（`auth/webview-handoff`）、既読（`channels/[id]/read`）、`me` 配下（プロフィール・アバター・ブロック）、通知の既読、Push 購読、ピン留め、保存済みファイルフィルター、ブックマーク、通報、カレンダー連携、MCP 接続の解除
 
 既定を拒否にしているのは、書き込みルートを足したときに付け忘れても viewer が書き込めないようにするため（fail-closed）。閲覧範囲は member と同じなので、`requireProjectAccess` / `requireChannelAccess` / `isWorkspaceMember` / `requireRole(role, 'member')` は viewer を通す。SQL 側（`can_access_channel()` などの `role <> 'guest'`）も変更していない。
 
