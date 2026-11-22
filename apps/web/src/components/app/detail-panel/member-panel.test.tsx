@@ -293,7 +293,7 @@ describe('sortMemberProjects', () => {
     startDate, endDate, memberCount: 1, coverPhotoIdx: 0, archived,
   })
 
-  it('進行中は元の順序を保ち、アーカイブ済みは終了日の新しい順で下にまとめる', () => {
+  it('進行中は開始日の近い順で上に、アーカイブ済みは終了日の新しい順で下にまとめる', () => {
     const result = sortMemberProjects([
       p('arch-feb', true, '2026-02-01', '2026-02-02'),
       p('active-b', false, '2026-11-27', null),
@@ -301,7 +301,7 @@ describe('sortMemberProjects', () => {
       p('active-a', false, '2026-11-14', null),
       p('arch-mar', true, '2026-03-09', '2026-03-10'),
     ])
-    expect(result.map(r => r.projectId)).toEqual(['active-b', 'active-a', 'arch-may', 'arch-mar', 'arch-feb'])
+    expect(result.map(r => r.projectId)).toEqual(['active-a', 'active-b', 'arch-may', 'arch-mar', 'arch-feb'])
   })
 
   it('終了日が無ければ開始日で比べ、日付未設定のアーカイブは末尾に置く', () => {
@@ -311,5 +311,15 @@ describe('sortMemberProjects', () => {
       p('ended', true, '2026-03-01', '2026-03-05'),
     ])
     expect(result.map(r => r.projectId)).toEqual(['start-only', 'ended', 'no-date'])
+  })
+
+  it('開始日が未設定の進行中プロジェクトは進行中の末尾に置く', () => {
+    const result = sortMemberProjects([
+      p('no-date', false, null, null),
+      p('later', false, '2026-12-03', null),
+      p('sooner', false, '2026-11-20', '2026-11-23'),
+      p('archived', true, '2026-05-09', null),
+    ])
+    expect(result.map(r => r.projectId)).toEqual(['sooner', 'later', 'no-date', 'archived'])
   })
 })
