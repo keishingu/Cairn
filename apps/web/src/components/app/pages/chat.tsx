@@ -3,7 +3,7 @@
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
+import { Icon, Avatar, AvatarStack } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1058,7 +1058,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
-                {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>
