@@ -23,6 +23,7 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 - **設定は `/settings/[section]` の URL 駆動**。定義と本体は `src/components/app/pages/settings.tsx` に集約し PC / モバイルで共有する
 - **表示文言は i18next**。キーは英語の UI 文（`t('Sign in with Google')`）。翻訳カタログは `packages/shared/src/i18n/ja.ts` と `ko.ts`（英語はキー原文）。`translate()` は呼び出しごとに `lng` を渡すので、サーバー側でインスタンスの言語は切り替えない。言語は `profiles.locale`（`ja` / `en` / `ko` / `system`）で、`system` は Accept-Language と `navigator.languages` を同じ順で解決する。URL にロケールを付けない。ワークスペースのプロジェクト呼び方は未設定（null）のときだけ訳し、保存済みの文字列はそのまま出す
 - **外部チャットから取り込んだ過去ログは `messages.imported = true`**。未読・未読の初期位置・AI の巡回はこの印で除外し、編集・削除 API は拒否する。新しく未読や巡回の対象を数える経路を足すときも同じ条件を入れる。取り込みには通常の投稿 API（`postMessage`。通知が飛ぶ）を使わない（[`docs/import-design.md`](../../docs/import-design.md)）
+- **`message/created`（on-message-created）は通知の対象になる投稿（DM・メンション・返信・添付）にだけ送る**。判定は `lib/inngest/message-created-gate.ts` の `needsMessageCreatedJob()`。on-message-created に新しい通知の種類を足すときは、この判定も同じ変更で広げる（広げないとその通知だけ黙って届かない）。宛先の決定は読み取りだけの1 step（`lib/inngest/message-notification-plan.ts`）にまとめ、Inngest の実行数を増やさない
 - **メンション名のread時解決は `src/lib/chat/mention-name-map.ts` を共有し、同じワークスペースの所属履歴に限定する**。非活性メンバーの履歴表示は維持する。
 - **`/chats` を変えるときは Expo のネイティブチャット（`apps/mobile/app/(app)/chats/`）にも同じ変更が要るか確認する**。アプリ利用者にも届く挙動（一覧・メッセージ・返信・メンション・添付・未読・Realtime）なら同じ変更で直し、判断を変更の説明に残す
 

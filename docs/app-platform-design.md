@@ -312,7 +312,7 @@ Slack と同じ方式にする。
 
 - パスは `POST /api/app-api/<method>`（例: `/api/app-api/chat.postMessage`）。Slack の `https://slack.com/api/<method>` と同じ並びにして、Bolt の `slackApiUrl` を差し替えるだけで向き先が変わるようにする
 - 応答は Slack と同じ `{ "ok": true, ... }` / `{ "ok": false, "error": "channel_not_found" }`。HTTP ステータスは常に 200（Slack の流儀）。エラーコードも Slack の名前に寄せる
-- Bot の投稿も既存の `message/created` イベントへ流し、メンション通知・Push・AI インデックスは既存の `on-message-created` に任せる（通知は Inngest 経由。ローカルでは Inngest dev server が要る）
+- Bot の投稿も既存の `message/created` イベントへ流し、メンション通知・Push は既存の `on-message-created` に任せる（通知は Inngest 経由。ローカルでは Inngest dev server が要る）。人の投稿と同じく、通知の対象にならない投稿（DM・メンション・返信・添付のどれでもない）ではイベントを送らない
 - Bot の発言（代替テキスト）はメッセージ検索・RAG インデックスに含める。AI PMO の「未回答の依頼」判定からは除外する（§11 D11）
 
 ### 6.1 アプリの起動口（作成メニュー）
