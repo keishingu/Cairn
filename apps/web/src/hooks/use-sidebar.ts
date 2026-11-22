@@ -5,6 +5,7 @@ import type { ProjectDto } from '@/app/api/projects/route'
 import type { WorkspaceListItemDto } from '@/app/api/workspaces/list/route'
 import type { WorkspaceDto } from '@/app/api/workspaces/route'
 import type { UserStatus } from '@/lib/user-status'
+import { chatQueryKeys } from '@/lib/chat/client'
 
 export function useSidebarWorkspace() {
   return useQuery<WorkspaceDto>({
@@ -49,6 +50,8 @@ export function useSidebarCurrentUser() {
     },
     onSuccess: (status) => {
       patchCurrentUserCache(queryClient, { status })
+      // チャット詳細のメンバー欄は一覧 API のステータスを出すため、自分の変更を反映させる
+      void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceMembers })
     },
   })
 

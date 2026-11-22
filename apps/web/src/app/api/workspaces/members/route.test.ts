@@ -35,6 +35,7 @@ vi.mock('@cairn/db', () => ({
     avatarUrl: 'wm.avatarUrl',
     role: 'wm.role',
     membershipStatus: 'wm.membershipStatus',
+    status: 'wm.status',
     profileAttributes: 'wm.profileAttributes',
     joinedAt: 'wm.joinedAt',
   },
@@ -94,6 +95,7 @@ describe('GET /api/workspaces/members', () => {
         avatarUrl: null,
         role: 'member',
         membershipStatus: 'active',
+        status: 'busy',
         joinedAt: new Date('2026-01-01T00:00:00.000Z'),
         projectCount: 3,
       }]))
@@ -109,6 +111,7 @@ describe('GET /api/workspaces/members', () => {
       avatarUrl: null,
       role: 'member',
       membershipStatus: 'active',
+      status: 'busy',
       profileAttributes: attributes,
       joinedAt: '2026-01-01',
       projectCount: 3,
