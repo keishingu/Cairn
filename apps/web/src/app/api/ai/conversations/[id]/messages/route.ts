@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createDataStreamResponse, streamText } from 'ai'
 import { isAiSearchRecencyWeight, type AiChatModel, type AiSearchRecencyWeight } from '@cairn/shared'
 import { apiKeyEnvForChatModel, chatLanguageModel } from '@/lib/ai/client'
+import { enforceAiChatRateLimit } from '@/lib/ai/chat-rate-limit'
 import {
   chatRequestCredits,
   parseWorkspaceChatModels,
@@ -188,6 +189,19 @@ export async function POST(req: Request, { params }: RouteContext) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Invalid messages payload' },
       { status: 422 },
+    )
+  }
+
+  const rateLimit = await enforceAiChatRateLimit(ctx.workspaceId, ctx.userId)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'AIチャットの送信回数が上限に達しました。少し待ってから再試行してください。' },
+      { status: 429, headers: {
+        'Retry-After': String(rateLimit.retryAfterSeconds),
+        'X-RateLimit-Limit': String(rateLimit.limit),
+        'X-RateLimit-Remaining': String(rateLimit.remaining),
+        'X-RateLimit-Reset': String(Math.floor(rateLimit.resetAt / 1000)),
+      } },
     )
   }
 

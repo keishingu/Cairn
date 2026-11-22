@@ -33,6 +33,8 @@ const {
 // /ai の利用ロールの判定。既定は全員が使えるワークスペースとして扱い、拒否のテストだけ差し替える
 const { mockRequireAiChatAccess } = vi.hoisted(() => ({ mockRequireAiChatAccess: vi.fn() }))
 vi.mock('@/lib/ai/chat-access', () => ({ requireAiChatAccess: mockRequireAiChatAccess }))
+const { mockRateLimit } = vi.hoisted(() => ({ mockRateLimit: vi.fn() }))
+vi.mock('@/lib/ai/chat-rate-limit', () => ({ enforceAiChatRateLimit: mockRateLimit }))
 vi.mock('@/lib/get-auth-context', () => ({ getAuthContext: mockGetAuthContext }))
 vi.mock('@/lib/billing/is-billing-enabled', () => ({ isBillingEnabled: mockIsBillingEnabled }))
 vi.mock('@/lib/billing/entitlements', () => ({
@@ -122,6 +124,7 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) =>
       fn({ insert: () => ({ values: () => Promise.resolve() }), update: () => ({ set: () => ({ where: () => Promise.resolve() }) }) }),
     )
+    mockRateLimit.mockResolvedValue({ allowed: true })
     mockIsBillingEnabled.mockReturnValue(false)
     mockRequireAiChatAccess.mockResolvedValue(null)
     mockSearchResearchDocuments.mockResolvedValue({ items: [] })
@@ -132,6 +135,18 @@ describe('POST /api/ai/conversations/[id]/messages', () => {
     delete process.env['ANTHROPIC_API_KEY']
     dbSelectResults.length = 0
     vi.clearAllMocks()
+  })
+
+  it('送信回数の上限超過時に 429 と待機時間を返す', async () => {
+    mockRateLimit.mockResolvedValueOnce({ allowed: false, limit: 12, remaining: 0, resetAt: 1800000000000, retryAfterSeconds: 42 })
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/ai/conversations/conv/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: '質問' }] }),
+    }), { params: Promise.resolve({ id: 'conv-1' }) })
+    expect(response.status).toBe(429)
+    expect(response.headers.get('Retry-After')).toBe('42')
+    expect(mockStreamText).not.toHaveBeenCalled()
   })
 
   it('大きすぎる payload は 413 を返す', async () => {
