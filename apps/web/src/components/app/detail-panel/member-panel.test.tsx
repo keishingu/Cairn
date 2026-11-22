@@ -23,6 +23,7 @@ const TARGET: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'member',
   membershipStatus: 'active',
+  status: 'online',
   profileAttributes: [
     { id: '00000000-0000-0000-0000-000000000011', name: '3年生', color: 'blue' },
     { id: '00000000-0000-0000-0000-000000000012', name: '経済学部', color: 'emerald' },
@@ -38,6 +39,7 @@ const ADMIN: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'admin',
   membershipStatus: 'active',
+  status: 'online',
   profileAttributes: [],
   joinedAt: '2025-01-01',
   projectCount: 0,
@@ -50,6 +52,7 @@ const OWNER: WorkspaceMemberDto = {
   avatarUrl: null,
   role: 'owner',
   membershipStatus: 'active',
+  status: 'online',
   profileAttributes: [],
   joinedAt: '2024-01-01',
   projectCount: 0,

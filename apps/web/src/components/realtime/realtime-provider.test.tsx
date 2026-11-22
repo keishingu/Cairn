@@ -51,6 +51,7 @@ vi.mock('@/lib/chat/client', () => ({
     projectChannels: ['project-channels'],
     workspaceChannels: ['workspace-channels'],
     dms: ['dms'],
+    workspaceMembers: ['workspace-members', 'active'],
     messages: (id: string) => ['messages', id],
   },
 }))
@@ -254,6 +255,29 @@ describe('RealtimeProvider', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-channels'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dms'] })
+  })
+
+  it('workspace_members の broadcast と再接続でメンバー一覧を再取得する', async () => {
+    const { queryClient } = renderProvider()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    act(() => {
+      channelRecords[0]?.callback?.('SUBSCRIBED')
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-members', 'active'] })
+    invalidate.mockClear()
+
+    act(() => {
+      channelRecords[0]?.broadcastCallback?.({ payload: { table: 'workspace_members' } })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['workspace-members', 'active'] })
   })
 
   it('channels の削除 broadcast で一覧・タスク・通知を再取得する', async () => {

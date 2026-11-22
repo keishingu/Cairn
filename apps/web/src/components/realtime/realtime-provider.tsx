@@ -112,7 +112,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }, TASKS_DEBOUNCE_MS)
   }, [queryClient])
 
-  // ─── ユーザートピック（notifications / channel_read_states / channel_members / チャンネル活動）────
+  // ─── ユーザートピック（notifications / channel_read_states / channel_members / workspace_members / チャンネル活動）────
   React.useEffect(() => {
     if (!userId) return
 
@@ -169,6 +169,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           } else if (table === 'channel_members') {
             // 非公開チャンネルの参加は一覧フィルタの正。既読行の有無に依存させない
             scheduleListInvalidate()
+          } else if (table === 'workspace_members') {
+            // 他のメンバーのステータス変更。チャット詳細のメンバー欄のドットに出す
+            void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceMembers })
           } else if (table === 'channels') {
             // 名称変更と削除。削除後は channel トピックの認可が消えるため、ここへ届ける。
             scheduleListInvalidate()
@@ -194,6 +197,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: ['ai-nudges'] })
           // アプリのモーダルも Broadcast だけで知るので、切断中の views.open・差し替え・閉じるを取り直す
           void queryClient.invalidateQueries({ queryKey: ['app-views'] })
+          // メンバーのステータスも Broadcast だけで知るので、切断中の変更を取り直す
+          void queryClient.invalidateQueries({ queryKey: chatQueryKeys.workspaceMembers })
           invalidateChannelLists(queryClient)
           return
         }
