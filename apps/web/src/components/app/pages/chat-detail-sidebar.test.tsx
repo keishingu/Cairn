@@ -25,7 +25,7 @@ vi.mock('@/lib/fetch-with-auth', () => ({
   fetchWithAuth: fetchWithAuthMock,
 }))
 vi.mock('@/hooks/use-current-user', () => ({
-  useWorkspacePermissions: () => ({ isGuest: false }),
+  useWorkspacePermissions: () => ({ isGuest: false, canWrite: true }),
 }))
 vi.mock('@/hooks/use-project-members', () => ({
   useWorkspaceMembers: () => ({ data: [] }),
@@ -58,7 +58,7 @@ const project: ProjectDto = {
 function renderSidebar(
   onJumpToMessage = vi.fn(),
   locale: 'ja' | 'en' = 'ja',
-  extra: { width?: number; messageMinWidth?: number; resize?: { dragging: boolean; handleProps: React.HTMLAttributes<HTMLElement> } } = {},
+  extra: Partial<React.ComponentProps<typeof ChatDetailSidebar>> = {},
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const sidebar = (
@@ -325,5 +325,32 @@ describe('チャット詳細サイドバーのタスク一覧', () => {
 
     expect(screen.getByRole('separator', { name: '詳細パネルの幅を変更' })).toHaveStyle({ left: '-4px' })
     expect(screen.getByRole('complementary')).toHaveStyle({ width: '360px', maxWidth: 'max(0px, calc(100% - 320px))' })
+  })
+})
+
+describe('チャット詳細サイドバーのメンバー欄', () => {
+  beforeEach(() => {
+    mockUseTasksByScope.mockReturnValue({
+      data: [],
+      isLoading: false,
+      toggleMutation: { mutate: vi.fn() },
+    } as unknown as ReturnType<typeof useTasksByScope>)
+  })
+
+  it('並び順ではなく各メンバーが設定したステータスでドットを出し、ステータス不明なら出さない', () => {
+    renderSidebar(vi.fn(), 'ja', {
+      memberLabel: 'プロジェクトメンバー',
+      channelMembers: [
+        { userId: 'u1', name: '離席中', url: null, status: 'away' },
+        { userId: 'u2', name: 'オフライン', url: null, status: 'offline' },
+        { userId: 'u3', name: 'オンライン', url: null, status: 'online' },
+        { userId: 'u4', name: '不明', url: null },
+      ],
+    })
+
+    const dots = screen.getAllByTestId('status-dot')
+    expect(dots.map(d => d.dataset['status'])).toEqual(['away', 'offline', 'online'])
+    expect(dots[0]).toHaveStyle({ background: 'var(--amber)' })
+    expect(dots[2]).toHaveStyle({ background: 'var(--emerald)' })
   })
 })

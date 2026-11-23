@@ -8,7 +8,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 const schema = z.object({ userId: z.string().uuid() })
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const { db, profiles, userBlocks, workspaceMembers } = await import('@cairn/db')
   const { and, eq } = await import('drizzle-orm')
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const parsed = schema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })

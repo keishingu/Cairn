@@ -110,6 +110,19 @@ describe('access/membership', () => {
     })
   })
 
+  describe('viewer の判定', () => {
+    it('閲覧範囲は member と同じだが、書き込みと API トークンは不可', async () => {
+      const { isWorkspaceMember, canWriteWorkspace, canUseApiAccess, requireRole } = await import('./membership')
+      expect(isWorkspaceMember('viewer')).toBe(true)
+      expect(requireRole('viewer', 'member')).toBeNull()
+      expect(requireRole('viewer', 'admin')?.status).toBe(403)
+      expect(canWriteWorkspace('viewer')).toBe(false)
+      expect(canWriteWorkspace('guest')).toBe(true)
+      expect(canUseApiAccess('viewer')).toBe(false)
+      expect(canUseApiAccess('member')).toBe(true)
+    })
+  })
+
   describe('filterActiveMemberIds', () => {
     it('空配列は DB を叩かず空 Set を返す', async () => {
       const { filterActiveMemberIds } = await import('./membership')

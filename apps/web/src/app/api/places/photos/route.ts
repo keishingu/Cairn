@@ -15,7 +15,7 @@ const MAX_PHOTOS = 5
 const PLACE_ID_RE = /^[A-Za-z0-9_-]+$/
 
 export async function GET(req: Request) {
-  const { error } = await getAuthContext()
+  const { error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const apiKey = process.env['GOOGLE_MAPS_API_KEY']

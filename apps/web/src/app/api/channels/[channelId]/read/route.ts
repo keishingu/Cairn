@@ -9,7 +9,7 @@ type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)
@@ -58,7 +58,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
 export async function POST(_req: Request, { params }: RouteContext) {
   const { channelId } = await params
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const forbidden = await requireChannelAccess(ctx.workspaceId, ctx.userId, channelId, ctx.role)

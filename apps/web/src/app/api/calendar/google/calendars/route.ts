@@ -17,7 +17,7 @@ export interface GcalCalendarDto {
 
 /** Google カレンダー一覧と選択状態を返す */
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {
@@ -51,7 +51,7 @@ export async function GET() {
 
 /** 選択するカレンダーを更新する */
 export async function PUT(req: NextRequest) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const body = await req.json() as { selectedCalendars: SelectedCalendar[] }

@@ -10,6 +10,7 @@ import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { hasBlockBetween } from '@/lib/safety/blocks'
 import { unsafeMessageError } from '@/lib/safety/message-filter'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
+import { needsMessageCreatedJob } from '@/lib/inngest/message-created-gate'
 import type { MessageDto } from './dto'
 
 type PostMessageInput = {
@@ -274,7 +275,14 @@ export async function postMessage({
     const senderName = profile?.displayName ?? '不明'
     const profileAttributes = await getProfileAttributesByUserIds(workspaceId, [inserted.senderId])
 
-    inngest
+    // 通知の対象にならない投稿ではジョブを起動しない（Inngest の実行数を通知に使う投稿だけに抑える）
+    const shouldNotify = needsMessageCreatedJob({
+      channelType: channelForSafety?.type,
+      content: inserted.content,
+      attachmentFileIds,
+      parentMessageId: payload.parentMessageId,
+    })
+    if (shouldNotify) inngest
       .send({
         name: 'message/created',
         data: {

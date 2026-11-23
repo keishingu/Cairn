@@ -10,6 +10,7 @@ import { getAuthUser, WORKSPACE_COOKIE } from '@/lib/get-auth-context'
 import { getOAuthIssuer } from '@/lib/mcp-oauth'
 import { validateOAuthAuthorizationRequest } from '@/lib/mcp-oauth-authorization'
 import { readRequestLocale } from '@/lib/i18n/request-locale'
+import { canUseApiAccess } from '@/lib/access/membership'
 import { finishOAuthAuthorization } from './actions'
 
 type TranslateFn = (message: string, values?: Record<string, string | number>) => string
@@ -55,8 +56,8 @@ export default async function OAuthAuthorizePage({
   const preferredWorkspace = (await cookies()).get(WORKSPACE_COOKIE)?.value
   const defaultWorkspace =
     memberships.find(
-      (membership) => membership.id === preferredWorkspace && membership.role !== 'guest',
-    ) ?? memberships.find((membership) => membership.role !== 'guest')
+      (membership) => membership.id === preferredWorkspace && canUseApiAccess(membership.role),
+    ) ?? memberships.find((membership) => canUseApiAccess(membership.role))
 
   return (
     <main className="app app-root" style={pageStyle}>
@@ -93,10 +94,10 @@ export default async function OAuthAuthorizePage({
               <option
                 key={membership.id}
                 value={membership.id}
-                disabled={membership.role === 'guest'}
+                disabled={!canUseApiAccess(membership.role)}
               >
                 {membership.name}
-                {membership.role === 'guest' ? t('(Guests cannot use this)') : ''}
+                {canUseApiAccess(membership.role) ? '' : t('(Guests and viewers cannot use this)')}
               </option>
             ))}
           </select>
@@ -121,7 +122,7 @@ export default async function OAuthAuthorizePage({
           </div>
 
           {!defaultWorkspace && (
-            <div style={{ color: 'var(--red-text)', fontSize: 'var(--fs-md)', marginBottom: 12 }}>{t('Guests cannot authorize an MCP OAuth connection. A member workspace or higher is required.')}</div>
+            <div style={{ color: 'var(--red-text)', fontSize: 'var(--fs-md)', marginBottom: 12 }}>{t('Guests and viewers cannot authorize an MCP OAuth connection. A member workspace or higher is required.')}</div>
           )}
           <p style={{ color: 'var(--text-4)', fontSize: 'var(--fs-sm)', lineHeight: 1.6 }}>{t('After connecting, your current Cairn role and each tool permission still apply. You can revoke access anytime from Settings, Integrations.')}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>

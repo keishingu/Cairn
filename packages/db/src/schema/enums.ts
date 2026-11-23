@@ -8,6 +8,8 @@ export const workspaceRoleEnum = pgEnum('workspace_role', [
   'admin',
   'member',
   'guest',
+  // 閲覧のみ。閲覧範囲は member と同じで、書き込みは API が一律に拒否する
+  'viewer',
 ])
 
 export const memberStatusEnum = pgEnum('workspace_member_status', ['active', 'inactive'])

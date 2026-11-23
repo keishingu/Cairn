@@ -38,7 +38,7 @@ const unsubscribeSchema = z.union([
 ])
 
 export async function POST(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let body: unknown
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let body: unknown

@@ -12,7 +12,7 @@ import { isImportOperator } from '@/lib/imports/operators'
  * 設定の入口を出し分けるためだけに使い、判定の正は各 API（withImportAdmin / withImportLinker）
  */
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const admin = isWorkspaceAdmin(ctx.role)
   let canLink = false

@@ -304,6 +304,7 @@ function ChatMessageRow({
   onShowTasks,
   onJumpToMessage,
   onCardStale,
+  readOnly = false,
 }: {
   message: MessageDto
   palette: Palette
@@ -323,6 +324,8 @@ function ChatMessageRow({
   onJumpToMessage: (messageId: string) => void
   /** カードの操作が古い版として断られたとき（card_changed）。最新のカードを取り直す */
   onCardStale: () => Promise<void>
+  /** 閲覧のみ（viewer）。リアクションの追加・切り替えを出さない（API も拒否する） */
+  readOnly?: boolean
 }) {
   const t = useT()
   // アプリの発言は現在のアプリ名で出す（Bot の profile 名はインストール時の名前のまま残り得る）
@@ -567,7 +570,8 @@ function ChatMessageRow({
                 accessibilityRole="button"
                 accessibilityLabel={t('{emoji} {count} reactions', { emoji: reaction.emoji, count: reaction.count })}
                 accessibilityHint={t('Long-press to see who reacted')}
-                onPress={() => onToggleReaction(message.id, reaction.emoji)}
+                // 閲覧のみでも長押しで「リアクションした人」は見られるよう、Pressable は無効にせず押下だけ止める
+                onPress={() => { if (!readOnly) onToggleReaction(message.id, reaction.emoji) }}
                 onLongPress={() => onShowReactors(reaction.emoji, message.id)}
                 delayLongPress={350}
                 style={({ pressed }) => [
@@ -589,7 +593,7 @@ function ChatMessageRow({
                 </Text>
               </Pressable>
             ))}
-            <Pressable
+            {!readOnly && <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('Add reaction')}
               onPress={() => onAddReaction(message)}
@@ -600,10 +604,10 @@ function ChatMessageRow({
             >
               <Ionicons name="happy-outline" size={14} color={palette.text3} />
               <Ionicons name="add" size={10} color={palette.text3} />
-            </Pressable>
+            </Pressable>}
           </View>
         )}
-        {message.reactions.length === 0 && (
+        {message.reactions.length === 0 && !readOnly && (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('Add reaction')}
@@ -758,6 +762,8 @@ export default function ChatThreadScreen() {
   const uploadRights = useUploadRights()
   const canUploadVideo = uploadRights.data?.canUploadVideo === true
   const { data: me } = useMe()
+  // 閲覧のみ（viewer）は投稿欄と書き込み操作を出さない。判定の正はサーバー（API が拒否する）
+  const readOnly = me?.wsRole === 'viewer'
   const projectChannelsQuery = useProjectChannels()
   const workspaceChannelsQuery = useWorkspaceChannels()
   const dmsQuery = useWorkspaceDms()
@@ -2103,7 +2109,7 @@ export default function ChatThreadScreen() {
                     }
                   >
                     <SwipeToReply
-                      enabled={canSwipeReply(item.message)}
+                      enabled={!readOnly && canSwipeReply(item.message)}
                       palette={palette}
                       onReply={() => beginReply(item.message)}
                     >
@@ -2113,6 +2119,7 @@ export default function ChatThreadScreen() {
                         mentionNames={mentionNames}
                         onToggleReaction={handleToggleReaction}
                         onAddReaction={setReactionTarget}
+                        readOnly={readOnly}
                         onShowReactors={(selectedEmoji, messageId) => setReactionPeople({ selectedEmoji, messageId })}
                         onLinkPress={openMarkdownLink}
                         onOpenActions={openMessageActions}
@@ -2176,7 +2183,21 @@ export default function ChatThreadScreen() {
           </View>
         )}
 
-        {!isAccessDenied && !isSessionExpired && (
+        {!isAccessDenied && !isSessionExpired && readOnly && (
+          <View
+            accessibilityRole="text"
+            style={[
+              styles.composerArea,
+              { backgroundColor: palette.card, borderTopColor: palette.border, paddingBottom: insets.bottom + 12 },
+            ]}
+          >
+            <Text style={{ color: palette.text3, fontSize: 14 }}>
+              {t('You have view-only access, so you cannot post or react.')}
+            </Text>
+          </View>
+        )}
+
+        {!isAccessDenied && !isSessionExpired && !readOnly && (
           <View
             style={[
               styles.composerArea,
@@ -2554,7 +2575,7 @@ export default function ChatThreadScreen() {
             <View style={[styles.sheetGrip, { backgroundColor: palette.border }]} />
             {/* 項目が多く横向きなど縦の短い画面では収まらないため、シートの高さを抑えて一覧をスクロールさせる */}
             <ScrollView style={styles.actionList} bounces={false}>
-              {actionTarget && canReplyToMessage(actionTarget) && (
+              {actionTarget && !readOnly && canReplyToMessage(actionTarget) && (
                 <ActionButton
                   icon="arrow-undo-outline"
                   label={t('Reply')}
@@ -2598,14 +2619,16 @@ export default function ChatThreadScreen() {
                   />
                 </>
               )}
-              <ActionButton
-                icon="checkbox-outline"
-                label={t('Make a task')}
-                palette={palette}
-                onPress={() => actionTarget && void makeTask(actionTarget)}
-              />
+              {!readOnly && (
+                <ActionButton
+                  icon="checkbox-outline"
+                  label={t('Make a task')}
+                  palette={palette}
+                  onPress={() => actionTarget && void makeTask(actionTarget)}
+                />
+              )}
               {/* プロジェクトのチャンネルで画像の添付があるときだけ（追加先はそのプロジェクト） */}
-              {projectId && actionTarget && actionTarget.messageType !== 'system' && galleryImagesOf(actionTarget.attachments).length > 0 && (
+              {!readOnly && projectId && actionTarget && actionTarget.messageType !== 'system' && galleryImagesOf(actionTarget.attachments).length > 0 && (
                 <ActionButton
                   icon="images-outline"
                   label={t('Add to the gallery')}

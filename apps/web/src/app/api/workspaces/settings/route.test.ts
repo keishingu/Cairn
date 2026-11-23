@@ -47,7 +47,7 @@ vi.mock('@cairn/db', () => {
   }
 })
 
-function authAs(role: 'owner' | 'admin' | 'member' | 'guest') {
+function authAs(role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest') {
   mockGetAuthContext.mockResolvedValue({
     ctx: { userId: 'user-1', workspaceId: 'ws-1', role },
     error: null,

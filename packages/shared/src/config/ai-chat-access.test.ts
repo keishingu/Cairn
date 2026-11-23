@@ -24,6 +24,12 @@ describe('canUseAiChat', () => {
       expect(canUseAiChat(role, 'member')).toBe(true)
     }
   })
+
+  it('閲覧のみのメンバーは設定に関わらず使えない', () => {
+    for (const level of ['owner', 'admin', 'member'] as const) {
+      expect(canUseAiChat('viewer', level)).toBe(false)
+    }
+  })
 })
 
 describe('isAiChatAccessLevel', () => {

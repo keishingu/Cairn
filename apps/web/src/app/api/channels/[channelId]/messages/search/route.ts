@@ -13,7 +13,7 @@ type RouteContext = { params: Promise<{ channelId: string }> }
 
 export async function GET(req: Request, { params }: RouteContext) {
   const { channelId } = await params
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true })
   if (authError) return authError
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? ''

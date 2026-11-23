@@ -73,7 +73,8 @@ export const TaskAssigneeField = ({ value, onChange, projectId, channelId, chann
       const inProject = projectMemberIds.has(m.userId)
       // project channel のguestはproject参加が前提で、privateの場合だけchannel参加も必要。
       // workspace channel のguestは公開/非公開ともchannel参加が必要。
-      const assignable = channelId
+      // 閲覧のみ（viewer）はタスクを更新できないため担当者にしない（API も 422 にする）
+      const assignable = m.role === 'viewer' ? false : channelId
         ? m.role === 'guest'
           ? projectId
             ? inProject && (!channelIsPrivate || channelMemberIds.has(m.userId))

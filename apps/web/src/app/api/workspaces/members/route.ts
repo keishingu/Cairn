@@ -7,21 +7,24 @@ import { isWorkspaceAdmin } from '@/lib/permissions'
 import { workspaceMemberDisplayName } from '@/lib/workspace-member-display-name'
 import { getProfileAttributesByUserIds } from '@/lib/profile-attributes'
 import type { ProfileAttributeDto } from '@cairn/shared'
+import type { UserStatus } from '@/lib/user-status'
 
 export interface WorkspaceMemberDto {
   userId: string
   displayName: string
   email: string | null
   avatarUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   membershipStatus: 'active' | 'inactive'
+  /** 本人がサイドバーで設定するステータス（手動。実際の接続状態ではない） */
+  status: UserStatus
   profileAttributes: ProfileAttributeDto[]
   joinedAt: string
   projectCount: number
 }
 
 export async function GET(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {
@@ -83,6 +86,7 @@ export async function GET(req: Request) {
         avatarUrl: workspaceMembers.avatarUrl,
         role: workspaceMembers.role,
         membershipStatus: workspaceMembers.membershipStatus,
+        status: workspaceMembers.status,
         joinedAt: workspaceMembers.joinedAt,
         projectCount: sql<number>`coalesce(${projectCountSq.n}, 0)`,
       })
@@ -116,6 +120,7 @@ export async function GET(req: Request) {
       avatarUrl: r.avatarUrl ?? null,
       role: r.role,
       membershipStatus: r.membershipStatus,
+      status: r.status,
       profileAttributes: profileAttributes.get(r.userId) ?? [],
       joinedAt: r.joinedAt.toISOString().slice(0, 10),
       projectCount: Number(r.projectCount),

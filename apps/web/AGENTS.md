@@ -7,8 +7,9 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 - 新規ルートは必ず `getAuthContext()` でユーザー・ワークスペースを取る（`Authorization: Bearer` 優先、Cookie フォールバック。Web も Expo も同じ Route Handlers を呼ぶ）。規約は [`docs/api-conventions.md`](../../docs/api-conventions.md)
 - 例外はアプリ（Bot）向けの `/api/app-api/<method>` だけ。`verifyBotToken` で Bot トークンを検証し、スコープとチャンネル参加は `lib/apps/web-api` で判定する（`getAuthContext()` に置き換えない。[`docs/app-platform-design.md`](../../docs/app-platform-design.md) §6）
 - 権限チェックは `src/lib/permissions.ts` の関数を使い、独自の判定を書かない。ワークスペース単位の操作は `requireWorkspaceOwner` / `requireWorkspaceAdmin` / `requireWorkspaceMember`、プロジェクト・チャンネル・ファイルなど参加者の guest も使うリソースは `requireProjectAccess` / `requireChannelAccess` / `canAccessFile`（`requireWorkspaceMember` にすると guest が全員弾かれる）。403 はロールを明示した日本語メッセージにし、フロントに生の 401/403 を出さない。UI は `useWorkspacePermissions()` で事前に disable・非表示にする
+- **閲覧のみの viewer は `getAuthContext()` が既定で 403 にする**。`allowViewer: true` は GET と本人にしか影響しない操作（既読・個人設定など）にだけ付け、書き込みルートに付けない（[`docs/api-conventions.md`](../../docs/api-conventions.md#閲覧のみviewerの扱い)）
 - 認可目的の membership 参照は `src/lib/access/membership.ts` を経由する。発言者・担当者など履歴上の行為者の表示 join だけは `workspace_members` を直接引き、非活性でも本人名義で残す（[`docs/user-deactivation-design.md`](../../docs/user-deactivation-design.md)）
-- `getAuthContext()` の active membership 再照合は最大 30 秒キャッシュする（`MEMBERSHIP_RECHECK_TTL_MS`）。非活性化・退出の遮断と member / guest 間のロール変更はこの秒数遅れる。owner / admin はキャッシュせず毎回再照合する（管理操作は `ctx.role` で判定するため、降格を遅らせない）
+- `getAuthContext()` の active membership 再照合は最大 30 秒キャッシュする（`MEMBERSHIP_RECHECK_TTL_MS`）。非活性化・退出の遮断と member / viewer / guest 間のロール変更（member → viewer の書き込み停止を含む）はこの秒数遅れる。owner / admin はキャッシュせず毎回再照合する（管理操作は `ctx.role` で判定するため、降格を遅らせない）
 - MCP（`/api/mcp`）の OAuth token は同一 request context 内だけで有効。通常 REST の資格情報にしない（[`docs/mcp-server-design.md`](../../docs/mcp-server-design.md)）
 - **「Cairn でログイン」（OIDC）で外部アプリに発行された JWT は、どの API でも受け付けない**。アクセストークンは `client_id` クレームを持ち、ID トークンは `aud` が外部アプリの client ID になる。どちらも Cairn と同じ鍵で署名され、`getClaims()` は `aud` を検証しないため、本人の判定は必ず `getAuthContext()` / `getAuthUser()` / `verifyAccessToken()`（`isCairnSessionClaims`）を通す。`supabase.auth.getUser()` や `getClaims()` の結果だけで本人と判定しない（[`docs/oidc-design.md`](../../docs/oidc-design.md) §5）
 
@@ -22,6 +23,7 @@ Next.js 15 / React 19 / Tailwind CSS v3 / shadcn/ui。サーバー状態は TanS
 - **設定は `/settings/[section]` の URL 駆動**。定義と本体は `src/components/app/pages/settings.tsx` に集約し PC / モバイルで共有する
 - **表示文言は i18next**。キーは英語の UI 文（`t('Sign in with Google')`）。翻訳カタログは `packages/shared/src/i18n/ja.ts` と `ko.ts`（英語はキー原文）。`translate()` は呼び出しごとに `lng` を渡すので、サーバー側でインスタンスの言語は切り替えない。言語は `profiles.locale`（`ja` / `en` / `ko` / `system`）で、`system` は Accept-Language と `navigator.languages` を同じ順で解決する。URL にロケールを付けない。ワークスペースのプロジェクト呼び方は未設定（null）のときだけ訳し、保存済みの文字列はそのまま出す
 - **外部チャットから取り込んだ過去ログは `messages.imported = true`**。未読・未読の初期位置・AI の巡回はこの印で除外し、編集・削除 API は拒否する。新しく未読や巡回の対象を数える経路を足すときも同じ条件を入れる。取り込みには通常の投稿 API（`postMessage`。通知が飛ぶ）を使わない（[`docs/import-design.md`](../../docs/import-design.md)）
+- **`message/created`（on-message-created）は通知の対象になる投稿（DM・メンション・返信・添付）にだけ送る**。判定は `lib/inngest/message-created-gate.ts` の `needsMessageCreatedJob()`。on-message-created に新しい通知の種類を足すときは、この判定も同じ変更で広げる（広げないとその通知だけ黙って届かない）。宛先の決定は読み取りだけの1 step（`lib/inngest/message-notification-plan.ts`）にまとめ、Inngest の実行数を増やさない
 - **メンション名のread時解決は `src/lib/chat/mention-name-map.ts` を共有し、同じワークスペースの所属履歴に限定する**。非活性メンバーの履歴表示は維持する。
 - **`/chats` を変えるときは Expo のネイティブチャット（`apps/mobile/app/(app)/chats/`）にも同じ変更が要るか確認する**。アプリ利用者にも届く挙動（一覧・メッセージ・返信・メンション・添付・未読・Realtime）なら同じ変更で直し、判断を変更の説明に残す
 

@@ -11,6 +11,7 @@ import { TaskDeleteDialog } from '../task-delete-dialog'
 import { TaskDetailPanel } from '../task-detail-panel'
 import { ImageLightbox, type LightboxImage } from '../image-lightbox'
 import { MarkdownContent } from '../markdown-content'
+import { StatusDot } from '../status-dot'
 import { CreateTaskModal, type CreateTaskChannel } from './create-task-modal'
 import { useTasksByScope } from '@/hooks/use-project-tasks'
 import { useChannelFiles } from '@/hooks/use-channel-files'
@@ -18,6 +19,8 @@ import { useRenameFile } from '@/hooks/use-rename-file'
 import { useT } from '@/components/locale-provider'
 import { fetchWithAuth } from '@/lib/fetch-with-auth'
 import { formatTaskTitleForDisplay } from '@/lib/task-title-display'
+import type { UserStatus } from '@/lib/user-status'
+import { useWorkspacePermissions } from '@/hooks/use-current-user'
 import type { ProjectDto } from '@/app/api/projects/route'
 import type { TaskDto } from '@/app/api/tasks/route'
 import type { ChannelFileDto } from '@/app/api/channels/[channelId]/files/route'
@@ -27,6 +30,8 @@ export interface ChatDetailMember {
   userId?: string
   name: string
   url: string | null
+  /** 本人が設定したステータス。ワークスペースメンバー一覧で引けないときは未定義でドットを出さない */
+  status?: UserStatus
 }
 
 export interface ChatDetailSidebarProps {
@@ -196,6 +201,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
   const [detailTaskId, setDetailTaskId] = React.useState<string | null>(null)
   const [deletingTask, setDeletingTask] = React.useState<TaskDto | null>(null)
   const [showCreateDialog, setShowCreateDialog] = React.useState(false)
+  const { canWrite } = useWorkspacePermissions()
 
   const toggle = (id: string, status: TaskDto['status']) =>
     toggleMutation.mutate({ id, newStatus: status === 'done' ? 'todo' : 'done' })
@@ -232,7 +238,7 @@ const TaskChecklist = ({ project, channel, onJumpToMessage, isMobile = false }: 
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', fontWeight: 600 }}>
             {completed} / {total}
           </span>
-          {channel && (
+          {channel && canWrite && (
             <button
               type="button"
               onClick={() => setShowCreateDialog(true)}
@@ -559,7 +565,7 @@ const ChatDetailContent = ({
       <div className="section-label" style={{ marginBottom: 8 }}>{memberLabel}</div>
       {channelMembers.length === 0 ? (
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-4)', padding: '4px 0' }}>{t('No members')}</div>
-      ) : channelMembers.map((m, i) => {
+      ) : channelMembers.map(m => {
         const clickable = !!m.userId
         return (
           <div
@@ -577,7 +583,7 @@ const ChatDetailContent = ({
           >
             <div style={{ position: 'relative' }}>
               <Avatar name={m.name} url={m.url} size={24}/>
-              <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: i < 3 ? 'var(--accent)' : 'var(--text-4)', border: '2px solid var(--card)' }}/>
+              {m.status && <StatusDot status={m.status} size={5}/>}
             </div>
             <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-2)', flex: 1 }}>{m.name}</span>
           </div>

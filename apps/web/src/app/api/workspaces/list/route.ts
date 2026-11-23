@@ -9,7 +9,7 @@ export interface WorkspaceListItemDto {
   name: string
   slug: string
   logoUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 }
 
 export async function GET() {

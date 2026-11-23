@@ -15,7 +15,7 @@ export interface MessageSearchResultDto extends MessageDto {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error: authError } = await getAuthContext({
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true,
     allowApiToken: true,
     requiredApiTokenScope: 'read',
   })

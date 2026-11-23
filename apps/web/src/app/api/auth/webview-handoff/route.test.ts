@@ -74,6 +74,8 @@ describe('POST /api/auth/webview-handoff', () => {
       tokenHash: 'hashed-abc',
       workspaceId: 'ws-1',
     })
+    // 閲覧のみ（viewer）でも選択中の workspace を引き継げるよう、viewer を通す
+    expect(mockGetAuthContext).toHaveBeenCalledWith({ allowViewer: true })
     // email はリクエストではなく認証済みユーザーから解決すること
     expect(mockGetUserById).toHaveBeenCalledWith('user-1')
     expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'me@example.com' })

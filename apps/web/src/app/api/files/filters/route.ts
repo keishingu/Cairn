@@ -10,7 +10,7 @@ import {
 } from '@/lib/files/saved-file-filter'
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {
@@ -48,7 +48,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   let body: unknown

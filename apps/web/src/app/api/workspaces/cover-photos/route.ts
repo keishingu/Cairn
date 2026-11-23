@@ -15,7 +15,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ])
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   try {

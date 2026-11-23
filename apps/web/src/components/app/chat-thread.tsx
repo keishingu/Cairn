@@ -238,7 +238,7 @@ const REACTION_TOOLTIP_MAX_WIDTH = 320
 // 10人分が折り返して収まる高さ。これより上に余白がなければ下に出す
 const REACTION_TOOLTIP_MIN_SPACE_ABOVE = 120
 
-export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onBlock, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused }: {
+export const ChatMessage = React.memo(function ChatMessage({ messageId, messageType, senderId, currentUserId, senderName, senderAvatarUrl, senderEmail, senderProfileAttributes = [], senderProjectRole, senderProjectRoleName, senderProjectRoleColor, senderProjectRoleLegacy, createdAt, isEdited, content, reactions, attachments, replyTo, bookmarked, linkedTasksKey = '', blocked, blocks, blocksRevision, cardMentionNames, senderApp, imported, onCardStale, onReact, onEdit, onDelete, onCheckboxToggle, onReply, onBookmark, onMakeTask, onAddToGallery, onJumpToMessage, onCopyLink, onImageClick, onBlock, onMoveToThread, onOpenSender, selection, mentionNames, compact, isMobile, focused, readOnly = false }: {
   messageId: string
   messageType: MessageType
   senderId: string
@@ -295,6 +295,8 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   compact?: boolean
   isMobile?: boolean
   focused?: boolean
+  /** 閲覧のみ（viewer）。返信・リアクション・タスク化などの書き込み操作を出さない（API も拒否する） */
+  readOnly?: boolean
 }) {
   const t = useT()
   const router = useRouter()
@@ -348,7 +350,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const chipTasks = React.useMemo(() => linkedTasks.filter((_, index) => !inlinePlaced[index]), [linkedTasks, inlinePlaced])
   const isOwn = currentUserId === senderId
   // 取り込んだ過去ログは、紐づけで本人の投稿になっても編集・削除させない（API も拒否する）
-  const canModify = isOwn && !imported
+  const canModify = isOwn && !imported && !readOnly
   const canCopy = content.length > 0
   const visibleProjectRole = chatProjectRoleLabel({
     legacyRole: senderProjectRole,
@@ -372,7 +374,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
     const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
-    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId) setShowPicker(true) }
+    const onReactEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && !readOnly) setShowPicker(true) }
     const onDeleteEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) setDeleteConfirm(true) }
     window.addEventListener('cairn:edit-message', onEditEvt)
     window.addEventListener('cairn:react-message', onReactEvt)
@@ -383,7 +385,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       window.removeEventListener('cairn:delete-message', onDeleteEvt)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageId, canModify, content])
+  }, [messageId, canModify, content, readOnly])
 
   const submitEdit = () => {
     const trimmed = editDraft.trim()
@@ -444,9 +446,9 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   const menuActions = [
     { icon: 'link' as const, label: t('Copy link'), onSelect: () => onCopyLink(messageId) },
     ...(canCopy ? [{ icon: 'copy' as const, label: t('Copy'), onSelect: handleCopy }] : []),
-    { icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) },
-    ...(onAddToGallery && hasGalleryImage ? [{ icon: 'image' as const, label: t('Add to the gallery'), onSelect: () => onAddToGallery(messageId) }] : []),
-    ...(onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
+    ...(!readOnly ? [{ icon: 'check' as const, label: t('Make a task'), onSelect: () => onMakeTask(messageId) }] : []),
+    ...(!readOnly && onAddToGallery && hasGalleryImage ? [{ icon: 'image' as const, label: t('Add to the gallery'), onSelect: () => onAddToGallery(messageId) }] : []),
+    ...(!readOnly && onMoveToThread ? [{ icon: 'arrowRight' as const, label: t('Move to thread'), onSelect: () => onMoveToThread(messageId) }] : []),
     ...(defaultReaction && defaultReaction.userNames.length > 0 ? [{ icon: 'users' as const, label: t('Show who reacted'), onSelect: openReactionPeople }] : []),
     ...(!isOwn ? [{ icon: 'flag' as const, label: t('Report'), onSelect: () => setReportOpen(true) }] : []),
     // アプリはユーザーではないのでブロックの対象にしない（止めるのはアンインストールか Bot をチャンネルから外す）
@@ -464,9 +466,11 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
       ? { flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }
       : { position: 'absolute', top: 4, right: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1px 3px', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 1 }
     }>
-      <button onClick={() => onReply(messageId)} title={t('Reply')} style={iconBtnStyle}>
-        <Icon name="reply" size={14}/>
-      </button>
+      {!readOnly && (
+        <button onClick={() => onReply(messageId)} title={t('Reply')} style={iconBtnStyle}>
+          <Icon name="reply" size={14}/>
+        </button>
+      )}
       <button onClick={() => onBookmark(messageId)} title={bookmarked ? t('Remove bookmark') : t('Bookmarks')} style={{ ...iconBtnStyle, color: bookmarked ? 'var(--accent)' : 'var(--text-3)' }}>
         <Icon name="bookmark" size={14}/>
       </button>
@@ -600,7 +604,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
                   lineHeight={1.6}
                   mentionNames={mentionNames}
                   lineTasks={linkedTasks}
-                  onCheckboxToggle={handleCheckboxToggle}
+                  {...(readOnly ? {} : { onCheckboxToggle: handleCheckboxToggle })}
                 />
               )}
             </div>
@@ -694,7 +698,7 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
             </div>
           )
         })()}
-        <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+        {(!readOnly || reactions.length > 0) && <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
           {reactions.map((r, i) => (
             <span key={i} style={{ position: 'relative', display: 'inline-flex' }}
               onMouseEnter={e => {
@@ -711,14 +715,14 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               }}
               onMouseLeave={() => !isMobile && setHoveredReaction(null)}
             >
-              <button onClick={() => onReact(messageId, r.emoji)} style={{
+              <button onClick={() => { if (!readOnly) onReact(messageId, r.emoji) }} disabled={readOnly} style={{
                 height: compact ? 22 : 24, padding: '0 7px', borderRadius: 12,
                 background: r.mine ? 'var(--accent-soft)' : 'var(--card-2)',
                 border: `1px solid ${r.mine ? 'var(--accent)' : 'var(--border)'}`,
                 fontSize: 'var(--fs-xs)', fontWeight: 600,
                 color: r.mine ? 'var(--accent-text)' : 'var(--text-2)',
                 display: 'inline-flex', alignItems: 'center', gap: 3,
-                cursor: 'pointer', fontFamily: 'inherit',
+                cursor: readOnly ? 'default' : 'pointer', fontFamily: 'inherit',
               }}>{r.emoji} {r.count}</button>
               {/* PCはホバーで抜粋、全員はPC・モバイルWebともメッセージの「…」メニューから表示 */}
               {!isMobile && hoveredReaction?.index === i && r.userNames.length > 0 && (
@@ -735,17 +739,19 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
               )}
             </span>
           ))}
-          <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
-            width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12,
-            background: 'var(--card-2)', border: '1px solid var(--border)',
-            fontSize: 'var(--fs-sm)', color: 'var(--text-3)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}>+</button>
-          {showPicker && (
+          {!readOnly && (
+            <button ref={addBtnRef} onClick={() => setShowPicker(p => !p)} style={{
+              width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12,
+              background: 'var(--card-2)', border: '1px solid var(--border)',
+              fontSize: 'var(--fs-sm)', color: 'var(--text-3)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>+</button>
+          )}
+          {showPicker && !readOnly && (
             <ReactionPicker anchorRef={addBtnRef} onSelect={emoji => onReact(messageId, emoji)} onClose={() => setShowPicker(false)} {...(isMobile ? { isMobile: true } : {})}/>
           )}
-        </div>
+        </div>}
       </div>
       {!isMobile && messageActions}
       {selectedReaction && (
@@ -1685,6 +1691,8 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
     encodeInsertedMentions(text, mentionInsertionsRef.current, ({ tokenId }) => `<@${tokenId}>`)
 
   const { data: currentUser } = useCurrentUser()
+  // 閲覧のみ（viewer）は投稿欄と書き込み操作を出さない。判定の正はサーバー（getAuthContext が拒否する）
+  const readOnly = currentUser?.wsRole === 'viewer'
   // 表示中のチャットだけ channel トピックを購読する（画面外のチャンネルは user トピックで届く）
   useRealtimeChannel(channelId)
   const latestMessagesQuery = useChannelMessages(channelId)
@@ -2602,6 +2610,7 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
               mentionNames={mentionNames}
               {...(compact ? { compact: true } : {})}
               {...(isMobile ? { isMobile: true } : {})}
+              {...(readOnly ? { readOnly: true } : {})}
             />
           ))}
           </>
@@ -2634,7 +2643,12 @@ export const ChatThread = ({ channelId, channelName, isPrivate, isDm, compact, i
           </div>
         </div>
       )}
-      {!isAccessDenied && !moveSelection && (
+      {!isAccessDenied && !moveSelection && readOnly && (
+        <div role="note" style={{ padding: '12px 16px', borderTop: '1px solid var(--divider)', background: 'var(--card-2)', color: 'var(--text-3)', fontSize: 'var(--fs-md)', flexShrink: 0 }}>
+          {t('You have view-only access, so you cannot post or react.')}
+        </div>
+      )}
+      {!isAccessDenied && !moveSelection && !readOnly && (
       <ChatInputBar
         placeholder={placeholder}
         draft={draft}

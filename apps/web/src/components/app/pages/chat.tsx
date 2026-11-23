@@ -3,7 +3,7 @@
 import React from 'react'
 import { FEATURE_FLAGS, nextChatChannelAfterRemoval, openChannelDisappeared } from '@cairn/shared'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Icon, Avatar, AvatarStack, StatusChip } from '../primitives'
+import { Icon, Avatar, AvatarStack } from '../primitives'
 import { MobileHeader } from '../mobile/header'
 import { ChatThread } from '../chat-thread'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -671,7 +671,7 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
           : undefined
 
   const { data: currentUser } = useCurrentUser()
-  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest'
+  const canCreateChildChannel = currentUser != null && currentUser.wsRole !== 'guest' && currentUser.wsRole !== 'viewer'
   // 非公開チャンネルのみ「チャンネル参加者」を表示するためメンバーを取得する
   const { data: channelMemberIds = [] } = useChannelMembers(isPrivate ? channelId : null)
 
@@ -699,26 +699,34 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
     enabled: isProject && !!currentChannel,
   })
 
+  const memberStatusById = React.useMemo(
+    () => new Map(members.map(m => [m.userId, m.status])),
+    [members],
+  )
   const channelMembers = React.useMemo<ChatDetailMember[]>(() => {
+    const withStatus = (m: ChatDetailMember): ChatDetailMember => {
+      const status = m.userId ? memberStatusById.get(m.userId) : undefined
+      return status ? { ...m, status } : m
+    }
     if (isDm) {
-      return [
+      return ([
         { userId: currentDm.participantId, name: currentDm.participantName, url: currentDm.participantAvatarUrl ?? null },
         ...(currentUser ? [{ userId: currentUser.id, name: currentUser.displayName, url: currentUser.avatarUrl ?? null }] : []),
-      ]
+      ] as ChatDetailMember[]).map(withStatus)
     }
     if (isProject) {
       // プロジェクト連動: 紐づくプロジェクトの全メンバーを表示
-      return projectMembers.map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
+      return projectMembers.map(m => withStatus({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
     }
     if (isPrivate) {
       const idSet = new Set(channelMemberIds.map(m => m.userId))
-      return members.filter(m => idSet.has(m.userId)).map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null }))
+      return members.filter(m => idSet.has(m.userId)).map(m => ({ userId: m.userId, name: m.displayName, url: m.avatarUrl ?? null, status: m.status }))
     }
     // 公開（全体）チャンネルはヘッダーのアバター表示用に名前だけ保持（パネルでは非表示）
     const names = currentGeneral?.memberNames ?? []
     const urls = currentGeneral?.memberAvatarUrls ?? []
     return names.map((name, i) => ({ name, url: urls[i] ?? null }))
-  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers])
+  }, [isDm, isProject, isPrivate, currentDm, currentUser, channelMemberIds, members, currentGeneral, projectMembers, memberStatusById])
 
   // メンバー欄の見出し。意味がチャンネル種別で変わるため明示。公開チャンネルは非表示(null)
   const memberLabel = isProject ? t('Project members') : isPrivate ? t('Channel members') : isDm ? t('Participants') : null
@@ -1050,7 +1058,6 @@ export const PageChat = ({ isMobile = false }: { isMobile?: boolean }) => {
                   {isDm ? <Avatar name={channelName} url={currentDm?.participantAvatarUrl ?? null} size={20}/> : isPrivate ? <Icon name="lock" size={13} color="var(--text-3)"/> : <span style={{ color: 'var(--text-3)' }}>#</span>}
                   {channelName}
                 </h2>
-                {isProject && <StatusChip name={t('Planning')} color="#3B82F6"/>}
                 {isPrivate && <span className="chip" style={{ background: 'var(--amber-soft)', color: 'var(--amber-text)' }}><Icon name="lock" size={9}/> {t('Private channel')}</span>}
               </div>
               <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-3)', marginTop: 2 }}>

@@ -4,7 +4,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { sql, type SQLWrapper } from 'drizzle-orm'
-import type { WorkspaceRole } from '@/lib/access/membership'
+import { canUseApiAccess, type WorkspaceRole } from '@/lib/access/membership'
 
 export const API_TOKEN_PREFIX = 'cairn_pat_'
 export const API_TOKEN_DEFAULT_DAYS = 90
@@ -82,7 +82,7 @@ export function buildApiTokenRateLimitUpdate(columns: {
 
 /**
  * PAT の workspace と role は毎回 DB で再照合する。メンバーが無効化された場合や
- * guest に変更された場合、既存 PAT も即座に利用不可になる。
+ * guest / viewer に変更された場合、既存 PAT も即座に利用不可になる。
  */
 export async function verifyApiToken(
   rawToken: string,
@@ -122,7 +122,7 @@ export async function verifyApiToken(
     .limit(1)
 
   if (!row) throw new ApiTokenError(401, 'Invalid or expired API token')
-  if (row.role === 'guest') throw new ApiTokenError(403, 'Guests cannot use API tokens')
+  if (!canUseApiAccess(row.role)) throw new ApiTokenError(403, 'Guests and viewers cannot use API tokens')
   if (!apiTokenAllows(row.scope, options.requiredScope)) {
     throw new ApiTokenError(403, 'API token does not have the required scope')
   }

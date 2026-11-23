@@ -14,7 +14,7 @@ const querySchema = z.object({
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function GET(req: Request, { params }: RouteContext) {
-  const { ctx, error } = await getAuthContext({
+  const { ctx, error } = await getAuthContext({ allowViewer: true,
     allowApiToken: true,
     requiredApiTokenScope: 'read',
   })

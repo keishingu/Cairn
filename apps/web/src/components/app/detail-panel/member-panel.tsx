@@ -20,6 +20,7 @@ const WS_ROLE_LABEL: Record<WorkspaceMemberDto['role'], string> = {
   owner:  'Owner',
   admin:  'Admin',
   member: 'Member',
+  viewer: 'Viewer',
   guest:  'Guest',
 }
 
@@ -27,6 +28,7 @@ const WS_ROLE_STYLE: Record<WorkspaceMemberDto['role'], { c: string; bg: string 
   owner:  { c: 'var(--accent-text)',  bg: 'var(--accent-soft)' },
   admin:  { c: 'var(--violet-text)', bg: 'var(--violet-soft)' },
   member: { c: 'var(--text-3)',       bg: 'var(--card-2)' },
+  viewer: { c: 'var(--text-4)',       bg: 'var(--card-2)' },
   guest:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
 }
 
@@ -36,6 +38,30 @@ const PROJECT_ROLE_STYLE: { [key: string]: { c: string; bg: string } } = {
   member:    { c: 'var(--text-3)',       bg: 'var(--card-2)' },
   reviewer:  { c: 'var(--text-2)',       bg: 'var(--card-2)' },
   observer:  { c: 'var(--text-4)',       bg: 'var(--card-2)' },
+}
+
+/** 日付キーの比較。未設定（null）はどちらの向きでも末尾に置く */
+function compareDateKey(a: string | null, b: string | null, order: 'asc' | 'desc'): number {
+  if (a === b) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  const diff = a < b ? -1 : 1
+  return order === 'asc' ? diff : -diff
+}
+
+/**
+ * プロジェクト履歴の並び順。進行中は開始日の近い順（昇順）で上に、アーカイブ済みは
+ * 終了日（なければ開始日）の新しい順で下にまとめ、古いものほど下へ流す。
+ * 日付未設定は位置を決められないため各グループの末尾に置く。
+ * アーカイブ日時の列は無いので終了日で代用する。
+ */
+export function sortMemberProjects(projects: MemberProjectDto[]): MemberProjectDto[] {
+  return [...projects].sort((a, b) => {
+    if (a.archived !== b.archived) return Number(a.archived) - Number(b.archived)
+    return a.archived
+      ? compareDateKey(a.endDate ?? a.startDate, b.endDate ?? b.startDate, 'desc')
+      : compareDateKey(a.startDate, b.startDate, 'asc')
+  })
 }
 
 function formatJoinedAt(
@@ -194,7 +220,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
     currentRole !== 'guest' &&
     (viewerRole === 'owner' || (viewerRole === 'admin' && currentRole !== 'owner'))
   const allowedRoles: WorkspaceMemberDto['role'][] =
-    viewerRole === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member']
+    viewerRole === 'owner' ? ['owner', 'admin', 'member', 'viewer'] : ['admin', 'member', 'viewer']
   // 唯一の active owner を降格すると API が 422 になるため、選択肢から外す
   const activeOwnerCount = allMembers.filter(
     m => m.role === 'owner' && m.membershipStatus === 'active',
@@ -349,11 +375,7 @@ export const MemberDetailPanel = ({ member, onProjectClick, onClose, isMobile }:
       fetchWithAuth(`/api/workspaces/members/${member.userId}/projects`).then(r => r.json()),
   })
 
-  // アーカイブ済みは履歴の下部にまとめる（進行中の順序は維持したいので安定ソート）
-  const sortedProjects = React.useMemo(
-    () => [...projects].sort((a, b) => Number(a.archived) - Number(b.archived)),
-    [projects],
-  )
+  const sortedProjects = React.useMemo(() => sortMemberProjects(projects), [projects])
 
   const handleProjectClick = (p: MemberProjectDto) => {
     onProjectClick(p)

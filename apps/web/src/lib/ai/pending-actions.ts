@@ -430,8 +430,8 @@ export async function approvePendingAction(
 
 /** 承認者がそのチャンネルへ Cairn AI を追加して投稿させてよいか（アプリをチャンネルへ追加できるのは member 以上） */
 export async function assertCanApproveChannelPost(ctx: AuthContext, channelId: string) {
-  if (!isWorkspaceMember(ctx.role)) {
-    throw new PendingActionError(403, 'ゲストは Cairn AI の投稿を承認できません')
+  if (!isWorkspaceMember(ctx.role) || ctx.role === 'viewer') {
+    throw new PendingActionError(403, 'ゲスト・閲覧のみのメンバーは Cairn AI の投稿を承認できません')
   }
   if (!(await canAccessChannel(ctx.workspaceId, ctx.userId, channelId, ctx.role))) {
     throw new PendingActionError(403, 'このチャンネルにアクセスする権限がありません')

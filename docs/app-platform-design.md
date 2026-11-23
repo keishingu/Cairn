@@ -292,6 +292,8 @@ Slack と同じ方式にする。
 | `response_action`（view_submission の同期応答） | `errors` / `update` / `clear` | 入力エラーの表示、モーダルの差し替え |
 | エフェメラル（本人だけに見える）メッセージ | × | 後続。匿名投票を出すときの前提になる |
 
+30日間更新されていないモーダルは、開いたまま放置されたものも日次クリーンアップで削除する（送信の確保中は除く）。
+
 モーダルの状態（`view_id`・`callback_id`・`private_metadata`・`hash`・開いた利用者）は `app_views` に保存し、`views.update` の `hash` で競合を検出する。送信もクライアントが描いていた `hash` を付け、一致しなければ `view_changed` で拒む（差し替え後の意味で古い入力を解釈しない）。同じモーダルの同時送信は、届ける前に `submitting_until`（45秒の確保。DB の query_timeout より長い）を1つだけ取れた送信だけを `view_submission` にし、届ける直前にも確保がまだ自分のもの（値が変わっていない）かを確かめて延ばす。起点のチャンネルが消えたモーダルは行ごと消す（`channel_id` は cascade）。起点のチャンネルがあるモーダルは、送る時点で送信者のチャンネルへのアクセスとアプリの投稿可否（参加・アーカイブ）を確かめ直し、だめなら `channel_unavailable` で拒む
 
 ## 6. 内部 API（Bot から使う Web API）
@@ -310,7 +312,7 @@ Slack と同じ方式にする。
 
 - パスは `POST /api/app-api/<method>`（例: `/api/app-api/chat.postMessage`）。Slack の `https://slack.com/api/<method>` と同じ並びにして、Bolt の `slackApiUrl` を差し替えるだけで向き先が変わるようにする
 - 応答は Slack と同じ `{ "ok": true, ... }` / `{ "ok": false, "error": "channel_not_found" }`。HTTP ステータスは常に 200（Slack の流儀）。エラーコードも Slack の名前に寄せる
-- Bot の投稿も既存の `message/created` イベントへ流し、メンション通知・Push・AI インデックスは既存の `on-message-created` に任せる（通知は Inngest 経由。ローカルでは Inngest dev server が要る）
+- Bot の投稿も既存の `message/created` イベントへ流し、メンション通知・Push は既存の `on-message-created` に任せる（通知は Inngest 経由。ローカルでは Inngest dev server が要る）。人の投稿と同じく、通知の対象にならない投稿（DM・メンション・返信・添付のどれでもない）ではイベントを送らない
 - Bot の発言（代替テキスト）はメッセージ検索・RAG インデックスに含める。AI PMO の「未回答の依頼」判定からは除外する（§11 D11）
 
 ### 6.1 アプリの起動口（作成メニュー）

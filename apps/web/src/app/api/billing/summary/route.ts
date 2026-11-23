@@ -19,7 +19,7 @@ export interface BillingSummaryDto {
 }
 
 export async function GET(request: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   const forbidden = requireRole(ctx.role, 'member')
   if (forbidden) return forbidden

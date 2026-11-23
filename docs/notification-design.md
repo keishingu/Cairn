@@ -78,7 +78,7 @@
 | トピック | 配信元テーブル | 用途 |
 |---|---|---|
 | `channel:{channelId}` | `messages` INSERT/UPDATE、`message_reactions`、`message_blocks`、`tasks` | 表示中のチャットの本文・リアクション・カード・タスクの印の更新シグナル |
-| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク |
+| `user:{userId}` | `notifications`、`ai_nudges`、`channel_read_states`、`channel_members`、`channels`、`app_views`、チャンネル活動（`messages` / `tasks`）、`workspace_members`（`status` の変更のみ。同じワークスペースの全メンバーへ配る） | ベル・AI nudge 更新、既読のデバイス間同期、非公開チャンネルの参加・離脱、画面外チャンネルの未読・一覧・タスク、メンバーのステータス表示 |
 
 - 削除はソフトデリート（`deleted_at`）なので UPDATE で拾う。`message_reactions` は `channel_id` を持たないためトリガー内で親メッセージから引く
 - トリガーは `supabase/migrations/0034_realtime_broadcast.sql` ほか後続マイグレーションで追加
@@ -148,6 +148,7 @@ Web は `apps/web/src/components/realtime/realtime-provider.tsx` を `app/(app)/
 | `user:{me}` の `notifications` | notifications + チャンネル一覧（未参加チャンネル・新規 DM の活動を回収） |
 | `user:{me}` の `channel_read_states` | チャンネル一覧 + notifications（他デバイス既読の即時同期） |
 | `user:{me}` の `channel_members` / `ai_nudges` | チャンネル一覧 / ai-nudges |
+| `user:{me}` の `workspace_members` | ワークスペースメンバー一覧（チャット詳細のメンバー欄のステータス） |
 
 - 購読前に `supabase.realtime.setAuth(accessToken)` を **await** する（未完了で join すると認可エラー）。トークン更新時も再設定。`channel:{id}` の join は `user:{me}` の SUBSCRIBED 後
 - `user:{me}` の（再）SUBSCRIBED 時に対象クエリを一括 invalidate して切断中の取りこぼしを回収する

@@ -12,7 +12,7 @@ export interface WorkspaceMembership {
   name: string
   slug: string
   logoUrl: string | null
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 }
 
 export function fetchWorkspaceMemberships(t: Translate = translateJa): Promise<WorkspaceMembership[]> {

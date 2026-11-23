@@ -17,7 +17,9 @@ export function isAiChatAccessLevel(value: unknown): value is AiChatAccessLevel 
   return AI_CHAT_ACCESS_LEVELS.includes(value as AiChatAccessLevel)
 }
 
-export function canUseAiChat(role: 'owner' | 'admin' | 'member' | 'guest', level: AiChatAccessLevel): boolean {
+// viewer（閲覧のみ）は会話の作成・送信が書き込みにあたるため、設定に関わらず使えない
+export function canUseAiChat(role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest', level: AiChatAccessLevel): boolean {
+  if (role === 'viewer') return false
   if (level === 'owner') return role === 'owner'
   if (level === 'admin') return role === 'owner' || role === 'admin'
   return true

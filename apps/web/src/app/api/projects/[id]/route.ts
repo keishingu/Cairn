@@ -9,7 +9,7 @@ import { requireProjectAccess, requireRole } from '@/lib/permissions'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { ctx, error: authError } = await getAuthContext({
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true,
     allowApiToken: true,
     requiredApiTokenScope: 'read',
   })

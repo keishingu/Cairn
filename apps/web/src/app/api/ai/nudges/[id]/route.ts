@@ -12,7 +12,8 @@ const feedbackSchema = z.object({
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { ctx, error } = await getAuthContext()
+  // 本人の行だけを閉じる・片付ける操作なので、閲覧のみ（viewer）に変わった後も行えるようにする
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   if (!FEATURE_FLAGS.aiPmo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params

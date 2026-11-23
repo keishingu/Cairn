@@ -6,7 +6,7 @@ import { getAuthContext } from '@/lib/get-auth-context'
 import { isModerator } from '@/lib/safety/moderator'
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
   if (!(await isModerator(ctx.userId))) return NextResponse.json({ error: 'この操作には運営者権限が必要です' }, { status: 403 })
   const { db, contentReports } = await import('@cairn/db')

@@ -9,7 +9,7 @@ import { requireRole } from '@/lib/permissions'
 const createInviteSchema = z.object({
   expiresIn: z.enum(['1h', '30d', 'never']).default('1h'),
   maxUses: z.number().int().positive().nullable().optional(),
-  role: z.enum(['member', 'guest']).default('member'),
+  role: z.enum(['member', 'viewer', 'guest']).default('member'),
 })
 
 export async function POST(req: Request) {
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   const forbidden = requireRole(ctx.role, 'admin')

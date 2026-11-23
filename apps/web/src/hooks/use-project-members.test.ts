@@ -68,6 +68,7 @@ const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
     avatarUrl: null,
     role: 'owner',
     membershipStatus: 'active',
+    status: 'online',
     profileAttributes: [],
     joinedAt: '2026-01-01',
     projectCount: 1,
@@ -79,6 +80,7 @@ const STUB_WS_MEMBERS: WorkspaceMemberDto[] = [
     avatarUrl: null,
     role: 'member',
     membershipStatus: 'active',
+    status: 'online',
     profileAttributes: [],
     joinedAt: '2026-01-03',
     projectCount: 0,
@@ -195,7 +197,7 @@ describe('workspace invite hooks', () => {
 
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/workspaces/invites',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ expiresIn: '30d', role: 'member' }) }),
     )
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workspace-invites'] })
   })

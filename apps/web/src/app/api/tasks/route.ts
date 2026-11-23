@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'assignee must be "me"' }, { status: 422 })
   }
 
-  const { ctx, error } = await getAuthContext({
+  const { ctx, error } = await getAuthContext({ allowViewer: true,
     allowApiToken: true,
     requiredApiTokenScope: 'read',
   })

@@ -41,8 +41,8 @@ export class SkillRunError extends Error {
 
 /** 呼び出せるスキルを引く。ゲストには一覧も見せないため、呼び出しも member 以上にする（§2.5） */
 export async function resolveSkill(ctx: AuthContext, name: string): Promise<SkillDefinition> {
-  if (!isWorkspaceMember(ctx.role)) {
-    throw new SkillRunError(403, 'スキルを呼び出せるのはメンバー以上です（ゲストは呼び出せません）')
+  if (!isWorkspaceMember(ctx.role) || ctx.role === 'viewer') {
+    throw new SkillRunError(403, 'スキルを呼び出せるのはメンバー以上です（ゲスト・閲覧のみのメンバーは呼び出せません）')
   }
   const { aiAutomations, db } = await import('@cairn/db')
   const { and, eq, isNull } = await import('drizzle-orm')

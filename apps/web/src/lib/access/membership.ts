@@ -10,9 +10,11 @@ import { NextResponse } from 'next/server'
 import { db, activeWorkspaceMembers } from '@cairn/db'
 import { and, eq, inArray } from 'drizzle-orm'
 
-export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest'
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
 
-const ROLE_RANK: Record<WorkspaceRole, number> = { guest: 0, member: 1, admin: 2, owner: 3 }
+// viewer（閲覧のみ）は閲覧範囲を member と同じにするため同順位に置く。
+// 書き込みの拒否は getAuthContext（allowViewer を付けない限り 403）が一律に行う。
+const ROLE_RANK: Record<WorkspaceRole, number> = { guest: 0, viewer: 1, member: 1, admin: 2, owner: 3 }
 
 // 判定 helper は string | null 契約を維持する（呼び出し側の role 型ゆらぎを吸収）。
 export function isWorkspaceOwner(role: string | null): boolean {
@@ -21,7 +23,16 @@ export function isWorkspaceOwner(role: string | null): boolean {
 export function isWorkspaceAdmin(role: string | null): boolean {
   return role === 'owner' || role === 'admin'
 }
+// 閲覧範囲が member 以上か（viewer を含む）。書き込みの可否は canWriteWorkspace で判定する。
 export function isWorkspaceMember(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'member' || role === 'viewer'
+}
+// 投稿・リアクション・作成・編集などの書き込みができるか。viewer は閲覧のみ。
+export function canWriteWorkspace(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'member' || role === 'guest'
+}
+// API トークン・MCP OAuth を使えるか。guest と viewer は使えない。
+export function canUseApiAccess(role: string | null): boolean {
   return role === 'owner' || role === 'admin' || role === 'member'
 }
 
@@ -55,6 +66,7 @@ const ROLE_ERROR: Record<WorkspaceRole, string> = {
   owner: 'この操作にはオーナー権限が必要です',
   admin: 'この操作には管理者以上の権限が必要です',
   member: 'ゲストはこの操作を実行できません',
+  viewer: '閲覧専用メンバーはこの操作を実行できません',
   guest: 'このワークスペースにアクセスする権限がありません',
 }
 
@@ -85,7 +97,7 @@ export function requireWorkspaceOwner(workspaceId: string, userId: string) {
 export function requireWorkspaceAdmin(workspaceId: string, userId: string) {
   return requireActiveMember(workspaceId, userId, 'admin')
 }
-// workspace の member 以上（owner/admin/member）を許可。guest は不可
+// workspace の member 以上（owner/admin/member。閲覧範囲が同じ viewer も通る）を許可。guest は不可
 export function requireWorkspaceMember(workspaceId: string, userId: string) {
   return requireActiveMember(workspaceId, userId, 'member')
 }

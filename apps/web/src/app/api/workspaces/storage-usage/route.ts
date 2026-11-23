@@ -13,7 +13,7 @@ export interface WorkspaceStorageUsageDto {
 }
 
 export async function GET() {
-  const { ctx, error } = await getAuthContext()
+  const { ctx, error } = await getAuthContext({ allowViewer: true })
   if (error) return error
 
   // ワークスペース全体の合計値のため、参加プロジェクトに視界を絞られるゲストには返さない

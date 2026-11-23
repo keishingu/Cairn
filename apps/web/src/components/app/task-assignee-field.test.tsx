@@ -9,7 +9,7 @@ const { channelMembers, projectMembers } = vi.hoisted(() => ({
     channelId: string
     displayName: string
     avatarUrl: string | null
-    role: 'owner' | 'admin' | 'member' | 'guest'
+    role: 'owner' | 'admin' | 'member' | 'viewer' | 'guest'
   }>,
   projectMembers: [] as Array<{ userId: string }>,
 }))
@@ -28,6 +28,12 @@ vi.mock('@/hooks/use-project-members', () => ({
         displayName: '未参加ゲスト',
         avatarUrl: null,
         role: 'guest',
+      },
+      {
+        userId: 'viewer-1',
+        displayName: '閲覧のみの人',
+        avatarUrl: null,
+        role: 'viewer',
       },
     ],
   }),
@@ -78,6 +84,20 @@ describe('TaskAssigneeField', () => {
 
     await user.click(screen.getByRole('button', { name: /山田太郎/ }))
     expect(onChange).toHaveBeenCalledWith('user-1')
+  })
+
+  it('閲覧のみ（viewer）は担当者の候補に表示しない', async () => {
+    const user = userEvent.setup()
+    render(
+      <div className="app-root">
+        <TaskAssigneeField value={null} onChange={vi.fn()} />
+      </div>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /担当者を選択/ }))
+
+    expect(screen.getByRole('button', { name: /山田太郎/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /閲覧のみの人/ })).not.toBeInTheDocument()
   })
 
   it('公開チャンネルでも未参加guestを候補に表示しない', async () => {

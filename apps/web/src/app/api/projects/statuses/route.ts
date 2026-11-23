@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  const { ctx, error: authError } = await getAuthContext()
+  const { ctx, error: authError } = await getAuthContext({ allowViewer: true })
   if (authError) return authError
 
   try {

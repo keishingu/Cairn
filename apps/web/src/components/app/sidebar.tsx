@@ -9,7 +9,8 @@ import { InlineError } from './inline-error'
 import { useUnreadNotificationCount } from '@/lib/notifications/client'
 import { usePushNotifications } from '@/lib/push/client'
 import { signOutCurrentSession } from '@/lib/supabase/sign-out'
-import type { UserStatus } from '@/lib/user-status'
+import { STATUS_OPTIONS, statusLabel } from '@/lib/user-status'
+import { StatusDot } from '@/components/app/status-dot'
 import { useT } from '@/components/locale-provider'
 import { useProjectLabel } from '@/lib/use-workspace-settings'
 import { useAiChatAllowed } from '@/hooks/use-ai-chat-access'
@@ -545,25 +546,6 @@ const CollapsedNavItem = ({ icon, label, active, badge, onClick, onPrefetch }: C
       <UnreadBadge count={badge} size="sm" style={{ position: 'absolute', top: 4, right: 8 }} />
     )}
   </button>
-)
-
-const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
-  { value: 'online',  label: 'Online',   color: 'var(--emerald)' },
-  { value: 'away',    label: 'Away',       color: 'var(--amber)' },
-  { value: 'busy',    label: 'Busy',   color: 'var(--red)' },
-  { value: 'offline', label: 'Offline',   color: 'var(--text-4)' },
-]
-
-const statusLabel = (status: UserStatus | undefined) =>
-  STATUS_OPTIONS.find(s => s.value === status)?.label ?? STATUS_OPTIONS[0]!.label
-const statusColor = (status: UserStatus | undefined) =>
-  STATUS_OPTIONS.find(s => s.value === status)?.color ?? STATUS_OPTIONS[0]!.color
-
-const StatusDot = ({ status, size = 10 }: { status: UserStatus | undefined; size?: number }) => (
-  <span style={{
-    position: 'absolute', right: -1, bottom: -1, width: size, height: size, borderRadius: '50%',
-    background: statusColor(status), border: '2px solid var(--card)', boxSizing: 'content-box',
-  }}/>
 )
 
 function SidebarUserFooter({ collapsed = false, onToggle }: { collapsed?: boolean | undefined; onToggle?: (() => void) | undefined }) {
