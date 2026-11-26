@@ -3,19 +3,20 @@
 
 import { NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/get-auth-context'
+import { explicitLocaleFromCookie } from '@/lib/i18n/initial-locale'
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  const { userId, error } = await getAuthUser()
+  const { userId, user, error } = await getAuthUser()
   if (error) return error
 
   const { token } = await params
 
   try {
     const { db } = await import('@cairn/db')
-    const { workspaceInvites, workspaceMembers, projectMembers, projectRoles, channelMembers, channels, projects } = await import('@cairn/db')
+    const { profiles, workspaceInvites, workspaceMembers, projectMembers, projectRoles, channelMembers, channels, projects } = await import('@cairn/db')
     const { eq, and, or, isNull, gt, sql, inArray } = await import('drizzle-orm')
     const { inngest } = await import('@/lib/inngest/client').catch(() => ({ inngest: null }))
 
@@ -124,6 +125,17 @@ export async function POST(
           }
         }
       } else {
+        // メール確認後のパスワードログインでは callback を通らない場合がある。
+        // 招待の利用回数・参加と同じトランザクションで、既存プロフィールは上書きしない。
+        const displayName = ['display_name', 'full_name', 'name']
+          .map(key => user.user_metadata?.[key])
+          .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          ?.trim() ?? 'ユーザー'
+        const locale = explicitLocaleFromCookie(req.headers.get('cookie'))
+        await tx.insert(profiles)
+          .values({ id: userId, displayName, ...(locale ? { locale } : {}) })
+          .onConflictDoNothing({ target: profiles.id })
+
         await tx.insert(workspaceMembers).values({
           workspaceId: claimed.workspaceId,
           userId: userId,
