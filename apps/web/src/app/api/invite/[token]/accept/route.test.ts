@@ -9,6 +9,7 @@ const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'
 const { mockGetAuthUser, mockDb, mockGt, mockSql } = vi.hoisted(() => {
   const mockGetAuthUser = vi.fn().mockResolvedValue({
     userId: '00000000-0000-0000-0000-000000000001',
+    user: { user_metadata: { display_name: '招待ユーザー' } },
     error: null,
   })
   const mockDb = {
@@ -34,6 +35,7 @@ vi.mock('@/lib/get-auth-context', () => ({
 
 vi.mock('@cairn/db', () => ({
   db: mockDb,
+  profiles: { id: 'profiles.id' },
   workspaceInvites: {
     id: 'wi.id',
     workspaceId: 'wi.workspaceId',
@@ -45,6 +47,7 @@ vi.mock('@cairn/db', () => ({
     projectId: 'wi.projectId',
   },
   workspaceMembers: {
+    table: 'workspace_members',
     id: 'wm.id',
     workspaceId: 'wm.workspaceId',
     userId: 'wm.userId',
@@ -134,7 +137,9 @@ describe('POST /api/invite/[token]/accept', () => {
   afterEach(() => {
     delete process.env['DATABASE_URL']
     vi.clearAllMocks()
-    mockGetAuthUser.mockResolvedValue({ userId: DEV_USER_ID, error: null })
+    mockGetAuthUser.mockResolvedValue({
+      userId: DEV_USER_ID, user: { user_metadata: { display_name: '招待ユーザー' } }, error: null,
+    })
   })
 
   it('未認証なら認証エラーを返す', async () => {
@@ -150,6 +155,7 @@ describe('POST /api/invite/[token]/accept', () => {
     )
 
     expect(res.status).toBe(401)
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('存在しない・期限切れトークンには 404 を返す', async () => {
@@ -163,6 +169,7 @@ describe('POST /api/invite/[token]/accept', () => {
     )
 
     expect(res.status).toBe(404)
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('既に active なメンバーの場合はべき等に 200 を返す（use_count を増やさない）', async () => {
@@ -184,6 +191,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     // update は呼ばれないこと（use_count が増えない・再活性化もしない）
     expect(mockDb.update).not.toHaveBeenCalled()
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('非活性（卒業生）メンバーは claim 後に招待ロールで再活性化される', async () => {
@@ -288,6 +296,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(res.status).toBe(410)
     const body = await res.json() as { error: string }
     expect(body.error).toContain('usage limit')
+    expect(mockDb.insert).not.toHaveBeenCalled()
   })
 
   it('claim 前に期限切れになった招待は 410 を返す', async () => {
@@ -319,7 +328,7 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(mockGt).toHaveBeenNthCalledWith(2, 'wi.expiresAt', expect.objectContaining({ text: 'now()' }))
   })
 
-  it('有効なトークン・未参加ユーザー → ワークスペースに追加して workspaceId を返す', async () => {
+  it('プロフィール未作成の認証済みユーザーを、プロフィール作成後に招待先へ追加する', async () => {
     const invite = { id: 'inv-03', workspaceId: WORKSPACE_ID, role: 'member', expiresAt: null, maxUses: null, useCount: 0 }
 
     mockDb.select
@@ -331,10 +340,18 @@ describe('POST /api/invite/[token]/accept', () => {
       updateChain([{ id: 'inv-03', workspaceId: WORKSPACE_ID, role: 'member' }])
     )
 
-    // workspaceMembers insert
-    mockDb.insert.mockReturnValueOnce({
-      values: vi.fn().mockResolvedValue([]),
+    let profileExists = false
+    const onConflictDoNothing = vi.fn().mockImplementation(async () => {
+      profileExists = true
     })
+    const profileValues = vi.fn().mockReturnValue({ onConflictDoNothing })
+    const membershipValues = vi.fn().mockImplementation(async () => {
+      if (!profileExists) throw new Error('workspace_members_user_id_fkey')
+      return []
+    })
+    mockDb.insert
+      .mockReturnValueOnce({ values: profileValues })
+      .mockReturnValueOnce({ values: membershipValues })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -348,8 +365,14 @@ describe('POST /api/invite/[token]/accept', () => {
     expect(body.workspaceId).toBe(WORKSPACE_ID)
     // use_count がアトミックに更新されたこと
     expect(mockDb.update).toHaveBeenCalledTimes(1)
-    // メンバーが追加されたこと
-    expect(mockDb.insert).toHaveBeenCalledTimes(1)
+    expect(mockDb.insert).toHaveBeenNthCalledWith(1, { id: 'profiles.id' })
+    expect(profileValues).toHaveBeenCalledWith({ id: DEV_USER_ID, displayName: '招待ユーザー' })
+    expect(onConflictDoNothing).toHaveBeenCalledWith({ target: 'profiles.id' })
+    expect(mockDb.insert).toHaveBeenNthCalledWith(2, expect.objectContaining({ table: 'workspace_members' }))
+    expect(membershipValues).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID, userId: DEV_USER_ID, role: 'member',
+    })
+    expect(mockDb.insert).toHaveBeenCalledTimes(2)
   })
 
   it('max_uses が null（無制限）の場合は何度でも参加可能', async () => {
@@ -363,7 +386,11 @@ describe('POST /api/invite/[token]/accept', () => {
       updateChain([{ id: 'inv-04', workspaceId: WORKSPACE_ID, role: 'guest' }])
     )
 
-    mockDb.insert.mockReturnValueOnce({ values: vi.fn().mockResolvedValue([]) })
+    // 既存のプロフィールと競合しても更新せず、メンバー登録は続ける。
+    const preserveExisting = vi.fn().mockResolvedValue(undefined)
+    mockDb.insert
+      .mockReturnValueOnce({ values: vi.fn().mockReturnValue({ onConflictDoNothing: preserveExisting }) })
+      .mockReturnValueOnce({ values: vi.fn().mockResolvedValue([]) })
 
     const { POST } = await import('./route')
     const res = await POST(
@@ -372,5 +399,7 @@ describe('POST /api/invite/[token]/accept', () => {
     )
 
     expect(res.status).toBe(200)
+    expect(preserveExisting).toHaveBeenCalledWith({ target: 'profiles.id' })
+    expect(mockDb.insert).toHaveBeenCalledTimes(2)
   })
 })
