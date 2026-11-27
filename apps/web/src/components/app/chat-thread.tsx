@@ -371,6 +371,17 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
     if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
   }, [editMode])
 
+  // 編集欄の高さを本文に合わせる（長文の編集でも全体を見渡せるよう、上限は画面の6割）
+  React.useLayoutEffect(() => {
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (!el) return
+    const max = Math.round(window.innerHeight * 0.6)
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`
+    el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden'
+  }, [editMode, editDraft])
+
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
     const onEditEvt = (e: Event) => { if ((e as CustomEvent<string>).detail === messageId && canModify) startEdit() }
