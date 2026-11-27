@@ -18,6 +18,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -820,6 +821,9 @@ export default function ChatThreadScreen() {
   }, [])
   const [replyTarget, setReplyTarget] = React.useState<MessageDto | null>(null)
   const [editingMessage, setEditingMessage] = React.useState<MessageDto | null>(null)
+  const { height: windowHeight } = useWindowDimensions()
+  // 長文の編集でも全体を見渡せるよう、編集中だけ入力欄の上限を画面の高さに合わせて広げる
+  const editInputMaxHeight = Math.max(120, Math.round(windowHeight * 0.4))
   const [actionTarget, setActionTarget] = React.useState<MessageDto | null>(null)
   const [reactionTarget, setReactionTarget] = React.useState<MessageDto | null>(null)
   // 「スレッドに切り出す」シートの起点メッセージ
@@ -2463,7 +2467,11 @@ export default function ChatThreadScreen() {
               <TextInput
                 ref={composerInputRef}
                 accessibilityLabel={t('Enter a message')}
-                style={[styles.input, { color: palette.text }]}
+                style={[
+                  styles.input,
+                  { color: palette.text },
+                  editingMessage && { maxHeight: editInputMaxHeight },
+                ]}
                 submitBehavior={chatInputSubmitBehavior(sendOnEnter, !!editingMessage)}
                 returnKeyType={sendOnEnter && !editingMessage ? 'send' : 'default'}
                 onSubmitEditing={() => {
