@@ -8,10 +8,19 @@ import { getResearchMemberHistory } from '@/lib/ai/workspace-research-directory'
 const schema = z
   .object({
     userId: queryArray(z.string().uuid()),
+    attribute: queryArray(z.string().trim().min(1).max(20)),
+    projectRole: queryArray(z.string().trim().min(1).max(50)),
     includeFiles: queryBoolean,
   })
-  .transform(({ userId, includeFiles }) => ({ userIds: userId ?? [], includeFiles }))
-  .refine((input) => input.userIds.length > 0, { message: 'userId を1つ以上指定してください' })
+  .transform(({ userId, attribute, projectRole, includeFiles }) => ({
+    userIds: userId,
+    attributeNames: attribute,
+    projectRoleNames: projectRole,
+    includeFiles,
+  }))
+  .refine((input) => input.userIds || input.attributeNames || input.projectRoleNames, {
+    message: 'userId / attribute / projectRole のいずれかを指定してください',
+  })
 
 export async function GET(req: Request) {
   return researchRoute(req, schema, getResearchMemberHistory, 'GET /api/research/members/history')

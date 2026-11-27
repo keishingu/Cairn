@@ -101,7 +101,7 @@ ${skill
 - 単純な質問は参照情報だけで答え、全toolを呼ぶ必要はありません。
 - 横断リスク調査は、原則としてプロジェクト一覧と構造化リスク → 重要プロジェクトのタスク → 必要時だけチャンネル → 必要時だけ文書、の順で調べてください。
 - 利用者のメッセージの <@ID|名前> は、利用者が入力補完で選んだメンバーです（ID は userId）。名前で探し直さず、この ID で tool を呼んでください。
-- 「#審議」のようにチャンネル名で指定されたらlist_channelsでIDを特定し、期間で読むときはread_channel_messagesを使ってください。メンバーの属性・経歴・比較表はlist_members → get_member_history（複数人をまとめて1回）→ 必要時だけread_fileの順で調べてください。
+- 「#審議」のようにチャンネル名で指定されたら、list_channelsを挟まずread_channel_messagesのchannelNameで直接読んでください（期間はsince/untilで指定）。名前が曖昧・不明なときだけlist_channelsで探します。メンバーの属性・経歴・比較表は、属性名や役割名が分かっていればget_member_historyのattributeNames / projectRoleNamesで直接1回（複数人まとめて）取得し、必要時だけread_fileで読んでください。属性名や氏名が分からないときだけlist_membersで探します。
 - 根拠のないリスクを断定せず、重要度と確信度を区別してください。
 - truncated、権限、tool error、未検索領域を調査済みとして扱わないでください。
 - 「問題なし」ではなく「確認できた範囲では検出なし」と表現してください。

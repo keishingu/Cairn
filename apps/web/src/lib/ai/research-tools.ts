@@ -141,7 +141,7 @@ export function createResearchTools(ctx: AuthContext) {
 
     list_channels: tool({
       description:
-        '権限内の非DMチャンネル（ワークスペース・プロジェクト・スレッド）を名前やプロジェクトで探します。「#審議」のようにチャンネル名で指定されたら、最初にこれでIDを特定してください。',
+        '権限内の非DMチャンネル（ワークスペース・プロジェクト・スレッド）を名前やプロジェクトで探します。チャンネルを探す・一覧するとき、名前が曖昧なときに使います。名前が分かっていて読むだけなら、これを呼ばずread_channel_messagesにchannelNameを渡してください。',
       parameters: z.object({
         query: z.string().trim().max(100).nullable().describe('チャンネル名またはプロジェクト名の部分一致。先頭の#は無視。未指定ならnull'),
         projectId: z.string().uuid().nullable().describe('対象プロジェクトを限定。未指定ならnull'),
@@ -161,18 +161,20 @@ export function createResearchTools(ctx: AuthContext) {
 
     read_channel_messages: tool({
       description:
-        '権限内の1チャンネルのメッセージを期間指定で古い順に読みます。「昨日以降の投稿」のように期間で読むとき、会話の流れを追うときに使います。truncatedがtrueならnextCursorを渡して続きを読んでください。',
+        '権限内の1チャンネルのメッセージを期間指定で古い順に読みます。「昨日以降の投稿」のように期間で読むとき、会話の流れを追うときに使います。「#審議」のようにチャンネル名が分かっているときは、list_channelsを先に呼ばずchannelNameを渡してこのtoolを直接呼んでください（同名が複数あるとき・見つからないときはエラーで候補を返します）。名前が曖昧・不明なときだけlist_channelsで探します。channelIdとchannelNameはどちらか一方だけ指定します。truncatedがtrueならnextCursorを渡して続きを読んでください。',
       parameters: z.object({
-        channelId: z.string().uuid().describe('list_channels等で取得したチャンネルID（スレッドのIDも可）'),
+        channelId: z.string().uuid().nullable().describe('list_channels等で取得したチャンネルID（スレッドのIDも可）。channelNameを使うならnull'),
+        channelName: z.string().trim().min(1).max(100).nullable().describe('チャンネル名の完全一致。先頭の#は無視。channelIdを使うならnull'),
         since: z.string().datetime({ offset: true }).nullable().describe('この日時より後の投稿（ISO 8601）。未指定なら30日前。cursor指定時は無視'),
         until: z.string().datetime({ offset: true }).nullable().describe('この日時以前の投稿（ISO 8601）。未指定なら現在'),
         cursor: z.string().max(100).nullable().describe('前回のnextCursor。未指定ならnull'),
         limit: nullableRequestedLimit.describe('指定しない場合はnull'),
       }),
-      execute: ({ channelId, since, until, cursor, limit }) =>
+      execute: ({ channelId, channelName, since, until, cursor, limit }) =>
         safely(() =>
           readResearchChannelMessages(ctx, {
-            channelId,
+            channelId: channelId ?? undefined,
+            channelName: channelName ?? undefined,
             since: since ?? undefined,
             until: until ?? undefined,
             cursor: cursor ?? undefined,
@@ -222,14 +224,27 @@ export function createResearchTools(ctx: AuthContext) {
 
     get_member_history: tool({
       description:
-        'メンバーの経歴（参加プロジェクト・プロジェクトの役割・期間・ステータス・各プロジェクトの添付ファイル）を最大50人まとめて取得します。経歴の比較表は、list_membersで対象を決めてからこれを1回呼んで作ってください。添付ファイルは参加者ごとではなくprojectFilesにプロジェクト単位で1回だけ入ります。1プロジェクトあたりの件数は返すプロジェクト数に応じて10〜50件（新しい順）で、appliedFilters.maxFilesPerProjectが今回の上限、filesTruncatedがtrueなら古いファイルが残っています。添付ファイルの本文はread_fileで読みます。',
+        'メンバーの経歴（参加プロジェクト・プロジェクトの役割・期間・ステータス・各プロジェクトの添付ファイル）を最大50人まとめて取得します。対象はuserIds、またはattributeNames（プロフィール属性。完全一致・OR）・projectRoleNames（プロジェクトの役割名。完全一致・OR）で指定でき、IDが分からなくてもlist_membersを先に呼ばずに「コーチ全員」「リーダー経験者」のようにこのtoolを直接1回呼んで経歴の比較表を作れます。attributeNamesとprojectRoleNamesを両方指定すると両方を満たす人、userIdsも指定するとその中の該当者に絞ります。フィルタ指定では非活性メンバーは含みません。list_membersは、属性名や氏名が分からないとき・メンバーの一覧自体が欲しいときだけ使います。添付ファイルは参加者ごとではなくprojectFilesにプロジェクト単位で1回だけ入ります。1プロジェクトあたりの件数は返すプロジェクト数に応じて10〜50件（新しい順）で、appliedFilters.maxFilesPerProjectが今回の上限、filesTruncatedがtrueなら古いファイルが残っています。添付ファイルの本文はread_fileで読みます。',
       parameters: z.object({
-        userIds: z.array(z.string().uuid()).describe('list_members等で取得したユーザーID。最大50人（超えた分は返さずtruncatedになります）'),
+        userIds: z.array(z.string().uuid()).nullable().describe('list_members等で取得したユーザーID。最大50人（超えた分は返さずtruncatedになります）。属性・役割で絞るならnull'),
+        attributeNames: z
+          .array(z.string().trim().min(1).max(20))
+          .nullable()
+          .describe('このいずれかのプロフィール属性（例: 「コーチ」「3年生」）を持つメンバーに絞る（完全一致・OR）。未指定ならnull'),
+        projectRoleNames: z
+          .array(z.string().trim().min(1).max(50))
+          .nullable()
+          .describe('見えるプロジェクトのいずれかでこの役割名（例: 「リーダー」「コーチ」）を持つメンバーに絞る（完全一致・OR）。未指定ならnull'),
         includeFiles: z.boolean().nullable().describe('各プロジェクトの添付ファイル一覧を含めるか。既定はtrue。指定しない場合はnull'),
       }),
-      execute: ({ userIds, includeFiles }) =>
+      execute: ({ userIds, attributeNames, projectRoleNames, includeFiles }) =>
         safely(() =>
-          getResearchMemberHistory(ctx, { userIds, includeFiles: includeFiles ?? undefined }),
+          getResearchMemberHistory(ctx, {
+            userIds: userIds ?? undefined,
+            attributeNames: attributeNames ?? undefined,
+            projectRoleNames: projectRoleNames ?? undefined,
+            includeFiles: includeFiles ?? undefined,
+          }),
         ),
     }),
 

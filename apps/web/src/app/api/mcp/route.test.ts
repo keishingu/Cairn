@@ -9,6 +9,7 @@ const {
   mockListProjects,
   mockListMembers,
   mockGetMemberHistory,
+  mockReadChannelMessages,
   mockCreateMilestone,
   mockUpdateMilestone,
 } = vi.hoisted(() => ({
@@ -17,6 +18,9 @@ const {
   mockListProjects: vi.fn(() => Response.json([{ id: 'project-1', name: 'Project' }])),
   mockListMembers: vi.fn<(req: Request) => Response>(() => Response.json({ ok: true, items: [] })),
   mockGetMemberHistory: vi.fn<(req: Request) => Response>(() =>
+    Response.json({ ok: true, items: [] }),
+  ),
+  mockReadChannelMessages: vi.fn<(req: Request) => Response>(() =>
     Response.json({ ok: true, items: [] }),
   ),
   mockCreateMilestone: vi.fn<
@@ -59,6 +63,7 @@ vi.mock('@/lib/mcp-oauth', () => ({
 vi.mock('@/app/api/projects/route', () => ({ GET: mockListProjects }))
 vi.mock('@/app/api/research/members/route', () => ({ GET: mockListMembers }))
 vi.mock('@/app/api/research/members/history/route', () => ({ GET: mockGetMemberHistory }))
+vi.mock('@/app/api/research/channels/messages/route', () => ({ GET: mockReadChannelMessages }))
 vi.mock('@/app/api/projects/[id]/milestones/route', () => ({
   GET: vi.fn(() => Response.json([])),
   POST: mockCreateMilestone,
@@ -249,6 +254,46 @@ describe('MCP Route Handler', () => {
     const historyUrl = new URL(mockGetMemberHistory.mock.calls[0]![0].url)
     expect(historyUrl.searchParams.getAll('userId')).toEqual(userIds)
     expect(historyUrl.searchParams.get('includeFiles')).toBe('false')
+
+    // IDが分からなくても、属性・プロジェクト役割だけで経歴を1回で取れる
+    await send({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'get_member_history',
+        arguments: { attributeNames: ['コーチ'], projectRoleNames: ['リーダー'] },
+      },
+    })
+    const filteredUrl = new URL(mockGetMemberHistory.mock.calls[1]![0].url)
+    expect(filteredUrl.searchParams.getAll('userId')).toEqual([])
+    expect(filteredUrl.searchParams.getAll('attribute')).toEqual(['コーチ'])
+    expect(filteredUrl.searchParams.getAll('projectRole')).toEqual(['リーダー'])
+
+    // 対象指定が何も無い経歴の問い合わせは、読み取りルートへ到達させない
+    await send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'get_member_history', arguments: {} } })
+    expect(mockGetMemberHistory).toHaveBeenCalledTimes(2)
+
+    // チャンネル名だけで読める。IDと名前の同時指定は到達させない
+    await send({
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'tools/call',
+      params: { name: 'read_channel_messages', arguments: { channelName: '#審議' } },
+    })
+    const channelUrl = new URL(mockReadChannelMessages.mock.calls[0]![0].url)
+    expect(channelUrl.pathname).toBe('/api/research/channels/messages')
+    expect(channelUrl.searchParams.get('channelName')).toBe('#審議')
+    await send({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/call',
+      params: {
+        name: 'read_channel_messages',
+        arguments: { channelName: '審議', channelId: '10000000-0000-4000-8000-000000000001' },
+      },
+    })
+    expect(mockReadChannelMessages).toHaveBeenCalledTimes(1)
   }, 15_000)
   it('マイルストーンの一覧・作成・更新ツールを公開し、ID はパスに、残りは本文に渡す', async () => {
     mockVerifyApiToken.mockResolvedValue({

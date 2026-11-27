@@ -279,7 +279,7 @@ ai_automation_mutes          -- §2.8 受信者ごとの受信停止
 ### 11.1 Phase 0 の実装で決めたこと（2026-10-28）
 
 - MCP 用の Route Handler は `/api/research/*` にまとめ、`/ai` の tool と同じ関数（`workspace-research-directory.ts`）を呼ぶ。画面用の既存 API（`/api/workspaces/members` 等）は UI 向けの DTO で上限・evidence を持たないため、PAT / OAuth に開かない
-- `get_member_history` は1回で最大50人を受け取る。tool calling が8ステップに制限されているため、1人ずつ呼ぶと全員の比較表を作れない
+- `get_member_history` は1回で最大50人を受け取り、対象は `userIds` に加えて属性・プロジェクト役割名（完全一致・OR）でも指定できる（`list_members` を先に呼ぶ必要はない）。tool calling が8ステップに制限されているため、1人ずつ呼ぶと全員の比較表を作れない
 - `list_members` の属性絞り込みは「いずれかを持つ（OR）」。属性名は完全一致
 - `read_channel_messages` は既定で30日前から古い順に読み、期間の上限は設けない（cron の `since` が前回実行時刻になるため）。続きは `(作成日時, ID)` のカーソルで読む
 - プロジェクトのチャンネル名は画面と同じくプロジェクト名（マイルストーンはマイルストーン名）、スレッドはスレッド名で返す
