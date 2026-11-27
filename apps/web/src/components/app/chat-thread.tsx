@@ -372,15 +372,36 @@ export const ChatMessage = React.memo(function ChatMessage({ messageId, messageT
   }, [editMode])
 
   // 編集欄の高さを本文に合わせる（長文の編集でも全体を見渡せるよう、上限は画面の6割）
-  React.useLayoutEffect(() => {
-    if (!editMode) return
+  const fitEditTextarea = React.useCallback(() => {
     const el = editTextareaRef.current
     if (!el) return
     const max = Math.round(window.innerHeight * 0.6)
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`
     el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden'
-  }, [editMode, editDraft])
+  }, [])
+  React.useLayoutEffect(() => {
+    if (editMode) fitEditTextarea()
+  }, [editMode, editDraft, fitEditTextarea])
+  // 幅や画面の高さが変わると折り返しと上限が変わるため、そのたびに測り直す（本文が隠れたままスクロールできなくなるのを防ぐ）
+  React.useEffect(() => {
+    if (!editMode) return
+    const el = editTextareaRef.current
+    if (!el) return
+    window.addEventListener('resize', fitEditTextarea)
+    let lastWidth = el.clientWidth
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      // 高さは自分で変えるので、幅が変わったときだけ測り直す
+      if (el.clientWidth === lastWidth) return
+      lastWidth = el.clientWidth
+      fitEditTextarea()
+    })
+    observer?.observe(el)
+    return () => {
+      window.removeEventListener('resize', fitEditTextarea)
+      observer?.disconnect()
+    }
+  }, [editMode, fitEditTextarea])
 
   // メッセージ選択中のキーボード操作（e=編集 / r=リアクション / d=削除）を受ける
   React.useEffect(() => {
