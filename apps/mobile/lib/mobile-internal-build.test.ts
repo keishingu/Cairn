@@ -55,7 +55,7 @@ describe('モバイルInternal Distribution', () => {
 
     expect(packageJson.dependencies['expo-network']).toBe('~55.0.18')
     expect(packageJson.dependencies['expo-sqlite']).toBe('~55.0.20')
-    expect(app.expo.runtimeVersion).toBe('1.11.0')
+    expect(app.expo.runtimeVersion).toBe('1.12.0')
     expect(app.expo.plugins).toContainEqual(['expo-sqlite', { enableFTS: true }])
   })
 
@@ -69,6 +69,14 @@ describe('モバイルInternal Distribution', () => {
     expect(packageJson.dependencies['react-native-blob-util']).toBeDefined()
     expect(app.expo.plugins).toContain('@config-plugins/react-native-blob-util')
     expect(app.expo.plugins).toContain('@config-plugins/react-native-pdf')
+  })
+
+  it('チャットのキーボード追従用のネイティブモジュールを含む', () => {
+    const packageJson = JSON.parse(mobilePackage) as {
+      dependencies: Record<string, string>
+    }
+
+    expect(packageJson.dependencies['react-native-keyboard-controller']).toBeDefined()
   })
 
   it('Markdown のネイティブレンダラーは不要なネイティブ資産を含めない', () => {

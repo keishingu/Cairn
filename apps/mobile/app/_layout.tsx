@@ -7,6 +7,7 @@ import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { KeyboardProvider } from 'react-native-keyboard-controller'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { isSessionConfirmedAbsent, shouldClearAccountCache } from '../lib/account-cache'
 import { shouldClearAppBadge } from '../lib/app-badge'
@@ -142,16 +143,19 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthGuard>
-            <LocaleProvider>
-              <QuickActionsHost />
-              <ShareReceiveHost />
-              <OtaUpdateHost />
-              <Slot />
-            </LocaleProvider>
-          </AuthGuard>
-        </QueryClientProvider>
+        {/* キーボード追従はネイティブチャットだけで有効にする（WebView 画面やモーダルの挙動を変えないため） */}
+        <KeyboardProvider enabled={false}>
+          <QueryClientProvider client={queryClient}>
+            <AuthGuard>
+              <LocaleProvider>
+                <QuickActionsHost />
+                <ShareReceiveHost />
+                <OtaUpdateHost />
+                <Slot />
+              </LocaleProvider>
+            </AuthGuard>
+          </QueryClientProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )
