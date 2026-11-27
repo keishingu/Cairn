@@ -1,6 +1,6 @@
 {
   "name": "@cairn/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "src/main.js",
   "config": {
@@ -11,11 +11,15 @@
     "dev": "cross-env NODE_ENV=development DESKTOP_APP_URL=https://develop.oss-cairn.com electron .",
     "test": "node --test src/*.test.js",
     "generate-icons": "pnpm dlx --package=icon-gen@5 node scripts/generate-icons.mjs",
-    "build:prod": "pnpm dlx electron-builder@26 --config electron-builder.prod.json",
-    "build:dev": "pnpm dlx electron-builder@26 --config electron-builder.dev.json"
+    "build:prod": "electron-builder --config electron-builder.prod.json --publish never",
+    "build:dev": "electron-builder --config electron-builder.dev.json --publish never"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^42.4.0"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }
